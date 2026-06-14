@@ -1,0 +1,29 @@
+:root {
+  /* Standard Elevation Scale */
+
+  /* Level 1: Subtle depth (Buttons, Cards) */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+  /* Level 2: Distinct elevation (Dropdowns, Hover states) */
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  /* Level 3: High elevation (Modals, Popups) */
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  /* Level 4: Maximum elevation (Toasts, Floating Action Buttons) */
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Dark mode adjustment for shadows */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Shadows need to be darker and heavier in dark mode to be visible */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+  }
+}

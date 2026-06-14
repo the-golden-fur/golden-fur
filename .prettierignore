@@ -1,0 +1,18 @@
+# Build folders
+dist/
+build/
+coverage/
+
+# Dependencies
+node_modules/
+
+# Database artifacts
+prisma/migrations/
+
+# Environmental secrets and logs
+.env
+.env.*
+*.log
+
+# Lock files
+package-lock.json

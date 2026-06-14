@@ -1,0 +1,75 @@
+name: ✨ Feature Request
+description: Propose a new feature
+title: 'feat(<scope>): <short description>'
+labels: ['enhancement', 'needs-triage']
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✨ New Feature Request
+        Thanks for taking the time to propose a feature! Fill in the sections below so the team can evaluate and prioritize it.
+
+  - type: input
+    id: scope
+    attributes:
+      label: Scope / Area
+      description: Which part of the app does this feature belong to?
+      placeholder: 'e.g. auth, appointments, dashboard, search'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Sprint
+      description: Which sprint should this be considered for?
+      options:
+        - Sprint 1
+        - Sprint 2
+        - Sprint 3
+        - Sprint 4
+        - Backlog
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User Story
+      description: Describe the feature from the user's perspective.
+      placeholder: 'As a [type of user], I want [goal] so that [reason].'
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: What conditions must be true for this feature to be considered done?
+      placeholder: |
+        - [ ] Condition 1
+        - [ ] Condition 2
+        - [ ] Condition 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Mockups, related issues, dependencies, or anything else useful.
+      placeholder: Add any other context, screenshots, or links here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I searched existing issues and this feature hasn't been requested yet.
+          required: true
+        - label: This feature aligns with the project scope.
+          required: true

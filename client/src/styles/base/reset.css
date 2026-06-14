@@ -1,0 +1,51 @@
+/* --- Global Box Sizing --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* --- Margin & Padding Resets --- */
+* {
+  margin: 0;
+  padding: 0;
+}
+
+/* --- Body Defaults --- */
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* --- Media Defaults --- */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* --- Form & Input Defaults --- */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* --- Button Reset --- */
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* --- Remove List Styling --- */
+ul,
+ol {
+  list-style: none;
+}

@@ -1,0 +1,145 @@
+{
+  /* Formatting */
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+
+  /* Trigger ESLint auto-fix on every save */
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  /* Per-language formatter overrides */
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.wordWrap": "on"
+  },
+
+  /* Icons */
+  "workbench.iconTheme": "material-icon-theme",
+
+  /* Explorer */
+  "explorer.compactFolders": false,
+
+  /* Editor UX */
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+  "editor.minimap.enabled": false,
+  "editor.renderWhitespace": "boundary",
+  "editor.suggestSelection": "first",
+
+  /* Terminal */
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+  /* Tailwind CSS */
+  "tailwindCSS.emmetCompletions": true,
+  "tailwindCSS.includeLanguages": {
+    "javascript": "javascript",
+    "javascriptreact": "javascriptreact"
+  },
+
+  /* Better Comments */
+  "better-comments.tags": [
+    {
+      "tag": "!",
+      "color": "#FF2D00",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "?",
+      "color": "#3498DB",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "//",
+      "color": "#474747",
+      "strikethrough": true,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "todo",
+      "color": "#FF8C00",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "*",
+      "color": "#98C379",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    }
+  ],
+
+  /* Markdownlint */
+  "markdownlint.config": {
+    "MD013": false,
+    "MD033": false
+  },
+
+  /* Git */
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "gitblame.statusBarMessageFormat": "${author.name} (${time.ago})",
+  "gitlens.currentLine.enabled": false,
+  "gitlens.hovers.currentLine.over": "line",
+
+  /* Containers */
+  "containers.containerClient": "docker",
+  "docker.extension.enableComposeLanguageServer": true,
+
+  /* Diagnostics */
+  "errorLens.enabledDiagnosticLevels": ["error", "warning"],
+  "errorLens.followCursor": "closestProblem",
+  "errorLens.gutterIconsEnabled": true,
+  "errorLens.messageTemplate": "$message",
+  "pretty-ts-errors.enableForAllTypeScriptLanguages": true,
+
+  /* Paths */
+  "path-autocomplete.extensionOnImport": true,
+  "path-autocomplete.triggerOutsideStrings": true,
+  "path-autocomplete.pathMappings": {
+    "@": "${folder}/client/src"
+  },
+  "path-intellisense.autoSlashAfterDirectory": true,
+  "path-intellisense.extensionOnImport": true,
+
+  /* Testing */
+  "vitest.commandLine": "npm --prefix client run test:run",
+  "vitest.enable": true,
+
+  /* Markdown Preview Enhanced */
+  "markdown-preview-enhanced.enableScriptExecution": false,
+  "markdown-preview-enhanced.previewTheme": "github-light.css"
+}

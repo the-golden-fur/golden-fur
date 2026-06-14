@@ -1,0 +1,47 @@
+{
+  "recommendations": [
+    /* Code Quality & Formatting */
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "DavidAnson.vscode-markdownlint",
+    "aaron-bond.better-comments",
+
+    /* Language Support & Intellisense */
+    "christian-kohler.path-intellisense",
+    "Supabase.vscode-supabase-extension",
+    "mikestead.dotenv",
+    "ionutvmi.path-autocomplete",
+
+    /* Icons & Themes */
+    "PKief.material-icon-theme",
+
+    /* Containers */
+    "ms-azuretools.vscode-containers",
+    "ms-azuretools.vscode-docker",
+
+    /* Git */
+    "waderyan.gitblame",
+    "github.vscode-github-actions",
+    "eamodio.gitlens",
+
+    /* Markdown */
+    "shd101wyy.markdown-preview-enhanced",
+    "yzhang.markdown-all-in-one",
+
+    /* Testing */
+    "vitest.explorer",
+
+    /* TypeScript */
+    "yoavbls.pretty-ts-errors",
+
+    /* Diagnostics */
+    "usernamehw.errorlens",
+
+    /* CSS & Styling */
+    "styled-components.vscode-styled-components",
+    "bradlc.vscode-tailwindcss",
+
+    /* React Workflow & Snippets */
+    "dsznajder.es7-react-js-snippets"
+  ]
+}

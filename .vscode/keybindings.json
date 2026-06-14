@@ -1,0 +1,28 @@
+[
+  {
+    "key": "ctrl+shift+a",
+    "command": "editor.emmet.action.wrapWithAbbreviation"
+  },
+  {
+    "key": "shift+alt+f shift+alt+a",
+    "command": "editor.foldAll",
+    "when": "editorTextFocus && foldingEnabled"
+  },
+  {
+    "key": "shift+alt+u shift+alt+a",
+    "command": "editor.unfoldAll",
+    "when": "editorTextFocus && foldingEnabled"
+  },
+  {
+    "key": "ctrl+t",
+    "command": "workbench.action.terminal.clear"
+  },
+  {
+    "key": "alt+e alt+c",
+    "command": "workbench.files.action.collapseExplorerFolders"
+  },
+  {
+    "key": "shift+alt+s shift+alt+t",
+    "command": "workbench.view.extension.test"
+  }
+]

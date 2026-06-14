@@ -1,0 +1,47 @@
+:root {
+  /* --- Z-Index Stack --- */
+  /* Higher number = closer to the user */
+  --z-negative: -1;
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-navbar: 500;
+  --z-overlay: 1000;
+  --z-modal: 1100;
+  --z-toast: 2000;
+  --z-tooltip: 3000;
+
+  /* --- Layout Constants --- */
+  --container-max-width: 1200px;
+  --container-padding: 1rem;
+}
+
+/* --- Global Container --- */
+.container {
+  width: 100%;
+  max-width: var(--container-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--container-padding);
+  padding-right: var(--container-padding);
+}
+
+/* --- Responsive Helpers --- */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sr-only {
+  /* Screen reader only - for accessibility */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

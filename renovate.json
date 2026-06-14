@@ -1,0 +1,84 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "group:monorepos",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "enabledManagers": ["npm", "github-actions"],
+  "labels": ["dependencies"],
+  "schedule": ["before 9am on Monday"],
+  "packageRules": [
+    {
+      "description": "Group React ecosystem updates",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "react-router",
+        "@types/react",
+        "@types/react-dom"
+      ],
+      "groupName": "React ecosystem"
+    },
+    {
+      "description": "Group Vite and Vitest tooling updates",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "vite",
+        "@vitejs/*",
+        "vitest",
+        "@vitest/*",
+        "jsdom"
+      ],
+      "groupName": "Vite and Vitest tooling"
+    },
+    {
+      "description": "Group ESLint tooling updates",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "eslint",
+        "eslint-*",
+        "@eslint/*",
+        "typescript-eslint",
+        "globals"
+      ],
+      "groupName": "ESLint tooling"
+    },
+    {
+      "description": "Group Supabase client updates across apps",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@supabase/supabase-js"],
+      "groupName": "Supabase client"
+    },
+    {
+      "description": "Group Express server dependency updates",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "express",
+        "@types/express",
+        "cors",
+        "jsonwebtoken",
+        "dotenv"
+      ],
+      "groupName": "Express server dependencies"
+    },
+    {
+      "description": "Group test library updates",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "@testing-library/*",
+        "supertest",
+        "@types/supertest"
+      ],
+      "groupName": "Testing libraries"
+    },
+    {
+      "description": "Automerge patch updates after required checks pass",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ]
+}

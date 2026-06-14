@@ -1,0 +1,79 @@
+name: 📋 Task / Chore
+description: Sprint task, refactor, dependency update, or non-feature work
+title: '<type>(<scope>): <short description>'
+labels: ['task']
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📋 Task
+        Use this for sprint tasks, refactors, config changes, dependency updates, and documentation work — anything that isn't a new feature or bug fix.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Task Type
+      options:
+        - 'refactor — code restructuring without feature or fix'
+        - 'chore — deps, config, tooling'
+        - 'docs — documentation only'
+        - 'test — adding or fixing tests'
+        - 'ci — CI/CD pipeline changes'
+        - 'style — formatting, whitespace'
+        - 'perf — performance improvement'
+    validations:
+      required: true
+
+  - type: input
+    id: scope
+    attributes:
+      label: Scope / Area
+      description: Which part of the app does this task belong to?
+      placeholder: 'e.g. auth, db, ci, docs, dependencies'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Sprint
+      options:
+        - Sprint 1
+        - Sprint 2
+        - Sprint 3
+        - Sprint 4
+        - Backlog
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done and why?
+      placeholder: Describe the task clearly enough that any team member can pick it up.
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition-of-done
+    attributes:
+      label: Definition of Done
+      description: How will we know this task is complete?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: This task is small enough to complete within one sprint.
+          required: false
+        - label: I've confirmed no existing issue already covers this work.
+          required: true

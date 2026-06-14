@@ -1,0 +1,65 @@
+/* Defaults and Dark Theme */
+:root,
+[data-theme='dark'] {
+  --bg-color: #242424;
+  --text-color: rgba(255, 255, 255, 0.87);
+  --btn-bg: #1a1a1a;
+  --primary-hover: #535bf2;
+  --border-color: rgba(255, 255, 255, 0.1);
+
+  /* Semantic status colors (Dark optimized) */
+  --error-bg: rgba(211, 47, 47, 0.1);
+  --error-text: #ff8a80;
+  --error-border: rgba(211, 47, 47, 0.5);
+
+  --warning-text: #fbbf24;
+  --warning-bg: rgba(217, 119, 6, 0.1);
+
+  --success-text: #81c784;
+  --success-bg: rgba(46, 125, 50, 0.1);
+
+  color-scheme: dark;
+}
+
+/* Light Mode Override */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-color: #ffffff;
+    --text-color: #213547;
+    --btn-bg: #f9f9f9;
+    --border-color: #d1d1d1;
+
+    --error-bg: #fff5f5;
+    --error-text: #d32f2f;
+    --error-border: #ffcdd2;
+
+    --warning-text: #d97706;
+    --warning-bg: #fffbeb;
+
+    --success-text: #2e7d32;
+    --success-bg: #edf7ed;
+
+    color-scheme: light;
+  }
+}
+
+/* Explicit Light Mode Selector */
+[data-theme='light'] {
+  --bg-color: #ffffff;
+  --text-color: #213547;
+  --btn-bg: #f9f9f9;
+  --border-color: #d1d1d1;
+
+  /* Semantic status colors */
+  --error-bg: #fff5f5;
+  --error-text: #d32f2f;
+  --error-border: #ffcdd2;
+
+  --warning-text: #d97706;
+  --warning-bg: #fffbeb;
+
+  --success-text: #2e7d32;
+  --success-bg: #edf7ed;
+
+  color-scheme: light;
+}
