@@ -7,7 +7,7 @@
   "scripts": {
     "=== CORE WORKFLOW ===": "",
     "dev": "cross-env NODE_ENV=development tsx watch src/app.ts",
-    "start": "cross-env NODE_ENV=production tsx src/app.ts",
+    "start": "tsx src/app.ts",
     "=== TESTING ===": "",
     "test": "vitest run",
     "test:watch": "vitest",
