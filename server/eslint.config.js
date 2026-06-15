@@ -1,6 +1,8 @@
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
+// Add this import at the top
+import tsParser from '@typescript-eslint/parser';
 
 /**
  * ESLint configuration for the Node.js backend.
@@ -22,6 +24,9 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
+
+      // Tell ESLint to use the TypeScript parser so it doesn't crash on TS syntax
+      parser: tsParser,
 
       // Merge Node.js and Jest/Vitest globals for context awareness
       globals: {
