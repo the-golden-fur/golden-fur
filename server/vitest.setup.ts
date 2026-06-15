@@ -1,5 +1,5 @@
-import { afterEach, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
+import { afterEach, vi } from 'vitest';
 
 type MockExpressContext = {
   req: Partial<Request>;
@@ -8,6 +8,7 @@ type MockExpressContext = {
 };
 
 declare global {
+  // eslint-disable-next-line no-unused-vars
   var mockExpressContext: () => MockExpressContext;
 }
 
