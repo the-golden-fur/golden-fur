@@ -1,1 +1,1 @@
-# react-express-supabase-ts-template
+# golden-fur
