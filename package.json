@@ -1,8 +1,12 @@
 {
-  "name": "react-express-supabase-ts-template",
+  "name": "golden-fur",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
+  "keywords": [],
+  "author": "the-golden-fur",
+  "license": "MIT",
   "scripts": {
     "=== ORCHESTRATION ===": "",
     "dev": "concurrently \"npm --prefix client run dev\" \"npm --prefix server run dev\"",
@@ -22,14 +26,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cH0NKIIs34L-submissions/react-express-supabase-ts-template.git"
+    "url": "git+https://github.com/the-golden-fur/golden-fur.git"
   },
-  "keywords": [],
-  "author": "cH0NKIIs34L-submissions",
-  "license": "MIT",
-  "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/cH0NKIIs34L-submissions/react-express-supabase-ts-template/issues"
+    "url": "https://github.com/the-golden-fur/golden-fur/issues"
   },
-  "homepage": "https://github.com/cH0NKIIs34L-submissions/react-express-supabase-ts-template#readme"
+  "homepage": "https://github.com/the-golden-fur/golden-fur#readme"
 }
