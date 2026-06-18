@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "=== ORCHESTRATION ===": "",
     "dev": "concurrently \"npm --prefix client run dev\" \"npm --prefix server run dev\"",
@@ -27,7 +28,6 @@
   "keywords": [],
   "author": "cH0NKIIs34L-submissions",
   "license": "MIT",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/cH0NKIIs34L-submissions/react-express-supabase-ts-template/issues"
   },
