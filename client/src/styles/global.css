@@ -1,0 +1,28 @@
+@import './tokens.css';
+@import './variables/typography.css';
+@import './variables/spacing.css';
+@import './variables/shadows.css';
+@import './variables/colors.css';
+@import './base/reset.css';
+@import './base/layout.css';
+@import './animations.css';
+
+[data-theme='customer'] {
+  color-scheme: light;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme='staff'] {
+  color-scheme: dark;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  -webkit-font-smoothing: antialiased;
+}
