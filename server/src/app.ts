@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import express from 'express';
+import appRoutes from './shared/app.routes.ts';
 
 const app = express();
 
 app.use(express.json());
+app.use(appRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
