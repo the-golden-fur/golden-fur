@@ -1,4 +1,7 @@
-export type { AuthenticatedRequest, JwtPayload } from '../../shared/shared.types.ts';
+export type {
+  AuthenticatedRequest,
+  JwtPayload,
+} from '../../shared/shared.types.ts';
 
 export interface StaffLoginRequest {
   username: string;

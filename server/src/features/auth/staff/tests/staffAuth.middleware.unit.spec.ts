@@ -23,12 +23,18 @@ describe('requireRole middleware', () => {
   it('allows access when staff_profiles.role is in the allow-list', async () => {
     const mockSelect = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: { role: 'Admin' }, error: null }),
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: { role: 'Admin' }, error: null }),
       }),
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
 
-    await requireRole(['Admin', 'Superadmin'])(req, {} as Response, next as NextFunction);
+    await requireRole(['Admin', 'Superadmin'])(
+      req,
+      {} as Response,
+      next as NextFunction
+    );
 
     expect(next).toHaveBeenCalledWith();
     expect(req.user?.role).toBe('Admin');
@@ -37,12 +43,18 @@ describe('requireRole middleware', () => {
   it('denies access when staff_profiles.role is not in the allow-list', async () => {
     const mockSelect = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: { role: 'Receptionist' }, error: null }),
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: { role: 'Receptionist' }, error: null }),
       }),
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
 
-    await requireRole(['Admin', 'Superadmin'])(req, {} as Response, next as NextFunction);
+    await requireRole(['Admin', 'Superadmin'])(
+      req,
+      {} as Response,
+      next as NextFunction
+    );
 
     const error = next.mock.calls[0][0] as Error & { statusCode?: number };
     expect(error.statusCode).toBe(403);

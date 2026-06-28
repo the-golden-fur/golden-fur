@@ -33,7 +33,13 @@ describe('staffLoginController', () => {
 
   it('returns 401 when profile is not found', async () => {
     req.body = { username: 'testuser', password: 'password123' };
-    const mockSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: null, error: new Error('Not found') }) }) });
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: null, error: new Error('Not found') }),
+      }),
+    });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
     await staffLoginController(req as Request, res as Response);
@@ -64,16 +70,33 @@ describe('staffLoginController', () => {
 
   it('returns tokens on successful login', async () => {
     req.body = { username: 'testuser', password: 'password123' };
-    const mockSelect = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: { registered_email: 'test@example.com' }, error: null }) }) });
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { registered_email: 'test@example.com' },
+          error: null,
+        }),
+      }),
+    });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
     vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
-      data: { session: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 } },
+      data: {
+        session: {
+          access_token: 'acc',
+          refresh_token: 'ref',
+          expires_in: 3600,
+        },
+      },
       error: null,
     } as any);
 
     await staffLoginController(req as Request, res as Response);
     expect(status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith({ access_token: 'acc', refresh_token: 'ref', expires_in: 3600 });
+    expect(json).toHaveBeenCalledWith({
+      access_token: 'acc',
+      refresh_token: 'ref',
+      expires_in: 3600,
+    });
   });
 });
