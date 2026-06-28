@@ -18,20 +18,14 @@ describe('staff auth routes', () => {
   });
 
   it('returns tokens for valid staff credentials', async () => {
-    const mockSelect = vi
-      .fn()
-      .mockReturnValue({
-        eq: vi
-          .fn()
-          .mockReturnValue({
-            single: vi
-              .fn()
-              .mockResolvedValue({
-                data: { registered_email: 'test@example.com' },
-                error: null,
-              }),
-          }),
-      });
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { registered_email: 'test@example.com' },
+          error: null,
+        }),
+      }),
+    });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
     vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
@@ -58,17 +52,13 @@ describe('staff auth routes', () => {
   });
 
   it('rejects login with wrong username', async () => {
-    const mockSelect = vi
-      .fn()
-      .mockReturnValue({
-        eq: vi
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi
           .fn()
-          .mockReturnValue({
-            single: vi
-              .fn()
-              .mockResolvedValue({ data: null, error: new Error('Not found') }),
-          }),
-      });
+          .mockResolvedValue({ data: null, error: new Error('Not found') }),
+      }),
+    });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
     const response = await request(app)
