@@ -2,7 +2,11 @@ import type { NextFunction, Response } from 'express';
 import { supabase } from '../../../../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../../../../shared/shared.types.ts';
 
-export async function requireBranch(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
+export async function requireBranch(
+  req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction
+) {
   const userId = req.user?.sub;
 
   if (!userId) {

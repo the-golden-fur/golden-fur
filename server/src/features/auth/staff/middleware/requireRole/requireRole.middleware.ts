@@ -3,7 +3,11 @@ import { supabase } from '../../../../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../../../../shared/shared.types.ts';
 
 export function requireRole(allowedRoles: string[]) {
-  return async (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
+  return async (
+    req: AuthenticatedRequest,
+    _res: Response,
+    next: NextFunction
+  ) => {
     const userId = req.user?.sub;
 
     if (!userId) {
