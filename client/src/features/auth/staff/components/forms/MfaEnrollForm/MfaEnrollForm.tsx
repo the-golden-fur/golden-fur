@@ -6,7 +6,11 @@ interface MfaEnrollFormProps {
   message: string | null;
 }
 
-export function MfaEnrollForm({ qrCodeUri, onVerify, message }: MfaEnrollFormProps) {
+export function MfaEnrollForm({
+  qrCodeUri,
+  onVerify,
+  message,
+}: MfaEnrollFormProps) {
   const [code, setCode] = useState('');
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

@@ -6,7 +6,11 @@ interface MfaChallengeFormProps {
   success: boolean;
 }
 
-export function MfaChallengeForm({ onSubmit, error, success }: MfaChallengeFormProps) {
+export function MfaChallengeForm({
+  onSubmit,
+  error,
+  success,
+}: MfaChallengeFormProps) {
   const [code, setCode] = useState('');
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

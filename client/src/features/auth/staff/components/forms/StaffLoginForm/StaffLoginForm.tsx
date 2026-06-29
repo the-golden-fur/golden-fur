@@ -38,7 +38,9 @@ export function StaffLoginForm({
         value={password}
         onChange={(event) => setPassword(event.target.value)}
       />
-      <button type="submit" className={styles.buttonPrimary}>Sign In</button>
+      <button type="submit" className={styles.buttonPrimary}>
+        Sign In
+      </button>
       <button
         type="button"
         onClick={() => {

@@ -21,7 +21,9 @@ export function StaffAuthGuard({ children }: StaffAuthGuardProps) {
   }
 
   if (isMfaPending) {
-    return <Navigate to="/staff/mfa/verify" replace state={{ from: location }} />;
+    return (
+      <Navigate to="/staff/mfa/verify" replace state={{ from: location }} />
+    );
   }
 
   return <>{children}</>;
