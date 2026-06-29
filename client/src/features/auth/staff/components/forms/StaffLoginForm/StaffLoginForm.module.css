@@ -1,0 +1,16 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.buttonPrimary {
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  border-radius: var(--radius-lg);
+}
