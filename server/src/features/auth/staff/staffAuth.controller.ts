@@ -100,7 +100,7 @@ export async function mfaVerifyController(
 
     const totpFactor =
       factorsData.totp.find((f) => f.status === 'verified') ||
-      factorsData.totp.find((f) => f.status === 'unverified');
+      factorsData.totp.find((f) => (f.status as string) === 'unverified');
     if (!totpFactor) {
       return res.status(400).json({ error: 'No TOTP factor found' });
     }
