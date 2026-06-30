@@ -67,7 +67,10 @@ export function MfaEnrollForm() {
   };
 
   return (
-    <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+    <form
+      className={styles.form}
+      onSubmit={(event) => void handleSubmit(event)}
+    >
       {qrCode ? <img src={qrCode} alt="MFA enrollment QR code" /> : null}
       {manualUri ? <p className={styles.success}>{manualUri}</p> : null}
       <label className={styles.field}>
@@ -91,4 +94,3 @@ export function MfaEnrollForm() {
     </form>
   );
 }
-

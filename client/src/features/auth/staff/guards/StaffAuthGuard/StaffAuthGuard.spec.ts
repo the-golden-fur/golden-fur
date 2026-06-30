@@ -6,7 +6,9 @@ import { AuthContext } from '../../../providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../providers/AuthProvider/AuthContext';
 import { StaffAuthGuard } from './StaffAuthGuard';
 
-function createAuthValue(overrides: Partial<AuthContextValue>): AuthContextValue {
+function createAuthValue(
+  overrides: Partial<AuthContextValue>
+): AuthContextValue {
   return {
     session: null,
     user: null,

@@ -45,7 +45,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const applySession = useCallback(
     async (accessTokenValue: string, refreshTokenValue: string) => {
       setIsLoading(true);
-      const response = await setAuthSession(accessTokenValue, refreshTokenValue);
+      const response = await setAuthSession(
+        accessTokenValue,
+        refreshTokenValue
+      );
       setSession((response.data?.session as Session | null) ?? null);
       setIsLoading(false);
     },
@@ -92,7 +95,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       applySession,
       signOut,
     }),
-    [accessToken, applySession, isLoading, refreshSession, session, signOut, user]
+    [
+      accessToken,
+      applySession,
+      isLoading,
+      refreshSession,
+      session,
+      signOut,
+      user,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

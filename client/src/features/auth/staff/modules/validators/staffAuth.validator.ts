@@ -16,4 +16,3 @@ export const forgotPasswordSchema = z.object({
 export type StaffLoginFormValues = z.infer<typeof staffLoginSchema>;
 export type TotpCodeFormValues = z.infer<typeof totpCodeSchema>;
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
-

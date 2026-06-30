@@ -5,29 +5,27 @@ import { MfaEnrollPage } from './pages/MfaEnrollPage/MfaEnrollPage';
 import { StaffLoginPage } from './pages/StaffLoginPage/StaffLoginPage';
 import { StaffAuthGuard } from './guards/StaffAuthGuard/StaffAuthGuard';
 
-export const staffAuthRoutes = (
+export const staffAuthRoutes = createElement(
+  Fragment,
+  null,
+  createElement(Route, {
+    path: '/staff/login',
+    element: createElement(StaffLoginPage),
+  }),
+  createElement(Route, {
+    path: '/staff/mfa/enroll',
+    element: createElement(MfaEnrollPage),
+  }),
+  createElement(Route, {
+    path: '/staff/mfa/verify',
+    element: createElement(MfaChallengePage),
+  }),
   createElement(
-    Fragment,
-    null,
+    Route,
+    { element: createElement(StaffAuthGuard) },
     createElement(Route, {
-      path: '/staff/login',
-      element: createElement(StaffLoginPage),
-    }),
-    createElement(Route, {
-      path: '/staff/mfa/enroll',
-      element: createElement(MfaEnrollPage),
-    }),
-    createElement(Route, {
-      path: '/staff/mfa/verify',
-      element: createElement(MfaChallengePage),
-    }),
-    createElement(
-      Route,
-      { element: createElement(StaffAuthGuard) },
-      createElement(Route, {
-        path: '/staff',
-        element: createElement('div', null, 'Staff dashboard'),
-      })
-    )
+      path: '/staff',
+      element: createElement('div', null, 'Staff dashboard'),
+    })
   )
 );

@@ -36,4 +36,3 @@ export interface StaffAuthMessageResponse {
   message?: string;
   success?: boolean;
 }
-

@@ -15,7 +15,9 @@ interface StaffApiResult<T> {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 const AUTH_PREFIX = '/auth';
 
-async function parseResponse<T>(response: Response): Promise<StaffApiResult<T>> {
+async function parseResponse<T>(
+  response: Response
+): Promise<StaffApiResult<T>> {
   const body = (await response.json().catch(() => null)) as
     | { error?: string }
     | T

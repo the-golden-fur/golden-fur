@@ -14,9 +14,9 @@ describe('staffAuth.validator', () => {
   });
 
   it('rejects blank login credentials', () => {
-    expect(staffLoginSchema.safeParse({ username: '', password: '' }).success).toBe(
-      false
-    );
+    expect(
+      staffLoginSchema.safeParse({ username: '', password: '' }).success
+    ).toBe(false);
   });
 
   it('requires a 6-digit TOTP code', () => {
@@ -26,12 +26,11 @@ describe('staffAuth.validator', () => {
   });
 
   it('validates password reset email shape', () => {
-    expect(forgotPasswordSchema.safeParse({ email: 'staff@example.com' }).success).toBe(
-      true
-    );
+    expect(
+      forgotPasswordSchema.safeParse({ email: 'staff@example.com' }).success
+    ).toBe(true);
     expect(forgotPasswordSchema.safeParse({ email: 'not-email' }).success).toBe(
       false
     );
   });
 });
-

@@ -40,7 +40,10 @@ export function MfaChallengeForm() {
   };
 
   return (
-    <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+    <form
+      className={styles.form}
+      onSubmit={(event) => void handleSubmit(event)}
+    >
       <label className={styles.field}>
         <span className={styles.label}>6-digit code</span>
         <input
@@ -62,4 +65,3 @@ export function MfaChallengeForm() {
     </form>
   );
 }
-

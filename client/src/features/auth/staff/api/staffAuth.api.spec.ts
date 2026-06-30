@@ -35,9 +35,12 @@ describe('staffAuth.api', () => {
 
   it('sends bearer tokens for MFA endpoints', async () => {
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ totp: { qr_code: 'data:image/svg+xml' } }), {
-        status: 200,
-      })
+      new Response(
+        JSON.stringify({ totp: { qr_code: 'data:image/svg+xml' } }),
+        {
+          status: 200,
+        }
+      )
     );
 
     await mfaEnroll('token');
@@ -80,4 +83,3 @@ describe('staffAuth.api', () => {
     expect(result.data?.message).toBe('Password reset email sent');
   });
 });
-
