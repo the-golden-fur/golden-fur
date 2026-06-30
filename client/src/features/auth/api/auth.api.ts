@@ -85,3 +85,19 @@ export async function refreshSession() {
 
   return client.auth.refreshSession();
 }
+
+export async function setSession(accessToken: string, refreshToken: string) {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return {
+      data: { session: null as Session | null },
+      error: null,
+    } as AuthApiResponse<{ session: Session | null }>;
+  }
+
+  return client.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+}

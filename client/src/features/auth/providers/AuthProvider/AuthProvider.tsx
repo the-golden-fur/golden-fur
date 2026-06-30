@@ -9,6 +9,7 @@ import {
   getSession,
   onAuthStateChange,
   refreshSession as refreshAuthSession,
+  setSession as setAuthSession,
   signOut as signOutAuth,
 } from '../../api/auth.api';
 import type { Session } from '../../auth.types';
@@ -40,6 +41,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     setIsLoading(false);
   }, []);
+
+  const applySession = useCallback(
+    async (accessTokenValue: string, refreshTokenValue: string) => {
+      setIsLoading(true);
+      const response = await setAuthSession(accessTokenValue, refreshTokenValue);
+      setSession((response.data?.session as Session | null) ?? null);
+      setIsLoading(false);
+    },
+    []
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -78,9 +89,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       accessToken,
       isLoading,
       refreshSession,
+      applySession,
       signOut,
     }),
-    [accessToken, isLoading, refreshSession, session, signOut, user]
+    [accessToken, applySession, isLoading, refreshSession, session, signOut, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

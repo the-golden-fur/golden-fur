@@ -7,6 +7,7 @@ export interface AuthContextValue {
   accessToken: string | null;
   isLoading: boolean;
   refreshSession: () => Promise<void>;
+  applySession: (accessToken: string, refreshToken: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 

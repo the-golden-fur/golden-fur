@@ -1,0 +1,35 @@
+.page {
+  align-items: center;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  display: grid;
+  min-height: 100vh;
+  padding: var(--space-4);
+}
+
+.shell {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: var(--space-4);
+  justify-self: center;
+  padding: var(--space-5);
+  width: min(100%, 520px);
+}
+
+.title {
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-4xl);
+  font-weight: var(--weight-bold);
+  line-height: var(--lh-tight);
+  margin: 0;
+}
+
+.copy {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
