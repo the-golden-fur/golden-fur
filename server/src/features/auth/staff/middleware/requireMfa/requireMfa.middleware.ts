@@ -30,7 +30,7 @@ export async function requireMfa(
       return next(authError);
     }
     role = data.role;
-    req.user.role = role;
+    if (req.user) req.user.role = role;
   }
 
   if (role === 'Admin' || role === 'Supervisor') {

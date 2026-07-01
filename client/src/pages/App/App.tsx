@@ -1,11 +1,26 @@
+import { BrowserRouter, useLocation } from 'react-router';
+import { AuthProvider } from '../../features/auth/providers/AuthProvider/AuthProvider';
+import { AppRoutes } from '../../routes';
 import { ThemeProvider } from '../../shared/providers/ThemeProvider/ThemeProvider';
 
-// TODO: wire router here (Issue #7)
+function ThemedAppRoutes() {
+  const location = useLocation();
+  const theme = location.pathname.startsWith('/staff') ? 'staff' : 'customer';
+
+  return (
+    <ThemeProvider theme={theme}>
+      <AppRoutes />
+    </ThemeProvider>
+  );
+}
+
 function App() {
   return (
-    <ThemeProvider theme="customer">
-      <></>
-    </ThemeProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <ThemedAppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

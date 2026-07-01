@@ -17,16 +17,15 @@ function getUserClient(req: Request) {
 }
 
 export async function staffLoginController(req: Request, res: Response) {
-  const parsed = staffAuthValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res.status(401).json({ error: 'Unauthorized' }); // Per AC-6, generic 401
-  }
-
-  const { username, password } = parsed.data;
-
-  // TODO: booking-overlap check deferred to Sprint 2 — requires bookings table from M03
   try {
+    const parsed = staffAuthValidator.safeParse(req.body);
+
+    if (!parsed.success) {
+      throw new Error('Invalid input');
+    }
+
+    const { username, password } = parsed.data;
+
     // 1. Resolve registered_email from staff_profiles
     const { data: profileData, error: profileError } = await supabase
       .from('staff_profiles')
@@ -35,7 +34,7 @@ export async function staffLoginController(req: Request, res: Response) {
       .single();
 
     if (profileError || !profileData?.registered_email) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      throw new Error('Profile resolution failed');
     }
 
     // 2. Sign in with Supabase Auth
@@ -46,7 +45,7 @@ export async function staffLoginController(req: Request, res: Response) {
       });
 
     if (authError || !authData.session) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      throw new Error('Authentication failed');
     }
 
     return res.status(200).json({
@@ -54,8 +53,8 @@ export async function staffLoginController(req: Request, res: Response) {
       refresh_token: authData.session.refresh_token,
       expires_in: authData.session.expires_in,
     });
-  } catch {
-    return res.status(401).json({ error: 'Unauthorized' });
+  } catch (err: unknown) {
+    return res.status(401).json({ error: 'Unauthorized' }); // Per AC-6, generic 401
   }
 }
 
@@ -100,7 +99,7 @@ export async function mfaVerifyController(
 
     const totpFactor =
       factorsData.totp.find((f) => f.status === 'verified') ||
-      factorsData.totp.find((f) => f.status === 'unverified');
+      factorsData.totp.find((f) => (f.status as string) === 'unverified');
     if (!totpFactor) {
       return res.status(400).json({ error: 'No TOTP factor found' });
     }

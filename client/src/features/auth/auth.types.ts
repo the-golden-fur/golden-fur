@@ -8,6 +8,7 @@ export interface AuthUser {
   id: string;
   email?: string | null;
   role?: string | null;
+  app_metadata?: Record<string, unknown>;
 }
 
 export interface JwtPayload {
