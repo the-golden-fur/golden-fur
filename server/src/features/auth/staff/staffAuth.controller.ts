@@ -53,7 +53,7 @@ export async function staffLoginController(req: Request, res: Response) {
       refresh_token: authData.session.refresh_token,
       expires_in: authData.session.expires_in,
     });
-  } catch (err: unknown) {
+  } catch {
     return res.status(401).json({ error: 'Unauthorized' }); // Per AC-6, generic 401
   }
 }

@@ -8,7 +8,7 @@ interface AuthApiResponse<T> {
 
 let authClient: SupabaseClient | null = null;
 
-function getSupabaseClient() {
+export function getSupabaseClient() {
   if (authClient) {
     return authClient;
   }
@@ -24,7 +24,7 @@ function getSupabaseClient() {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: false,
+      detectSessionInUrl: true,
     },
   });
 

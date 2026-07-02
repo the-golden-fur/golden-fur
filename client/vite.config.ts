@@ -8,7 +8,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/auth': {
+      '/auth/customers': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/auth/staff': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
