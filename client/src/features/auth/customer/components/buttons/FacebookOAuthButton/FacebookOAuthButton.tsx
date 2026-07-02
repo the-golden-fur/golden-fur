@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router';
 import { signInWithFacebook } from '../../../api/customerAuth.api';
 
 interface FacebookOAuthButtonProps {
@@ -6,12 +5,10 @@ interface FacebookOAuthButtonProps {
 }
 
 export function FacebookOAuthButton({ className }: FacebookOAuthButtonProps) {
-  const navigate = useNavigate();
-
   const handleClick = async () => {
     const result = await signInWithFacebook();
-    if (!result.error) {
-      navigate('/auth/callback', { replace: true });
+    if (result.error) {
+      console.error('Facebook OAuth failed:', result.error);
     }
   };
 

@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router';
 import { signInWithGoogle } from '../../../api/customerAuth.api';
 
 interface GoogleOAuthButtonProps {
@@ -6,12 +5,10 @@ interface GoogleOAuthButtonProps {
 }
 
 export function GoogleOAuthButton({ className }: GoogleOAuthButtonProps) {
-  const navigate = useNavigate();
-
   const handleClick = async () => {
     const result = await signInWithGoogle();
-    if (!result.error) {
-      navigate('/auth/callback', { replace: true });
+    if (result.error) {
+      console.error('Google OAuth failed:', result.error);
     }
   };
 

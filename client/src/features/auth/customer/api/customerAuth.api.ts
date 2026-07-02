@@ -1,3 +1,4 @@
+import { getSupabaseClient } from '../../api/auth.api';
 import type {
   CustomerLoginPayload,
   CustomerSignupPayload,
@@ -58,27 +59,114 @@ export async function login(payload: CustomerLoginPayload) {
   }>('/customers/login', payload);
 }
 
+function getStoredOAuthProvider() {
+  return window.sessionStorage.getItem('oauthProvider') as
+    | 'google'
+    | 'facebook'
+    | null;
+}
+
+function clearStoredOAuthProvider() {
+  window.sessionStorage.removeItem('oauthProvider');
+}
+
 export async function signInWithGoogle() {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  window.sessionStorage.setItem('oauthProvider', 'google');
+
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+
   return {
-    data: { provider: 'google' as const },
-    error: null,
-  } satisfies AuthApiResult<{ provider: 'google' }>;
+    data: null,
+    error: error?.message ?? null,
+  };
 }
 
 export async function signInWithFacebook() {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  window.sessionStorage.setItem('oauthProvider', 'facebook');
+
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+
   return {
-    data: { provider: 'facebook' as const },
-    error: null,
-  } satisfies AuthApiResult<{ provider: 'facebook' }>;
+    data: null,
+    error: error?.message ?? null,
+  };
 }
 
 export async function handleOAuthCallback(): Promise<
   AuthApiResult<OAuthCallbackResult>
 > {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const provider = getStoredOAuthProvider();
+
+  if (!provider) {
+    return { data: null, error: 'OAuth session could not be established' };
+  }
+
+  const sessionResponse = await client.auth.getSession();
+  const session = sessionResponse.data?.session;
+
+  if (!session?.access_token) {
+    return { data: null, error: 'OAuth session could not be established' };
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}${AUTH_PREFIX}/customers/oauth/callback`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    }
+  );
+
+  const body = (await response.json().catch(() => null)) as {
+    action?: string;
+    error?: string;
+  } | null;
+
+  clearStoredOAuthProvider();
+
+  if (!response.ok) {
+    const errorMessage =
+      body && typeof body === 'object' && body.error
+        ? body.error
+        : 'OAuth callback failed';
+    return { data: null, error: errorMessage };
+  }
+
   return {
     data: {
-      provider: 'google',
-      merged: false,
+      provider,
+      merged: body?.action === 'merged',
+      access_token: session.access_token,
+      refresh_token: session.refresh_token ?? '',
     },
     error: null,
   };
