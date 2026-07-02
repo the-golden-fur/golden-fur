@@ -13,6 +13,9 @@ vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
       signUp: vi.fn(),
       signInWithPassword: vi.fn(),
       getUser: vi.fn(),
+      admin: {
+        deleteUser: vi.fn(),
+      },
     },
     from: vi.fn(),
   },
@@ -83,6 +86,33 @@ describe('customerAuth.controller', () => {
         })
       );
       expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it('rolls back the auth user when the profile insert fails', async () => {
+      const req = mockRequest({
+        full_name: 'John Doe',
+        account_email: 'john@example.com',
+        password: 'password123',
+      });
+      const res = mockResponse();
+
+      (supabase.auth.signUp as any).mockResolvedValue({
+        data: { user: { id: 'user-id' }, session: { access_token: 'token' } },
+        error: null,
+      });
+
+      const insertMock = vi
+        .fn()
+        .mockResolvedValue({ error: { message: 'duplicate key' } });
+      (supabase.from as any).mockReturnValue({ insert: insertMock });
+      (supabase.auth.admin.deleteUser as any).mockResolvedValue({
+        error: null,
+      });
+
+      await customerSignupController(req, res);
+
+      expect(supabase.auth.admin.deleteUser).toHaveBeenCalledWith('user-id');
+      expect(res.status).toHaveBeenCalledWith(500);
     });
   });
 

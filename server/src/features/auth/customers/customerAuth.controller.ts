@@ -46,7 +46,10 @@ export async function customerSignupController(req: Request, res: Response) {
       });
 
     if (profileError) {
-      // In a robust system, we might compensate by deleting the auth user, but for now we'll just error
+      // Roll back the auth user so a retry with the same email doesn't
+      // fail with "already registered" against a profile-less account.
+      await supabase.auth.admin.deleteUser(authData.user.id);
+
       return res.status(500).json({
         error:
           'Signed up but failed to create profile: ' + profileError.message,
