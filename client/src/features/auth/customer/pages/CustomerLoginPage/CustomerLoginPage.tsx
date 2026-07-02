@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { CustomerLoginForm } from '../../components/forms/CustomerLoginForm/CustomerLoginForm';
 import styles from './CustomerLoginPage.module.css';
 
@@ -12,6 +13,12 @@ export function CustomerLoginPage() {
           Sign in to continue to your customer portal.
         </p>
         <CustomerLoginForm />
+        <Link className={styles.switchLink} to="/signup">
+          Don&apos;t have an account? Sign up
+        </Link>
+        <Link className={styles.switchLink} to="/staff/login">
+          Staff member? Sign in here
+        </Link>
       </section>
     </main>
   );

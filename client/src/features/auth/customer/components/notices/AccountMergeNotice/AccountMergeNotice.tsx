@@ -1,3 +1,5 @@
+import styles from './AccountMergeNotice.module.css';
+
 interface AccountMergeNoticeProps {
   message?: string;
 }
@@ -5,5 +7,9 @@ interface AccountMergeNoticeProps {
 export function AccountMergeNotice({
   message = 'Your account was linked successfully.',
 }: AccountMergeNoticeProps) {
-  return <p role="status">{message}</p>;
+  return (
+    <p className={styles.notice} role="status">
+      {message}
+    </p>
+  );
 }

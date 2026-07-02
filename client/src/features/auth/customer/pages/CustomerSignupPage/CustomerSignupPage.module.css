@@ -26,3 +26,11 @@
   margin: 0 0 1.5rem;
   color: var(--color-text-secondary);
 }
+
+.switchLink {
+  color: var(--color-accent-gold-link);
+  display: block;
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+  text-align: center;
+}

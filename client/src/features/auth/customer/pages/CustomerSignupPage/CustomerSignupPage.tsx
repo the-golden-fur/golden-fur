@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { CustomerSignupForm } from '../../components/forms/CustomerSignupForm/CustomerSignupForm';
 import styles from './CustomerSignupPage.module.css';
 
@@ -12,6 +13,9 @@ export function CustomerSignupPage() {
           Join Golden Fur to access the customer portal.
         </p>
         <CustomerSignupForm />
+        <Link className={styles.switchLink} to="/login">
+          Already have an account? Log in
+        </Link>
       </section>
     </main>
   );

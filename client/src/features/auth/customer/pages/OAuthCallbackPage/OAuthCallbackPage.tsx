@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../providers/AuthProvider/useAuth';
 import { handleOAuthCallback } from '../../api/customerAuth.api';
 import { AccountMergeNotice } from '../../components/notices/AccountMergeNotice/AccountMergeNotice';
+import styles from './OAuthCallbackPage.module.css';
 
 const MERGE_NOTICE_DURATION_MS = 3000;
 
@@ -46,12 +47,26 @@ export function OAuthCallbackPage() {
   }, [navigate, applySession]);
 
   if (isLoading) {
-    return <p role="status">Completing sign in…</p>;
+    return (
+      <main className={styles.page}>
+        <p className={styles.status} role="status">
+          Completing sign in…
+        </p>
+      </main>
+    );
   }
 
   if (error) {
-    return <p role="alert">Sign in failed: {error}</p>;
+    return (
+      <main className={styles.page}>
+        <p className={styles.error} role="alert">
+          Sign in failed: {error}
+        </p>
+      </main>
+    );
   }
 
-  return merged ? <AccountMergeNotice /> : null;
+  return (
+    <main className={styles.page}>{merged ? <AccountMergeNotice /> : null}</main>
+  );
 }

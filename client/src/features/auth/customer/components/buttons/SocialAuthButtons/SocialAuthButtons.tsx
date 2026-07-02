@@ -1,25 +1,14 @@
 import { FacebookOAuthButton } from '../FacebookOAuthButton/FacebookOAuthButton';
 import { GoogleOAuthButton } from '../GoogleOAuthButton/GoogleOAuthButton';
+import styles from './SocialAuthButtons.module.css';
 
-interface SocialAuthButtonsProps {
-  googleClassName?: string;
-  facebookClassName?: string;
-  dividerClassName?: string;
-  buttonRowClassName?: string;
-}
-
-export function SocialAuthButtons({
-  googleClassName,
-  facebookClassName,
-  dividerClassName,
-  buttonRowClassName,
-}: SocialAuthButtonsProps) {
+export function SocialAuthButtons() {
   return (
-    <div>
-      <div className={dividerClassName}>or continue with</div>
-      <div className={buttonRowClassName}>
-        <GoogleOAuthButton className={googleClassName} />
-        <FacebookOAuthButton className={facebookClassName} />
+    <div className={styles.wrapper}>
+      <div className={styles.divider}>or continue with</div>
+      <div className={styles.buttonRow}>
+        <GoogleOAuthButton className={styles.oauthButton} />
+        <FacebookOAuthButton className={styles.oauthButton} />
       </div>
     </div>
   );

@@ -1,12 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../providers/AuthProvider/useAuth';
-import {
-  login,
-  signInWithGoogle,
-  signInWithFacebook,
-} from '../../../api/customerAuth.api';
+import { login } from '../../../api/customerAuth.api';
 import { customerLoginSchema } from '../../../modules/validators/customerAuth.validator';
+import { SocialAuthButtons } from '../../buttons/SocialAuthButtons/SocialAuthButtons';
+import styles from './CustomerLoginForm.module.css';
 
 export function CustomerLoginForm() {
   const navigate = useNavigate();
@@ -43,70 +41,40 @@ export function CustomerLoginForm() {
     navigate('/portal', { replace: true });
   };
 
-  const handleGoogleSignIn = async () => {
-    console.log('1. Google button clicked');
-    setError(null);
-    try {
-      const result = await signInWithGoogle();
-      console.log('2. signInWithGoogle result:', result);
-      if (result.error) {
-        console.log('3. Error path taken:', result.error);
-        setError('Could not continue with Google.');
-        return;
-      }
-      console.log('4. About to navigate to /auth/callback');
-      navigate('/auth/callback', { replace: true });
-      console.log('5. Navigate called successfully');
-    } catch (err) {
-      console.error('CAUGHT ERROR:', err);
-    }
-  };
-
-  const handleFacebookSignIn = async () => {
-    setError(null);
-    const result = await signInWithFacebook();
-    if (result.error) {
-      setError('Could not continue with Facebook.');
-      return;
-    }
-    navigate('/auth/callback', { replace: true });
-  };
-
   return (
-    <>
-      <form onSubmit={(event) => void handleSubmit(event)}>
-        <label>
-          <span>Email</span>
+    <div className={styles.wrapper}>
+      <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+        <label className={styles.field}>
+          <span className={styles.label}>Email</span>
           <input
+            className={styles.input}
             autoComplete="email"
             type="email"
             value={accountEmail}
             onChange={(event) => setAccountEmail(event.target.value)}
           />
         </label>
-        <label>
-          <span>Password</span>
+        <label className={styles.field}>
+          <span className={styles.label}>Password</span>
           <input
+            className={styles.input}
             autoComplete="current-password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" disabled={isSubmitting}>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <button className={styles.button} type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in' : 'Sign in'}
         </button>
       </form>
 
-      <div>
-        <button type="button" onClick={() => void handleGoogleSignIn()}>
-          Continue with Google
-        </button>
-        <button type="button" onClick={() => void handleFacebookSignIn()}>
-          Continue with Facebook
-        </button>
-      </div>
-    </>
+      <SocialAuthButtons />
+    </div>
   );
 }
