@@ -59,25 +59,12 @@ export async function login(payload: CustomerLoginPayload) {
   }>('/customers/login', payload);
 }
 
-function getStoredOAuthProvider() {
-  return window.sessionStorage.getItem('oauthProvider') as
-    | 'google'
-    | 'facebook'
-    | null;
-}
-
-function clearStoredOAuthProvider() {
-  window.sessionStorage.removeItem('oauthProvider');
-}
-
 export async function signInWithGoogle() {
   const client = getSupabaseClient();
 
   if (!client) {
     return { data: null, error: 'Supabase client is not configured' };
   }
-
-  window.sessionStorage.setItem('oauthProvider', 'google');
 
   const { error } = await client.auth.signInWithOAuth({
     provider: 'google',
@@ -98,8 +85,6 @@ export async function signInWithFacebook() {
   if (!client) {
     return { data: null, error: 'Supabase client is not configured' };
   }
-
-  window.sessionStorage.setItem('oauthProvider', 'facebook');
 
   const { error } = await client.auth.signInWithOAuth({
     provider: 'facebook',
@@ -123,17 +108,24 @@ export async function handleOAuthCallback(): Promise<
     return { data: null, error: 'Supabase client is not configured' };
   }
 
-  const provider = getStoredOAuthProvider();
-
-  if (!provider) {
-    return { data: null, error: 'OAuth session could not be established' };
-  }
-
   const sessionResponse = await client.auth.getSession();
   const session = sessionResponse.data?.session;
 
   if (!session?.access_token) {
-    return { data: null, error: 'OAuth session could not be established' };
+    return {
+      data: null,
+      error:
+        'Supabase did not return a valid session after the redirect. Check the Supabase Auth Logs for the underlying provider error.',
+    };
+  }
+
+  const provider = session.user.app_metadata?.provider;
+
+  if (provider !== 'google' && provider !== 'facebook') {
+    return {
+      data: null,
+      error: `Unrecognized sign-in provider: ${provider ?? 'unknown'}`,
+    };
   }
 
   const response = await fetch(
@@ -150,8 +142,6 @@ export async function handleOAuthCallback(): Promise<
     action?: string;
     error?: string;
   } | null;
-
-  clearStoredOAuthProvider();
 
   if (!response.ok) {
     const errorMessage =

@@ -16,7 +16,6 @@ describe('customerAuth.api', () => {
     getSessionMock.mockReset();
     signInWithOAuthMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
-    window.sessionStorage.clear();
 
     vi.mocked(getSupabaseClient).mockReturnValue({
       auth: {
@@ -26,21 +25,26 @@ describe('customerAuth.api', () => {
     } as never);
   });
 
-  it('stores the provider before starting the Google OAuth redirect', async () => {
+  it('starts the Google OAuth redirect', async () => {
     signInWithOAuthMock.mockResolvedValue({ error: null });
 
-    await signInWithGoogle();
+    const result = await signInWithGoogle();
 
-    expect(window.sessionStorage.getItem('oauthProvider')).toBe('google');
     expect(signInWithOAuthMock).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'google' })
     );
+    expect(result.error).toBeNull();
   });
 
-  it('resolves the stored provider and merge status after a successful callback', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'google');
+  it('resolves the provider and merge status from the session after a successful callback', async () => {
     getSessionMock.mockResolvedValue({
-      data: { session: { access_token: 'access', refresh_token: 'refresh' } },
+      data: {
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          user: { app_metadata: { provider: 'google' } },
+        },
+      },
     });
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ action: 'merged' }), { status: 200 })
@@ -55,21 +59,45 @@ describe('customerAuth.api', () => {
       access_token: 'access',
       refresh_token: 'refresh',
     });
-    expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
   });
 
-  it('returns an error when no OAuth provider was stored for the callback', async () => {
+  it('returns an error when Supabase does not return a session', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+
     const result = await handleOAuthCallback();
 
     expect(result.data).toBeNull();
-    expect(result.error).toBe('OAuth session could not be established');
-    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(result.error).toMatch(/did not return a valid session/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an error when the session has an unrecognized provider', async () => {
+    getSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          user: { app_metadata: { provider: 'email' } },
+        },
+      },
+    });
+
+    const result = await handleOAuthCallback();
+
+    expect(result.data).toBeNull();
+    expect(result.error).toMatch(/Unrecognized sign-in provider/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns the backend error when the callback request fails', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'facebook');
     getSessionMock.mockResolvedValue({
-      data: { session: { access_token: 'access', refresh_token: 'refresh' } },
+      data: {
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          user: { app_metadata: { provider: 'facebook' } },
+        },
+      },
     });
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: 'Invalid token' }), {
@@ -81,6 +109,5 @@ describe('customerAuth.api', () => {
 
     expect(result.data).toBeNull();
     expect(result.error).toBe('Invalid token');
-    expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
   });
 });
