@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { StaffLoginForm } from '../../components/forms/StaffLoginForm/StaffLoginForm';
 import styles from './StaffLoginPage.module.css';
 
@@ -12,6 +13,9 @@ export function StaffLoginPage() {
           <p className={styles.copy}>Sign in to continue to Golden Fur MIS.</p>
         </div>
         <StaffLoginForm />
+        <Link className={styles.switchLink} to="/login">
+          Customer? Sign in here
+        </Link>
       </section>
     </main>
   );

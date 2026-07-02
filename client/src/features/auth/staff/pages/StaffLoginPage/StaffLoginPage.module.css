@@ -32,3 +32,11 @@
   color: var(--color-text-secondary);
   margin: 0;
 }
+
+.switchLink {
+  color: var(--color-accent-gold-link);
+  display: block;
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+  text-align: center;
+}

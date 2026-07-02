@@ -2,6 +2,7 @@ import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { CustomerAuthGuard } from './guards/CustomerAuthGuard/CustomerAuthGuard';
 import { CustomerLoginPage } from './pages/CustomerLoginPage/CustomerLoginPage';
+import { CustomerPortalPage } from './pages/CustomerPortalPage/CustomerPortalPage';
 import { CustomerSignupPage } from './pages/CustomerSignupPage/CustomerSignupPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage/OAuthCallbackPage';
 
@@ -25,7 +26,7 @@ export const customerAuthRoutes = createElement(
     { element: createElement(CustomerAuthGuard) },
     createElement(Route, {
       path: '/portal',
-      element: createElement('div', null, 'Customer portal'),
+      element: createElement(CustomerPortalPage),
     })
   )
 );
