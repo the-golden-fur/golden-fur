@@ -26,12 +26,72 @@ describe('accountMerge.service', () => {
       },
     }) as any;
 
-  it('throws error if email is missing', async () => {
+  it('throws a clear error when Facebook returns neither email nor profile id', async () => {
     await expect(
       mergeOrCreate({
         user: { email: '', app_metadata: {}, user_metadata: {} },
       } as any)
-    ).rejects.toThrow('Email is required for account merge');
+    ).rejects.toThrow(
+      'Facebook did not share an email or profile ID for this account'
+    );
+  });
+
+  it('throws a clear error for a brand-new Facebook signup with no email', async () => {
+    const session = mockSession('facebook', '', 'fb-999');
+    const selectMock = vi.fn().mockReturnThis();
+    const eqMock = vi.fn().mockReturnValue({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValue({ data: null, error: { code: 'PGRST116' } }),
+    });
+
+    (supabase.from as any).mockImplementation((table: string) => {
+      if (table === 'customer_profiles') {
+        return { select: selectMock, eq: eqMock };
+      }
+    });
+
+    await expect(mergeOrCreate(session)).rejects.toThrow(
+      'This Facebook account has no email and is not yet linked'
+    );
+    expect(eqMock).toHaveBeenCalledWith('facebook_id', 'fb-999');
+  });
+
+  it('merges an existing account by facebook_id when Facebook returns no email', async () => {
+    const session = mockSession('facebook', '', 'fb-777');
+    const selectMock = vi.fn().mockReturnThis();
+    const eqSelectMock = vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'existing-id',
+          account_email: 'existing@test.com',
+          primary_auth_provider: 'google',
+        },
+        error: null,
+      }),
+    });
+    const updateMock = vi.fn().mockReturnThis();
+    const eqUpdateMock = vi.fn().mockResolvedValue({ error: null });
+
+    (supabase.from as any).mockImplementation((table: string) => {
+      if (table === 'customer_profiles') {
+        return {
+          select: selectMock,
+          update: updateMock,
+          eq: (field: string, value: any) => {
+            if (field === 'facebook_id') return eqSelectMock(field, value);
+            if (field === 'id') return eqUpdateMock(field, value);
+          },
+        };
+      }
+    });
+
+    const result = await mergeOrCreate(session);
+
+    expect(result.action).toBe('merged');
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ primary_auth_provider: 'facebook' })
+    );
   });
 
   it('creates new profile when no matching email is found', async () => {

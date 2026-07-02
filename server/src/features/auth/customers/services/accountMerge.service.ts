@@ -16,19 +16,32 @@ export async function mergeOrCreate(session: Session) {
   const providerId =
     user.user_metadata.provider_id || user.user_metadata.sub || null;
 
-  if (!email) {
-    throw new Error('Email is required for account merge');
+  // Facebook does not always return a verified email. If we have one, match
+  // by account_email as usual; otherwise fall back to facebook_id so a
+  // previously-linked account can still log back in.
+  const lookupColumn = email ? 'account_email' : 'facebook_id';
+  const lookupValue = email || providerId;
+
+  if (!lookupValue) {
+    throw new Error(
+      'Facebook did not share an email or profile ID for this account, so it cannot be linked or created. Sign in with an account that has a verified email.'
+    );
   }
 
-  // Check if a customer profile already exists for this email
   const { data: existingProfile, error: findError } = await supabase
     .from('customer_profiles')
     .select('*')
-    .eq('account_email', email)
+    .eq(lookupColumn, lookupValue)
     .maybeSingle();
 
   if (findError && findError.code !== 'PGRST116') {
     throw new Error(`Error querying customer profiles: ${findError.message}`);
+  }
+
+  if (!existingProfile && !email) {
+    throw new Error(
+      'This Facebook account has no email and is not yet linked to a Golden Fur account. Sign up with email/password or Google first, then link Facebook from your profile.'
+    );
   }
 
   if (existingProfile) {
