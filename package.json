@@ -16,7 +16,15 @@
     "install:all": "npm install && npm --prefix client install && npm --prefix server install",
     "=== CODE QUALITY ===": "",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
-    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\""
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
+    "=== SUPABASE ===": "",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link",
+    "supabase:push": "supabase db push",
+    "supabase:pull": "supabase db pull",
+    "supabase:status": "supabase migration list",
+    "supabase:reset": "supabase db reset",
+    "supabase:repair": "supabase migration repair"
   },
   "devDependencies": {
     "concurrently": "^9.2.3",

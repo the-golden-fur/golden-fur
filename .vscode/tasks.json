@@ -194,6 +194,92 @@
         "reveal": "always",
         "panel": "shared"
       }
+    },
+
+    // ── Supabase ────────────────────────────────────────────────
+    {
+      "label": "🔐 Supabase: Login",
+      "type": "npm",
+      "script": "supabase:login",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🔗 Supabase: Link Project",
+      "type": "npm",
+      "script": "supabase:link",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "📤 Supabase: Push Migrations",
+      "type": "npm",
+      "script": "supabase:push",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "📥 Supabase: Pull Remote State",
+      "type": "npm",
+      "script": "supabase:pull",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "📊 Supabase: Check Migration Status",
+      "type": "npm",
+      "script": "supabase:status",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🔧 Supabase: Reset Local DB",
+      "type": "npm",
+      "script": "supabase:reset",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🩹 Supabase: Repair Migration History",
+      "type": "shell",
+      "command": "npm run supabase:repair -- --status ${input:supabaseMigrationStatus} ${input:supabaseMigrationVersion} --linked",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "supabaseMigrationStatus",
+      "type": "pickString",
+      "description": "Mark the migration version as applied (already run on remote) or reverted (never ran)?",
+      "options": ["applied", "reverted"],
+      "default": "applied"
+    },
+    {
+      "id": "supabaseMigrationVersion",
+      "type": "promptString",
+      "description": "Migration version to repair — the digits before the first underscore in the filename, e.g. 20260701010 for 20260701010_m01_drop_branches_break_window.sql"
     }
   ]
 }
