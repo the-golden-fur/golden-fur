@@ -51,7 +51,7 @@ describe('StaffLoginForm', () => {
 
     renderForm();
 
-    await userEvent.type(screen.getByLabelText(/username/i), 'admin');
+    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
     await userEvent.type(screen.getByLabelText(/^password$/i), 'wrong');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 

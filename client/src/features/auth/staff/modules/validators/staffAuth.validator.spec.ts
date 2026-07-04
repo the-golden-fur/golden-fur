@@ -8,14 +8,23 @@ import {
 describe('staffAuth.validator', () => {
   it('accepts username/password credentials', () => {
     expect(
-      staffLoginSchema.safeParse({ username: 'admin', password: 'secret' })
+      staffLoginSchema.safeParse({ identifier: 'admin', password: 'secret' })
         .success
+    ).toBe(true);
+  });
+
+  it('accepts email/password credentials', () => {
+    expect(
+      staffLoginSchema.safeParse({
+        identifier: 'admin@example.com',
+        password: 'secret',
+      }).success
     ).toBe(true);
   });
 
   it('rejects blank login credentials', () => {
     expect(
-      staffLoginSchema.safeParse({ username: '', password: '' }).success
+      staffLoginSchema.safeParse({ identifier: '', password: '' }).success
     ).toBe(false);
   });
 
