@@ -8,6 +8,7 @@ import {
 } from '../customerAuth.controller.ts';
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
 import * as accountMergeService from '../services/accountMerge.service.ts';
+import * as mfaLockoutService from '../../../../shared/services/mfaLockout/mfaLockout.service.ts';
 
 vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
@@ -40,9 +41,32 @@ vi.mock('../services/accountMerge.service.ts', () => ({
   mergeOrCreate: vi.fn(),
 }));
 
+vi.mock('../../../../shared/services/mfaLockout/mfaLockout.service.ts', () => ({
+  checkMfaLockout: vi.fn(),
+  incrementMfaLockout: vi.fn(),
+  resetMfaLockout: vi.fn(),
+  formatMfaLockoutResponse: vi.fn((status) => ({
+    error: 'MFA verification locked',
+    retry_after_seconds: status.retryAfterSeconds,
+    locked_until: status.lockedUntil,
+  })),
+}));
+
 describe('customerAuth.controller', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(mfaLockoutService.checkMfaLockout).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      retryAfterSeconds: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(mfaLockoutService.incrementMfaLockout).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      retryAfterSeconds: null,
+      failedAttempts: 1,
+    });
   });
 
   const mockRequest = (body: any = {}, headers: any = {}) =>
@@ -171,6 +195,7 @@ describe('customerAuth.controller', () => {
         { code: '123456' },
         { authorization: 'Bearer customer-token' }
       );
+      req.user = { sub: 'customer-id' };
       const res = mockResponse();
 
       mockUserClient.auth.mfa.listFactors.mockResolvedValue({
@@ -195,6 +220,9 @@ describe('customerAuth.controller', () => {
 
       await customerMfaVerifyController(req, res);
 
+      expect(mfaLockoutService.checkMfaLockout).toHaveBeenCalledWith(
+        'customer-id'
+      );
       expect(mockUserClient.auth.mfa.challenge).toHaveBeenCalledWith({
         factorId: 'factor-id',
       });
@@ -209,6 +237,9 @@ describe('customerAuth.controller', () => {
         refresh_token: 'refresh-token',
         expires_in: 3600,
       });
+      expect(mfaLockoutService.resetMfaLockout).toHaveBeenCalledWith(
+        'customer-id'
+      );
     });
 
     it('returns 400 for an invalid TOTP payload', async () => {
@@ -219,6 +250,60 @@ describe('customerAuth.controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
+    });
+
+    it('returns 423 without verifying when the customer is locked out', async () => {
+      const req = mockRequest(
+        { code: '123456' },
+        { authorization: 'Bearer customer-token' }
+      );
+      req.user = { sub: 'customer-id' };
+      const res = mockResponse();
+
+      vi.mocked(mfaLockoutService.checkMfaLockout).mockResolvedValue({
+        locked: true,
+        lockedUntil: '2026-07-04T00:15:00.000Z',
+        retryAfterSeconds: 900,
+        failedAttempts: 5,
+      });
+
+      await customerMfaVerifyController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(423);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'MFA verification locked',
+        retry_after_seconds: 900,
+        locked_until: '2026-07-04T00:15:00.000Z',
+      });
+      expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
+    });
+
+    it('increments lockout attempts when the customer TOTP code is invalid', async () => {
+      const req = mockRequest(
+        { code: '123456' },
+        { authorization: 'Bearer customer-token' }
+      );
+      req.user = { sub: 'customer-id' };
+      const res = mockResponse();
+
+      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+        data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+        error: null,
+      });
+      mockUserClient.auth.mfa.challenge.mockResolvedValue({
+        data: { id: 'challenge-id' },
+        error: null,
+      });
+      mockUserClient.auth.mfa.verify.mockResolvedValue({
+        error: new Error('Invalid code'),
+      });
+
+      await customerMfaVerifyController(req, res);
+
+      expect(mfaLockoutService.incrementMfaLockout).toHaveBeenCalledWith(
+        'customer-id'
+      );
+      expect(res.status).toHaveBeenCalledWith(401);
     });
   });
 
