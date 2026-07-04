@@ -11,5 +11,13 @@ export const customerLoginValidator = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const customerTotpValidator = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+});
+
 export type CustomerSignupInput = z.infer<typeof customerSignupValidator>;
 export type CustomerLoginInput = z.infer<typeof customerLoginValidator>;
+export type CustomerTotpInput = z.infer<typeof customerTotpValidator>;

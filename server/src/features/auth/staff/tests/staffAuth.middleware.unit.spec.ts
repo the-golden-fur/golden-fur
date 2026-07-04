@@ -4,6 +4,7 @@ import type { AuthenticatedRequest } from '../../../../shared/shared.types';
 import { supabase } from '../../../../config/supabase/supabase.config';
 import { requireBranch } from '../middleware/requireBranch/requireBranch.middleware';
 import { requireRole } from '../middleware/requireRole/requireRole.middleware';
+import { requireMfa } from '../middleware/requireMfa/requireMfa.middleware';
 
 vi.mock('../../../../config/supabase/supabase.config', () => ({
   supabase: {
@@ -104,5 +105,77 @@ describe('requireBranch middleware', () => {
     expect(next).toHaveBeenCalledWith();
     expect(req.user?.role).toBe('Superadmin');
     expect(req.user?.branch_id).toBe('branch-makati');
+  });
+});
+
+describe('requireMfa middleware', () => {
+  let next: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    next = vi.fn();
+  });
+
+  it.each(['Admin', 'Supervisor'])(
+    'blocks %s when the session is not aal2',
+    async (role) => {
+      const req = {
+        user: { sub: 'staff-1', role, aal: 'aal1' },
+      } as AuthenticatedRequest;
+
+      await requireMfa(req, {} as Response, next as NextFunction);
+
+      const error = next.mock.calls[0][0] as Error & { statusCode?: number };
+      expect(error.message).toBe('MFA required');
+      expect(error.statusCode).toBe(403);
+    }
+  );
+
+  it.each(['Admin', 'Supervisor'])(
+    'allows %s when the session is aal2',
+    async (role) => {
+      const req = {
+        user: { sub: 'staff-1', role, aal: 'aal2' },
+      } as AuthenticatedRequest;
+
+      await requireMfa(req, {} as Response, next as NextFunction);
+
+      expect(next).toHaveBeenCalledWith();
+    }
+  );
+
+  it.each([
+    'Receptionist',
+    'Cashier',
+    'Groomer',
+    'Veterinarian',
+    'Pet Assistant',
+  ])('never blocks %s when the session is not aal2', async (role) => {
+    const req = {
+      user: { sub: 'staff-1', role, aal: 'aal1' },
+    } as AuthenticatedRequest;
+
+    await requireMfa(req, {} as Response, next as NextFunction);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it('loads role from staff_profiles and still allows lower staff roles', async () => {
+    const req = {
+      user: { sub: 'staff-1', aal: 'aal1' },
+    } as AuthenticatedRequest;
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { role: 'Cashier' },
+          error: null,
+        }),
+      }),
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
+
+    await requireMfa(req, {} as Response, next as NextFunction);
+
+    expect(req.user?.role).toBe('Cashier');
+    expect(next).toHaveBeenCalledWith();
   });
 });

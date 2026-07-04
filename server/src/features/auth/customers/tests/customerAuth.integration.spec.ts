@@ -73,6 +73,24 @@ describe('customer auth integration', () => {
     });
   });
 
+  describe('POST /auth/customers/mfa/enroll', () => {
+    it('exists as an optional authenticated customer endpoint', async () => {
+      const response = await request(app).post('/auth/customers/mfa/enroll');
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('POST /auth/customers/mfa/verify', () => {
+    it('exists as an optional authenticated customer endpoint', async () => {
+      const response = await request(app)
+        .post('/auth/customers/mfa/verify')
+        .send({ code: '123456' });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
   describe('POST /auth/customers/oauth/callback', () => {
     it('merges google account when email matches', async () => {
       vi.mocked(supabase.auth.getUser).mockResolvedValue({
