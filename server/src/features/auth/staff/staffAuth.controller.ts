@@ -30,23 +30,26 @@ export async function staffLoginController(req: Request, res: Response) {
       throw new Error('Invalid input');
     }
 
-    const { username, password } = parsed.data;
+    const { identifier, password } = parsed.data;
+    let email = identifier;
 
-    // 1. Resolve registered_email from staff_profiles
-    const { data: profileData, error: profileError } = await supabase
-      .from('staff_profiles')
-      .select('registered_email')
-      .eq('username', username)
-      .single();
+    if (!identifier.includes('@')) {
+      const { data: profileData, error: profileError } = await supabase
+        .from('staff_profiles')
+        .select('registered_email')
+        .eq('username', identifier)
+        .single();
 
-    if (profileError || !profileData?.registered_email) {
-      throw new Error('Profile resolution failed');
+      if (profileError || !profileData?.registered_email) {
+        throw new Error('Profile resolution failed');
+      }
+
+      email = profileData.registered_email;
     }
 
-    // 2. Sign in with Supabase Auth
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
-        email: profileData.registered_email,
+        email,
         password,
       });
 
@@ -59,7 +62,8 @@ export async function staffLoginController(req: Request, res: Response) {
       refresh_token: authData.session.refresh_token,
       expires_in: authData.session.expires_in,
     });
-  } catch {
+  } catch (error) {
+    console.error('Staff login error:', error);
     return res.status(401).json({ error: 'Unauthorized' }); // Per AC-6, generic 401
   }
 }
