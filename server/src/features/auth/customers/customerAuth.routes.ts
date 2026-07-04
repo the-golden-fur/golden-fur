@@ -6,7 +6,7 @@ import {
   customerMfaVerifyController,
   customerOauthCallbackController,
 } from './customerAuth.controller.ts';
-import { jwtMiddleware } from '../middleware/jwt/jwt.middleware.ts';
+import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
 
 const router = Router();
 
