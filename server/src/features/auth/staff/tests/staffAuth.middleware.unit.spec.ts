@@ -160,7 +160,9 @@ describe('requireMfa middleware', () => {
   });
 
   it('loads role from staff_profiles and still allows lower staff roles', async () => {
-    const req = { user: { sub: 'staff-1', aal: 'aal1' } } as AuthenticatedRequest;
+    const req = {
+      user: { sub: 'staff-1', aal: 'aal1' },
+    } as AuthenticatedRequest;
     const mockSelect = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         single: vi.fn().mockResolvedValue({

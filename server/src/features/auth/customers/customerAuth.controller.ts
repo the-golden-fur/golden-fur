@@ -106,10 +106,7 @@ export async function customerLoginController(req: Request, res: Response) {
   }
 }
 
-export async function customerMfaEnrollController(
-  req: Request,
-  res: Response
-) {
+export async function customerMfaEnrollController(req: Request, res: Response) {
   try {
     const userClient = getUserClient(req);
     const { data, error } = await userClient.auth.mfa.enroll({
@@ -126,10 +123,7 @@ export async function customerMfaEnrollController(
   }
 }
 
-export async function customerMfaVerifyController(
-  req: Request,
-  res: Response
-) {
+export async function customerMfaVerifyController(req: Request, res: Response) {
   const parsed = customerTotpValidator.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid payload' });

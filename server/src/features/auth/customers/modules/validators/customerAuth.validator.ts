@@ -12,7 +12,10 @@ export const customerLoginValidator = z.object({
 });
 
 export const customerTotpValidator = z.object({
-  code: z.string().trim().regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
 });
 
 export type CustomerSignupInput = z.infer<typeof customerSignupValidator>;

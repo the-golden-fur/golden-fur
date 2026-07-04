@@ -54,14 +54,8 @@
         },
         "url": {
           "raw": "{{base_url}}/auth/staff/login",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "staff",
-            "login"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "login"]
         }
       },
       "event": [
@@ -93,15 +87,8 @@
         ],
         "url": {
           "raw": "{{base_url}}/auth/staff/mfa/enroll",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "staff",
-            "mfa",
-            "enroll"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "mfa", "enroll"]
         }
       },
       "event": [
@@ -141,15 +128,8 @@
         },
         "url": {
           "raw": "{{base_url}}/auth/staff/mfa/verify",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "staff",
-            "mfa",
-            "verify"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "mfa", "verify"]
         }
       }
     },
@@ -169,14 +149,8 @@
         },
         "url": {
           "raw": "{{base_url}}/auth/customers/login",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "customers",
-            "login"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "login"]
         }
       }
     },
@@ -192,15 +166,8 @@
         ],
         "url": {
           "raw": "{{base_url}}/auth/customers/mfa/enroll",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "customers",
-            "mfa",
-            "enroll"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "mfa", "enroll"]
         }
       }
     },
@@ -224,15 +191,8 @@
         },
         "url": {
           "raw": "{{base_url}}/auth/customers/mfa/verify",
-          "host": [
-            "{{base_url}}"
-          ],
-          "path": [
-            "auth",
-            "customers",
-            "mfa",
-            "verify"
-          ]
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "mfa", "verify"]
         }
       }
     }
