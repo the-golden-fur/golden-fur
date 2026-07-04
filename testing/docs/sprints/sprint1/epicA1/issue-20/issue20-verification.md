@@ -21,7 +21,7 @@ npm --prefix client test -- --run src/features/auth/staff/api/staffAuth.api.spec
 
 **Follow-up fix (2026-07-04):** the first pass of the identifier fix left `server/src/features/auth/staff/modules/validators/staffAuth.validator.spec.ts` un-updated — it still asserted the old `username`-only shape and was failing (`passes valid input` expected `{ username, password }` echoed back, but the validator now normalizes everything to `{ identifier, password }`). That spec has been rewritten to cover: identifier-shaped input, legacy `username`-shaped input (backward-compat path), email-shaped identifier input, and the missing-field rejection cases.
 
-Also added `console.error('Staff login error:', error)` to the catch block in `staffAuth.controller.ts` (matching the existing pattern already used in `customerAuth.controller.ts`). The controller intentionally still returns a generic `401` to the client either way (per AC-6), but the server terminal will now show *which* internal step failed:
+Also added `console.error('Staff login error:', error)` to the catch block in `staffAuth.controller.ts` (matching the existing pattern already used in `customerAuth.controller.ts`). The controller intentionally still returns a generic `401` to the client either way (per AC-6), but the server terminal will now show _which_ internal step failed:
 
 - `Error: Profile resolution failed` — the `identifier` was treated as a username (no `@`) and the `staff_profiles` lookup by `username` found no row.
 - `Error: Authentication failed` — Supabase Auth rejected the email/password pair.
@@ -37,23 +37,29 @@ Expected result:
 ## Structural Verification
 
 1. From the repo root, confirm the shared JWT middleware exists in the new shared auth folder:
+
    ```powershell
    Get-ChildItem server/src/shared/auth/middleware/jwt
    ```
+
    Expected files:
    - `jwt.middleware.ts`
    - `jwt.middleware.spec.ts`
 
 2. Confirm the old feature-local JWT middleware folder is gone:
+
    ```powershell
    Test-Path server/src/features/auth/middleware/jwt
    ```
+
    Expected result: `False`
 
 3. Confirm server auth routes import JWT middleware from the shared path:
+
    ```powershell
    Select-String -Path server/src/features/auth/**/*.ts -Pattern "shared/auth/middleware/jwt"
    ```
+
    Expected result: matches in:
    - `server/src/features/auth/staff/staffAuth.routes.ts`
    - `server/src/features/auth/customers/customerAuth.routes.ts`
@@ -122,4 +128,3 @@ Ignore browser-extension-only messages such as `Unchecked runtime.lastError: Cou
 - [x] **AC-4:** No server code imports JWT middleware from the old `server/src/features/auth/middleware/jwt/` location.
 - [x] **AC-5:** Auth behavior remains unchanged after the move: staff/customer JWT-protected MFA endpoints still authenticate through the shared middleware.
 - [ ] **Regression:** Staff login accepts both username-compatible payloads and email identifier payloads without returning an unintended `401`. Automated tests pass for both paths; live browser confirmation of the username+password path is still outstanding as of 2026-07-04 (see "If step 5 still returns 401" above).
-
