@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getSupabaseClient } from '../../../auth/api/auth.api';
+import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 
 interface UnavailabilityStatusBadgeProps {
   staffId: string;

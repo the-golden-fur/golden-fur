@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
-import { useAuth } from '../../../providers/AuthProvider/useAuth';
+import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 
 export function CustomerAuthGuard() {
   const { user, session, isLoading } = useAuth();
