@@ -10,9 +10,9 @@ export function UnavailabilityStatusBadge({
   accessToken,
   staffId,
 }: UnavailabilityStatusBadgeProps) {
-  const [status, setStatus] = useState<'available' | 'checking' | 'error' | 'unavailable'>(
-    'checking'
-  );
+  const [status, setStatus] = useState<
+    'available' | 'checking' | 'error' | 'unavailable'
+  >('checking');
 
   useEffect(() => {
     let isMounted = true;
@@ -55,7 +55,9 @@ export function UnavailabilityStatusBadge({
         return;
       }
 
-      setStatus(Array.isArray(data) && data.length > 0 ? 'unavailable' : 'available');
+      setStatus(
+        Array.isArray(data) && data.length > 0 ? 'unavailable' : 'available'
+      );
     };
 
     void loadStatus();
@@ -83,13 +85,25 @@ export function UnavailabilityStatusBadge({
         alignItems: 'center',
         alignSelf: 'flex-start',
         background:
-          status === 'error' ? '#fffbeb' : hasActiveBlock ? '#fef2f2' : '#ecfdf5',
+          status === 'error'
+            ? '#fffbeb'
+            : hasActiveBlock
+              ? '#fef2f2'
+              : '#ecfdf5',
         border: `1px solid ${
-          status === 'error' ? '#fde68a' : hasActiveBlock ? '#fecaca' : '#a7f3d0'
+          status === 'error'
+            ? '#fde68a'
+            : hasActiveBlock
+              ? '#fecaca'
+              : '#a7f3d0'
         }`,
         borderRadius: '999px',
         color:
-          status === 'error' ? '#92400e' : hasActiveBlock ? '#991b1b' : '#065f46',
+          status === 'error'
+            ? '#92400e'
+            : hasActiveBlock
+              ? '#991b1b'
+              : '#065f46',
         display: 'inline-flex',
         fontSize: '0.8125rem',
         fontWeight: 700,

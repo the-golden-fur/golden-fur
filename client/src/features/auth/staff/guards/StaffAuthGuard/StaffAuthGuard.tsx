@@ -76,7 +76,10 @@ export function StaffAuthGuard() {
   return (
     <>
       <div style={{ padding: '1rem 1rem 0' }}>
-        <UnavailabilityStatusBadge accessToken={accessToken} staffId={user.id} />
+        <UnavailabilityStatusBadge
+          accessToken={accessToken}
+          staffId={user.id}
+        />
       </div>
       <Outlet />
       <SessionExpiryModal
