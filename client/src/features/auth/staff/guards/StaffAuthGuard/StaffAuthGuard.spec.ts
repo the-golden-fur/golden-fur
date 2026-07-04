@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../providers/AuthProvider/AuthContext';
@@ -56,6 +57,7 @@ function renderGuard(authValue: AuthContextValue, initialPath = '/staff') {
 
 describe('StaffAuthGuard', () => {
   afterEach(() => {
+    vi.useRealTimers();
     window.sessionStorage.clear();
   });
 
@@ -101,5 +103,57 @@ describe('StaffAuthGuard', () => {
     );
 
     expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+  });
+
+  it('shows a session-expiry warning before the role threshold elapses', () => {
+    vi.useFakeTimers();
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'admin@example.com', aal: 'aal2' },
+        },
+        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(25 * 60 * 1000);
+    });
+
+    expect(
+      screen.getByRole('dialog', { name: /staff session is about to expire/i })
+    ).toBeInTheDocument();
+  });
+
+  it('signs staff out when the role threshold elapses', () => {
+    vi.useFakeTimers();
+    const signOut = vi.fn().mockResolvedValue(undefined);
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'admin@example.com', aal: 'aal2' },
+        },
+        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        accessToken: 'access',
+        signOut,
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(30 * 60 * 1000);
+    });
+
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 });
