@@ -15,7 +15,7 @@ function isMfaRole(role?: string) {
 export function StaffLoginForm() {
   const navigate = useNavigate();
   const { applySession } = useAuth();
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [resetEmail, setResetEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function StaffLoginForm() {
     setError(null);
     setResetMessage(null);
 
-    const parsed = staffLoginSchema.safeParse({ username, password });
+    const parsed = staffLoginSchema.safeParse({ identifier, password });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Check your login details.');
       return;
@@ -87,12 +87,12 @@ export function StaffLoginForm() {
   return (
     <form className={styles.form} onSubmit={(event) => void handleLogin(event)}>
       <label className={styles.field}>
-        <span className={styles.label}>Username</span>
+        <span className={styles.label}>Username or email</span>
         <input
           className={styles.input}
           autoComplete="username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
         />
       </label>
       <label className={styles.field}>

@@ -20,13 +20,13 @@ describe('staffAuth.api', () => {
       )
     );
 
-    const result = await login({ username: 'admin', password: 'secret' });
+    const result = await login({ identifier: 'admin', password: 'secret' });
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/auth/staff/login',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ username: 'admin', password: 'secret' }),
+        body: JSON.stringify({ identifier: 'admin', password: 'secret' }),
       })
     );
     expect(result.data?.access_token).toBe('access');

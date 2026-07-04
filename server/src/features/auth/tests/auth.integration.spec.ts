@@ -14,6 +14,7 @@ vi.mock('../../../config/supabase/supabase.config', () => ({
 }));
 describe('staff auth routes', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     process.env.SUPABASE_JWT_SECRET = 'test-secret';
   });
 
@@ -48,6 +49,30 @@ describe('staff auth routes', () => {
       access_token: expect.any(String),
       refresh_token: expect.any(String),
       expires_in: 3600,
+    });
+  });
+
+  it('returns tokens for valid staff email credentials', async () => {
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'acc',
+          refresh_token: 'ref',
+          expires_in: 3600,
+        },
+      },
+      error: null,
+    } as any);
+
+    const response = await request(app)
+      .post('/auth/staff/login')
+      .send({ identifier: 'demo@example.com', password: 'password123' });
+
+    expect(response.status).toBe(200);
+    expect(supabase.from).not.toHaveBeenCalled();
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'demo@example.com',
+      password: 'password123',
     });
   });
 

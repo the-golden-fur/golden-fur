@@ -130,6 +130,30 @@ describe('staffLoginController', () => {
       expires_in: 3600,
     });
   });
+
+  it('signs in directly when the staff identifier is an email', async () => {
+    req.body = { identifier: 'test@example.com', password: 'password123' };
+
+    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'acc',
+          refresh_token: 'ref',
+          expires_in: 3600,
+        },
+      },
+      error: null,
+    } as any);
+
+    await staffLoginController(req as Request, res as Response);
+
+    expect(supabase.from).not.toHaveBeenCalled();
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      password: 'password123',
+    });
+    expect(status).toHaveBeenCalledWith(200);
+  });
 });
 
 describe('mfaVerifyController', () => {

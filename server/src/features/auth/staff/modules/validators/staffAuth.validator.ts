@@ -1,5 +1,5 @@
 type StaffAuthInput = {
-  username: string;
+  identifier: string;
   password: string;
 };
 
@@ -23,12 +23,16 @@ export const staffAuthValidator = {
     }
 
     const candidate = input as Record<string, unknown>;
-    const username =
-      typeof candidate.username === 'string' ? candidate.username.trim() : '';
+    const identifier =
+      typeof candidate.identifier === 'string'
+        ? candidate.identifier.trim()
+        : typeof candidate.username === 'string'
+          ? candidate.username.trim()
+          : '';
     const password =
       typeof candidate.password === 'string' ? candidate.password.trim() : '';
 
-    if (!username || !password) {
+    if (!identifier || !password) {
       return {
         success: false,
         error: {
@@ -39,7 +43,7 @@ export const staffAuthValidator = {
 
     return {
       success: true,
-      data: { username, password },
+      data: { identifier, password },
     };
   },
 };

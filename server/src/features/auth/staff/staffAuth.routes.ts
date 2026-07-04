@@ -5,7 +5,7 @@ import {
   mfaVerifyController,
   forgotPasswordController,
 } from './staffAuth.controller.ts';
-import { jwtMiddleware } from '../middleware/jwt/jwt.middleware.ts';
+import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
 
 const router = Router();
 

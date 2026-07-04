@@ -2,11 +2,11 @@ import type { NextFunction, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedRequest } from '../../../shared/shared.types';
-import { jwtMiddleware } from '../middleware/jwt/jwt.middleware';
+import { jwtMiddleware } from './jwt.middleware';
 
-import { supabase } from '../../../config/supabase/supabase.config';
+import { supabase } from '../../../../config/supabase/supabase.config';
 
-vi.mock('../../../config/supabase/supabase.config', () => ({
+vi.mock('../../../../config/supabase/supabase.config', () => ({
   supabase: {
     auth: {
       getUser: vi.fn(),

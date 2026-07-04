@@ -1,5 +1,5 @@
 export interface StaffLoginPayload {
-  username: string;
+  identifier: string;
   password: string;
 }
 
