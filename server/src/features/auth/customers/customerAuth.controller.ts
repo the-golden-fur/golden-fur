@@ -7,6 +7,13 @@ import {
   customerTotpValidator,
 } from './modules/validators/customerAuth.validator.ts';
 import { mergeOrCreate } from './services/accountMerge.service.ts';
+import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
+import {
+  checkMfaLockout,
+  formatMfaLockoutResponse,
+  incrementMfaLockout,
+  resetMfaLockout,
+} from '../../../shared/services/mfaLockout/mfaLockout.service.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -123,7 +130,10 @@ export async function customerMfaEnrollController(req: Request, res: Response) {
   }
 }
 
-export async function customerMfaVerifyController(req: Request, res: Response) {
+export async function customerMfaVerifyController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   const parsed = customerTotpValidator.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid payload' });
@@ -132,6 +142,16 @@ export async function customerMfaVerifyController(req: Request, res: Response) {
   const { code } = parsed.data;
 
   try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const lockoutStatus = await checkMfaLockout(userId);
+    if (lockoutStatus.locked) {
+      return res.status(423).json(formatMfaLockoutResponse(lockoutStatus));
+    }
+
     const userClient = getUserClient(req);
 
     const { data: factorsData, error: factorsError } =
@@ -160,8 +180,17 @@ export async function customerMfaVerifyController(req: Request, res: Response) {
     });
 
     if (verifyError) {
+      const updatedLockoutStatus = await incrementMfaLockout(userId);
+      if (updatedLockoutStatus.locked) {
+        return res
+          .status(423)
+          .json(formatMfaLockoutResponse(updatedLockoutStatus));
+      }
+
       return res.status(401).json({ error: 'Invalid code' });
     }
+
+    await resetMfaLockout(userId);
 
     const { data: refreshData, error: refreshError } =
       await userClient.auth.refreshSession();

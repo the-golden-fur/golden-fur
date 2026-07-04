@@ -6,6 +6,12 @@ import {
   totpValidator,
 } from './modules/validators/staffAuth.validator.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
+import {
+  checkMfaLockout,
+  formatMfaLockoutResponse,
+  incrementMfaLockout,
+  resetMfaLockout,
+} from '../../../shared/services/mfaLockout/mfaLockout.service.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -88,6 +94,16 @@ export async function mfaVerifyController(
   const { code } = parsed.data;
 
   try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const lockoutStatus = await checkMfaLockout(userId);
+    if (lockoutStatus.locked) {
+      return res.status(423).json(formatMfaLockoutResponse(lockoutStatus));
+    }
+
     const userClient = getUserClient(req);
 
     // List factors to get the TOTP factor
@@ -117,8 +133,17 @@ export async function mfaVerifyController(
     });
 
     if (verifyError) {
+      const updatedLockoutStatus = await incrementMfaLockout(userId);
+      if (updatedLockoutStatus.locked) {
+        return res
+          .status(423)
+          .json(formatMfaLockoutResponse(updatedLockoutStatus));
+      }
+
       return res.status(401).json({ error: 'Invalid code' });
     }
+
+    await resetMfaLockout(userId);
 
     const { data: refreshData, error: refreshError } =
       await userClient.auth.refreshSession();

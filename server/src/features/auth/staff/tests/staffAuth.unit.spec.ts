@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { staffLoginController } from '../staffAuth.controller';
+import {
+  mfaVerifyController,
+  staffLoginController,
+} from '../staffAuth.controller';
 import { supabase } from '../../../../config/supabase/supabase.config';
+import * as mfaLockoutService from '../../../../shared/services/mfaLockout/mfaLockout.service.ts';
 
 vi.mock('../../../../config/supabase/supabase.config', () => ({
   supabase: {
@@ -12,6 +16,32 @@ vi.mock('../../../../config/supabase/supabase.config', () => ({
   },
 }));
 
+const mockUserClient = {
+  auth: {
+    mfa: {
+      listFactors: vi.fn(),
+      challenge: vi.fn(),
+      verify: vi.fn(),
+    },
+    refreshSession: vi.fn(),
+  },
+};
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => mockUserClient),
+}));
+
+vi.mock('../../../../shared/services/mfaLockout/mfaLockout.service.ts', () => ({
+  checkMfaLockout: vi.fn(),
+  incrementMfaLockout: vi.fn(),
+  resetMfaLockout: vi.fn(),
+  formatMfaLockoutResponse: vi.fn((status) => ({
+    error: 'MFA verification locked',
+    retry_after_seconds: status.retryAfterSeconds,
+    locked_until: status.lockedUntil,
+  })),
+}));
+
 describe('staffLoginController', () => {
   let req: Partial<Request>;
   let res: Partial<Response>;
@@ -19,6 +49,7 @@ describe('staffLoginController', () => {
   let status: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     json = vi.fn();
     status = vi.fn().mockReturnValue({ json });
     req = { body: {} };
@@ -98,5 +129,113 @@ describe('staffLoginController', () => {
       refresh_token: 'ref',
       expires_in: 3600,
     });
+  });
+});
+
+describe('mfaVerifyController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(mfaLockoutService.checkMfaLockout).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      retryAfterSeconds: null,
+      failedAttempts: 0,
+    });
+    vi.mocked(mfaLockoutService.incrementMfaLockout).mockResolvedValue({
+      locked: false,
+      lockedUntil: null,
+      retryAfterSeconds: null,
+      failedAttempts: 1,
+    });
+  });
+
+  it('returns 423 without verifying when the staff user is locked out', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(mfaLockoutService.checkMfaLockout).mockResolvedValue({
+      locked: true,
+      lockedUntil: '2026-07-04T00:15:00.000Z',
+      retryAfterSeconds: 900,
+      failedAttempts: 5,
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(423);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'MFA verification locked',
+      retry_after_seconds: 900,
+      locked_until: '2026-07-04T00:15:00.000Z',
+    });
+    expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
+  });
+
+  it('increments lockout attempts when the staff TOTP code is invalid', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+      error: null,
+    });
+    mockUserClient.auth.mfa.challenge.mockResolvedValue({
+      data: { id: 'challenge-id' },
+      error: null,
+    });
+    mockUserClient.auth.mfa.verify.mockResolvedValue({
+      error: new Error('Invalid code'),
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(mfaLockoutService.incrementMfaLockout).toHaveBeenCalledWith(
+      'staff-id'
+    );
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('resets lockout attempts when staff TOTP verification succeeds', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+      error: null,
+    });
+    mockUserClient.auth.mfa.challenge.mockResolvedValue({
+      data: { id: 'challenge-id' },
+      error: null,
+    });
+    mockUserClient.auth.mfa.verify.mockResolvedValue({ error: null });
+    mockUserClient.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(mfaLockoutService.resetMfaLockout).toHaveBeenCalledWith('staff-id');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true });
   });
 });
