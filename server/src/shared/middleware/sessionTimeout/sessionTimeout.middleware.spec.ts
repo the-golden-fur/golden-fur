@@ -66,7 +66,9 @@ describe('sessionTimeout middleware', () => {
   it('allows sessions that are still within the role-specific threshold', async () => {
     const mockSelect = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: { role: 'Admin' }, error: null }),
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: { role: 'Admin' }, error: null }),
       }),
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
@@ -85,7 +87,9 @@ describe('sessionTimeout middleware', () => {
   it('skips customer sessions when no staff profile is found', async () => {
     const mockSelect = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: null, error: { message: 'not found' } }),
       }),
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
