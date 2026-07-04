@@ -3,8 +3,8 @@ import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthContext } from '../../../providers/AuthProvider/AuthContext';
-import type { AuthContextValue } from '../../../providers/AuthProvider/AuthContext';
+import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
+import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { StaffAuthGuard } from './StaffAuthGuard';
 
 function createAuthValue(

@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthContext } from '../../../../providers/AuthProvider/AuthContext';
-import type { AuthContextValue } from '../../../../providers/AuthProvider/AuthContext';
+import { AuthContext } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
+import type { AuthContextValue } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { StaffLoginForm } from './StaffLoginForm';
 import * as staffAuthApi from '../../../api/staffAuth.api';
 

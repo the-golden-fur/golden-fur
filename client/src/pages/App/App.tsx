@@ -1,5 +1,5 @@
 import { BrowserRouter, useLocation } from 'react-router';
-import { AuthProvider } from '../../features/auth/providers/AuthProvider/AuthProvider';
+import { AuthProvider } from '../../shared/auth/providers/AuthProvider/AuthProvider';
 import { AppRoutes } from '../../routes';
 import { ThemeProvider } from '../../shared/providers/ThemeProvider/ThemeProvider';
 

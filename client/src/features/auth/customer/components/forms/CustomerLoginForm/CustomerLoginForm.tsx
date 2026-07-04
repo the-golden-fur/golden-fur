@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { useAuth } from '../../../../providers/AuthProvider/useAuth';
+import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
   login,
   signInWithGoogle,

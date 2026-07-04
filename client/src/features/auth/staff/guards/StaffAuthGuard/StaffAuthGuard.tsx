@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
 import { UnavailabilityStatusBadge } from '../../../../staff/components/UnavailabilityStatusBadge/UnavailabilityStatusBadge';
-import { useAuth } from '../../../providers/AuthProvider/useAuth';
+import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {
   Superadmin: 30 * 60 * 1000,
