@@ -64,7 +64,7 @@ http://localhost:5173
 This issue includes a forward migration:
 
 ```text
-supabase/migrations/20260704001_m01_fix_staff_rls_role_recursion.sql
+supabase/migrations/20260701015_m01_fix_staff_rls_role_recursion.sql
 ```
 
 Apply pending migrations to the linked Supabase project:
