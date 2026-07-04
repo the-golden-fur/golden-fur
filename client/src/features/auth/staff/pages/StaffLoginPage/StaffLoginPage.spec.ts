@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { AuthContext } from '../../../providers/AuthProvider/AuthContext';
-import type { AuthContextValue } from '../../../providers/AuthProvider/AuthContext';
+import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
+import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { StaffLoginPage } from './StaffLoginPage';
 
 vi.mock('../../api/staffAuth.api', () => ({

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useAuth } from '../../../providers/AuthProvider/useAuth';
+import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { handleOAuthCallback } from '../../api/customerAuth.api';
 import { AccountMergeNotice } from '../../components/notices/AccountMergeNotice/AccountMergeNotice';
 

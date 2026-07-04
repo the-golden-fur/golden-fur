@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../api/auth.api';
+import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 import type {
   CustomerLoginPayload,
   CustomerSignupPayload,

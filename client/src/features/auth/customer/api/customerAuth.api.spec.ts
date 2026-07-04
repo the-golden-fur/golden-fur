@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getSupabaseClient } from '../../api/auth.api';
+import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 import { handleOAuthCallback, signInWithGoogle } from './customerAuth.api';
 
-vi.mock('../../api/auth.api', () => ({
+vi.mock('../../../../shared/auth/api/auth.api', () => ({
   getSupabaseClient: vi.fn(),
 }));
 
