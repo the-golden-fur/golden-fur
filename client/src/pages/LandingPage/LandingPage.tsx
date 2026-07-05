@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
-import './LandingPage.module.css';
+import { Link } from 'react-router';
 import doggyGif from '../../assets/doggy.gif';
 import heroBg from '../../assets/herobg.png';
 import logo from '../../assets/logo.png';
+import './LandingPage.module.css';
 
 export default function GoldenFurLanding() {
   useEffect(() => {
@@ -528,7 +529,7 @@ export default function GoldenFurLanding() {
     const helpMascotBubble = document.getElementById(
       'helpMascotBubble'
     ) as HTMLElement | null;
-    const mascotTips = ['You will die tomorrow'];
+    const mascotTips = ['Welcome to Golden Fur!'];
     let lastMascotTipIndex = -1;
     let mascotHideTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -645,9 +646,9 @@ export default function GoldenFurLanding() {
           </ul>
 
           <div className="nav-actions">
-            <a href="#" className="btn btn-outline">
+            <Link to="/signup" className="btn btn-outline">
               Sign In
-            </a>
+            </Link>
             <a href="#" className="btn btn-primary">
               Book Now
             </a>
