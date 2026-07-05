@@ -1,7 +1,7 @@
 name: 🐛 Bug Report
 description: Report a bug or unexpected behavior
-title: 'fix(<scope>): <short description>'
-labels: ['bug', 'needs-triage']
+title: "fix(<scope>): <short description>"
+labels: ["bug", "needs-triage"]
 assignees: []
 
 body:
@@ -16,7 +16,7 @@ body:
     attributes:
       label: Scope / Area
       description: Which part of the app is affected?
-      placeholder: 'e.g. auth, appointments, dashboard, search'
+      placeholder: "e.g. auth, appointments, dashboard, search"
     validations:
       required: true
 
@@ -26,10 +26,10 @@ body:
       label: Severity
       description: How badly does this affect the app?
       options:
-        - 'Critical — app crashes or data is lost'
-        - 'High — major feature is broken'
-        - 'Medium — feature partially works'
-        - 'Low — minor visual or UX issue'
+        - "Critical — app crashes or data is lost"
+        - "High — major feature is broken"
+        - "Medium — feature partially works"
+        - "Low — minor visual or UX issue"
     validations:
       required: true
 
@@ -76,7 +76,7 @@ body:
     attributes:
       label: Node.js Version
       description: Run `node --version` and paste the output.
-      placeholder: 'e.g. v20.11.0'
+      placeholder: "e.g. v20.11.0"
     validations:
       required: false
 
