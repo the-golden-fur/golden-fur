@@ -40,7 +40,7 @@ export default function GoldenFurLanding() {
         span.className = 'char';
         span.textContent = char === ' ' ? '\u00A0' : char;
 
-        let delay = 0;
+        let delay: number;
         if (direction === 'left') {
           delay = i * baseDelay;
         } else if (direction === 'right') {
@@ -535,7 +535,7 @@ export default function GoldenFurLanding() {
     function getRandomMascotTipIndex() {
       if (mascotTips.length <= 1) return 0;
 
-      let nextIndex = 0;
+      let nextIndex: number;
       do {
         nextIndex = Math.floor(Math.random() * mascotTips.length);
       } while (nextIndex === lastMascotTipIndex);
