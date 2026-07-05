@@ -21,6 +21,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
+    "golden-fur": "file:..",
     "jsonwebtoken": "^9.0.3",
     "zod": "^4.4.3"
   },
