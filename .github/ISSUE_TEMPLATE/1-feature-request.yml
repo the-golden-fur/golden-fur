@@ -1,7 +1,7 @@
 name: ✨ Feature Request
 description: Propose a new feature
-title: 'feat(<scope>): <short description>'
-labels: ['enhancement', 'needs-triage']
+title: "feat(<scope>): <short description>"
+labels: ["enhancement", "needs-triage"]
 assignees: []
 
 body:
@@ -16,7 +16,7 @@ body:
     attributes:
       label: Scope / Area
       description: Which part of the app does this feature belong to?
-      placeholder: 'e.g. auth, appointments, dashboard, search'
+      placeholder: "e.g. auth, appointments, dashboard, search"
     validations:
       required: true
 
@@ -39,7 +39,7 @@ body:
     attributes:
       label: User Story
       description: Describe the feature from the user's perspective.
-      placeholder: 'As a [type of user], I want [goal] so that [reason].'
+      placeholder: "As a [type of user], I want [goal] so that [reason]."
     validations:
       required: true
 
