@@ -523,9 +523,7 @@ body {
    keeps growing with every repeat click until you click outside it. */
 :global(.feature-strip-card.is-expanded) {
   position: relative; /* keep in normal page flow (not fullscreen) */
-  min-height: calc(
-    clamp(88px, 15vw, 1106px) + 220px + var(--click-extra, 0px)
-  );
+  min-height: calc(clamp(88px, 15vw, 1106px) + 220px + var(--click-extra, 0px));
   width: 100%;
   border-radius: 8px;
   box-shadow: 0 14px 30px rgba(68, 44, 16, 0.26);

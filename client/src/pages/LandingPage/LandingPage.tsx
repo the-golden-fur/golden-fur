@@ -1180,8 +1180,8 @@ export default function GoldenFurLanding() {
             <div>
               <p className="footer-brand-name">Golden Fur</p>
               <p className="footer-tagline">
-                Compassionate, expert pet care across grooming, veterinary,
-                day care, and boarding — because every pet deserves the best.
+                Compassionate, expert pet care across grooming, veterinary, day
+                care, and boarding — because every pet deserves the best.
               </p>
             </div>
           </div>
@@ -1247,7 +1247,13 @@ export default function GoldenFurLanding() {
                 >
                   <rect x="4" y="4" width="16" height="16" rx="4" />
                   <circle cx="12" cy="12" r="3.4" />
-                  <circle cx="16.6" cy="7.4" r="0.9" fill="currentColor" stroke="none" />
+                  <circle
+                    cx="16.6"
+                    cy="7.4"
+                    r="0.9"
+                    fill="currentColor"
+                    stroke="none"
+                  />
                 </svg>
               </a>
               <a
