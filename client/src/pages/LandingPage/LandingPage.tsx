@@ -2,7 +2,15 @@ import { useEffect } from 'react';
 import { Link } from 'react-router';
 import doggyGif from '../../assets/doggy.gif';
 import heroBg from '../../assets/herobg.png';
+import grooming from '../../assets/grooming.png';
+import vet from '../../assets/vet.png';
+import hotel from '../../assets/hotel.png';
+import daycare from '../../assets/daycare.png';
 import logo from '../../assets/logo.png';
+import step1 from '../../assets/step1.png';
+import step2 from '../../assets/step2.png';
+import step3 from '../../assets/step3.png';
+import step4 from '../../assets/step4.png';
 import './LandingPage.module.css';
 
 export default function GoldenFurLanding() {
@@ -142,28 +150,28 @@ export default function GoldenFurLanding() {
       makati: [
         {
           name: 'Grooming',
-          image: heroBg,
+          image: grooming,
           alt: 'Grooming service',
           description:
             'Gentle bathing, coat trimming, nail clipping, ear cleaning, and styling to keep your pet clean, healthy, and comfortable.',
         },
         {
           name: 'Veterinary',
-          image: logo,
+          image: vet,
           alt: 'Veterinary service',
           description:
             'Comprehensive checkups, diagnostics, vaccinations, treatment plans, and expert medical care tailored to your pet’s needs.',
         },
         {
           name: 'Day Care',
-          image: heroBg,
+          image: daycare,
           alt: 'Day care service',
           description:
             'Safe, supervised daytime care with social play, feeding support, and rest time for pets while you’re away.',
         },
         {
           name: 'Pet Hotel',
-          image: logo,
+          image: hotel,
           alt: 'Pet hotel service',
           description:
             'Comfortable overnight boarding with attentive staff, clean suites, routine care, and regular wellness monitoring.',
@@ -172,21 +180,21 @@ export default function GoldenFurLanding() {
       southwoods: [
         {
           name: 'Grooming',
-          image: heroBg,
+          image: grooming,
           alt: 'Grooming service',
           description:
             'Gentle bathing, coat trimming, nail clipping, ear cleaning, and styling to keep your pet clean, healthy, and comfortable.',
         },
         {
           name: 'Day Care',
-          image: heroBg,
+          image: daycare,
           alt: 'Day care service',
           description:
             'Safe, supervised daytime care with social play, feeding support, and rest time for pets while you’re away.',
         },
         {
           name: 'Pet Hotel',
-          image: logo,
+          image: hotel,
           alt: 'Pet hotel service',
           description:
             'Comfortable overnight boarding with attentive staff, clean suites, routine care, and regular wellness monitoring.',
@@ -505,18 +513,44 @@ export default function GoldenFurLanding() {
       updateScrollStoryByViewportPosition();
     }
 
+    const FEATURE_CARD_CLICK_GROWTH_STEP = 140; // px added per repeat click
+    const FEATURE_CARD_CLICK_GROWTH_MAX_STEPS = 4; // caps runaway growth
+
+    function resetFeatureCard(card: HTMLElement) {
+      card.classList.remove('is-expanded');
+      card.style.removeProperty('--click-extra');
+      card.dataset.clickCount = '0';
+    }
+
     function collapseExpandedFeatureCards() {
-      featureStripCards.forEach((card) => card.classList.remove('is-expanded'));
+      featureStripCards.forEach((card) => resetFeatureCard(card));
     }
 
     featureStripCards.forEach((card) => {
-      card.addEventListener('click', () => {
-        const alreadyExpanded = card.classList.contains('is-expanded');
-        collapseExpandedFeatureCards();
+      card.dataset.clickCount = '0';
 
-        if (!alreadyExpanded) {
-          card.classList.add('is-expanded');
-        }
+      card.addEventListener('click', (event) => {
+        event.stopPropagation();
+
+        const isAlreadyActive = card.classList.contains('is-expanded');
+
+        featureStripCards.forEach((other) => {
+          if (other !== card) resetFeatureCard(other);
+        });
+
+        const nextCount = isAlreadyActive
+          ? Math.min(
+              Number(card.dataset.clickCount || '0') + 1,
+              FEATURE_CARD_CLICK_GROWTH_MAX_STEPS
+            )
+          : 1;
+
+        card.dataset.clickCount = String(nextCount);
+        card.classList.add('is-expanded');
+        card.style.setProperty(
+          '--click-extra',
+          `${(nextCount - 1) * FEATURE_CARD_CLICK_GROWTH_STEP}px`
+        );
       });
     });
 
@@ -526,10 +560,48 @@ export default function GoldenFurLanding() {
       }
     });
 
+    document.addEventListener('click', (event) => {
+      const clickedOutsideCard = !(event.target as HTMLElement).closest(
+        '.feature-strip-card'
+      );
+      if (clickedOutsideCard) {
+        collapseExpandedFeatureCards();
+      }
+    });
+
+    // Collapse an expanded card once it has fully scrolled out of view.
+    // Uses threshold: 0 (not the 0.25 used for the fade-in reveal above)
+    // because an expanded card is much taller, so waiting for 75% of it
+    // to leave the viewport would mean scrolling far past it first.
+    const featureExpandCollapseObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            const card = entry.target as HTMLElement;
+            if (card.classList.contains('is-expanded')) {
+              resetFeatureCard(card);
+            }
+          }
+        });
+      },
+      { threshold: 0 }
+    );
+
+    featureStripCards.forEach((card) => {
+      featureExpandCollapseObserver.observe(card);
+    });
+
     const helpMascotBubble = document.getElementById(
       'helpMascotBubble'
     ) as HTMLElement | null;
-    const mascotTips = ['Welcome to Golden Fur!'];
+    const mascotTips = [
+      'Welcome to Golden Fur!',
+      'Tip: Book grooming early — weekend slots fill up fast!',
+      'Tip: Regular vet checkups keep tails wagging longer.',
+      'Tip: Try our Day Care for social, supervised playtime.',
+      'Tip: Traveling? Reserve a Pet Hotel suite in advance.',
+      'Need help? Tap the chat bubble for FAQs and support.',
+    ];
     let lastMascotTipIndex = -1;
     let mascotHideTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -598,6 +670,7 @@ export default function GoldenFurLanding() {
       observer.disconnect();
       fadeReplayObserver.disconnect();
       featureRevealObserver.disconnect();
+      featureExpandCollapseObserver.disconnect();
       if (mascotHideTimeoutId) {
         clearTimeout(mascotHideTimeoutId);
       }
@@ -737,7 +810,7 @@ export default function GoldenFurLanding() {
         <div className="feature-strip">
           <article className="feature-strip-card">
             <img
-              src={heroBg}
+              src={grooming}
               alt="Premium grooming highlight"
               className="feature-strip-image"
               loading="lazy"
@@ -750,6 +823,11 @@ export default function GoldenFurLanding() {
                   Gentle coat care, trim styling, and wellness-focused grooming
                   sessions.
                 </p>
+                <p className="feature-strip-detail">
+                  Includes breed-specific coat treatments, de-shedding options,
+                  nail and paw care, and a calming bath routine handled by
+                  certified groomers.
+                </p>
               </div>
               <button className="feature-strip-btn" type="button">
                 View
@@ -759,7 +837,7 @@ export default function GoldenFurLanding() {
 
           <article className="feature-strip-card">
             <img
-              src={logo}
+              src={vet}
               alt="Veterinary care highlight"
               className="feature-strip-image"
               loading="lazy"
@@ -772,6 +850,11 @@ export default function GoldenFurLanding() {
                   Routine checkups and preventive care for healthier, happier
                   pets.
                 </p>
+                <p className="feature-strip-detail">
+                  Vaccinations, deworming, diagnostics, and personalized
+                  treatment plans from licensed veterinarians who track your
+                  pet’s health over time.
+                </p>
               </div>
               <button className="feature-strip-btn" type="button">
                 View
@@ -781,7 +864,7 @@ export default function GoldenFurLanding() {
 
           <article className="feature-strip-card">
             <img
-              src={heroBg}
+              src={daycare}
               alt="Day care highlight"
               className="feature-strip-image"
               loading="lazy"
@@ -793,6 +876,11 @@ export default function GoldenFurLanding() {
                 <p>
                   Safe supervised play and rest while you’re away for the day.
                 </p>
+                <p className="feature-strip-detail">
+                  Group play matched to temperament and size, scheduled rest
+                  breaks, and feeding on your pet’s usual routine, all under
+                  attentive staff supervision.
+                </p>
               </div>
               <button className="feature-strip-btn" type="button">
                 View
@@ -802,7 +890,7 @@ export default function GoldenFurLanding() {
 
           <article className="feature-strip-card">
             <img
-              src={logo}
+              src={hotel}
               alt="Pet hotel highlight"
               className="feature-strip-image"
               loading="lazy"
@@ -810,13 +898,15 @@ export default function GoldenFurLanding() {
             <div className="feature-strip-overlay"></div>
             <div className="feature-strip-content">
               <div className="feature-strip-copy">
-                <div className="feature-strip-copy">
-                  <h3>Comfort Pet Hotel</h3>
-                  <p>
-                    Clean cozy overnight boarding with attentive and loving
-                    support.
-                  </p>
-                </div>
+                <h3>Comfort Pet Hotel</h3>
+                <p>
+                  Clean cozy overnight boarding with attentive and loving
+                  support.
+                </p>
+                <p className="feature-strip-detail">
+                  Private suites, regular wellness checks, comfortable bedding,
+                  and daily updates so you can travel with peace of mind.
+                </p>
               </div>
               <button className="feature-strip-btn" type="button">
                 View
@@ -968,28 +1058,24 @@ export default function GoldenFurLanding() {
                 data-story-index="0"
               >
                 <img
-                  src={heroBg}
+                  src={step1}
                   alt="Initial consultation moment"
                   loading="lazy"
                 />
               </article>
               <article className="scroll-story-image-card" data-story-index="1">
                 <img
-                  src={logo}
+                  src={step2}
                   alt="Personalized care planning"
                   loading="lazy"
                 />
               </article>
               <article className="scroll-story-image-card" data-story-index="2">
-                <img
-                  src={heroBg}
-                  alt="Treatment and follow-up"
-                  loading="lazy"
-                />
+                <img src={step3} alt="Treatment and follow-up" loading="lazy" />
               </article>
               <article className="scroll-story-image-card" data-story-index="3">
                 <img
-                  src={logo}
+                  src={step4}
                   alt="Long-term wellness support"
                   loading="lazy"
                 />
@@ -1086,6 +1172,105 @@ export default function GoldenFurLanding() {
           </a>
         </nav>
       </aside>
+
+      <footer className="site-footer">
+        <div className="footer-top">
+          <div className="footer-brand">
+            <img src={logo} alt="Golden Fur logo" className="footer-logo" />
+            <div>
+              <p className="footer-brand-name">Golden Fur</p>
+              <p className="footer-tagline">
+                Compassionate, expert pet care across grooming, veterinary,
+                day care, and boarding — because every pet deserves the best.
+              </p>
+            </div>
+          </div>
+
+          <div className="footer-col">
+            <h4>Explore</h4>
+            <ul>
+              <li>
+                <a href="#">Services</a>
+              </li>
+              <li>
+                <a href="#">Branches</a>
+              </li>
+              <li>
+                <a href="#">Packages &amp; Promos</a>
+              </li>
+              <li>
+                <a href="#">About</a>
+              </li>
+            </ul>
+          </div>
+
+          <div className="footer-col">
+            <h4>Branches</h4>
+            <ul>
+              <li>📍 Makati</li>
+              <li>📍 Southwoods, Laguna</li>
+            </ul>
+          </div>
+
+          <div className="footer-col">
+            <h4>Get in touch</h4>
+            <ul>
+              <li>
+                <a href="tel:+63200000000">+63 2 0000 0000</a>
+              </li>
+              <li>
+                <a href="mailto:hello@goldenfur.ph">hello@goldenfur.ph</a>
+              </li>
+            </ul>
+
+            <div className="footer-social">
+              <a
+                href="#"
+                className="footer-social-link"
+                aria-label="Golden Fur on Facebook"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M13.5 21v-7.5h2.5l.5-3h-3V8.5c0-.9.3-1.5 1.6-1.5h1.4V4.2C15.6 4.1 14.7 4 13.6 4c-2.3 0-3.9 1.4-3.9 4v2.5H7.2v3H9.7V21h3.8z" />
+                </svg>
+              </a>
+              <a
+                href="#"
+                className="footer-social-link"
+                aria-label="Golden Fur on Instagram"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="16" height="16" rx="4" />
+                  <circle cx="12" cy="12" r="3.4" />
+                  <circle cx="16.6" cy="7.4" r="0.9" fill="currentColor" stroke="none" />
+                </svg>
+              </a>
+              <a
+                href="#"
+                className="footer-social-link"
+                aria-label="Golden Fur on TikTok"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M16.5 3c.4 2 1.9 3.6 3.9 3.9v2.8a6.7 6.7 0 0 1-3.9-1.3v6.9a5.9 5.9 0 1 1-5.9-5.9c.3 0 .6 0 .9.1v2.9a3 3 0 1 0 2.1 2.9V3h2.9z" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="footer-bottom">
+          <p>© {new Date().getFullYear()} Golden Fur. All rights reserved.</p>
+          <div className="footer-bottom-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+          </div>
+        </div>
+      </footer>
     </>
   );
 }
