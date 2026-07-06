@@ -7,6 +7,7 @@ import {
   signInWithFacebook,
 } from '../../../api/customerAuth.api';
 import { customerLoginSchema } from '../../../modules/validators/customerAuth.validator';
+import styles from './CustomerLoginForm.module.css';
 
 export function CustomerLoginForm() {
   const navigate = useNavigate();
@@ -73,40 +74,69 @@ export function CustomerLoginForm() {
   };
 
   return (
-    <>
-      <form onSubmit={(event) => void handleSubmit(event)}>
-        <label>
-          <span>Email</span>
-          <input
-            autoComplete="email"
-            type="email"
-            value={accountEmail}
-            onChange={(event) => setAccountEmail(event.target.value)}
-          />
+    <div className={styles.wrapper}>
+      <div className={styles.social}>
+        <button
+          type="button"
+          className={styles.socialButton}
+          onClick={() => void handleGoogleSignIn()}
+        >
+          <span className={styles.g}>G</span> Continue with Google
+        </button>
+        <button
+          type="button"
+          className={styles.socialButton}
+          onClick={() => void handleFacebookSignIn()}
+        >
+          <span className={styles.f}>f</span> Continue with Facebook
+        </button>
+      </div>
+
+      <div className={styles.divider}>or continue with email</div>
+
+      <form
+        className={styles.form}
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        <label className={styles.field}>
+          <span className={styles.label}>Email</span>
+          <div className={styles.iconField}>
+            <span className={styles.glyph} aria-hidden="true">
+              ✉
+            </span>
+            <input
+              className={styles.input}
+              autoComplete="email"
+              type="email"
+              value={accountEmail}
+              onChange={(event) => setAccountEmail(event.target.value)}
+            />
+          </div>
         </label>
-        <label>
-          <span>Password</span>
-          <input
-            autoComplete="current-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+        <label className={styles.field}>
+          <span className={styles.label}>Password</span>
+          <div className={styles.iconField}>
+            <span className={styles.glyph} aria-hidden="true">
+              🔒
+            </span>
+            <input
+              className={styles.input}
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
         </label>
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" disabled={isSubmitting}>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <button className={styles.submit} type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in' : 'Sign in'}
         </button>
       </form>
-
-      <div>
-        <button type="button" onClick={() => void handleGoogleSignIn()}>
-          Continue with Google
-        </button>
-        <button type="button" onClick={() => void handleFacebookSignIn()}>
-          Continue with Facebook
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

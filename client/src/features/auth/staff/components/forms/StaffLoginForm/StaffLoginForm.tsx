@@ -115,6 +115,7 @@ export function StaffLoginForm() {
         {isSubmitting ? 'Signing in' : 'Sign in'}
       </button>
       <div className={styles.forgot}>
+        <p className={styles.divider}>Need to reset your password?</p>
         <label className={styles.field}>
           <span className={styles.label}>Reset email</span>
           <input

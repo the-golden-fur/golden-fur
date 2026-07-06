@@ -1,0 +1,128 @@
+.wrapper {
+  display: grid;
+  gap: 0;
+}
+
+.social {
+  display: flex;
+  gap: 12px;
+}
+
+.socialButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #ded0a5;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3a2e10;
+  cursor: pointer;
+}
+
+.g {
+  font-weight: 700;
+  font-size: 14px;
+  color: #4285f4;
+}
+
+.f {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1877f2;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0;
+  font-size: 11.5px;
+  color: #9c8b60;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #ded0a5;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #5c4e28;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #ded0a5;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: #2b2109;
+}
+
+.iconField {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.iconField .input {
+  padding-left: 34px;
+}
+
+.glyph {
+  position: absolute;
+  left: 12px;
+  font-size: 13px;
+  color: #b9ad93;
+  pointer-events: none;
+}
+
+.error {
+  border-radius: 8px;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-text);
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.submit {
+  margin-top: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 13px 0;
+  background: #2b2109;
+  color: #fbf3de;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
