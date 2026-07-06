@@ -48,7 +48,12 @@ async function postJson<T>(path: string, body: unknown) {
 }
 
 export async function signup(payload: CustomerSignupPayload) {
-  return postJson<{ message: string }>('/customers/signup', payload);
+  return postJson<{
+    message: string;
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }>('/customers/signup', payload);
 }
 
 export async function login(payload: CustomerLoginPayload) {
