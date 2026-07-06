@@ -10,7 +10,7 @@
 }
 
 .label {
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   font-family: var(--font-main);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
@@ -20,22 +20,36 @@
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg-primary);
   color: var(--color-text-primary);
   font: inherit;
   padding: var(--space-2);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }
 
 .button {
   border: 0;
   border-radius: var(--radius-lg);
-  background: var(--color-accent-gold-primary);
-  color: var(--color-text-on-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
   cursor: pointer;
   font-family: var(--font-main);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
+  transition: background 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-accent-hover);
 }
 
 .button:disabled {
@@ -50,9 +64,19 @@
   color: var(--color-text-primary);
   cursor: pointer;
   font-family: var(--font-main);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
+  transition: border-color 0.15s ease;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.secondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .message {
@@ -72,6 +96,15 @@
   composes: message;
   background: var(--color-success-bg);
   color: var(--color-success-text);
+}
+
+.divider {
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .forgot {
