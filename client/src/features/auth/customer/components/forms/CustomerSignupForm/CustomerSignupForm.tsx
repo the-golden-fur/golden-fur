@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { signup } from '../../../api/customerAuth.api';
 import { customerSignupSchema } from '../../../modules/validators/customerAuth.validator';
+import styles from './CustomerSignupForm.module.css';
 
 export function CustomerSignupForm() {
   const navigate = useNavigate();
@@ -42,35 +43,52 @@ export function CustomerSignupForm() {
   };
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)}>
-      <label>
-        <span>Full name</span>
+    <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+      <label className={styles.field}>
+        <span className={styles.label}>Full name</span>
         <input
+          className={styles.input}
           autoComplete="name"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
         />
       </label>
-      <label>
-        <span>Email</span>
-        <input
-          autoComplete="email"
-          type="email"
-          value={accountEmail}
-          onChange={(event) => setAccountEmail(event.target.value)}
-        />
+      <label className={styles.field}>
+        <span className={styles.label}>Email</span>
+        <div className={styles.iconField}>
+          <span className={styles.glyph} aria-hidden="true">
+            ✉
+          </span>
+          <input
+            className={styles.input}
+            autoComplete="email"
+            type="email"
+            value={accountEmail}
+            onChange={(event) => setAccountEmail(event.target.value)}
+          />
+        </div>
       </label>
-      <label>
-        <span>Password</span>
-        <input
-          autoComplete="new-password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
+      <label className={styles.field}>
+        <span className={styles.label}>Password</span>
+        <div className={styles.iconField}>
+          <span className={styles.glyph} aria-hidden="true">
+            🔒
+          </span>
+          <input
+            className={styles.input}
+            autoComplete="new-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
       </label>
-      {error ? <p role="alert">{error}</p> : null}
-      <button type="submit" disabled={isSubmitting}>
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
+      <button className={styles.submit} type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Creating account' : 'Create account'}
       </button>
     </form>
