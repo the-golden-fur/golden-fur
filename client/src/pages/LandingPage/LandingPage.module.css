@@ -440,9 +440,11 @@ body {
    - section top spacing: .feature-strip-section margin-top
    - section bottom spacing: .feature-strip-section padding-bottom
    - card default height: .feature-strip-card min-height
-   - card hover thickness: .feature-strip-card:hover min-height
+   - card hover thickness: .feature-strip-card:hover min-height (grows up + down to reveal more image)
+   - card click thickness: .feature-strip-card.is-expanded min-height (grows even more)
    - card vertical spacing: .feature-strip gap
    - text inset/padding: .feature-strip-content padding
+   - clicking outside any card collapses it back to the default size (see LandingPage.tsx)
    ========================================================= */
 :global(.feature-strip-section) {
   width: 100%;
@@ -472,6 +474,7 @@ body {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.92);
   box-shadow: 0 7px 18px rgba(68, 44, 16, 0.16);
+  cursor: pointer;
   transition:
     min-height 240ms ease,
     transform 240ms ease,
@@ -501,30 +504,43 @@ body {
   transform: translateX(0); /* visible resting position */
 }
 
-/* Hover keeps visual polish but no size growth */
-:global(.feature-strip-card:hover) {
-  transform: translateY(-1px);
-  box-shadow: 0 9px 20px rgba(68, 44, 16, 0.19);
+/* Hover: reveal more of the image by growing the card taller.
+   Uses "base height + Npx" (not an independent clamp) so the hover size
+   is guaranteed to be larger than the base size at every viewport width.
+   translateY shifts the box up by half the added height so the extra
+   room is shared evenly above and below (grows in both directions
+   instead of only pushing downward). */
+:global(.feature-strip-card:hover:not(.is-expanded)) {
+  min-height: calc(clamp(88px, 15vw, 1106px) + 80px); /* base + 80px */
+  transform: translateY(-40px); /* half of the added 80px */
+  box-shadow: 0 14px 28px rgba(68, 44, 16, 0.24);
+  z-index: 2;
 }
 
+/* Click: grow the card (and its image) even bigger than the hover state.
+   Same "base + Npx" technique. --click-extra is set/incremented in
+   LandingPage.tsx each time the same card is clicked again, so the card
+   keeps growing with every repeat click until you click outside it. */
 :global(.feature-strip-card.is-expanded) {
   position: relative; /* keep in normal page flow (not fullscreen) */
-  min-height: clamp(200px, 26vw, 360px); /* bigger when clicked */
+  min-height: calc(clamp(88px, 15vw, 1106px) + 220px + var(--click-extra, 0px));
   width: 100%;
   border-radius: 8px;
   box-shadow: 0 14px 30px rgba(68, 44, 16, 0.26);
   border: 1px solid rgba(255, 255, 255, 0.95);
+  transform: translateY(calc(-110px - (var(--click-extra, 0px) / 2)));
+  z-index: 3;
   animation: featureCardExpand 260ms ease;
 }
 
 @keyframes featureCardExpand {
   from {
     opacity: 0.9;
-    transform: scale(0.985);
+    transform: translateY(-40px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(-110px);
   }
 }
 
@@ -539,6 +555,32 @@ body {
 :global(.feature-strip-card.is-expanded .feature-strip-content p) {
   font-size: clamp(1rem, 2vw, 1.2rem);
   max-width: 90ch;
+}
+
+/* Extra copy only surfaced once a card is clicked/expanded */
+:global(.feature-strip-detail) {
+  display: none;
+}
+
+:global(.feature-strip-card.is-expanded .feature-strip-detail) {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(0.85rem, 1.6vw, 1rem);
+  line-height: 1.5;
+  max-width: 80ch;
+  color: rgba(255, 247, 234, 0.9);
+  animation: featureDetailFade 320ms ease;
+}
+
+@keyframes featureDetailFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 :global(.feature-strip-image),
@@ -1370,8 +1412,9 @@ body {
     border-radius: 0;
   }
 
-  :global(.feature-strip-card:hover) {
-    transform: translateY(-1px);
+  :global(.feature-strip-card:hover:not(.is-expanded)) {
+    min-height: 126px; /* mobile base (86px) + 40px */
+    transform: translateY(-20px); /* half of the added 40px */
   }
 
   /* Mobile: keep text and button aligned and readable */
@@ -1534,5 +1577,184 @@ body {
   }
   100% {
     transform: translateX(115%) skewX(calc(var(--reveal-skew, -10deg) * -1));
+  }
+}
+
+/* =========================================================
+   SITE FOOTER
+   - Background: .site-footer background
+   - Column layout: .footer-top grid-template-columns
+   - Bottom bar: .footer-bottom
+   ========================================================= */
+:global(.site-footer) {
+  position: relative;
+  z-index: 2;
+  margin-top: 40px;
+  background: linear-gradient(180deg, #241a10 0%, #180f07 100%);
+  color: rgba(255, 247, 234, 0.85);
+  padding: 56px clamp(16px, 5vw, 64px) 0;
+}
+
+:global(.footer-top) {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
+  gap: clamp(24px, 4vw, 48px);
+  padding-bottom: 40px;
+  border-bottom: 1px solid rgba(255, 247, 234, 0.12);
+}
+
+:global(.footer-brand) {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+:global(.footer-logo) {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255, 247, 234, 0.08);
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+:global(.footer-brand-name) {
+  font-family: 'Luckiest Guy', cursive;
+  font-size: 1.5rem;
+  color: #e8b23a;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+:global(.footer-tagline) {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: rgba(255, 247, 234, 0.72);
+  max-width: 34ch;
+}
+
+:global(.footer-col h4) {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e8b23a;
+  margin-bottom: 14px;
+}
+
+:global(.footer-col ul) {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:global(.footer-col li) {
+  font-size: 0.9rem;
+  color: rgba(255, 247, 234, 0.78);
+}
+
+:global(.footer-col a) {
+  font-size: 0.9rem;
+  color: rgba(255, 247, 234, 0.78);
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+:global(.footer-col a:hover) {
+  color: #fff7ea;
+}
+
+:global(.footer-social) {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+:global(.footer-social-link) {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 247, 234, 0.08);
+  border: 1px solid rgba(255, 247, 234, 0.18);
+  color: rgba(255, 247, 234, 0.85);
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+:global(.footer-social-link:hover) {
+  transform: translateY(-2px);
+  background: #c9971a;
+  border-color: #c9971a;
+  color: #2f2418;
+}
+
+:global(.footer-social-link svg) {
+  width: 16px;
+  height: 16px;
+}
+
+:global(.footer-bottom) {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 20px 0 24px;
+  font-size: 0.8rem;
+  color: rgba(255, 247, 234, 0.55);
+}
+
+:global(.footer-bottom-links) {
+  display: flex;
+  gap: 18px;
+}
+
+:global(.footer-bottom-links a) {
+  color: rgba(255, 247, 234, 0.55);
+  text-decoration: none;
+  transition: color 180ms ease;
+}
+
+:global(.footer-bottom-links a:hover) {
+  color: #fff7ea;
+}
+
+@media (max-width: 900px) {
+  :global(.footer-top) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :global(.footer-brand) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  :global(.site-footer) {
+    margin-top: 28px;
+    padding: 40px 18px 0;
+  }
+
+  :global(.footer-top) {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  :global(.footer-bottom) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px 0 20px;
   }
 }
