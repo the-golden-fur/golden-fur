@@ -24,6 +24,17 @@ function getUserClient(req: Request) {
   );
 }
 
+// signInWithPassword mutates the calling client's internal session state, so it
+// must never be called on the shared `supabase` (service-role) singleton - doing
+// so would silently downgrade every subsequent request on the process from
+// service-role to that customer's RLS-restricted session. Use a throwaway client.
+function createSignInClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 export async function customerSignupController(req: Request, res: Response) {
   const parsed = customerSignupValidator.safeParse(req.body);
 
@@ -36,16 +47,18 @@ export async function customerSignupController(req: Request, res: Response) {
   const { full_name, account_email, password } = parsed.data;
 
   try {
-    // 1. Create Supabase Auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: account_email,
-      password,
-      options: {
-        data: {
+    // 1. Create Supabase Auth user. We use the admin API (not auth.signUp) so no
+    // confirmation email is sent - the hosted project's email rate limit (2/hour)
+    // otherwise causes every signup to fail with a 400 "email rate limit exceeded".
+    const { data: authData, error: authError } =
+      await supabase.auth.admin.createUser({
+        email: account_email,
+        password,
+        email_confirm: true,
+        user_metadata: {
           full_name,
         },
-      },
-    });
+      });
 
     if (authError || !authData.user) {
       return res
@@ -71,10 +84,26 @@ export async function customerSignupController(req: Request, res: Response) {
       });
     }
 
+    // 3. admin.createUser doesn't return a session, so sign in to establish one.
+    const { data: signInData, error: signInError } =
+      await createSignInClient().auth.signInWithPassword({
+        email: account_email,
+        password,
+      });
+
+    if (signInError || !signInData.session) {
+      return res.status(201).json({
+        message: 'Signup successful',
+        user: authData.user,
+      });
+    }
+
     return res.status(201).json({
       message: 'Signup successful',
       user: authData.user,
-      session: authData.session,
+      access_token: signInData.session.access_token,
+      refresh_token: signInData.session.refresh_token,
+      expires_in: signInData.session.expires_in,
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -93,7 +122,7 @@ export async function customerLoginController(req: Request, res: Response) {
 
   try {
     const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
+      await createSignInClient().auth.signInWithPassword({
         email: account_email,
         password,
       });

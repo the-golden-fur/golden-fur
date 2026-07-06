@@ -14,8 +14,10 @@ vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
     auth: {
       signUp: vi.fn(),
-      signInWithPassword: vi.fn(),
       getUser: vi.fn(),
+      admin: {
+        createUser: vi.fn(),
+      },
     },
     from: vi.fn(),
   },
@@ -30,6 +32,7 @@ const mockUserClient = {
       verify: vi.fn(),
     },
     refreshSession: vi.fn(),
+    signInWithPassword: vi.fn(),
   },
 };
 
@@ -106,17 +109,28 @@ describe('customerAuth.controller', () => {
       });
       const res = mockResponse();
 
-      (supabase.auth.signUp as any).mockResolvedValue({
-        data: { user: { id: 'user-id' }, session: { access_token: 'token' } },
+      (supabase.auth.admin.createUser as any).mockResolvedValue({
+        data: { user: { id: 'user-id' } },
         error: null,
       });
 
       const insertMock = vi.fn().mockResolvedValue({ error: null });
       (supabase.from as any).mockReturnValue({ insert: insertMock });
 
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'acc-token',
+            refresh_token: 'ref-token',
+            expires_in: 3600,
+          },
+        },
+        error: null,
+      });
+
       await customerSignupController(req, res);
 
-      expect(supabase.auth.signUp).toHaveBeenCalled();
+      expect(supabase.auth.admin.createUser).toHaveBeenCalled();
       expect(insertMock).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'user-id',
@@ -136,7 +150,7 @@ describe('customerAuth.controller', () => {
       });
       const res = mockResponse();
 
-      (supabase.auth.signInWithPassword as any).mockResolvedValue({
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
         data: { session: { access_token: 'valid-token' } },
         error: null,
       });
@@ -156,7 +170,7 @@ describe('customerAuth.controller', () => {
       });
       const res = mockResponse();
 
-      (supabase.auth.signInWithPassword as any).mockResolvedValue({
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
         data: { session: { access_token: 'aal1-token' } },
         error: null,
       });

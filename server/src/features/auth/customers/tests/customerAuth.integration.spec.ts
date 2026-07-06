@@ -8,10 +8,22 @@ vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
     from: vi.fn(),
     auth: {
       signUp: vi.fn(),
-      signInWithPassword: vi.fn(),
       getUser: vi.fn(),
+      admin: {
+        createUser: vi.fn(),
+      },
     },
   },
+}));
+
+const mockSignInClient = {
+  auth: {
+    signInWithPassword: vi.fn(),
+  },
+};
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => mockSignInClient),
 }));
 
 describe('customer auth integration', () => {
@@ -21,16 +33,27 @@ describe('customer auth integration', () => {
 
   describe('POST /auth/customers/signup', () => {
     it('creates auth user and customer_profiles record', async () => {
-      vi.mocked(supabase.auth.signUp).mockResolvedValue({
+      vi.mocked(supabase.auth.admin.createUser).mockResolvedValue({
         data: {
           user: { id: 'test-user-id' } as any,
-          session: { access_token: 'token' } as any,
         },
         error: null,
-      });
+      } as any);
 
       const insertMock = vi.fn().mockResolvedValue({ error: null });
       vi.mocked(supabase.from).mockReturnValue({ insert: insertMock } as any);
+
+      mockSignInClient.auth.signInWithPassword.mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'acc-token',
+            refresh_token: 'ref-token',
+            expires_in: 3600,
+          } as any,
+          user: {} as any,
+        },
+        error: null,
+      });
 
       const response = await request(app).post('/auth/customers/signup').send({
         full_name: 'Test Customer',
@@ -40,6 +63,7 @@ describe('customer auth integration', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('Signup successful');
+      expect(response.body.access_token).toBe('acc-token');
       expect(insertMock).toHaveBeenCalledWith(
         expect.objectContaining({
           account_email: 'test@example.com',
@@ -51,7 +75,7 @@ describe('customer auth integration', () => {
 
   describe('POST /auth/customers/login', () => {
     it('returns session for valid credentials', async () => {
-      vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+      mockSignInClient.auth.signInWithPassword.mockResolvedValue({
         data: {
           session: {
             access_token: 'acc-token',
