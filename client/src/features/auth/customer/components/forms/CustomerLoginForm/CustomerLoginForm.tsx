@@ -94,7 +94,10 @@ export function CustomerLoginForm() {
 
       <div className={styles.divider}>or continue with email</div>
 
-      <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className={styles.form}
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <label className={styles.field}>
           <span className={styles.label}>Email</span>
           <div className={styles.iconField}>

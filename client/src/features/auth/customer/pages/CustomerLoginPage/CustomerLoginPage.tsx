@@ -61,7 +61,10 @@ export function CustomerLoginPage() {
 
       <div className={styles.right}>
         <nav className={styles.tabs} aria-label="Customer authentication">
-          <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
+          <span
+            className={`${styles.tab} ${styles.tabActive}`}
+            aria-current="page"
+          >
             Sign In
           </span>
           <Link className={`${styles.tab} ${styles.tabMuted}`} to="/signup">
@@ -71,7 +74,9 @@ export function CustomerLoginPage() {
 
         <section className={styles.card} aria-labelledby="customer-login-title">
           <h1 id="customer-login-title">Welcome back</h1>
-          <p className={styles.sub}>Sign in to continue to your customer portal.</p>
+          <p className={styles.sub}>
+            Sign in to continue to your customer portal.
+          </p>
           <CustomerLoginForm />
         </section>
 

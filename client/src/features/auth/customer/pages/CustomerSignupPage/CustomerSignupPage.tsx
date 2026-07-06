@@ -64,12 +64,18 @@ export function CustomerSignupPage() {
           <Link className={`${styles.tab} ${styles.tabMuted}`} to="/login">
             Sign In
           </Link>
-          <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
+          <span
+            className={`${styles.tab} ${styles.tabActive}`}
+            aria-current="page"
+          >
             Create Account
           </span>
         </nav>
 
-        <section className={styles.card} aria-labelledby="customer-signup-title">
+        <section
+          className={styles.card}
+          aria-labelledby="customer-signup-title"
+        >
           <h1 id="customer-signup-title">Create Account</h1>
           <p className={styles.sub}>Welcome to Golden Fur</p>
           <CustomerSignupForm />
