@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { forgotPassword, login } from '../../../api/staffAuth.api';
@@ -88,22 +89,58 @@ export function StaffLoginForm() {
     <form className={styles.form} onSubmit={(event) => void handleLogin(event)}>
       <label className={styles.field}>
         <span className={styles.label}>Username or email</span>
-        <input
-          className={styles.input}
-          autoComplete="username"
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
-        />
+        <div style={{ position: 'relative' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: 'var(--color-text-muted)',
+              fontSize: 18,
+            }}
+          >
+            <Mail size={20} />
+          </span>
+          <input
+            className={styles.input}
+            autoComplete="username"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            style={{ paddingLeft: '40px' }}
+          />
+        </div>
       </label>
       <label className={styles.field}>
         <span className={styles.label}>Password</span>
-        <input
-          className={styles.input}
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
+        <div style={{ position: 'relative' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: 'var(--color-text-muted)',
+              fontSize: 18,
+            }}
+          >
+            <Lock size={20} />
+          </span>
+          <input
+            className={styles.input}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            style={{ paddingLeft: '40px' }}
+          />
+        </div>
       </label>
       {error ? (
         <p className={styles.error} role="alert">

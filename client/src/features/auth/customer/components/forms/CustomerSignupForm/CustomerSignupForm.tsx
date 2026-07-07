@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Chrome, Facebook, Lock, Mail, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
@@ -71,43 +72,107 @@ export function CustomerSignupForm() {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.social}>
-        <button
-          type="button"
-          className={styles.socialButton}
-          onClick={() => void handleGoogleSignIn()}
-        >
-          <span className={styles.g}>G</span> Continue with Google
-        </button>
-        <button
-          type="button"
-          className={styles.socialButton}
-          onClick={() => void handleFacebookSignIn()}
-        >
-          <span className={styles.f}>f</span> Continue with Facebook
-        </button>
-      </div>
-
       <div className={styles.divider}>or continue with email</div>
 
       <form
         className={styles.form}
         onSubmit={(event) => void handleSubmit(event)}
       >
+        <div className={styles.social}>
+          <button
+            type="button"
+            className={styles.socialButton}
+            onClick={() => void handleGoogleSignIn()}
+            aria-label="Continue with Google"
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 9999,
+                background: '#ffffff',
+                boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
+                marginRight: 10,
+                flexShrink: 0,
+              }}
+            >
+              <Chrome size={18} color="#4285F4" />
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              Continue with Google
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={styles.socialButton}
+            onClick={() => void handleFacebookSignIn()}
+            aria-label="Continue with Facebook"
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 9999,
+                background: '#1877F2',
+                boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
+                marginRight: 10,
+                flexShrink: 0,
+              }}
+            >
+              <Facebook size={18} color="#ffffff" />
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              Continue with Facebook
+            </span>
+          </button>
+        </div>
+
         <label className={styles.field}>
           <span className={styles.label}>Full name</span>
-          <input
-            className={styles.input}
-            autoComplete="name"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-          />
+          <div className={styles.iconField}>
+            <span
+              className={styles.glyph}
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                fontSize: 18,
+              }}
+            >
+              <UserRound size={20} />
+            </span>
+            <input
+              className={styles.input}
+              autoComplete="name"
+              type="text"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </div>
         </label>
+
         <label className={styles.field}>
           <span className={styles.label}>Email</span>
           <div className={styles.iconField}>
-            <span className={styles.glyph} aria-hidden="true">
-              ✉
+            <span
+              className={styles.glyph}
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                fontSize: 18,
+              }}
+            >
+              <Mail size={20} />
             </span>
             <input
               className={styles.input}
@@ -118,11 +183,20 @@ export function CustomerSignupForm() {
             />
           </div>
         </label>
+
         <label className={styles.field}>
           <span className={styles.label}>Password</span>
           <div className={styles.iconField}>
-            <span className={styles.glyph} aria-hidden="true">
-              🔒
+            <span
+              className={styles.glyph}
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                fontSize: 18,
+              }}
+            >
+              <Lock size={20} />
             </span>
             <input
               className={styles.input}

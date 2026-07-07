@@ -690,8 +690,18 @@ export default function GoldenFurLanding() {
         <div className="reveal-panel reveal-right"></div>
       </div>
 
-      <nav className="navbar" id="navbar">
-        <div className="nav-inner">
+      <nav
+        className="navbar"
+        id="navbar"
+        style={{ padding: '14px clamp(16px, 3vw, 24px)' }}
+      >
+        <div
+          className="nav-inner"
+          style={{
+            gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+            gap: 'clamp(12px, 2.4vw, 20px)',
+          }}
+        >
           <a href="#" className="brand stagger" data-stagger>
             Golden Fur
           </a>
@@ -709,7 +719,11 @@ export default function GoldenFurLanding() {
             <span></span>
           </button>
 
-          <ul className="nav-links" id="primaryNavLinks">
+          <ul
+            className="nav-links"
+            id="primaryNavLinks"
+            style={{ gap: 'clamp(10px, 2vw, 20px)', justifyContent: 'center' }}
+          >
             <li>
               <a href="#">Services</a>
             </li>
@@ -724,11 +738,22 @@ export default function GoldenFurLanding() {
             </li>
           </ul>
 
-          <div className="nav-actions">
-            <Link to="/signup" className="btn btn-outline">
+          <div
+            className="nav-actions"
+            style={{ gap: 'clamp(8px, 1.5vw, 12px)', flexWrap: 'wrap' }}
+          >
+            <Link
+              to="/signup"
+              className="btn btn-outline"
+              style={{ whiteSpace: 'nowrap' }}
+            >
               Sign In
             </Link>
-            <a href="#" className="btn btn-primary">
+            <a
+              href="#"
+              className="btn btn-primary"
+              style={{ whiteSpace: 'nowrap' }}
+            >
               Book Now
             </a>
           </div>
