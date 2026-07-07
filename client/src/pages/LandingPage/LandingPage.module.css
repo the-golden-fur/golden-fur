@@ -744,7 +744,11 @@ body {
 
 /* Current step tab */
 :global(.booking-step-tab.is-current) {
-  background: linear-gradient(180deg, var(--color-accent-gold-highlight) 0%, var(--color-accent-gold-primary) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--color-accent-gold-highlight) 0%,
+    var(--color-accent-gold-primary) 100%
+  );
   color: var(--color-text-primary);
   border-color: #b68510;
   box-shadow:
@@ -866,7 +870,11 @@ body {
 }
 
 :global(.booking-step-ctrl-next) {
-  background: linear-gradient(180deg, var(--color-accent-gold-highlight) 0%, var(--color-accent-gold-primary) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--color-accent-gold-highlight) 0%,
+    var(--color-accent-gold-primary) 100%
+  );
   color: var(--color-text-primary);
   border-color: #b68510;
 }
@@ -1247,7 +1255,11 @@ body {
   display: none;
   place-items: center;
   font-size: 1.9rem;
-  background: radial-gradient(circle at 35% 30%, #f7d77f 0%, var(--color-accent-gold-primary) 72%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    #f7d77f 0%,
+    var(--color-accent-gold-primary) 72%
+  );
   pointer-events: none;
   z-index: 1;
 }
