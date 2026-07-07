@@ -119,10 +119,28 @@
   }
 
   .left {
-    padding: 40px 32px;
+    padding: var(--space-4) var(--space-3);
   }
 
   .hero {
-    margin-top: 32px;
+    margin-top: var(--space-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .left {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .hero h2 {
+    font-size: var(--text-3xl);
+  }
+
+  .right {
+    padding: var(--space-4) var(--space-2);
+  }
+
+  .card {
+    padding: var(--space-3);
   }
 }
