@@ -22,12 +22,15 @@ export default function GoldenFurLanding() {
       'primaryNavLinks'
     ) as HTMLElement | null;
 
+    function handleNavToggleClick() {
+      if (!primaryNavLinks || !navToggle) return;
+      const isOpen = primaryNavLinks.classList.toggle('is-open');
+      navToggle.classList.toggle('is-active', isOpen);
+      navToggle.setAttribute('aria-expanded', String(isOpen));
+    }
+
     if (navToggle && primaryNavLinks) {
-      navToggle.addEventListener('click', () => {
-        const isOpen = primaryNavLinks.classList.toggle('is-open');
-        navToggle.classList.toggle('is-active', isOpen);
-        navToggle.setAttribute('aria-expanded', String(isOpen));
-      });
+      navToggle.addEventListener('click', handleNavToggleClick);
     }
 
     function prepareStaggerText(el: HTMLElement) {
@@ -667,6 +670,9 @@ export default function GoldenFurLanding() {
     });
 
     return () => {
+      if (navToggle) {
+        navToggle.removeEventListener('click', handleNavToggleClick);
+      }
       observer.disconnect();
       fadeReplayObserver.disconnect();
       featureRevealObserver.disconnect();
