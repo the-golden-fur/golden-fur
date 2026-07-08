@@ -12,6 +12,10 @@ import {
   incrementMfaLockout,
   resetMfaLockout,
 } from '../../../shared/services/mfaLockout/mfaLockout.service.ts';
+import {
+  resolveStaffLoginIdentifier,
+  signInWithPassword,
+} from '../../../shared/auth/api/supabaseAuth.api.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -31,27 +35,12 @@ export async function staffLoginController(req: Request, res: Response) {
     }
 
     const { identifier, password } = parsed.data;
-    let email = identifier;
+    const email = await resolveStaffLoginIdentifier(identifier);
 
-    if (!identifier.includes('@')) {
-      const { data: profileData, error: profileError } = await supabase
-        .from('staff_profiles')
-        .select('registered_email')
-        .eq('username', identifier)
-        .single();
-
-      if (profileError || !profileData?.registered_email) {
-        throw new Error('Profile resolution failed');
-      }
-
-      email = profileData.registered_email;
-    }
-
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { data: authData, error: authError } = await signInWithPassword(
+      email,
+      password
+    );
 
     if (authError || !authData.session) {
       throw new Error('Authentication failed');

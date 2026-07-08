@@ -1,6 +1,6 @@
 import type { NextFunction, Response } from 'express';
-import { supabase } from '../../../../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../../../../shared/shared.types.ts';
+import { getStaffBranch } from '../../../../../shared/auth/api/supabaseAuth.api.ts';
 
 export async function requireBranch(
   req: AuthenticatedRequest,
@@ -15,11 +15,7 @@ export async function requireBranch(
     return next(error);
   }
 
-  const { data, error } = await supabase
-    .from('staff_profiles')
-    .select('role, branch_id')
-    .eq('id', userId)
-    .single();
+  const { data, error } = await getStaffBranch(userId);
 
   if (error || !data?.role || !data?.branch_id) {
     const forbiddenError = new Error('Forbidden');
