@@ -7,6 +7,10 @@ import {
   createCustomerAuthUser,
   createCustomerProfile,
   getCustomerProfileByEmail,
+  enrollTotpFactor,
+  getTotpEnrollmentStatus,
+  unenrollAllTotpFactors,
+  findTotpFactorForVerify,
 } from './supabaseAuth.api.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
@@ -185,6 +189,443 @@ describe('supabaseAuth.api', () => {
         id: 'existing-id',
         account_email: 'john@example.com',
       });
+    });
+  });
+
+  describe('enrollTotpFactor', () => {
+    function mockUserClient() {
+      return {
+        auth: {
+          mfa: {
+            listFactors: vi.fn(),
+            unenroll: vi.fn().mockResolvedValue({ data: {}, error: null }),
+            enroll: vi.fn().mockResolvedValue({
+              data: { id: 'new-factor', type: 'totp' },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+    }
+
+    it('enrolls a fresh TOTP factor when the caller has none', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: { all: [] },
+        error: null,
+      });
+
+      const { data } = await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
+        factorType: 'totp',
+      });
+      expect(data).toEqual({ id: 'new-factor', type: 'totp' });
+    });
+
+    it('unenrolls prior unverified factors before enrolling a new one', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [
+            { id: 'stale-1', factor_type: 'totp', status: 'unverified' },
+            { id: 'stale-2', factor_type: 'totp', status: 'unverified' },
+          ],
+        },
+        error: null,
+      });
+
+      await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'stale-1',
+      });
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'stale-2',
+      });
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
+        factorType: 'totp',
+      });
+    });
+
+    it('does not unenroll an already-verified factor on the initial pass', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'verified-1', factor_type: 'totp', status: 'verified' }],
+        },
+        error: null,
+      });
+
+      await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-totp factors when deciding what to clean up', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'phone-1', factor_type: 'phone', status: 'unverified' }],
+        },
+        error: null,
+      });
+
+      await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
+        factorType: 'totp',
+      });
+    });
+
+    it('retries once by re-cleaning and re-enrolling when a racing call already claimed the factor', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors
+        .mockResolvedValueOnce({ data: { all: [] }, error: null })
+        .mockResolvedValueOnce({
+          data: {
+            all: [
+              { id: 'racing-factor', factor_type: 'totp', status: 'unverified' },
+            ],
+          },
+          error: null,
+        });
+      userClient.auth.mfa.enroll
+        .mockResolvedValueOnce({
+          data: null,
+          error: new Error(
+            'A factor with the friendly name "" for this user already exists'
+          ),
+        })
+        .mockResolvedValueOnce({
+          data: { id: 'fresh-factor', type: 'totp' },
+          error: null,
+        });
+
+      const { data, error } = await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.listFactors).toHaveBeenCalledTimes(2);
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'racing-factor',
+      });
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(2);
+      expect(error).toBeNull();
+      expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
+    });
+
+    it('escalates to removing a stale verified factor when the conflict survives the first retry', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'stale-verified', factor_type: 'totp', status: 'verified' }],
+        },
+        error: null,
+      });
+      userClient.auth.mfa.enroll
+        .mockResolvedValueOnce({
+          data: null,
+          error: new Error('A factor with the friendly name "" already exists'),
+        })
+        .mockResolvedValueOnce({
+          data: null,
+          error: new Error('A factor with the friendly name "" already exists'),
+        })
+        .mockResolvedValueOnce({
+          data: { id: 'fresh-factor', type: 'totp' },
+          error: null,
+        });
+
+      const { data, error } = await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'stale-verified',
+      });
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
+      expect(error).toBeNull();
+      expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
+    });
+
+    it('gives up after the escalated attempt still conflicts (e.g. verified factor needs aal2 to remove)', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'stuck-verified', factor_type: 'totp', status: 'verified' }],
+        },
+        error: null,
+      });
+      userClient.auth.mfa.unenroll.mockResolvedValue({
+        data: null,
+        error: new Error('AAL2 required'),
+      });
+      userClient.auth.mfa.enroll.mockResolvedValue({
+        data: null,
+        error: new Error('A factor with the friendly name "" already exists'),
+      });
+
+      const { data, error } = await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
+      expect(data).toBeNull();
+      expect(error?.message).toContain('already exists');
+    });
+
+    it('does not retry for an unrelated enroll error', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: { all: [] },
+        error: null,
+      });
+      userClient.auth.mfa.enroll.mockResolvedValueOnce({
+        data: null,
+        error: new Error('Something else went wrong'),
+      });
+
+      const { error } = await enrollTotpFactor(userClient);
+
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(1);
+      expect(error?.message).toBe('Something else went wrong');
+    });
+  });
+
+  describe('getTotpEnrollmentStatus', () => {
+    it('reports enrolled when a verified TOTP factor exists', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data } = await getTotpEnrollmentStatus(userClient);
+
+      expect(data).toEqual({ enrolled: true });
+    });
+
+    it('reports not enrolled when only unverified/no factors exist', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [{ id: 'factor-1', factor_type: 'totp', status: 'unverified' }],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data } = await getTotpEnrollmentStatus(userClient);
+
+      expect(data).toEqual({ enrolled: false });
+    });
+
+    it('ignores non-totp factors when computing enrollment status', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [{ id: 'phone-1', factor_type: 'phone', status: 'verified' }],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data } = await getTotpEnrollmentStatus(userClient);
+
+      expect(data).toEqual({ enrolled: false });
+    });
+
+    it('returns an error when listFactors fails', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: null,
+              error: new Error('boom'),
+            }),
+          },
+        },
+      } as any;
+
+      const { data, error } = await getTotpEnrollmentStatus(userClient);
+
+      expect(data).toBeNull();
+      expect(error).toBeTruthy();
+    });
+  });
+
+  describe('unenrollAllTotpFactors', () => {
+    it('unenrolls every totp factor and reports them all removed', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [
+                  { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+                  { id: 'factor-2', factor_type: 'totp', status: 'unverified' },
+                ],
+              },
+              error: null,
+            }),
+            unenroll: vi.fn().mockResolvedValue({ data: {}, error: null }),
+          },
+        },
+      } as any;
+
+      const { removed, failed } = await unenrollAllTotpFactors(userClient);
+
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'factor-1',
+      });
+      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'factor-2',
+      });
+      expect(removed).toEqual(
+        expect.arrayContaining(['factor-1', 'factor-2'])
+      );
+      expect(failed).toEqual([]);
+    });
+
+    it('reports a per-factor failure without throwing (e.g. verified factor needs aal2)', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+              },
+              error: null,
+            }),
+            unenroll: vi.fn().mockResolvedValue({
+              data: null,
+              error: new Error('AAL2 required'),
+            }),
+          },
+        },
+      } as any;
+
+      const { removed, failed } = await unenrollAllTotpFactors(userClient);
+
+      expect(removed).toEqual([]);
+      expect(failed).toEqual([{ factorId: 'factor-1', message: 'AAL2 required' }]);
+    });
+
+    it('returns an empty result when the caller has no factors', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi
+              .fn()
+              .mockResolvedValue({ data: { all: [] }, error: null }),
+            unenroll: vi.fn(),
+          },
+        },
+      } as any;
+
+      const { removed, failed } = await unenrollAllTotpFactors(userClient);
+
+      expect(removed).toEqual([]);
+      expect(failed).toEqual([]);
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findTotpFactorForVerify', () => {
+    it('finds a just-enrolled unverified factor (regression: .totp is verified-only, .all is not)', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [
+                  { id: 'fresh-factor', factor_type: 'totp', status: 'unverified' },
+                ],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data, error } = await findTotpFactorForVerify(userClient);
+
+      expect(error).toBeNull();
+      expect(data).toEqual({
+        id: 'fresh-factor',
+        factor_type: 'totp',
+        status: 'unverified',
+      });
+    });
+
+    it('prefers a verified factor over an unverified one', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [
+                  { id: 'stale-unverified', factor_type: 'totp', status: 'unverified' },
+                  { id: 'active-verified', factor_type: 'totp', status: 'verified' },
+                ],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data } = await findTotpFactorForVerify(userClient);
+
+      expect(data?.id).toBe('active-verified');
+    });
+
+    it('ignores non-totp factors', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi.fn().mockResolvedValue({
+              data: {
+                all: [{ id: 'phone-1', factor_type: 'phone', status: 'verified' }],
+              },
+              error: null,
+            }),
+          },
+        },
+      } as any;
+
+      const { data } = await findTotpFactorForVerify(userClient);
+
+      expect(data).toBeNull();
+    });
+
+    it('returns null (not an error) when the caller has no factors at all', async () => {
+      const userClient = {
+        auth: {
+          mfa: {
+            listFactors: vi
+              .fn()
+              .mockResolvedValue({ data: { all: [] }, error: null }),
+          },
+        },
+      } as any;
+
+      const { data, error } = await findTotpFactorForVerify(userClient);
+
+      expect(data).toBeNull();
+      expect(error).toBeNull();
     });
   });
 });

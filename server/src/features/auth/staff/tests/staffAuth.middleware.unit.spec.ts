@@ -115,7 +115,7 @@ describe('requireMfa middleware', () => {
     next = vi.fn();
   });
 
-  it.each(['Admin', 'Supervisor'])(
+  it.each(['Admin', 'Superadmin'])(
     'blocks %s when the session is not aal2',
     async (role) => {
       const req = {
@@ -130,7 +130,7 @@ describe('requireMfa middleware', () => {
     }
   );
 
-  it.each(['Admin', 'Supervisor'])(
+  it.each(['Admin', 'Superadmin'])(
     'allows %s when the session is aal2',
     async (role) => {
       const req = {
@@ -144,6 +144,7 @@ describe('requireMfa middleware', () => {
   );
 
   it.each([
+    'Supervisor',
     'Receptionist',
     'Cashier',
     'Groomer',
@@ -177,5 +178,27 @@ describe('requireMfa middleware', () => {
 
     expect(req.user?.role).toBe('Cashier');
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it('ignores the JWT "authenticated" postgres-role claim and resolves the real staff role instead', async () => {
+    const req = {
+      user: { sub: 'staff-1', role: 'authenticated', aal: 'aal1' },
+    } as AuthenticatedRequest;
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { role: 'Admin' },
+          error: null,
+        }),
+      }),
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as never);
+
+    await requireMfa(req, {} as Response, next as NextFunction);
+
+    expect(supabase.from).toHaveBeenCalledWith('staff_profiles');
+    const error = next.mock.calls[0][0] as Error & { statusCode?: number };
+    expect(error.message).toBe('MFA required');
+    expect(error.statusCode).toBe(403);
   });
 });

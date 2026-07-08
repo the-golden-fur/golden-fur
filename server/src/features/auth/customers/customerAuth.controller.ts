@@ -17,6 +17,10 @@ import {
 import {
   createCustomerAuthUser,
   createCustomerProfile,
+  enrollTotpFactor,
+  getTotpEnrollmentStatus,
+  unenrollAllTotpFactors,
+  findTotpFactorForVerify,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
 
 function getUserClient(req: Request) {
@@ -143,15 +147,64 @@ export async function customerLoginController(req: Request, res: Response) {
 export async function customerMfaEnrollController(req: Request, res: Response) {
   try {
     const userClient = getUserClient(req);
-    const { data, error } = await userClient.auth.mfa.enroll({
-      factorType: 'totp',
-    });
+    const { data, error } = await enrollTotpFactor(userClient);
 
     if (error) {
       return res.status(400).json({ error: error.message });
     }
 
     return res.status(200).json(data);
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function customerMfaUnenrollController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  if (!req.user?.sub) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const userClient = getUserClient(req);
+    const { removed, failed, error } = await unenrollAllTotpFactors(userClient);
+
+    if (error) {
+      return res.status(400).json({ error: 'Failed to list factors' });
+    }
+
+    if (failed.length > 0 && removed.length === 0) {
+      return res.status(400).json({
+        error: 'Failed to remove MFA factor',
+        details: failed,
+      });
+    }
+
+    return res.status(200).json({ removed, failed });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function customerMfaStatusController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  if (!req.user?.sub) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const userClient = getUserClient(req);
+    const { data, error } = await getTotpEnrollmentStatus(userClient);
+
+    if (error || !data) {
+      return res.status(400).json({ error: 'Failed to list factors' });
+    }
+
+    return res.status(200).json({ mfa_enrolled: data.enrolled });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -181,15 +234,11 @@ export async function customerMfaVerifyController(
 
     const userClient = getUserClient(req);
 
-    const { data: factorsData, error: factorsError } =
-      await userClient.auth.mfa.listFactors();
-    if (factorsError || !factorsData) {
+    const { data: totpFactor, error: factorsError } =
+      await findTotpFactorForVerify(userClient);
+    if (factorsError) {
       return res.status(400).json({ error: 'Failed to list factors' });
     }
-
-    const totpFactor =
-      factorsData.totp.find((f) => f.status === 'verified') ||
-      factorsData.totp.find((f) => (f.status as string) === 'unverified');
     if (!totpFactor) {
       return res.status(400).json({ error: 'No TOTP factor found' });
     }
