@@ -14,6 +14,10 @@ import {
   incrementMfaLockout,
   resetMfaLockout,
 } from '../../../shared/services/mfaLockout/mfaLockout.service.ts';
+import {
+  createCustomerAuthUser,
+  createCustomerProfile,
+} from '../../../shared/auth/api/supabaseAuth.api.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -50,15 +54,11 @@ export async function customerSignupController(req: Request, res: Response) {
     // 1. Create Supabase Auth user. We use the admin API (not auth.signUp) so no
     // confirmation email is sent - the hosted project's email rate limit (2/hour)
     // otherwise causes every signup to fail with a 400 "email rate limit exceeded".
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email: account_email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name,
-        },
-      });
+    const { data: authData, error: authError } = await createCustomerAuthUser(
+      account_email,
+      password,
+      { full_name }
+    );
 
     if (authError || !authData.user) {
       return res
@@ -67,14 +67,12 @@ export async function customerSignupController(req: Request, res: Response) {
     }
 
     // 2. Insert into customer_profiles
-    const { error: profileError } = await supabase
-      .from('customer_profiles')
-      .insert({
-        id: authData.user.id,
-        account_email,
-        full_name,
-        primary_auth_provider: 'email',
-      });
+    const { error: profileError } = await createCustomerProfile({
+      id: authData.user.id,
+      account_email,
+      full_name,
+      primary_auth_provider: 'email',
+    });
 
     if (profileError) {
       // In a robust system, we might compensate by deleting the auth user, but for now we'll just error
