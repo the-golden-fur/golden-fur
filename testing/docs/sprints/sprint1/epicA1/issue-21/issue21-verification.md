@@ -54,18 +54,22 @@ Confirmed for this pass: 18 test files / 94 tests passed; `tsc --noEmit` produce
 ## Structural Verification
 
 1. Confirm the new service file and its spec exist:
+
    ```powershell
    Get-ChildItem server/src/shared/auth/api
    ```
+
    Expected files: `supabaseAuth.api.ts`, `supabaseAuth.api.spec.ts`.
 
 2. Confirm the 4 target files no longer build their own Supabase queries for the moved calls:
+
    ```powershell
    Select-String -Path server/src/features/auth/staff/staffAuth.controller.ts -Pattern "supabase\.from\('staff_profiles'\)|supabase\.auth\.signInWithPassword"
    Select-String -Path server/src/features/auth/customers/customerAuth.controller.ts -Pattern "supabase\.auth\.admin\.createUser|supabase\.from\('customer_profiles'\)\.insert"
    Select-String -Path server/src/features/auth/staff/middleware/requireRole/requireRole.middleware.ts -Pattern "supabase\."
    Select-String -Path server/src/features/auth/staff/middleware/requireBranch/requireBranch.middleware.ts -Pattern "supabase\."
    ```
+
    Expected result: no matches in any of the four (the `requireRole`/`requireBranch` middleware files no longer import `supabase` at all).
 
 3. Confirm the 4 files import from the new shared service:

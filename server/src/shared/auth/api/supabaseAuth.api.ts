@@ -39,7 +39,11 @@ export async function signInWithPassword(email: string, password: string) {
 }
 
 export async function getStaffRole(userId: string) {
-  return supabase.from('staff_profiles').select('role').eq('id', userId).single();
+  return supabase
+    .from('staff_profiles')
+    .select('role')
+    .eq('id', userId)
+    .single();
 }
 
 export async function getStaffBranch(userId: string) {

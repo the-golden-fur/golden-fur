@@ -120,7 +120,10 @@ describe('supabaseAuth.api', () => {
 
       expect(supabase.from).toHaveBeenCalledWith('staff_profiles');
       expect(mockSelect).toHaveBeenCalledWith('role, branch_id');
-      expect(data).toEqual({ role: 'Receptionist', branch_id: 'branch-makati' });
+      expect(data).toEqual({
+        role: 'Receptionist',
+        branch_id: 'branch-makati',
+      });
     });
   });
 
@@ -178,7 +181,10 @@ describe('supabaseAuth.api', () => {
       const { data } = await getCustomerProfileByEmail('john@example.com');
 
       expect(supabase.from).toHaveBeenCalledWith('customer_profiles');
-      expect(data).toEqual({ id: 'existing-id', account_email: 'john@example.com' });
+      expect(data).toEqual({
+        id: 'existing-id',
+        account_email: 'john@example.com',
+      });
     });
   });
 });
