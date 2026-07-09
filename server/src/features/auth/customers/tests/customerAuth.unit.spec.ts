@@ -4,6 +4,8 @@ import {
   customerLoginController,
   customerMfaEnrollController,
   customerMfaVerifyController,
+  customerMfaStatusController,
+  customerMfaUnenrollController,
   customerOauthCallbackController,
 } from '../customerAuth.controller.ts';
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
@@ -27,6 +29,7 @@ const mockUserClient = {
   auth: {
     mfa: {
       enroll: vi.fn(),
+      unenroll: vi.fn(),
       listFactors: vi.fn(),
       challenge: vi.fn(),
       verify: vi.fn(),
@@ -188,6 +191,10 @@ describe('customerAuth.controller', () => {
       const req = mockRequest({}, { authorization: 'Bearer customer-token' });
       const res = mockResponse();
 
+      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+        data: { all: [] },
+        error: null,
+      });
       mockUserClient.auth.mfa.enroll.mockResolvedValue({
         data: { id: 'factor-id', type: 'totp' },
         error: null,
@@ -201,6 +208,111 @@ describe('customerAuth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ id: 'factor-id', type: 'totp' });
     });
+
+    it('unenrolls a prior unverified factor before enrolling a new one', async () => {
+      const req = mockRequest({}, { authorization: 'Bearer customer-token' });
+      const res = mockResponse();
+
+      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [
+            { id: 'stale-factor', factor_type: 'totp', status: 'unverified' },
+          ],
+        },
+        error: null,
+      });
+      mockUserClient.auth.mfa.unenroll.mockResolvedValue({
+        data: {},
+        error: null,
+      });
+      mockUserClient.auth.mfa.enroll.mockResolvedValue({
+        data: { id: 'fresh-factor', type: 'totp' },
+        error: null,
+      });
+
+      await customerMfaEnrollController(req, res);
+
+      expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'stale-factor',
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        id: 'fresh-factor',
+        type: 'totp',
+      });
+    });
+  });
+
+  describe('customerMfaStatusController', () => {
+    it('returns 401 when the request has no authenticated user', async () => {
+      const req = mockRequest({}, { authorization: 'Bearer customer-token' });
+      const res = mockResponse();
+
+      await customerMfaStatusController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    it('reports mfa_enrolled from the caller listFactors result', async () => {
+      const req = {
+        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        user: { sub: 'customer-1' },
+      };
+      const res = mockResponse();
+
+      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+        },
+        error: null,
+      });
+
+      await customerMfaStatusController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ mfa_enrolled: true });
+    });
+  });
+
+  describe('customerMfaUnenrollController', () => {
+    it('returns 401 when the request has no authenticated user', async () => {
+      const req = mockRequest({}, { authorization: 'Bearer customer-token' });
+      const res = mockResponse();
+
+      await customerMfaUnenrollController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    it('removes every totp factor for the caller', async () => {
+      const req = {
+        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        user: { sub: 'customer-1' },
+      };
+      const res = mockResponse();
+
+      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+        data: {
+          all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+        },
+        error: null,
+      });
+      mockUserClient.auth.mfa.unenroll.mockResolvedValue({
+        data: {},
+        error: null,
+      });
+
+      await customerMfaUnenrollController(req, res);
+
+      expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+        factorId: 'factor-1',
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        removed: ['factor-1'],
+        failed: [],
+      });
+    });
   });
 
   describe('customerMfaVerifyController', () => {
@@ -213,7 +325,9 @@ describe('customerAuth.controller', () => {
       const res = mockResponse();
 
       mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: { totp: [{ id: 'factor-id', status: 'unverified' }] },
+        data: {
+          all: [{ id: 'factor-id', factor_type: 'totp', status: 'unverified' }],
+        },
         error: null,
       });
       mockUserClient.auth.mfa.challenge.mockResolvedValue({
@@ -301,7 +415,9 @@ describe('customerAuth.controller', () => {
       const res = mockResponse();
 
       mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+        data: {
+          all: [{ id: 'factor-id', factor_type: 'totp', status: 'verified' }],
+        },
         error: null,
       });
       mockUserClient.auth.mfa.challenge.mockResolvedValue({

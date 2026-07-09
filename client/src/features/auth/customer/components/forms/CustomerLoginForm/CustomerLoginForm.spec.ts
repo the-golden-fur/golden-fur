@@ -5,13 +5,14 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
-import { StaffLoginForm } from './StaffLoginForm';
-import * as staffAuthApi from '../../../api/staffAuth.api';
+import { CustomerLoginForm } from './CustomerLoginForm';
+import * as customerAuthApi from '../../../api/customerAuth.api';
 import * as mfaApi from '../../../../../../shared/api/mfa.api';
 
-vi.mock('../../../api/staffAuth.api', () => ({
+vi.mock('../../../api/customerAuth.api', () => ({
   login: vi.fn(),
-  forgotPassword: vi.fn(),
+  signInWithGoogle: vi.fn(),
+  signInWithFacebook: vi.fn(),
 }));
 
 vi.mock('../../../../../../shared/api/mfa.api', () => ({
@@ -36,20 +37,18 @@ function renderForm(applySession = vi.fn()) {
       createElement(
         AuthContext.Provider,
         { value: authValue },
-        createElement(StaffLoginForm)
+        createElement(CustomerLoginForm)
       )
     )
   );
 }
 
-describe('StaffLoginForm', () => {
-  const loginMock = vi.mocked(staffAuthApi.login);
-  const forgotPasswordMock = vi.mocked(staffAuthApi.forgotPassword);
+describe('CustomerLoginForm', () => {
+  const loginMock = vi.mocked(customerAuthApi.login);
   const getMfaStatusMock = vi.mocked(mfaApi.getMfaStatus);
 
   beforeEach(() => {
     loginMock.mockReset();
-    forgotPasswordMock.mockReset();
     getMfaStatusMock.mockReset();
   });
 
@@ -62,85 +61,70 @@ describe('StaffLoginForm', () => {
 
     renderForm();
 
-    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
-    await userEvent.type(screen.getByLabelText(/^password$/i), 'wrong');
-    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
+    await userEvent.type(screen.getByLabelText(/password/i), 'wrong');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Invalid username or password.'
+      'Invalid email or password.'
     );
   });
 
-  it('shows confirmation when forgot password succeeds', async () => {
-    forgotPasswordMock.mockResolvedValue({
-      data: { message: 'Password reset email sent' },
-      error: null,
-    });
-
-    renderForm();
-
-    await userEvent.type(
-      screen.getByLabelText(/reset email/i),
-      'staff@example.com'
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: /forgot password/i })
-    );
-
-    await waitFor(() =>
-      expect(screen.getByText('Password reset email sent')).toBeInTheDocument()
-    );
-  });
-
-  it('marks MFA pending after login when the account role requires MFA', async () => {
+  it('marks MFA pending after login when the customer has already enrolled', async () => {
     const applySession = vi.fn().mockResolvedValue(undefined);
     loginMock.mockResolvedValue({
       data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
       error: null,
     });
     getMfaStatusMock.mockResolvedValue({
-      data: { role: 'Admin', mfa_enrolled: false },
+      data: { mfa_enrolled: true },
       error: null,
     });
 
     renderForm(applySession);
 
-    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
-    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
-    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() =>
       expect(applySession).toHaveBeenCalledWith('acc', 'ref')
     );
     await waitFor(() =>
-      expect(getMfaStatusMock).toHaveBeenCalledWith('staff', 'acc')
+      expect(getMfaStatusMock).toHaveBeenCalledWith('customer', 'acc')
     );
     await waitFor(() =>
-      expect(window.sessionStorage.getItem('staffMfaPending')).toBe('true')
+      expect(window.sessionStorage.getItem('customerMfaPending')).toBe('true')
     );
   });
 
-  it('does not mark MFA pending for a role that does not require MFA', async () => {
+  it('does not mark MFA pending for a customer who never enrolled', async () => {
     const applySession = vi.fn().mockResolvedValue(undefined);
     loginMock.mockResolvedValue({
       data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
       error: null,
     });
     getMfaStatusMock.mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: false },
+      data: { mfa_enrolled: false },
       error: null,
     });
 
     renderForm(applySession);
 
     await userEvent.type(
-      screen.getByLabelText(/username or email/i),
-      'groomer'
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
     );
-    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
-    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => expect(getMfaStatusMock).toHaveBeenCalled());
-    expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
+    expect(window.sessionStorage.getItem('customerMfaPending')).toBeNull();
   });
 });

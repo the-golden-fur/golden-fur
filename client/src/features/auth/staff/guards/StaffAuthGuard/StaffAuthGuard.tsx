@@ -1,9 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
+import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
 import { UnavailabilityStatusBadge } from '../../../../staff/components/UnavailabilityStatusBadge/UnavailabilityStatusBadge';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {
   Superadmin: 30 * 60 * 1000,
@@ -34,7 +36,7 @@ function getStaffRole(user: { role?: string | null; app_metadata?: unknown }) {
 }
 
 function requiresMfa(role: string | null) {
-  return role === 'Admin' || role === 'Supervisor';
+  return role === 'Admin' || role === 'Superadmin';
 }
 
 export function StaffAuthGuard() {
@@ -43,6 +45,29 @@ export function StaffAuthGuard() {
   const navigate = useNavigate();
   const role = getStaffRole(user ?? {});
   const thresholdMs = role ? (ROLE_TIMEOUT_MS[role] ?? null) : null;
+
+  // null = not yet known. Drives whether an Admin/Superadmin without a TOTP
+  // factor sees the mandatory setup popup instead of being redirected to a
+  // challenge page that would 400 with "No TOTP factor found".
+  const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!session || !accessToken) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void getMfaStatus('staff', accessToken).then((result) => {
+      if (isMounted) {
+        setMfaEnrolled(result.data?.mfa_enrolled ?? null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session, accessToken]);
 
   const handleTimeout = useCallback(() => {
     void signOut().finally(() => {
@@ -65,11 +90,32 @@ export function StaffAuthGuard() {
   }
 
   const aal = (session.user as { aal?: string } | undefined)?.aal;
-  const mfaPending =
-    window.sessionStorage.getItem('staffMfaPending') === 'true' ||
-    (requiresMfa(role) && aal !== 'aal2');
+  const sessionFlagPending =
+    window.sessionStorage.getItem('staffMfaPending') === 'true';
+  // Mandatory roles always need aal2. Everyone else only needs it once
+  // they've actually enrolled (voluntarily, via Settings) - MFA being on
+  // must be challenged every login regardless of whether it was forced or
+  // opted into.
+  const needsAal2 =
+    (requiresMfa(role) || mfaEnrolled === true) && aal !== 'aal2';
 
-  if (mfaPending && location.pathname !== '/staff/mfa/verify') {
+  // Set by StaffLoginForm right after a fresh login - always honored
+  // immediately, independent of the enrollment-status fetch below.
+  if (sessionFlagPending && location.pathname !== '/staff/mfa/verify') {
+    return <Navigate to="/staff/mfa/verify" replace />;
+  }
+
+  // Direct/restored sessions (no login-form flag): wait for the enrollment
+  // check before deciding. Redirecting to the challenge page before knowing
+  // whether a factor exists would 400 with "No TOTP factor found"; instead,
+  // not-yet-enrolled Admin/Superadmin get the mandatory setup popup below.
+  const showMfaSetupModal = needsAal2 && mfaEnrolled === false;
+
+  if (
+    needsAal2 &&
+    mfaEnrolled === true &&
+    location.pathname !== '/staff/mfa/verify'
+  ) {
     return <Navigate to="/staff/mfa/verify" replace />;
   }
 
@@ -87,6 +133,17 @@ export function StaffAuthGuard() {
         remainingMs={remainingMs}
         onStaySignedIn={staySignedIn}
       />
+      {accessToken ? (
+        <MfaSetupModal
+          isOpen={showMfaSetupModal}
+          role="staff"
+          accessToken={accessToken}
+          onEnrolled={() => {
+            window.sessionStorage.removeItem('staffMfaPending');
+            setMfaEnrolled(true);
+          }}
+        />
+      ) : null}
     </>
   );
 }

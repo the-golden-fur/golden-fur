@@ -1,11 +1,21 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { act } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
+import * as mfaApi from '../../../../../shared/api/mfa.api';
 import { StaffAuthGuard } from './StaffAuthGuard';
+
+vi.mock('../../../../../shared/api/mfa.api', () => ({
+  getMfaStatus: vi.fn(),
+  enrollMfa: vi.fn().mockResolvedValue({
+    data: { totp: { qr_code: null, uri: null } },
+    error: null,
+  }),
+  verifyMfa: vi.fn(),
+}));
 
 function createAuthValue(
   overrides: Partial<AuthContextValue>
@@ -56,6 +66,13 @@ function renderGuard(authValue: AuthContextValue, initialPath = '/staff') {
 }
 
 describe('StaffAuthGuard', () => {
+  beforeEach(() => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: null, mfa_enrolled: true },
+      error: null,
+    });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     window.sessionStorage.clear();
@@ -102,6 +119,90 @@ describe('StaffAuthGuard', () => {
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
+    expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+  });
+
+  it('shows the mandatory MFA setup popup for an Admin without an enrolled factor, without redirecting away', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: false },
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'admin@example.com' },
+        },
+        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: /set up multi-factor authentication/i,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+  });
+
+  it('redirects an already-enrolled Superadmin needing aal2 to the challenge page', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Superadmin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'super@example.com' },
+        },
+        user: { id: 'user-1', email: 'super@example.com', role: 'Superadmin' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(await screen.findByText('MFA challenge')).toBeInTheDocument();
+  });
+
+  it('never shows the MFA setup popup for a Supervisor, even when unenrolled', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Supervisor', mfa_enrolled: false },
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'supervisor@example.com' },
+        },
+        user: {
+          id: 'user-1',
+          email: 'supervisor@example.com',
+          role: 'Supervisor',
+        },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByRole('dialog', {
+        name: /set up multi-factor authentication/i,
+      })
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Protected staff area')).toBeInTheDocument();
   });
 

@@ -1,9 +1,10 @@
 import { createElement, Fragment } from 'react';
-import { Route } from 'react-router';
+import { Link, Route } from 'react-router';
 import { MfaChallengePage } from './pages/MfaChallengePage/MfaChallengePage';
 import { MfaEnrollPage } from './pages/MfaEnrollPage/MfaEnrollPage';
 import { StaffLoginPage } from './pages/StaffLoginPage/StaffLoginPage';
 import { StaffAuthGuard } from './guards/StaffAuthGuard/StaffAuthGuard';
+import { SettingsPage } from '../../../pages/SettingsPage/SettingsPage';
 
 export const staffAuthRoutes = createElement(
   Fragment,
@@ -25,7 +26,16 @@ export const staffAuthRoutes = createElement(
     { element: createElement(StaffAuthGuard) },
     createElement(Route, {
       path: '/staff',
-      element: createElement('div', null, 'Staff dashboard'),
+      element: createElement(
+        'div',
+        null,
+        'Staff dashboard',
+        createElement(Link, { to: '/staff/settings' }, 'Settings')
+      ),
+    }),
+    createElement(Route, {
+      path: '/staff/settings',
+      element: createElement(SettingsPage, { role: 'staff' }),
     })
   )
 );

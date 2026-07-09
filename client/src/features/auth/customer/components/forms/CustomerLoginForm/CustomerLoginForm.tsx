@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Chrome, Facebook, Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import {
   login,
   signInWithGoogle,
@@ -42,6 +43,22 @@ export function CustomerLoginForm() {
     }
 
     await applySession(result.data.access_token, result.data.refresh_token);
+
+    // The login response doesn't carry enrollment status - ask the
+    // authoritative status endpoint, same as staff, so a customer who has
+    // already turned MFA on in Settings gets challenged every login.
+    const statusResult = await getMfaStatus(
+      'customer',
+      result.data.access_token
+    );
+
+    if (statusResult.data?.mfa_enrolled) {
+      window.sessionStorage.setItem('customerMfaPending', 'true');
+      navigate('/portal/mfa/verify', { replace: true });
+      return;
+    }
+
+    window.sessionStorage.removeItem('customerMfaPending');
     navigate('/portal', { replace: true });
   };
 

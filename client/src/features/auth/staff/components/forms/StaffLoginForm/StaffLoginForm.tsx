@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import { forgotPassword, login } from '../../../api/staffAuth.api';
 import {
   forgotPasswordSchema,
@@ -9,8 +10,8 @@ import {
 } from '../../../modules/validators/staffAuth.validator';
 import styles from './StaffLoginForm.module.css';
 
-function isMfaRole(role?: string) {
-  return role === 'Admin' || role === 'Supervisor';
+function isMfaRole(role?: string | null) {
+  return role === 'Admin' || role === 'Superadmin';
 }
 
 export function StaffLoginForm() {
@@ -46,14 +47,20 @@ export function StaffLoginForm() {
 
     await applySession(result.data.access_token, result.data.refresh_token);
 
-    if (result.data.requires_mfa || isMfaRole(result.data.role)) {
+    // The login response doesn't carry role/enrollment - ask the
+    // authoritative status endpoint instead of guessing from the JWT.
+    const statusResult = await getMfaStatus('staff', result.data.access_token);
+    const role = statusResult.data?.role ?? null;
+    const mfaEnrolled = statusResult.data?.mfa_enrolled ?? false;
+
+    // Mandatory roles always go through this (enrolled or not); anyone else
+    // only goes through it if they've voluntarily enrolled via Settings -
+    // once MFA is on for an account, it must be challenged every login.
+    if (isMfaRole(role) || mfaEnrolled) {
       window.sessionStorage.setItem('staffMfaPending', 'true');
-      navigate(
-        result.data.mfa_enrolled === false
-          ? '/staff/mfa/enroll'
-          : '/staff/mfa/verify',
-        { replace: true }
-      );
+      navigate(mfaEnrolled ? '/staff/mfa/verify' : '/staff/mfa/enroll', {
+        replace: true,
+      });
       return;
     }
 

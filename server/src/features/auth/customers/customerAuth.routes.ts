@@ -5,6 +5,8 @@ import {
   customerLoginController,
   customerMfaEnrollController,
   customerMfaVerifyController,
+  customerMfaStatusController,
+  customerMfaUnenrollController,
   customerOauthCallbackController,
 } from './customerAuth.controller.ts';
 import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
@@ -76,6 +78,12 @@ router.post(
   '/customers/mfa/verify',
   jwtMiddleware,
   customerMfaVerifyController
+);
+router.get('/customers/mfa/status', jwtMiddleware, customerMfaStatusController);
+router.post(
+  '/customers/mfa/unenroll',
+  jwtMiddleware,
+  customerMfaUnenrollController
 );
 router.post('/customers/oauth/callback', customerOauthCallbackController);
 router.patch(

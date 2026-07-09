@@ -1,6 +1,9 @@
 import type { Request, Response } from 'express';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
+  mfaEnrollController,
+  mfaStatusController,
+  mfaUnenrollController,
   mfaVerifyController,
   staffLoginController,
 } from '../staffAuth.controller';
@@ -19,6 +22,8 @@ vi.mock('../../../../config/supabase/supabase.config', () => ({
 const mockUserClient = {
   auth: {
     mfa: {
+      enroll: vi.fn(),
+      unenroll: vi.fn(),
       listFactors: vi.fn(),
       challenge: vi.fn(),
       verify: vi.fn(),
@@ -215,7 +220,9 @@ describe('mfaVerifyController', () => {
     const res = mockResponse();
 
     mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-      data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+      data: {
+        all: [{ id: 'factor-id', factor_type: 'totp', status: 'verified' }],
+      },
       error: null,
     });
     mockUserClient.auth.mfa.challenge.mockResolvedValue({
@@ -243,7 +250,9 @@ describe('mfaVerifyController', () => {
     const res = mockResponse();
 
     mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-      data: { totp: [{ id: 'factor-id', status: 'verified' }] },
+      data: {
+        all: [{ id: 'factor-id', factor_type: 'totp', status: 'verified' }],
+      },
       error: null,
     });
     mockUserClient.auth.mfa.challenge.mockResolvedValue({
@@ -261,5 +270,183 @@ describe('mfaVerifyController', () => {
     expect(mfaLockoutService.resetMfaLockout).toHaveBeenCalledWith('staff-id');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ success: true });
+  });
+});
+
+describe('mfaEnrollController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('unenrolls a prior unverified factor before enrolling a new one', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: {
+        all: [
+          { id: 'stale-factor', factor_type: 'totp', status: 'unverified' },
+        ],
+      },
+      error: null,
+    });
+    mockUserClient.auth.mfa.unenroll.mockResolvedValue({
+      data: {},
+      error: null,
+    });
+    mockUserClient.auth.mfa.enroll.mockResolvedValue({
+      data: { id: 'fresh-factor', type: 'totp' },
+      error: null,
+    });
+
+    await mfaEnrollController(req, res);
+
+    expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+      factorId: 'stale-factor',
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      id: 'fresh-factor',
+      type: 'totp',
+    });
+  });
+});
+
+describe('mfaUnenrollController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 401 when the request has no authenticated user', async () => {
+    const req = { headers: { authorization: 'Bearer staff-token' } } as any;
+    const res = mockResponse();
+
+    await mfaUnenrollController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('removes every totp factor for the caller', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: {
+        all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+      },
+      error: null,
+    });
+    mockUserClient.auth.mfa.unenroll.mockResolvedValue({
+      data: {},
+      error: null,
+    });
+
+    await mfaUnenrollController(req, res);
+
+    expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+      factorId: 'factor-1',
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      removed: ['factor-1'],
+      failed: [],
+    });
+  });
+
+  it('returns 400 when Supabase refuses to remove the factor (e.g. missing aal2)', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: {
+        all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+      },
+      error: null,
+    });
+    mockUserClient.auth.mfa.unenroll.mockResolvedValue({
+      data: null,
+      error: new Error('AAL2 required'),
+    });
+
+    await mfaUnenrollController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Failed to remove MFA factor',
+      details: [{ factorId: 'factor-1', message: 'AAL2 required' }],
+    });
+  });
+});
+
+describe('mfaStatusController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 401 when the request has no authenticated user', async () => {
+    const req = { headers: { authorization: 'Bearer staff-token' } } as any;
+    const res = mockResponse();
+
+    await mfaStatusController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns role and mfa_enrolled for an authenticated staff member', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: { all: [] },
+      error: null,
+    });
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: { role: 'Admin' }, error: null }),
+      }),
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
+
+    await mfaStatusController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      role: 'Admin',
+      mfa_enrolled: false,
+    });
   });
 });
