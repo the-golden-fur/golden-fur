@@ -47,7 +47,10 @@ export function CustomerLoginForm() {
     // The login response doesn't carry enrollment status - ask the
     // authoritative status endpoint, same as staff, so a customer who has
     // already turned MFA on in Settings gets challenged every login.
-    const statusResult = await getMfaStatus('customer', result.data.access_token);
+    const statusResult = await getMfaStatus(
+      'customer',
+      result.data.access_token
+    );
 
     if (statusResult.data?.mfa_enrolled) {
       window.sessionStorage.setItem('customerMfaPending', 'true');

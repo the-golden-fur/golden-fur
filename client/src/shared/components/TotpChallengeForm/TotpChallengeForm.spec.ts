@@ -53,7 +53,11 @@ describe('TotpChallengeForm', () => {
     await userEvent.type(screen.getByLabelText(/6-digit code/i), '123456');
     await userEvent.click(screen.getByRole('button', { name: /verify code/i }));
 
-    expect(mfaApi.verifyMfa).toHaveBeenCalledWith('customer', '123456', 'access');
+    expect(mfaApi.verifyMfa).toHaveBeenCalledWith(
+      'customer',
+      '123456',
+      'access'
+    );
     await waitFor(() =>
       expect(applySession).toHaveBeenCalledWith('new-acc', 'new-ref')
     );

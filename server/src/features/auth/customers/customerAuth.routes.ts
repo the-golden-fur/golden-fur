@@ -79,11 +79,7 @@ router.post(
   jwtMiddleware,
   customerMfaVerifyController
 );
-router.get(
-  '/customers/mfa/status',
-  jwtMiddleware,
-  customerMfaStatusController
-);
+router.get('/customers/mfa/status', jwtMiddleware, customerMfaStatusController);
 router.post(
   '/customers/mfa/unenroll',
   jwtMiddleware,

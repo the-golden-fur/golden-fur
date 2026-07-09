@@ -13,7 +13,11 @@ vi.mock('../../api/mfa.api', () => ({
   unenrollMfa: vi.fn(),
 }));
 
-function renderPanel(onEnrolled = vi.fn(), applySession = vi.fn(), strict = false) {
+function renderPanel(
+  onEnrolled = vi.fn(),
+  applySession = vi.fn(),
+  strict = false
+) {
   const authValue: AuthContextValue = {
     session: null,
     user: null,
@@ -46,7 +50,9 @@ describe('TotpEnrollPanel', () => {
 
   it('enrolls exactly once even under StrictMode double-invoked effects', async () => {
     vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
-      data: { totp: { qr_code: 'data:image/png;base64,abc', secret: 'ABCD1234' } },
+      data: {
+        totp: { qr_code: 'data:image/png;base64,abc', secret: 'ABCD1234' },
+      },
       error: null,
     });
 
@@ -58,13 +64,17 @@ describe('TotpEnrollPanel', () => {
 
   it('shows the QR code and a manual entry key with a copy button', async () => {
     vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
-      data: { totp: { qr_code: 'data:image/png;base64,abc', secret: 'ABCD1234' } },
+      data: {
+        totp: { qr_code: 'data:image/png;base64,abc', secret: 'ABCD1234' },
+      },
       error: null,
     });
 
     renderPanel();
 
-    expect(await screen.findByAltText('MFA enrollment QR code')).toBeInTheDocument();
+    expect(
+      await screen.findByAltText('MFA enrollment QR code')
+    ).toBeInTheDocument();
     expect(screen.getByText('ABCD1234')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument();
   });
@@ -97,7 +107,8 @@ describe('TotpEnrollPanel', () => {
     vi.mocked(mfaApi.enrollMfa)
       .mockResolvedValueOnce({
         data: null,
-        error: 'A factor with the friendly name "" for this user already exists',
+        error:
+          'A factor with the friendly name "" for this user already exists',
       })
       .mockResolvedValueOnce({
         data: { totp: { qr_code: null, secret: 'FRESH-KEY' } },
@@ -110,13 +121,13 @@ describe('TotpEnrollPanel', () => {
 
     renderPanel();
 
-    expect(
-      await screen.findByText(/already exists/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /start over/i }));
 
-    await waitFor(() => expect(mfaApi.unenrollMfa).toHaveBeenCalledWith('staff', 'access'));
+    await waitFor(() =>
+      expect(mfaApi.unenrollMfa).toHaveBeenCalledWith('staff', 'access')
+    );
     await waitFor(() => expect(mfaApi.enrollMfa).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('FRESH-KEY')).toBeInTheDocument();
   });

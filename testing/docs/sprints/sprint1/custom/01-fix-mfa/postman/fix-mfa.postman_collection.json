@@ -128,7 +128,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('returns 200', () => pm.response.to.have.status(200));"]
+            "exec": [
+              "pm.test('returns 200', () => pm.response.to.have.status(200));"
+            ]
           }
         }
       ]
@@ -280,7 +282,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('returns 200', () => pm.response.to.have.status(200));"]
+            "exec": [
+              "pm.test('returns 200', () => pm.response.to.have.status(200));"
+            ]
           }
         }
       ]
@@ -471,7 +475,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('returns 200', () => pm.response.to.have.status(200));"]
+            "exec": [
+              "pm.test('returns 200', () => pm.response.to.have.status(200));"
+            ]
           }
         }
       ]

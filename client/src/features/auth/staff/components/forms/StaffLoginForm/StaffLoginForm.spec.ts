@@ -109,7 +109,9 @@ describe('StaffLoginForm', () => {
     await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    await waitFor(() => expect(applySession).toHaveBeenCalledWith('acc', 'ref'));
+    await waitFor(() =>
+      expect(applySession).toHaveBeenCalledWith('acc', 'ref')
+    );
     await waitFor(() =>
       expect(getMfaStatusMock).toHaveBeenCalledWith('staff', 'acc')
     );

@@ -112,7 +112,9 @@ async function unenrollTotpFactorsByStatus(
 
   await Promise.all(
     listTotpFactors(data)
-      .filter((factor) => statuses.includes(factor.status as 'verified' | 'unverified'))
+      .filter((factor) =>
+        statuses.includes(factor.status as 'verified' | 'unverified')
+      )
       .map((factor) => userClient.auth.mfa.unenroll({ factorId: factor.id }))
   );
 }
@@ -169,7 +171,9 @@ export async function getTotpEnrollmentStatus(userClient: SupabaseClient) {
 
   return {
     data: {
-      enrolled: listTotpFactors(data).some((factor) => factor.status === 'verified'),
+      enrolled: listTotpFactors(data).some(
+        (factor) => factor.status === 'verified'
+      ),
     },
     error: null,
   };
@@ -212,7 +216,11 @@ export async function unenrollAllTotpFactors(userClient: SupabaseClient) {
   const { data, error } = await userClient.auth.mfa.listFactors();
 
   if (error || !data) {
-    return { removed: [], failed: [], error: error ?? new Error('Failed to list factors') };
+    return {
+      removed: [],
+      failed: [],
+      error: error ?? new Error('Failed to list factors'),
+    };
   }
 
   const results = await Promise.all(
@@ -225,7 +233,9 @@ export async function unenrollAllTotpFactors(userClient: SupabaseClient) {
   );
 
   return {
-    removed: results.filter((result) => !result.error).map((result) => result.factorId),
+    removed: results
+      .filter((result) => !result.error)
+      .map((result) => result.factorId),
     failed: results
       .filter((result) => result.error)
       .map((result) => ({

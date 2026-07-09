@@ -61,7 +61,10 @@ describe('CustomerLoginForm', () => {
 
     renderForm();
 
-    await userEvent.type(screen.getByLabelText(/email/i), 'customer@example.com');
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
     await userEvent.type(screen.getByLabelText(/password/i), 'wrong');
     await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
@@ -83,11 +86,16 @@ describe('CustomerLoginForm', () => {
 
     renderForm(applySession);
 
-    await userEvent.type(screen.getByLabelText(/email/i), 'customer@example.com');
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
     await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
     await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 
-    await waitFor(() => expect(applySession).toHaveBeenCalledWith('acc', 'ref'));
+    await waitFor(() =>
+      expect(applySession).toHaveBeenCalledWith('acc', 'ref')
+    );
     await waitFor(() =>
       expect(getMfaStatusMock).toHaveBeenCalledWith('customer', 'acc')
     );
@@ -109,7 +117,10 @@ describe('CustomerLoginForm', () => {
 
     renderForm(applySession);
 
-    await userEvent.type(screen.getByLabelText(/email/i), 'customer@example.com');
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
     await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
     await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
 

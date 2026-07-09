@@ -287,7 +287,11 @@ describe('supabaseAuth.api', () => {
         .mockResolvedValueOnce({
           data: {
             all: [
-              { id: 'racing-factor', factor_type: 'totp', status: 'unverified' },
+              {
+                id: 'racing-factor',
+                factor_type: 'totp',
+                status: 'unverified',
+              },
             ],
           },
           error: null,
@@ -319,7 +323,9 @@ describe('supabaseAuth.api', () => {
       const userClient = mockUserClient();
       userClient.auth.mfa.listFactors.mockResolvedValue({
         data: {
-          all: [{ id: 'stale-verified', factor_type: 'totp', status: 'verified' }],
+          all: [
+            { id: 'stale-verified', factor_type: 'totp', status: 'verified' },
+          ],
         },
         error: null,
       });
@@ -351,7 +357,9 @@ describe('supabaseAuth.api', () => {
       const userClient = mockUserClient();
       userClient.auth.mfa.listFactors.mockResolvedValue({
         data: {
-          all: [{ id: 'stuck-verified', factor_type: 'totp', status: 'verified' }],
+          all: [
+            { id: 'stuck-verified', factor_type: 'totp', status: 'verified' },
+          ],
         },
         error: null,
       });
@@ -396,7 +404,9 @@ describe('supabaseAuth.api', () => {
           mfa: {
             listFactors: vi.fn().mockResolvedValue({
               data: {
-                all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+                all: [
+                  { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+                ],
               },
               error: null,
             }),
@@ -415,7 +425,9 @@ describe('supabaseAuth.api', () => {
           mfa: {
             listFactors: vi.fn().mockResolvedValue({
               data: {
-                all: [{ id: 'factor-1', factor_type: 'totp', status: 'unverified' }],
+                all: [
+                  { id: 'factor-1', factor_type: 'totp', status: 'unverified' },
+                ],
               },
               error: null,
             }),
@@ -434,7 +446,9 @@ describe('supabaseAuth.api', () => {
           mfa: {
             listFactors: vi.fn().mockResolvedValue({
               data: {
-                all: [{ id: 'phone-1', factor_type: 'phone', status: 'verified' }],
+                all: [
+                  { id: 'phone-1', factor_type: 'phone', status: 'verified' },
+                ],
               },
               error: null,
             }),
@@ -493,9 +507,7 @@ describe('supabaseAuth.api', () => {
       expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
         factorId: 'factor-2',
       });
-      expect(removed).toEqual(
-        expect.arrayContaining(['factor-1', 'factor-2'])
-      );
+      expect(removed).toEqual(expect.arrayContaining(['factor-1', 'factor-2']));
       expect(failed).toEqual([]);
     });
 
@@ -505,7 +517,9 @@ describe('supabaseAuth.api', () => {
           mfa: {
             listFactors: vi.fn().mockResolvedValue({
               data: {
-                all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
+                all: [
+                  { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+                ],
               },
               error: null,
             }),
@@ -520,7 +534,9 @@ describe('supabaseAuth.api', () => {
       const { removed, failed } = await unenrollAllTotpFactors(userClient);
 
       expect(removed).toEqual([]);
-      expect(failed).toEqual([{ factorId: 'factor-1', message: 'AAL2 required' }]);
+      expect(failed).toEqual([
+        { factorId: 'factor-1', message: 'AAL2 required' },
+      ]);
     });
 
     it('returns an empty result when the caller has no factors', async () => {
@@ -551,7 +567,11 @@ describe('supabaseAuth.api', () => {
             listFactors: vi.fn().mockResolvedValue({
               data: {
                 all: [
-                  { id: 'fresh-factor', factor_type: 'totp', status: 'unverified' },
+                  {
+                    id: 'fresh-factor',
+                    factor_type: 'totp',
+                    status: 'unverified',
+                  },
                 ],
               },
               error: null,
@@ -577,8 +597,16 @@ describe('supabaseAuth.api', () => {
             listFactors: vi.fn().mockResolvedValue({
               data: {
                 all: [
-                  { id: 'stale-unverified', factor_type: 'totp', status: 'unverified' },
-                  { id: 'active-verified', factor_type: 'totp', status: 'verified' },
+                  {
+                    id: 'stale-unverified',
+                    factor_type: 'totp',
+                    status: 'unverified',
+                  },
+                  {
+                    id: 'active-verified',
+                    factor_type: 'totp',
+                    status: 'verified',
+                  },
                 ],
               },
               error: null,
@@ -598,7 +626,9 @@ describe('supabaseAuth.api', () => {
           mfa: {
             listFactors: vi.fn().mockResolvedValue({
               data: {
-                all: [{ id: 'phone-1', factor_type: 'phone', status: 'verified' }],
+                all: [
+                  { id: 'phone-1', factor_type: 'phone', status: 'verified' },
+                ],
               },
               error: null,
             }),

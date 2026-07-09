@@ -215,7 +215,9 @@ describe('customerAuth.controller', () => {
 
       mockUserClient.auth.mfa.listFactors.mockResolvedValue({
         data: {
-          all: [{ id: 'stale-factor', factor_type: 'totp', status: 'unverified' }],
+          all: [
+            { id: 'stale-factor', factor_type: 'totp', status: 'unverified' },
+          ],
         },
         error: null,
       });

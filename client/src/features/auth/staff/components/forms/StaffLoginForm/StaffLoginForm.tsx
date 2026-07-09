@@ -49,10 +49,7 @@ export function StaffLoginForm() {
 
     // The login response doesn't carry role/enrollment - ask the
     // authoritative status endpoint instead of guessing from the JWT.
-    const statusResult = await getMfaStatus(
-      'staff',
-      result.data.access_token
-    );
+    const statusResult = await getMfaStatus('staff', result.data.access_token);
     const role = statusResult.data?.role ?? null;
     const mfaEnrolled = statusResult.data?.mfa_enrolled ?? false;
 

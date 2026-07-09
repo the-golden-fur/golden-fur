@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { enrollMfa, unenrollMfa, verifyMfa } from '../../api/mfa.api';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import { totpCodeSchema } from '../../auth/mfa.validator';
@@ -94,7 +100,11 @@ export function TotpEnrollPanel({
         code it generates.
       </p>
       {qrCode ? (
-        <img className={styles.qrCode} src={qrCode} alt="MFA enrollment QR code" />
+        <img
+          className={styles.qrCode}
+          src={qrCode}
+          alt="MFA enrollment QR code"
+        />
       ) : null}
       {secret ? (
         <div className={styles.manualEntry}>
@@ -113,7 +123,10 @@ export function TotpEnrollPanel({
           </div>
         </div>
       ) : null}
-      <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className={styles.form}
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <label className={styles.field}>
           <span className={styles.label}>6-digit code</span>
           <input

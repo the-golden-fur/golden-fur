@@ -78,7 +78,10 @@ export function SettingsPage({ role }: SettingsPageProps) {
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Settings</h1>
-      <section className={styles.section} aria-labelledby="account-section-title">
+      <section
+        className={styles.section}
+        aria-labelledby="account-section-title"
+      >
         <h2 className={styles.sectionTitle} id="account-section-title">
           Account
         </h2>
@@ -103,9 +106,8 @@ export function SettingsPage({ role }: SettingsPageProps) {
           </p>
         ) : isMandatoryRole ? (
           <p className={styles.statusRequired}>
-            MFA is required for your role and is not yet set up. Complete
-            setup in the popup - it will keep appearing until enrollment is
-            finished.
+            MFA is required for your role and is not yet set up. Complete setup
+            in the popup - it will keep appearing until enrollment is finished.
           </p>
         ) : (
           <p className={styles.copy}>

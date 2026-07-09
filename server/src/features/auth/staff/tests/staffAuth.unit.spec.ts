@@ -293,7 +293,9 @@ describe('mfaEnrollController', () => {
 
     mockUserClient.auth.mfa.listFactors.mockResolvedValue({
       data: {
-        all: [{ id: 'stale-factor', factor_type: 'totp', status: 'unverified' }],
+        all: [
+          { id: 'stale-factor', factor_type: 'totp', status: 'unverified' },
+        ],
       },
       error: null,
     });
@@ -364,7 +366,10 @@ describe('mfaUnenrollController', () => {
       factorId: 'factor-1',
     });
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ removed: ['factor-1'], failed: [] });
+    expect(res.json).toHaveBeenCalledWith({
+      removed: ['factor-1'],
+      failed: [],
+    });
   });
 
   it('returns 400 when Supabase refuses to remove the factor (e.g. missing aal2)', async () => {

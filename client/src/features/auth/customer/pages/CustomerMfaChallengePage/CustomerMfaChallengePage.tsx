@@ -13,7 +13,10 @@ export function CustomerMfaChallengePage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.card} aria-labelledby="customer-mfa-challenge-title">
+      <section
+        className={styles.card}
+        aria-labelledby="customer-mfa-challenge-title"
+      >
         <div>
           <h1 className={styles.title} id="customer-mfa-challenge-title">
             Verify your identity

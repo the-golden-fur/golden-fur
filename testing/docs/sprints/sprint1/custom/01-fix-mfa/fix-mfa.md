@@ -62,11 +62,11 @@ Root cause: `SettingsPage` rendered its own `TotpEnrollPanel` inline whenever
 `!status.mfa_enrolled`, with no exception for the mandatory roles - "defensive"
 coverage in case the popup somehow didn't catch it. But `StaffAuthGuard`
 already renders `MfaSetupModal` (its own separate `TotpEnrollPanel` instance)
-as an overlay on *every* `/staff/*` page, including Settings, whenever an
+as an overlay on _every_ `/staff/*` page, including Settings, whenever an
 Admin/Superadmin isn't enrolled. That meant **two independent panel instances
 were mounted at once**, each calling `enrollMfa()` on its own mount. The
 per-instance `useRef` guard from the StrictMode fix only stops a single
-instance from double-enrolling itself - it can't stop a *second, separate*
+instance from double-enrolling itself - it can't stop a _second, separate_
 instance from also enrolling. Whichever panel's factor was created second
 silently invalidated the other one's QR/secret (per the enroll-cleanup
 behavior fixed in the first round, since each enroll cycle unenrolls the
@@ -79,10 +79,10 @@ Also fixed while diagnosing this:
 
 - `TotpEnrollPanel`'s verify handler was overwriting every server error with a
   hardcoded `"Invalid verification code."` string, which is exactly what made
-  this bug hard to see from the UI alone - a *wrong code* and a *stale/missing
-  factor* looked identical to the user. It now surfaces the server's actual
+  this bug hard to see from the UI alone - a _wrong code_ and a _stale/missing
+  factor_ looked identical to the user. It now surfaces the server's actual
   message (`"Invalid code"`, `"No TOTP factor found"`, `"MFA verification
-  locked"`, etc.).
+locked"`, etc.).
 - The QR code was rendered at 160x160px, too small to reliably scan on most
   phone cameras at normal arm's length. Bumped to 280x280px (`max-width: 100%`
   so it still fits narrow viewports).
@@ -103,7 +103,7 @@ Root cause: every helper in `supabaseAuth.api.ts` read `data.totp` from
 `listFactors()`. `AuthMFAListFactorsResponse`'s type declares the per-type
 property (`.totp`) as **verified-only factors**; the actual "everything for
 this user, verified and unverified, across every factor type" list is a
-*separate* property, `data.all`. The original controller code (before this
+_separate_ property, `data.all`. The original controller code (before this
 fix) happened to still find unverified factors inside `.totp` in practice
 (hence why `find(f => f.status === 'unverified')` there needed a type-cast to
 compile at all - the compiler didn't think it belonged there either), but that
@@ -116,7 +116,7 @@ and `unenrollAllTotpFactors` all now read from `data.all` and filter by
 `factor_type === 'totp'` explicitly - the one property the SDK actually
 documents as complete. `enrollTotpFactor` also gained a third, escalated retry
 tier: if the conflict survives the existing unverified-only cleanup and one
-retry, it now also attempts to remove a stale *verified* factor before trying
+retry, it now also attempts to remove a stale _verified_ factor before trying
 one final time. That succeeds only if the caller's session is already aal2
 (Supabase's own rule); if not, the caller gets back the same honest "already
 exists" error rather than a silent infinite loop, since there is no safe way
@@ -187,9 +187,9 @@ signed out and back in with that same account - and it went straight to
 
 This wasn't a stale-session or "logged back in too fast" issue (there was also
 no sign-out button anywhere yet to test that properly, so this round adds
-one). It was a real gap: everything shipped so far only ever *enrolled* an
+one). It was a real gap: everything shipped so far only ever _enrolled_ an
 optional-MFA account (customers, and staff roles below Admin/Superadmin). No
-code path ever *challenged* that account again on a later login. Mandatory
+code path ever _challenged_ that account again on a later login. Mandatory
 roles were fine, because `StaffAuthGuard`/`StaffLoginForm` gate on
 `requiresMfa(role)`, which is role-based and has nothing to do with whether a
 lower-priv/customer account chose to turn MFA on for itself.
@@ -212,7 +212,7 @@ Fixed:
 
 - Added a customer-side challenge stack that didn't exist before: a new
   shared `TotpChallengeForm` component (code-entry only, no QR/enroll - for an
-  *already-enrolled* factor), a `CustomerMfaChallengePage` at the new
+  _already-enrolled_ factor), a `CustomerMfaChallengePage` at the new
   `/portal/mfa/verify` route, and `customerMfaPending` sessionStorage flag
   handling in `CustomerLoginForm`, mirroring the existing `staffMfaPending`
   pattern.
@@ -223,10 +223,10 @@ Fixed:
   every login requires the code, exactly like Settings' "MFA is enabled"
   status implies.
 - `StaffLoginForm`'s redirect condition is now `isMfaRole(role) ||
-  mfaEnrolled` instead of `isMfaRole(role)` alone - any staff member with a
+mfaEnrolled` instead of `isMfaRole(role)` alone - any staff member with a
   verified factor gets sent to `/staff/mfa/verify`, not just Admin/Superadmin.
 - `StaffAuthGuard`'s `needsAal2` is now `(requiresMfa(role) || mfaEnrolled ===
-  true) && aal !== 'aal2'` - same extension, so a direct/restored session for
+true) && aal !== 'aal2'` - same extension, so a direct/restored session for
   a voluntarily-enrolled lower-priv account is caught too. The mandatory
   popup's own condition (`mfaEnrolled === false`) is unaffected by this
   change, since the added OR-clause only ever fires when `mfaEnrolled` is
@@ -246,18 +246,18 @@ Fixed:
     complete verified+unverified, all-factor-types list) filtered by
     `factor_type === 'totp'`, instead of the per-type `data.totp` property -
     see Fourth and Fifth Rounds above.
-  - `enrollTotpFactor(userClient)` - unenrolls the caller's prior *unverified*
+  - `enrollTotpFactor(userClient)` - unenrolls the caller's prior _unverified_
     TOTP factors before creating a new one. If Supabase still rejects the
     `enroll()` call with an "already exists" conflict, it cleans up once more
     and retries; if the conflict survives that too, it makes one final
-    escalated attempt that also tries to remove a stale *verified* factor
+    escalated attempt that also tries to remove a stale _verified_ factor
     (succeeds only if the caller is already aal2) before giving up and
     returning the error as-is.
-  - `getTotpEnrollmentStatus(userClient)` - whether the caller has a *verified*
+  - `getTotpEnrollmentStatus(userClient)` - whether the caller has a _verified_
     TOTP factor.
   - `unenrollAllTotpFactors(userClient)` (new) - removes every TOTP factor the
     caller has, verified or not. Supabase itself enforces that removing a
-    *verified* factor requires an aal2 session; per-factor failures are
+    _verified_ factor requires an aal2 session; per-factor failures are
     returned in the result rather than thrown, so the caller can report
     exactly which factor(s) couldn't be removed instead of a bare 500.
   - `findTotpFactorForVerify(userClient)` (new) - the factor a Verify call
@@ -275,7 +275,7 @@ Fixed:
   - Added `mfaStatusController` / `customerMfaStatusController`.
   - Added `mfaUnenrollController` / `customerMfaUnenrollController` (new) -
     returns `{ removed: string[], failed: { factorId, message }[] }`; 400s
-    only if *nothing* could be removed.
+    only if _nothing_ could be removed.
 - New routes: `GET /auth/staff/mfa/status`, `GET /auth/customers/mfa/status`
   (read-only, no side effects), `POST /auth/staff/mfa/unenroll`,
   `POST /auth/customers/mfa/unenroll` (new). All four are `jwtMiddleware`-gated.
@@ -315,7 +315,7 @@ Fixed:
   the existing `SessionExpiryModal`) that wraps `TotpEnrollPanel` for the
   mandatory Admin/Superadmin flow.
 - `client/src/shared/components/TotpChallengeForm/` (new) - code-entry-only
-  counterpart to `TotpEnrollPanel`, for verifying an *already-enrolled*
+  counterpart to `TotpEnrollPanel`, for verifying an _already-enrolled_
   factor at login time (no QR/secret, no `enrollMfa()` call).
 - `client/src/features/auth/customer/pages/CustomerMfaChallengePage/` (new) +
   route `/portal/mfa/verify` (standalone, outside `CustomerAuthGuard`, mirrors
@@ -366,7 +366,7 @@ Fixed:
     redirecting to the role-appropriate login page. This is the only sign-out
     entry point in the app so far.
 - Routes: `GET /staff/settings` (behind `StaffAuthGuard`), `GET
-  /portal/settings` (behind `CustomerAuthGuard`), and `GET /portal/mfa/verify`
+/portal/settings` (behind `CustomerAuthGuard`), and `GET /portal/mfa/verify`
   (standalone, Sixth Round), rendering `SettingsPage`/`CustomerMfaChallengePage`
   respectively. The `/staff` and `/portal` placeholder pages got a plain
   `Settings` link to reach them.
@@ -552,7 +552,7 @@ Use the Postman collection in:
 
 1. Run **Regression - Fresh Admin Login** (the never-enrolled account).
 2. Run **Regression - Verify Without Enrolling First (expected 400)**. Confirm
-   `400` with `error: "No TOTP factor found"`. This is *supposed* to fail this
+   `400` with `error: "No TOTP factor found"`. This is _supposed_ to fail this
    way for a never-enrolled account - that's what the mandatory setup popup
    and the Settings enrollment flow now exist to prevent. If you see this same
    error for an account that already completed Enroll+Verify, use the
