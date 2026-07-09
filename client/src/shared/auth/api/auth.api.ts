@@ -24,7 +24,13 @@ export function getSupabaseClient() {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // Handled manually in customerAuth.api.ts's handleOAuthCallback().
+      // With this on, the SDK auto-consumes and strips the OAuth redirect's
+      // URL fragment the moment any auth call runs (e.g. AuthProvider's own
+      // getSession() on mount) - which races ahead of the callback page and
+      // silently discards a failed exchange's error before our code can
+      // read it.
+      detectSessionInUrl: false,
     },
   });
 
