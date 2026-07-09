@@ -129,16 +129,16 @@ This was tracked all the way to ground truth, without any more guessing:
 3. Facebook's **Graph API Explorer** (`developers.facebook.com/tools/explorer`),
    using the Golden Fur app with a freshly generated user token that
    explicitly included the `email` permission, called `GET
-   /me?fields=id,name,email` directly against Facebook - bypassing this
+/me?fields=id,name,email` directly against Facebook - bypassing this
    app and Supabase entirely. The response came back as `{"id": "...",
-   "name": "Matthew Escandor Sta Ana"}` - **no `email` key at all**, even
+"name": "Matthew Escandor Sta Ana"}` - **no `email` key at all**, even
    though the permission was granted and Facebook's Account Center listed
    an email address for the account.
 
 This is conclusive: Facebook itself will not hand over an email for this
 account through its own API, regardless of what this app, Supabase, or the
 requested OAuth scope do. Per Meta's documented behavior, the `email`
-permission only returns a value for a *confirmed* email - Account Center
+permission only returns a value for a _confirmed_ email - Account Center
 listing an address is not the same as Facebook's Graph API treating it as
 confirmed. The fix on the Facebook side (not this repo) is to remove and
 re-add the email in Accounts Center > Personal details > Contact info,
@@ -217,7 +217,7 @@ Expected result (confirmed while making this change):
    sessionStorage marker may or may not survive the round trip. Note: this
    will still fail with "Your account has no confirmed email address from
    this sign-in provider..." until the Facebook account being tested with
-   has a *confirmed* email (see the Fourth Round above) - that is a
+   has a _confirmed_ email (see the Fourth Round above) - that is a
    Facebook-account-side prerequisite, not something this app's code can
    route around.
 3. Repeat with **Continue with Google** and confirm the same success path
@@ -228,7 +228,7 @@ Expected result (confirmed while making this change):
    `sessionStorage.removeItem('oauthProvider')`, then navigate to
    `http://localhost:5173/auth/callback#access_token=<any value>&refresh_token=<any value>`
    (a fake token is enough to reach `setSession()`; expect Supabase to
-   reject it, but the app should now show *that* rejection - not the old
+   reject it, but the app should now show _that_ rejection - not the old
    "no provider stored" short-circuit which would have returned instantly
    without ever calling `setSession()`).
 5. To exercise the new `422` path directly without a real Facebook account:
@@ -237,9 +237,9 @@ Expected result (confirmed while making this change):
    temporarily point a test request at `/auth/customers/oauth/callback`
    with a valid bearer token for a no-email user. Confirm the response is
    `422` with a body containing `"Your account has no confirmed email
-   address from this sign-in provider..."`, and that the callback page
+address from this sign-in provider..."`, and that the callback page
    displays that exact message rather than a generic one.
-6. If Facebook/Google login still fails after this fix with a *different*
+6. If Facebook/Google login still fails after this fix with a _different_
    message than the ones described above, that message is genuine - from
    `setSession()`, from `mergeOrCreate()`, or from the backend callback
    endpoint - use it to decide the next step, not guesswork.

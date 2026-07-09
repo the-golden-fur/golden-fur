@@ -199,7 +199,8 @@ export async function handleOAuthCallback(): Promise<
   if (setSessionError || !setSessionData.session) {
     return {
       data: null,
-      error: setSessionError?.message ?? 'OAuth session could not be established',
+      error:
+        setSessionError?.message ?? 'OAuth session could not be established',
     };
   }
 
