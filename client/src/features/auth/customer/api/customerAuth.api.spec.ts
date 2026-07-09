@@ -8,19 +8,20 @@ vi.mock('../../../../shared/auth/api/auth.api', () => ({
 
 describe('customerAuth.api', () => {
   const fetchMock = vi.fn<typeof fetch>();
-  const getSessionMock = vi.fn();
+  const setSessionMock = vi.fn();
   const signInWithOAuthMock = vi.fn();
 
   beforeEach(() => {
     fetchMock.mockReset();
-    getSessionMock.mockReset();
+    setSessionMock.mockReset();
     signInWithOAuthMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
     window.sessionStorage.clear();
+    window.location.hash = '';
 
     vi.mocked(getSupabaseClient).mockReturnValue({
       auth: {
-        getSession: getSessionMock,
+        setSession: setSessionMock,
         signInWithOAuth: signInWithOAuthMock,
       },
     } as never);
@@ -39,8 +40,10 @@ describe('customerAuth.api', () => {
 
   it('resolves the stored provider and merge status after a successful callback', async () => {
     window.sessionStorage.setItem('oauthProvider', 'google');
-    getSessionMock.mockResolvedValue({
+    window.location.hash = '#access_token=access&refresh_token=refresh';
+    setSessionMock.mockResolvedValue({
       data: { session: { access_token: 'access', refresh_token: 'refresh' } },
+      error: null,
     });
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ action: 'merged' }), { status: 200 })
@@ -48,6 +51,10 @@ describe('customerAuth.api', () => {
 
     const result = await handleOAuthCallback();
 
+    expect(setSessionMock).toHaveBeenCalledWith({
+      access_token: 'access',
+      refresh_token: 'refresh',
+    });
     expect(result.error).toBeNull();
     expect(result.data).toEqual({
       provider: 'google',
@@ -56,20 +63,82 @@ describe('customerAuth.api', () => {
       refresh_token: 'refresh',
     });
     expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
+    expect(window.location.hash).toBe('');
   });
 
-  it('returns an error when no OAuth provider was stored for the callback', async () => {
+  it('still establishes the session from the fragment tokens when the sessionStorage marker was lost in the redirect', async () => {
+    // Regression test: observed in manual testing that this marker does not
+    // reliably survive the redirect through Facebook and back (browser
+    // privacy protections can clear it), even though Supabase's own
+    // redirect Location header carried valid tokens the whole time. The
+    // fragment's tokens, not this marker, must be what gates success.
+    window.location.hash = '#access_token=access&refresh_token=refresh';
+    setSessionMock.mockResolvedValue({
+      data: { session: { access_token: 'access', refresh_token: 'refresh' } },
+      error: null,
+    });
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ action: 'created' }), { status: 200 })
+    );
+
+    const result = await handleOAuthCallback();
+
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual({
+      provider: null,
+      merged: false,
+      access_token: 'access',
+      refresh_token: 'refresh',
+    });
+  });
+
+  it('surfaces the provider-level error from the URL fragment before establishing a session', async () => {
+    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.location.hash =
+      '#error=server_error&error_description=Error+getting+user+email+from+external+provider';
+
+    const result = await handleOAuthCallback();
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBe(
+      'Error getting user email from external provider'
+    );
+    expect(setSessionMock).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
+  });
+
+  it('returns an error when the fragment carries no tokens and no error', async () => {
+    window.sessionStorage.setItem('oauthProvider', 'facebook');
+
     const result = await handleOAuthCallback();
 
     expect(result.data).toBeNull();
     expect(result.error).toBe('OAuth session could not be established');
-    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(setSessionMock).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
+  });
+
+  it('surfaces the real error when setSession rejects the tokens', async () => {
+    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.location.hash = '#access_token=access&refresh_token=refresh';
+    setSessionMock.mockResolvedValue({
+      data: { session: null },
+      error: { message: 'Invalid refresh token' },
+    });
+
+    const result = await handleOAuthCallback();
+
+    expect(result.data).toBeNull();
+    expect(result.error).toBe('Invalid refresh token');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns the backend error when the callback request fails', async () => {
     window.sessionStorage.setItem('oauthProvider', 'facebook');
-    getSessionMock.mockResolvedValue({
+    window.location.hash = '#access_token=access&refresh_token=refresh';
+    setSessionMock.mockResolvedValue({
       data: { session: { access_token: 'access', refresh_token: 'refresh' } },
+      error: null,
     });
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: 'Invalid token' }), {

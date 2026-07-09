@@ -88,6 +88,7 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/auth/callback`,
+      scopes: 'email profile',
     },
   });
 
@@ -110,6 +111,10 @@ export async function signInWithFacebook() {
     provider: 'facebook',
     options: {
       redirectTo: `${window.location.origin}/auth/callback`,
+      // Supabase needs an email to create/match the user; without an
+      // explicit scope, Facebook may only return public_profile and the
+      // exchange fails silently on Supabase's side.
+      scopes: 'email',
     },
   });
 
@@ -117,6 +122,42 @@ export async function signInWithFacebook() {
     data: null,
     error: error?.message ?? null,
   };
+}
+
+/**
+ * Supabase's OAuth redirect appends the result to the URL fragment
+ * (#access_token=...&refresh_token=... on success, or
+ * #error=...&error_description=... on failure) rather than to the query
+ * string. detectSessionInUrl is off (see auth.api.ts), so nothing consumes
+ * this fragment automatically - we own reading it, and must clear it
+ * ourselves once read so tokens don't linger in the URL/history.
+ */
+function readAndClearOAuthHash(): URLSearchParams {
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const params = new URLSearchParams(hash);
+
+  window.history.replaceState(
+    null,
+    '',
+    window.location.pathname + window.location.search
+  );
+
+  return params;
+}
+
+function readOAuthErrorFromParams(params: URLSearchParams): string | null {
+  const description = params.get('error_description');
+  const code = params.get('error');
+
+  if (description) {
+    return decodeURIComponent(description.replace(/\+/g, ' '));
+  }
+  if (code) {
+    return code;
+  }
+  return null;
 }
 
 export async function handleOAuthCallback(): Promise<
@@ -128,18 +169,42 @@ export async function handleOAuthCallback(): Promise<
     return { data: null, error: 'Supabase client is not configured' };
   }
 
+  const hashParams = readAndClearOAuthHash();
+  // Best-effort only: this sessionStorage marker does not reliably survive
+  // the redirect through the OAuth provider and back (observed cleared by
+  // the browser in production testing), so it must never gate whether we
+  // attempt to establish the session - the fragment's own tokens are the
+  // authoritative signal that a callback is actually in progress.
   const provider = getStoredOAuthProvider();
+  clearStoredOAuthProvider();
 
-  if (!provider) {
+  const providerError = readOAuthErrorFromParams(hashParams);
+  if (providerError) {
+    return { data: null, error: providerError };
+  }
+
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+
+  if (!accessToken || !refreshToken) {
     return { data: null, error: 'OAuth session could not be established' };
   }
 
-  const sessionResponse = await client.auth.getSession();
-  const session = sessionResponse.data?.session;
+  const { data: setSessionData, error: setSessionError } =
+    await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
 
-  if (!session?.access_token) {
-    return { data: null, error: 'OAuth session could not be established' };
+  if (setSessionError || !setSessionData.session) {
+    return {
+      data: null,
+      error:
+        setSessionError?.message ?? 'OAuth session could not be established',
+    };
   }
+
+  const session = setSessionData.session;
 
   const response = await fetch(
     `${API_BASE_URL}${AUTH_PREFIX}/customers/oauth/callback`,
@@ -155,8 +220,6 @@ export async function handleOAuthCallback(): Promise<
     action?: string;
     error?: string;
   } | null;
-
-  clearStoredOAuthProvider();
 
   if (!response.ok) {
     const errorMessage =

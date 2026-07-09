@@ -10,7 +10,10 @@ export interface CustomerLoginPayload {
 }
 
 export interface OAuthCallbackResult {
-  provider: 'google' | 'facebook';
+  // Only known when sessionStorage's OAuth marker survived the redirect
+  // chain back from the provider; the session is established from the
+  // callback's URL tokens either way, so this is informational only.
+  provider: 'google' | 'facebook' | null;
   merged: boolean;
   access_token: string;
   refresh_token: string;
