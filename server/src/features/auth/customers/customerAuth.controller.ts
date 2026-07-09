@@ -6,7 +6,10 @@ import {
   customerLoginValidator,
   customerTotpValidator,
 } from './modules/validators/customerAuth.validator.ts';
-import { mergeOrCreate } from './services/accountMerge.service.ts';
+import {
+  mergeOrCreate,
+  MissingProviderEmailError,
+} from './services/accountMerge.service.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import {
   checkMfaLockout,
@@ -319,6 +322,13 @@ export async function customerOauthCallbackController(
       profile: result.profile,
     });
   } catch (error: any) {
+    if (error instanceof MissingProviderEmailError) {
+      return res.status(422).json({
+        error:
+          'Your account has no confirmed email address from this sign-in provider. Please confirm an email address with that provider, or sign in with a different method.',
+      });
+    }
+
     return res
       .status(500)
       .json({ error: error.message || 'Internal server error' });

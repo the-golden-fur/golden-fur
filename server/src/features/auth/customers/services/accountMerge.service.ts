@@ -2,6 +2,20 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
 
 /**
+ * Thrown when the OAuth provider (e.g. Facebook) never handed Supabase an
+ * email for this identity - typically an unconfirmed provider-side email,
+ * not a bug in this app. Kept distinct from other failures so the
+ * controller can respond with a clear, actionable message instead of a
+ * generic 500.
+ */
+export class MissingProviderEmailError extends Error {
+  constructor() {
+    super('Email is required for account merge');
+    this.name = 'MissingProviderEmailError';
+  }
+}
+
+/**
  * Handles merging OAuth identities or creating new customer profiles.
  * Looks up existing customer_profiles by account_email.
  * If found: updates primary_auth_provider and facebook_id.
@@ -17,7 +31,7 @@ export async function mergeOrCreate(session: Session) {
     user.user_metadata.provider_id || user.user_metadata.sub || null;
 
   if (!email) {
-    throw new Error('Email is required for account merge');
+    throw new MissingProviderEmailError();
   }
 
   // Check if a customer profile already exists for this email

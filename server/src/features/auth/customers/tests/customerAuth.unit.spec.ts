@@ -45,6 +45,7 @@ vi.mock('@supabase/supabase-js', () => ({
 
 vi.mock('../services/accountMerge.service.ts', () => ({
   mergeOrCreate: vi.fn(),
+  MissingProviderEmailError: class MissingProviderEmailError extends Error {},
 }));
 
 vi.mock('../../../../shared/services/mfaLockout/mfaLockout.service.ts', () => ({
@@ -466,6 +467,29 @@ describe('customerAuth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ success: true, action: 'merged' })
+      );
+    });
+
+    it('returns 422 with a clear message when the provider gave no email', async () => {
+      const req = mockRequest({}, { authorization: 'Bearer valid-token' });
+      const res = mockResponse();
+
+      (supabase.auth.getUser as any).mockResolvedValue({
+        data: { user: { id: 'user-id', email: undefined } },
+        error: null,
+      });
+
+      (accountMergeService.mergeOrCreate as any).mockRejectedValue(
+        new accountMergeService.MissingProviderEmailError()
+      );
+
+      await customerOauthCallbackController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('no confirmed email address'),
+        })
       );
     });
   });
