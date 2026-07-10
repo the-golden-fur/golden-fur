@@ -1,7 +1,9 @@
-import type { Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import multer from 'multer';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { updateStaffProfileValidator } from './modules/validators/staff.validator.ts';
+import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
 import { ADMIN_ROLES } from './staff.types.ts';
 
 export async function listStaffController(
@@ -41,7 +43,9 @@ export async function getStaffProfileController(
   const requesterId = req.user?.sub;
   const requesterRole = req.user?.role;
   const requesterBranchId = req.user?.branch_id;
-  const targetId = req.params.id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
 
   if (!requesterId || !requesterRole) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -83,6 +87,78 @@ export async function getStaffProfileController(
   }
 }
 
+export function handleAvatarUploadError(
+  err: unknown,
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large' });
+    }
+
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (err) {
+    return res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : 'Upload failed' });
+  }
+
+  return next();
+}
+
+export async function uploadAvatarController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const targetId = (
+    Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+  ) as string;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const file = req.file as
+    | {
+        buffer: Buffer;
+        mimetype: string;
+        originalname: string;
+        size: number;
+      }
+    | undefined;
+
+  if (!file) {
+    return res.status(400).json({ error: 'No file provided' });
+  }
+
+  try {
+    const result = await uploadStaffAvatar({
+      requesterId,
+      requesterRole,
+      targetId,
+      file,
+    });
+
+    return res.status(200).json({ profile_photo_url: result.avatarUrl });
+  } catch (error) {
+    const statusCode =
+      error instanceof Error && 'statusCode' in error
+        ? Number((error as Error & { statusCode?: number }).statusCode)
+        : 500;
+
+    const message =
+      error instanceof Error ? error.message : 'Internal server error';
+
+    return res.status(statusCode).json({ error: message });
+  }
+}
+
 export async function updateStaffProfileController(
   req: AuthenticatedRequest,
   res: Response
@@ -90,7 +166,9 @@ export async function updateStaffProfileController(
   const requesterId = req.user?.sub;
   const requesterRole = req.user?.role;
   const requesterBranchId = req.user?.branch_id;
-  const targetId = req.params.id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
 
   if (!requesterId || !requesterRole) {
     return res.status(401).json({ error: 'Unauthorized' });
