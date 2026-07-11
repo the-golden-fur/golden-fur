@@ -145,17 +145,21 @@ describe('CustomerAuthGuard', () => {
       error: null,
     });
 
+    // aal is a JWT claim, not a session.user field - encode a fake token
+    // whose payload carries { aal: 'aal2' }.
+    const aal2Token = 'header.eyJhYWwiOiJhYWwyIn0=.sig';
+
     renderGuard(
       createAuthValue({
         session: {
-          access_token: 'access',
+          access_token: aal2Token,
           refresh_token: 'refresh',
           expires_in: 3600,
           token_type: 'bearer',
-          user: { id: 'user-1', email: 'customer@example.com', aal: 'aal2' },
+          user: { id: 'user-1', email: 'customer@example.com' },
         },
         user: { id: 'user-1', email: 'customer@example.com' },
-        accessToken: 'access',
+        accessToken: aal2Token,
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 

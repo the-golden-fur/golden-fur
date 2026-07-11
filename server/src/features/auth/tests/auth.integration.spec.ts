@@ -12,6 +12,17 @@ vi.mock('../../../config/supabase/supabase.config', () => ({
     },
   },
 }));
+
+const mockSignInClient = {
+  auth: {
+    signInWithPassword: vi.fn(),
+  },
+};
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => mockSignInClient),
+}));
+
 describe('staff auth routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -29,7 +40,7 @@ describe('staff auth routes', () => {
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
         session: {
           access_token: 'acc',
@@ -53,7 +64,7 @@ describe('staff auth routes', () => {
   });
 
   it('returns tokens for valid staff email credentials', async () => {
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
         session: {
           access_token: 'acc',
@@ -70,7 +81,7 @@ describe('staff auth routes', () => {
 
     expect(response.status).toBe(200);
     expect(supabase.from).not.toHaveBeenCalled();
-    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+    expect(mockSignInClient.auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'demo@example.com',
       password: 'password123',
     });
@@ -105,7 +116,7 @@ describe('staff auth routes', () => {
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: { session: null },
       error: new Error('Invalid login credentials'),
     } as any);

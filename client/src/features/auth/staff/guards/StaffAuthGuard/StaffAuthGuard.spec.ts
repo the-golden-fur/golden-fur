@@ -206,20 +206,25 @@ describe('StaffAuthGuard', () => {
     expect(screen.getByText('Protected staff area')).toBeInTheDocument();
   });
 
+  // aal is a JWT claim, not a session.user field - encode a fake token whose
+  // payload carries { aal: 'aal2' } so these unrelated timeout tests don't
+  // get redirected to the MFA challenge page.
+  const aal2Token = 'header.eyJhYWwiOiJhYWwyIn0=.sig';
+
   it('shows a session-expiry warning before the role threshold elapses', () => {
     vi.useFakeTimers();
 
     renderGuard(
       createAuthValue({
         session: {
-          access_token: 'access',
+          access_token: aal2Token,
           refresh_token: 'refresh',
           expires_in: 3600,
           token_type: 'bearer',
-          user: { id: 'user-1', email: 'admin@example.com', aal: 'aal2' },
+          user: { id: 'user-1', email: 'admin@example.com' },
         },
         user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
-        accessToken: 'access',
+        accessToken: aal2Token,
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
@@ -239,14 +244,14 @@ describe('StaffAuthGuard', () => {
     renderGuard(
       createAuthValue({
         session: {
-          access_token: 'access',
+          access_token: aal2Token,
           refresh_token: 'refresh',
           expires_in: 3600,
           token_type: 'bearer',
-          user: { id: 'user-1', email: 'admin@example.com', aal: 'aal2' },
+          user: { id: 'user-1', email: 'admin@example.com' },
         },
         user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
-        accessToken: 'access',
+        accessToken: aal2Token,
         signOut,
       } as Partial<AuthContextValue> as AuthContextValue)
     );

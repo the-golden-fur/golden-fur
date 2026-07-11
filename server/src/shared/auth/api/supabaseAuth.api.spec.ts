@@ -26,6 +26,20 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   },
 }));
 
+const mockSignInClient = {
+  auth: {
+    signInWithPassword: vi.fn(),
+  },
+};
+
+vi.mock('@supabase/supabase-js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@supabase/supabase-js')>();
+  return {
+    ...actual,
+    createClient: vi.fn(() => mockSignInClient),
+  };
+});
+
 describe('supabaseAuth.api', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,18 +87,19 @@ describe('supabaseAuth.api', () => {
   });
 
   describe('signInWithPassword', () => {
-    it('delegates to supabase.auth.signInWithPassword', async () => {
-      vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    it('delegates to a throwaway client, not the shared service-role singleton', async () => {
+      mockSignInClient.auth.signInWithPassword.mockResolvedValue({
         data: { session: { access_token: 'acc' } },
         error: null,
       } as any);
 
       const result = await signInWithPassword('staff@example.com', 'pw');
 
-      expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      expect(mockSignInClient.auth.signInWithPassword).toHaveBeenCalledWith({
         email: 'staff@example.com',
         password: 'pw',
       });
+      expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
       expect(result.data.session).toEqual({ access_token: 'acc' });
     });
   });
@@ -220,6 +235,7 @@ describe('supabaseAuth.api', () => {
       expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
       expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
         factorType: 'totp',
+        issuer: 'Golden Fur',
       });
       expect(data).toEqual({ id: 'new-factor', type: 'totp' });
     });
@@ -246,6 +262,7 @@ describe('supabaseAuth.api', () => {
       });
       expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
         factorType: 'totp',
+        issuer: 'Golden Fur',
       });
     });
 
@@ -277,6 +294,7 @@ describe('supabaseAuth.api', () => {
       expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
       expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
         factorType: 'totp',
+        issuer: 'Golden Fur',
       });
     });
 

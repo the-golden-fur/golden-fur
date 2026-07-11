@@ -6,6 +6,7 @@ import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityT
 import { UnavailabilityStatusBadge } from '../../../../staff/components/UnavailabilityStatusBadge/UnavailabilityStatusBadge';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
+import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {
   Superadmin: 30 * 60 * 1000,
@@ -89,7 +90,7 @@ export function StaffAuthGuard() {
     return <Navigate to="/staff/login" replace state={{ from: location }} />;
   }
 
-  const aal = (session.user as { aal?: string } | undefined)?.aal;
+  const aal = getSessionAal(session);
   const sessionFlagPending =
     window.sessionStorage.getItem('staffMfaPending') === 'true';
   // Mandatory roles always need aal2. Everyone else only needs it once

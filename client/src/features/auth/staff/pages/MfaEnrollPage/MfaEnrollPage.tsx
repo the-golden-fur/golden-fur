@@ -1,7 +1,12 @@
-import { MfaEnrollForm } from '../../components/forms/MfaEnrollForm/MfaEnrollForm';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { TotpEnrollPanel } from '../../../../../shared/components/TotpEnrollPanel/TotpEnrollPanel';
 import styles from '../StaffLoginPage/StaffLoginPage.module.css';
 
 export function MfaEnrollPage() {
+  const navigate = useNavigate();
+  const { accessToken } = useAuth();
+
   return (
     <main className={styles.page}>
       <section className={styles.shell} aria-labelledby="mfa-enroll-title">
@@ -14,7 +19,16 @@ export function MfaEnrollPage() {
             authenticator app.
           </p>
         </div>
-        <MfaEnrollForm />
+        {accessToken ? (
+          <TotpEnrollPanel
+            role="staff"
+            accessToken={accessToken}
+            onEnrolled={() => {
+              window.sessionStorage.removeItem('staffMfaPending');
+              navigate('/staff', { replace: true });
+            }}
+          />
+        ) : null}
       </section>
     </main>
   );
