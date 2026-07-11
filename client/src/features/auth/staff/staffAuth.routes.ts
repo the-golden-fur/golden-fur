@@ -46,11 +46,7 @@ export const staffAuthRoutes = createElement(
           createElement(
             'li',
             null,
-            createElement(
-              Link,
-              { to: '/staff/admin/staff' },
-              'Staff Directory'
-            )
+            createElement(Link, { to: '/staff/admin/staff' }, 'Staff Directory')
           )
         )
       ),

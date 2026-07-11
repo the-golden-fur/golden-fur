@@ -96,9 +96,7 @@ describe('AdminStaffListPage', () => {
 
     renderPage();
 
-    expect(
-      await screen.findByText('Staff profile page')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
   });
 
   it('AC-1 & AC-2: renders a StaffCard per staff member for an Admin viewer', async () => {
@@ -107,7 +105,11 @@ describe('AdminStaffListPage', () => {
       data: [
         buildViewerProfile('Admin'),
         buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
-        buildProfile({ id: 'staff-2', display_name: 'Alex Reyes', role: 'Cashier' }),
+        buildProfile({
+          id: 'staff-2',
+          display_name: 'Alex Reyes',
+          role: 'Cashier',
+        }),
       ],
       error: null,
     });
@@ -149,8 +151,16 @@ describe('AdminStaffListPage', () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [
         buildViewerProfile('Admin'),
-        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz', role: 'Groomer' }),
-        buildProfile({ id: 'staff-2', display_name: 'Alex Reyes', role: 'Cashier' }),
+        buildProfile({
+          id: 'staff-1',
+          display_name: 'Jamie Cruz',
+          role: 'Groomer',
+        }),
+        buildProfile({
+          id: 'staff-2',
+          display_name: 'Alex Reyes',
+          role: 'Cashier',
+        }),
       ],
       error: null,
     });

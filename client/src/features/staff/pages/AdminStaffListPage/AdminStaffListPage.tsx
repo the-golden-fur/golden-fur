@@ -184,7 +184,9 @@ export function AdminStaffListPage() {
       ) : null}
 
       {filteredStaff.length === 0 ? (
-        <p className={styles.copy}>No staff members match the selected filters.</p>
+        <p className={styles.copy}>
+          No staff members match the selected filters.
+        </p>
       ) : (
         <div className={styles.grid}>
           {filteredStaff.map((staff) => (
