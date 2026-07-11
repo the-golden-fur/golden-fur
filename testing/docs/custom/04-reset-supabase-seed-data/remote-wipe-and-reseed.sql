@@ -1,15 +1,44 @@
--- Golden Fur local/remote seed data.
--- Runs after all migrations on `supabase db reset` (see supabase/config.toml
--- [db.seed] sql_paths). Rewritten because the previous version inserted a
--- `break_window` value into public.branches, a column dropped by migration
--- 20260701010 — that made every `db reset` fail on a fresh apply.
+-- ============================================================
+-- DESTRUCTIVE — REMOTE ONLY, RUN ONCE, BY EXPLICIT CHOICE
+-- ============================================================
+-- This deletes EVERY staff account, customer account, and branch in
+-- whichever database you run it against, then reseeds fresh test data.
+-- There is no undo. Before running this in the Supabase Studio SQL
+-- Editor, confirm the project switcher in the top bar really is the
+-- project you intend to wipe (org / project / branch).
 --
--- All accounts use the password: password123
--- Staff:    <branch>.<role>N@goldenfur.com  (e.g. makati.admin2@goldenfur.com)
--- Customer: customerN@goldenfur.com
+-- Why this exists: `supabase db push` only applies migration files
+-- (schema), it never runs seed.sql — that's a local-only concept tied
+-- to `supabase db reset`, which drops and recreates the whole local
+-- DB before seeding. There's no CLI equivalent for a linked/remote
+-- project. Pasting supabase/seed.sql directly into the remote SQL
+-- Editor failed with:
+--   ERROR: 23505: duplicate key value violates unique constraint
+--   "branches_name_key" DETAIL: Key (name)=(Makati) already exists.
+-- because the remote project already had real/manually-created rows
+-- (24 customer_profiles rows, existing "Makati"/"Southwoods" branches).
+-- This script clears that data first so the seed can run clean.
+-- ============================================================
+
+begin;
+
+-- Deletes every staff/customer auth.users row; FK ON DELETE CASCADE
+-- takes care of staff_profiles, customer_profiles,
+-- staff_unavailability_blocks, auth.identities, mfa_lockouts, etc.
+delete from auth.users
+where id in (select id from public.staff_profiles)
+   or id in (select id from public.customer_profiles);
+
+-- Safe now — no staff_profiles rows reference these branches anymore
+-- (branches.id <- staff_profiles.branch_id is ON DELETE RESTRICT).
+delete from public.branches;
+
+commit;
 
 -- ============================================================
--- Branches
+-- Reseed — identical to supabase/seed.sql as of this fix. If you've
+-- since changed supabase/seed.sql, copy the current version here
+-- instead of relying on this snapshot.
 -- ============================================================
 
 insert into public.branches (
@@ -37,11 +66,6 @@ values
     '{"monday":{"open":"08:00","close":"17:00"},"tuesday":{"open":"08:00","close":"17:00"},"wednesday":{"open":"08:00","close":"17:00"},"thursday":{"open":"08:00","close":"17:00"},"friday":{"open":"08:00","close":"17:00"},"saturday":{"open":"09:00","close":"14:00"},"sunday":{"open":"10:00","close":"13:00"}}'::jsonb,
     'Asia/Manila'
   );
-
--- ============================================================
--- Staff: 2 accounts per role per branch
--- (branch.roleN@goldenfur.com, e.g. makati.admin2@goldenfur.com)
--- ============================================================
 
 do $$
 declare
@@ -107,10 +131,6 @@ begin
     end loop;
   end loop;
 end $$;
-
--- ============================================================
--- Customers: customer1@goldenfur.com .. customer5@goldenfur.com
--- ============================================================
 
 do $$
 declare
