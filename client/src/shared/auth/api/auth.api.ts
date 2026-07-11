@@ -6,6 +6,34 @@ interface AuthApiResponse<T> {
   error: Error | null;
 }
 
+/**
+ * `aal` (Authenticator Assurance Level) is a claim inside the access token's
+ * JWT payload - it is not a field on `session.user`, unlike what a plain
+ * `session.user.aal` read might suggest. Reading it off `user` always
+ * silently returns `undefined`, which made MFA guards think aal2 was never
+ * reached even right after a successful verify, looping back to the
+ * challenge page forever. Decode it from the token instead.
+ */
+export function getSessionAal(session: Session | null): string | null {
+  const token = session?.access_token;
+  if (!token) {
+    return null;
+  }
+
+  const payload = token.split('.')[1];
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(base64)) as { aal?: string };
+    return decoded.aal ?? null;
+  } catch {
+    return null;
+  }
+}
+
 let authClient: SupabaseClient | null = null;
 
 export function getSupabaseClient() {

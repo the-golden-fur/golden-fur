@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
+import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading } = useAuth();
@@ -38,7 +39,7 @@ export function CustomerAuthGuard() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  const aal = (session.user as { aal?: string } | undefined)?.aal;
+  const aal = getSessionAal(session);
   const sessionFlagPending =
     window.sessionStorage.getItem('customerMfaPending') === 'true';
   const needsAal2 = mfaEnrolled === true && aal !== 'aal2';
