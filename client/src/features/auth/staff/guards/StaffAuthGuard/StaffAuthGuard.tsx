@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
-import { UnavailabilityStatusBadge } from '../../../../staff/components/UnavailabilityStatusBadge/UnavailabilityStatusBadge';
+import { UnavailabilityBlockBadge } from '../../../../staff/components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
@@ -123,10 +123,7 @@ export function StaffAuthGuard() {
   return (
     <>
       <div style={{ padding: '1rem 1rem 0' }}>
-        <UnavailabilityStatusBadge
-          accessToken={accessToken}
-          staffId={user.id}
-        />
+        <UnavailabilityBlockBadge accessToken={accessToken} staffId={user.id} />
       </div>
       <Outlet />
       <SessionExpiryModal
