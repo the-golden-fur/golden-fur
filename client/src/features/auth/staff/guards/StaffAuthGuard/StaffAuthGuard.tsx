@@ -4,6 +4,7 @@ import { SessionExpiryModal } from '../../../../../shared/components/SessionExpi
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
 import { UnavailabilityBlockBadge } from '../../../../staff/components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
+import { getStaffProfile } from '../../../../staff/api/staff.api';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
@@ -19,23 +20,6 @@ const ROLE_TIMEOUT_MS: Record<string, number> = {
   'Pet Assistant': 8 * 60 * 60 * 1000,
 };
 
-function getStaffRole(user: { role?: string | null; app_metadata?: unknown }) {
-  if (user.role) {
-    return user.role;
-  }
-
-  if (
-    user.app_metadata &&
-    typeof user.app_metadata === 'object' &&
-    'role' in user.app_metadata
-  ) {
-    const role = user.app_metadata.role;
-    return typeof role === 'string' ? role : null;
-  }
-
-  return null;
-}
-
 function requiresMfa(role: string | null) {
   return role === 'Admin' || role === 'Superadmin';
 }
@@ -44,20 +28,32 @@ export function StaffAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const role = getStaffRole(user ?? {});
-  const thresholdMs = role ? (ROLE_TIMEOUT_MS[role] ?? null) : null;
 
+  // null = not yet known. The Supabase session's user.role is the Postgres
+  // role ("authenticated" for every signed-in user, staff or customer) and
+  // app_metadata never carries an app-level role claim either - so the real
+  // staff_profiles.role has to come from the server, same as mfaEnrolled
+  // below.
+  const [role, setRole] = useState<string | null>(null);
   // null = not yet known. Drives whether an Admin/Superadmin without a TOTP
   // factor sees the mandatory setup popup instead of being redirected to a
   // challenge page that would 400 with "No TOTP factor found".
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
 
+  const thresholdMs = role ? (ROLE_TIMEOUT_MS[role] ?? null) : null;
+
   useEffect(() => {
-    if (!session || !accessToken) {
+    if (!session || !accessToken || !user?.id) {
       return;
     }
 
     let isMounted = true;
+
+    void getStaffProfile(user.id, accessToken).then((result) => {
+      if (isMounted) {
+        setRole(result.data?.role ?? null);
+      }
+    });
 
     void getMfaStatus('staff', accessToken).then((result) => {
       if (isMounted) {
@@ -68,7 +64,7 @@ export function StaffAuthGuard() {
     return () => {
       isMounted = false;
     };
-  }, [session, accessToken]);
+  }, [session, accessToken, user?.id]);
 
   const handleTimeout = useCallback(() => {
     void signOut().finally(() => {

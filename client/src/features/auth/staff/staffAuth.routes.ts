@@ -29,9 +29,26 @@ export const staffAuthRoutes = createElement(
       element: createElement(
         'div',
         null,
-        'Staff dashboard',
-        createElement(Link, { to: '/staff/profile' }, 'My Profile'),
-        createElement(Link, { to: '/staff/settings' }, 'Settings')
+        createElement('p', null, 'Staff dashboard'),
+        createElement(
+          'ul',
+          null,
+          createElement(
+            'li',
+            null,
+            createElement(Link, { to: '/staff/profile' }, 'My Profile')
+          ),
+          createElement(
+            'li',
+            null,
+            createElement(Link, { to: '/staff/settings' }, 'Settings')
+          ),
+          createElement(
+            'li',
+            null,
+            createElement(Link, { to: '/staff/admin/staff' }, 'Staff Directory')
+          )
+        )
       ),
     }),
     createElement(Route, {
