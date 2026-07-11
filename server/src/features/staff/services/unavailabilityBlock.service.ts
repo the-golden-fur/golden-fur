@@ -214,7 +214,10 @@ export async function createUnavailabilityBlock({
     .maybeSingle();
 
   if (error || !data) {
-    throwWithStatus(400, error?.message ?? 'Failed to create unavailability block');
+    throwWithStatus(
+      400,
+      error?.message ?? 'Failed to create unavailability block'
+    );
   }
 
   return data;

@@ -30,8 +30,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.insert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
-    builder.then = (resolve: (_result: QueryResult) => void) =>
-      resolve(result);
+    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
     return builder as never;
   });
@@ -281,7 +280,7 @@ describe('unavailabilityBlock.service', () => {
       expect(result[0]).toMatchObject({ id: 'block-1' });
     });
 
-    it('rejects a non-admin listing another staff member\'s blocks with 403', async () => {
+    it("rejects a non-admin listing another staff member's blocks with 403", async () => {
       await expect(
         listUnavailabilityBlocks({
           requesterId: 'staff-1',

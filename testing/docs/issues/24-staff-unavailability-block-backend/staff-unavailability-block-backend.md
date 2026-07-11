@@ -85,19 +85,19 @@ npm --prefix server run dev
 
 Run requests **in order (1 → 11)**. Each has a **Tests** tab that asserts automatically.
 
-| #   | Request                                                | Expected                                                          |
-| :-- | :------------------------------------------------------ | :----------------------------------------------------------------- |
-| 1   | Login as self                                          | `200`, sets `staff_access_token`                                   |
-| 2   | AC-2: POST custom range block                          | `201`, sets `block_id`, `start_time`/`end_time` match the request  |
-| 3   | AC-3: POST overlapping range                           | `409`                                                               |
-| 4   | AC-5: GET list of blocks                               | `200`, `block_id` present in `blocks`                               |
-| 5   | AC-4: DELETE own block                                 | `204`                                                               |
-| 6   | AC-1: POST quick-action block                          | `201` (or `400` if the branch has no operating hours today — see note below), sets `quick_block_id` |
-| 7   | Cleanup: DELETE quick-action block                     | `204`                                                               |
-| 8   | Login as Admin                                         | `200`, sets `admin_access_token`                                   |
-| 9   | Admin POST block on behalf of peer staff               | `201`, `staff_id` = `peer_staff_id`, `created_by` = admin's id, sets `peer_block_id` |
-| 10  | AC-4: self staff attempts to DELETE peer's block       | `403`                                                               |
-| 11  | AC-4: Admin DELETEs peer's block (cleanup)             | `204`                                                               |
+| #   | Request                                          | Expected                                                                                            |
+| :-- | :----------------------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| 1   | Login as self                                    | `200`, sets `staff_access_token`                                                                    |
+| 2   | AC-2: POST custom range block                    | `201`, sets `block_id`, `start_time`/`end_time` match the request                                   |
+| 3   | AC-3: POST overlapping range                     | `409`                                                                                               |
+| 4   | AC-5: GET list of blocks                         | `200`, `block_id` present in `blocks`                                                               |
+| 5   | AC-4: DELETE own block                           | `204`                                                                                               |
+| 6   | AC-1: POST quick-action block                    | `201` (or `400` if the branch has no operating hours today — see note below), sets `quick_block_id` |
+| 7   | Cleanup: DELETE quick-action block               | `204`                                                                                               |
+| 8   | Login as Admin                                   | `200`, sets `admin_access_token`                                                                    |
+| 9   | Admin POST block on behalf of peer staff         | `201`, `staff_id` = `peer_staff_id`, `created_by` = admin's id, sets `peer_block_id`                |
+| 10  | AC-4: self staff attempts to DELETE peer's block | `403`                                                                                               |
+| 11  | AC-4: Admin DELETEs peer's block (cleanup)       | `204`                                                                                               |
 
 **Note on request 6:** if the branch tied to `staff_id` has no `operating_hours` entry for today's weekday, the API correctly returns `400` — this isn't a bug, it's the "branch closed today" case. Check the `branches` table (Supabase Studio → Table Editor → `branches` → `operating_hours` column) and pick a `staff_id` whose branch is open today if you want to see the `201` path.
 
