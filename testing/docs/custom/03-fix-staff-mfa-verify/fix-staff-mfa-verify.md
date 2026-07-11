@@ -19,7 +19,7 @@ database operation on the server.
 calling `supabase.auth.signInWithPassword(...)` directly **on that shared
 singleton** during every staff login. Supabase-js's `GoTrueClient` defaults to
 `persistSession: true`, so a successful sign-in mutates the client's internal
-session state and - critically - causes all *subsequent* requests issued
+session state and - critically - causes all _subsequent_ requests issued
 through that same client (via `.from(...)`) to be sent with `Authorization:
 Bearer <that user's access token>` instead of the service-role key. In effect,
 the very first staff login on a freshly started server permanently downgrades
@@ -40,12 +40,12 @@ downgraded to the logged-in user's session, that upsert was rejected by
 Postgres with `42501 - new row violates row-level security policy for table
 "mfa_lockouts"`, which `mfaVerifyController`'s catch-all `catch { return
 res.status(500)... }` silently turned into a generic `Internal server error`
-with no logging - hence the opaque 500 in the browser, for *every* code
+with no logging - hence the opaque 500 in the browser, for _every_ code
 (right or wrong).
 
 This bug is **not new** and unrelated to the Facebook/Google OAuth fix
 (commit `35c5a288`) that was originally suspected - it predates it. The exact
-same session-pollution hazard was already found and fixed on the *customer*
+same session-pollution hazard was already found and fixed on the _customer_
 side back in commit `c856477` (#28), which added a `createSignInClient()`
 throwaway-client helper specifically to avoid calling `signInWithPassword` on
 the shared singleton, with a comment explaining why. The equivalent staff-side
@@ -61,7 +61,7 @@ moment any staff login occurs, the same write starts failing with `42501`.
 
 - Added `createSignInClient()` (mirrors `customerAuth.controller.ts`'s
   existing helper) - a throwaway `createClient(SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY)` instance used only for the sign-in call itself
+SUPABASE_SERVICE_ROLE_KEY)` instance used only for the sign-in call itself
   and then discarded.
 - `signInWithPassword(email, password)` now calls
   `createSignInClient().auth.signInWithPassword(...)` instead of
@@ -170,8 +170,8 @@ request.
 
 - This is purely a backend session-management bug; no client-side files were
   touched.
-- If a similar 500 ever resurfaces on the *customer* MFA path, it's `git
-  grep signInWithPassword` first - `customerAuth.controller.ts` already uses
+- If a similar 500 ever resurfaces on the _customer_ MFA path, it's `git
+grep signInWithPassword` first - `customerAuth.controller.ts` already uses
   the safe `createSignInClient()` pattern, so a regression there would mean
   someone reintroduced a direct call on the shared `supabase` singleton.
 
