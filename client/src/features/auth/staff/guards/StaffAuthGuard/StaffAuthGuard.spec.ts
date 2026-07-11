@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as mfaApi from '../../../../../shared/api/mfa.api';
+import * as staffApi from '../../../../staff/api/staff.api';
+import type { StaffProfile } from '../../../../staff/staff.types';
 import { StaffAuthGuard } from './StaffAuthGuard';
 
 vi.mock('../../../../../shared/api/mfa.api', () => ({
@@ -16,6 +18,30 @@ vi.mock('../../../../../shared/api/mfa.api', () => ({
   }),
   verifyMfa: vi.fn(),
 }));
+
+vi.mock('../../../../staff/api/staff.api', () => ({
+  getStaffProfile: vi.fn(),
+}));
+
+function buildProfile(overrides: Partial<StaffProfile> = {}): StaffProfile {
+  return {
+    id: 'user-1',
+    branch_id: 'branch-1',
+    role: 'Groomer',
+    username: 'user1',
+    registered_email: 'user1@example.com',
+    display_name: 'Test User',
+    profile_photo_url: null,
+    phone_number: null,
+    emergency_contact_name: null,
+    emergency_contact_number: null,
+    preferred_communication_channel: null,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function createAuthValue(
   overrides: Partial<AuthContextValue>
@@ -71,6 +97,13 @@ describe('StaffAuthGuard', () => {
       data: { role: null, mfa_enrolled: true },
       error: null,
     });
+    // Default: role unresolved (null data). Tests that depend on a specific
+    // role (mandatory MFA, timeout tier) override this explicitly - role
+    // comes from the server (getStaffProfile), never from the session/JWT.
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: null,
+      error: null,
+    });
   });
 
   afterEach(() => {
@@ -96,7 +129,7 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'admin@example.com' },
         },
-        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        user: { id: 'user-1', email: 'admin@example.com' },
         accessToken: 'access',
       } as Partial<AuthContextValue> as AuthContextValue)
     );
@@ -104,7 +137,20 @@ describe('StaffAuthGuard', () => {
     expect(screen.getByText('MFA challenge')).toBeInTheDocument();
   });
 
-  it('renders protected staff content for authenticated non-MFA staff', () => {
+  it('renders protected staff content for authenticated non-MFA staff', async () => {
+    // "non-MFA staff" means not enrolled - the beforeEach default of
+    // mfa_enrolled: true doesn't fit this test's own name/intent, and would
+    // otherwise correctly redirect to the aal2 challenge once settled (see
+    // the "Mandatory roles..." comment in StaffAuthGuard).
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Groomer' }),
+      error: null,
+    });
+
     renderGuard(
       createAuthValue({
         session: {
@@ -114,17 +160,21 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'staff@example.com' },
         },
-        user: { id: 'user-1', email: 'staff@example.com', role: 'Groomer' },
+        user: { id: 'user-1', email: 'staff@example.com' },
         accessToken: 'access',
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
-    expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+    expect(await screen.findByText('Protected staff area')).toBeInTheDocument();
   });
 
   it('shows the mandatory MFA setup popup for an Admin without an enrolled factor, without redirecting away', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Admin', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Admin' }),
       error: null,
     });
 
@@ -137,7 +187,7 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'admin@example.com' },
         },
-        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        user: { id: 'user-1', email: 'admin@example.com' },
         accessToken: 'access',
       } as Partial<AuthContextValue> as AuthContextValue)
     );
@@ -155,6 +205,10 @@ describe('StaffAuthGuard', () => {
       data: { role: 'Superadmin', mfa_enrolled: true },
       error: null,
     });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Superadmin' }),
+      error: null,
+    });
 
     renderGuard(
       createAuthValue({
@@ -165,7 +219,7 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'super@example.com' },
         },
-        user: { id: 'user-1', email: 'super@example.com', role: 'Superadmin' },
+        user: { id: 'user-1', email: 'super@example.com' },
         accessToken: 'access',
       } as Partial<AuthContextValue> as AuthContextValue)
     );
@@ -176,6 +230,10 @@ describe('StaffAuthGuard', () => {
   it('never shows the MFA setup popup for a Supervisor, even when unenrolled', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Supervisor', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Supervisor' }),
       error: null,
     });
 
@@ -191,13 +249,13 @@ describe('StaffAuthGuard', () => {
         user: {
           id: 'user-1',
           email: 'supervisor@example.com',
-          role: 'Supervisor',
         },
         accessToken: 'access',
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
     await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
+    await waitFor(() => expect(staffApi.getStaffProfile).toHaveBeenCalled());
     expect(
       screen.queryByRole('dialog', {
         name: /set up multi-factor authentication/i,
@@ -211,7 +269,11 @@ describe('StaffAuthGuard', () => {
   // get redirected to the MFA challenge page.
   const aal2Token = 'header.eyJhYWwiOiJhYWwyIn0=.sig';
 
-  it('shows a session-expiry warning before the role threshold elapses', () => {
+  it('shows a session-expiry warning before the role threshold elapses', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Admin' }),
+      error: null,
+    });
     vi.useFakeTimers();
 
     renderGuard(
@@ -223,10 +285,19 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'admin@example.com' },
         },
-        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        user: { id: 'user-1', email: 'admin@example.com' },
         accessToken: aal2Token,
       } as Partial<AuthContextValue> as AuthContextValue)
     );
+
+    // Flush the pending getStaffProfile() microtask (and its setRole update)
+    // before advancing fake timers, so the 30-minute Admin threshold is
+    // already in effect when the clock moves - fake timers don't fake
+    // native Promise microtasks, so this resolves independently of them.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     act(() => {
       vi.advanceTimersByTime(25 * 60 * 1000);
@@ -237,7 +308,11 @@ describe('StaffAuthGuard', () => {
     ).toBeInTheDocument();
   });
 
-  it('signs staff out when the role threshold elapses', () => {
+  it('signs staff out when the role threshold elapses', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Admin' }),
+      error: null,
+    });
     vi.useFakeTimers();
     const signOut = vi.fn().mockResolvedValue(undefined);
 
@@ -250,11 +325,16 @@ describe('StaffAuthGuard', () => {
           token_type: 'bearer',
           user: { id: 'user-1', email: 'admin@example.com' },
         },
-        user: { id: 'user-1', email: 'admin@example.com', role: 'Admin' },
+        user: { id: 'user-1', email: 'admin@example.com' },
         accessToken: aal2Token,
         signOut,
       } as Partial<AuthContextValue> as AuthContextValue)
     );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     act(() => {
       vi.advanceTimersByTime(30 * 60 * 1000);
