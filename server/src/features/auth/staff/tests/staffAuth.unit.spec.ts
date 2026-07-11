@@ -32,8 +32,18 @@ const mockUserClient = {
   },
 };
 
+const mockSignInClient = {
+  auth: {
+    signInWithPassword: vi.fn(),
+  },
+};
+
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => mockUserClient),
+  // getUserClient() passes a third `options` arg (forwarding the caller's
+  // bearer token); createSignInClient() doesn't - use that to tell them apart.
+  createClient: vi.fn((..._args: unknown[]) =>
+    _args.length > 2 ? mockUserClient : mockSignInClient
+  ),
 }));
 
 vi.mock('../../../../shared/services/mfaLockout/mfaLockout.service.ts', () => ({
@@ -94,7 +104,7 @@ describe('staffLoginController', () => {
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: { session: null },
       error: new Error('Invalid login credentials'),
     } as any);
@@ -116,7 +126,7 @@ describe('staffLoginController', () => {
     });
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
         session: {
           access_token: 'acc',
@@ -139,7 +149,7 @@ describe('staffLoginController', () => {
   it('signs in directly when the staff identifier is an email', async () => {
     req.body = { identifier: 'test@example.com', password: 'password123' };
 
-    vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
         session: {
           access_token: 'acc',
@@ -153,7 +163,7 @@ describe('staffLoginController', () => {
     await staffLoginController(req as Request, res as Response);
 
     expect(supabase.from).not.toHaveBeenCalled();
-    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+    expect(mockSignInClient.auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'test@example.com',
       password: 'password123',
     });

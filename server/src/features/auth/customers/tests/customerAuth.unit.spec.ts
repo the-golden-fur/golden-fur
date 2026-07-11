@@ -205,6 +205,7 @@ describe('customerAuth.controller', () => {
 
       expect(mockUserClient.auth.mfa.enroll).toHaveBeenCalledWith({
         factorType: 'totp',
+        issuer: 'Golden Fur',
       });
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ id: 'factor-id', type: 'totp' });

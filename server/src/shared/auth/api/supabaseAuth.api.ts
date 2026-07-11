@@ -1,5 +1,17 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+
+// signInWithPassword mutates the calling client's internal session state, so it
+// must never be called on the shared `supabase` (service-role) singleton - doing
+// so would silently downgrade every subsequent request on the process from
+// service-role to that staff member's RLS-restricted session. Use a throwaway
+// client, mirroring customerAuth.controller.ts's createSignInClient().
+function createSignInClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export interface CreateCustomerProfileFields {
   id: string;
@@ -36,7 +48,7 @@ export async function resolveStaffLoginIdentifier(
 }
 
 export async function signInWithPassword(email: string, password: string) {
-  return supabase.auth.signInWithPassword({ email, password });
+  return createSignInClient().auth.signInWithPassword({ email, password });
 }
 
 export async function getStaffRole(userId: string) {
@@ -146,16 +158,25 @@ export async function enrollTotpFactor(userClient: SupabaseClient) {
     Boolean(message?.toLowerCase().includes('already exists'));
 
   await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-  let result = await userClient.auth.mfa.enroll({ factorType: 'totp' });
+  let result = await userClient.auth.mfa.enroll({
+    factorType: 'totp',
+    issuer: 'Golden Fur',
+  });
 
   if (isConflict(result.error?.message)) {
     await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-    result = await userClient.auth.mfa.enroll({ factorType: 'totp' });
+    result = await userClient.auth.mfa.enroll({
+      factorType: 'totp',
+      issuer: 'Golden Fur',
+    });
   }
 
   if (isConflict(result.error?.message)) {
     await unenrollTotpFactorsByStatus(userClient, ['verified', 'unverified']);
-    result = await userClient.auth.mfa.enroll({ factorType: 'totp' });
+    result = await userClient.auth.mfa.enroll({
+      factorType: 'totp',
+      issuer: 'Golden Fur',
+    });
   }
 
   return result;
