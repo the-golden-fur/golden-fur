@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Supabase CLI local state (per-machine, not project config)
+supabase/.branches/
+supabase/.temp/
