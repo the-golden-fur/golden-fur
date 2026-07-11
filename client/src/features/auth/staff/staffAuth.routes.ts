@@ -30,6 +30,7 @@ export const staffAuthRoutes = createElement(
         'div',
         null,
         'Staff dashboard',
+        createElement(Link, { to: '/staff/profile' }, 'My Profile'),
         createElement(Link, { to: '/staff/settings' }, 'Settings')
       ),
     }),
