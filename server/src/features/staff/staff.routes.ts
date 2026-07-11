@@ -4,8 +4,11 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  cancelUnavailabilityBlockController,
+  createUnavailabilityBlockController,
   handleAvatarUploadError,
   listStaffController,
+  listUnavailabilityBlocksController,
   getStaffProfileController,
   updateStaffProfileController,
   uploadAvatarController,
@@ -50,6 +53,30 @@ router.post(
   avatarUpload.single('avatar'),
   handleAvatarUploadError,
   uploadAvatarController
+);
+
+router.post(
+  '/staff/:id/unavailability',
+  jwtMiddleware,
+  requireRole([...ALL_STAFF_ROLES]),
+  requireBranch,
+  createUnavailabilityBlockController
+);
+
+router.get(
+  '/staff/:id/unavailability',
+  jwtMiddleware,
+  requireRole([...ALL_STAFF_ROLES]),
+  requireBranch,
+  listUnavailabilityBlocksController
+);
+
+router.delete(
+  '/staff/:id/unavailability/:blockId',
+  jwtMiddleware,
+  requireRole([...ALL_STAFF_ROLES]),
+  requireBranch,
+  cancelUnavailabilityBlockController
 );
 
 export default router;

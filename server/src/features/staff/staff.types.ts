@@ -31,3 +31,13 @@ export interface StaffProfile {
   created_at: string;
   updated_at: string;
 }
+
+export interface UnavailabilityBlock {
+  id: string;
+  staff_id: string;
+  start_time: string;
+  end_time: string;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+}
