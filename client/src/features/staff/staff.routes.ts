@@ -1,6 +1,7 @@
 import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
+import { AdminStaffListPage } from './pages/AdminStaffListPage/AdminStaffListPage';
 import { StaffProfilePage } from './pages/StaffProfilePage/StaffProfilePage';
 
 export const staffRoutes = createElement(
@@ -12,6 +13,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/profile',
       element: createElement(StaffProfilePage),
+    }),
+    createElement(Route, {
+      path: '/staff/admin/staff',
+      element: createElement(AdminStaffListPage),
     })
   )
 );
