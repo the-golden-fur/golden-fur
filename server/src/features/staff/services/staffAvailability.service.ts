@@ -275,11 +275,7 @@ export async function getStaffAvailability({
     }
 
     const openInstant = localDateTimeToInstant(timezone, dateStr, hours.open);
-    const closeInstant = localDateTimeToInstant(
-      timezone,
-      dateStr,
-      hours.close
-    );
+    const closeInstant = localDateTimeToInstant(timezone, dateStr, hours.close);
 
     if (closeInstant <= openInstant) {
       return { date: dateStr, availableWindows: [] };

@@ -95,7 +95,6 @@ Needed because AC-1, AC-3, and AC-5 depend on real DB behavior (the `status` col
    and run it. This script creates a test staff member and three unavailability blocks (one admin-created "on behalf of" block, one self-requested custom-range block, one self-requested block that's then marked denied), then checks the trigger assigned statuses correctly and that a `status = 'approved'` filter (the same filter `staffAvailability.service.ts` uses) includes only the on-behalf-of block.
 
 4. **Confirm the expected results** (shown as a single result row):
-
    - `approved_block_status` = `approved`
    - `pending_block_status` = `pending`
    - `denied_block_status` = `denied`
