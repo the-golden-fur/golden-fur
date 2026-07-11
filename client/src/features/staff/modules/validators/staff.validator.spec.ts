@@ -1,0 +1,103 @@
+import { describe, expect, it } from 'vitest';
+import {
+  avatarFileSchema,
+  createUnavailabilityBlockValidator,
+  updateStaffProfileValidator,
+} from './staff.validator';
+
+describe('updateStaffProfileValidator', () => {
+  it('accepts a partial, valid payload', () => {
+    const result = updateStaffProfileValidator.safeParse({
+      display_name: 'Jamie Cruz',
+      preferred_communication_channel: 'Text',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty payload', () => {
+    expect(updateStaffProfileValidator.safeParse({}).success).toBe(true);
+  });
+
+  it('rejects an empty display name', () => {
+    const result = updateStaffProfileValidator.safeParse({
+      display_name: '   ',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized field, e.g. role', () => {
+    const result = updateStaffProfileValidator.safeParse({
+      role: 'Admin',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an invalid communication channel', () => {
+    const result = updateStaffProfileValidator.safeParse({
+      preferred_communication_channel: 'Carrier Pigeon',
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('avatarFileSchema', () => {
+  it('accepts a valid png under the size limit', () => {
+    const file = new File(['x'], 'avatar.png', { type: 'image/png' });
+
+    expect(avatarFileSchema.safeParse(file).success).toBe(true);
+  });
+
+  it('rejects an unsupported mime type', () => {
+    const file = new File(['x'], 'avatar.gif', { type: 'image/gif' });
+
+    const result = avatarFileSchema.safeParse(file);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a file over 5MB', () => {
+    const bigContent = new Uint8Array(5 * 1024 * 1024 + 1);
+    const file = new File([bigContent], 'avatar.png', { type: 'image/png' });
+
+    const result = avatarFileSchema.safeParse(file);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('createUnavailabilityBlockValidator', () => {
+  it('accepts a quick-action payload', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      quick_action: true,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a valid custom range', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      start_time: '2026-07-11T09:00',
+      end_time: '2026-07-11T17:00',
+      reason: 'Vet appointment',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a payload with neither quick_action nor a range', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({});
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an end time before the start time', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      start_time: '2026-07-11T17:00',
+      end_time: '2026-07-11T09:00',
+    });
+
+    expect(result.success).toBe(false);
+  });
+});

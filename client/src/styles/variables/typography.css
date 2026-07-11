@@ -23,4 +23,10 @@
   --lh-tight: 1.1;
   --lh-base: 1.5;
   --lh-relaxed: 1.625;
+
+  /* Semantic heading/button/label sizes (Sprint 1 Epic B) */
+  --text-heading-lg: 1.6875rem; /* 27px */
+  --text-heading-md: 1.5625rem; /* 25px */
+  --text-button: 1.1875rem; /* 19px */
+  --text-label: 0.75rem; /* 12px */
 }
