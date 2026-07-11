@@ -1,10 +1,37 @@
 import type { NextFunction, Response } from 'express';
 import multer from 'multer';
+import { z } from 'zod';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { updateStaffProfileValidator } from './modules/validators/staff.validator.ts';
 import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
+import {
+  cancelUnavailabilityBlock,
+  createUnavailabilityBlock,
+  listUnavailabilityBlocks,
+} from './services/unavailabilityBlock.service.ts';
 import { ADMIN_ROLES } from './staff.types.ts';
+
+const createUnavailabilityBlockValidator = z
+  .object({
+    quick_action: z.boolean().optional(),
+    start_time: z.string().min(1).optional(),
+    end_time: z.string().min(1).optional(),
+    reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+function sendServiceError(res: Response, error: unknown) {
+  const statusCode =
+    error instanceof Error && 'statusCode' in error
+      ? Number((error as Error & { statusCode?: number }).statusCode)
+      : 500;
+
+  const message =
+    error instanceof Error ? error.message : 'Internal server error';
+
+  return res.status(statusCode).json({ error: message });
+}
 
 export async function listStaffController(
   req: AuthenticatedRequest,
@@ -227,5 +254,102 @@ export async function updateStaffProfileController(
     return res.status(200).json({ staff: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function createUnavailabilityBlockController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createUnavailabilityBlockValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const block = await createUnavailabilityBlock({
+      requesterId,
+      requesterRole,
+      targetStaffId: targetId as string,
+      quickAction: parsed.data.quick_action,
+      startTime: parsed.data.start_time,
+      endTime: parsed.data.end_time,
+      reason: parsed.data.reason,
+    });
+
+    return res.status(201).json({ block });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function cancelUnavailabilityBlockController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+  const blockId = Array.isArray(req.params.blockId)
+    ? req.params.blockId[0]
+    : req.params.blockId;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await cancelUnavailabilityBlock({
+      requesterId,
+      requesterRole,
+      targetStaffId: targetId as string,
+      blockId: blockId as string,
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listUnavailabilityBlocksController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const blocks = await listUnavailabilityBlocks({
+      requesterId,
+      requesterRole,
+      targetStaffId: targetId as string,
+    });
+
+    return res.status(200).json({ blocks });
+  } catch (error) {
+    return sendServiceError(res, error);
   }
 }
