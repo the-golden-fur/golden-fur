@@ -86,3 +86,17 @@ export const createUnavailabilityBlockValidator = z
 export type CreateUnavailabilityBlockInput = z.infer<
   typeof createUnavailabilityBlockValidator
 >;
+
+/**
+ * Mirrors the server's reviewUnavailabilityBlockValidator (staff.controller.ts).
+ */
+export const reviewUnavailabilityBlockValidator = z
+  .object({
+    decision: z.enum(['approved', 'denied']),
+    denial_reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export type ReviewUnavailabilityBlockInput = z.infer<
+  typeof reviewUnavailabilityBlockValidator
+>;

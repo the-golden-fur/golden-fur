@@ -7,13 +7,18 @@ import {
   cancelUnavailabilityBlockController,
   createUnavailabilityBlockController,
   handleAvatarUploadError,
+  listPendingUnavailabilityBlocksController,
   listStaffController,
   listUnavailabilityBlocksController,
   getStaffProfileController,
+  reviewUnavailabilityBlockController,
   updateStaffProfileController,
   uploadAvatarController,
 } from './staff.controller.ts';
-import { ALL_STAFF_ROLES } from './staff.types.ts';
+import {
+  ALL_STAFF_ROLES,
+  UNAVAILABILITY_MANAGER_ROLES,
+} from './staff.types.ts';
 
 const router = Router();
 const avatarUpload = multer({
@@ -27,6 +32,14 @@ router.get(
   requireRole([...ALL_STAFF_ROLES]),
   requireBranch,
   listStaffController
+);
+
+router.get(
+  '/staff/unavailability/pending',
+  jwtMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  listPendingUnavailabilityBlocksController
 );
 
 router.get(
@@ -77,6 +90,14 @@ router.delete(
   requireRole([...ALL_STAFF_ROLES]),
   requireBranch,
   cancelUnavailabilityBlockController
+);
+
+router.patch(
+  '/staff/:id/unavailability/:blockId/review',
+  jwtMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  reviewUnavailabilityBlockController
 );
 
 export default router;

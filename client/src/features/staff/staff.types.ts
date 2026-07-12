@@ -35,6 +35,8 @@ export interface StaffProfileUpdatePayload {
   preferred_communication_channel?: CommunicationChannel;
 }
 
+export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
+
 export interface UnavailabilityBlock {
   id: string;
   staff_id: string;
@@ -43,6 +45,11 @@ export interface UnavailabilityBlock {
   reason: string | null;
   created_by: string;
   created_at: string;
+  status: UnavailabilityBlockStatus;
+  is_quick_action: boolean;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  denial_reason: string | null;
 }
 
 export interface UnavailabilityBlockPayload {
@@ -50,4 +57,23 @@ export interface UnavailabilityBlockPayload {
   start_time?: string;
   end_time?: string;
   reason?: string;
+}
+
+export interface PendingUnavailabilityBlockStaffSummary {
+  id: string;
+  display_name: string;
+  profile_photo_url: string | null;
+  role: StaffRole;
+  branch_id: string;
+}
+
+export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
+  /** False when this row belongs to the viewer themselves (#29 AC-8). */
+  reviewable: boolean;
+  staff: PendingUnavailabilityBlockStaffSummary | null;
+}
+
+export interface ReviewUnavailabilityBlockPayload {
+  decision: 'approved' | 'denied';
+  denial_reason?: string;
 }

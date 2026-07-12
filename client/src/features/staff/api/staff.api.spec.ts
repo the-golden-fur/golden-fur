@@ -3,8 +3,10 @@ import {
   cancelUnavailabilityBlock,
   createUnavailabilityBlock,
   getStaffProfile,
+  listPendingUnavailabilityRequests,
   listStaff,
   listUnavailabilityBlocks,
+  reviewUnavailabilityRequest,
   updateStaffProfile,
   uploadAvatar,
 } from './staff.api';
@@ -180,6 +182,68 @@ describe('staff.api', () => {
     );
 
     expect(result).toEqual({ data: null, error: null });
+  });
+
+  it('listPendingUnavailabilityRequests returns the unwrapped blocks array', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ blocks: [{ id: 'block-1' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await listPendingUnavailabilityRequests('token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/staff/unavailability/pending'),
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer token' },
+      })
+    );
+    expect(result.data).toEqual([{ id: 'block-1' }]);
+  });
+
+  it('reviewUnavailabilityRequest PATCHes the decision and returns the updated block', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ block: { id: 'block-1', status: 'approved' } })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await reviewUnavailabilityRequest(
+      'staff-2',
+      'block-1',
+      'token',
+      { decision: 'approved' }
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/staff/staff-2/unavailability/block-1/review'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ decision: 'approved' }),
+      })
+    );
+    expect(result.data).toEqual({ id: 'block-1', status: 'approved' });
+  });
+
+  it('reviewUnavailabilityRequest surfaces the cannot_review_own_request error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: 'cannot_review_own_request' }, false)
+        )
+    );
+
+    const result = await reviewUnavailabilityRequest(
+      'staff-2',
+      'block-1',
+      'token',
+      { decision: 'approved' }
+    );
+
+    expect(result.error).toBe('cannot_review_own_request');
   });
 
   it('listStaff returns the unwrapped staff array', async () => {

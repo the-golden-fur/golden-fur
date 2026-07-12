@@ -1,4 +1,6 @@
 import type {
+  PendingUnavailabilityBlock,
+  ReviewUnavailabilityBlockPayload,
   StaffProfile,
   StaffProfileUpdatePayload,
   UnavailabilityBlock,
@@ -154,6 +156,49 @@ export async function cancelUnavailabilityBlock(
   }
 
   return { data: null, error: null };
+}
+
+export async function listPendingUnavailabilityRequests(
+  accessToken: string
+): Promise<StaffApiResult<PendingUnavailabilityBlock[]>> {
+  const response = await fetch(`${API_BASE_URL}/staff/unavailability/pending`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ blocks: PendingUnavailabilityBlock[] }>(
+    response
+  );
+  return { data: result.data?.blocks ?? null, error: result.error };
+}
+
+export async function reviewUnavailabilityRequest(
+  staffId: string,
+  blockId: string,
+  accessToken: string,
+  payload: ReviewUnavailabilityBlockPayload
+): Promise<StaffApiResult<UnavailabilityBlock>> {
+  const response = await fetch(
+    `${API_BASE_URL}/staff/${staffId}/unavailability/${blockId}/review`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ block: UnavailabilityBlock }>(response);
+  return { data: result.data?.block ?? null, error: result.error };
 }
 
 export async function listStaff(

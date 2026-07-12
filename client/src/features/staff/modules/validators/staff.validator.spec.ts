@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   avatarFileSchema,
   createUnavailabilityBlockValidator,
+  reviewUnavailabilityBlockValidator,
   updateStaffProfileValidator,
 } from './staff.validator';
 
@@ -96,6 +97,42 @@ describe('createUnavailabilityBlockValidator', () => {
     const result = createUnavailabilityBlockValidator.safeParse({
       start_time: '2026-07-11T17:00',
       end_time: '2026-07-11T09:00',
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('reviewUnavailabilityBlockValidator', () => {
+  it('accepts an approve decision with no reason', () => {
+    const result = reviewUnavailabilityBlockValidator.safeParse({
+      decision: 'approved',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a deny decision with a reason', () => {
+    const result = reviewUnavailabilityBlockValidator.safeParse({
+      decision: 'denied',
+      denial_reason: 'Short staffed that day',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an invalid decision value', () => {
+    const result = reviewUnavailabilityBlockValidator.safeParse({
+      decision: 'maybe',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized field', () => {
+    const result = reviewUnavailabilityBlockValidator.safeParse({
+      decision: 'approved',
+      staff_id: 'staff-1',
     });
 
     expect(result.success).toBe(false);

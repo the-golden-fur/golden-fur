@@ -2,17 +2,22 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 import * as staffApi from '../../api/staff.api';
-import type { StaffProfile, StaffRole } from '../../staff.types';
+import type {
+  PendingUnavailabilityBlock,
+  StaffProfile,
+  StaffRole,
+} from '../../staff.types';
 import { AdminStaffListPage } from './AdminStaffListPage';
 
 vi.mock('../../api/staff.api', () => ({
   listStaff: vi.fn(),
   createUnavailabilityBlock: vi.fn(),
+  listPendingUnavailabilityRequests: vi.fn(),
 }));
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
@@ -87,6 +92,13 @@ function renderPage(initialPath = '/staff/admin/staff') {
 }
 
 describe('AdminStaffListPage', () => {
+  beforeEach(() => {
+    vi.mocked(staffApi.listPendingUnavailabilityRequests).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+  });
+
   it('AC-1: redirects a non-Admin/Superadmin role to /staff/profile', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
@@ -217,5 +229,27 @@ describe('AdminStaffListPage', () => {
     expect(
       await screen.findByText('Unavailability block created.')
     ).toBeInTheDocument();
+  });
+
+  it('#30 AC-5 (link entry point): shows a pending-count badge on the approval queue link', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewerProfile('Admin')],
+      error: null,
+    });
+    vi.mocked(staffApi.listPendingUnavailabilityRequests).mockResolvedValue({
+      data: [
+        { id: 'block-1' },
+        { id: 'block-2' },
+      ] as unknown as PendingUnavailabilityBlock[],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText('Unavailability approval queue')
+    ).toBeInTheDocument();
+    expect(await screen.findByText('2')).toBeInTheDocument();
   });
 });

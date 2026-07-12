@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listStaff } from '../../api/staff.api';
+import {
+  listPendingUnavailabilityRequests,
+  listStaff,
+} from '../../api/staff.api';
 import { StaffCard } from '../../components/cards/StaffCard/StaffCard';
 import { UnavailabilityBlockForm } from '../../components/forms/UnavailabilityBlockForm/UnavailabilityBlockForm';
 import type { StaffProfile, StaffRole } from '../../staff.types';
@@ -33,6 +36,7 @@ export function AdminStaffListPage() {
     Record<string, number>
   >({});
   const [blockMessage, setBlockMessage] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (!accessToken) {
@@ -70,6 +74,24 @@ export function AdminStaffListPage() {
   const viewerRole =
     staffList.find((staff) => staff.id === user?.id)?.role ?? null;
   const isAllowedViewer = ALLOWED_VIEWER_ROLES.has(viewerRole ?? '');
+
+  useEffect(() => {
+    if (!isAllowedViewer || !accessToken) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void listPendingUnavailabilityRequests(accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setPendingCount(result.data.length);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAllowedViewer, accessToken]);
 
   const branchOptions = useMemo(
     () => Array.from(new Set(staffList.map((staff) => staff.branch_id))),
@@ -140,6 +162,13 @@ export function AdminStaffListPage() {
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Staff Directory</h1>
+
+      <Link to="/staff/admin/unavailability" className={styles.queueLink}>
+        Unavailability approval queue
+        {pendingCount ? (
+          <span className={styles.queueBadge}>{pendingCount}</span>
+        ) : null}
+      </Link>
 
       <div className={styles.filters}>
         <label className={styles.filterField}>
