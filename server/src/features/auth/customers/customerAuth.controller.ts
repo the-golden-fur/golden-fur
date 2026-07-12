@@ -24,6 +24,7 @@ import {
   getTotpEnrollmentStatus,
   unenrollAllTotpFactors,
   findTotpFactorForVerify,
+  getCustomerProfileByEmail,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
 
 function getUserClient(req: Request) {
@@ -133,6 +134,17 @@ export async function customerLoginController(req: Request, res: Response) {
       });
 
     if (authError || !authData.session) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // signInWithPassword only proves valid Supabase Auth credentials, which
+    // customers and staff share - without this, a staff member's email/password
+    // would log them into the customer portal. Reject anyone without a
+    // customer_profiles row instead of handing out a session for it.
+    const { data: profile, error: profileError } =
+      await getCustomerProfileByEmail(account_email);
+
+    if (profileError || !profile) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 

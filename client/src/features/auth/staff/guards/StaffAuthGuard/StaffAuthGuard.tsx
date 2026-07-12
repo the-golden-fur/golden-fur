@@ -39,6 +39,13 @@ export function StaffAuthGuard() {
   // factor sees the mandatory setup popup instead of being redirected to a
   // challenge page that would 400 with "No TOTP factor found".
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+  // 'loading' until getStaffProfile resolves. A customer session reaching
+  // /staff directly is a valid Supabase session with no staff_profiles row -
+  // GET /staff/:id 403s for it, which must be treated as "not staff" rather
+  // than the same "still loading" state as role === null.
+  const [profileStatus, setProfileStatus] = useState<
+    'loading' | 'ok' | 'denied'
+  >('loading');
 
   const thresholdMs = role ? (ROLE_TIMEOUT_MS[role] ?? null) : null;
 
@@ -50,8 +57,15 @@ export function StaffAuthGuard() {
     let isMounted = true;
 
     void getStaffProfile(user.id, accessToken).then((result) => {
-      if (isMounted) {
-        setRole(result.data?.role ?? null);
+      if (!isMounted) {
+        return;
+      }
+
+      if (result.data) {
+        setRole(result.data.role ?? null);
+        setProfileStatus('ok');
+      } else if (result.error) {
+        setProfileStatus('denied');
       }
     });
 
@@ -72,6 +86,12 @@ export function StaffAuthGuard() {
     });
   }, [navigate, signOut]);
 
+  useEffect(() => {
+    if (profileStatus === 'denied') {
+      handleTimeout();
+    }
+  }, [profileStatus, handleTimeout]);
+
   const { isWarningVisible, remainingMs, staySignedIn } = useInactivityTimeout({
     thresholdMs,
     onTimeout: handleTimeout,
@@ -89,18 +109,23 @@ export function StaffAuthGuard() {
   const aal = getSessionAal(session);
   const sessionFlagPending =
     window.sessionStorage.getItem('staffMfaPending') === 'true';
+
+  // Set by StaffLoginForm right after a fresh login - always honored
+  // immediately, independent of the profile/enrollment-status fetches below.
+  if (sessionFlagPending && location.pathname !== '/staff/mfa/verify') {
+    return <Navigate to="/staff/mfa/verify" replace />;
+  }
+
+  if (profileStatus !== 'ok') {
+    return null;
+  }
+
   // Mandatory roles always need aal2. Everyone else only needs it once
   // they've actually enrolled (voluntarily, via Settings) - MFA being on
   // must be challenged every login regardless of whether it was forced or
   // opted into.
   const needsAal2 =
     (requiresMfa(role) || mfaEnrolled === true) && aal !== 'aal2';
-
-  // Set by StaffLoginForm right after a fresh login - always honored
-  // immediately, independent of the enrollment-status fetch below.
-  if (sessionFlagPending && location.pathname !== '/staff/mfa/verify') {
-    return <Navigate to="/staff/mfa/verify" replace />;
-  }
 
   // Direct/restored sessions (no login-form flag): wait for the enrollment
   // check before deciding. Redirecting to the challenge page before knowing

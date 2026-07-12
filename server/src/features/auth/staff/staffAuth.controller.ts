@@ -51,6 +51,18 @@ export async function staffLoginController(req: Request, res: Response) {
       throw new Error('Authentication failed');
     }
 
+    // resolveStaffLoginIdentifier only resolves username -> email for
+    // username-shaped input; an email-shaped identifier is passed straight
+    // through with no staff_profiles check. Without this, a customer's own
+    // email/password would log them into the staff portal.
+    const { data: staffRole, error: roleError } = await getStaffRole(
+      authData.user.id
+    );
+
+    if (roleError || !staffRole?.role) {
+      throw new Error('Not a staff account');
+    }
+
     return res.status(200).json({
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,

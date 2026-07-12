@@ -116,18 +116,23 @@ describe('staffLoginController', () => {
 
   it('returns tokens on successful login', async () => {
     req.body = { username: 'testuser', password: 'password123' };
-    const mockSelect = vi.fn().mockReturnValue({
+    const mockSelect = vi.fn((columns: string) => ({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({
-          data: { registered_email: 'test@example.com' },
-          error: null,
-        }),
+        single: vi.fn().mockResolvedValue(
+          columns === 'role'
+            ? { data: { role: 'Groomer' }, error: null }
+            : {
+                data: { registered_email: 'test@example.com' },
+                error: null,
+              }
+        ),
       }),
-    });
+    }));
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
 
     mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
+        user: { id: 'staff-1' },
         session: {
           access_token: 'acc',
           refresh_token: 'ref',
@@ -149,8 +154,18 @@ describe('staffLoginController', () => {
   it('signs in directly when the staff identifier is an email', async () => {
     req.body = { identifier: 'test@example.com', password: 'password123' };
 
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi
+          .fn()
+          .mockResolvedValue({ data: { role: 'Admin' }, error: null }),
+      }),
+    });
+    vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
+
     mockSignInClient.auth.signInWithPassword.mockResolvedValue({
       data: {
+        user: { id: 'staff-1' },
         session: {
           access_token: 'acc',
           refresh_token: 'ref',
@@ -162,12 +177,40 @@ describe('staffLoginController', () => {
 
     await staffLoginController(req as Request, res as Response);
 
-    expect(supabase.from).not.toHaveBeenCalled();
     expect(mockSignInClient.auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'test@example.com',
       password: 'password123',
     });
     expect(status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects login when the authenticated account has no staff_profiles row (cross-role login via email identifier)', async () => {
+    req.body = { identifier: 'customer@example.com', password: 'password123' };
+
+    vi.mocked(supabase.from).mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    } as any);
+
+    mockSignInClient.auth.signInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'customer-1' },
+        session: {
+          access_token: 'acc',
+          refresh_token: 'ref',
+          expires_in: 3600,
+        },
+      },
+      error: null,
+    } as any);
+
+    await staffLoginController(req as Request, res as Response);
+
+    expect(status).toHaveBeenCalledWith(401);
+    expect(json).toHaveBeenCalledWith({ error: 'Unauthorized' });
   });
 });
 
