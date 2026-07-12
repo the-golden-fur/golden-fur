@@ -145,3 +145,5 @@ vite.config.ts.timestamp-*
 # Supabase CLI local state (per-machine, not project config)
 supabase/.branches/
 supabase/.temp/
+
+temp/
