@@ -59,6 +59,26 @@ export async function getStaffRole(userId: string) {
     .single();
 }
 
+/**
+ * Like getStaffRole, but resolves to `null` instead of erroring when the
+ * caller has no staff_profiles row at all (e.g. a customer). Epic C's
+ * customer/pet routes are reachable by both customers (self) and staff
+ * (on-behalf-of), so they cannot use requireRole - that middleware always
+ * treats "no staff_profiles row" as 403, which would lock out every
+ * customer from their own data.
+ */
+export async function getStaffRoleOrNull(
+  userId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  return data?.role ?? null;
+}
+
 export async function getStaffBranch(userId: string) {
   return supabase
     .from('staff_profiles')

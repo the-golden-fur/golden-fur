@@ -1,6 +1,7 @@
 import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
+import { AdminCustomerListPage } from './pages/AdminCustomerListPage/AdminCustomerListPage';
 import { AdminStaffListPage } from './pages/AdminStaffListPage/AdminStaffListPage';
 import { StaffProfilePage } from './pages/StaffProfilePage/StaffProfilePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
@@ -22,6 +23,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/admin/unavailability',
       element: createElement(UnavailabilityApprovalQueuePage),
+    }),
+    createElement(Route, {
+      path: '/staff/admin/customers',
+      element: createElement(AdminCustomerListPage),
     })
   )
 );
