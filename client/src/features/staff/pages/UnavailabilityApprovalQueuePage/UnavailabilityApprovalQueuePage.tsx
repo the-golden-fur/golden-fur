@@ -1,0 +1,198 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate } from 'react-router';
+import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import {
+  getStaffProfile,
+  listPendingUnavailabilityRequests,
+  reviewUnavailabilityRequest,
+} from '../../api/staff.api';
+import { UnavailabilityReviewCard } from '../../components/review/UnavailabilityReviewCard/UnavailabilityReviewCard';
+import type { PendingUnavailabilityBlock, StaffRole } from '../../staff.types';
+import styles from './UnavailabilityApprovalQueuePage.module.css';
+
+const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
+
+export function UnavailabilityApprovalQueuePage() {
+  const { user, accessToken } = useAuth();
+
+  // null = not yet known - the Supabase session carries no app-level role
+  // claim, so the viewer's own staff_profiles.role has to come from the
+  // server (same technique StaffAuthGuard already uses).
+  const [viewerRole, setViewerRole] = useState<StaffRole | null>(null);
+  const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
+    'loading'
+  );
+  const [pending, setPending] = useState<PendingUnavailabilityBlock[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState('All');
+
+  useEffect(() => {
+    if (!accessToken || !user?.id) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void getStaffProfile(user.id, accessToken).then((result) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (result.data) {
+        setViewerRole(result.data.role);
+        setRoleStatus(
+          ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
+        );
+      } else {
+        setRoleStatus('denied');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, user?.id]);
+
+  const loadPending = (token: string) => {
+    void listPendingUnavailabilityRequests(token).then((result) => {
+      setIsLoading(false);
+
+      if (result.error || !result.data) {
+        setLoadError(result.error ?? 'Could not load pending requests.');
+        return;
+      }
+
+      setLoadError(null);
+      setPending(result.data);
+    });
+  };
+
+  useEffect(() => {
+    if (roleStatus === 'ok' && accessToken) {
+      loadPending(accessToken);
+    }
+  }, [roleStatus, accessToken]);
+
+  const branchOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          pending
+            .map((block) => block.staff?.branch_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      ),
+    [pending]
+  );
+
+  const filteredPending = useMemo(() => {
+    if (viewerRole !== 'Superadmin' || branchFilter === 'All') {
+      return pending;
+    }
+
+    return pending.filter((block) => block.staff?.branch_id === branchFilter);
+  }, [pending, viewerRole, branchFilter]);
+
+  const handleReview = (
+    block: PendingUnavailabilityBlock,
+    decision: 'approved' | 'denied',
+    denialReason?: string
+  ) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setActionError(null);
+    // Optimistic removal; rolled back by a fresh load if the request fails.
+    setPending((prev) => prev.filter((item) => item.id !== block.id));
+
+    void reviewUnavailabilityRequest(
+      block.staff_id,
+      block.id,
+      accessToken,
+      { decision, denial_reason: denialReason }
+    ).then((result) => {
+      if (result.error) {
+        setActionError(result.error);
+        loadPending(accessToken);
+      }
+    });
+  };
+
+  if (!user?.id || !accessToken) {
+    return (
+      <main className={styles.page}>
+        <p className={styles.errorBanner} role="alert">
+          Unable to load the approval queue.
+        </p>
+      </main>
+    );
+  }
+
+  if (roleStatus === 'loading') {
+    return (
+      <main className={styles.page}>
+        <p className={styles.copy}>Loading...</p>
+      </main>
+    );
+  }
+
+  if (roleStatus === 'denied') {
+    return <Navigate to="/staff/profile" replace />;
+  }
+
+  return (
+    <main className={styles.page}>
+      <h1 className={styles.title}>Unavailability Approval Queue</h1>
+
+      {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
+        <label className={styles.filterField}>
+          <span className={styles.filterLabel}>Branch</span>
+          <select
+            className={styles.filterSelect}
+            value={branchFilter}
+            onChange={(event) => setBranchFilter(event.target.value)}
+          >
+            <option value="All">All branches</option>
+            {branchOptions.map((branchId) => (
+              <option key={branchId} value={branchId}>
+                {`Branch ${branchId.slice(0, 8)}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {actionError ? (
+        <p className={styles.errorBanner} role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <p className={styles.copy}>Loading pending requests...</p>
+      ) : loadError ? (
+        <p className={styles.errorBanner} role="alert">
+          {loadError}
+        </p>
+      ) : filteredPending.length === 0 ? (
+        <p className={styles.copy}>No pending requests.</p>
+      ) : (
+        <div className={styles.grid}>
+          {filteredPending.map((block) => (
+            <UnavailabilityReviewCard
+              key={block.id}
+              block={block}
+              onApprove={() => handleReview(block, 'approved')}
+              onDeny={(denialReason) =>
+                handleReview(block, 'denied', denialReason)
+              }
+            />
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
