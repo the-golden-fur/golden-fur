@@ -86,6 +86,16 @@ describe('customer auth integration', () => {
         },
         error: null,
       });
+      vi.mocked(supabase.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: 'test-user-id', account_email: 'test@example.com' },
+              error: null,
+            }),
+          }),
+        }),
+      } as any);
 
       const response = await request(app).post('/auth/customers/login').send({
         account_email: 'test@example.com',
@@ -94,6 +104,34 @@ describe('customer auth integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.access_token).toBe('acc-token');
+    });
+
+    it('rejects login when the account has no customer_profiles row', async () => {
+      mockSignInClient.auth.signInWithPassword.mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'acc-token',
+            refresh_token: 'ref-token',
+            expires_in: 3600,
+          } as any,
+          user: {} as any,
+        },
+        error: null,
+      });
+      vi.mocked(supabase.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      } as any);
+
+      const response = await request(app).post('/auth/customers/login').send({
+        account_email: 'staff@example.com',
+        password: 'password123',
+      });
+
+      expect(response.status).toBe(401);
     });
   });
 

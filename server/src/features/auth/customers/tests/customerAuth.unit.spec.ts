@@ -147,6 +147,20 @@ describe('customerAuth.controller', () => {
   });
 
   describe('customerLoginController', () => {
+    function mockCustomerProfileFound() {
+      const maybeSingle = vi
+        .fn()
+        .mockResolvedValue({
+          data: { id: 'user-id', account_email: 'john@example.com' },
+          error: null,
+        });
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({ maybeSingle }),
+        }),
+      });
+    }
+
     it('returns 200 on successful login', async () => {
       const req = mockRequest({
         account_email: 'john@example.com',
@@ -158,6 +172,7 @@ describe('customerAuth.controller', () => {
         data: { session: { access_token: 'valid-token' } },
         error: null,
       });
+      mockCustomerProfileFound();
 
       await customerLoginController(req, res);
 
@@ -178,12 +193,38 @@ describe('customerAuth.controller', () => {
         data: { session: { access_token: 'aal1-token' } },
         error: null,
       });
+      mockCustomerProfileFound();
 
       await customerLoginController(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
       expect(mockUserClient.auth.mfa.challenge).not.toHaveBeenCalled();
+    });
+
+    it('rejects login when the authenticated account has no customer_profiles row (cross-role login)', async () => {
+      const req = mockRequest({
+        account_email: 'staff@example.com',
+        password: 'password123',
+      });
+      const res = mockResponse();
+
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
+        data: { session: { access_token: 'valid-token' } },
+        error: null,
+      });
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      });
+
+      await customerLoginController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized' });
     });
   });
 
