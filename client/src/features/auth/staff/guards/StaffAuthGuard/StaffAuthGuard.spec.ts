@@ -53,7 +53,7 @@ function createAuthValue(
     isLoading: false,
     refreshSession: vi.fn(),
     applySession: vi.fn(),
-    signOut: vi.fn(),
+    signOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -115,6 +115,33 @@ describe('StaffAuthGuard', () => {
     renderGuard(createAuthValue({}));
 
     expect(screen.getByText('Login page')).toBeInTheDocument();
+  });
+
+  it('signs out and redirects to login when GET /staff/:id 403s (cross-role session, e.g. a customer reaching /staff)', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: null,
+      error: 'Forbidden',
+    });
+    const signOut = vi.fn().mockResolvedValue(undefined);
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'customer@example.com' },
+        },
+        user: { id: 'user-1', email: 'customer@example.com' },
+        accessToken: 'access',
+        signOut,
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    await waitFor(() => expect(signOut).toHaveBeenCalled());
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(screen.queryByText('Protected staff area')).not.toBeInTheDocument();
   });
 
   it('redirects MFA-pending staff to challenge', () => {

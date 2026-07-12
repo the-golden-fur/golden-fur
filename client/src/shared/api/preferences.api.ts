@@ -31,17 +31,43 @@ export async function getThemePreference(
     return null;
   }
 
+  // maybeSingle(), not single(): the guard for this route may not have
+  // resolved yet (or this is a cross-role session on its way to being signed
+  // out), so a 0-row match is an expected "no preference yet" case, not a
+  // 406-worthy error.
   const { data, error } = await client
     .from(PROFILE_TABLE_BY_ROLE[role])
     .select('theme_preference')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (error || !data?.theme_preference) {
     return null;
   }
 
   return data.theme_preference as ColorMode;
+}
+
+// Guards use this to confirm the signed-in user actually belongs to the
+// portal they're navigating into - a customer and a staff member share the
+// same Supabase Auth session, so "is there a session" alone can't tell them
+// apart; only a matching profile row can.
+export async function hasProfile(
+  role: ThemeRole,
+  userId: string
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return false;
+  }
+
+  const { data } = await client
+    .from(PROFILE_TABLE_BY_ROLE[role])
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  return data !== null;
 }
 
 export async function updateThemePreference(

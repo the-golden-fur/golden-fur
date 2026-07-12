@@ -5,10 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as mfaApi from '../../../../../shared/api/mfa.api';
+import * as preferencesApi from '../../../../../shared/api/preferences.api';
 import { CustomerAuthGuard } from './CustomerAuthGuard';
 
 vi.mock('../../../../../shared/api/mfa.api', () => ({
   getMfaStatus: vi.fn(),
+}));
+
+vi.mock('../../../../../shared/api/preferences.api', () => ({
+  hasProfile: vi.fn(),
 }));
 
 function createAuthValue(
@@ -21,7 +26,7 @@ function createAuthValue(
     isLoading: false,
     refreshSession: vi.fn(),
     applySession: vi.fn(),
-    signOut: vi.fn(),
+    signOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -65,6 +70,7 @@ describe('CustomerAuthGuard', () => {
       data: { mfa_enrolled: false },
       error: null,
     });
+    vi.mocked(preferencesApi.hasProfile).mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -165,5 +171,29 @@ describe('CustomerAuthGuard', () => {
 
     await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
     expect(screen.getByText('Customer portal')).toBeInTheDocument();
+  });
+
+  it('signs out and redirects to login when the session has no customer_profiles row (cross-role session)', async () => {
+    vi.mocked(preferencesApi.hasProfile).mockResolvedValue(false);
+    const signOut = vi.fn().mockResolvedValue(undefined);
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'staff@example.com' },
+        },
+        user: { id: 'user-1', email: 'staff@example.com' },
+        accessToken: 'access',
+        signOut,
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    await waitFor(() => expect(signOut).toHaveBeenCalled());
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(screen.queryByText('Customer portal')).not.toBeInTheDocument();
   });
 });
