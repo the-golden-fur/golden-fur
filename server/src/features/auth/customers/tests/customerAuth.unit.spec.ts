@@ -148,12 +148,10 @@ describe('customerAuth.controller', () => {
 
   describe('customerLoginController', () => {
     function mockCustomerProfileFound() {
-      const maybeSingle = vi
-        .fn()
-        .mockResolvedValue({
-          data: { id: 'user-id', account_email: 'john@example.com' },
-          error: null,
-        });
+      const maybeSingle = vi.fn().mockResolvedValue({
+        data: { id: 'user-id', account_email: 'john@example.com' },
+        error: null,
+      });
       (supabase.from as any).mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({ maybeSingle }),

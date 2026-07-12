@@ -18,7 +18,7 @@ Nothing enforced that an authenticated account could only reach the portal
 matching its own profile table:
 
 1. **`customerLoginController`** (`server/src/features/auth/customers/customerAuth.controller.ts`)
-   called `signInWithPassword` and returned a session for *any* valid Supabase
+   called `signInWithPassword` and returned a session for _any_ valid Supabase
    Auth credential pair - it never checked that a `customer_profiles` row
    existed for that account. A staff member's own email/password would log
    them into the customer portal.
@@ -141,7 +141,7 @@ dev servers running (`npm.cmd run dev` in each).
 4. **Staff login with email still works normally.** Log into `/staff/login`
    using that same staff account's **email** and password. Confirm it
    succeeds too (this is the path that was previously vulnerable - confirm
-   it still works for a *real* staff account, only rejecting mismatched
+   it still works for a _real_ staff account, only rejecting mismatched
    ones).
 5. **Customer login still works normally.** Log into `/login` with a real
    customer account's email/password. Confirm it succeeds and lands on

@@ -32,11 +32,13 @@ describe('staff auth routes', () => {
   it('returns tokens for valid staff credentials', async () => {
     const mockSelect = vi.fn((columns: string) => ({
       eq: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue(
-          columns === 'role'
-            ? { data: { role: 'Groomer' }, error: null }
-            : { data: { registered_email: 'test@example.com' }, error: null }
-        ),
+        single: vi
+          .fn()
+          .mockResolvedValue(
+            columns === 'role'
+              ? { data: { role: 'Groomer' }, error: null }
+              : { data: { registered_email: 'test@example.com' }, error: null }
+          ),
       }),
     }));
     vi.mocked(supabase.from).mockReturnValue({ select: mockSelect } as any);
