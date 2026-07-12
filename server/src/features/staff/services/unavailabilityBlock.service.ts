@@ -1,6 +1,10 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { ADMIN_ROLES } from '../staff.types.ts';
-import type { UnavailabilityBlock } from '../staff.types.ts';
+import { UNAVAILABILITY_MANAGER_ROLES } from '../staff.types.ts';
+import type {
+  PendingUnavailabilityBlock,
+  PendingUnavailabilityBlockStaffSummary,
+  UnavailabilityBlock,
+} from '../staff.types.ts';
 
 interface OperatingHoursEntry {
   open: string;
@@ -33,6 +37,21 @@ interface ListUnavailabilityBlocksParams {
   targetStaffId: string;
 }
 
+interface ReviewUnavailabilityBlockParams {
+  requesterId: string;
+  requesterRole: string;
+  targetStaffId: string;
+  blockId: string;
+  decision: 'approved' | 'denied';
+  denialReason?: string;
+}
+
+interface ListPendingUnavailabilityBlocksParams {
+  requesterId: string;
+  requesterRole: string;
+  requesterBranchId: string;
+}
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -46,7 +65,7 @@ function assertCanActOnTarget(
 ) {
   const isSelf = requesterId === targetStaffId;
 
-  if (!isSelf && !ADMIN_ROLES.includes(requesterRole)) {
+  if (!isSelf && !UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
     throwWithStatus(403, 'Forbidden');
   }
 }
@@ -266,4 +285,104 @@ export async function listUnavailabilityBlocks({
   if (error) throwWithStatus(400, error.message);
 
   return data ?? [];
+}
+
+/**
+ * Admin/Supervisor/Superadmin only (route-level requireRole). Approves or
+ * denies a pending, self-requested block. The `requesterId === targetStaffId`
+ * check is app-layer defense-in-depth alongside the RLS "staff_id <>
+ * auth.uid()" restriction (...021) — this service uses the service-role
+ * client and bypasses RLS entirely, so the RLS policy alone would not stop a
+ * self-review here.
+ */
+export async function reviewUnavailabilityBlock({
+  requesterId,
+  requesterRole,
+  targetStaffId,
+  blockId,
+  decision,
+  denialReason,
+}: ReviewUnavailabilityBlockParams): Promise<UnavailabilityBlock> {
+  if (!UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
+    throwWithStatus(403, 'Forbidden');
+  }
+
+  if (requesterId === targetStaffId) {
+    throwWithStatus(403, 'cannot_review_own_request');
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('staff_unavailability_blocks')
+    .select('id, status')
+    .eq('id', blockId)
+    .eq('staff_id', targetStaffId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (!existing || existing.status !== 'pending') {
+    throwWithStatus(404, 'Unavailability block not found or not pending');
+  }
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .update({
+      status: decision,
+      reviewed_by: requesterId,
+      reviewed_at: new Date().toISOString(),
+      denial_reason: decision === 'denied' ? (denialReason ?? null) : null,
+    })
+    .eq('id', blockId)
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(
+      400,
+      error?.message ?? 'Failed to review unavailability block'
+    );
+  }
+
+  return data;
+}
+
+/**
+ * Admin/Supervisor/Superadmin only (route-level requireRole). Returns every
+ * pending block, branch-scoped for Admin/Supervisor (Superadmin sees all
+ * branches), with the caller's own pending row included but flagged
+ * non-reviewable rather than omitted (#29 AC-8).
+ */
+export async function listPendingUnavailabilityBlocks({
+  requesterId,
+  requesterRole,
+  requesterBranchId,
+}: ListPendingUnavailabilityBlocksParams): Promise<
+  PendingUnavailabilityBlock[]
+> {
+  if (!UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
+    throwWithStatus(403, 'Forbidden');
+  }
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .select(
+      '*, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(id, display_name, profile_photo_url, role, branch_id)'
+    )
+    .eq('status', 'pending')
+    .order('start_time', { ascending: true });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Array<
+    UnavailabilityBlock & { staff: PendingUnavailabilityBlockStaffSummary | null }
+  >;
+
+  const scoped =
+    requesterRole === 'Superadmin'
+      ? rows
+      : rows.filter((row) => row.staff?.branch_id === requesterBranchId);
+
+  return scoped.map((row) => ({
+    ...row,
+    reviewable: row.staff_id !== requesterId,
+  }));
 }

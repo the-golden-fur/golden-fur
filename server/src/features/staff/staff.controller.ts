@@ -8,7 +8,9 @@ import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
 import {
   cancelUnavailabilityBlock,
   createUnavailabilityBlock,
+  listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
+  reviewUnavailabilityBlock,
 } from './services/unavailabilityBlock.service.ts';
 import { ADMIN_ROLES } from './staff.types.ts';
 
@@ -18,6 +20,13 @@ const createUnavailabilityBlockValidator = z
     start_time: z.string().min(1).optional(),
     end_time: z.string().min(1).optional(),
     reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+const reviewUnavailabilityBlockValidator = z
+  .object({
+    decision: z.enum(['approved', 'denied']),
+    denial_reason: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -346,6 +355,72 @@ export async function listUnavailabilityBlocksController(
       requesterId,
       requesterRole,
       targetStaffId: targetId as string,
+    });
+
+    return res.status(200).json({ blocks });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function reviewUnavailabilityBlockController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+  const blockId = Array.isArray(req.params.blockId)
+    ? req.params.blockId[0]
+    : req.params.blockId;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = reviewUnavailabilityBlockValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const block = await reviewUnavailabilityBlock({
+      requesterId,
+      requesterRole,
+      targetStaffId: targetId as string,
+      blockId: blockId as string,
+      decision: parsed.data.decision,
+      denialReason: parsed.data.denial_reason,
+    });
+
+    return res.status(200).json({ block });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listPendingUnavailabilityBlocksController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterId || !requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const blocks = await listPendingUnavailabilityBlocks({
+      requesterId,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ blocks });

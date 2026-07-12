@@ -275,4 +275,45 @@ describe('staff profile CRUD (Issue #22)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('Unavailability review endpoints (Issue #29)', () => {
+    it('AC-9: PATCH .../review returns 403 cannot_review_own_request when the caller is the requester', async () => {
+      mockCaller('admin-1');
+      queueFromResults(
+        { data: { role: 'Admin' }, error: null },
+        { data: { role: 'Admin', branch_id: 'branch-a' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/staff/admin-1/unavailability/block-1/review')
+        .set('Authorization', 'Bearer token')
+        .send({ decision: 'approved' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('cannot_review_own_request');
+    });
+
+    it('PATCH .../review rejects a non-manager role at the requireRole layer', async () => {
+      mockCaller('staff-1');
+      queueFromResults({ data: { role: 'Groomer' }, error: null });
+
+      const res = await request(app)
+        .patch('/staff/staff-2/unavailability/block-1/review')
+        .set('Authorization', 'Bearer token')
+        .send({ decision: 'approved' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('GET /staff/unavailability/pending rejects a non-manager role at the requireRole layer', async () => {
+      mockCaller('staff-1');
+      queueFromResults({ data: { role: 'Groomer' }, error: null });
+
+      const res = await request(app)
+        .get('/staff/unavailability/pending')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+  });
 });
