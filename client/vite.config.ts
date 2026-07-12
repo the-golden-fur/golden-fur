@@ -29,6 +29,18 @@ export default defineConfig({
           }
         },
       },
+      // customer.routes.ts (server) is mounted at the server root, same as
+      // staff.routes.ts - but unlike '/staff', neither '/customers' nor
+      // '/pets' collides with a client-side page route (those live under
+      // '/portal/...' and '/staff/admin/customers'), so no bypass is needed.
+      '/customers': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/pets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });
