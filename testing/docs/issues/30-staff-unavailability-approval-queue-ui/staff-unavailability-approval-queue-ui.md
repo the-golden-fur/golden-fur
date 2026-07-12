@@ -128,7 +128,7 @@ This simulates someone else reviewing the same request first (#29 AC-6's `404`).
 
 ### 8. AC-6: branch scoping
 
-Needs a **Superadmin** account and at least one pending request at a *different* branch than the Admin/Supervisor used above (create one via a Groomer account at that other branch, same as step 1).
+Needs a **Superadmin** account and at least one pending request at a _different_ branch than the Admin/Supervisor used above (create one via a Groomer account at that other branch, same as step 1).
 
 1. Log in as the Admin/Supervisor from steps 2–7. Confirm the queue shows only their own branch's pending requests (no branch filter dropdown is visible for them).
 2. Log out, log in as the **Superadmin**, and navigate to `/staff/admin/unavailability`.

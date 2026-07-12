@@ -10,7 +10,7 @@
 
 ## Overview
 
-Adds the review/approval workflow for staff-requested Unavailability Blocks: a staff member's own custom-range request lands as `pending` and must be approved or denied by a *different* Admin/Supervisor/Superadmin before it counts as unavailability; quick-action and on-behalf-of entries stay auto-approved.
+Adds the review/approval workflow for staff-requested Unavailability Blocks: a staff member's own custom-range request lands as `pending` and must be approved or denied by a _different_ Admin/Supervisor/Superadmin before it counts as unavailability; quick-action and on-behalf-of entries stay auto-approved.
 
 **Scope note — the schema half of this issue already shipped (flagged and reconciled before implementation):** Issue #27's own verification doc explains that its `staffAvailability.service.ts` had a hard dependency on the `status` column, so migration `20260711019_m01_staff_unavailability_blocks_add_status.sql` landed **only the schema piece #27 needed** — the `unavailability_block_status` enum, the four new columns, the `enforce_unavailability_block_status()` trigger, and dropping the staff "own" UPDATE policy — ahead of this issue, with an explicit note that #29's actual scope (the review/pending-list endpoints and the no-self-review RLS tightening) remained separate future work. **This branch is that remaining work.** Nothing here re-creates the schema from `...019`; this issue adds:
 
@@ -100,26 +100,26 @@ npm --prefix server run dev
 
 Run requests **in order (1 → 18)**. Each has a **Tests** tab that asserts automatically.
 
-| #   | Request                                                        | Expected                                                       |
-| :-- | :---------------------------------------------------------------- | :----------------------------------------------------------------- |
-| 1   | Login as staff                                                     | `200`, sets `staff_access_token`                                    |
-| 2   | Login as Admin                                                     | `200`, sets `admin_access_token`                                    |
-| 3   | AC-1: staff self-requests a custom range                          | `201`, `status: pending`, sets `staff_block_id`                     |
-| 4   | AC-2: staff quick-action                                           | `201`, `status: approved` (or `400` if branch closed today)         |
-| 5   | AC-3: Admin POST on behalf of staff                                | `201`, `status: approved`, sets `admin_onbehalf_block_id`           |
-| 6   | Admin self-requests a custom range                                 | `201`, `status: pending`, sets `admin_self_block_id`                |
-| 7   | AC-9: Admin reviews their own pending request                      | `403`, `error: cannot_review_own_request`                          |
-| 8   | AC-8: GET pending queue                                            | `200`; staff row `reviewable: true`, Admin's own row `reviewable: false` |
-| 9   | AC-4: Admin approves the staff request                             | `200`, `status: approved`, `reviewed_by` = `admin_id`               |
-| 10  | AC-6: re-review the now-approved request                          | `404`                                                               |
-| 11  | Staff submits a second pending request                            | `201`, `status: pending`, sets `staff_block_id_2`                   |
-| 12  | AC-5: Admin denies with a reason                                   | `200`, `status: denied`, `denial_reason` matches                    |
-| 13  | AC-5 (also): staff calling review at all                          | `403`                                                               |
-| 14  | Cleanup: staff deletes quick-action block                          | `204` (or `404` if request 4 hit branch-closed-today)                |
-| 15  | Cleanup: staff deletes their approved request                      | `204`                                                               |
-| 16  | Cleanup: staff deletes their denied request                        | `204`                                                               |
-| 17  | Cleanup: Admin deletes the on-behalf-of block                      | `204`                                                               |
-| 18  | Cleanup: Admin deletes their own request                           | `204`                                                               |
+| #   | Request                                       | Expected                                                                 |
+| :-- | :-------------------------------------------- | :----------------------------------------------------------------------- |
+| 1   | Login as staff                                | `200`, sets `staff_access_token`                                         |
+| 2   | Login as Admin                                | `200`, sets `admin_access_token`                                         |
+| 3   | AC-1: staff self-requests a custom range      | `201`, `status: pending`, sets `staff_block_id`                          |
+| 4   | AC-2: staff quick-action                      | `201`, `status: approved` (or `400` if branch closed today)              |
+| 5   | AC-3: Admin POST on behalf of staff           | `201`, `status: approved`, sets `admin_onbehalf_block_id`                |
+| 6   | Admin self-requests a custom range            | `201`, `status: pending`, sets `admin_self_block_id`                     |
+| 7   | AC-9: Admin reviews their own pending request | `403`, `error: cannot_review_own_request`                                |
+| 8   | AC-8: GET pending queue                       | `200`; staff row `reviewable: true`, Admin's own row `reviewable: false` |
+| 9   | AC-4: Admin approves the staff request        | `200`, `status: approved`, `reviewed_by` = `admin_id`                    |
+| 10  | AC-6: re-review the now-approved request      | `404`                                                                    |
+| 11  | Staff submits a second pending request        | `201`, `status: pending`, sets `staff_block_id_2`                        |
+| 12  | AC-5: Admin denies with a reason              | `200`, `status: denied`, `denial_reason` matches                         |
+| 13  | AC-5 (also): staff calling review at all      | `403`                                                                    |
+| 14  | Cleanup: staff deletes quick-action block     | `204` (or `404` if request 4 hit branch-closed-today)                    |
+| 15  | Cleanup: staff deletes their approved request | `204`                                                                    |
+| 16  | Cleanup: staff deletes their denied request   | `204`                                                                    |
+| 17  | Cleanup: Admin deletes the on-behalf-of block | `204`                                                                    |
+| 18  | Cleanup: Admin deletes their own request      | `204`                                                                    |
 
 ## Acceptance Criteria Checklist
 

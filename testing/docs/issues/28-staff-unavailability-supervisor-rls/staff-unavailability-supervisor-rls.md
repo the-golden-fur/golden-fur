@@ -88,14 +88,14 @@ npm --prefix server run dev
 
 Run requests **in order (1 → 6)**. Each has a **Tests** tab that asserts automatically.
 
-| #   | Request                                                | Expected                                             |
-| :-- | :------------------------------------------------------ | :---------------------------------------------------- |
-| 1   | Login as Supervisor                                      | `200`, sets `supervisor_access_token`                 |
-| 2   | Login as Receptionist (regression control)                | `200`, sets `receptionist_access_token`                |
-| 3   | AC-5: Receptionist cannot create a block on behalf of a peer | `403`                                             |
-| 4   | AC-1: Supervisor creates a block on behalf of a peer      | `201`, `staff_id` = `peer_staff_id`, sets `block_id`  |
-| 5   | AC-3: Supervisor reads the peer's blocks                  | `200`, `block_id` present in `blocks`                |
-| 6   | AC-2: Supervisor cancels the peer's block                 | `204`                                                |
+| #   | Request                                                      | Expected                                             |
+| :-- | :----------------------------------------------------------- | :--------------------------------------------------- |
+| 1   | Login as Supervisor                                          | `200`, sets `supervisor_access_token`                |
+| 2   | Login as Receptionist (regression control)                   | `200`, sets `receptionist_access_token`              |
+| 3   | AC-5: Receptionist cannot create a block on behalf of a peer | `403`                                                |
+| 4   | AC-1: Supervisor creates a block on behalf of a peer         | `201`, `staff_id` = `peer_staff_id`, sets `block_id` |
+| 5   | AC-3: Supervisor reads the peer's blocks                     | `200`, `block_id` present in `blocks`                |
+| 6   | AC-2: Supervisor cancels the peer's block                    | `204`                                                |
 
 ## Acceptance Criteria Checklist
 

@@ -368,7 +368,7 @@ describe('unavailabilityBlock.service', () => {
   });
 
   describe('reviewUnavailabilityBlock', () => {
-    it('AC-4: an Admin approves another staff member\'s pending request', async () => {
+    it("AC-4: an Admin approves another staff member's pending request", async () => {
       queueFromResults(
         { data: { id: 'block-1', status: 'pending' }, error: null },
         {
@@ -442,7 +442,7 @@ describe('unavailabilityBlock.service', () => {
       expect(supabase.from).not.toHaveBeenCalled();
     });
 
-    it('AC-10: allows reviewing another elevated-role user\'s pending request', async () => {
+    it("AC-10: allows reviewing another elevated-role user's pending request", async () => {
       queueFromResults(
         { data: { id: 'block-1', status: 'pending' }, error: null },
         {
@@ -551,9 +551,7 @@ describe('unavailabilityBlock.service', () => {
       });
 
       expect(result.map((row) => row.id)).toEqual(['block-1', 'block-3']);
-      expect(result.find((row) => row.id === 'block-1')?.reviewable).toBe(
-        true
-      );
+      expect(result.find((row) => row.id === 'block-1')?.reviewable).toBe(true);
       expect(result.find((row) => row.id === 'block-3')?.reviewable).toBe(
         false
       );

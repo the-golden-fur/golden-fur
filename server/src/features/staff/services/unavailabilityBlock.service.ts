@@ -373,7 +373,9 @@ export async function listPendingUnavailabilityBlocks({
   if (error) throwWithStatus(400, error.message);
 
   const rows = (data ?? []) as Array<
-    UnavailabilityBlock & { staff: PendingUnavailabilityBlockStaffSummary | null }
+    UnavailabilityBlock & {
+      staff: PendingUnavailabilityBlockStaffSummary | null;
+    }
   >;
 
   const scoped =

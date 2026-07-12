@@ -63,10 +63,7 @@ describe('UnavailabilityReviewCard', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: /^deny$/i }));
-    await userEvent.type(
-      screen.getByLabelText(/reason/i),
-      '  Short staffed  '
-    );
+    await userEvent.type(screen.getByLabelText(/reason/i), '  Short staffed  ');
     await userEvent.click(
       screen.getByRole('button', { name: /confirm deny/i })
     );

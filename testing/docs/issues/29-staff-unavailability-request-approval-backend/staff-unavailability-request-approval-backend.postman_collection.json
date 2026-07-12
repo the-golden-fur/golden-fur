@@ -530,7 +530,12 @@
         "url": {
           "raw": "{{base_url}}/staff/{{staff_id}}/unavailability/{{staff_block_id}}",
           "host": ["{{base_url}}"],
-          "path": ["staff", "{{staff_id}}", "unavailability", "{{staff_block_id}}"]
+          "path": [
+            "staff",
+            "{{staff_id}}",
+            "unavailability",
+            "{{staff_block_id}}"
+          ]
         }
       },
       "event": [

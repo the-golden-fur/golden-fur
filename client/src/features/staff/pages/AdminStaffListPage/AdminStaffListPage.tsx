@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listPendingUnavailabilityRequests, listStaff } from '../../api/staff.api';
+import {
+  listPendingUnavailabilityRequests,
+  listStaff,
+} from '../../api/staff.api';
 import { StaffCard } from '../../components/cards/StaffCard/StaffCard';
 import { UnavailabilityBlockForm } from '../../components/forms/UnavailabilityBlockForm/UnavailabilityBlockForm';
 import type { StaffProfile, StaffRole } from '../../staff.types';

@@ -161,10 +161,9 @@ export async function cancelUnavailabilityBlock(
 export async function listPendingUnavailabilityRequests(
   accessToken: string
 ): Promise<StaffApiResult<PendingUnavailabilityBlock[]>> {
-  const response = await fetch(
-    `${API_BASE_URL}/staff/unavailability/pending`,
-    { headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/staff/unavailability/pending`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

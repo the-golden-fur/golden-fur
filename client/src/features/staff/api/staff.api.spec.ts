@@ -204,7 +204,9 @@ describe('staff.api', () => {
   it('reviewUnavailabilityRequest PATCHes the decision and returns the updated block', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(jsonResponse({ block: { id: 'block-1', status: 'approved' } }));
+      .mockResolvedValue(
+        jsonResponse({ block: { id: 'block-1', status: 'approved' } })
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await reviewUnavailabilityRequest(

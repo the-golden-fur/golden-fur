@@ -108,12 +108,10 @@ export function UnavailabilityApprovalQueuePage() {
     // Optimistic removal; rolled back by a fresh load if the request fails.
     setPending((prev) => prev.filter((item) => item.id !== block.id));
 
-    void reviewUnavailabilityRequest(
-      block.staff_id,
-      block.id,
-      accessToken,
-      { decision, denial_reason: denialReason }
-    ).then((result) => {
+    void reviewUnavailabilityRequest(block.staff_id, block.id, accessToken, {
+      decision,
+      denial_reason: denialReason,
+    }).then((result) => {
       if (result.error) {
         setActionError(result.error);
         loadPending(accessToken);
