@@ -35,6 +35,7 @@ export const customerAuthRoutes = createElement(
         'div',
         null,
         'Customer portal',
+        createElement(Link, { to: '/portal/profile' }, 'Profile'),
         createElement(Link, { to: '/portal/settings' }, 'Settings')
       ),
     }),
