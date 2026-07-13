@@ -118,7 +118,7 @@ into the top-level routers.
 
 ### Part 1 - Server routes are mounted and not shadowed (AC-1, AC-4, AC-5)
 
-This is a route-*existence* check, not a business-logic re-test: every
+This is a route-_existence_ check, not a business-logic re-test: every
 request below is expected to come back with a real handler response
 (`200`/`400`/`401`/`403`) and never a `404`, since a `404` here would mean a
 route isn't mounted, or an earlier route is shadowing it.
@@ -146,7 +146,7 @@ route isn't mounted, or an earlier route is shadowing it.
    - `GET /customers/some-id` and `GET /customers/some-id/pets` both come
      back `401` - proof the 3-segment pet route isn't swallowed by the
      2-segment customer route (AC-5).
-   - The final "Unmounted path sanity check" request *does* return `404` -
+   - The final "Unmounted path sanity check" request _does_ return `404` -
      this is a control case confirming the smoke test can actually tell the
      difference between "mounted" and "not mounted."
 

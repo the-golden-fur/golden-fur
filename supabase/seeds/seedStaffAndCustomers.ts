@@ -193,7 +193,8 @@ export async function seedStaffAndCustomers(
       });
 
     if (createError || !created?.user) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `error: could not create auth user for ${staff.email}: ${createError?.message ?? 'unknown error'}`
       );
       continue;
@@ -212,7 +213,8 @@ export async function seedStaffAndCustomers(
       });
 
     if (profileError) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `error: could not create staff_profiles row for ${staff.email}: ${profileError.message}`
       );
       continue;
@@ -249,7 +251,8 @@ export async function seedStaffAndCustomers(
       });
 
     if (createError || !created?.user) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `error: could not create auth user for ${customer.email}: ${createError?.message ?? 'unknown error'}`
       );
       continue;
@@ -267,7 +270,8 @@ export async function seedStaffAndCustomers(
       });
 
     if (profileError) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `error: could not create customer_profiles row for ${customer.email}: ${profileError.message}`
       );
       continue;
@@ -285,13 +289,15 @@ export async function seedStaffAndCustomers(
     );
 
     if (petsError) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `error: could not create pets for ${customer.email}: ${petsError.message}`
       );
       continue;
     }
 
-    console.log( // eslint-disable-line no-console
+    console.log(
+      // eslint-disable-line no-console
       `created: customer ${customer.email} (${customer.pets.length} pet(s))`
     );
     summary.customersCreated.push(customer.email);
@@ -309,7 +315,8 @@ async function main() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
-    console.error( // eslint-disable-line no-console
+    console.error(
+      // eslint-disable-line no-console
       'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in server/.env before running this script.'
     );
     process.exit(1);
@@ -319,10 +326,12 @@ async function main() {
   const summary = await seedStaffAndCustomers(supabase);
 
   console.log('\nSummary:'); // eslint-disable-line no-console
-  console.log( // eslint-disable-line no-console
+  console.log(
+    // eslint-disable-line no-console
     `  staff created: ${summary.staffCreated.length}, skipped: ${summary.staffSkipped.length}`
   );
-  console.log( // eslint-disable-line no-console
+  console.log(
+    // eslint-disable-line no-console
     `  customers created: ${summary.customersCreated.length}, skipped: ${summary.customersSkipped.length}`
   );
   console.log(`  pets created: ${summary.petsCreated}`); // eslint-disable-line no-console

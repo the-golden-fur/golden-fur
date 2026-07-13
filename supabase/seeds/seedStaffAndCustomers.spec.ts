@@ -118,9 +118,7 @@ describe('buildCustomerSeedPlan', () => {
     const pets = buildCustomerSeedPlan().flatMap((customer) => customer.pets);
 
     expect(new Set(pets.map((pet) => pet.species)).size).toBeGreaterThan(1);
-    expect(new Set(pets.map((pet) => pet.weightClass)).size).toBeGreaterThan(
-      1
-    );
+    expect(new Set(pets.map((pet) => pet.weightClass)).size).toBeGreaterThan(1);
     expect(new Set(pets.map((pet) => pet.coatType)).size).toBeGreaterThan(1);
   });
 });
