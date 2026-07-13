@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "Issue #37 - CORS Config (Live-Testable Portion)",
+    "description": "Error classes and the storage service have no HTTP consumer yet (out of scope to rewire existing code in this issue), so they're verified by unit tests only - see shared-storage-errors-cors.md. CORS is the one part of this issue observable over real HTTP: what a browser actually checks is the presence/absence of the Access-Control-Allow-Origin header, not the HTTP status code.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "allowed_origin", "value": "http://localhost:5173" },
+    { "key": "disallowed_origin", "value": "https://evil.example.com" }
+  ],
+  "item": [
+    {
+      "name": "Allowed origin - Access-Control-Allow-Origin present (AC-4 accept)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Origin", "value": "{{allowed_origin}}" }],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('request succeeds (200)', () => pm.response.to.have.status(200));",
+              "pm.test('Access-Control-Allow-Origin matches the allowed origin', () => {",
+              "  pm.response.to.have.header('Access-Control-Allow-Origin');",
+              "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql(pm.collectionVariables.get('allowed_origin'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Disallowed origin - Access-Control-Allow-Origin absent (AC-4 reject)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Origin", "value": "{{disallowed_origin}}" }],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('no Access-Control-Allow-Origin header - this is what actually blocks a browser', () => {",
+              "  pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.be.false;",
+              "});",
+              "pm.test('server responds with a clean JSON error body, no stack trace leaked', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('error');",
+              "  pm.expect(JSON.stringify(body)).to.not.include('at ');",
+              "  pm.expect(JSON.stringify(body)).to.not.include('.ts:');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Preflight (OPTIONS) - allowed origin",
+      "request": {
+        "method": "OPTIONS",
+        "header": [
+          { "key": "Origin", "value": "{{allowed_origin}}" },
+          { "key": "Access-Control-Request-Method", "value": "GET" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('preflight succeeds (204)', () => pm.response.to.have.status(204));",
+              "pm.test('Access-Control-Allow-Methods is present', () => pm.response.to.have.header('Access-Control-Allow-Methods'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "No Origin header - passes through (server-to-server/same-origin)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('request without an Origin header still succeeds (200)', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
