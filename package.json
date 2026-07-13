@@ -13,7 +13,7 @@
     "client": "npm --prefix client run dev",
     "server": "npm --prefix server run dev",
     "=== SETUP ===": "",
-    "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install && npm --prefix supabase install",
     "=== CODE QUALITY ===": "",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
@@ -24,7 +24,8 @@
     "supabase:pull": "supabase db pull",
     "supabase:status": "supabase migration list",
     "supabase:reset": "supabase db reset",
-    "supabase:repair": "supabase migration repair"
+    "supabase:repair": "supabase migration repair",
+    "supabase:seed:staff-customers": "npm --prefix supabase run seed:staff-customers"
   },
   "devDependencies": {
     "concurrently": "^9.2.3",
