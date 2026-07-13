@@ -50,7 +50,9 @@ describe('parseAllowedOrigins', () => {
 
 describe('buildCorsOptions', () => {
   it('allows a request from an origin on the allowlist', () => {
-    const options = buildCorsOptions('http://localhost:5173,https://app.goldenfur.com');
+    const options = buildCorsOptions(
+      'http://localhost:5173,https://app.goldenfur.com'
+    );
     const callback = vi.fn();
 
     checkOrigin(options, 'https://app.goldenfur.com', callback);

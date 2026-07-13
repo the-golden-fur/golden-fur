@@ -32,7 +32,7 @@ Root cause: pre-Issue #37 code (`requireMfa.middleware.ts`,
 `requireRole.middleware.ts`, `jwtMiddleware`, ...) throws a plain `Error`
 with a manually attached `.statusCode` property and calls `next(error)`.
 Before this issue, nothing but Express's own default error handler ever
-saw that - and Express's default *does* read `.statusCode`. My first
+saw that - and Express's default _does_ read `.statusCode`. My first
 `errorHandler` draft only checked `instanceof AppError`, so it silently
 turned all of those intentional 401s/403s into generic 500s the moment it
 became the app's only error handler.
@@ -74,7 +74,7 @@ subclasses, `ValidationError` with and without `details`, a custom
 message). There's no live HTTP route yet that throws these classes (Out of
 Scope: existing controllers aren't rewritten to use them in this issue), so
 there's nothing meaningful to click through in a browser or Postman for
-this part - the unit tests *are* the verification surface.
+this part - the unit tests _are_ the verification surface.
 
 1. Open `server/src/shared/errors/errorHandler.middleware.spec.ts` and skim
    the test names/assertions to see AC-1 and AC-2 covered directly.
@@ -91,7 +91,7 @@ Also unit-test-only for the same reason (no consumer yet).
 
 ### Part 3 - CORS, verified live against a running server (AC-4, AC-5, AC-6)
 
-This part *is* observable over real HTTP, and was actually run against a
+This part _is_ observable over real HTTP, and was actually run against a
 live `npm run dev` server (not just asserted) as part of this work:
 
 3. Start the server: in `server/`, run `npm.cmd run dev`. Confirm it prints
@@ -109,7 +109,7 @@ live `npm run dev` server (not just asserted) as part of this work:
      `Access-Control-Allow-Origin` header at all - a browser would block
      the response client-side regardless of the HTTP status code returned
      (AC-4 reject case). The body is a clean `{"error":"Internal server
-     error"}` with no stack trace, because the CORS library's rejection
+error"}` with no stack trace, because the CORS library's rejection
      flows through the new `errorHandler` too.
 6. For AC-6's `test` `NODE_ENV` case: this is implicitly proven by the
    entire automated test suite above (all 32 test files import `app` from

@@ -41,9 +41,7 @@ export function errorHandler(
   const legacyStatusCode = getLegacyStatusCode(err);
 
   if (legacyStatusCode !== undefined) {
-    return res
-      .status(legacyStatusCode)
-      .json({ error: (err as Error).message });
+    return res.status(legacyStatusCode).json({ error: (err as Error).message });
   }
 
   console.error(err); // eslint-disable-line no-console
