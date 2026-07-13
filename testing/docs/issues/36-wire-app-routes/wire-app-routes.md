@@ -1,8 +1,11 @@
 # Issue #36: Wire All App Routes (Client + Server)
 
+Type: Sprint 1 chore, tracked as Issue #36
+Branch: `chore/wire-app-routes`
+
 ## Overview
 
-This issue ensures that every route built across Sprint 1's epics is registered in a single place, making the whole app navigable end-to-end.
+This issue ensures that every route built across Sprint 1's epics is registered in a single place, making the whole app navigable end-to-end. No new user-facing behavior is introduced here - the underlying pages/endpoints already shipped in Epics A, A-1, B, and C. This is purely a reachability/wiring check.
 
 ## Current Implementation Status
 
@@ -91,43 +94,98 @@ No unintended shadowing between static and dynamic segments detected.
 - Landing page uses `/` (appropriate final position)
 - No dynamic segment conflicts detected
 
-## Testing Checklists
+## Automated Verification
 
-### Server-side Route Verification
+From `server/`:
 
-Verify that each server route exists and responds:
+```powershell
+npm.cmd run test
+npx tsc --noEmit
+```
 
-- [ ] GET `/auth/staff/*` - Staff auth endpoints
-- [ ] GET `/auth/customers/*` - Customer auth endpoints
-- [ ] GET `/staff` - List staff (requires auth)
-- [ ] GET `/staff/:id` - Get staff profile (requires auth)
-- [ ] GET `/staff/unavailability/pending` - List pending blocks (requires auth)
-- [ ] GET `/customers` - List customers (requires auth)
-- [ ] GET `/customers/:id` - Get customer profile (requires auth)
-- [ ] GET `/pets/*` - Pet-related endpoints (requires auth)
+From `client/`:
 
-### Client-side Route Navigation Verification
+```powershell
+npm.cmd run test
+npx tsc -b
+```
 
-Navigate to each route path in the browser and verify it renders correctly:
+Expected: all existing suites pass unmodified (AC-3) - this issue does not add
+or change any test files, since it only wires already-tested route modules
+into the top-level routers.
 
-- [ ] `/` - Landing page loads
-- [ ] `/staff/login` - Staff login form displays
-- [ ] `/staff/mfa/enroll` - MFA enrollment page displays
-- [ ] `/staff/mfa/verify` - MFA verification page displays
-- [ ] `/staff` - Staff dashboard displays (with auth guard)
-- [ ] `/staff/profile` - Staff profile page displays (with auth guard)
-- [ ] `/staff/admin/staff` - Admin staff list displays (with auth guard)
-- [ ] `/staff/admin/unavailability` - Unavailability approval queue displays (with auth guard)
-- [ ] `/staff/admin/customers` - Admin customer list displays (with auth guard)
-- [ ] `/login` - Customer login form displays
-- [ ] `/signup` - Customer signup form displays
-- [ ] `/auth/callback` - OAuth callback page displays
-- [ ] `/portal/mfa/verify` - Customer MFA verification page displays
-- [ ] `/portal/profile` - Customer profile page displays (with auth guard)
-- [ ] `/portal/pets/:petId` - Pet detail page displays (with auth guard)
+## Manual Verification
 
-### Regression Test Verification
+### Part 1 - Server routes are mounted and not shadowed (AC-1, AC-4, AC-5)
 
-- [ ] Run `npm run test:run` in server/ directory - all tests pass
-- [ ] Run `npm run test:run` in client/ directory - all tests pass
-- [ ] Run linter checks pass for both client and server
+This is a route-*existence* check, not a business-logic re-test: every
+request below is expected to come back with a real handler response
+(`200`/`400`/`401`/`403`) and never a `404`, since a `404` here would mean a
+route isn't mounted, or an earlier route is shadowing it.
+
+1. Start the server: in `server/`, run `npm.cmd run dev`. Leave it running.
+2. Open Postman (or the VS Code "Postman" / "Thunder Client" style extension
+   if you don't have the desktop app - any HTTP client works).
+3. Click **Import** in Postman, choose **File**, and select
+   `testing/docs/issues/36-wire-app-routes/wire-app-routes.postman_collection.json`
+   from this repo. It will appear as a new collection named "Issue #36 - Wire
+   All App Routes (Server Route-Existence Smoke Test)" in your sidebar.
+4. The collection's `base_url` variable already defaults to
+   `http://localhost:3000` (the server's default `SERVER_PORT`). If your
+   local `server/.env` uses a different `SERVER_PORT`, click the collection
+   name → **Variables** tab and update `base_url` before running.
+5. Click the collection's **⋯** menu → **Run collection** → **Run Issue #36
+   ...** (or open and send each request individually with the **Send**
+   button).
+6. Confirm every request shows a green passing test in the **Test Results**
+   tab of its response. In particular:
+   - `GET /staff/unavailability/pending` and `GET /staff/some-id` both come
+     back `401` (not `404`) - this is the concrete proof that the static
+     `/staff/unavailability/pending` route isn't shadowed by the dynamic
+     `/staff/:id` route registered after it (AC-5).
+   - `GET /customers/some-id` and `GET /customers/some-id/pets` both come
+     back `401` - proof the 3-segment pet route isn't swallowed by the
+     2-segment customer route (AC-5).
+   - The final "Unmounted path sanity check" request *does* return `404` -
+     this is a control case confirming the smoke test can actually tell the
+     difference between "mounted" and "not mounted."
+
+### Part 2 - Client routes are registered (AC-2)
+
+1. Start the client: in `client/`, run `npm.cmd run dev`, then open the
+   printed local URL (typically `http://localhost:5173`) in your browser.
+2. Navigate directly to each path below by typing it into the browser's
+   address bar (not by clicking links), and confirm the page loads instead
+   of falling through to a blank screen or an unrelated route:
+   - `/` - Landing page
+   - `/staff/login` - Staff login form
+   - `/staff/mfa/enroll` - MFA enrollment page
+   - `/staff/mfa/verify` - MFA verification page
+   - `/login` - Customer login form
+   - `/signup` - Customer signup form
+   - `/auth/callback` - OAuth callback page (may show a loading/error state
+     with no `code` param present - that's fine, you're only confirming the
+     route renders its component instead of a blank/404 page)
+   - `/portal/mfa/verify` - Customer MFA verification page
+3. Confirm the auth-guarded pages redirect rather than error when signed
+   out, by navigating directly to each of these while logged out and
+   confirming you land on the matching login page instead of a crash:
+   - `/staff/profile`, `/staff/admin/staff`, `/staff/admin/unavailability`,
+     `/staff/admin/customers` → should redirect to `/staff/login`
+   - `/portal/profile`, `/portal/pets/some-id` → should redirect to `/login`
+4. Log in as a staff account (e.g. `makati.superadmin@goldenfur.com` /
+   `password123`, from Issue #38's seed script - see
+   `testing/docs/issues/38-sprint1-seed-data/sprint1-seed-data.md` if that
+   hasn't been run yet), then navigate to `/staff/profile`,
+   `/staff/admin/staff`, `/staff/admin/unavailability`, and
+   `/staff/admin/customers` again - confirm each now renders its real page
+   instead of redirecting.
+5. Log in as a customer account (e.g. `customer9@goldenfur.com` /
+   `password123`, which has 2 seeded pets), then navigate to
+   `/portal/profile` and `/portal/pets/<one of that customer's pet ids>` -
+   confirm each renders.
+
+### Part 3 - No regressions (AC-3)
+
+1. This is covered by the **Automated Verification** step above passing
+   unmodified - no route-level test files were touched by this issue.

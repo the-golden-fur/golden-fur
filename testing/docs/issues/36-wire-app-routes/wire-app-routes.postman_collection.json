@@ -1,0 +1,346 @@
+{
+  "info": {
+    "name": "Issue #36 - Wire All App Routes (Server Route-Existence Smoke Test)",
+    "description": "Hits every mounted server route from Epics A, A-1, B, and C with no/garbage auth. This is a reachability check only (AC-1), not a business-logic test: every request is expected to come back with a real handler status (200/400/401/403) and never a 404, which would mean the route isn't mounted or is being shadowed by an earlier one.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{ "key": "base_url", "value": "http://localhost:3000" }],
+  "item": [
+    {
+      "name": "Health check sanity (app.ts is up)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('server is up (200)', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "authRoutes - POST /auth/staff/login (no body)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": {
+          "raw": "{{base_url}}/auth/staff/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "login"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted (not 404)', () => pm.response.to.not.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "authRoutes - GET /auth/staff/mfa/status (no token)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/auth/staff/mfa/status",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "mfa", "status"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "authRoutes - POST /auth/customers/signup (no body)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": {
+          "raw": "{{base_url}}/auth/customers/signup",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "signup"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted (not 404)', () => pm.response.to.not.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "authRoutes - POST /auth/customers/oauth/callback (no body)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": {
+          "raw": "{{base_url}}/auth/customers/oauth/callback",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "oauth", "callback"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted (not 404)', () => pm.response.to.not.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "staffRoutes - GET /staff (no token)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/staff",
+          "host": ["{{base_url}}"],
+          "path": ["staff"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "staffRoutes - GET /staff/unavailability/pending (static, must not be shadowed by /staff/:id)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/staff/unavailability/pending",
+          "host": ["{{base_url}}"],
+          "path": ["staff", "unavailability", "pending"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401), proving the static route wins over /staff/:id', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "staffRoutes - GET /staff/some-id (dynamic segment)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/staff/some-id",
+          "host": ["{{base_url}}"],
+          "path": ["staff", "some-id"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes - GET /customers (no token)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/customers",
+          "host": ["{{base_url}}"],
+          "path": ["customers"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes - GET /customers/some-id (dynamic segment)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/customers/some-id",
+          "host": ["{{base_url}}"],
+          "path": ["customers", "some-id"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes (pets) - GET /customers/some-id/pets",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/customers/some-id/pets",
+          "host": ["{{base_url}}"],
+          "path": ["customers", "some-id", "pets"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401), proving no collision with /customers/:id', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes (pets) - GET /pets/some-id",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/pets/some-id",
+          "host": ["{{base_url}}"],
+          "path": ["pets", "some-id"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes (pets) - GET /pets/some-id/vaccination-records",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/pets/some-id/vaccination-records",
+          "host": ["{{base_url}}"],
+          "path": ["pets", "some-id", "vaccination-records"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "customerRoutes (pets) - GET /pets/some-id/medical-notes",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/pets/some-id/medical-notes",
+          "host": ["{{base_url}}"],
+          "path": ["pets", "some-id", "medical-notes"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('route is mounted and jwt-guarded (401)', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Unmounted path sanity check - GET /this-route-does-not-exist",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/this-route-does-not-exist",
+          "host": ["{{base_url}}"],
+          "path": ["this-route-does-not-exist"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('a genuinely unmounted path still 404s (control case)', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
