@@ -258,11 +258,54 @@
       }
     },
     {
+      "label": "⚠️ Supabase: Reset REMOTE DB (destructive)",
+      "type": "npm",
+      "script": "supabase:reset:remote",
+      "detail": "Wipes and re-seeds the LINKED remote project (supabase db reset --linked) - not local. Confirm the linked project before running.",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "🩹 Supabase: Repair Migration History",
       "type": "shell",
       "command": "npm run supabase:repair -- --status ${input:supabaseMigrationStatus} ${input:supabaseMigrationVersion} --linked",
       "presentation": {
         "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+
+    // ── Seed Data (Issue #38 - grouped by module) ──────────────
+    {
+      "label": "🌱 Seed: Module 1 - Staff Auth",
+      "type": "npm",
+      "script": "seed:module-1",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🌱 Seed: Module 2 - Customers & Pets",
+      "type": "npm",
+      "script": "seed:module-2",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🌱 Seed: All Modules",
+      "type": "npm",
+      "script": "seed:all",
+      "presentation": {
+        "group": "seed",
         "panel": "shared",
         "reveal": "always"
       }

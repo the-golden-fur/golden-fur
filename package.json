@@ -24,12 +24,21 @@
     "supabase:pull": "supabase db pull",
     "supabase:status": "supabase migration list",
     "supabase:reset": "supabase db reset",
-    "supabase:repair": "supabase migration repair"
+    "supabase:reset:remote": "supabase db reset --linked",
+    "supabase:repair": "supabase migration repair",
+    "seed:module-1": "tsx supabase/seeds/module-1-staff-auth/module-1-staff-auth.seed.ts",
+    "seed:module-2": "tsx supabase/seeds/module-2-customers-pets/module-2-customers-pets.seed.ts",
+    "seed:all": "npm run seed:module-1 && npm run seed:module-2",
+    "test:seed": "vitest run supabase/seeds"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.49.8",
     "concurrently": "^9.2.3",
+    "dotenv": "^16.6.1",
     "prettier": "^3.7.4",
-    "supabase": "^2.48.3"
+    "supabase": "^2.48.3",
+    "tsx": "^4.22.4",
+    "vitest": "^4.0.18"
   },
   "repository": {
     "type": "git",

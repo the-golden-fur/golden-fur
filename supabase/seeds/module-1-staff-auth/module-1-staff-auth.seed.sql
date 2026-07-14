@@ -1,12 +1,31 @@
--- Golden Fur local/remote seed data.
--- Runs after all migrations on `supabase db reset` (see supabase/config.toml
--- [db.seed] sql_paths). Rewritten because the previous version inserted a
+-- M01 Staff Auth & Access Control - Sprint 1 reference seed data (Issue #38).
+--
+-- Pure-SQL alternative to module-1-staff-auth.seed.ts, for when you'd rather
+-- paste this into the Supabase SQL Editor / run it via psql than a Node
+-- script. This is the original dev-convenience seed content (previously
+-- supabase/seed.sql, rewritten at the time because it inserted a
 -- `break_window` value into public.branches, a column dropped by migration
--- 20260701010 — that made every `db reset` fail on a fresh apply.
+-- 20260701010 - that made every `db reset` fail on a fresh apply), moved
+-- here as part of grouping seeds by module.
+--
+-- Runs automatically on `supabase db reset` (see supabase/config.toml
+-- [db.seed] sql_paths). Not idempotent by design - like the original, this
+-- is meant to run once against a freshly-reset database, not to be re-run
+-- against one that already has these rows (re-running will hit the unique
+-- constraints on branches.name / staff_profiles.registered_email). If you
+-- need a version that's safe to re-run against a live database, use
+-- module-1-staff-auth.seed.ts instead.
 --
 -- All accounts use the password: password123
--- Staff:    <branch>.<role>N@goldenfur.com  (e.g. makati.admin2@goldenfur.com)
--- Customer: customerN@goldenfur.com
+-- Staff: <branch>.<role>N@goldenfur.com (e.g. makati.admin2@goldenfur.com)
+--
+-- crypt()/gen_salt() are schema-qualified as extensions.crypt()/
+-- extensions.gen_salt() because migration 20260625001 installs pgcrypto
+-- `with schema extensions`, not into `public`. Unqualified calls resolve
+-- fine against a local `supabase start` instance (whose default
+-- search_path happens to include `extensions`) but fail against a linked
+-- remote project's reset/seed session with
+-- `function gen_salt(unknown) does not exist` - always schema-qualify here.
 
 -- ============================================================
 -- Branches
@@ -80,7 +99,7 @@ begin
         )
         values (
           v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-          v_email, crypt('password123', gen_salt('bf')),
+          v_email, extensions.crypt('password123', extensions.gen_salt('bf')),
           now(), now(),
           '{"provider":"email","providers":["email"]}'::jsonb,
           format('{"full_name":"%s"}', v_display_name)::jsonb,
@@ -105,55 +124,5 @@ begin
         );
       end loop;
     end loop;
-  end loop;
-end $$;
-
--- ============================================================
--- Customers: customer1@goldenfur.com .. customer5@goldenfur.com
--- ============================================================
-
-do $$
-declare
-  v_n int;
-  v_user_id uuid;
-  v_email text;
-  v_full_name text;
-begin
-  for v_n in 1 .. 5 loop
-    v_email := 'customer' || v_n || '@goldenfur.com';
-    v_full_name := 'Customer ' || v_n;
-    v_user_id := gen_random_uuid();
-
-    insert into auth.users (
-      id, instance_id, aud, role, email, encrypted_password,
-      email_confirmed_at, last_sign_in_at, raw_app_meta_data, raw_user_meta_data,
-      created_at, updated_at,
-      confirmation_token, recovery_token, email_change_token_new, email_change
-    )
-    values (
-      v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-      v_email, crypt('password123', gen_salt('bf')),
-      now(), now(),
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      format('{"full_name":"%s"}', v_full_name)::jsonb,
-      now(), now(),
-      '', '', '', ''
-    );
-
-    insert into auth.identities (
-      id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
-    )
-    values (
-      gen_random_uuid(), v_user_id::text, v_user_id,
-      format('{"sub":"%s","email":"%s"}', v_user_id, v_email)::jsonb,
-      'email', now(), now(), now()
-    );
-
-    insert into public.customer_profiles (
-      id, full_name, contact_number, account_email, primary_auth_provider
-    )
-    values (
-      v_user_id, v_full_name, '+63 917 000 ' || lpad(v_n::text, 4, '0'), v_email, 'email'
-    );
   end loop;
 end $$;
