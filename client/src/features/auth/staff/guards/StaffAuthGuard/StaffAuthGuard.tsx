@@ -21,7 +21,7 @@ const ROLE_TIMEOUT_MS: Record<string, number> = {
 };
 
 function requiresMfa(role: string | null) {
-  return role === 'Admin' || role === 'Superadmin';
+  return role === 'Admin' || role === 'Supervisor' || role === 'Superadmin';
 }
 
 export function StaffAuthGuard() {
