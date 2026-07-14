@@ -253,7 +253,7 @@ literally, by explicit direction this pass (see Revision note above).
 - [~] **AC-3:** does **not** create exactly 3 `customer_profiles` rows.
   Creates 5, each with 1-2 `pets` rows of varied
   species/weight_class/coat_type — unit test `creates 5 customers, each
-  with 1-2 pets...`.
+with 1-2 pets...`.
 - [x] **AC-4:** at least one seed customer (`customer1`) has a placeholder
       `facebook_id` — unit test `sets a placeholder facebook_id...`.
 - [x] **AC-5:** no `staff_unavailability_blocks`, `pet_vaccination_records`,
@@ -261,7 +261,7 @@ literally, by explicit direction this pass (see Revision note above).
       construction; confirmed via the SQL verification query above.
 - [~] **AC-6:** the `.ts` variants of both modules remain idempotent
   (re-running does not duplicate rows or throw — unit tests `is
-  idempotent: re-running does not duplicate...`). The `.sql` variants are
+idempotent: re-running does not duplicate...`). The `.sql` variants are
   **not** idempotent by design this pass (see AC-1/the Revision note) —
   they mirror the original `seed.sql`, meant for a single run against a
   freshly-reset database.

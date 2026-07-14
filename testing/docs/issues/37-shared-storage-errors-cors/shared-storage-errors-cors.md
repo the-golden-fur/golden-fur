@@ -55,7 +55,7 @@ previously-passing integration tests: `requireMfa.middleware.ts`,
 (all pre-Epic-D, per the epic's own Out of Scope section) throw a plain
 `Error` with a manually bolted-on `.statusCode` — e.g. `403` for a forbidden
 role. Before this issue, there was **no** custom error middleware, so
-Express's own default final handler was in effect, and it *does* honor
+Express's own default final handler was in effect, and it _does_ honor
 `err.status`/`err.statusCode` on any thrown object. Registering a strict
 "only `AppError` gets its real status, everything else is 500" handler
 silently turned every one of those pre-existing 401/403 rejections into a 500.
@@ -72,7 +72,7 @@ silently turned every one of those pre-existing 401/403 rejections into a 500.
 
 This keeps AC-2's actual intent — "don't leak internals for an exception
 nobody anticipated" — while not silently regressing the three already-shipped
-epics that this issue's own Out of Scope section says are *not* being
+epics that this issue's own Out of Scope section says are _not_ being
 retrofitted. Flagging this for the client/reviewer since it reads as a
 correction to AC-2's literal text, not just an implementation detail.
 
@@ -139,12 +139,12 @@ npm --prefix server run dev
 3. Run requests **1 → 4** in order. Each has a **Tests** tab that asserts
    automatically.
 
-| #   | Request                                             | Expected                                                                                 |
-| :-- | :--------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| 1   | AC-4: GET /health from an allowed Origin              | `200`; `Access-Control-Allow-Origin` header echoes `allowed_origin`                        |
-| 2   | AC-4: GET /health from a disallowed Origin            | Blocked by CORS — response has no `Access-Control-Allow-Origin` header (falls through to the generic 500 branch of `errorHandler`, since the CORS rejection is a plain `Error`) |
-| 3   | AC-1/AC-2: GET /staff with no Authorization header    | `401`, `{ "error": "Missing or malformed token" }` — proves `errorHandler`'s legacy-`.statusCode` branch still works for pre-Epic-D middleware |
-| 4   | AC-5: comma-separated CORS_ALLOWED_ORIGINS parses     | Manual check — see note below                                                            |
+| #   | Request                                            | Expected                                                                                                                                                                        |
+| :-- | :------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | AC-4: GET /health from an allowed Origin           | `200`; `Access-Control-Allow-Origin` header echoes `allowed_origin`                                                                                                             |
+| 2   | AC-4: GET /health from a disallowed Origin         | Blocked by CORS — response has no `Access-Control-Allow-Origin` header (falls through to the generic 500 branch of `errorHandler`, since the CORS rejection is a plain `Error`) |
+| 3   | AC-1/AC-2: GET /staff with no Authorization header | `401`, `{ "error": "Missing or malformed token" }` — proves `errorHandler`'s legacy-`.statusCode` branch still works for pre-Epic-D middleware                                  |
+| 4   | AC-5: comma-separated CORS_ALLOWED_ORIGINS parses  | Manual check — see note below                                                                                                                                                   |
 
 **Note on request 4:** parsing of comma-separated, whitespace-padded origins
 is covered by the 4 unit tests in `cors.config.spec.ts` (AC-5) rather than a

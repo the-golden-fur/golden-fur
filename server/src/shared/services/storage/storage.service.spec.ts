@@ -30,12 +30,10 @@ describe('storage.service', () => {
   describe('upload', () => {
     it('returns a public URL on success', async () => {
       vi.mocked(supabase.storage.from).mockReturnValue({
-        upload: vi
-          .fn()
-          .mockResolvedValue({
-            data: { path: 'pets/1/photo.png' },
-            error: null,
-          }),
+        upload: vi.fn().mockResolvedValue({
+          data: { path: 'pets/1/photo.png' },
+          error: null,
+        }),
         getPublicUrl: vi.fn().mockReturnValue({
           data: { publicUrl: 'https://example.com/pets/1/photo.png' },
         }),
@@ -63,11 +61,9 @@ describe('storage.service', () => {
   describe('getPublicUrl', () => {
     it('returns the resolved URL', () => {
       vi.mocked(supabase.storage.from).mockReturnValue({
-        getPublicUrl: vi
-          .fn()
-          .mockReturnValue({
-            data: { publicUrl: 'https://example.com/a.png' },
-          }),
+        getPublicUrl: vi.fn().mockReturnValue({
+          data: { publicUrl: 'https://example.com/a.png' },
+        }),
       } as never);
 
       expect(getPublicUrl('avatars', 'a.png')).toBe(
