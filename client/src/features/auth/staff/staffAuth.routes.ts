@@ -3,6 +3,7 @@ import { Link, Route } from 'react-router';
 import { MfaChallengePage } from './pages/MfaChallengePage/MfaChallengePage';
 import { MfaEnrollPage } from './pages/MfaEnrollPage/MfaEnrollPage';
 import { StaffLoginPage } from './pages/StaffLoginPage/StaffLoginPage';
+import { StaffResetPasswordPage } from './pages/StaffResetPasswordPage/StaffResetPasswordPage';
 import { StaffAuthGuard } from './guards/StaffAuthGuard/StaffAuthGuard';
 import { SettingsPage } from '../../../pages/SettingsPage/SettingsPage';
 
@@ -20,6 +21,10 @@ export const staffAuthRoutes = createElement(
   createElement(Route, {
     path: '/staff/mfa/verify',
     element: createElement(MfaChallengePage),
+  }),
+  createElement(Route, {
+    path: '/staff/reset-password',
+    element: createElement(StaffResetPasswordPage),
   }),
   createElement(
     Route,

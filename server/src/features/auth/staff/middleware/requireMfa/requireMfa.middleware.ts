@@ -15,7 +15,7 @@ const STAFF_ROLES = new Set([
 ]);
 
 /** Roles that must complete TOTP (aal2) before touching MFA-gated routes. */
-const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin']);
+const MANDATORY_MFA_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
 export async function requireMfa(
   req: AuthenticatedRequest,

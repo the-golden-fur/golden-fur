@@ -1,4 +1,7 @@
 import type {
+  CreateStaffAccountPayload,
+  CreateStaffAccountResult,
+  ManageStaffAccountPayload,
   PendingUnavailabilityBlock,
   ReviewUnavailabilityBlockPayload,
   StaffProfile,
@@ -213,5 +216,47 @@ export async function listStaff(
   }
 
   const result = await parseBody<{ staff: StaffProfile[] }>(response);
+  return { data: result.data?.staff ?? null, error: result.error };
+}
+
+export async function createStaffAccount(
+  accessToken: string,
+  payload: CreateStaffAccountPayload
+): Promise<StaffApiResult<CreateStaffAccountResult>> {
+  const response = await fetch(`${API_BASE_URL}/staff`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<CreateStaffAccountResult>(response);
+}
+
+export async function manageStaffAccount(
+  staffId: string,
+  accessToken: string,
+  payload: ManageStaffAccountPayload
+): Promise<StaffApiResult<StaffProfile>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}/manage`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ staff: StaffProfile }>(response);
   return { data: result.data?.staff ?? null, error: result.error };
 }

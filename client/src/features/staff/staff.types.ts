@@ -77,3 +77,24 @@ export interface ReviewUnavailabilityBlockPayload {
   decision: 'approved' | 'denied';
   denial_reason?: string;
 }
+
+/** M01 Process 5: promote/demote, deactivate, transfer branch. */
+export interface ManageStaffAccountPayload {
+  role?: StaffRole;
+  branch_id?: string;
+  is_active?: boolean;
+}
+
+/** M01 Process 1: admin creates a staff account. */
+export interface CreateStaffAccountPayload {
+  username: string;
+  registered_email: string;
+  display_name: string;
+  role: StaffRole;
+  branch_id: string;
+}
+
+export interface CreateStaffAccountResult {
+  staff: StaffProfile;
+  temporary_password: string;
+}

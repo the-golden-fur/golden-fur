@@ -1,6 +1,6 @@
 import type { CorsOptions } from 'cors';
 
-function parseAllowedOrigins(raw: string | undefined): string[] {
+export function parseAllowedOrigins(raw: string | undefined): string[] {
   return (raw ?? '')
     .split(',')
     .map((origin) => origin.trim())

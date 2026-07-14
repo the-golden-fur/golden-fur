@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelUnavailabilityBlock,
+  createStaffAccount,
   createUnavailabilityBlock,
   getStaffProfile,
   listPendingUnavailabilityRequests,
   listStaff,
   listUnavailabilityBlocks,
+  manageStaffAccount,
   reviewUnavailabilityRequest,
   updateStaffProfile,
   uploadAvatar,
@@ -255,5 +257,94 @@ describe('staff.api', () => {
     const result = await listStaff('token');
 
     expect(result.data).toEqual([{ id: 'staff-1' }]);
+  });
+
+  it('createStaffAccount posts to /staff and returns the new staff + temporary password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        staff: { id: 'new-staff' },
+        temporary_password: 'tmp-pass',
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await createStaffAccount('token', {
+      username: 'new.hire',
+      registered_email: 'new.hire@goldenfur.com',
+      display_name: 'New Hire',
+      role: 'Receptionist',
+      branch_id: 'branch-a',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/staff'),
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(result.data).toEqual({
+      staff: { id: 'new-staff' },
+      temporary_password: 'tmp-pass',
+    });
+  });
+
+  it('createStaffAccount surfaces the server error message on failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: 'Username already exists' }, false)
+        )
+    );
+
+    const result = await createStaffAccount('token', {
+      username: 'taken',
+      registered_email: 'taken@goldenfur.com',
+      display_name: 'Taken',
+      role: 'Receptionist',
+      branch_id: 'branch-a',
+    });
+
+    expect(result).toEqual({ data: null, error: 'Username already exists' });
+  });
+
+  it('manageStaffAccount PATCHes /staff/:id/manage and returns the unwrapped profile', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ staff: { id: 'staff-2', role: 'Supervisor' } })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await manageStaffAccount('staff-2', 'token', {
+      role: 'Supervisor',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/staff/staff-2/manage'),
+      expect.objectContaining({ method: 'PATCH' })
+    );
+    expect(result.data).toEqual({ id: 'staff-2', role: 'Supervisor' });
+  });
+
+  it('manageStaffAccount surfaces the server error message on failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(
+            { error: 'Only a Superadmin can change staff role or branch' },
+            false
+          )
+        )
+    );
+
+    const result = await manageStaffAccount('staff-2', 'token', {
+      role: 'Admin',
+    });
+
+    expect(result.error).toBe(
+      'Only a Superadmin can change staff role or branch'
+    );
   });
 });

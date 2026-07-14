@@ -117,6 +117,53 @@ describe('unavailabilityBlock.service', () => {
       expect(result.end_time).toBe('2026-07-14T03:00:00.000Z');
     });
 
+    it('bug fix regression: a self quick action is inserted with is_quick_action true, so the DB trigger approves it', async () => {
+      const now = new Date('2026-07-13T05:00:00.000Z');
+      const insertSpy = vi.fn((payload: Record<string, unknown>) => payload);
+
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        },
+        { data: [], error: null },
+        { data: { id: 'block-1', is_quick_action: true }, error: null }
+      );
+
+      const originalFrom = vi.mocked(supabase.from).getMockImplementation()!;
+      vi.mocked(supabase.from).mockImplementation((table) => {
+        const builder = originalFrom(table) as unknown as Record<
+          string,
+          unknown
+        >;
+        const originalInsert = builder.insert as (
+          _payload: Record<string, unknown>
+        ) => unknown;
+        builder.insert = vi.fn((payload: Record<string, unknown>) => {
+          insertSpy(payload);
+          return originalInsert(payload);
+        });
+        return builder as never;
+      });
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        quickAction: true,
+        now,
+      });
+
+      expect(insertSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ is_quick_action: true })
+      );
+      expect(result.id).toBe('block-1');
+    });
+
     it('AC-3: rejects a block that overlaps an existing active block with 409', async () => {
       queueFromResults(
         { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },

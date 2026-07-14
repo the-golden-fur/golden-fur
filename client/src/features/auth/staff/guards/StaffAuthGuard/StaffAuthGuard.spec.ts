@@ -254,7 +254,7 @@ describe('StaffAuthGuard', () => {
     expect(await screen.findByText('MFA challenge')).toBeInTheDocument();
   });
 
-  it('never shows the MFA setup popup for a Supervisor, even when unenrolled', async () => {
+  it('shows the mandatory MFA setup popup for an unenrolled Supervisor (spec requires Admin + Supervisor)', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Supervisor', mfa_enrolled: false },
       error: null,
@@ -281,14 +281,11 @@ describe('StaffAuthGuard', () => {
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
-    await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
-    await waitFor(() => expect(staffApi.getStaffProfile).toHaveBeenCalled());
     expect(
-      screen.queryByRole('dialog', {
+      await screen.findByRole('dialog', {
         name: /set up multi-factor authentication/i,
       })
-    ).not.toBeInTheDocument();
-    expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+    ).toBeInTheDocument();
   });
 
   // aal is a JWT claim, not a session.user field - encode a fake token whose

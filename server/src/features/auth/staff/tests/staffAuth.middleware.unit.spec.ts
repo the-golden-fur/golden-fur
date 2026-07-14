@@ -115,7 +115,7 @@ describe('requireMfa middleware', () => {
     next = vi.fn();
   });
 
-  it.each(['Admin', 'Superadmin'])(
+  it.each(['Admin', 'Supervisor', 'Superadmin'])(
     'blocks %s when the session is not aal2',
     async (role) => {
       const req = {
@@ -130,7 +130,7 @@ describe('requireMfa middleware', () => {
     }
   );
 
-  it.each(['Admin', 'Superadmin'])(
+  it.each(['Admin', 'Supervisor', 'Superadmin'])(
     'allows %s when the session is aal2',
     async (role) => {
       const req = {
@@ -144,7 +144,6 @@ describe('requireMfa middleware', () => {
   );
 
   it.each([
-    'Supervisor',
     'Receptionist',
     'Cashier',
     'Groomer',

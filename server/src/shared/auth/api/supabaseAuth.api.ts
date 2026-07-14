@@ -106,6 +106,23 @@ export async function createCustomerProfile(
   return supabase.from('customer_profiles').insert(fields);
 }
 
+/**
+ * Mirrors createCustomerAuthUser: uses the admin API (not auth.signUp) so no
+ * confirmation email is sent and the account is immediately usable with the
+ * temporary password the caller generated.
+ */
+export async function createStaffAuthUser(email: string, password: string) {
+  return supabase.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+}
+
+export async function deleteAuthUser(userId: string) {
+  return supabase.auth.admin.deleteUser(userId);
+}
+
 export async function getCustomerProfileByEmail(email: string) {
   return supabase
     .from('customer_profiles')

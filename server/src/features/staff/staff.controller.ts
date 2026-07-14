@@ -3,8 +3,16 @@ import multer from 'multer';
 import { z } from 'zod';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
-import { updateStaffProfileValidator } from './modules/validators/staff.validator.ts';
+import {
+  createStaffAccountValidator,
+  manageStaffAccountValidator,
+  updateStaffProfileValidator,
+} from './modules/validators/staff.validator.ts';
 import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
+import {
+  createStaffAccount,
+  manageStaffAccount,
+} from './services/staffManagement.service.ts';
 import {
   cancelUnavailabilityBlock,
   createUnavailabilityBlock,
@@ -263,6 +271,94 @@ export async function updateStaffProfileController(
     return res.status(200).json({ staff: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * M01 Process 1: Admin Creates a Staff Account. Route-level requireRole
+ * already restricts this to Admin/Superadmin; the Admin-own-branch
+ * restriction is enforced in createStaffAccount().
+ */
+export async function createStaffAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createStaffAccountValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await createStaffAccount({
+      requesterRole,
+      requesterBranchId,
+      username: parsed.data.username,
+      registeredEmail: parsed.data.registered_email,
+      displayName: parsed.data.display_name,
+      role: parsed.data.role,
+      branchId: parsed.data.branch_id,
+    });
+
+    return res.status(201).json({
+      staff: result.staff,
+      temporary_password: result.temporaryPassword,
+    });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * M01 Process 5: Admin Manages a Staff Account (promote/demote, deactivate,
+ * transfer branch). Route-level requireRole restricts this to Admin/
+ * Superadmin; the Superadmin-only restriction for role/branch changes is
+ * enforced in manageStaffAccount().
+ */
+export async function manageStaffAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = manageStaffAccountValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const staff = await manageStaffAccount({
+      requesterRole,
+      requesterBranchId,
+      targetStaffId: targetId as string,
+      role: parsed.data.role,
+      branchId: parsed.data.branch_id,
+      isActive: parsed.data.is_active,
+    });
+
+    return res.status(200).json({ staff });
+  } catch (error) {
+    return sendServiceError(res, error);
   }
 }
 

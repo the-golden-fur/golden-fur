@@ -1,3 +1,4 @@
+import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 import type {
   StaffAuthMessageResponse,
   StaffForgotPasswordPayload,
@@ -84,4 +85,79 @@ export function mfaVerify(
 
 export function forgotPassword(payload: StaffForgotPasswordPayload) {
   return postJson<StaffAuthMessageResponse>('/staff/forgot-password', payload);
+}
+
+/**
+ * `detectSessionInUrl` is disabled on the shared client (see auth.api.ts),
+ * mirroring the customer OAuth callback's own manual-exchange pattern -
+ * Supabase's password-recovery redirect carries the same
+ * access_token/refresh_token hash-fragment shape as an OAuth callback,
+ * just with `type=recovery` instead of a provider name.
+ */
+export async function establishRecoverySession(): Promise<
+  StaffApiResult<null>
+> {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const params = new URLSearchParams(hash);
+
+  window.history.replaceState(
+    null,
+    '',
+    window.location.pathname + window.location.search
+  );
+
+  const errorDescription = params.get('error_description');
+  if (errorDescription) {
+    return {
+      data: null,
+      error: decodeURIComponent(errorDescription.replace(/\+/g, ' ')),
+    };
+  }
+
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+
+  if (!accessToken || !refreshToken) {
+    return {
+      data: null,
+      error: 'Reset link is invalid or has expired. Request a new one.',
+    };
+  }
+
+  const { error } = await client.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function updateStaffPassword(
+  password: string
+): Promise<StaffApiResult<null>> {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const { error } = await client.auth.updateUser({ password });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: null, error: null };
 }

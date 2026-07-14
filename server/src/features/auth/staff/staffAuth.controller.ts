@@ -6,6 +6,7 @@ import {
   totpValidator,
 } from './modules/validators/staffAuth.validator.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
+import { parseAllowedOrigins } from '../../../shared/config/cors/cors.config.ts';
 import {
   checkMfaLockout,
   formatMfaLockoutResponse,
@@ -230,7 +231,14 @@ export async function forgotPasswordController(req: Request, res: Response) {
   }
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const clientOrigin = parseAllowedOrigins(
+      process.env.CORS_ALLOWED_ORIGINS
+    )[0];
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: clientOrigin
+        ? `${clientOrigin}/staff/reset-password`
+        : undefined,
+    });
     if (error) {
       return res.status(400).json({ error: error.message });
     }
