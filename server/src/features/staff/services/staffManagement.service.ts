@@ -131,18 +131,21 @@ export async function manageStaffAccount({
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!target) throwWithStatus(404, 'Staff profile not found');
 
-  if (requesterRole !== 'Superadmin' && target.branch_id !== requesterBranchId) {
+  if (
+    requesterRole !== 'Superadmin' &&
+    target.branch_id !== requesterBranchId
+  ) {
     throwWithStatus(403, 'Admins can only manage staff at their own branch');
   }
 
   // Promote/demote and branch transfer are Superadmin-only (M01 Process 5);
   // deactivate is available to Admin or Superadmin (already enforced by the
   // route's requireRole, so isActive needs no further check here).
-  if ((role !== undefined || branchId !== undefined) && requesterRole !== 'Superadmin') {
-    throwWithStatus(
-      403,
-      'Only a Superadmin can change staff role or branch'
-    );
+  if (
+    (role !== undefined || branchId !== undefined) &&
+    requesterRole !== 'Superadmin'
+  ) {
+    throwWithStatus(403, 'Only a Superadmin can change staff role or branch');
   }
 
   const update: Record<string, unknown> = {};

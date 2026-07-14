@@ -99,9 +99,7 @@ describe('ManageStaffAccountForm', () => {
       screen.getByRole('button', { name: /save role\/branch/i })
     );
 
-    expect(
-      await screen.findByText(/no changes to save/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/no changes to save/i)).toBeInTheDocument();
     expect(staffApi.manageStaffAccount).not.toHaveBeenCalled();
   });
 

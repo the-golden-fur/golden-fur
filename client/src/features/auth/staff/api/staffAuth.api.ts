@@ -94,7 +94,9 @@ export function forgotPassword(payload: StaffForgotPasswordPayload) {
  * access_token/refresh_token hash-fragment shape as an OAuth callback,
  * just with `type=recovery` instead of a provider name.
  */
-export async function establishRecoverySession(): Promise<StaffApiResult<null>> {
+export async function establishRecoverySession(): Promise<
+  StaffApiResult<null>
+> {
   const client = getSupabaseClient();
 
   if (!client) {

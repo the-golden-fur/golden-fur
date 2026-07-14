@@ -289,7 +289,11 @@ describe('staff.api', () => {
   it('createStaffAccount surfaces the server error message on failure', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ error: 'Username already exists' }, false))
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: 'Username already exists' }, false)
+        )
     );
 
     const result = await createStaffAccount('token', {
@@ -306,7 +310,9 @@ describe('staff.api', () => {
   it('manageStaffAccount PATCHes /staff/:id/manage and returns the unwrapped profile', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(jsonResponse({ staff: { id: 'staff-2', role: 'Supervisor' } }));
+      .mockResolvedValue(
+        jsonResponse({ staff: { id: 'staff-2', role: 'Supervisor' } })
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await manageStaffAccount('staff-2', 'token', {
@@ -326,7 +332,10 @@ describe('staff.api', () => {
       vi
         .fn()
         .mockResolvedValue(
-          jsonResponse({ error: 'Only a Superadmin can change staff role or branch' }, false)
+          jsonResponse(
+            { error: 'Only a Superadmin can change staff role or branch' },
+            false
+          )
         )
     );
 

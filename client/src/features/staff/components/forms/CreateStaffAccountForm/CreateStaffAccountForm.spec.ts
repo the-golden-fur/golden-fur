@@ -10,7 +10,10 @@ vi.mock('../../../api/staff.api', () => ({
 }));
 
 function renderForm(
-  overrides: { viewerRole?: 'Admin' | 'Superadmin'; onCreated?: () => void } = {}
+  overrides: {
+    viewerRole?: 'Admin' | 'Superadmin';
+    onCreated?: () => void;
+  } = {}
 ) {
   const onCreated = overrides.onCreated ?? vi.fn();
 
@@ -59,9 +62,7 @@ describe('CreateStaffAccountForm', () => {
         branch_id: 'branch-a',
       })
     );
-    expect(
-      await screen.findByText(/temporary password/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/temporary password/i)).toBeInTheDocument();
     expect(screen.getByText('tmp-pass')).toBeInTheDocument();
   });
 
@@ -79,7 +80,9 @@ describe('CreateStaffAccountForm', () => {
     );
 
     expect(
-      await screen.findByText(/username, registered email, and display name are required/i)
+      await screen.findByText(
+        /username, registered email, and display name are required/i
+      )
     ).toBeInTheDocument();
     expect(staffApi.createStaffAccount).not.toHaveBeenCalled();
   });

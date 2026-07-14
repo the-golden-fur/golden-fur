@@ -231,7 +231,9 @@ export async function forgotPasswordController(req: Request, res: Response) {
   }
 
   try {
-    const clientOrigin = parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS)[0];
+    const clientOrigin = parseAllowedOrigins(
+      process.env.CORS_ALLOWED_ORIGINS
+    )[0];
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: clientOrigin
         ? `${clientOrigin}/staff/reset-password`

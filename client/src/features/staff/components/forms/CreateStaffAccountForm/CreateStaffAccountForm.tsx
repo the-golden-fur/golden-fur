@@ -86,7 +86,10 @@ export function CreateStaffAccountForm({
 
   return (
     <div className={styles.wrapper}>
-      <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className={styles.form}
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <label className={styles.field}>
           <span className={styles.label}>Username</span>
           <input
@@ -157,7 +160,8 @@ export function CreateStaffAccountForm({
       {temporaryPassword ? (
         <p className={styles.successBanner}>
           Account created. Temporary password (relay this to the new hire -
-          there is no automated account_created email yet): <code>{temporaryPassword}</code>
+          there is no automated account_created email yet):{' '}
+          <code>{temporaryPassword}</code>
         </p>
       ) : null}
     </div>

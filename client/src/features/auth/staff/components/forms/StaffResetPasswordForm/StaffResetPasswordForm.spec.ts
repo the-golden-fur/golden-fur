@@ -28,10 +28,9 @@ describe('StaffResetPasswordForm', () => {
     expect(
       await screen.findByText(/reset link is invalid or has expired/i)
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /back to login/i })).toHaveAttribute(
-      'href',
-      '/staff/login'
-    );
+    expect(
+      screen.getByRole('link', { name: /back to login/i })
+    ).toHaveAttribute('href', '/staff/login');
   });
 
   it('submits a valid new password and shows a success message', async () => {
@@ -60,9 +59,7 @@ describe('StaffResetPasswordForm', () => {
     expect(staffAuthApi.updateStaffPassword).toHaveBeenCalledWith(
       'newpassword123'
     );
-    expect(
-      await screen.findByText(/password updated/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/password updated/i)).toBeInTheDocument();
   });
 
   it('shows a validation error and never calls the API when passwords do not match', async () => {

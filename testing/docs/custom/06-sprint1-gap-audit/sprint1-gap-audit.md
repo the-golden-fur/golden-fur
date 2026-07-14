@@ -26,6 +26,7 @@ deactivate accounts" AC). `AdminStaffListPage`'s only per-card action was "Set
 unavailability."
 
 **Now:**
+
 - New endpoint `PATCH /staff/:id/manage` ([staff.routes.ts:78-85](server/src/features/staff/staff.routes.ts#L78-L85)),
   gated to Admin/Superadmin at the route level.
 - New service [staffManagement.service.ts](server/src/features/staff/services/staffManagement.service.ts):
@@ -55,6 +56,7 @@ unavailability."
 `staff_profiles` row was the seed script.
 
 **Now:**
+
 - New endpoint `POST /staff` ([staff.routes.ts:40-46](server/src/features/staff/staff.routes.ts#L40-L46)),
   gated to Admin/Superadmin, branch-scoped for Admin.
 - `createStaffAccount()` in the same service checks username/email uniqueness
@@ -122,6 +124,7 @@ real (if coarser) backstop instead of inert code.
 emailed link to land on to actually set a new password.
 
 **Now:**
+
 - `forgotPasswordController` now passes `redirectTo` pointing at
   `<client origin>/staff/reset-password` (client origin read from the first
   entry of `CORS_ALLOWED_ORIGINS`).
