@@ -18,6 +18,8 @@ vi.mock('../../api/staff.api', () => ({
   listStaff: vi.fn(),
   createUnavailabilityBlock: vi.fn(),
   listPendingUnavailabilityRequests: vi.fn(),
+  createStaffAccount: vi.fn(),
+  manageStaffAccount: vi.fn(),
 }));
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
@@ -251,5 +253,59 @@ describe('AdminStaffListPage', () => {
       await screen.findByText('Unavailability approval queue')
     ).toBeInTheDocument();
     expect(await screen.findByText('2')).toBeInTheDocument();
+  });
+
+  it('gap closure: shows a "Create staff account" section for an Admin/Superadmin viewer', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewerProfile('Admin')],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: /create staff account/i })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+  });
+
+  it('gap closure: an Admin/Superadmin can deactivate a staff account from "Manage account"', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Superadmin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+    vi.mocked(staffApi.manageStaffAccount).mockResolvedValue({
+      data: buildProfile({
+        id: 'staff-1',
+        display_name: 'Jamie Cruz',
+        is_active: false,
+      }),
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    // Index 1, not 0: the viewer's own card renders first (it's not filtered
+    // out of the list), so index 0 is the signed-in Superadmin's own button.
+    await userEvent.click(
+      screen.getAllByRole('button', { name: /manage account/i })[1]
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: /deactivate account/i })
+    );
+
+    await waitFor(() =>
+      expect(staffApi.manageStaffAccount).toHaveBeenCalledWith(
+        'staff-1',
+        'token',
+        { is_active: false }
+      )
+    );
   });
 });
