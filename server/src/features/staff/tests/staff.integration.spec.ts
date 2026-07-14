@@ -276,6 +276,77 @@ describe('staff profile CRUD (Issue #22)', () => {
     });
   });
 
+  describe('POST /staff (M01 Process 1: admin creates a staff account)', () => {
+    it('rejects a non-Admin/Superadmin caller at the requireRole layer with 403', async () => {
+      mockCaller('staff-1');
+      queueFromResults({ data: { role: 'Groomer' }, error: null });
+
+      const res = await request(app)
+        .post('/staff')
+        .set('Authorization', 'Bearer token')
+        .send({
+          username: 'new.hire',
+          registered_email: 'new.hire@goldenfur.com',
+          display_name: 'New Hire',
+          role: 'Receptionist',
+          branch_id: 'branch-a',
+        });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /staff/:id/manage (M01 Process 5: promote/demote, deactivate, transfer branch)', () => {
+    it('rejects a non-Admin/Superadmin caller at the requireRole layer with 403', async () => {
+      mockCaller('staff-1');
+      queueFromResults({ data: { role: 'Groomer' }, error: null });
+
+      const res = await request(app)
+        .patch('/staff/staff-2/manage')
+        .set('Authorization', 'Bearer token')
+        .send({ is_active: false });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects an Admin attempting a role change with 403 (Superadmin-only)', async () => {
+      mockCaller('admin-1');
+      queueFromResults(
+        { data: { role: 'Admin' }, error: null },
+        { data: { role: 'Admin', branch_id: 'branch-a' }, error: null },
+        { data: { id: 'staff-2', branch_id: 'branch-a' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/staff/staff-2/manage')
+        .set('Authorization', 'Bearer token')
+        .send({ role: 'Supervisor' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('allows a Superadmin to deactivate a staff account', async () => {
+      mockCaller('super-1');
+      queueFromResults(
+        { data: { role: 'Superadmin' }, error: null },
+        { data: { role: 'Superadmin', branch_id: 'branch-a' }, error: null },
+        { data: { id: 'staff-2', branch_id: 'branch-a' }, error: null },
+        {
+          data: { id: 'staff-2', branch_id: 'branch-a', is_active: false },
+          error: null,
+        }
+      );
+
+      const res = await request(app)
+        .patch('/staff/staff-2/manage')
+        .set('Authorization', 'Bearer token')
+        .send({ is_active: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.staff.is_active).toBe(false);
+    });
+  });
+
   describe('Unavailability review endpoints (Issue #29)', () => {
     it('AC-9: PATCH .../review returns 403 cannot_review_own_request when the caller is the requester', async () => {
       mockCaller('admin-1');
