@@ -228,6 +228,7 @@ export async function createUnavailabilityBlock({
       end_time: resolvedEnd.toISOString(),
       reason: reason ?? null,
       created_by: requesterId,
+      is_quick_action: Boolean(quickAction),
     })
     .select('*')
     .maybeSingle();
