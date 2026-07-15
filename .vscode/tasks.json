@@ -301,6 +301,16 @@
       }
     },
     {
+      "label": "🌱 Seed: Module 3 - Maintenance",
+      "type": "npm",
+      "script": "seed:module-3",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "🌱 Seed: All Modules",
       "type": "npm",
       "script": "seed:all",
