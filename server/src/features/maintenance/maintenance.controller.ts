@@ -1,0 +1,356 @@
+import type { Response } from 'express';
+import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
+import {
+  createService,
+  getServiceById,
+  listServices,
+  setServiceBranchAvailability,
+  updateService,
+} from './services/services.service.ts';
+import {
+  createPackage,
+  getPackageById,
+  listPackages,
+  updatePackage,
+} from './services/packages.service.ts';
+import {
+  createPromo,
+  getPromoById,
+  listPromos,
+  updatePromo,
+} from './services/promos.service.ts';
+import {
+  branchAvailabilityValidator,
+  createPackageValidator,
+  createPromoValidator,
+  createServiceValidator,
+  updatePackageValidator,
+  updatePromoValidator,
+  updateServiceValidator,
+} from './modules/validators/maintenance.validator.ts';
+
+/**
+ * Role gating (all-staff read, Admin/Superadmin write) happens at the route
+ * level via requireRole - see maintenance.routes.ts - so controllers only
+ * validate payloads and map thrown service `statusCode` errors, mirroring
+ * staff.controller.ts.
+ */
+
+function paramId(req: AuthenticatedRequest, name: string): string {
+  const value = req.params[name];
+  return Array.isArray(value) ? value[0] : (value as string);
+}
+
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function sendServiceError(res: Response, error: unknown) {
+  const statusCode =
+    (error as Error & { statusCode?: number }).statusCode ?? 500;
+  const message =
+    statusCode === 500
+      ? 'Internal server error'
+      : ((error as Error).message ?? 'Request failed');
+
+  return res.status(statusCode).json({ error: message });
+}
+
+// ---------------------------------------------------------------------------
+// Services (#40)
+// ---------------------------------------------------------------------------
+
+export async function listServicesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const services = await listServices({
+      category: queryString(req.query.category),
+      branchId: queryString(req.query.branch_id),
+      includeInactive: req.query.include_inactive === 'true',
+    });
+
+    return res.status(200).json({ services });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function getServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const service = await getServiceById(paramId(req, 'id'));
+    return res.status(200).json({ service });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createServiceValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const service = await createService({ requesterId, input: parsed.data });
+    return res.status(201).json({ service });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updateServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updateServiceValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const service = await updateService({
+      requesterId,
+      serviceId: paramId(req, 'id'),
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ service });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setServiceBranchAvailabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchAvailabilityValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setServiceBranchAvailability({
+      serviceId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      isAvailable: parsed.data.is_available,
+    });
+
+    return res.status(200).json({ availability });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Packages (#41)
+// ---------------------------------------------------------------------------
+
+export async function listPackagesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const packages = await listPackages({
+      branchId: queryString(req.query.branch_id),
+      includeInactive: req.query.include_inactive === 'true',
+    });
+
+    return res.status(200).json({ packages });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function getPackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const pkg = await getPackageById(paramId(req, 'id'));
+    return res.status(200).json({ package: pkg });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createPackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createPackageValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const pkg = await createPackage({ requesterId, input: parsed.data });
+    return res.status(201).json({ package: pkg });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePackageValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const pkg = await updatePackage({
+      requesterId,
+      packageId: paramId(req, 'id'),
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ package: pkg });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Promos (#42)
+// ---------------------------------------------------------------------------
+
+export async function listPromosController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const promos = await listPromos({
+      branchScope: queryString(req.query.branch_scope),
+      includeInactive: req.query.include_inactive === 'true',
+    });
+
+    return res.status(200).json({ promos });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function getPromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const promo = await getPromoById(paramId(req, 'id'));
+    return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createPromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createPromoValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const promo = await createPromo({ requesterId, input: parsed.data });
+    return res.status(201).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePromoValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const promo = await updatePromo({
+      requesterId,
+      promoId: paramId(req, 'id'),
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}

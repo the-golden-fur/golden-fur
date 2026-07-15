@@ -71,10 +71,14 @@ enabled = true
 # Seeds are grouped by module (Issue #38) - each module folder owns its own
 # tables; module-1 (branches, staff_profiles) runs before module-2
 # (customer_profiles, pets) since ordering doesn't matter functionally here
-# but mirrors the module numbering.
+# but mirrors the module numbering. module-3 (Sprint 2 Epic A, #44) MUST run
+# after module-1: it seeds branch-dependent maintenance data (service branch
+# availability, Golden Package, SC/PWD discounts) via
+# public.seed_m13_branch_data(), which needs the branches rows to exist.
 sql_paths = [
   "./seeds/module-1-staff-auth/*.sql",
   "./seeds/module-2-customers-pets/*.sql",
+  "./seeds/module-3-maintenance/*.sql",
 ]
 
 [db.network_restrictions]

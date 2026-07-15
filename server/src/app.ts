@@ -4,6 +4,7 @@ import cors from 'cors';
 import appRoutes from './shared/app.routes.ts';
 import { corsOptions } from './shared/config/cors/cors.config.ts';
 import { errorHandler } from './shared/errors/errorHandler.middleware.ts';
+import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpiry.job.ts';
 
 const app = express();
 
@@ -23,6 +24,11 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`Server started on port ${PORT}.`); // eslint-disable-line no-console
   });
+
+  // Issue #42: application-level fallback for promo expiry - the pg_cron
+  // schedule (migration ...032) is the preferred mechanism when the
+  // extension is available; this covers projects where it isn't.
+  startPromoExpiryScheduler();
 }
 
 export default app;

@@ -28,7 +28,8 @@
     "supabase:repair": "supabase migration repair",
     "seed:module-1": "tsx supabase/seeds/module-1-staff-auth/module-1-staff-auth.seed.ts",
     "seed:module-2": "tsx supabase/seeds/module-2-customers-pets/module-2-customers-pets.seed.ts",
-    "seed:all": "npm run seed:module-1 && npm run seed:module-2",
+    "seed:module-3": "tsx supabase/seeds/module-3-maintenance/module-3-maintenance.seed.ts",
+    "seed:all": "npm run seed:module-1 && npm run seed:module-2 && npm run seed:module-3",
     "test:seed": "vitest run supabase/seeds"
   },
   "devDependencies": {
