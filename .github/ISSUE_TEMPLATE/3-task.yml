@@ -1,7 +1,7 @@
 name: 📋 Task / Chore
 description: Sprint task, refactor, dependency update, or non-feature work
-title: '<type>(<scope>): <short description>'
-labels: ['task']
+title: "<type>(<scope>): <short description>"
+labels: ["task"]
 assignees: []
 
 body:
@@ -16,13 +16,13 @@ body:
     attributes:
       label: Task Type
       options:
-        - 'refactor — code restructuring without feature or fix'
-        - 'chore — deps, config, tooling'
-        - 'docs — documentation only'
-        - 'test — adding or fixing tests'
-        - 'ci — CI/CD pipeline changes'
-        - 'style — formatting, whitespace'
-        - 'perf — performance improvement'
+        - "refactor — code restructuring without feature or fix"
+        - "chore — deps, config, tooling"
+        - "docs — documentation only"
+        - "test — adding or fixing tests"
+        - "ci — CI/CD pipeline changes"
+        - "style — formatting, whitespace"
+        - "perf — performance improvement"
     validations:
       required: true
 
@@ -31,7 +31,7 @@ body:
     attributes:
       label: Scope / Area
       description: Which part of the app does this task belong to?
-      placeholder: 'e.g. auth, db, ci, docs, dependencies'
+      placeholder: "e.g. auth, db, ci, docs, dependencies"
     validations:
       required: true
 

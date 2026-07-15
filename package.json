@@ -16,13 +16,29 @@
     "install:all": "npm install && npm --prefix client install && npm --prefix server install",
     "=== CODE QUALITY ===": "",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
-    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\""
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,scss,less,html,json,md,mdx,yaml,yml}\"",
+    "=== SUPABASE ===": "",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link",
+    "supabase:push": "supabase db push",
+    "supabase:pull": "supabase db pull",
+    "supabase:status": "supabase migration list",
+    "supabase:reset": "supabase db reset",
+    "supabase:reset:remote": "supabase db reset --linked",
+    "supabase:repair": "supabase migration repair",
+    "seed:module-1": "tsx supabase/seeds/module-1-staff-auth/module-1-staff-auth.seed.ts",
+    "seed:module-2": "tsx supabase/seeds/module-2-customers-pets/module-2-customers-pets.seed.ts",
+    "seed:all": "npm run seed:module-1 && npm run seed:module-2",
+    "test:seed": "vitest run supabase/seeds"
   },
-  "dependencies": {},
   "devDependencies": {
-    "concurrently": "^9.0.0",
+    "@supabase/supabase-js": "^2.49.8",
+    "concurrently": "^9.2.3",
+    "dotenv": "^16.6.1",
     "prettier": "^3.7.4",
-    "supabase": "^2.48.3"
+    "supabase": "^2.48.3",
+    "tsx": "^4.22.4",
+    "vitest": "^4.0.18"
   },
   "repository": {
     "type": "git",
