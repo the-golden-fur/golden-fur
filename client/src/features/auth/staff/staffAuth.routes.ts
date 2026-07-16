@@ -61,6 +61,24 @@ export const staffAuthRoutes = createElement(
               { to: '/staff/admin/customers' },
               'Customer Directory'
             )
+          ),
+          createElement(
+            'li',
+            null,
+            createElement(
+              Link,
+              { to: '/staff/admin/maintenance/services' },
+              'Services (Maintenance)'
+            )
+          ),
+          createElement(
+            'li',
+            null,
+            createElement(
+              Link,
+              { to: '/staff/admin/maintenance/packages' },
+              'Packages (Maintenance)'
+            )
           )
         )
       ),
