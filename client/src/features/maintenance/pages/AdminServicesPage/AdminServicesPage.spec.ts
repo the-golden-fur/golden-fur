@@ -147,7 +147,9 @@ describe('AdminServicesPage', () => {
 
     expect(await screen.findByText('Bath')).toBeInTheDocument();
     // selector-scoped: 'Grooming' also appears as a filter <option>.
-    expect(screen.getByText('Grooming', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Grooming', { selector: 'span' })
+    ).toBeInTheDocument();
     expect(screen.getByText('PHP 300.00')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByLabelText('Category')).toBeInTheDocument();
@@ -189,7 +191,9 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'New service' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'New service' })
+    );
     await user.type(screen.getByLabelText('Name'), 'Dematting');
     await user.type(screen.getByLabelText('Base price (PHP)'), '350');
     await user.type(
@@ -203,9 +207,7 @@ describe('AdminServicesPage', () => {
         name: 'Dematting',
         category: 'Grooming',
         base_price: 350,
-        pricing_tiers: [
-          { weight_class: 'S', coat_type: 'SC', price: 350 },
-        ],
+        pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
       });
     });
 
@@ -216,7 +218,9 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'New service' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'New service' })
+    );
 
     expect(
       screen.getByText('Size & coat pricing matrix (Grooming)')
@@ -252,12 +256,14 @@ describe('AdminServicesPage', () => {
     await user.click(toggle);
 
     await waitFor(() => {
-      expect(
-        maintenanceApi.setServiceBranchAvailability
-      ).toHaveBeenCalledWith('service-1', 'token', {
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      });
+      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
+        'service-1',
+        'token',
+        {
+          branch_id: 'branch-southwoods',
+          is_available: false,
+        }
+      );
     });
 
     await waitFor(() => {
@@ -296,6 +302,8 @@ describe('AdminServicesPage', () => {
     // ...and switching to Inactive shows it with the Inactive badge.
     await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
     expect(screen.getByText('Bath')).toBeInTheDocument();
-    expect(screen.getByText('Inactive', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Inactive', { selector: 'span' })
+    ).toBeInTheDocument();
   });
 });

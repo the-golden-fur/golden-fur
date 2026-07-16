@@ -184,7 +184,9 @@ describe('AdminPackageBuilderPage', () => {
 
     expect(await screen.findByText('Golden Package')).toBeInTheDocument();
     // selector-scoped: 'Makati' also appears as a filter <option>.
-    expect(screen.getByText('Makati', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Makati', { selector: 'span' })
+    ).toBeInTheDocument();
     expect(screen.getByText('3 services')).toBeInTheDocument();
     expect(screen.getByText('PHP 650.00')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
@@ -248,10 +250,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.queryByText('Brushing')).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Package name'), 'Fresh Coat Bundle');
-    await user.type(
-      screen.getByLabelText(/Bundled price/),
-      '999'
-    );
+    await user.type(screen.getByLabelText(/Bundled price/), '999');
     await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
     await user.click(screen.getByRole('checkbox', { name: /Blow-dry/ }));
     await user.click(screen.getByRole('button', { name: 'Save package' }));

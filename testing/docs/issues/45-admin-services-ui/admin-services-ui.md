@@ -214,7 +214,7 @@ Expected on load (with the module-3 seed):
   (Grooming/Hotel/Daycare/Veterinary), **PHP base price**, an **Active**
   StatusBadge, and two labeled toggles (**Makati**, **Southwoods**), both on.
 - Three filters above the list: **Category**, **Branch**, **Status**
-  (defaulting to *Active only*).
+  (defaulting to _Active only_).
 
 1. Set **Category** to `Veterinary`.
 
@@ -274,38 +274,38 @@ Expected:
 
 ### Step 5: Deactivate / reactivate (AC-4)
 
-1. With **Status** on *Active only*, click **Deactivate** on the `Flea
-   Treatment` row you created.
+1. With **Status** on _Active only_, click **Deactivate** on the `Flea
+Treatment` row you created.
 
 Expected: a "Service deactivated." banner, and the row vanishes from the
-list without a page reload (it no longer matches *Active only*). — **AC-4**
+list without a page reload (it no longer matches _Active only_). — **AC-4**
 
-2. Set **Status** to *Inactive only*.
+2. Set **Status** to _Inactive only_.
 
 Expected: the row reappears with an **Inactive** StatusBadge and a
 **Reactivate** button. — **AC-4**
 
-3. Click **Reactivate** and set **Status** back to *Active only*.
+3. Click **Reactivate** and set **Status** back to _Active only_.
 
 Expected: the row is back with an **Active** badge.
 
 ## Acceptance Criteria Checklist
 
 - [x] **AC-1:** List renders all services, filterable by category and
-  branch, each row showing name, category badge, base price, and a
-  StatusBadge — `AdminServicesPage.spec.ts` (two AC-1 tests); manual Step 2.
+      branch, each row showing name, category badge, base price, and a
+      StatusBadge — `AdminServicesPage.spec.ts` (two AC-1 tests); manual Step 2.
 - [x] **AC-2:** Create/edit form saves `base_price`, `category`, and (for
-  Grooming only) the full size×coat matrix via `ServicePricingTierEditor`,
-  which is hidden for other categories — `AdminServicesPage.spec.ts` (two
-  AC-2 tests) + `ServicePricingTierEditor.spec.ts`; manual Step 3.
+      Grooming only) the full size×coat matrix via `ServicePricingTierEditor`,
+      which is hidden for other categories — `AdminServicesPage.spec.ts` (two
+      AC-2 tests) + `ServicePricingTierEditor.spec.ts`; manual Step 3.
 - [x] **AC-3:** Per-branch availability toggles update immediately without
-  a full page reload — `AdminServicesPage.spec.ts` (AC-3 test); manual
-  Step 4.
+      a full page reload — `AdminServicesPage.spec.ts` (AC-3 test); manual
+      Step 4.
 - [x] **AC-4:** Deactivating flips the StatusBadge and removes the row from
-  the active-only view without a reload — `AdminServicesPage.spec.ts`
-  (AC-4 test); manual Step 5.
+      the active-only view without a reload — `AdminServicesPage.spec.ts`
+      (AC-4 test); manual Step 5.
 - [x] **AC-5:** Non-Admin/Superadmin users cannot reach the page —
-  `AdminServicesPage.spec.ts` (AC-5 test); manual Step 1.
+      `AdminServicesPage.spec.ts` (AC-5 test); manual Step 1.
 
 No Postman collection or SQL file for this issue: it adds no API route and
 no DB object — the endpoints it consumes are covered by

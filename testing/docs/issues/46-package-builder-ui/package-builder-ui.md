@@ -28,7 +28,7 @@ multi-select reused by #47 (promo scope) and #48 (discount scope).
   `client/src/features/maintenance/components/ServiceMultiSelect/`
   (`.tsx`, `.module.css`, `.spec.ts`) — checkbox multi-select. Props are
   deliberately generic per the issue's dev notes: `options: {id, label,
-  sublabel?}[]`, `selectedIds: string[]`, `onChange(ids)` — nothing
+sublabel?}[]`, `selectedIds: string[]`, `onChange(ids)` — nothing
   package-specific, so #47 can feed it packages as well as services without
   forking. Emitted ids preserve option order.
 - **Added** `client/src/features/maintenance/pages/AdminPackageBuilderPage/`
@@ -133,8 +133,8 @@ tab shows no new document request). — **AC-1**
 1. Set the filter back to `All branches` and click **New package**.
 
 Expected: the form shows Branch / Package name / Bundled price, and where
-the service list will go, the note *"Select a branch to pick its available
-services."* — no service checkboxes yet. — **AC-2**
+the service list will go, the note _"Select a branch to pick its available
+services."_ — no service checkboxes yet. — **AC-2**
 
 2. Select **Branch: Southwoods**.
 
@@ -188,17 +188,17 @@ remain manageable). Click **Reactivate** to restore it. — **AC-3**
 ## Acceptance Criteria Checklist
 
 - [x] **AC-1:** Package list renders, filterable by branch, showing name,
-  included service count, bundled price, and StatusBadge —
-  `AdminPackageBuilderPage.spec.ts` (two AC-1 tests); manual Step 2.
+      included service count, bundled price, and StatusBadge —
+      `AdminPackageBuilderPage.spec.ts` (two AC-1 tests); manual Step 2.
 - [x] **AC-2:** Builder form requires a branch, then name, multi-select via
-  `ServiceMultiSelect`, and a bundled price independent of the services'
-  sum — `AdminPackageBuilderPage.spec.ts` (two AC-2 tests) +
-  `ServiceMultiSelect.spec.ts`; manual Step 3.
+      `ServiceMultiSelect`, and a bundled price independent of the services'
+      sum — `AdminPackageBuilderPage.spec.ts` (two AC-2 tests) +
+      `ServiceMultiSelect.spec.ts`; manual Step 3.
 - [x] **AC-3:** Editing adds/removes included services and updates
-  price/active status without a full page reload —
-  `AdminPackageBuilderPage.spec.ts` (two AC-3 tests); manual Step 4.
+      price/active status without a full page reload —
+      `AdminPackageBuilderPage.spec.ts` (two AC-3 tests); manual Step 4.
 - [x] **AC-4:** Non-Admin/Superadmin users cannot reach the page —
-  `AdminPackageBuilderPage.spec.ts` (AC-4 test); manual Step 1.
+      `AdminPackageBuilderPage.spec.ts` (AC-4 test); manual Step 1.
 
 No Postman collection or SQL file for this issue: it adds no API route and
 no DB object — the endpoints it consumes are covered by

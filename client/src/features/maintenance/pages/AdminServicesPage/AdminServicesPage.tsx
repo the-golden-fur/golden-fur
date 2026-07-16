@@ -50,9 +50,7 @@ function formStateFromService(service: Service): ServiceFormState {
     category: service.category,
     basePrice: String(service.base_price),
     durationMinutes:
-      service.duration_minutes === null
-        ? ''
-        : String(service.duration_minutes),
+      service.duration_minutes === null ? '' : String(service.duration_minutes),
     tiers: (service.service_pricing_tiers ?? []).map((tier) => ({
       weight_class: tier.weight_class,
       coat_type: tier.coat_type,
@@ -72,16 +70,14 @@ export function AdminServicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [categoryFilter, setCategoryFilter] = useState<
-    ServiceCategory | 'All'
-  >('All');
+  const [categoryFilter, setCategoryFilter] = useState<ServiceCategory | 'All'>(
+    'All'
+  );
   const [branchFilter, setBranchFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('Active');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingServiceId, setEditingServiceId] = useState<string | null>(
-    null
-  );
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [form, setForm] = useState<ServiceFormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -212,11 +208,10 @@ export function AdminServicesPage() {
       return;
     }
 
-    const result = await setServiceBranchAvailability(
-      service.id,
-      accessToken,
-      { branch_id: branchId, is_available: isAvailable }
-    );
+    const result = await setServiceBranchAvailability(service.id, accessToken, {
+      branch_id: branchId,
+      is_available: isAvailable,
+    });
 
     if (result.error || !result.data) {
       setMessage(result.error ?? 'Could not update branch availability.');
@@ -383,9 +378,7 @@ export function AdminServicesPage() {
               className={styles.filterSelect}
               value={categoryFilter}
               onChange={(event) =>
-                setCategoryFilter(
-                  event.target.value as ServiceCategory | 'All'
-                )
+                setCategoryFilter(event.target.value as ServiceCategory | 'All')
               }
             >
               <option value="All">All categories</option>
@@ -559,18 +552,14 @@ export function AdminServicesPage() {
       ) : null}
 
       {filteredServices.length === 0 ? (
-        <p className={styles.copy}>
-          No services match the selected filters.
-        </p>
+        <p className={styles.copy}>No services match the selected filters.</p>
       ) : (
         <ul className={styles.serviceList}>
           {filteredServices.map((service) => (
             <li key={service.id} className={styles.serviceRow}>
               <div className={styles.serviceMain}>
                 <span className={styles.serviceName}>{service.name}</span>
-                <span className={styles.categoryBadge}>
-                  {service.category}
-                </span>
+                <span className={styles.categoryBadge}>{service.category}</span>
                 <span className={styles.servicePrice}>
                   PHP {service.base_price.toFixed(2)}
                 </span>
@@ -589,11 +578,7 @@ export function AdminServicesPage() {
                       label={branch.name}
                       checked={availability?.is_available ?? false}
                       onChange={(isAvailable) =>
-                        void handleBranchToggle(
-                          service,
-                          branch.id,
-                          isAvailable
-                        )
+                        void handleBranchToggle(service, branch.id, isAvailable)
                       }
                     />
                   );

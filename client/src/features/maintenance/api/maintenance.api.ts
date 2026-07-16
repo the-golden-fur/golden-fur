@@ -100,10 +100,9 @@ export async function listServices(
   }
 
   const query = params.size > 0 ? `?${params.toString()}` : '';
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/services${query}`,
-    { headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/maintenance/services${query}`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -197,10 +196,9 @@ export async function listPackages(
   }
 
   const query = params.size > 0 ? `?${params.toString()}` : '';
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/packages${query}`,
-    { headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/maintenance/packages${query}`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

@@ -59,7 +59,9 @@ describe('ServicePricingTierEditor', () => {
       })
     );
 
-    await user.clear(screen.getByLabelText('Small (S) / Short Coat (SC) price'));
+    await user.clear(
+      screen.getByLabelText('Small (S) / Short Coat (SC) price')
+    );
 
     expect(onChange).toHaveBeenLastCalledWith([]);
   });

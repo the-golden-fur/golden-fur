@@ -14,11 +14,7 @@ import {
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { StatusBadge } from '../../components/shared/StatusBadge/StatusBadge';
-import type {
-  BranchSummary,
-  Package,
-  Service,
-} from '../../maintenance.types';
+import type { BranchSummary, Package, Service } from '../../maintenance.types';
 import styles from './AdminPackageBuilderPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -39,9 +35,7 @@ export function AdminPackageBuilderPage() {
   const [branchFilter, setBranchFilter] = useState('All');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingPackageId, setEditingPackageId] = useState<string | null>(
-    null
-  );
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [formBranchId, setFormBranchId] = useState('');
   const [formName, setFormName] = useState('');
   const [formPrice, setFormPrice] = useState('');
