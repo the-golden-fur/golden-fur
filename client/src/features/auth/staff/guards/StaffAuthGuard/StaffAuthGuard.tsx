@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
+import { Navbar } from '../../../../../shared/components/Navbar/Navbar';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
@@ -143,6 +144,7 @@ export function StaffAuthGuard() {
 
   return (
     <>
+      <Navbar role="staff" brandLabel="Golden Fur Staff" />
       <div style={{ padding: '1rem 1rem 0' }}>
         <UnavailabilityBlockBadge accessToken={accessToken} staffId={user.id} />
       </div>

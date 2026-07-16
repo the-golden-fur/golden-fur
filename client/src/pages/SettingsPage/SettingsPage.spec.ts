@@ -15,7 +15,7 @@ vi.mock('../../shared/api/mfa.api', () => ({
   unenrollMfa: vi.fn(),
 }));
 
-function renderPage(role: 'staff' | 'customer', signOut = vi.fn()) {
+function renderPage(role: 'staff' | 'customer') {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'user-1', email: 'user@example.com' },
@@ -23,7 +23,7 @@ function renderPage(role: 'staff' | 'customer', signOut = vi.fn()) {
     isLoading: false,
     refreshSession: vi.fn(),
     applySession: vi.fn(),
-    signOut,
+    signOut: vi.fn(),
   };
 
   return render(
@@ -42,22 +42,6 @@ function renderPage(role: 'staff' | 'customer', signOut = vi.fn()) {
 describe('SettingsPage', () => {
   afterEach(() => {
     window.sessionStorage.clear();
-  });
-
-  it('signs out and clears MFA pending flags when Sign out is clicked', async () => {
-    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
-      error: null,
-    });
-    window.sessionStorage.setItem('staffMfaPending', 'true');
-    const signOut = vi.fn().mockResolvedValue(undefined);
-
-    renderPage('staff', signOut);
-
-    await userEvent.click(screen.getByRole('button', { name: /sign out/i }));
-
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
   });
 
   it('shows an enabled confirmation when MFA is already set up', async () => {

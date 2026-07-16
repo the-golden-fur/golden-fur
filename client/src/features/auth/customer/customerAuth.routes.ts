@@ -1,5 +1,5 @@
 import { createElement, Fragment } from 'react';
-import { Link, Route } from 'react-router';
+import { Route } from 'react-router';
 import { CustomerAuthGuard } from './guards/CustomerAuthGuard/CustomerAuthGuard';
 import { CustomerLoginPage } from './pages/CustomerLoginPage/CustomerLoginPage';
 import { CustomerSignupPage } from './pages/CustomerSignupPage/CustomerSignupPage';
@@ -31,13 +31,7 @@ export const customerAuthRoutes = createElement(
     { element: createElement(CustomerAuthGuard) },
     createElement(Route, {
       path: '/portal',
-      element: createElement(
-        'div',
-        null,
-        'Customer portal',
-        createElement(Link, { to: '/portal/profile' }, 'Profile'),
-        createElement(Link, { to: '/portal/settings' }, 'Settings')
-      ),
+      element: createElement('div', null, 'Customer portal'),
     }),
     createElement(Route, {
       path: '/portal/settings',
