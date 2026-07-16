@@ -17,4 +17,8 @@
   --staff-card-min-width: 260px;
   --avatar-size-card: 48px;
   --avatar-size-profile: 96px;
+
+  /* Layout sizing (Sprint 2 Epic A - admin maintenance/discount panels) */
+  --admin-table-row-min-height: 56px;
+  --maintenance-form-max-width: 640px;
 }
