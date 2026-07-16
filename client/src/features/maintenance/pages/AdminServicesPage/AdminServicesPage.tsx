@@ -10,8 +10,8 @@ import {
   updateService,
 } from '../../api/maintenance.api';
 import { ServicePricingTierEditor } from '../../components/ServicePricingTierEditor/ServicePricingTierEditor';
-import { StatusBadge } from '../../components/shared/StatusBadge/StatusBadge';
-import { ToggleSwitch } from '../../components/shared/ToggleSwitch/ToggleSwitch';
+import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
+import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,

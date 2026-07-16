@@ -13,7 +13,7 @@ import {
   ServiceMultiSelect,
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
-import { StatusBadge } from '../../components/shared/StatusBadge/StatusBadge';
+import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import type { BranchSummary, Package, Service } from '../../maintenance.types';
 import styles from './AdminPackageBuilderPage.module.css';
 
