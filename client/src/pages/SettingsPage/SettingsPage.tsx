@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { useAuth } from '../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus, unenrollMfa } from '../../shared/api/mfa.api';
 import { TotpEnrollPanel } from '../../shared/components/TotpEnrollPanel/TotpEnrollPanel';
@@ -13,19 +12,12 @@ interface SettingsPageProps {
 
 const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin']);
 
-const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
-  staff: '/staff/login',
-  customer: '/login',
-};
-
 export function SettingsPage({ role }: SettingsPageProps) {
-  const { accessToken, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { accessToken } = useAuth();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isDisabling, setIsDisabling] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
-  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     if (!accessToken) {
@@ -67,33 +59,9 @@ export function SettingsPage({ role }: SettingsPageProps) {
     setRefreshKey((key) => key + 1);
   };
 
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    await signOut();
-    window.sessionStorage.removeItem('staffMfaPending');
-    window.sessionStorage.removeItem('customerMfaPending');
-    navigate(LOGIN_PATH_BY_ROLE[role], { replace: true });
-  };
-
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Settings</h1>
-      <section
-        className={styles.section}
-        aria-labelledby="account-section-title"
-      >
-        <h2 className={styles.sectionTitle} id="account-section-title">
-          Account
-        </h2>
-        <button
-          className={styles.button}
-          type="button"
-          disabled={isSigningOut}
-          onClick={() => void handleSignOut()}
-        >
-          {isSigningOut ? 'Signing out...' : 'Sign out'}
-        </button>
-      </section>
       <section className={styles.section} aria-labelledby="mfa-section-title">
         <h2 className={styles.sectionTitle} id="mfa-section-title">
           Multi-Factor Authentication

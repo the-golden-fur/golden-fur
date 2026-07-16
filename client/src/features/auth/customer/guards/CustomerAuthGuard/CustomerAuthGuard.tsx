@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
+import { Navbar } from '../../../../../shared/components/Navbar/Navbar';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { hasProfile } from '../../../../../shared/api/preferences.api';
@@ -98,5 +99,10 @@ export function CustomerAuthGuard() {
     return <Navigate to="/portal/mfa/verify" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Navbar role="customer" brandLabel="Golden Fur" />
+      <Outlet />
+    </>
+  );
 }
