@@ -31,6 +31,12 @@
   --color-text-on-accent: #fff8e8;
   --color-status-neutral-bg: #efe4cd;
   --color-status-neutral-text: #725a35;
+  /* Sprint 2 Epic A: sale-enabled/disabled badge pair (distinct from the
+     staff-availability status-neutral/warning pair above). */
+  --color-active-bg: #e4f0de;
+  --color-active-text: #2f5e1f;
+  --color-inactive-bg: #edeae3;
+  --color-inactive-text: #6b6558;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -72,6 +78,12 @@
   --color-text-on-accent: #24150a;
   --color-status-neutral-bg: #4d3d28;
   --color-status-neutral-text: #f0dfbf;
+  /* Sprint 2 Epic A: sale-enabled/disabled badge pair (dark-theme values
+     derived from the success/neutral pairs above). */
+  --color-active-bg: #24462d;
+  --color-active-text: #bde7c4;
+  --color-inactive-bg: #43392a;
+  --color-inactive-text: #cfc3a9;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   --radius-sm: 10px;
   --radius-md: 15px;

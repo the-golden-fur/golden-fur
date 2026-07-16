@@ -1,0 +1,113 @@
+/**
+ * Client-side mirrors of server/src/features/maintenance/maintenance.types.ts
+ * (the DB Design sheet's shapes), plus the request payloads accepted by the
+ * #40/#41 validators. Kept at the feature root like staff.types.ts.
+ */
+
+export type ServiceCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+
+export const SERVICE_CATEGORIES: ServiceCategory[] = [
+  'Grooming',
+  'Hotel',
+  'Daycare',
+  'Veterinary',
+];
+
+/** Same vocabulary as M02 pets.weight_class / pets.coat_type. */
+export type WeightClass = 'S' | 'M' | 'L' | 'XL';
+export type CoatType = 'SC' | 'LC';
+
+export const WEIGHT_CLASSES: WeightClass[] = ['S', 'M', 'L', 'XL'];
+export const COAT_TYPES: CoatType[] = ['SC', 'LC'];
+
+export interface ServicePricingTier {
+  id: string;
+  service_id: string;
+  weight_class: WeightClass;
+  coat_type: CoatType;
+  price: number;
+}
+
+export interface ServiceBranchAvailability {
+  service_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
+export interface Service {
+  id: string;
+  category: ServiceCategory;
+  name: string;
+  base_price: number;
+  duration_minutes: number | null;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  service_pricing_tiers?: ServicePricingTier[];
+  service_branch_availability?: ServiceBranchAvailability[];
+}
+
+export interface Package {
+  id: string;
+  branch_id: string;
+  name: string;
+  bundled_price: number;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  package_services?: Array<{ service_id: string }>;
+}
+
+/** branches row subset the maintenance pages need for labels/toggles. */
+export interface BranchSummary {
+  id: string;
+  name: string;
+}
+
+/** One cell of the Grooming size x coat matrix, as the API accepts it. */
+export interface PricingTierInput {
+  weight_class: WeightClass;
+  coat_type: CoatType;
+  price: number;
+}
+
+export interface CreateServicePayload {
+  name: string;
+  category: ServiceCategory;
+  base_price: number;
+  duration_minutes?: number;
+  pricing_tiers?: PricingTierInput[];
+}
+
+export interface UpdateServicePayload {
+  name?: string;
+  category?: ServiceCategory;
+  base_price?: number;
+  duration_minutes?: number | null;
+  is_active?: boolean;
+  pricing_tiers?: PricingTierInput[];
+}
+
+export interface BranchAvailabilityPayload {
+  branch_id: string;
+  is_available: boolean;
+}
+
+export interface CreatePackagePayload {
+  branch_id: string;
+  name: string;
+  bundled_price: number;
+  service_ids: string[];
+}
+
+export interface UpdatePackagePayload {
+  name?: string;
+  bundled_price?: number;
+  is_active?: boolean;
+  /** Full replacement of the included-services set when provided. */
+  service_ids?: string[];
+}

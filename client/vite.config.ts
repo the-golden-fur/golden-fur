@@ -41,6 +41,14 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // maintenance.routes.ts (server) is mounted at the server root, same
+      // as staff.routes.ts - but the client-side page routes live under
+      // '/staff/admin/maintenance/...', not bare '/maintenance', so no
+      // bypass is needed here.
+      '/maintenance': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });
