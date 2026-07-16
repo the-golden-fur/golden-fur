@@ -8,6 +8,12 @@ import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpi
 
 const app = express();
 
+// This server only ever returns JSON API responses, never static assets, so
+// there's no benefit to conditional GET here - Express's default weak ETag
+// generation just risks a browser-cached 304 with an empty body being
+// mistaken for a failed request by *.api.ts's response.json() parsing.
+app.set('etag', false);
+
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(appRoutes);
