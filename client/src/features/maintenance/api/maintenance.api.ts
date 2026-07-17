@@ -3,11 +3,14 @@ import type {
   BranchAvailabilityPayload,
   BranchSummary,
   CreatePackagePayload,
+  CreatePromoPayload,
   CreateServicePayload,
   Package,
+  Promo,
   Service,
   ServiceBranchAvailability,
   UpdatePackagePayload,
+  UpdatePromoPayload,
   UpdateServicePayload,
 } from '../maintenance.types';
 
@@ -246,4 +249,76 @@ export async function updatePackage(
 
   const result = await parseBody<{ package: Package }>(response);
   return { data: result.data?.package ?? null, error: result.error };
+}
+
+export interface ListPromosFilters {
+  branchScope?: string;
+  includeInactive?: boolean;
+}
+
+export async function listPromos(
+  accessToken: string,
+  filters: ListPromosFilters = {}
+): Promise<MaintenanceApiResult<Promo[]>> {
+  const params = new URLSearchParams();
+
+  if (filters.branchScope) {
+    params.set('branch_scope', filters.branchScope);
+  }
+
+  if (filters.includeInactive) {
+    params.set('include_inactive', 'true');
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  const response = await fetch(`${API_BASE_URL}/maintenance/promos${query}`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ promos: Promo[] }>(response);
+  return { data: result.data?.promos ?? null, error: result.error };
+}
+
+export async function createPromo(
+  accessToken: string,
+  payload: CreatePromoPayload
+): Promise<MaintenanceApiResult<Promo>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/promos`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ promo: Promo }>(response);
+  return { data: result.data?.promo ?? null, error: result.error };
+}
+
+export async function updatePromo(
+  promoId: string,
+  accessToken: string,
+  payload: UpdatePromoPayload
+): Promise<MaintenanceApiResult<Promo>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ promo: Promo }>(response);
+  return { data: result.data?.promo ?? null, error: result.error };
 }

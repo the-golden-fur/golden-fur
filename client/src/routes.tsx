@@ -4,6 +4,7 @@ import { staffAuthRoutes } from './features/auth/staff/staffAuth.routes';
 import { staffRoutes } from './features/staff/staff.routes';
 import { customerRoutes } from './features/customers/customer.routes';
 import { maintenanceRoutes } from './features/maintenance/maintenance.routes';
+import { discountsRoutes } from './features/discounts/discounts.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 
 export function AppRoutes() {
@@ -12,6 +13,7 @@ export function AppRoutes() {
       {staffAuthRoutes}
       {staffRoutes}
       {maintenanceRoutes}
+      {discountsRoutes}
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />
