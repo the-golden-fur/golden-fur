@@ -49,7 +49,7 @@ custom discounts scoped to a service, package, or category.
   The issue's dev notes suggest reusing #46/#47's multi-select pattern
   "extended" with a third category option. A discount's scope is
   structurally single-valued — the #43 `discounts_scope_matches_type` CHECK
-  constraint and validator enforce *exactly one* of
+  constraint and validator enforce _exactly one_ of
   `scope_service_id`/`scope_package_id`/`scope_category` — so a checkbox
   multi-select (built for "zero or more") would need to be artificially
   constrained to one selection. A native `<select>` per scope type

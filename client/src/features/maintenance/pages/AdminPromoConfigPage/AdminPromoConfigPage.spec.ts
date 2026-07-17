@@ -228,9 +228,7 @@ describe('AdminPromoConfigPage', () => {
 
     expect(screen.getByLabelText('Start date')).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Condition-based' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Condition-based' }));
 
     expect(screen.queryByLabelText('Start date')).not.toBeInTheDocument();
 

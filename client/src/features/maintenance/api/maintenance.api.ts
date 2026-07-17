@@ -306,11 +306,14 @@ export async function updatePromo(
   accessToken: string,
   payload: UpdatePromoPayload
 ): Promise<MaintenanceApiResult<Promo>> {
-  const response = await fetch(`${API_BASE_URL}/maintenance/promos/${promoId}`, {
-    method: 'PATCH',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

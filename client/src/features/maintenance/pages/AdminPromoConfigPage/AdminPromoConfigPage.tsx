@@ -346,7 +346,10 @@ export function AdminPromoConfigPage() {
       return;
     }
 
-    if (formKind === 'dateRange' && (formStartDate === '' || formEndDate === '')) {
+    if (
+      formKind === 'dateRange' &&
+      (formStartDate === '' || formEndDate === '')
+    ) {
       setFormError('A date-bounded promo needs both a start and end date.');
       return;
     }
@@ -398,7 +401,8 @@ export function AdminPromoConfigPage() {
       name: formName.trim(),
       start_date: formKind === 'dateRange' ? formStartDate : null,
       end_date: formKind === 'dateRange' ? formEndDate : null,
-      condition_note: formKind === 'condition' ? formConditionNote.trim() : null,
+      condition_note:
+        formKind === 'condition' ? formConditionNote.trim() : null,
       discount_type: formDiscountType,
       value,
       scope_type: formScopeType,
@@ -551,7 +555,8 @@ export function AdminPromoConfigPage() {
 
             <label className={styles.field}>
               <span className={styles.fieldLabel}>
-                Discount value{formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                Discount value
+                {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
               </span>
               <input
                 className={styles.input}
@@ -566,7 +571,11 @@ export function AdminPromoConfigPage() {
               />
             </label>
 
-            <div className={styles.segmentedControl} role="radiogroup" aria-label="Promo window type">
+            <div
+              className={styles.segmentedControl}
+              role="radiogroup"
+              aria-label="Promo window type"
+            >
               <button
                 type="button"
                 className={

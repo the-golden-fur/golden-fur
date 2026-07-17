@@ -265,11 +265,13 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Discount created.')).toBeInTheDocument();
   });
 
-  it('AC-4: a mandated discount\'s name field is read-only in the edit form', async () => {
+  it("AC-4: a mandated discount's name field is read-only in the edit form", async () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]);
+    await user.click(
+      (await screen.findAllByRole('button', { name: 'Edit' }))[0]
+    );
 
     expect(screen.getByLabelText('Name')).toBeDisabled();
   });

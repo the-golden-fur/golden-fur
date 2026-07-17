@@ -57,9 +57,8 @@ export function AdminDiscountManagementPage() {
   const [formDiscountType, setFormDiscountType] =
     useState<DiscountValueType>('Percentage');
   const [formValue, setFormValue] = useState('');
-  const [formScopeType, setFormScopeType] = useState<DiscountScopeType>(
-    'service'
-  );
+  const [formScopeType, setFormScopeType] =
+    useState<DiscountScopeType>('service');
   const [formScopeServiceId, setFormScopeServiceId] = useState('');
   const [formScopePackageId, setFormScopePackageId] = useState('');
   const [formScopeCategory, setFormScopeCategory] = useState('');
@@ -108,23 +107,25 @@ export function AdminDiscountManagementPage() {
       listServices(accessToken),
       listPackages(accessToken),
       listBranches(),
-    ]).then(([discountsResult, servicesResult, packagesResult, branchesResult]) => {
-      if (!isMounted) {
-        return;
+    ]).then(
+      ([discountsResult, servicesResult, packagesResult, branchesResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLoading(false);
+
+        if (discountsResult.error || !discountsResult.data) {
+          setLoadError(discountsResult.error ?? 'Could not load discounts.');
+          return;
+        }
+
+        setDiscounts(discountsResult.data);
+        setServices(servicesResult.data ?? []);
+        setPackages(packagesResult.data ?? []);
+        setBranches(branchesResult.data ?? []);
       }
-
-      setIsLoading(false);
-
-      if (discountsResult.error || !discountsResult.data) {
-        setLoadError(discountsResult.error ?? 'Could not load discounts.');
-        return;
-      }
-
-      setDiscounts(discountsResult.data);
-      setServices(servicesResult.data ?? []);
-      setPackages(packagesResult.data ?? []);
-      setBranches(branchesResult.data ?? []);
-    });
+    );
 
     return () => {
       isMounted = false;
@@ -616,9 +617,7 @@ export function AdminDiscountManagementPage() {
                 <select
                   className={styles.input}
                   value={formScopeCategory}
-                  onChange={(event) =>
-                    setFormScopeCategory(event.target.value)
-                  }
+                  onChange={(event) => setFormScopeCategory(event.target.value)}
                   required
                 >
                   <option value="">Select a category...</option>
