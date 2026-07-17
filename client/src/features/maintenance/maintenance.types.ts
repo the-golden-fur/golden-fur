@@ -111,3 +111,71 @@ export interface UpdatePackagePayload {
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
 }
+
+/**
+ * Feature-local, mirrors server/src/features/maintenance/maintenance.types.ts
+ * (discounts.types.ts declares its own copy independently - see that file).
+ */
+export type DiscountValueType = 'Percentage' | 'Flat';
+
+export type PromoScopeType = 'all_services' | 'specific';
+export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
+
+export interface PromoScopeItem {
+  id: string;
+  promo_id: string;
+  service_id: string | null;
+  package_id: string | null;
+}
+
+export interface Promo {
+  id: string;
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  condition_note: string | null;
+  discount_type: DiscountValueType;
+  value: number;
+  scope_type: PromoScopeType;
+  branch_scope: PromoBranchScope;
+  is_exclusive: boolean;
+  is_active: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  promo_scope?: PromoScopeItem[];
+}
+
+/** One promo_scope row as the API accepts it - exactly one of the two ids. */
+export interface PromoScopeInput {
+  service_id?: string;
+  package_id?: string;
+}
+
+export interface CreatePromoPayload {
+  name: string;
+  start_date?: string;
+  end_date?: string;
+  condition_note?: string;
+  discount_type: DiscountValueType;
+  value: number;
+  scope_type: PromoScopeType;
+  scope?: PromoScopeInput[];
+  branch_scope: PromoBranchScope;
+  is_exclusive?: boolean;
+}
+
+export interface UpdatePromoPayload {
+  name?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  condition_note?: string | null;
+  discount_type?: DiscountValueType;
+  value?: number;
+  scope_type?: PromoScopeType;
+  scope?: PromoScopeInput[];
+  branch_scope?: PromoBranchScope;
+  is_exclusive?: boolean;
+  is_active?: boolean;
+}

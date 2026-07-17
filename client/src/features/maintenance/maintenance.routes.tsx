@@ -3,6 +3,7 @@ import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { AdminServicesPage } from './pages/AdminServicesPage/AdminServicesPage';
 import { AdminPackageBuilderPage } from './pages/AdminPackageBuilderPage/AdminPackageBuilderPage';
+import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -20,6 +21,10 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/packages"
         element={<AdminPackageBuilderPage />}
+      />
+      <Route
+        path="/staff/admin/maintenance/promos"
+        element={<AdminPromoConfigPage />}
       />
     </Route>
   </Fragment>

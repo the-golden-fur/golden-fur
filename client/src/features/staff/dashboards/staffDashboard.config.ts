@@ -78,6 +78,16 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         description: 'Bundle services into sellable packages.',
         to: '/staff/admin/maintenance/packages',
       },
+      {
+        title: 'Promos',
+        description: 'Configure time- or condition-limited promotions.',
+        to: '/staff/admin/maintenance/promos',
+      },
+      {
+        title: 'Discounts',
+        description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
+        to: '/staff/admin/discounts',
+      },
     ],
   },
   supervisor: {
