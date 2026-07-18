@@ -53,6 +53,12 @@ export default defineConfig(({ mode }) => {
         // '/staff/admin/discounts', not bare '/discounts', so no bypass is
         // needed here either.
         '/discounts': apiProxy,
+        // booking.routes.ts (server) is mounted at the server root, same as
+        // maintenance.routes.ts - the client-side page routes live under
+        // '/portal/book/...', '/portal/bookings', and
+        // '/staff/bookings/queue', not bare '/bookings', so no bypass is
+        // needed here either (#55 Guide notes).
+        '/bookings': apiProxy,
       },
     },
   };

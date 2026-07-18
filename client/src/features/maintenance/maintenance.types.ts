@@ -62,10 +62,13 @@ export interface Package {
   package_services?: Array<{ service_id: string }>;
 }
 
-/** branches row subset the maintenance pages need for labels/toggles. */
+/** branches row subset the maintenance/booking pages need for labels/toggles.
+ * is_vet_branch added for #55's Southwoods Veterinary-service filter (AC-3) -
+ * additive, non-breaking for existing maintenance/discounts consumers. */
 export interface BranchSummary {
   id: string;
   name: string;
+  is_vet_branch: boolean;
 }
 
 /** One cell of the Grooming size x coat matrix, as the API accepts it. */

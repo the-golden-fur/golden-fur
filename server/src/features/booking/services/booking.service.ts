@@ -453,3 +453,67 @@ export async function getBookingById({
 
   return booking;
 }
+
+export interface ListBookingsFilters {
+  branchId?: string;
+  /** YYYY-MM-DD, matched against scheduled_start's calendar date (UTC). */
+  date?: string;
+  serviceCategory?: ServiceCategory;
+  status?: Booking['status'];
+}
+
+interface ListBookingsParams {
+  requesterId: string;
+  filters: ListBookingsFilters;
+}
+
+/**
+ * Supporting infra for #59 (customer's own bookings list) and #60
+ * (Receptionist Bookings Queue) - neither issue in the merged #51-#54
+ * backend exposed a list endpoint (only POST /bookings and GET
+ * /bookings/:id existed). A customer caller is always scoped to their own
+ * rows regardless of which filters they pass, mirroring the RLS policy
+ * (#50 AC-3) even though this server-side client runs with the service role
+ * and RLS isn't itself the enforcement here.
+ */
+export async function listBookings({
+  requesterId,
+  filters,
+}: ListBookingsParams): Promise<Booking[]> {
+  const staffRole = await getStaffRoleOrNull(requesterId);
+
+  let query = supabase.from('bookings').select(BOOKING_SELECT);
+
+  if (!staffRole) {
+    query = query.eq('customer_id', requesterId);
+  } else if (filters.branchId) {
+    query = query.eq('branch_id', filters.branchId);
+  }
+
+  if (filters.serviceCategory) {
+    query = query.eq('service_category', filters.serviceCategory);
+  }
+
+  if (filters.status) {
+    query = query.eq('status', filters.status);
+  }
+
+  if (filters.date) {
+    const dayStart = `${filters.date}T00:00:00.000Z`;
+    const dayEnd = new Date(
+      new Date(dayStart).getTime() + 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    query = query
+      .gte('scheduled_start', dayStart)
+      .lt('scheduled_start', dayEnd);
+  }
+
+  const { data, error } = await query.order('scheduled_start', {
+    ascending: true,
+  });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as Booking[];
+}

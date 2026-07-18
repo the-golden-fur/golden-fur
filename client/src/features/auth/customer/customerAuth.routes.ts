@@ -6,6 +6,7 @@ import { CustomerSignupPage } from './pages/CustomerSignupPage/CustomerSignupPag
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage/OAuthCallbackPage';
 import { CustomerMfaChallengePage } from './pages/CustomerMfaChallengePage/CustomerMfaChallengePage';
 import { SettingsPage } from '../../../pages/SettingsPage/SettingsPage';
+import { CustomerPortalPage } from '../../customers/pages/CustomerPortalPage/CustomerPortalPage';
 
 export const customerAuthRoutes = createElement(
   Fragment,
@@ -31,7 +32,7 @@ export const customerAuthRoutes = createElement(
     { element: createElement(CustomerAuthGuard) },
     createElement(Route, {
       path: '/portal',
-      element: createElement('div', null, 'Customer portal'),
+      element: createElement(CustomerPortalPage),
     }),
     createElement(Route, {
       path: '/portal/settings',

@@ -68,7 +68,7 @@ export async function listBranches(): Promise<
 
   const { data, error } = await supabase
     .from('branches')
-    .select('id, name')
+    .select('id, name, is_vet_branch')
     .order('name');
 
   if (error) {

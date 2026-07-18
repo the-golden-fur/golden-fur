@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBooking } from './booking.service.ts';
+import { createBooking, listBookings } from './booking.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
@@ -399,6 +399,51 @@ describe('booking.service (#51)', () => {
       package_id: 'package-1',
       service_id: null,
       total_price: 999,
+    });
+  });
+
+  describe('listBookings (#59/#60 supporting infra)', () => {
+    it('scopes a customer caller to their own rows regardless of branch/status filters', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: [{ id: 'booking-1' }], error: null });
+
+      const result = await listBookings({
+        requesterId: CUSTOMER_ID,
+        filters: { branchId: 'branch-1', status: 'Confirmed' },
+      });
+
+      expect(result).toHaveLength(1);
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('customer_id', CUSTOMER_ID);
+      // branch_id is never applied for a customer caller - ownership scoping
+      // alone decides the row set.
+      expect(builder.eq).not.toHaveBeenCalledWith('branch_id', 'branch-1');
+    });
+
+    it('applies branch/service/status filters for a staff caller', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: {
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          status: 'Confirmed',
+        },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('branch_id', 'branch-1');
+      expect(builder.eq).toHaveBeenCalledWith('service_category', 'Grooming');
+      expect(builder.eq).toHaveBeenCalledWith('status', 'Confirmed');
     });
   });
 });

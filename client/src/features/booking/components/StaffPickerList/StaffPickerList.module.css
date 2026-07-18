@@ -1,0 +1,71 @@
+.copy {
+  color: var(--color-text-secondary);
+}
+
+.errorBanner {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--staff-option-card-min-width), 1fr)
+  );
+  gap: var(--space-2);
+}
+
+.card {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.card.selected {
+  border-color: var(--color-accent-gold-primary);
+  box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
+}
+
+.avatar,
+.avatarFallback,
+.noPreferenceIcon {
+  width: var(--avatar-size-card);
+  height: var(--avatar-size-card);
+  border-radius: 50%;
+}
+
+.avatar {
+  object-fit: cover;
+}
+
+.avatarFallback,
+.noPreferenceIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+
+.name {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
