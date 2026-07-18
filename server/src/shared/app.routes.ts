@@ -4,6 +4,7 @@ import staffRoutes from '../features/staff/staff.routes.ts';
 import customerRoutes from '../features/customers/customer.routes.ts';
 import maintenanceRoutes from '../features/maintenance/maintenance.routes.ts';
 import discountsRoutes from '../features/discounts/discounts.routes.ts';
+import bookingRoutes from '../features/booking/booking.routes.ts';
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use(staffRoutes);
 router.use(customerRoutes);
 router.use(maintenanceRoutes);
 router.use(discountsRoutes);
+router.use(bookingRoutes);
 
 export default router;
