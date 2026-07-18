@@ -1,0 +1,264 @@
+import { supabase } from '../../../config/supabase/supabase.config.ts';
+import type {
+  AvailableStaff,
+  EffectivePolicy,
+  PolicyConfiguration,
+  ServiceCategory,
+  StaffPickerOption,
+} from '../booking.types.ts';
+import type { UpdatePolicyInput } from '../modules/validators/booking.validator.ts';
+
+function throwWithStatus(statusCode: number, message: string): never {
+  const error = new Error(message);
+  (error as Error & { statusCode?: number }).statusCode = statusCode;
+  throw error;
+}
+
+/**
+ * Hardcoded fallback matching the migration's seeded defaults - only used if
+ * the seeded system-wide default row has been deleted out-of-band, so the
+ * booking flow degrades to documented defaults instead of failing.
+ */
+const DOCUMENTED_DEFAULTS: EffectivePolicy = {
+  notice_period_days: 3,
+  notice_enforcement_mode: 'Strict',
+  notice_enforcement_enabled: true,
+  staff_picker_enabled_grooming: true,
+  staff_picker_enabled_veterinary: true,
+};
+
+/** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
+const CATEGORY_STAFF_ROLE: Partial<Record<ServiceCategory, string>> = {
+  Grooming: 'Groomer',
+  Veterinary: 'Veterinarian',
+};
+
+export interface AvailabilityWindowParams {
+  branchId: string;
+  serviceCategory: ServiceCategory;
+  scheduledStart: string;
+  scheduledEnd: string;
+  /** Narrow to one staff member (confirmation-time re-verification shape). */
+  staffId?: string;
+  /** #54 reschedule re-check: don't let a booking collide with itself. */
+  excludeBookingId?: string;
+}
+
+/**
+ * Effective policy for a branch: branch-specific row wins over the seeded
+ * system-wide default row (branch_id NULL), column-for-column as a whole row
+ * (the stub has no per-column override semantics).
+ */
+export async function resolveEffectivePolicy(
+  branchId?: string | null
+): Promise<EffectivePolicy> {
+  let query = supabase.from('policy_configurations').select('*');
+
+  query = branchId
+    ? query.or(`branch_id.is.null,branch_id.eq.${branchId}`)
+    : query.is('branch_id', null);
+
+  const { data, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as PolicyConfiguration[];
+  const branchRow = branchId
+    ? rows.find((row) => row.branch_id === branchId)
+    : undefined;
+  const defaultRow = rows.find((row) => row.branch_id === null);
+
+  return branchRow ?? defaultRow ?? DOCUMENTED_DEFAULTS;
+}
+
+/**
+ * Single resolution point the booking-creation flow and the Slot/Staff Picker
+ * endpoints all call: should the Staff Picker step render for this branch +
+ * service type? Hotel/Daycare never have a picker; Grooming/Veterinary follow
+ * the per-branch toggle (default: enabled).
+ */
+export async function isStaffPickerEnabled(
+  branchId: string,
+  serviceCategory: ServiceCategory
+): Promise<boolean> {
+  if (serviceCategory !== 'Grooming' && serviceCategory !== 'Veterinary') {
+    return false;
+  }
+
+  const policy = await resolveEffectivePolicy(branchId);
+
+  return serviceCategory === 'Grooming'
+    ? policy.staff_picker_enabled_grooming
+    : policy.staff_picker_enabled_veterinary;
+}
+
+/**
+ * Wraps the #49 RPC: eligible staff for a branch/role/time window, filtered
+ * by all three availability conditions in the database. Only meaningful for
+ * Grooming/Veterinary - other categories have no staff-role mapping.
+ */
+export async function listAvailableStaff({
+  branchId,
+  serviceCategory,
+  scheduledStart,
+  scheduledEnd,
+  staffId,
+  excludeBookingId,
+}: AvailabilityWindowParams): Promise<AvailableStaff[]> {
+  const role = CATEGORY_STAFF_ROLE[serviceCategory];
+
+  if (!role) {
+    throwWithStatus(
+      400,
+      `Staff availability does not apply to ${serviceCategory} bookings`
+    );
+  }
+
+  const { data, error } = await supabase.rpc('get_staff_availability', {
+    p_role: role,
+    p_branch_id: branchId,
+    p_requested_start: scheduledStart,
+    p_requested_end: scheduledEnd,
+    p_staff_id: staffId ?? null,
+    p_exclude_booking_id: excludeBookingId ?? null,
+  });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as AvailableStaff[];
+}
+
+export interface StaffPickerOptionsResult {
+  staff_picker_enabled: boolean;
+  options: StaffPickerOption[];
+}
+
+/**
+ * Staff Picker endpoint payload. When the toggle is disabled the client gets
+ * no staff list at all (#52 AC-3) - the flow behaves exactly as though "No
+ * preference" were selected and the backend auto-assigns at confirmation.
+ * When enabled, "No preference" is always present and always first (#52
+ * AC-4).
+ */
+export async function getStaffPickerOptions(
+  params: AvailabilityWindowParams
+): Promise<StaffPickerOptionsResult> {
+  const enabled = await isStaffPickerEnabled(
+    params.branchId,
+    params.serviceCategory
+  );
+
+  if (!enabled) {
+    return { staff_picker_enabled: false, options: [] };
+  }
+
+  const staff = await listAvailableStaff(params);
+
+  return {
+    staff_picker_enabled: true,
+    options: [
+      { type: 'no_preference' },
+      ...staff.map((member) => ({
+        type: 'specific' as const,
+        staff_id: member.staff_id,
+        display_name: member.display_name,
+        profile_photo_url: member.profile_photo_url,
+      })),
+    ],
+  };
+}
+
+/**
+ * "No preference" resolution: the next available eligible staff member at
+ * confirmation time. The RPC orders by display_name, so assignment is
+ * deterministic. Returns null when nobody is eligible (a capacity error
+ * upstream).
+ */
+export async function autoAssignStaff(
+  params: AvailabilityWindowParams
+): Promise<AvailableStaff | null> {
+  const staff = await listAvailableStaff(params);
+  return staff[0] ?? null;
+}
+
+interface UpdatePolicyParams {
+  input: UpdatePolicyInput;
+}
+
+/**
+ * Admin/Superadmin PATCH (#52 AC-2): updates the system-wide default row
+ * (branch_id null/omitted) or a branch's override row, creating the override
+ * row if none exists - seeded from the effective policy so a partial PATCH
+ * doesn't silently reset the other settings to column defaults.
+ */
+export async function updatePolicyConfiguration({
+  input,
+}: UpdatePolicyParams): Promise<PolicyConfiguration> {
+  const { branch_id: branchId = null, ...settings } = input;
+
+  let existingQuery = supabase.from('policy_configurations').select('*');
+
+  existingQuery = branchId
+    ? existingQuery.eq('branch_id', branchId)
+    : existingQuery.is('branch_id', null);
+
+  const { data: existing, error: lookupError } =
+    await existingQuery.maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from('policy_configurations')
+      .update({ ...settings, updated_at: new Date().toISOString() })
+      .eq('id', (existing as PolicyConfiguration).id)
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      throwWithStatus(400, error?.message ?? 'Failed to update policy');
+    }
+
+    return data as PolicyConfiguration;
+  }
+
+  const resolved = await resolveEffectivePolicy(branchId);
+  // Only the five policy fields - resolveEffectivePolicy may hand back a full
+  // row (id/created_at included), which must not leak into the new row.
+  const baseline: EffectivePolicy = {
+    notice_period_days: resolved.notice_period_days,
+    notice_enforcement_mode: resolved.notice_enforcement_mode,
+    notice_enforcement_enabled: resolved.notice_enforcement_enabled,
+    staff_picker_enabled_grooming: resolved.staff_picker_enabled_grooming,
+    staff_picker_enabled_veterinary: resolved.staff_picker_enabled_veterinary,
+  };
+
+  const { data, error } = await supabase
+    .from('policy_configurations')
+    .insert({ ...baseline, ...settings, branch_id: branchId })
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to create policy row');
+  }
+
+  return data as PolicyConfiguration;
+}
+
+/**
+ * Read surface for the policy panel: the raw rows (default + overrides) so
+ * the Admin UI can show which branches deviate from the default.
+ */
+export async function listPolicyConfigurations(): Promise<
+  PolicyConfiguration[]
+> {
+  const { data, error } = await supabase
+    .from('policy_configurations')
+    .select('*')
+    .order('created_at');
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as PolicyConfiguration[];
+}
