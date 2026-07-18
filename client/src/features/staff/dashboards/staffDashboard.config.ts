@@ -88,6 +88,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
         to: '/staff/admin/discounts',
       },
+      {
+        title: 'Bookings Queue',
+        description: "Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.",
+        to: '/staff/bookings/queue',
+      },
     ],
   },
   supervisor: {
@@ -102,6 +107,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         title: 'Unavailability Approval Queue',
         description: 'Review pending staff unavailability requests.',
         to: '/staff/admin/unavailability',
+      },
+      {
+        title: 'Bookings Queue',
+        description: "Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.",
+        to: '/staff/bookings/queue',
       },
       {
         title: 'Branch Reports',
@@ -120,6 +130,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Bookings Queue',
         description: "Today's confirmed bookings for the front desk.",
+        to: '/staff/bookings/queue',
       },
       {
         title: 'Hotel Check-in',
