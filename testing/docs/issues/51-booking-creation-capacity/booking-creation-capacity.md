@@ -30,19 +30,19 @@ The capacity check deliberately runs twice — read-only at Slot Picker time and
 
 ### Decisions flagged for the reviewer
 
-1. **Pay-at-counter persists as `Pending`** (`payment_confirmed = false` for Hotel/Grooming/Daycare). The Design sheet's enum note says failed gates "do not persist", but Guide #58 AC-4 requires the booking to exist with `payment_confirmed = false`; `Pending` satisfies #51 AC-4 literally (it never *reaches Confirmed*) and keeps #58 buildable. Pending rows do **not** occupy capacity (all counts filter `status = 'Confirmed'`).
+1. **Pay-at-counter persists as `Pending`** (`payment_confirmed = false` for Hotel/Grooming/Daycare). The Design sheet's enum note says failed gates "do not persist", but Guide #58 AC-4 requires the booking to exist with `payment_confirmed = false`; `Pending` satisfies #51 AC-4 literally (it never _reaches Confirmed_) and keeps #58 buildable. Pending rows do **not** occupy capacity (all counts filter `status = 'Confirmed'`).
 2. Promos are **not** applied to `total_price` — #58 reads promos for the pricing-summary display; real promo/discount math belongs to M08 (Sprint 5).
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Postman |
-|----|-----------|---------|
-| AC-1 POST creates bookings for all 4 types | `booking.service.spec.ts`, integration spec | requests 2–6 |
-| AC-2 capacity rejections per type | `capacity.service.spec.ts` | requests 8 (staff) — Hotel/Daycare need stub-capacity env tricks, see below |
-| AC-3 Southwoods Veterinary rejected via #51's path | `booking.service.spec.ts` ("before any capacity path") | request 7 |
-| AC-4 Confirmed only after capacity + payment gate; Vet ungated | unit + integration specs | requests 3, 4, 6 |
-| AC-5 concurrent race: exactly one wins | `booking.service.spec.ts` race-loser test + `capacity.service.spec.ts` ranking tests | request 9 (sequential approximation only) |
-| AC-6 cross-customer pet rejected | unit + integration specs | request 10 |
+| AC                                                             | Automated                                                                            | Postman                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| AC-1 POST creates bookings for all 4 types                     | `booking.service.spec.ts`, integration spec                                          | requests 2–6                                                                |
+| AC-2 capacity rejections per type                              | `capacity.service.spec.ts`                                                           | requests 8 (staff) — Hotel/Daycare need stub-capacity env tricks, see below |
+| AC-3 Southwoods Veterinary rejected via #51's path             | `booking.service.spec.ts` ("before any capacity path")                               | request 7                                                                   |
+| AC-4 Confirmed only after capacity + payment gate; Vet ungated | unit + integration specs                                                             | requests 3, 4, 6                                                            |
+| AC-5 concurrent race: exactly one wins                         | `booking.service.spec.ts` race-loser test + `capacity.service.spec.ts` ranking tests | request 9 (sequential approximation only)                                   |
+| AC-6 cross-customer pet rejected                               | unit + integration specs                                                             | request 10                                                                  |
 
 ## Automated Verification
 
@@ -92,9 +92,9 @@ Each request carries its own tests — the **Test Results** tab must be green:
 4. **AC-1/AC-4 Create Hotel (50% downpayment)** → 201; `downpayment_amount` = exactly half of `total_price`; `status = "Confirmed"`.
 5. **AC-1 Create Veterinary at Makati (no payment)** → 201; `status = "Confirmed"` with no payment fields sent at all.
 6. **Add-on snapshot (optional — needs `addon_service_id`)** → 201; `booking_addons` row present with `price_at_booking`.
-7. **AC-3 Veterinary at Southwoods** → **422** and the error names branch eligibility ("Makati"), *not* capacity.
+7. **AC-3 Veterinary at Southwoods** → **422** and the error names branch eligibility ("Makati"), _not_ capacity.
 8. **AC-2 Same groomer, same slot, specific preference** → **409** ("no longer available") — the staff member booked in request 2 fails the single-staff re-verification.
-9. **AC-5 (sequential approximation) duplicate Grooming slot** → 201 while other groomers remain free at that slot, then 409 once none are. If your seed has several groomers, duplicate this request until it 409s. The true *concurrent* race is covered by the automated race-loser unit test.
+9. **AC-5 (sequential approximation) duplicate Grooming slot** → 201 while other groomers remain free at that slot, then 409 once none are. If your seed has several groomers, duplicate this request until it 409s. The true _concurrent_ race is covered by the automated race-loser unit test.
 10. **AC-6 other customer's pet** → **403** ("Pet does not belong to this customer").
 
 ### E. Hotel/Daycare capacity rejections (AC-2, optional but quick)

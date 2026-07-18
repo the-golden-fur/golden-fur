@@ -198,9 +198,9 @@ describe('cancellation.service (#54)', () => {
     expect(touchedTables).not.toContain('credit_balances');
     expect(touchedTables).not.toContain('credit_transactions');
     // The only write is the bookings status update.
-    expect(
-      recordedWrites.every((write) => write.table === 'bookings')
-    ).toBe(true);
+    expect(recordedWrites.every((write) => write.table === 'bookings')).toBe(
+      true
+    );
   });
 
   it('AC-6: a non-owning customer gets 403', async () => {

@@ -88,9 +88,9 @@ describe('createBookingValidator', () => {
 
 describe('staffPreferenceValidator', () => {
   it('requires staff_id for a "specific" preference', () => {
-    expect(staffPreferenceValidator.safeParse({ type: 'specific' }).success).toBe(
-      false
-    );
+    expect(
+      staffPreferenceValidator.safeParse({ type: 'specific' }).success
+    ).toBe(false);
     expect(
       staffPreferenceValidator.safeParse({
         type: 'specific',

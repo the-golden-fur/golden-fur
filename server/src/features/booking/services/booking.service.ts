@@ -20,8 +20,7 @@ import {
  * out of this epic's stub scope (Sprint 5, M09). */
 const HOTEL_DOWNPAYMENT_RATE = 0.5;
 
-const BOOKING_SELECT =
-  '*, booking_addons(*), staff_picker_preferences(*)';
+const BOOKING_SELECT = '*, booking_addons(*), staff_picker_preferences(*)';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -297,8 +296,7 @@ export async function createBooking({
   );
 
   const totalPrice =
-    basePrice +
-    addons.reduce((sum, addon) => sum + addon.price_at_booking, 0);
+    basePrice + addons.reduce((sum, addon) => sum + addon.price_at_booking, 0);
 
   const downpaymentAmount =
     input.service_category === 'Hotel'

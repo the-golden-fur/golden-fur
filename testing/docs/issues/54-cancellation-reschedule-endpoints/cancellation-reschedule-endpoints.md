@@ -29,14 +29,14 @@ Guide dev notes are explicit that reschedule-fee calculation is out of scope for
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Postman |
-|----|-----------|---------|
-| AC-1 notice met → reschedule succeeds, schedule updated in place | `reschedule.service.spec.ts`, integration spec | request 4 |
-| AC-2 Strict + notice unmet → rejected, names the requirement | spec + integration spec | request 3 |
-| AC-3 Soft + notice unmet → succeeds with `policy_violation: true` | spec | request 5 (mode-switch via Postman) |
-| AC-4 enforcement disabled → any timing allowed | spec (reschedule + cancellation) | request 6 |
-| AC-5 cancellation sets status/cancelled_at/reason; no credit write | `cancellation.service.spec.ts` (asserts `credit_balances`/`credit_transactions` never touched) | request 7 |
-| AC-6 only owner or staff can reschedule/cancel | spec + integration spec | request 8 |
+| AC                                                                 | Automated                                                                                      | Postman                             |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------- |
+| AC-1 notice met → reschedule succeeds, schedule updated in place   | `reschedule.service.spec.ts`, integration spec                                                 | request 4                           |
+| AC-2 Strict + notice unmet → rejected, names the requirement       | spec + integration spec                                                                        | request 3                           |
+| AC-3 Soft + notice unmet → succeeds with `policy_violation: true`  | spec                                                                                           | request 5 (mode-switch via Postman) |
+| AC-4 enforcement disabled → any timing allowed                     | spec (reschedule + cancellation)                                                               | request 6                           |
+| AC-5 cancellation sets status/cancelled_at/reason; no credit write | `cancellation.service.spec.ts` (asserts `credit_balances`/`credit_transactions` never touched) | request 7                           |
+| AC-6 only owner or staff can reschedule/cancel                     | spec + integration spec                                                                        | request 8                           |
 
 ## Automated Verification
 

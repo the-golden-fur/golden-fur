@@ -94,9 +94,7 @@ const GROOMING_SERVICE = {
   name: 'Full Groom',
   base_price: 300,
   is_active: true,
-  service_pricing_tiers: [
-    { weight_class: 'S', coat_type: 'SC', price: 350 },
-  ],
+  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
 } as never;
 
 const DAYCARE_SERVICE = {

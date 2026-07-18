@@ -28,12 +28,12 @@ Confirm `branches.is_vet_branch` is populated correctly on dev: Supabase Studio 
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Postman |
-|----|-----------|---------|
+| AC                                                                                 | Automated                                                          | Postman   |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------- |
 | AC-1 direct API Veterinary-at-Southwoods → distinct clear error (not 500/capacity) | `veterinaryEligibility.service.spec.ts`, `booking.service.spec.ts` | request 2 |
-| AC-2 Grooming/Hotel/Daycare at Southwoods unaffected | spec (guard never queries branches for them) | request 3 |
-| AC-3 Veterinary at Makati unaffected | spec | request 4 |
-| AC-4 reschedule of a Makati Vet booking to Southwoods rejected | `reschedule.service.spec.ts` | request 5 |
+| AC-2 Grooming/Hotel/Daycare at Southwoods unaffected                               | spec (guard never queries branches for them)                       | request 3 |
+| AC-3 Veterinary at Makati unaffected                                               | spec                                                               | request 4 |
+| AC-4 reschedule of a Makati Vet booking to Southwoods rejected                     | `reschedule.service.spec.ts`                                       | request 5 |
 
 ## Automated Verification
 

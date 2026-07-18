@@ -177,7 +177,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "url": {
           "raw": "{{base_url}}/bookings/staff-picker?branch_id={{branch_makati_id}}&service_category=Grooming&scheduled_start={{slot_start}}&scheduled_end={{slot_end}}",
@@ -212,7 +215,10 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -280,7 +286,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "url": {
           "raw": "{{base_url}}/bookings/staff-picker?branch_id={{branch_makati_id}}&service_category=Grooming&scheduled_start={{slot_start}}&scheduled_end={{slot_end}}",

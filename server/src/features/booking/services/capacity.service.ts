@@ -1,5 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { AvailableStaff, Booking, ServiceCategory } from '../booking.types.ts';
+import type {
+  AvailableStaff,
+  Booking,
+  ServiceCategory,
+} from '../booking.types.ts';
 import { listAvailableStaff } from './staffPicker.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -298,9 +302,7 @@ export async function confirmCapacityAfterInsert(
     const sameSize = await filterSameSizeRows(overlapping, weightClass);
     const capacity = getHotelCageCapacity(booking.branch_id, weightClass);
 
-    return sameSize
-      .slice(0, capacity)
-      .some((row) => row.id === booking.id);
+    return sameSize.slice(0, capacity).some((row) => row.id === booking.id);
   }
 
   // Daycare

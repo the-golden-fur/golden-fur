@@ -31,12 +31,12 @@ The Design sheet says a booking that fails the payment gate "does not persist at
 
 ## Acceptance Criteria Map
 
-| AC | Where verified |
-|----|----------------|
-| AC-1 migration runs cleanly (fresh + on dev with Epic A) | `supabase db push` below |
-| AC-2 tables/columns/constraints/defaults per DB Design; enum exists; service_category reused not redeclared | SQL script sections 1–3 |
-| AC-3 RLS: customer sees only own rows; staff SELECT-all | SQL script section 4 + manual cross-customer test below |
-| AC-4 exactly-one-of CHECK + booking_addons RESTRICT verified by manual test query | SQL script section 5 (expected-error statements) |
+| AC                                                                                                          | Where verified                                          |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| AC-1 migration runs cleanly (fresh + on dev with Epic A)                                                    | `supabase db push` below                                |
+| AC-2 tables/columns/constraints/defaults per DB Design; enum exists; service_category reused not redeclared | SQL script sections 1–3                                 |
+| AC-3 RLS: customer sees only own rows; staff SELECT-all                                                     | SQL script section 4 + manual cross-customer test below |
+| AC-4 exactly-one-of CHECK + booking_addons RESTRICT verified by manual test query                           | SQL script section 5 (expected-error statements)        |
 
 ## Automated Verification
 
@@ -64,7 +64,7 @@ npm --prefix server run lint
 
 3. **AC-4 negative tests** — the bottom of the SQL file has two statements commented out under `-- EXPECTED-ERROR TESTS`. Run each **individually** (select the statement, Run):
    - the both-`service_id`-and-`package_id` insert must fail with `violates check constraint "bookings_service_or_package_check"` (name may render as the table's check constraint);
-   - the `DELETE FROM services ...` for a service referenced by a `booking_addons` row must fail with `violates foreign key constraint` (RESTRICT). *(This one needs at least one add-on row — create a Grooming booking with an add-on via #51's Postman collection first, or skip until #51 is verified.)*
+   - the `DELETE FROM services ...` for a service referenced by a `booking_addons` row must fail with `violates foreign key constraint` (RESTRICT). _(This one needs at least one add-on row — create a Grooming booking with an add-on via #51's Postman collection first, or skip until #51 is verified.)_
 
 4. **AC-3 cross-customer RLS test** (needs two seeded customer accounts):
    1. In Studio → **Authentication → Users**, note two customer users' emails.

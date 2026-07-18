@@ -24,13 +24,13 @@ Adds the `policy_configurations` **stub** table (only the columns this epic read
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-|----|-----------|--------|
-| AC-1 stub table + seeded default row | — | SQL script |
-| AC-2 Admin PATCH per-branch toggle, override row auto-created | `staffPicker.service.spec.ts`, integration spec | Postman 3–4, SQL re-run |
-| AC-3 disabled toggle ⇒ auto-assign, no staff list exposed | spec ("RPC not called"), `booking.service.spec.ts` | Postman 5–6 |
-| AC-4 enabled ⇒ role-filtered staff via RPC, "No preference" first | spec + integration spec | Postman 8 |
-| AC-5 non-Admin gets 403 on the write endpoint | integration spec | Postman 9 |
+| AC                                                                | Automated                                          | Manual                  |
+| ----------------------------------------------------------------- | -------------------------------------------------- | ----------------------- |
+| AC-1 stub table + seeded default row                              | —                                                  | SQL script              |
+| AC-2 Admin PATCH per-branch toggle, override row auto-created     | `staffPicker.service.spec.ts`, integration spec    | Postman 3–4, SQL re-run |
+| AC-3 disabled toggle ⇒ auto-assign, no staff list exposed         | spec ("RPC not called"), `booking.service.spec.ts` | Postman 5–6             |
+| AC-4 enabled ⇒ role-filtered staff via RPC, "No preference" first | spec + integration spec                            | Postman 8               |
+| AC-5 non-Admin gets 403 on the write endpoint                     | integration spec                                   | Postman 9               |
 
 ## Automated Verification
 
@@ -65,5 +65,5 @@ Needs one **Admin** (or Superadmin) staff account, one **non-Admin** staff accou
 
 ## Notes
 
-- The read endpoint returns the raw rows (default + overrides) rather than one merged object, so the future Admin panel can show which branches deviate — resolution to an *effective* policy happens in `resolveEffectivePolicy()`.
+- The read endpoint returns the raw rows (default + overrides) rather than one merged object, so the future Admin panel can show which branches deviate — resolution to an _effective_ policy happens in `resolveEffectivePolicy()`.
 - Customers can hit `GET /bookings/staff-picker` (jwt only) but never `GET/PATCH /bookings/policy` — the policy surface is staff-gated at the route level.

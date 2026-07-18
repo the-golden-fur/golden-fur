@@ -27,12 +27,12 @@ Replaces the Epic A-1 (#12) per-staff boolean `get_staff_availability()` with th
 
 ## Acceptance Criteria Map
 
-| AC | Where verified |
-|----|----------------|
-| AC-1 no-conflict window returns every eligible staff member | SQL script check `ac1_*` |
-| AC-2 Confirmed-booking overlap excludes the staff member | SQL script checks `ac2_*` |
-| AC-3 approved block excludes; pending/denied do NOT | SQL script checks `ac3_*` |
-| AC-4 outside operating hours → empty set | SQL script check `ac4_*` |
+| AC                                                                | Where verified            |
+| ----------------------------------------------------------------- | ------------------------- |
+| AC-1 no-conflict window returns every eligible staff member       | SQL script check `ac1_*`  |
+| AC-2 Confirmed-booking overlap excludes the staff member          | SQL script checks `ac2_*` |
+| AC-3 approved block excludes; pending/denied do NOT               | SQL script checks `ac3_*` |
+| AC-4 outside operating hours → empty set                          | SQL script check `ac4_*`  |
 | AC-5 specific staff_id returns them only if all 3 conditions pass | SQL script checks `ac5_*` |
 
 ## Automated Verification
@@ -65,17 +65,17 @@ Expected: all test files pass (the RPC's server-side consumers are covered in `s
 
    **Expected output:** one result table with a `check_name` and `pass` column — **every row must show `pass = true`**:
 
-   | check_name | pass |
-   |---|---|
-   | ac1_both_groomers_eligible_in_clear_window | true |
-   | ac2_groomer_b_excluded_by_confirmed_booking | true |
-   | ac2_cancelled_booking_does_not_exclude | true |
-   | ac3_approved_block_excludes_groomer_a | true |
+   | check_name                                   | pass |
+   | -------------------------------------------- | ---- |
+   | ac1_both_groomers_eligible_in_clear_window   | true |
+   | ac2_groomer_b_excluded_by_confirmed_booking  | true |
+   | ac2_cancelled_booking_does_not_exclude       | true |
+   | ac3_approved_block_excludes_groomer_a        | true |
    | ac3_pending_or_denied_block_does_not_exclude | true |
-   | ac4_outside_operating_hours_empty_set | true |
-   | ac5_specific_staff_pass_returns_exactly_one | true |
-   | ac5_specific_staff_fail_returns_empty | true |
-   | old_boolean_overload_dropped | true |
+   | ac4_outside_operating_hours_empty_set        | true |
+   | ac5_specific_staff_pass_returns_exactly_one  | true |
+   | ac5_specific_staff_fail_returns_empty        | true |
+   | old_boolean_overload_dropped                 | true |
 
 4. **Clean up:** the bottom of the SQL file has a `-- CLEANUP` section that is commented out. After you've screenshotted/confirmed the results, select just those lines, uncomment them (Ctrl+/), and run them to remove the `issue49-*` test rows.
 

@@ -105,10 +105,7 @@ export async function rescheduleBooking({
   const { booking } = await loadBookingForChange(requesterId, bookingId);
 
   if (booking.status !== 'Confirmed' && booking.status !== 'Pending') {
-    throwWithStatus(
-      409,
-      `A ${booking.status} booking cannot be rescheduled`
-    );
+    throwWithStatus(409, `A ${booking.status} booking cannot be rescheduled`);
   }
 
   const targetBranchId = input.branch_id ?? booking.branch_id;
