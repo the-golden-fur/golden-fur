@@ -1,0 +1,90 @@
+.wrapper {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dateNav {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.dateField {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.dateLabel {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.dateInput {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: var(--space-1);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.copy {
+  color: var(--color-text-secondary);
+}
+
+.errorBanner {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--slot-button-min-width), 1fr));
+  gap: var(--space-1);
+}
+
+.slot {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: var(--space-1);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.slot:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.slot.selected {
+  border-color: var(--color-accent-gold-primary);
+  box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
+}
+
+.available {
+  background: var(--color-slot-available-bg);
+  color: var(--color-slot-available-text);
+}
+
+.partial {
+  background: var(--color-slot-partial-bg);
+  color: var(--color-slot-partial-text);
+}
+
+.full {
+  background: var(--color-slot-full-bg);
+  color: var(--color-slot-full-text);
+}
