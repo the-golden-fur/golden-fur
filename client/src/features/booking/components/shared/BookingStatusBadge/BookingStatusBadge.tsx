@@ -18,7 +18,5 @@ const STATUS_CLASSNAME: Record<BookingStatus, keyof typeof styles> = {
  * and reused by #59 (customer bookings list) and #60 (receptionist queue).
  */
 export function BookingStatusBadge({ status }: BookingStatusBadgeProps) {
-  return (
-    <span className={styles[STATUS_CLASSNAME[status]]}>{status}</span>
-  );
+  return <span className={styles[STATUS_CLASSNAME[status]]}>{status}</span>;
 }

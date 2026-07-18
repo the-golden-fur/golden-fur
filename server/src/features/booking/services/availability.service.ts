@@ -221,10 +221,7 @@ export async function getDaySlots({
       const overlapping = await listOverlappingConfirmedBookings(params);
 
       if (serviceCategory === 'Hotel') {
-        const sameSize = await filterSameSizeRows(
-          overlapping,
-          petWeightClass!
-        );
+        const sameSize = await filterSameSizeRows(overlapping, petWeightClass!);
         const capacity = getHotelCageCapacity(branchId, petWeightClass!);
 
         return {

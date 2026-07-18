@@ -90,7 +90,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       },
       {
         title: 'Bookings Queue',
-        description: "Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.",
+        description:
+          'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
         to: '/staff/bookings/queue',
       },
     ],
@@ -110,7 +111,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       },
       {
         title: 'Bookings Queue',
-        description: "Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.",
+        description:
+          'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
         to: '/staff/bookings/queue',
       },
       {

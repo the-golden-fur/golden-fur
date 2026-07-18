@@ -60,13 +60,13 @@ the full writeup.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual/Postman |
-| --- | --- | --- |
-| AC-1 Own bookings only, correct status badges | `CustomerBookingsPage.spec.ts`, `booking.service.spec.ts` | Manual Step 2, Postman request 3 |
-| AC-2 Reschedule reuses Slot/Staff Picker scoped to the booking | manual (component composition) | Manual Step 3 |
-| AC-3 Blocked reschedule names the required notice period | covered by #54's own tests | Manual Step 4 |
-| AC-4 Soft-mode violation visibly flagged | `CustomerBookingsPage.spec.ts` | Manual Step 4 |
-| AC-5 Cancel requires an explicit confirm step | `CustomerBookingsPage.spec.ts` | Manual Step 5 |
+| AC                                                             | Automated                                                 | Manual/Postman                   |
+| -------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------- |
+| AC-1 Own bookings only, correct status badges                  | `CustomerBookingsPage.spec.ts`, `booking.service.spec.ts` | Manual Step 2, Postman request 3 |
+| AC-2 Reschedule reuses Slot/Staff Picker scoped to the booking | manual (component composition)                            | Manual Step 3                    |
+| AC-3 Blocked reschedule names the required notice period       | covered by #54's own tests                                | Manual Step 4                    |
+| AC-4 Soft-mode violation visibly flagged                       | `CustomerBookingsPage.spec.ts`                            | Manual Step 4                    |
+| AC-5 Cancel requires an explicit confirm step                  | `CustomerBookingsPage.spec.ts`                            | Manual Step 5                    |
 
 ## Automated Verification
 

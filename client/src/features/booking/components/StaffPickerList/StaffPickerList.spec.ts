@@ -38,9 +38,7 @@ describe('StaffPickerList', () => {
     );
 
     await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(2));
-    expect(screen.getAllByRole('button')[0]).toHaveTextContent(
-      'No preference'
-    );
+    expect(screen.getAllByRole('button')[0]).toHaveTextContent('No preference');
   });
 
   it('AC-3: selecting a specific staff member calls onSelect with their staff_id', async () => {

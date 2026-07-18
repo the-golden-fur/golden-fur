@@ -54,12 +54,12 @@ availability" behavior the original #51 Guide dev notes described.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
+| AC                                                            | Automated            | Manual |
+| ------------------------------------------------------------- | -------------------- | ------ |
 | AC-1 Customer view: available/unavailable only, no color code | `SlotPicker.spec.ts` | Step 2 |
-| AC-2 Receptionist/Admin view: 3-color overlay | `SlotPicker.spec.ts` | Step 3 |
-| AC-3 Empty state with a way to pick another date | `SlotPicker.spec.ts` | Step 4 |
-| AC-4 Selecting a slot advances to the correct next step | manual (flow-level) | Step 5 |
+| AC-2 Receptionist/Admin view: 3-color overlay                 | `SlotPicker.spec.ts` | Step 3 |
+| AC-3 Empty state with a way to pick another date              | `SlotPicker.spec.ts` | Step 4 |
+| AC-4 Selecting a slot advances to the correct next step       | manual (flow-level)  | Step 5 |
 
 ## Automated Verification
 
@@ -135,7 +135,7 @@ directly, and the "all slots full" variant is reachable in the browser:
 
 1. Pick a Grooming date/time and, using two different browser sessions (or
    the Postman collection below) as **two different customers**, book the
-   *same* slot with *every* seeded Makati Groomer (2 accounts) via
+   _same_ slot with _every_ seeded Makati Groomer (2 accounts) via
    `/portal/book`.
 2. Revisit that exact date on the Date & Time step.
 

@@ -460,8 +460,8 @@ export function ReceptionistBookingsQueuePage() {
                 {isCancelling ? (
                   <div className={styles.actionPanel}>
                     <p className={styles.copy} role="alert">
-                      Cancel this booking on the customer's behalf? This
-                      cannot be undone.
+                      Cancel this booking on the customer's behalf? This cannot
+                      be undone.
                     </p>
                     <label className={styles.field}>
                       <span className={styles.fieldLabel}>

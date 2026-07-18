@@ -337,8 +337,8 @@ export function CustomerBookingsPage() {
                 {isCancelling ? (
                   <div className={styles.actionPanel}>
                     <p className={styles.copy} role="alert">
-                      Are you sure you want to cancel this booking? This
-                      cannot be undone
+                      Are you sure you want to cancel this booking? This cannot
+                      be undone
                       {booking.downpayment_amount
                         ? ' and may forfeit your downpayment depending on notice given'
                         : ''}

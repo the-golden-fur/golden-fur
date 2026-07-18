@@ -23,9 +23,9 @@ export function PayMongoFeeNotice({ paymentMethod }: PayMongoFeeNoticeProps) {
 
   return (
     <p className={styles.notice} role="note">
-      {paymentMethod} payments include a small online processing fee, charged
-      by our payment partner in addition to your service total. The exact fee
-      will be shown by PayMongo at checkout.
+      {paymentMethod} payments include a small online processing fee, charged by
+      our payment partner in addition to your service total. The exact fee will
+      be shown by PayMongo at checkout.
     </p>
   );
 }

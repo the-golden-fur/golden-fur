@@ -136,7 +136,8 @@ export function StaffPickerList({
   return (
     <div className={styles.grid}>
       {options.map((option) => {
-        const key = option.type === 'no_preference' ? 'no_preference' : option.staff_id;
+        const key =
+          option.type === 'no_preference' ? 'no_preference' : option.staff_id;
         const active = isSelected(option, selected);
 
         return (

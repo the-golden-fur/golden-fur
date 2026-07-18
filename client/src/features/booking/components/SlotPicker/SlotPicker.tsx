@@ -145,7 +145,9 @@ export function SlotPicker({
         </button>
       </div>
 
-      {isLoading ? <p className={styles.copy}>Loading available times...</p> : null}
+      {isLoading ? (
+        <p className={styles.copy}>Loading available times...</p>
+      ) : null}
 
       {error ? (
         <p className={styles.errorBanner} role="alert">

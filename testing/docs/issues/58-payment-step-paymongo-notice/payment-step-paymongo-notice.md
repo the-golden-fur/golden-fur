@@ -27,7 +27,7 @@ comments for the Sprint 5 M08 reviewer).
   other active Grooming services) and the Review & Pay step: pricing
   summary (base price + add-ons + an informational "promo available" line
   computed client-side from Epic A's `GET /maintenance/promos`, since
-  promo *application* itself is M08/Sprint 5 scope and the booking's
+  promo _application_ itself is M08/Sprint 5 scope and the booking's
   persisted `total_price` never includes a promo discount — matching
   `booking.service.ts`, which computes `total_price` from base price + addons
   only), category-specific payment collection (Hotel 50% downpayment /
@@ -47,12 +47,12 @@ didn't ask for.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 Pricing summary reflects base price, add-ons, applicable promo | manual (depends on live promo/service data) | Step 2 |
-| AC-2 PayMongo fee notice only for GCash/Maya | `PayMongoFeeNotice.spec.ts` | Step 3 |
-| AC-3 Payment collection UI matches Hotel/Grooming-Daycare/Veterinary rules | manual | Step 4 |
-| AC-4 pay-at-counter → `payment_confirmed: false`; online → `true` | manual (Network tab / DB check) | Step 5 |
+| AC                                                                         | Automated                                   | Manual |
+| -------------------------------------------------------------------------- | ------------------------------------------- | ------ |
+| AC-1 Pricing summary reflects base price, add-ons, applicable promo        | manual (depends on live promo/service data) | Step 2 |
+| AC-2 PayMongo fee notice only for GCash/Maya                               | `PayMongoFeeNotice.spec.ts`                 | Step 3 |
+| AC-3 Payment collection UI matches Hotel/Grooming-Daycare/Veterinary rules | manual                                      | Step 4 |
+| AC-4 pay-at-counter → `payment_confirmed: false`; online → `true`          | manual (Network tab / DB check)             | Step 5 |
 
 ## Automated Verification
 

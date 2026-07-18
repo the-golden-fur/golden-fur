@@ -50,7 +50,10 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--slot-button-min-width), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--slot-button-min-width), 1fr)
+  );
   gap: var(--space-1);
 }
 

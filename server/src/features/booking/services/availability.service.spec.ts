@@ -19,15 +19,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of [
-      'select',
-      'eq',
-      'neq',
-      'in',
-      'lt',
-      'gt',
-      'order',
-    ]) {
+    for (const method of ['select', 'eq', 'neq', 'in', 'lt', 'gt', 'order']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -86,7 +78,10 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     // Roster count uses `.select(..., { count }).eq().eq().eq()` which our
     // builder resolves via the `then` handler; the RPC drives per-slot
     // eligibility below independently of the queued `from` results.
-    vi.mocked(supabase.rpc).mockResolvedValue({ data: [], error: null } as never);
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: [],
+      error: null,
+    } as never);
 
     const slots = await getDaySlots({
       branchId: 'branch-1',

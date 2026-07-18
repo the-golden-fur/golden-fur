@@ -504,7 +504,9 @@ export async function listBookings({
       new Date(dayStart).getTime() + 24 * 60 * 60 * 1000
     ).toISOString();
 
-    query = query.gte('scheduled_start', dayStart).lt('scheduled_start', dayEnd);
+    query = query
+      .gte('scheduled_start', dayStart)
+      .lt('scheduled_start', dayEnd);
   }
 
   const { data, error } = await query.order('scheduled_start', {

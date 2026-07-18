@@ -16,9 +16,7 @@ vi.mock('../../maintenance/services/promos.service.ts', () => ({
 
 describe('catalog.service (#55/#58 supporting infra)', () => {
   it('returns the active-by-default services/packages/promos for a branch, scoped to the requested category', async () => {
-    vi.mocked(listServices).mockResolvedValue([
-      { id: 'service-1' } as never,
-    ]);
+    vi.mocked(listServices).mockResolvedValue([{ id: 'service-1' } as never]);
     vi.mocked(listPackages).mockResolvedValue([{ id: 'package-1' } as never]);
     vi.mocked(listPromos).mockResolvedValue([{ id: 'promo-1' } as never]);
 

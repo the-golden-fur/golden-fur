@@ -163,7 +163,7 @@ Needs one **customer** account and `branch_makati_id` from Supabase Studio.
 3. Run top to bottom:
    1. **Login customer** → 200.
    2. **Customer reads the Makati catalog** → 200; `{ services, packages,
-      promos }`, all active-only, `services` non-empty (module-3 seed has
+promos }`, all active-only, `services` non-empty (module-3 seed has
       21 services).
    3. **Category filter narrows services** → 200; every returned service's
       `category` equals `Grooming`.

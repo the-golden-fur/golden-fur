@@ -20,10 +20,7 @@ export const bookingRoutes = (
       <Route path="/portal/bookings" element={<CustomerBookingsPage />} />
     </Route>
     <Route element={<StaffAuthGuard />}>
-      <Route
-        path="/staff/bookings/new"
-        element={<CustomerBookingFlowPage />}
-      />
+      <Route path="/staff/bookings/new" element={<CustomerBookingFlowPage />} />
       <Route
         path="/staff/bookings/queue"
         element={<ReceptionistBookingsQueuePage />}

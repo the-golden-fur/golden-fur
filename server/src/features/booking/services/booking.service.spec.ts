@@ -414,8 +414,10 @@ describe('booking.service (#51)', () => {
 
       expect(result).toHaveLength(1);
 
-      const builder = vi.mocked(supabase.from).mock.results[0]
-        .value as Record<string, ReturnType<typeof vi.fn>>;
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
       expect(builder.eq).toHaveBeenCalledWith('customer_id', CUSTOMER_ID);
       // branch_id is never applied for a customer caller - ownership scoping
       // alone decides the row set.
@@ -435,13 +437,12 @@ describe('booking.service (#51)', () => {
         },
       });
 
-      const builder = vi.mocked(supabase.from).mock.results[0]
-        .value as Record<string, ReturnType<typeof vi.fn>>;
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
       expect(builder.eq).toHaveBeenCalledWith('branch_id', 'branch-1');
-      expect(builder.eq).toHaveBeenCalledWith(
-        'service_category',
-        'Grooming'
-      );
+      expect(builder.eq).toHaveBeenCalledWith('service_category', 'Grooming');
       expect(builder.eq).toHaveBeenCalledWith('status', 'Confirmed');
     });
   });

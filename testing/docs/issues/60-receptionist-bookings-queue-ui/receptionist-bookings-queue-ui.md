@@ -56,12 +56,12 @@ silently working around it with more scope creep here.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
+| AC                                                                       | Automated                               | Manual |
+| ------------------------------------------------------------------------ | --------------------------------------- | ------ |
 | AC-1 Queue lists branch bookings, filterable by date/service type/status | `ReceptionistBookingsQueuePage.spec.ts` | Step 2 |
-| AC-2 Superadmin additionally sees a branch filter | `ReceptionistBookingsQueuePage.spec.ts` | Step 3 |
-| AC-3 Reschedule/cancel succeed via #54's endpoints, reflect immediately | manual | Step 4 |
-| AC-4 "New booking" opens #55's flow shell in receptionist mode | `ReceptionistBookingsQueuePage.spec.ts` | Step 5 |
+| AC-2 Superadmin additionally sees a branch filter                        | `ReceptionistBookingsQueuePage.spec.ts` | Step 3 |
+| AC-3 Reschedule/cancel succeed via #54's endpoints, reflect immediately  | manual                                  | Step 4 |
+| AC-4 "New booking" opens #55's flow shell in receptionist mode           | `ReceptionistBookingsQueuePage.spec.ts` | Step 5 |
 
 ## Automated Verification
 

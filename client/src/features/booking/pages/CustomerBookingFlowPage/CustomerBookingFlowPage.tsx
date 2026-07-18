@@ -175,7 +175,8 @@ export function CustomerBookingFlowPage() {
   );
 
   const selectedService = useMemo(
-    () => allServices.find((service) => service.id === selectedServiceId) ?? null,
+    () =>
+      allServices.find((service) => service.id === selectedServiceId) ?? null,
     [allServices, selectedServiceId]
   );
 
@@ -201,7 +202,9 @@ export function CustomerBookingFlowPage() {
   );
 
   const slotDurationMinutes =
-    selectionMode === 'service' ? (selectedService?.duration_minutes ?? 60) : 60;
+    selectionMode === 'service'
+      ? (selectedService?.duration_minutes ?? 60)
+      : 60;
 
   const basePrice =
     selectionMode === 'service'
@@ -212,7 +215,8 @@ export function CustomerBookingFlowPage() {
     () =>
       addonServiceIds.reduce(
         (sum, id) =>
-          sum + (allServices.find((service) => service.id === id)?.base_price ?? 0),
+          sum +
+          (allServices.find((service) => service.id === id)?.base_price ?? 0),
         0
       ),
     [addonServiceIds, allServices]
@@ -237,15 +241,23 @@ export function CustomerBookingFlowPage() {
 
       return (promo.promo_scope ?? []).some(
         (scope) =>
-          (selectionMode === 'service' && scope.service_id === selectedServiceId) ||
-          (selectionMode === 'package' && scope.package_id === selectedPackageId)
+          (selectionMode === 'service' &&
+            scope.service_id === selectedServiceId) ||
+          (selectionMode === 'package' &&
+            scope.package_id === selectedPackageId)
       );
     });
 
     if (candidates.length === 0) return null;
 
     return candidates.find((promo) => promo.is_exclusive) ?? candidates[0];
-  }, [promos, selectedBranch, selectionMode, selectedServiceId, selectedPackageId]);
+  }, [
+    promos,
+    selectedBranch,
+    selectionMode,
+    selectedServiceId,
+    selectedPackageId,
+  ]);
 
   const promoDiscount = applicablePromo
     ? applicablePromo.discount_type === 'Percentage'
@@ -743,8 +755,8 @@ export function CustomerBookingFlowPage() {
               </div>
               {category === 'Grooming' ? (
                 <p className={styles.copy}>
-                  Grooming price may be adjusted for your pet's size and coat
-                  at confirmation.
+                  Grooming price may be adjusted for your pet's size and coat at
+                  confirmation.
                 </p>
               ) : null}
               {addonsTotal > 0 ? (

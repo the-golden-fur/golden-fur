@@ -33,9 +33,7 @@ async function parseError(response: Response): Promise<string> {
   return body?.error ?? 'Request failed. Please try again.';
 }
 
-async function parseBody<T>(
-  response: Response
-): Promise<BookingApiResult<T>> {
+async function parseBody<T>(response: Response): Promise<BookingApiResult<T>> {
   const body = (await response.json().catch(() => null)) as T | null;
 
   if (body === null) {
@@ -270,8 +268,6 @@ export async function getBookingPolicy(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ policies: PolicyConfiguration[] }>(
-    response
-  );
+  const result = await parseBody<{ policies: PolicyConfiguration[] }>(response);
   return { data: result.data?.policies ?? null, error: result.error };
 }

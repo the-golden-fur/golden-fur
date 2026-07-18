@@ -123,7 +123,9 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
 
-    await waitFor(() => expect(screen.getByText('Grooming')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('Grooming'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());

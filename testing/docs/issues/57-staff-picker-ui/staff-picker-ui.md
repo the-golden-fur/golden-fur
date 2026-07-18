@@ -43,13 +43,13 @@ the full writeup.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 Step absent (not hidden) when toggle disabled | `StaffPickerList.spec.ts` ("renders nothing and calls onUnavailable...") | Step 3 |
-| AC-2 "No preference" first, pre-selected by default | `StaffPickerList.spec.ts` | Step 2 |
-| AC-3 Selecting a specific staff member / "No preference" records correctly | `StaffPickerList.spec.ts` | Step 2 |
-| AC-4 Only staff passing #49's availability check appear | manual (depends on live RPC data) | Step 2 |
-| AC-5 Receptionist view renders the same component/data | manual | Step 4 |
+| AC                                                                         | Automated                                                                | Manual |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------ |
+| AC-1 Step absent (not hidden) when toggle disabled                         | `StaffPickerList.spec.ts` ("renders nothing and calls onUnavailable...") | Step 3 |
+| AC-2 "No preference" first, pre-selected by default                        | `StaffPickerList.spec.ts`                                                | Step 2 |
+| AC-3 Selecting a specific staff member / "No preference" records correctly | `StaffPickerList.spec.ts`                                                | Step 2 |
+| AC-4 Only staff passing #49's availability check appear                    | manual (depends on live RPC data)                                        | Step 2 |
+| AC-5 Receptionist view renders the same component/data                     | manual                                                                   | Step 4 |
 
 ## Automated Verification
 
@@ -123,6 +123,7 @@ Network tab: the eventual `POST /bookings` payload either omits
    - Or use `57-staff-picker-ui`'s sibling `#52` Postman collection
      (`testing/docs/issues/52-staff-picker-backend/`), which already has a
      ready-made "PATCH policy" request.
+
 2. As `customer1@goldenfur.com`, start a fresh Grooming booking at Makati and
    pick a slot.
 

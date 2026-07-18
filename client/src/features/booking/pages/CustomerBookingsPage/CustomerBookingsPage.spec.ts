@@ -107,7 +107,7 @@ describe('CustomerBookingsPage', () => {
     });
   });
 
-  it('AC-1: shows only the caller\'s bookings with a status badge', async () => {
+  it("AC-1: shows only the caller's bookings with a status badge", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking({ status: 'Confirmed' })],
       error: null,
@@ -115,7 +115,9 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Confirmed')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    );
     expect(bookingApi.listBookings).toHaveBeenCalledWith('token');
   });
 
@@ -193,7 +195,9 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancelled')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Cancelled')).toBeInTheDocument()
+    );
     expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });

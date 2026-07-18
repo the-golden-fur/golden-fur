@@ -1,7 +1,11 @@
 import { listServices } from '../../maintenance/services/services.service.ts';
 import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
-import type { Package, Promo, Service } from '../../maintenance/maintenance.types.ts';
+import type {
+  Package,
+  Promo,
+  Service,
+} from '../../maintenance/maintenance.types.ts';
 import type { ServiceCategory } from '../booking.types.ts';
 
 export interface CatalogParams {

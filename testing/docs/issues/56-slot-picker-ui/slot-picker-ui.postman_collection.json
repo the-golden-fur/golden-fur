@@ -9,7 +9,10 @@
     { "key": "customer_password", "value": "" },
     { "key": "customer_access_token", "value": "" },
     { "key": "branch_makati_id", "value": "" },
-    { "key": "invalid_branch_id", "value": "00000000-0000-0000-0000-000000000000" },
+    {
+      "key": "invalid_branch_id",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
     { "key": "future_date", "value": "" }
   ],
   "event": [

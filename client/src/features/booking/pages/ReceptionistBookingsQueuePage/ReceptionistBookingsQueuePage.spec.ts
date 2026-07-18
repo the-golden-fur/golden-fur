@@ -139,7 +139,7 @@ describe('ReceptionistBookingsQueuePage', () => {
     });
   });
 
-  it('AC-1: loads the queue scoped to the receptionist\'s own branch by default', async () => {
+  it("AC-1: loads the queue scoped to the receptionist's own branch by default", async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],
       error: null,
@@ -190,7 +190,9 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('New booking')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('New booking')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('New booking'));
 
     expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/new');
