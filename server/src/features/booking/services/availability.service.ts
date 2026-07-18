@@ -1,0 +1,248 @@
+import { supabase } from '../../../config/supabase/supabase.config.ts';
+import type { AvailableStaff, ServiceCategory } from '../booking.types.ts';
+import {
+  filterSameSizeRows,
+  getDaycareSessionCapacity,
+  getHotelCageCapacity,
+  listOverlappingConfirmedBookings,
+  type WeightClass,
+} from './capacity.service.ts';
+import { listAvailableStaff } from './staffPicker.service.ts';
+
+function throwWithStatus(statusCode: number, message: string): never {
+  const error = new Error(message);
+  (error as Error & { statusCode?: number }).statusCode = statusCode;
+  throw error;
+}
+
+/**
+ * Supporting infra for #56 (Slot Picker UI) and #60 (Receptionist Bookings
+ * Queue): neither issue in the merged #51/#52 backend exposed a read
+ * endpoint the client could call ahead of submission - checkCapacity() is
+ * server-internal only, gated by env-var stub config the client can't reach.
+ * This mirrors checkCapacity's per-category logic across a whole day of
+ * candidate slots, generated from the branch's operating_hours (#49's RPC
+ * already reads the same jsonb column for its own Check 1).
+ */
+
+const CATEGORY_STAFF_ROLE: Partial<Record<ServiceCategory, string>> = {
+  Grooming: 'Groomer',
+  Veterinary: 'Veterinarian',
+};
+
+export type SlotLevel = 'available' | 'partial' | 'full';
+
+export interface SlotAvailability {
+  start: string;
+  end: string;
+  available: boolean;
+  level: SlotLevel;
+  /** Grooming/Veterinary only - how many eligible staff remain for this slot. */
+  eligible_staff_count?: number;
+}
+
+export interface GetDaySlotsParams {
+  branchId: string;
+  serviceCategory: ServiceCategory;
+  /** YYYY-MM-DD, interpreted in the branch's own timezone. */
+  date: string;
+  slotDurationMinutes: number;
+  /** Required (and only meaningful) for Hotel. */
+  petWeightClass?: WeightClass;
+}
+
+interface BranchRow {
+  operating_hours: Record<string, { open: string; close: string } | undefined>;
+  timezone: string;
+}
+
+/**
+ * Offset (in minutes) that must be ADDED to a UTC instant to get the
+ * wall-clock time in `timeZone` - i.e. localTime = utcInstant + offset.
+ * Uses Intl's tz database instead of a date library (none is a project
+ * dependency - see client's package.json survey), the standard
+ * library-free technique for IANA zone conversion in Node.
+ */
+function tzOffsetMinutes(utcInstant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(utcInstant);
+
+  const get = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+  const asIfUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second')
+  );
+
+  return (asIfUtc - utcInstant.getTime()) / 60000;
+}
+
+/** Converts a branch-local "date + HH:MM" wall-clock time to a UTC Date. */
+function zonedTimeToUtc(date: string, time: string, timeZone: string): Date {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const asIfUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+
+  // The branch's actual offset can only be evaluated against an instant, so
+  // approximate with asIfUtc first, then correct - safe for the fixed,
+  // non-DST-observing 'Asia/Manila' zone every branch currently uses, and
+  // still correct in general since a second pass would only matter across a
+  // DST transition, which PH branches never have.
+  const offsetMinutes = tzOffsetMinutes(new Date(asIfUtc), timeZone);
+  return new Date(asIfUtc - offsetMinutes * 60000);
+}
+
+async function countActiveRoster(
+  branchId: string,
+  role: string
+): Promise<number> {
+  const { count, error } = await supabase
+    .from('staff_profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('branch_id', branchId)
+    .eq('role', role)
+    .eq('is_active', true);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return count ?? 0;
+}
+
+function levelFromUsage(occupied: number, capacity: number): SlotLevel {
+  if (capacity <= 0 || occupied >= capacity) return 'full';
+  if (occupied <= 0) return 'available';
+  return 'partial';
+}
+
+/**
+ * One day's worth of candidate slots for the Slot Picker, stepped back-to-
+ * back by slotDurationMinutes across the branch's operating hours for that
+ * day of week. Returns an empty list when the branch is closed that day
+ * (#56 AC-3's empty state) rather than an error.
+ */
+export async function getDaySlots({
+  branchId,
+  serviceCategory,
+  date,
+  slotDurationMinutes,
+  petWeightClass,
+}: GetDaySlotsParams): Promise<SlotAvailability[]> {
+  if (serviceCategory === 'Hotel' && !petWeightClass) {
+    throwWithStatus(400, 'pet_weight_class is required for Hotel availability');
+  }
+
+  const { data: branch, error: branchError } = await supabase
+    .from('branches')
+    .select('operating_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (branchError) throwWithStatus(400, branchError.message);
+  if (!branch) throwWithStatus(404, 'Branch not found');
+
+  const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+  const dayName = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+  })
+    .format(zonedTimeToUtc(date, '12:00', timezone))
+    .toLowerCase();
+
+  const window = operatingHours?.[dayName];
+
+  if (!window) {
+    return [];
+  }
+
+  const openUtc = zonedTimeToUtc(date, window.open, timezone);
+  const closeUtc = zonedTimeToUtc(date, window.close, timezone);
+  const stepMs = slotDurationMinutes * 60000;
+
+  const candidates: Array<{ start: Date; end: Date }> = [];
+
+  for (
+    let start = openUtc.getTime();
+    start + stepMs <= closeUtc.getTime();
+    start += stepMs
+  ) {
+    candidates.push({ start: new Date(start), end: new Date(start + stepMs) });
+  }
+
+  const role = CATEGORY_STAFF_ROLE[serviceCategory];
+
+  if (role) {
+    const roster = await countActiveRoster(branchId, role);
+
+    const slots = await Promise.all(
+      candidates.map(async ({ start, end }) => {
+        const eligible: AvailableStaff[] = await listAvailableStaff({
+          branchId,
+          serviceCategory,
+          scheduledStart: start.toISOString(),
+          scheduledEnd: end.toISOString(),
+        });
+
+        return {
+          start: start.toISOString(),
+          end: end.toISOString(),
+          available: eligible.length > 0,
+          level: levelFromUsage(roster - eligible.length, roster),
+          eligible_staff_count: eligible.length,
+        };
+      })
+    );
+
+    return slots;
+  }
+
+  // Hotel/Daycare: capacity-count path, mirroring checkCapacity exactly.
+  return Promise.all(
+    candidates.map(async ({ start, end }) => {
+      const params = {
+        branchId,
+        serviceCategory,
+        scheduledStart: start.toISOString(),
+        scheduledEnd: end.toISOString(),
+      };
+
+      const overlapping = await listOverlappingConfirmedBookings(params);
+
+      if (serviceCategory === 'Hotel') {
+        const sameSize = await filterSameSizeRows(
+          overlapping,
+          petWeightClass!
+        );
+        const capacity = getHotelCageCapacity(branchId, petWeightClass!);
+
+        return {
+          start: start.toISOString(),
+          end: end.toISOString(),
+          available: sameSize.length < capacity,
+          level: levelFromUsage(sameSize.length, capacity),
+        };
+      }
+
+      const capacity = getDaycareSessionCapacity(branchId);
+
+      return {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        available: overlapping.length < capacity,
+        level: levelFromUsage(overlapping.length, capacity),
+      };
+    })
+  );
+}

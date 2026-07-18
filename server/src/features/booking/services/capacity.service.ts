@@ -12,7 +12,7 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-type WeightClass = 'S' | 'M' | 'L' | 'XL';
+export type WeightClass = 'S' | 'M' | 'L' | 'XL';
 
 /**
  * STUB capacity numbers (Guide #51 dev notes):
@@ -120,7 +120,7 @@ interface OverlappingBookingRow {
   created_at: string;
 }
 
-async function listOverlappingConfirmedBookings({
+export async function listOverlappingConfirmedBookings({
   branchId,
   serviceCategory,
   scheduledStart,
@@ -150,7 +150,7 @@ async function listOverlappingConfirmedBookings({
 }
 
 /** Filters overlap rows down to pets in the same cage-size category. */
-async function filterSameSizeRows(
+export async function filterSameSizeRows(
   rows: OverlappingBookingRow[],
   weightClass: WeightClass
 ): Promise<OverlappingBookingRow[]> {

@@ -3,6 +3,14 @@ import { PAYMENT_METHODS } from '../../booking.types.ts';
 
 const CATEGORIES = ['Grooming', 'Hotel', 'Daycare', 'Veterinary'] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
+const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
+const BOOKING_STATUSES = [
+  'Confirmed',
+  'Completed',
+  'Cancelled',
+  'No-show',
+  'Pending',
+] as const;
 
 /** ISO-8601 with offset, matching the timestamptz columns. */
 const isoDatetime = z.iso.datetime({ offset: true });
@@ -132,8 +140,50 @@ export const staffPickerQueryValidator = z.object({
   scheduled_end: isoDatetime,
 });
 
+/**
+ * #56/#60 supporting infra: neither the Slot Picker UI nor the Receptionist
+ * Bookings Queue had a read endpoint to call against in the merged #51/#52
+ * backend. slot_duration_minutes is supplied by the client from the already-
+ * selected service's duration_minutes (step 3 precedes the Slot Picker, step
+ * 4, in the flow) rather than looked up server-side, keeping this endpoint a
+ * thin capacity-by-slot read.
+ */
+export const availabilityQueryValidator = z
+  .object({
+    branch_id: z.uuid(),
+    service_category: z.enum(CATEGORIES),
+    date: z.iso.date(),
+    slot_duration_minutes: z.coerce.number().int().min(15).max(480),
+    pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pet_weight_class'],
+        message: 'pet_weight_class is required for Hotel availability',
+      });
+    }
+  });
+
+export const catalogQueryValidator = z.object({
+  branch_id: z.uuid(),
+  category: z.enum(CATEGORIES).optional(),
+});
+
+export const listBookingsQueryValidator = z.object({
+  branch_id: z.uuid().optional(),
+  date: z.iso.date().optional(),
+  service_category: z.enum(CATEGORIES).optional(),
+  status: z.enum(BOOKING_STATUSES).optional(),
+});
+
 export type CreateBookingInput = z.infer<typeof createBookingValidator>;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type StaffPickerQueryInput = z.infer<typeof staffPickerQueryValidator>;
+export type AvailabilityQueryInput = z.infer<typeof availabilityQueryValidator>;
+export type CatalogQueryInput = z.infer<typeof catalogQueryValidator>;
+export type ListBookingsQueryInput = z.infer<typeof listBookingsQueryValidator>;

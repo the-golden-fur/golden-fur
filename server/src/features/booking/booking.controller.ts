@@ -1,6 +1,10 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
-import { createBooking, getBookingById } from './services/booking.service.ts';
+import {
+  createBooking,
+  getBookingById,
+  listBookings,
+} from './services/booking.service.ts';
 import {
   getStaffPickerOptions,
   listPolicyConfigurations,
@@ -8,9 +12,14 @@ import {
 } from './services/staffPicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
+import { getDaySlots } from './services/availability.service.ts';
+import { getBookingCatalog } from './services/catalog.service.ts';
 import {
+  availabilityQueryValidator,
   cancelBookingValidator,
+  catalogQueryValidator,
   createBookingValidator,
+  listBookingsQueryValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
   updatePolicyValidator,
@@ -83,6 +92,104 @@ export async function getBookingController(
     });
 
     return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listBookingsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = listBookingsQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const bookings = await listBookings({
+      requesterId,
+      filters: {
+        branchId: parsed.data.branch_id,
+        date: parsed.data.date,
+        serviceCategory: parsed.data.service_category,
+        status: parsed.data.status,
+      },
+    });
+
+    return res.status(200).json({ bookings });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function availabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = availabilityQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const slots = await getDaySlots({
+      branchId: parsed.data.branch_id,
+      serviceCategory: parsed.data.service_category,
+      date: parsed.data.date,
+      slotDurationMinutes: parsed.data.slot_duration_minutes,
+      petWeightClass: parsed.data.pet_weight_class,
+    });
+
+    return res.status(200).json({ slots });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function catalogController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = catalogQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const catalog = await getBookingCatalog({
+      branchId: parsed.data.branch_id,
+      category: parsed.data.category,
+    });
+
+    return res.status(200).json(catalog);
   } catch (error) {
     return sendServiceError(res, error);
   }
