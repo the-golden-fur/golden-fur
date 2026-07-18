@@ -21,4 +21,10 @@
   /* Layout sizing (Sprint 2 Epic A - admin maintenance/discount panels) */
   --admin-table-row-min-height: 56px;
   --maintenance-form-max-width: 640px;
+
+  /* Layout sizing (Sprint 2 Epic B - booking flow/queue, #55-#60) */
+  --booking-flow-max-width: 720px;
+  --slot-button-min-width: 96px;
+  --staff-option-card-min-width: 160px;
+  --booking-queue-row-min-height: 56px;
 }

@@ -37,6 +37,32 @@
   --color-active-text: #2f5e1f;
   --color-inactive-bg: #edeae3;
   --color-inactive-text: #6b6558;
+  /* Sprint 2 Epic B - booking status badge set (#55/#59/#60), distinct from
+     the M13 active/inactive and M01 status-neutral/warning pairs above.
+     Confirmed/Completed alias success and status-neutral respectively
+     (same "good/settled" meaning); Pending aliases warning ("action still
+     pending"); Cancelled/No-show get their own muted/error-toned pairs so
+     the two negative outcomes read as visually distinct. */
+  --color-booking-confirmed-bg: #eaf6eb;
+  --color-booking-confirmed-text: #2f6f3b;
+  --color-booking-completed-bg: #efe4cd;
+  --color-booking-completed-text: #725a35;
+  --color-booking-pending-bg: #fff6df;
+  --color-booking-pending-text: #9a6400;
+  --color-booking-cancelled-bg: #edeae3;
+  --color-booking-cancelled-text: #6b6558;
+  --color-booking-noshow-bg: #fde9e6;
+  --color-booking-noshow-text: #b42318;
+  /* Sprint 2 Epic B - Slot Picker 3-color overlay (#56 AC-2): available
+     (green, aliases success), partial (amber, aliases warning), full
+     ("red-grey" per Modules-Features - a muted brick tone distinct from the
+     brighter error pair used for validation messages). */
+  --color-slot-available-bg: #eaf6eb;
+  --color-slot-available-text: #2f6f3b;
+  --color-slot-partial-bg: #fff6df;
+  --color-slot-partial-text: #9a6400;
+  --color-slot-full-bg: #e8dedb;
+  --color-slot-full-text: #7a4a42;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -84,6 +110,25 @@
   --color-active-text: #bde7c4;
   --color-inactive-bg: #43392a;
   --color-inactive-text: #cfc3a9;
+  /* Sprint 2 Epic B - booking status badge set (dark-theme values, same
+     aliasing rationale as the customer-theme block above). */
+  --color-booking-confirmed-bg: #20462d;
+  --color-booking-confirmed-text: #bde7c4;
+  --color-booking-completed-bg: #4d3d28;
+  --color-booking-completed-text: #f0dfbf;
+  --color-booking-pending-bg: #4d3413;
+  --color-booking-pending-text: #ffd27a;
+  --color-booking-cancelled-bg: #43392a;
+  --color-booking-cancelled-text: #cfc3a9;
+  --color-booking-noshow-bg: #4b221b;
+  --color-booking-noshow-text: #ffb3a7;
+  /* Sprint 2 Epic B - Slot Picker 3-color overlay (dark-theme values). */
+  --color-slot-available-bg: #20462d;
+  --color-slot-available-text: #bde7c4;
+  --color-slot-partial-bg: #4d3413;
+  --color-slot-partial-text: #ffd27a;
+  --color-slot-full-bg: #4a332e;
+  --color-slot-full-text: #e3b3a8;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   --radius-sm: 10px;
   --radius-md: 15px;
