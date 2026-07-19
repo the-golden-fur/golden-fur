@@ -141,6 +141,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Daycare Check-in',
         description: 'Check pets in and out of daycare sessions.',
+        to: '/staff/daycare/check-in',
       },
     ],
   },
@@ -150,6 +151,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Grooming Queue',
         description: "Today's grooming appointments and status updates.",
+        to: '/staff/grooming/queue',
       },
     ],
   },
@@ -159,6 +161,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Consultation Queue',
         description: "Today's consultations and pet medical history.",
+        to: '/staff/veterinary/console',
       },
     ],
   },
