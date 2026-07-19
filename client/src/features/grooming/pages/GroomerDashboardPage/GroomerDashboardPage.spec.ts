@@ -47,7 +47,9 @@ function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   };
 }
 
-function buildSession(overrides: Partial<GroomingSession> = {}): GroomingSession {
+function buildSession(
+  overrides: Partial<GroomingSession> = {}
+): GroomingSession {
   return {
     id: 'session-1',
     booking_id: 'booking-1',

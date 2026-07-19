@@ -135,8 +135,8 @@ export function DaycareCheckoutPage() {
           {succeedingHours > 0 ? (
             <div className={styles.breakdownRow}>
               <dt>
-                {succeedingHours} succeeding hour{succeedingHours > 1 ? 's' : ''}{' '}
-                × ₱{SUCCEEDING_HOUR_CHARGE}
+                {succeedingHours} succeeding hour
+                {succeedingHours > 1 ? 's' : ''} × ₱{SUCCEEDING_HOUR_CHARGE}
               </dt>
               <dd>₱{succeedingCharge}</dd>
             </div>

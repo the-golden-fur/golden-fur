@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppointmentCard } from './AppointmentCard';
 import type { GroomingSession } from '../../grooming.types';
 
-function buildSession(overrides: Partial<GroomingSession> = {}): GroomingSession {
+function buildSession(
+  overrides: Partial<GroomingSession> = {}
+): GroomingSession {
   return {
     id: 'session-1',
     booking_id: 'booking-1',

@@ -126,7 +126,12 @@
         "url": {
           "raw": "{{base_url}}/veterinary/consultations/{{consultation_id}}/follow-up",
           "host": ["{{base_url}}"],
-          "path": ["veterinary", "consultations", "{{consultation_id}}", "follow-up"]
+          "path": [
+            "veterinary",
+            "consultations",
+            "{{consultation_id}}",
+            "follow-up"
+          ]
         }
       },
       "event": [
@@ -191,7 +196,12 @@
         "url": {
           "raw": "{{base_url}}/veterinary/consultations/{{consultation_id}}/follow-up",
           "host": ["{{base_url}}"],
-          "path": ["veterinary", "consultations", "{{consultation_id}}", "follow-up"]
+          "path": [
+            "veterinary",
+            "consultations",
+            "{{consultation_id}}",
+            "follow-up"
+          ]
         }
       },
       "event": [
@@ -260,7 +270,12 @@
         "url": {
           "raw": "{{base_url}}/veterinary/consultations/{{consultation_id}}/follow-up",
           "host": ["{{base_url}}"],
-          "path": ["veterinary", "consultations", "{{consultation_id}}", "follow-up"]
+          "path": [
+            "veterinary",
+            "consultations",
+            "{{consultation_id}}",
+            "follow-up"
+          ]
         }
       },
       "event": [

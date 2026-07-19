@@ -2,10 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import { getCustomerProfile, getPet } from '../../../customers/api/customer.api';
-import { listPackages, listServices } from '../../../maintenance/api/maintenance.api';
+import {
+  getCustomerProfile,
+  getPet,
+} from '../../../customers/api/customer.api';
+import {
+  listPackages,
+  listServices,
+} from '../../../maintenance/api/maintenance.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
-import { listGroomingQueue, transitionGroomingStatus } from '../../api/grooming.api';
+import {
+  listGroomingQueue,
+  transitionGroomingStatus,
+} from '../../api/grooming.api';
 import { AppointmentCard } from '../../components/AppointmentCard/AppointmentCard';
 import type { GroomingSession, GroomingStatus } from '../../grooming.types';
 import styles from './GroomerDashboardPage.module.css';
@@ -140,18 +149,18 @@ export function GroomerDashboardPage() {
         }
       }
 
-      void Promise.all(
-        Array.from(petIds).map((id) => getPet(id, token))
-      ).then((petResults) => {
-        if (!isMounted) return;
-        setPets((prev) => {
-          const next = { ...prev };
-          for (const petResult of petResults) {
-            if (petResult.data) next[petResult.data.id] = petResult.data;
-          }
-          return next;
-        });
-      });
+      void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
+        (petResults) => {
+          if (!isMounted) return;
+          setPets((prev) => {
+            const next = { ...prev };
+            for (const petResult of petResults) {
+              if (petResult.data) next[petResult.data.id] = petResult.data;
+            }
+            return next;
+          });
+        }
+      );
 
       void Promise.all(
         Array.from(customerIds).map((id) => getCustomerProfile(id, token))
@@ -206,7 +215,10 @@ export function GroomerDashboardPage() {
       });
   }, [sessions, pets, owners, serviceNames]);
 
-  async function handleAdvance(sessionId: string, targetStatus: GroomingStatus) {
+  async function handleAdvance(
+    sessionId: string,
+    targetStatus: GroomingStatus
+  ) {
     if (!accessToken) return;
 
     setAdvancingId(sessionId);

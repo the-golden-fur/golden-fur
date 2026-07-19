@@ -45,7 +45,9 @@ function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   };
 }
 
-function buildConsultation(overrides: Partial<Consultation> = {}): Consultation {
+function buildConsultation(
+  overrides: Partial<Consultation> = {}
+): Consultation {
   return {
     id: 'consultation-1',
     booking_id: 'booking-1',
@@ -306,8 +308,6 @@ describe('VeterinaryConsolePage (#70)', () => {
       screen.getByRole('button', { name: /schedule follow-up/i })
     );
 
-    expect(
-      await screen.findByText(/follow-up scheduled/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/follow-up scheduled/i)).toBeInTheDocument();
   });
 });

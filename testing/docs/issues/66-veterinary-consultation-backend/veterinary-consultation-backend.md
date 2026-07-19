@@ -29,13 +29,13 @@ Neither the Guide nor `Sprint3-EpicA-Design.xlsx` specifies a professional-fee a
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Postman |
-| --- | --- | --- |
-| AC-1 any Veterinarian can open any Pending/Ongoing Makati consultation, record vitals/diagnosis/medications/procedures | `consultation.service.spec.ts` | requests 3, 5 |
-| AC-2 marking Completed writes `consultation_line_items` for professional fee + every medication + procedure | `consultation.service.spec.ts` | request 6 |
-| AC-3 vaccination updates during a consultation immediately update `pet_vaccination_records` and are reflected on the pet profile | `consultation.service.spec.ts` | request 6 (manual Supabase Studio check) |
-| AC-4 current prescription returns the single most recent Completed consultation's medications, without altering prior records | `currentPrescription.service.spec.ts` | request 7 |
-| AC-5 a consultation cannot be created against a non-Makati booking (server-side) | `consultation.service.spec.ts` ("AC-5" test) | not exercised via Postman — see note below |
+| AC                                                                                                                               | Automated                                    | Postman                                    |
+| -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------ |
+| AC-1 any Veterinarian can open any Pending/Ongoing Makati consultation, record vitals/diagnosis/medications/procedures           | `consultation.service.spec.ts`               | requests 3, 5                              |
+| AC-2 marking Completed writes `consultation_line_items` for professional fee + every medication + procedure                      | `consultation.service.spec.ts`               | request 6                                  |
+| AC-3 vaccination updates during a consultation immediately update `pet_vaccination_records` and are reflected on the pet profile | `consultation.service.spec.ts`               | request 6 (manual Supabase Studio check)   |
+| AC-4 current prescription returns the single most recent Completed consultation's medications, without altering prior records    | `currentPrescription.service.spec.ts`        | request 7                                  |
+| AC-5 a consultation cannot be created against a non-Makati booking (server-side)                                                 | `consultation.service.spec.ts` ("AC-5" test) | not exercised via Postman — see note below |
 
 **Note on AC-5 in Postman:** a Veterinary booking at a non-Makati branch is already rejected at booking-creation time (#53, `assertVeterinaryBranchEligibility`), so there is no way to reach a "non-Makati Veterinary booking" through the normal API to then exercise this auto-vivify re-check — it's a defense-in-depth guard for a state the API itself never produces. Covered by the automated unit test (which calls the service directly against a mocked non-Makati booking row) instead of Postman.
 

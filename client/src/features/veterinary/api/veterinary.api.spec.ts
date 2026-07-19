@@ -36,7 +36,9 @@ describe('veterinary.api', () => {
   it('listConsultationQueue returns an error instead of throwing on a non-ok response', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ error: 'Forbidden' }, false, 403))
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'Forbidden' }, false, 403))
     );
 
     const result = await listConsultationQueue('token');

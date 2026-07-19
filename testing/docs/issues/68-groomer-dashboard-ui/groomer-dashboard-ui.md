@@ -29,13 +29,13 @@ No WebSocket/Supabase-Realtime subscription exists anywhere else in this client 
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual UI |
-| --- | --- | --- |
-| AC-1 dashboard shows today's grooming appointments assigned to the logged-in groomer, in queue order | `GroomerDashboardPage.spec.ts` | step D3 |
-| AC-2 each card displays pet name, owner name, breed, size, coat type, service/package, add-ons, special instructions | `AppointmentCard.spec.ts` | step D3 |
-| AC-3 status buttons advance Waiting → In Progress → Completed and disable/hide once Completed | `AppointmentCard.spec.ts`, `GroomerDashboardPage.spec.ts` | step D4 |
-| AC-4 completing an appointment makes the booking queryable for the future Cashier view | covered by #64's own `grooming.service.spec.ts` (unchanged here) | step D4 (Supabase Studio check) |
-| AC-5 a change made elsewhere is reflected without a manual reload | design note above (15s poll) | step D5 |
+| AC                                                                                                                   | Automated                                                        | Manual UI                       |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------- |
+| AC-1 dashboard shows today's grooming appointments assigned to the logged-in groomer, in queue order                 | `GroomerDashboardPage.spec.ts`                                   | step D3                         |
+| AC-2 each card displays pet name, owner name, breed, size, coat type, service/package, add-ons, special instructions | `AppointmentCard.spec.ts`                                        | step D3                         |
+| AC-3 status buttons advance Waiting → In Progress → Completed and disable/hide once Completed                        | `AppointmentCard.spec.ts`, `GroomerDashboardPage.spec.ts`        | step D4                         |
+| AC-4 completing an appointment makes the booking queryable for the future Cashier view                               | covered by #64's own `grooming.service.spec.ts` (unchanged here) | step D4 (Supabase Studio check) |
+| AC-5 a change made elsewhere is reflected without a manual reload                                                    | design note above (15s poll)                                     | step D5                         |
 
 ## Automated Verification
 

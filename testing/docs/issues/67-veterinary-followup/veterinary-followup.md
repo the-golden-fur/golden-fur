@@ -27,12 +27,12 @@ AC-4 says receptionist confirmation of the pending follow-up booking "proceeds t
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Postman |
-| --- | --- | --- |
-| AC-1 setting a follow-up date on a Completed/Ongoing consultation creates a Pending booking with correct pet/customer/branch/service_category | `followUp.service.spec.ts` | request 6 |
-| AC-2 the originating consultation's `follow_up_booking_id` is set to the new booking's id | `followUp.service.spec.ts` | request 6 |
-| AC-3 the new Pending booking is visible in the Receptionist Bookings Queue without any additional query changes | not unit-tested (integration behavior of an already-merged feature, #60) | request 7 |
-| AC-4 receptionist confirmation proceeds through the normal M03 flow | see decision note above — the promotion path itself is Sprint 5 (M08) scope | not exercised — see note |
+| AC                                                                                                                                            | Automated                                                                   | Postman                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------ |
+| AC-1 setting a follow-up date on a Completed/Ongoing consultation creates a Pending booking with correct pet/customer/branch/service_category | `followUp.service.spec.ts`                                                  | request 6                |
+| AC-2 the originating consultation's `follow_up_booking_id` is set to the new booking's id                                                     | `followUp.service.spec.ts`                                                  | request 6                |
+| AC-3 the new Pending booking is visible in the Receptionist Bookings Queue without any additional query changes                               | not unit-tested (integration behavior of an already-merged feature, #60)    | request 7                |
+| AC-4 receptionist confirmation proceeds through the normal M03 flow                                                                           | see decision note above — the promotion path itself is Sprint 5 (M08) scope | not exercised — see note |
 
 Also covered: rejecting a follow-up on a still-`Pending` (not-yet-started) consultation, and rejecting a second follow-up once one is already scheduled (both `followUp.service.spec.ts` and Postman requests 4/8).
 

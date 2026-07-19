@@ -9,10 +9,7 @@ import { GroomerDashboardPage } from './pages/GroomerDashboardPage/GroomerDashbo
 export const groomingRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
-      <Route
-        path="/staff/grooming/queue"
-        element={<GroomerDashboardPage />}
-      />
+      <Route path="/staff/grooming/queue" element={<GroomerDashboardPage />} />
     </Route>
   </Fragment>
 );

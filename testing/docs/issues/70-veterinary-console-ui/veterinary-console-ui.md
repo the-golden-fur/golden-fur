@@ -30,13 +30,13 @@ The Guide's user story frames this as one screen; the implementation is a two-pa
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual UI |
-| --- | --- | --- |
-| AC-1 console lists today's consultations grouped by Pending/Ongoing/Completed | `VeterinaryConsolePage.spec.ts` | step D3 |
-| AC-2 consultation form saves vitals/diagnosis/medications/procedures; marking Completed reflects immediately in the queue | `VeterinaryConsolePage.spec.ts` | step D4 |
-| AC-3 pet history tab shows all previous consultations for the selected pet | `PetHistoryTab.spec.ts`, `VeterinaryConsolePage.spec.ts` | step D5 |
-| AC-4 setting a follow-up date creates a pending booking visible to the receptionist and shows the "follow-up scheduled" indicator without a page reload | `VeterinaryConsolePage.spec.ts` | step D6 |
-| AC-5 updating vaccination records saves immediately and is visible from the pet profile without navigating away | covered by #66's own `consultation.service.spec.ts` (write-through reuses #33's service); pet-profile visibility not re-verified here — see note below | step D4 (Supabase Studio check) |
+| AC                                                                                                                                                      | Automated                                                                                                                                              | Manual UI                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| AC-1 console lists today's consultations grouped by Pending/Ongoing/Completed                                                                           | `VeterinaryConsolePage.spec.ts`                                                                                                                        | step D3                         |
+| AC-2 consultation form saves vitals/diagnosis/medications/procedures; marking Completed reflects immediately in the queue                               | `VeterinaryConsolePage.spec.ts`                                                                                                                        | step D4                         |
+| AC-3 pet history tab shows all previous consultations for the selected pet                                                                              | `PetHistoryTab.spec.ts`, `VeterinaryConsolePage.spec.ts`                                                                                               | step D5                         |
+| AC-4 setting a follow-up date creates a pending booking visible to the receptionist and shows the "follow-up scheduled" indicator without a page reload | `VeterinaryConsolePage.spec.ts`                                                                                                                        | step D6                         |
+| AC-5 updating vaccination records saves immediately and is visible from the pet profile without navigating away                                         | covered by #66's own `consultation.service.spec.ts` (write-through reuses #33's service); pet-profile visibility not re-verified here — see note below | step D4 (Supabase Studio check) |
 
 **Note on AC-5:** the pet profile's own Vaccination Records section (`PetProfilePage` / `VaccinationRecordList`, M02 #33) is unmodified by this issue — it already reads `pet_vaccination_records` directly, so a row written here appears there the next time that page is viewed. This issue doesn't add a live cross-page refresh; "without navigating away" is verified within the console itself (the vaccination write happens as part of the same Complete Consultation action, with no separate save step or page transition).
 

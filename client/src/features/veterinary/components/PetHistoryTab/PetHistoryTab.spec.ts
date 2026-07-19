@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { PetHistoryTab } from './PetHistoryTab';
 import type { Consultation } from '../../veterinary.types';
 
-function buildConsultation(overrides: Partial<Consultation> = {}): Consultation {
+function buildConsultation(
+  overrides: Partial<Consultation> = {}
+): Consultation {
   return {
     id: 'c-1',
     booking_id: 'booking-1',

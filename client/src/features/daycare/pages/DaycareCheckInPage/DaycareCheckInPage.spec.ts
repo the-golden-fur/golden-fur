@@ -186,7 +186,10 @@ describe('DaycareCheckInPage (#69)', () => {
       data: buildViewerProfile('Receptionist'),
       error: null,
     });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({ data: [], error: null });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
     vi.mocked(customerApi.listCustomers).mockResolvedValue({
       data: [
         {
@@ -231,7 +234,9 @@ describe('DaycareCheckInPage (#69)', () => {
 
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: /walk-in/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /walk-in/i })
+    );
     await userEvent.type(
       screen.getByPlaceholderText(/customer email/i),
       'jane@example.com'

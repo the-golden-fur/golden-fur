@@ -11,7 +11,10 @@ import {
   scheduleFollowUpController,
   updateConsultationController,
 } from './veterinary.controller.ts';
-import { VETERINARY_READ_ROLES, VETERINARY_WRITE_ROLES } from './veterinary.types.ts';
+import {
+  VETERINARY_READ_ROLES,
+  VETERINARY_WRITE_ROLES,
+} from './veterinary.types.ts';
 
 /**
  * Issues #66/#67: registered together since #67's follow-up endpoint depends

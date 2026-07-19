@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import { getCustomerProfile, getPet } from '../../../customers/api/customer.api';
+import {
+  getCustomerProfile,
+  getPet,
+} from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import {
   getPetConsultationHistory,
@@ -113,18 +116,18 @@ export function VeterinaryConsolePage() {
         }
       }
 
-      void Promise.all(
-        Array.from(petIds).map((id) => getPet(id, token))
-      ).then((petResults) => {
-        if (!isMounted) return;
-        setPets((prev) => {
-          const next = { ...prev };
-          for (const petResult of petResults) {
-            if (petResult.data) next[petResult.data.id] = petResult.data;
-          }
-          return next;
-        });
-      });
+      void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
+        (petResults) => {
+          if (!isMounted) return;
+          setPets((prev) => {
+            const next = { ...prev };
+            for (const petResult of petResults) {
+              if (petResult.data) next[petResult.data.id] = petResult.data;
+            }
+            return next;
+          });
+        }
+      );
 
       void Promise.all(
         Array.from(customerIds).map((id) => getCustomerProfile(id, token))
@@ -199,9 +202,13 @@ export function VeterinaryConsolePage() {
     setIsSaving(true);
     setSaveError(null);
 
-    const result = await updateConsultation(selectedRow.consultation.id, accessToken, {
-      status: 'Ongoing',
-    });
+    const result = await updateConsultation(
+      selectedRow.consultation.id,
+      accessToken,
+      {
+        status: 'Ongoing',
+      }
+    );
 
     setIsSaving(false);
 
@@ -241,18 +248,22 @@ export function VeterinaryConsolePage() {
     setIsSaving(true);
     setSaveError(null);
 
-    const result = await updateConsultation(selectedRow.consultation.id, accessToken, {
-      status: 'Completed',
-      temperature: fields.temperature,
-      weight: fields.weight,
-      heart_rate: fields.heart_rate,
-      respiratory_rate: fields.respiratory_rate,
-      diagnosis: fields.diagnosis,
-      medications: fields.medications,
-      procedures: fields.procedures,
-      professional_fee: fields.professionalFee,
-      vaccination: fields.vaccination,
-    });
+    const result = await updateConsultation(
+      selectedRow.consultation.id,
+      accessToken,
+      {
+        status: 'Completed',
+        temperature: fields.temperature,
+        weight: fields.weight,
+        heart_rate: fields.heart_rate,
+        respiratory_rate: fields.respiratory_rate,
+        diagnosis: fields.diagnosis,
+        medications: fields.medications,
+        procedures: fields.procedures,
+        professional_fee: fields.professionalFee,
+        vaccination: fields.vaccination,
+      }
+    );
 
     setIsSaving(false);
 
@@ -374,7 +385,9 @@ export function VeterinaryConsolePage() {
                               ? styles.rowButtonActive
                               : styles.rowButton
                           }
-                          onClick={() => selectConsultation(row.consultation.id)}
+                          onClick={() =>
+                            selectConsultation(row.consultation.id)
+                          }
                         >
                           <span className={styles.rowPetName}>
                             {row.petName}

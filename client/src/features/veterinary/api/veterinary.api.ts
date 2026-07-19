@@ -44,9 +44,12 @@ function jsonHeaders(accessToken: string): HeadersInit {
 export async function listConsultationQueue(
   accessToken: string
 ): Promise<VeterinaryApiResult<Consultation[]>> {
-  const response = await fetch(`${API_BASE_URL}/veterinary/consultations/queue`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/consultations/queue`,
+    {
+      headers: authHeaders(accessToken),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

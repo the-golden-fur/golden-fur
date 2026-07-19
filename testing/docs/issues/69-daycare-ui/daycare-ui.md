@@ -28,11 +28,11 @@ The backend returns only the final `computed_charge`, not an itemized breakdown.
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual UI |
-| --- | --- | --- |
-| AC-1 check-in accepts an existing booking or a new walk-in session | `DaycareCheckInPage.spec.ts` | steps D3, D4 |
-| AC-2 checkout screen shows charge broken down by hours; total matches the backend's `computed_charge` exactly | `DaycareCheckoutPage.spec.ts` | step D5 |
-| AC-3 check-in after cutoff shows a clear message and blocks the action — no session created | `daycare.api.spec.ts`, `DaycareCheckInPage.spec.ts` | step D6 (time-dependent, see note) |
+| AC                                                                                                            | Automated                                           | Manual UI                          |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------- |
+| AC-1 check-in accepts an existing booking or a new walk-in session                                            | `DaycareCheckInPage.spec.ts`                        | steps D3, D4                       |
+| AC-2 checkout screen shows charge broken down by hours; total matches the backend's `computed_charge` exactly | `DaycareCheckoutPage.spec.ts`                       | step D5                            |
+| AC-3 check-in after cutoff shows a clear message and blocks the action — no session created                   | `daycare.api.spec.ts`, `DaycareCheckInPage.spec.ts` | step D6 (time-dependent, see note) |
 
 ## Automated Verification
 
@@ -61,7 +61,7 @@ Expected: 3 test files / 9 tests pass; lint 0 errors/warnings; `tsc -b && vite b
 3. Click **Check in another pet**, switch to the **Walk-in** tab, search by the existing customer's email, select the customer, pick one of their pets, and click **Check in** → success screen appears again (AC-1).
 4. Repeat the walk-in flow once more, but click **Register a new pet** instead of picking an existing one — fill out the reused `PetForm` fields and submit; the new pet becomes selectable immediately, then check in (AC-1, pet-registration reuse).
 5. From either success screen, click **Go to checkout** → the checkout page loads with the session id pre-filled. Click **Check out** → the breakdown shows "First hour ₱100" (and, if more than an hour has elapsed, a "N succeeding hours × ₱50" line) plus a **Total** that matches the number visible in Supabase Studio → Table Editor → `daycare_sessions.computed_charge` for that row exactly (AC-2).
-6. **Time-dependent AC-3 check**: only after 4:00 PM Philippine time (Asia/Manila, UTC+8), repeat step 3 (walk-in check-in) — expect the check-in to be blocked with the message *"Check-in unavailable after 4:00 PM"* and no new row in `daycare_sessions` for that pet/timestamp. Before 4 PM local time this step will succeed instead (201) — that's expected, not a failure; re-test after 4 PM, or use the automated `daycare.api.spec.ts` test to exercise the blocked-message rendering directly.
+6. **Time-dependent AC-3 check**: only after 4:00 PM Philippine time (Asia/Manila, UTC+8), repeat step 3 (walk-in check-in) — expect the check-in to be blocked with the message _"Check-in unavailable after 4:00 PM"_ and no new row in `daycare_sessions` for that pet/timestamp. Before 4 PM local time this step will succeed instead (201) — that's expected, not a failure; re-test after 4 PM, or use the automated `daycare.api.spec.ts` test to exercise the blocked-message rendering directly.
 
 ### E. Cleanup
 

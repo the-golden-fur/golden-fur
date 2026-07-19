@@ -82,7 +82,9 @@ export function ConsultationDetailPanel({
   const [respiratoryRate, setRespiratoryRate] = useState(
     () => consultation.respiratory_rate?.toString() ?? ''
   );
-  const [diagnosis, setDiagnosis] = useState(() => consultation.diagnosis ?? '');
+  const [diagnosis, setDiagnosis] = useState(
+    () => consultation.diagnosis ?? ''
+  );
   const [medications, setMedications] = useState<MedicationInput[]>(() =>
     (consultation.medications ?? []).map((medication) => ({
       name: medication.name,
@@ -199,7 +201,9 @@ export function ConsultationDetailPanel({
         />
       ) : (
         <div className={styles.form}>
-          <p className={styles.reason}>Reason: {consultation.reason_for_visit}</p>
+          <p className={styles.reason}>
+            Reason: {consultation.reason_for_visit}
+          </p>
 
           {consultation.status === 'Pending' ? (
             <button
@@ -404,7 +408,9 @@ export function ConsultationDetailPanel({
 
               {!isCompleted ? (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Professional Fee (₱)</span>
+                  <span className={styles.fieldLabel}>
+                    Professional Fee (₱)
+                  </span>
                   <input
                     className={styles.input}
                     type="number"
@@ -448,7 +454,9 @@ export function ConsultationDetailPanel({
                         className={styles.input}
                         type="date"
                         value={followUpDate}
-                        onChange={(event) => setFollowUpDate(event.target.value)}
+                        onChange={(event) =>
+                          setFollowUpDate(event.target.value)
+                        }
                       />
                     </label>
                     {followUpError ? (

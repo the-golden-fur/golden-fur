@@ -14,14 +14,8 @@ import { DaycareCheckoutPage } from './pages/DaycareCheckoutPage/DaycareCheckout
 export const daycareRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
-      <Route
-        path="/staff/daycare/check-in"
-        element={<DaycareCheckInPage />}
-      />
-      <Route
-        path="/staff/daycare/checkout"
-        element={<DaycareCheckoutPage />}
-      />
+      <Route path="/staff/daycare/check-in" element={<DaycareCheckInPage />} />
+      <Route path="/staff/daycare/checkout" element={<DaycareCheckoutPage />} />
       <Route
         path="/staff/daycare/checkout/:sessionId"
         element={<DaycareCheckoutPage />}

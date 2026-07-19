@@ -31,7 +31,15 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'in', 'gte', 'lt', 'order', 'limit']) {
+    for (const method of [
+      'select',
+      'eq',
+      'in',
+      'gte',
+      'lt',
+      'order',
+      'limit',
+    ]) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -141,7 +149,11 @@ describe('consultation.service (#66)', () => {
         },
         { data: [], error: null },
         {
-          data: { id: 'branch-south', name: 'Southwoods', is_vet_branch: false },
+          data: {
+            id: 'branch-south',
+            name: 'Southwoods',
+            is_vet_branch: false,
+          },
           error: null,
         }
       );
@@ -210,7 +222,10 @@ describe('consultation.service (#66)', () => {
     });
 
     it('rejects skipping Pending -> Completed', async () => {
-      queueFromResults({ data: consultationRow({ status: 'Pending' }), error: null });
+      queueFromResults({
+        data: consultationRow({ status: 'Pending' }),
+        error: null,
+      });
 
       await expect(
         updateConsultation({
@@ -259,9 +274,7 @@ describe('consultation.service (#66)', () => {
         input: {
           status: 'Completed',
           professional_fee: 500,
-          medications: [
-            { name: 'Amoxicillin', dose: '50mg', amount: 150 },
-          ],
+          medications: [{ name: 'Amoxicillin', dose: '50mg', amount: 150 }],
           procedures: [
             { procedure_type: 'Dental', description: 'Cleaning', amount: 800 },
           ],

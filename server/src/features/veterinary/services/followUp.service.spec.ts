@@ -83,7 +83,10 @@ describe('followUp.service (#67)', () => {
     queueFromResults(
       { data: consultationRow(), error: null }, // getConsultation
       { data: bookingRow(), error: null }, // originating booking lookup
-      { data: { id: 'booking-2', ...bookingRow({ id: 'booking-2' }) }, error: null }, // new booking insert
+      {
+        data: { id: 'booking-2', ...bookingRow({ id: 'booking-2' }) },
+        error: null,
+      }, // new booking insert
       {
         data: {
           ...consultationRow({ follow_up_date: '2026-08-01' }),
