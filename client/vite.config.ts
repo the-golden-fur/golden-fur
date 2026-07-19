@@ -59,6 +59,15 @@ export default defineConfig(({ mode }) => {
         // '/staff/bookings/queue', not bare '/bookings', so no bypass is
         // needed here either (#55 Guide notes).
         '/bookings': apiProxy,
+        // grooming.routes.ts / daycare.routes.ts / veterinary.routes.ts
+        // (server) are all mounted at the server root, same as
+        // booking.routes.ts - their client-side page routes live under
+        // '/staff/grooming/...', '/staff/daycare/...', and
+        // '/staff/veterinary/...', not these bare prefixes, so no bypass is
+        // needed for any of them either (Sprint 3 Epic A, #66-#70).
+        '/grooming': apiProxy,
+        '/daycare': apiProxy,
+        '/veterinary': apiProxy,
       },
     },
   };

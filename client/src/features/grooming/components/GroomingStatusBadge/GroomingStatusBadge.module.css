@@ -1,0 +1,26 @@
+.waiting,
+.inProgress,
+.completed {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+  white-space: nowrap;
+}
+
+.waiting {
+  background: var(--color-grooming-status-waiting-bg);
+  color: var(--color-grooming-status-waiting-text);
+}
+
+.inProgress {
+  background: var(--color-grooming-status-inprogress-bg);
+  color: var(--color-grooming-status-inprogress-text);
+}
+
+.completed {
+  background: var(--color-grooming-status-completed-bg);
+  color: var(--color-grooming-status-completed-text);
+}

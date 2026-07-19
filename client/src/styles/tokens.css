@@ -63,6 +63,34 @@
   --color-slot-partial-text: #9a6400;
   --color-slot-full-bg: #e8dedb;
   --color-slot-full-text: #7a4a42;
+  /* Sprint 3 Epic A (#68/#69/#70) - execution-record status badge sets,
+     distinct from the booking-status pair above since a booking's lifecycle
+     state and its execution record's state are different concepts that can
+     coexist (e.g. bookings.status = 'Confirmed' while
+     grooming_sessions.status = 'In Progress'). Waiting/Pending share the
+     neutral-grey tier, In Progress/Ongoing share the amber tier, and every
+     Completed variant shares the green tier already used for
+     active/booking-confirmed - only Daycare's Active gets a genuinely new
+     hue (blue), since Active must read as "in progress", not "finished"
+     (unlike grooming/consult, which use Completed for that). */
+  --color-grooming-status-waiting-bg: #ece7de;
+  --color-grooming-status-waiting-text: #7a7263;
+  --color-grooming-status-inprogress-bg: #fbefd2;
+  --color-grooming-status-inprogress-text: #8a6a1a;
+  --color-grooming-status-completed-bg: #e4f0de;
+  --color-grooming-status-completed-text: #2f5e1f;
+  --color-daycare-status-active-bg: #e3ecf5;
+  --color-daycare-status-active-text: #2a4a6b;
+  --color-daycare-status-completed-bg: #e4f0de;
+  --color-daycare-status-completed-text: #2f5e1f;
+  --color-consult-status-pending-bg: #ece7de;
+  --color-consult-status-pending-text: #7a7263;
+  --color-consult-status-ongoing-bg: #fbefd2;
+  --color-consult-status-ongoing-text: #8a6a1a;
+  --color-consult-status-completed-bg: #e4f0de;
+  --color-consult-status-completed-text: #2f5e1f;
+  --color-followup-indicator-bg: #fff6df;
+  --color-followup-indicator-text: #9a6400;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -129,6 +157,26 @@
   --color-slot-partial-text: #ffd27a;
   --color-slot-full-bg: #4a332e;
   --color-slot-full-text: #e3b3a8;
+  /* Sprint 3 Epic A (#68/#69/#70) - dark-theme values, same aliasing
+     rationale as the customer-theme block above. */
+  --color-grooming-status-waiting-bg: #43392a;
+  --color-grooming-status-waiting-text: #cfc3a9;
+  --color-grooming-status-inprogress-bg: #4d3413;
+  --color-grooming-status-inprogress-text: #ffd27a;
+  --color-grooming-status-completed-bg: #24462d;
+  --color-grooming-status-completed-text: #bde7c4;
+  --color-daycare-status-active-bg: #22405c;
+  --color-daycare-status-active-text: #b7d2ea;
+  --color-daycare-status-completed-bg: #24462d;
+  --color-daycare-status-completed-text: #bde7c4;
+  --color-consult-status-pending-bg: #43392a;
+  --color-consult-status-pending-text: #cfc3a9;
+  --color-consult-status-ongoing-bg: #4d3413;
+  --color-consult-status-ongoing-text: #ffd27a;
+  --color-consult-status-completed-bg: #24462d;
+  --color-consult-status-completed-text: #bde7c4;
+  --color-followup-indicator-bg: #4d3413;
+  --color-followup-indicator-text: #ffd27a;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   --radius-sm: 10px;
   --radius-md: 15px;
