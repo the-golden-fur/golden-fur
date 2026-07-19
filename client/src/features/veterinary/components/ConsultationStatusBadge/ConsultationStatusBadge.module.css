@@ -1,0 +1,26 @@
+.pending,
+.ongoing,
+.completed {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+  white-space: nowrap;
+}
+
+.pending {
+  background: var(--color-consult-status-pending-bg);
+  color: var(--color-consult-status-pending-text);
+}
+
+.ongoing {
+  background: var(--color-consult-status-ongoing-bg);
+  color: var(--color-consult-status-ongoing-text);
+}
+
+.completed {
+  background: var(--color-consult-status-completed-bg);
+  color: var(--color-consult-status-completed-text);
+}
