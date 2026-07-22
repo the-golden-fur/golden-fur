@@ -1,6 +1,7 @@
 :root {
   /* Font Families */
-  --font-main: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-main: 'Poppins', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-display: 'Luckiest Guy', cursive;
   --font-mono: 'Courier New', Courier, monospace;
 
   /* Font Sizes (Major Second Scale) */

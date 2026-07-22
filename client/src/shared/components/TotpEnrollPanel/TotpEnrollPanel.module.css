@@ -15,11 +15,13 @@
   max-width: 100%;
   height: 280px;
   margin: 0 auto;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   /* QR modules are drawn on a transparent SVG background - always place them
      on a fixed light background, not the theme's --color-bg-primary. The
      staff theme's bg is near-black, which made the code unreadable. */
   background: #ffffff;
+  box-shadow: var(--shadow-sm);
   padding: var(--space-2);
 }
 
@@ -59,10 +61,16 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-2);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .copyButton:hover {
+  transform: translateY(-1px);
   border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .secondaryButton {
@@ -76,10 +84,16 @@
   font-weight: var(--weight-semibold);
   margin-top: var(--space-1);
   padding: var(--space-2) var(--space-3);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .secondaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
   border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .secondaryButton:disabled {
@@ -123,7 +137,7 @@
 
 .button {
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-pill);
   background: var(--color-accent);
   color: var(--color-accent-fg);
   cursor: pointer;
@@ -131,11 +145,17 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
-  transition: background 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .button:hover:not(:disabled) {
+  transform: translateY(-1px);
   background: var(--color-accent-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .button:disabled {

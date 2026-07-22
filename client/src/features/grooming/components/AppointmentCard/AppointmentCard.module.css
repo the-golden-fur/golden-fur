@@ -6,6 +6,14 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: var(--space-3);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .header {
@@ -63,7 +71,7 @@
 
 .primaryButton {
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);
   color: var(--color-text-on-accent);
   cursor: pointer;
@@ -71,6 +79,17 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
   width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-accent-gold-highlight);
+  box-shadow: var(--shadow-md);
 }
 
 .primaryButton:disabled {

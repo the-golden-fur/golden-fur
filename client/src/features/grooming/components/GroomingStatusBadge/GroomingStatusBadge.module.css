@@ -8,6 +8,16 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-0-5) var(--space-1);
   white-space: nowrap;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.waiting:hover,
+.inProgress:hover,
+.completed:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .waiting {

@@ -9,13 +9,14 @@
 }
 
 .modal {
+  composes: animate-fade-in from global;
   width: min(100%, 28rem);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  box-shadow: 0 20px 45px rgb(17 24 39 / 22%);
+  box-shadow: var(--shadow-lg);
 }
 
 .eyebrow {
