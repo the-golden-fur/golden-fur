@@ -11,11 +11,7 @@ function Bomb(): never {
 describe('ErrorBoundary', () => {
   it('renders children when nothing throws', () => {
     render(
-      createElement(
-        ErrorBoundary,
-        null,
-        createElement('p', null, 'all good')
-      )
+      createElement(ErrorBoundary, null, createElement('p', null, 'all good'))
     );
 
     expect(screen.getByText('all good')).toBeInTheDocument();
@@ -28,9 +24,7 @@ describe('ErrorBoundary', () => {
 
     render(createElement(ErrorBoundary, null, createElement(Bomb)));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Something went wrong'
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
     expect(screen.getByText('Error code: SERVER_ERROR')).toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();

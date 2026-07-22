@@ -6,9 +6,7 @@ import { ServerErrorPage } from './ServerErrorPage';
 
 describe('ServerErrorPage', () => {
   it('shows the 500 code, error code, and a link back home', () => {
-    render(
-      createElement(MemoryRouter, null, createElement(ServerErrorPage))
-    );
+    render(createElement(MemoryRouter, null, createElement(ServerErrorPage)));
 
     expect(screen.getByText('500')).toBeInTheDocument();
     expect(

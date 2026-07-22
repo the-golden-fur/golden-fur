@@ -7,8 +7,7 @@ export function ServerErrorPage() {
       <p className={styles.code}>500</p>
       <h1 className={styles.title}>Something went wrong</h1>
       <p className={styles.copy}>
-        An unexpected error occurred on our end. Please try again in a
-        moment.
+        An unexpected error occurred on our end. Please try again in a moment.
       </p>
       <p className={styles.errorCode} role="alert">
         Error code: SERVER_ERROR
