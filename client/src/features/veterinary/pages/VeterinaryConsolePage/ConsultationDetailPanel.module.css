@@ -42,6 +42,11 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-2);
   color: var(--color-text-secondary);
+  transition: color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
 }
 
 .tabActive {
@@ -100,7 +105,7 @@
 
 .primaryButton {
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);
   color: var(--color-text-on-accent);
   cursor: pointer;
@@ -108,6 +113,17 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
   width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-accent-gold-highlight);
+  box-shadow: var(--shadow-md);
 }
 
 .primaryButton:disabled {
@@ -125,6 +141,16 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-2);
   width: fit-content;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-accent-gold-primary);
 }
 
 .secondaryButton:disabled {
