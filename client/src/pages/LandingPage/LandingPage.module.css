@@ -5,9 +5,13 @@
 }
 
 body {
-  font-family: 'Poppins', sans-serif;
+  font-family: var(--font-main);
   min-height: 220vh;
-  background: linear-gradient(180deg, #fff8eb 0%, #f8e4c3 100%);
+  background: linear-gradient(
+    180deg,
+    var(--color-surface) 0%,
+    var(--color-nav-active-bg) 100%
+  );
   color: var(--color-text-primary);
   overflow-x: hidden; /* prevent horizontal scrollbar */
 }
@@ -51,7 +55,7 @@ body {
 }
 
 :global(.brand) {
-  font-family: 'Luckiest Guy', cursive;
+  font-family: var(--font-display);
   font-size: 2rem;
   line-height: 1;
   color: var(--color-accent-gold-primary);
@@ -253,7 +257,7 @@ body {
 }
 
 :global(.text-card h1) {
-  font-family: 'Luckiest Guy', cursive;
+  font-family: var(--font-display);
   letter-spacing: clamp(1px, 0.22vw, 3px);
 
   /* Hero title size control: lower values = smaller title */
@@ -295,7 +299,7 @@ body {
 }
 
 :global(.serviceTitle) {
-  font-family: 'Luckiest Guy', cursive;
+  font-family: var(--font-display);
   color: var(--color-accent);
   letter-spacing: 1px;
   font-size: clamp(1.8rem, 4.2vw, 3rem);
@@ -318,7 +322,7 @@ body {
   background: rgba(255, 255, 255, 0.75);
   color: var(--color-text-secondary);
   font-weight: 700;
-  font-family: 'Poppins', sans-serif;
+  font-family: var(--font-main);
   letter-spacing: 0.2px;
   border-radius: var(--radius-pill);
   padding: 10px 18px;
@@ -681,7 +685,7 @@ body {
 }
 
 :global(.booking-flow-title) {
-  font-family: 'Luckiest Guy', cursive;
+  font-family: var(--font-display);
   color: var(--color-accent);
   letter-spacing: 1px;
   font-size: clamp(1.8rem, 4.2vw, 3rem); /* edit heading size */
@@ -864,7 +868,11 @@ body {
 }
 
 :global(.booking-step-ctrl-prev) {
-  background: linear-gradient(180deg, #fffdf7 0%, #f5e8c8 100%);
+  background: linear-gradient(
+    180deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-badge-bg-gold) 100%
+  );
   color: var(--color-text-secondary);
   border-color: rgba(180, 138, 40, 0.7);
 }
@@ -1691,7 +1699,7 @@ body {
 }
 
 :global(.footer-brand-name) {
-  font-family: 'Luckiest Guy', cursive;
+  font-family: var(--font-display);
   font-size: 1.5rem;
   color: var(--color-brand-gold-logo);
   letter-spacing: 0.4px;
