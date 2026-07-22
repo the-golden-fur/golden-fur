@@ -4,4 +4,5 @@ export { ValidationError } from './ValidationError.ts';
 export { UnauthorizedError } from './UnauthorizedError.ts';
 export { ForbiddenError } from './ForbiddenError.ts';
 export { ConflictError } from './ConflictError.ts';
+export { InternalServerError } from './InternalServerError.ts';
 export { errorHandler } from './errorHandler.middleware.ts';

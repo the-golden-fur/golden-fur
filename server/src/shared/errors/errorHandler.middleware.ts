@@ -9,7 +9,10 @@ export function errorHandler(
   _next: NextFunction
 ) {
   if (err instanceof AppError) {
-    const body: { error: string; details?: unknown } = { error: err.message };
+    const body: { error: string; code: string; details?: unknown } = {
+      error: err.message,
+      code: err.code,
+    };
 
     if (err instanceof ValidationError && err.details !== undefined) {
       body.details = err.details;
@@ -35,5 +38,7 @@ export function errorHandler(
 
   console.error(err); // eslint-disable-line no-console
 
-  return res.status(500).json({ error: 'Internal server error' });
+  return res
+    .status(500)
+    .json({ error: 'Internal server error', code: 'SERVER_ERROR' });
 }
