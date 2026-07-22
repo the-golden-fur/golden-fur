@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { DashboardTileConfig } from '../../staffDashboard.config';
+import type { DashboardTileConfig } from '../../../config/staffDashboard.config';
 import styles from './DashboardTile.module.css';
 
 /**

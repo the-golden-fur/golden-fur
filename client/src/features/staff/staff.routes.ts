@@ -1,7 +1,7 @@
 import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
-import { StaffDashboardPage } from './dashboards/pages/StaffDashboardPage/StaffDashboardPage';
+import { StaffDashboardPage } from './pages/StaffDashboardPage/StaffDashboardPage';
 import { AdminCustomerListPage } from './pages/AdminCustomerListPage/AdminCustomerListPage';
 import { AdminStaffListPage } from './pages/AdminStaffListPage/AdminStaffListPage';
 import { StaffProfilePage } from './pages/StaffProfilePage/StaffProfilePage';

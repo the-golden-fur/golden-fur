@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router';
-import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
-import { getStaffProfile } from '../../../api/staff.api';
+import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getStaffProfile } from '../../api/staff.api';
 import {
   ROLE_TO_DASHBOARD_SLUG,
   STAFF_DASHBOARD_CONFIG,
   type StaffDashboardSlug,
-} from '../../staffDashboard.config';
-import { DashboardTile } from '../../components/DashboardTile/DashboardTile';
+} from '../../config/staffDashboard.config';
+import { DashboardTile } from '../../components/dashboard/DashboardTile/DashboardTile';
 import styles from './StaffDashboardPage.module.css';
 
 function isDashboardSlug(

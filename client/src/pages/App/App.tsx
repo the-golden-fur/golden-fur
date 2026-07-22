@@ -3,6 +3,7 @@ import { AuthProvider } from '../../shared/auth/providers/AuthProvider/AuthProvi
 import { useAuth } from '../../shared/auth/providers/AuthProvider/useAuth';
 import { AppRoutes } from '../../routes';
 import { ThemeProvider } from '../../shared/providers/ThemeProvider/ThemeProvider';
+import { ErrorBoundary } from '../../shared/components/ErrorBoundary/ErrorBoundary';
 
 function ThemedAppRoutes() {
   const location = useLocation();
@@ -11,7 +12,9 @@ function ThemedAppRoutes() {
 
   return (
     <ThemeProvider theme={theme} userId={user?.id} accessToken={accessToken}>
-      <AppRoutes />
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }
