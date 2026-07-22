@@ -52,7 +52,7 @@ Landing Page itself where it had drifted from those tokens.
 
 ### 3. `client/src/pages/{SettingsPage,NotFoundPage,ServerErrorPage}` — reference calibration
 
-Done by hand first, to set the polish bar for a *dashboard/utility* context
+Done by hand first, to set the polish bar for a _dashboard/utility_ context
 (less flashy than the marketing page, but clearly "the same design family"):
 elevated card container (`--shadow-card`, `--radius-xl`), `--font-display`
 for the big `404`/`500` code and page title, pill-shaped primary
@@ -112,7 +112,7 @@ changed).
   895 insertions / 114 deletions, no `.tsx`/`.ts` in the list.
 - Manually spot-checked every `composes: ... from global;` usage resolves to
   a real class in `animations.css` (confirmed by the successful `vite
-  build` — an unresolved `composes from global` target fails the build).
+build` — an unresolved `composes from global` target fails the build).
 
 ## How to verify yourself
 

@@ -49,7 +49,11 @@
 }
 
 .optionLabel:hover {
-  background: color-mix(in srgb, var(--color-accent-gold-primary) 10%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-primary) 10%,
+    transparent
+  );
 }
 
 .sublabel {
