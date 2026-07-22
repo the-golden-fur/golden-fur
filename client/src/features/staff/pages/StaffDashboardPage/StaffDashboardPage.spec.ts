@@ -2,13 +2,13 @@ import { render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
-import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
-import * as staffApi from '../../../api/staff.api';
-import type { StaffProfile } from '../../../staff.types';
+import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
+import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
+import * as staffApi from '../../api/staff.api';
+import type { StaffProfile } from '../../staff.types';
 import { StaffDashboardPage } from './StaffDashboardPage';
 
-vi.mock('../../../api/staff.api', () => ({
+vi.mock('../../api/staff.api', () => ({
   getStaffProfile: vi.fn(),
 }));
 
