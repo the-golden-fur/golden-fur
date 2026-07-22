@@ -37,7 +37,7 @@
 
 .button {
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-pill);
   background: var(--color-accent);
   color: var(--color-accent-fg);
   cursor: pointer;
@@ -45,11 +45,17 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
-  transition: background 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .button:hover:not(:disabled) {
+  transform: translateY(-1px);
   background: var(--color-accent-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .button:disabled {
@@ -67,11 +73,16 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
-  transition: border-color 0.15s ease;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .secondaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
   border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .secondaryButton:disabled {
