@@ -4,6 +4,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
   margin: 0;
   padding: var(--space-2);
   max-height: 16rem;
@@ -39,9 +40,16 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   cursor: pointer;
   font-size: var(--text-sm);
+  padding: var(--space-0-5);
+  transition: background-color 150ms ease;
+}
+
+.optionLabel:hover {
+  background: color-mix(in srgb, var(--color-accent-gold-primary) 10%, transparent);
 }
 
 .sublabel {

@@ -1,4 +1,5 @@
 .page {
+  composes: animate-fade-in from global;
   display: grid;
   gap: var(--space-4);
   max-width: 40rem;
@@ -66,7 +67,7 @@
 
 .button {
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);
   color: var(--color-text-on-accent);
   cursor: pointer;
@@ -75,10 +76,17 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
   width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .button:hover:not(:disabled) {
+  transform: translateY(-1px);
   filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .button:disabled {
