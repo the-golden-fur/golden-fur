@@ -1,4 +1,5 @@
 .page {
+  composes: animate-fade-in from global;
   display: grid;
   gap: var(--space-4);
   max-width: 72rem;
@@ -64,7 +65,7 @@
 
 .primaryButton {
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);
   color: var(--color-text-on-accent);
   cursor: pointer;
@@ -73,6 +74,11 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-2) var(--space-3);
   width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .primaryButton:disabled {
@@ -81,12 +87,14 @@
 }
 
 .primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
   filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .secondaryButton {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -95,10 +103,16 @@
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-2);
   width: fit-content;
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .secondaryButton:hover {
+  transform: translateY(-1px);
   filter: brightness(1.05);
+  box-shadow: var(--shadow-sm);
 }
 
 .formPanel {
@@ -166,6 +180,10 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-3);
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
 }
 
 .segmentButton {
@@ -173,9 +191,15 @@
   color: var(--color-text-secondary);
 }
 
+.segmentButton:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
 .segmentButtonActive {
   background: var(--color-accent-gold-primary);
   color: var(--color-text-on-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .formActions {
@@ -200,11 +224,15 @@
   min-height: var(--admin-table-row-min-height);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: var(--space-2);
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .promoRow:hover {
+  transform: translateY(-1px);
   box-shadow: var(--shadow-card);
 }
 

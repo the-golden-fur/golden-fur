@@ -2,6 +2,6 @@ import { AppError } from './AppError.ts';
 
 export class UnauthorizedError extends AppError {
   constructor(message = 'Unauthorized') {
-    super(message, 401);
+    super(message, 401, true, 'UNAUTHORIZED');
   }
 }

@@ -18,19 +18,28 @@
   gap: var(--space-1);
   width: 100%;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text-secondary);
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
   transition:
     border-color 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .stepButton:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.stepButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-accent-gold-primary);
 }
 
 .stepButton.current {
