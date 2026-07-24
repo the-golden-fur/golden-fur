@@ -18,19 +18,65 @@ describe('veterinary.api', () => {
     vi.unstubAllGlobals();
   });
 
-  it('listConsultationQueue returns the unwrapped consultations on success', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ consultations: [{ id: 'c-1' }] }));
+  it('listConsultationQueue returns consultations and pendingBookings on success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        consultations: [{ id: 'c-1' }],
+        pendingBookings: [{ id: 'booking-2' }],
+      })
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await listConsultationQueue('token');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/veterinary/consultations/queue'),
+      expect.stringContaining(
+        '/veterinary/consultations/queue?includePending=true'
+      ),
       expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
     );
-    expect(result).toEqual({ data: [{ id: 'c-1' }], error: null });
+    expect(result).toEqual({
+      data: {
+        consultations: [{ id: 'c-1' }],
+        pendingBookings: [{ id: 'booking-2' }],
+      },
+      error: null,
+    });
+  });
+
+  it('listConsultationQueue passes date_from/date_to when a date range is given', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ consultations: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listConsultationQueue('token', {
+      dateFrom: '2026-07-20',
+      dateTo: '2026-07-26',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('date_from=2026-07-20'),
+      expect.anything()
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('date_to=2026-07-26'),
+      expect.anything()
+    );
+  });
+
+  it('listConsultationQueue defaults pendingBookings to an empty array when omitted', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ consultations: [] }))
+    );
+
+    const result = await listConsultationQueue('token');
+
+    expect(result).toEqual({
+      data: { consultations: [], pendingBookings: [] },
+      error: null,
+    });
   });
 
   it('listConsultationQueue returns an error instead of throwing on a non-ok response', async () => {

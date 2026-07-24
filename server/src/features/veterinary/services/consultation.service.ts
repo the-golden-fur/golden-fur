@@ -1,10 +1,12 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import type { Booking } from '../../booking/booking.types.ts';
 import { assertVeterinaryBranchEligibility } from '../../booking/services/veterinaryEligibility.service.ts';
 import { createVaccinationRecord } from '../../customers/pets/services/vaccinationRecord.service.ts';
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
 import type { Consultation } from '../veterinary.types.ts';
 
 const CONSULTATION_SELECT = '*, booking:bookings(*)';
+const BOOKING_SELECT = '*, booking_addons(*)';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -20,16 +22,53 @@ function todayRangeUtc(): { dayStart: string; dayEnd: string } {
 }
 
 /**
- * Issue #66: today's Makati Veterinary consultation queue. Auto-vivifies a
- * 'Pending' consultations row for any confirmed Veterinary booking that
- * doesn't have one yet - mirrors #64's grooming_sessions pattern (no DB
- * trigger exists anywhere in this codebase; see grooming.service.ts's own
- * dev note on why). Any Veterinarian may see and open any row - no per-vet
- * scoping, matching the explicit "no per-pet assigned-vet restriction"
- * carve-out - so unlike listGroomingQueue, this never filters by requester.
+ * Defaults to today (unchanged from before the queue's date filter existed)
+ * when neither bound is given - every existing caller/test relies on this.
+ * Otherwise resolves the given inclusive [dateFrom, dateTo] (YYYY-MM-DD)
+ * bounds to a UTC instant range, matching the QueueFilterBar date-range
+ * presets on the client (client/src/shared/components/QueueFilterBar) and
+ * grooming.service.ts's own resolveDateRangeUtc.
  */
-export async function listConsultationQueue(): Promise<Consultation[]> {
-  const { dayStart, dayEnd } = todayRangeUtc();
+function resolveDateRangeUtc(
+  dateFrom?: string,
+  dateTo?: string
+): { dayStart: string; dayEnd: string } {
+  if (!dateFrom && !dateTo) return todayRangeUtc();
+
+  const dayStart = dateFrom
+    ? `${dateFrom}T00:00:00.000Z`
+    : '1970-01-01T00:00:00.000Z';
+  const dayEnd = dateTo
+    ? new Date(
+        new Date(`${dateTo}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000
+      ).toISOString()
+    : '9999-12-31T00:00:00.000Z';
+
+  return { dayStart, dayEnd };
+}
+
+interface ListConsultationQueueParams {
+  /** Inclusive date-range bounds (YYYY-MM-DD) - both default to today when
+   * omitted. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * Issue #66: the Makati Veterinary consultation queue for the given date
+ * range (today by default). Auto-vivifies a 'Pending' consultations row for
+ * any confirmed Veterinary booking that doesn't have one yet - mirrors #64's
+ * grooming_sessions pattern (no DB trigger exists anywhere in this
+ * codebase; see grooming.service.ts's own dev note on why). Any
+ * Veterinarian may see and open any row - no per-vet scoping, matching the
+ * explicit "no per-pet assigned-vet restriction" carve-out - so unlike
+ * listGroomingQueue, this never filters by requester.
+ */
+export async function listConsultationQueue({
+  dateFrom,
+  dateTo,
+}: ListConsultationQueueParams = {}): Promise<Consultation[]> {
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
 
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
@@ -103,6 +142,39 @@ export async function listConsultationQueue(): Promise<Consultation[]> {
     (a, b) =>
       new Date(a.booking!.scheduled_start).getTime() -
       new Date(b.booking!.scheduled_start).getTime()
+  );
+}
+
+/**
+ * Veterinary bookings in the given date range (today by default) still
+ * awaiting payment confirmation (bookings.status = 'Pending' - see #51's
+ * payment gate). Surfaced for awareness only: no consultations row is
+ * vivified for these, mirroring listGroomingQueue's own
+ * listUnconfirmedGroomingBookings. No per-vet or per-branch scoping,
+ * matching listConsultationQueue's own carve-out.
+ */
+export async function listUnconfirmedVeterinaryBookings({
+  dateFrom,
+  dateTo,
+}: ListConsultationQueueParams = {}): Promise<Booking[]> {
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(BOOKING_SELECT)
+    .eq('service_category', 'Veterinary')
+    .eq('status', 'Pending')
+    .gte('scheduled_start', dayStart)
+    .lt('scheduled_start', dayEnd);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Booking[];
+
+  return rows.sort(
+    (a, b) =>
+      new Date(a.scheduled_start).getTime() -
+      new Date(b.scheduled_start).getTime()
   );
 }
 

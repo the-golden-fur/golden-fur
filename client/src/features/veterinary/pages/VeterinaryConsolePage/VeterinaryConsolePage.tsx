@@ -2,11 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
+import type { Booking } from '../../../booking/booking.types';
 import {
   getCustomerProfile,
   getPet,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import {
+  QueueFilterBar,
+  type QueueStatusOption,
+} from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
+import {
+  resolveDateRangePreset,
+  type DateRangePreset,
+} from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import {
   getPetConsultationHistory,
   listConsultationQueue,
@@ -31,6 +40,13 @@ const ALLOWED_VIEWER_ROLES = new Set([
 ]);
 
 const STATUS_GROUPS: ConsultationStatus[] = ['Pending', 'Ongoing', 'Completed'];
+const UNCONFIRMED_STATUS = 'Unconfirmed';
+type StatusFilter = ConsultationStatus | typeof UNCONFIRMED_STATUS | 'All';
+const STATUS_OPTIONS: QueueStatusOption[] = [
+  { value: 'All', label: 'All statuses' },
+  { value: UNCONFIRMED_STATUS, label: 'Unconfirmed (awaiting payment)' },
+  ...STATUS_GROUPS.map((status) => ({ value: status, label: status })),
+];
 
 // Issue #70 AC-1/AC-4: no WebSocket/realtime infra exists anywhere in this
 // codebase yet (same gap noted in GroomerDashboardPage's own #68 dev note),
@@ -45,6 +61,13 @@ export function VeterinaryConsolePage() {
   );
 
   const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [pendingBookings, setPendingBookings] = useState<Booking[]>([]);
+  const [dateRangePreset, setDateRangePreset] =
+    useState<DateRangePreset>('today');
+  const [customDate, setCustomDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -60,6 +83,11 @@ export function VeterinaryConsolePage() {
 
   const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
+
+  const dateRange = useMemo(
+    () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
+    [dateRangePreset, customDate]
+  );
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -103,17 +131,23 @@ export function VeterinaryConsolePage() {
       }
 
       setLoadError(null);
-      setConsultations(result.data);
+      setConsultations(result.data.consultations);
+      setPendingBookings(result.data.pendingBookings);
       setIsLoading(false);
 
       const petIds = new Set<string>();
       const customerIds = new Set<string>();
 
-      for (const consultation of result.data) {
+      for (const consultation of result.data.consultations) {
         if (consultation.booking) {
           petIds.add(consultation.booking.pet_id);
           customerIds.add(consultation.booking.customer_id);
         }
+      }
+
+      for (const booking of result.data.pendingBookings) {
+        petIds.add(booking.pet_id);
+        customerIds.add(booking.customer_id);
       }
 
       void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
@@ -143,17 +177,24 @@ export function VeterinaryConsolePage() {
       });
     }
 
-    void listConsultationQueue(token).then(handleQueueResult);
+    const queueDateRange = {
+      dateFrom: dateRange.from ?? undefined,
+      dateTo: dateRange.to ?? undefined,
+    };
+
+    void listConsultationQueue(token, queueDateRange).then(handleQueueResult);
 
     const interval = setInterval(() => {
-      void listConsultationQueue(token).then(handleQueueResult);
+      void listConsultationQueue(token, queueDateRange).then(
+        handleQueueResult
+      );
     }, REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [roleStatus, accessToken]);
+  }, [roleStatus, accessToken, dateRange.from, dateRange.to]);
 
   const rows = useMemo(() => {
     return consultations.map((consultation) => {
@@ -185,6 +226,38 @@ export function VeterinaryConsolePage() {
     }
     return map;
   }, [rows]);
+
+  const enrichedPending = useMemo(() => {
+    return [...pendingBookings]
+      .sort(
+        (a, b) =>
+          new Date(a.scheduled_start).getTime() -
+          new Date(b.scheduled_start).getTime()
+      )
+      .map((booking) => {
+        const pet = pets[booking.pet_id];
+        const owner = owners[booking.customer_id];
+
+        return {
+          booking,
+          petName: pet?.name ?? 'Unknown pet',
+          ownerName: owner?.full_name ?? 'Unknown owner',
+        };
+      });
+  }, [pendingBookings, pets, owners]);
+
+  // 'All' shows both the consultation status groups and unconfirmed
+  // (awaiting payment) bookings together; a specific consultation status
+  // narrows to just that group; 'Unconfirmed' shows only the
+  // awaiting-payment bookings.
+  const showPendingSection =
+    statusFilter === 'All' || statusFilter === UNCONFIRMED_STATUS;
+  const visibleStatusGroups =
+    statusFilter === 'All'
+      ? STATUS_GROUPS
+      : statusFilter === UNCONFIRMED_STATUS
+        ? []
+        : [statusFilter];
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
 
@@ -358,8 +431,18 @@ export function VeterinaryConsolePage() {
     <main className={styles.page}>
       <h1 className={styles.title}>Veterinary Console</h1>
 
+      <QueueFilterBar
+        dateRangePreset={dateRangePreset}
+        onDateRangePresetChange={setDateRangePreset}
+        customDate={customDate}
+        onCustomDateChange={setCustomDate}
+        statusValue={statusFilter}
+        onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
+        statusOptions={STATUS_OPTIONS}
+      />
+
       {isLoading ? (
-        <p className={styles.copy}>Loading today's consultations...</p>
+        <p className={styles.copy}>Loading consultations...</p>
       ) : loadError ? (
         <p className={styles.errorBanner} role="alert">
           {loadError}
@@ -367,7 +450,7 @@ export function VeterinaryConsolePage() {
       ) : (
         <div className={styles.layout}>
           <div className={styles.queue}>
-            {STATUS_GROUPS.map((status) => (
+            {visibleStatusGroups.map((status) => (
               <section key={status} className={styles.statusGroup}>
                 <h2 className={styles.statusGroupTitle}>
                   <ConsultationStatusBadge status={status} />
@@ -402,6 +485,32 @@ export function VeterinaryConsolePage() {
                 )}
               </section>
             ))}
+
+            {showPendingSection ? (
+              <section className={styles.unconfirmedSection}>
+                {enrichedPending.length === 0 ? (
+                  <p className={styles.copy}>
+                    No unconfirmed bookings match these filters.
+                  </p>
+                ) : (
+                  <ul className={styles.rowList}>
+                    {enrichedPending.map((item) => (
+                      <li key={item.booking.id} className={styles.pendingRow}>
+                        <span className={styles.rowPetName}>
+                          {item.petName}
+                        </span>
+                        <span className={styles.rowMeta}>
+                          {item.ownerName}
+                        </span>
+                        <span className={styles.pendingBadge}>
+                          Awaiting payment
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ) : null}
           </div>
 
           <div className={styles.detail}>
