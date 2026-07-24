@@ -18,6 +18,28 @@ async function isAuthorizedStaff(requesterId: string): Promise<boolean> {
   return role !== null && CUSTOMER_MANAGER_ROLES.includes(role);
 }
 
+/**
+ * Broader than CUSTOMER_MANAGER_ROLES, for single-record lookup only (GET
+ * /customers/:id) - mirrors VACCINATION_MANAGER_ROLES's own precedent
+ * (vaccinationRecord.service.ts) of extending a narrow, read-only action to
+ * a role that legitimately needs it: a Groomer/Veterinarian needs to see
+ * whose pet they're servicing in their own queue (GroomerDashboardPage/
+ * VeterinaryConsolePage), but that's not the same as the broader
+ * CUSTOMER_MANAGER_ROLES-gated ability to list/edit every customer.
+ */
+const PROFILE_LOOKUP_ROLES: readonly string[] = [
+  ...CUSTOMER_MANAGER_ROLES,
+  'Groomer',
+  'Veterinarian',
+];
+
+async function isAuthorizedForProfileLookup(
+  requesterId: string
+): Promise<boolean> {
+  const role = await getStaffRoleOrNull(requesterId);
+  return role !== null && PROFILE_LOOKUP_ROLES.includes(role);
+}
+
 function paramId(req: AuthenticatedRequest, name: string): string | undefined {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : value;
@@ -70,7 +92,7 @@ export async function getCustomerProfileController(
 
   const isSelf = requesterId === targetId;
 
-  if (!isSelf && !(await isAuthorizedStaff(requesterId))) {
+  if (!isSelf && !(await isAuthorizedForProfileLookup(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 

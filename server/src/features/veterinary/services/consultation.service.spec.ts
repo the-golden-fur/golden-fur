@@ -3,6 +3,7 @@ import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
+  listUnconfirmedVeterinaryBookings,
   updateConsultation,
 } from './consultation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -161,6 +162,55 @@ describe('consultation.service (#66)', () => {
       await expect(listConsultationQueue()).rejects.toMatchObject({
         statusCode: 422,
       });
+    });
+  });
+
+  describe('listUnconfirmedVeterinaryBookings', () => {
+    it('returns Pending Veterinary bookings for the day without vivifying a consultation', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-3',
+            status: 'Pending',
+            service_category: 'Veterinary',
+            scheduled_start: '2026-07-19T04:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listUnconfirmedVeterinaryBookings();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('booking-3');
+      expect(
+        recordedWrites.find((write) => write.table === 'consultations')
+      ).toBeUndefined();
+    });
+
+    it('sorts multiple Pending bookings by scheduled_start', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-late',
+            status: 'Pending',
+            scheduled_start: '2026-07-19T05:00:00.000Z',
+          },
+          {
+            id: 'booking-early',
+            status: 'Pending',
+            scheduled_start: '2026-07-19T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listUnconfirmedVeterinaryBookings();
+
+      expect(result.map((booking) => booking.id)).toEqual([
+        'booking-early',
+        'booking-late',
+      ]);
     });
   });
 

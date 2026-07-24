@@ -1,3 +1,4 @@
+import type { Booking } from '../../booking/booking.types';
 import type {
   Consultation,
   ScheduleFollowUpResult,
@@ -7,6 +8,13 @@ import type {
 interface VeterinaryApiResult<T> {
   data: T | null;
   error: string | null;
+}
+
+export interface ConsultationQueueResult {
+  consultations: Consultation[];
+  /** Today's Veterinary bookings still awaiting payment confirmation - no
+   * consultation exists for these yet, surfaced for staff awareness only. */
+  pendingBookings: Booking[];
 }
 
 // veterinary.routes.ts (server) is mounted at the server root (not under
@@ -41,11 +49,22 @@ function jsonHeaders(accessToken: string): HeadersInit {
   return { 'Content-Type': 'application/json', ...authHeaders(accessToken) };
 }
 
+export interface ConsultationQueueDateRange {
+  /** YYYY-MM-DD, inclusive. Omitted (both) defaults to today, server-side. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export async function listConsultationQueue(
-  accessToken: string
-): Promise<VeterinaryApiResult<Consultation[]>> {
+  accessToken: string,
+  dateRange: ConsultationQueueDateRange = {}
+): Promise<VeterinaryApiResult<ConsultationQueueResult>> {
+  const params = new URLSearchParams({ includePending: 'true' });
+  if (dateRange.dateFrom) params.set('date_from', dateRange.dateFrom);
+  if (dateRange.dateTo) params.set('date_to', dateRange.dateTo);
+
   const response = await fetch(
-    `${API_BASE_URL}/veterinary/consultations/queue`,
+    `${API_BASE_URL}/veterinary/consultations/queue?${params.toString()}`,
     {
       headers: authHeaders(accessToken),
     }
@@ -55,8 +74,22 @@ export async function listConsultationQueue(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ consultations: Consultation[] }>(response);
-  return { data: result.data?.consultations ?? null, error: result.error };
+  const result = await parseBody<{
+    consultations: Consultation[];
+    pendingBookings?: Booking[];
+  }>(response);
+
+  if (!result.data) {
+    return { data: null, error: result.error };
+  }
+
+  return {
+    data: {
+      consultations: result.data.consultations,
+      pendingBookings: result.data.pendingBookings ?? [],
+    },
+    error: null,
+  };
 }
 
 export async function updateConsultation(

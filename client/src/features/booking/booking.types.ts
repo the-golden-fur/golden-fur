@@ -194,6 +194,10 @@ export interface ListBookingsFilters {
   branchId?: string;
   /** YYYY-MM-DD */
   date?: string;
+  /** Inclusive date-range bounds (YYYY-MM-DD) - ignored when `date` is also
+   * given. */
+  dateFrom?: string;
+  dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: BookingStatus;
 }

@@ -183,10 +183,13 @@ describe('VeterinaryConsolePage (#70)', () => {
       error: null,
     });
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: [
-        buildConsultation({ id: 'c-pending', status: 'Pending' }),
-        buildConsultation({ id: 'c-ongoing', status: 'Ongoing' }),
-      ],
+      data: {
+        consultations: [
+          buildConsultation({ id: 'c-pending', status: 'Pending' }),
+          buildConsultation({ id: 'c-ongoing', status: 'Ongoing' }),
+        ],
+        pendingBookings: [],
+      },
       error: null,
     });
     stubPetAndOwner();
@@ -195,8 +198,12 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     const pendingRows = await screen.findAllByText('Whiskers');
     expect(pendingRows).toHaveLength(2);
-    expect(screen.getByText('Pending')).toBeInTheDocument();
-    expect(screen.getByText('Ongoing')).toBeInTheDocument();
+    expect(
+      screen.getByText('Pending', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Ongoing', { selector: 'span' })
+    ).toBeInTheDocument();
   });
 
   it('AC-2: completing an Ongoing consultation calls updateConsultation with status Completed', async () => {
@@ -205,7 +212,10 @@ describe('VeterinaryConsolePage (#70)', () => {
       error: null,
     });
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: [buildConsultation({ status: 'Ongoing' })],
+      data: {
+        consultations: [buildConsultation({ status: 'Ongoing' })],
+        pendingBookings: [],
+      },
       error: null,
     });
     stubPetAndOwner();
@@ -236,7 +246,7 @@ describe('VeterinaryConsolePage (#70)', () => {
       error: null,
     });
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: [buildConsultation()],
+      data: { consultations: [buildConsultation()], pendingBookings: [] },
       error: null,
     });
     stubPetAndOwner();
@@ -259,7 +269,10 @@ describe('VeterinaryConsolePage (#70)', () => {
       error: null,
     });
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: [buildConsultation({ status: 'Ongoing' })],
+      data: {
+        consultations: [buildConsultation({ status: 'Ongoing' })],
+        pendingBookings: [],
+      },
       error: null,
     });
     stubPetAndOwner();
@@ -309,5 +322,96 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
 
     expect(await screen.findByText(/follow-up scheduled/i)).toBeInTheDocument();
+  });
+
+  it('shows unconfirmed bookings alongside the status groups under "All statuses", narrows to just them under "Unconfirmed", and hides them under a specific consultation status', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [],
+        pendingBookings: [
+          {
+            id: 'booking-pending-1',
+            customer_id: 'customer-2',
+            pet_id: 'pet-2',
+            branch_id: 'branch-makati',
+            created_by_staff_id: null,
+            service_category: 'Veterinary',
+            service_id: 'service-1',
+            package_id: null,
+            scheduled_start: '2026-07-19T06:00:00.000Z',
+            scheduled_end: '2026-07-19T07:00:00.000Z',
+            assigned_staff_id: 'vet-1',
+            status: 'Pending',
+            total_price: 800,
+            downpayment_amount: null,
+            payment_method: 'Cash',
+            payment_confirmed: false,
+            special_instructions: null,
+            cancelled_at: null,
+            cancellation_reason: null,
+            reschedule_count: 0,
+            created_at: '2026-07-18T00:00:00.000Z',
+            updated_at: '2026-07-18T00:00:00.000Z',
+          },
+        ],
+      },
+      error: null,
+    });
+    vi.mocked(customerApi.getPet).mockResolvedValue({
+      data: {
+        id: 'pet-2',
+        customer_id: 'customer-2',
+        name: 'Rex',
+        species: 'Dog',
+        breed: null,
+        gender: 'Male',
+        date_of_birth: null,
+        weight_class: 'M',
+        coat_type: 'SC',
+        health_conditions: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        id: 'customer-2',
+        full_name: 'Sam Reyes',
+        contact_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        account_email: 'sam@example.com',
+        primary_auth_provider: 'email',
+        facebook_id: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+
+    renderPage();
+
+    // Default "All statuses": unconfirmed bookings show immediately
+    // alongside the (empty) status groups.
+    expect(await screen.findByText('Rex')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting payment')).toBeInTheDocument();
+
+    // Narrowing to "Unconfirmed" keeps showing it (nothing else changes).
+    await userEvent.selectOptions(
+      screen.getByLabelText('Status'),
+      'Unconfirmed'
+    );
+    expect(screen.getByText('Rex')).toBeInTheDocument();
+
+    // Narrowing to a specific consultation status hides it - there's
+    // nothing to service yet for an unconfirmed (unpaid) booking.
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'Ongoing');
+    expect(screen.queryByText('Rex')).not.toBeInTheDocument();
   });
 });

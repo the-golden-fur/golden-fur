@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   listGroomingQueue,
+  listUnconfirmedGroomingBookings,
   transitionGroomingSessionStatus,
 } from './grooming.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -266,6 +267,86 @@ describe('grooming.service (#64)', () => {
       expect(result.map((session) => session.id)).toEqual([
         'session-early',
         'session-late',
+      ]);
+    });
+  });
+
+  describe('listUnconfirmedGroomingBookings', () => {
+    it('returns Pending bookings for the day, scoped to the requesting groomer', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-3',
+            status: 'Pending',
+            assigned_staff_id: GROOMER_ID,
+            scheduled_start: '2026-07-19T04:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listUnconfirmedGroomingBookings({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('booking-3');
+    });
+
+    it('does not vivify a grooming_sessions row for a Pending booking', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-3',
+            status: 'Pending',
+            assigned_staff_id: GROOMER_ID,
+            scheduled_start: '2026-07-19T04:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      await listUnconfirmedGroomingBookings({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(
+        recordedWrites.find((write) => write.table === 'grooming_sessions')
+      ).toBeUndefined();
+    });
+
+    it('sorts multiple Pending bookings by scheduled_start', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-late',
+            status: 'Pending',
+            assigned_staff_id: GROOMER_ID,
+            scheduled_start: '2026-07-19T05:00:00.000Z',
+          },
+          {
+            id: 'booking-early',
+            status: 'Pending',
+            assigned_staff_id: GROOMER_ID,
+            scheduled_start: '2026-07-19T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listUnconfirmedGroomingBookings({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result.map((booking) => booking.id)).toEqual([
+        'booking-early',
+        'booking-late',
       ]);
     });
   });

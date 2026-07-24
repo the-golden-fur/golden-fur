@@ -161,6 +161,34 @@ describe('pet CRUD (Issue #32)', () => {
       expect(res.status).toBe(403);
     });
 
+    it("allows a Groomer to GET a different customer's pet (needed to resolve pet names in the Grooming Queue)", async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Groomer' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/pets/pet-1')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+    });
+
+    it("allows a Veterinarian to GET a different customer's pet (needed to resolve pet names in the Veterinary Console)", async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Veterinarian' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/pets/pet-1')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+    });
+
     it('AC-4: PATCH succeeds for authorized staff', async () => {
       mockCaller('staff-1');
       queueFromResults(

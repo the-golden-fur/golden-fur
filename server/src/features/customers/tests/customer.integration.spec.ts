@@ -94,6 +94,36 @@ describe('customer profile CRUD (Issue #31)', () => {
       expect(res.status).toBe(200);
       expect(res.body.customer).toMatchObject({ id: 'customer-2' });
     });
+
+    it('allows a Groomer to view a different customer (needed to resolve owner names in the Grooming Queue)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Groomer' }, error: null },
+        { data: { id: 'customer-2', full_name: 'Walk-in' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/customers/customer-2')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.customer).toMatchObject({ id: 'customer-2' });
+    });
+
+    it('allows a Veterinarian to view a different customer (needed to resolve owner names in the Veterinary Console)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Veterinarian' }, error: null },
+        { data: { id: 'customer-2', full_name: 'Walk-in' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/customers/customer-2')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.customer).toMatchObject({ id: 'customer-2' });
+    });
   });
 
   describe('GET /customers', () => {

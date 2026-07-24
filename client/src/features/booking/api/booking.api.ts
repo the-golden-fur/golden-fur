@@ -93,6 +93,8 @@ export async function listBookings(
 
   if (filters.branchId) params.set('branch_id', filters.branchId);
   if (filters.date) params.set('date', filters.date);
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
   if (filters.serviceCategory) {
     params.set('service_category', filters.serviceCategory);
   }

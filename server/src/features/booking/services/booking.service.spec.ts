@@ -50,6 +50,7 @@ function queueFromResults(...results: QueryResult[]) {
       'is',
       'lt',
       'gt',
+      'gte',
       'order',
     ]) {
       builder[method] = vi.fn(() => builder);
@@ -444,6 +445,56 @@ describe('booking.service (#51)', () => {
       expect(builder.eq).toHaveBeenCalledWith('branch_id', 'branch-1');
       expect(builder.eq).toHaveBeenCalledWith('service_category', 'Grooming');
       expect(builder.eq).toHaveBeenCalledWith('status', 'Confirmed');
+    });
+
+    it('applies a date_from/date_to range as an inclusive [start, end+1day) window', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: { dateFrom: '2026-07-20', dateTo: '2026-07-26' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.gte).toHaveBeenCalledWith(
+        'scheduled_start',
+        '2026-07-20T00:00:00.000Z'
+      );
+      expect(builder.lt).toHaveBeenCalledWith(
+        'scheduled_start',
+        '2026-07-27T00:00:00.000Z'
+      );
+    });
+
+    it('ignores date_from/date_to when an exact date is also given', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: {
+          date: '2026-07-22',
+          dateFrom: '2026-07-01',
+          dateTo: '2026-07-31',
+        },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.gte).toHaveBeenCalledWith(
+        'scheduled_start',
+        '2026-07-22T00:00:00.000Z'
+      );
+      expect(builder.gte).not.toHaveBeenCalledWith(
+        'scheduled_start',
+        '2026-07-01T00:00:00.000Z'
+      );
     });
   });
 });
