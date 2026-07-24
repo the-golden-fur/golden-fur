@@ -37,13 +37,6 @@
   padding: var(--space-2);
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
-}
-
 .filterField {
   display: grid;
   gap: var(--space-0-5);

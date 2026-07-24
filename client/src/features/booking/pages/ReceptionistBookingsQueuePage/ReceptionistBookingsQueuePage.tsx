@@ -4,6 +4,19 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listStaff } from '../../../staff/api/staff.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import {
+  getCustomerProfile,
+  getPet,
+} from '../../../customers/api/customer.api';
+import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import {
+  QueueFilterBar,
+  type QueueStatusOption,
+} from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
+import {
+  resolveDateRangePreset,
+  type DateRangePreset,
+} from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
@@ -28,11 +41,11 @@ const BOOKING_STATUSES: BookingStatus[] = [
   'Cancelled',
   'No-show',
 ];
+const STATUS_OPTIONS: QueueStatusOption[] = [
+  { value: 'All', label: 'All statuses' },
+  ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
+];
 const RESCHEDULABLE_STATUSES = new Set(['Confirmed', 'Pending']);
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -60,7 +73,11 @@ export function ReceptionistBookingsQueuePage() {
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [branchFilter, setBranchFilter] = useState('All');
-  const [dateFilter, setDateFilter] = useState(todayIso);
+  const [dateRangePreset, setDateRangePreset] =
+    useState<DateRangePreset>('today');
+  const [customDate, setCustomDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
   const [categoryFilter, setCategoryFilter] = useState<ServiceCategory | 'All'>(
     'All'
   );
@@ -68,7 +85,14 @@ export function ReceptionistBookingsQueuePage() {
     'All'
   );
 
+  const dateRange = useMemo(
+    () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
+    [dateRangePreset, customDate]
+  );
+
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [pets, setPets] = useState<Record<string, Pet>>({});
+  const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -125,11 +149,13 @@ export function ReceptionistBookingsQueuePage() {
   useEffect(() => {
     if (!accessToken || isRoleLoading) return;
 
+    const token = accessToken;
     let isMounted = true;
 
-    void listBookings(accessToken, {
+    void listBookings(token, {
       branchId: effectiveBranchId,
-      date: dateFilter,
+      dateFrom: dateRange.from ?? undefined,
+      dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: statusFilter === 'All' ? undefined : statusFilter,
     }).then((result) => {
@@ -144,6 +170,37 @@ export function ReceptionistBookingsQueuePage() {
 
       setLoadError(null);
       setBookings(result.data);
+
+      const petIds = new Set(result.data.map((booking) => booking.pet_id));
+      const customerIds = new Set(
+        result.data.map((booking) => booking.customer_id)
+      );
+
+      void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
+        (petResults) => {
+          if (!isMounted) return;
+          setPets((prev) => {
+            const next = { ...prev };
+            for (const petResult of petResults) {
+              if (petResult.data) next[petResult.data.id] = petResult.data;
+            }
+            return next;
+          });
+        }
+      );
+
+      void Promise.all(
+        Array.from(customerIds).map((id) => getCustomerProfile(id, token))
+      ).then((ownerResults) => {
+        if (!isMounted) return;
+        setOwners((prev) => {
+          const next = { ...prev };
+          for (const ownerResult of ownerResults) {
+            if (ownerResult.data) next[ownerResult.data.id] = ownerResult.data;
+          }
+          return next;
+        });
+      });
     });
 
     return () => {
@@ -153,7 +210,8 @@ export function ReceptionistBookingsQueuePage() {
     accessToken,
     isRoleLoading,
     effectiveBranchId,
-    dateFilter,
+    dateRange.from,
+    dateRange.to,
     categoryFilter,
     statusFilter,
   ]);
@@ -266,17 +324,17 @@ export function ReceptionistBookingsQueuePage() {
         </button>
       </div>
 
-      <div className={styles.toolbar}>
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Date</span>
-          <input
-            className={styles.filterSelect}
-            type="date"
-            value={dateFilter}
-            onChange={(event) => setDateFilter(event.target.value)}
-          />
-        </label>
-
+      <QueueFilterBar
+        dateRangePreset={dateRangePreset}
+        onDateRangePresetChange={setDateRangePreset}
+        customDate={customDate}
+        onCustomDateChange={setCustomDate}
+        statusValue={statusFilter}
+        onStatusChange={(value) =>
+          setStatusFilter(value as BookingStatus | 'All')
+        }
+        statusOptions={STATUS_OPTIONS}
+      >
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>Service type</span>
           <select
@@ -290,24 +348,6 @@ export function ReceptionistBookingsQueuePage() {
             {SERVICE_CATEGORIES.map((category) => (
               <option key={category} value={category}>
                 {category}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Status</span>
-          <select
-            className={styles.filterSelect}
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as BookingStatus | 'All')
-            }
-          >
-            <option value="All">All statuses</option>
-            {BOOKING_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
               </option>
             ))}
           </select>
@@ -330,7 +370,7 @@ export function ReceptionistBookingsQueuePage() {
             </select>
           </label>
         ) : null}
-      </div>
+      </QueueFilterBar>
 
       {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
 
@@ -377,8 +417,9 @@ export function ReceptionistBookingsQueuePage() {
                     {formatDateTime(booking.scheduled_start)}
                   </span>
                   <span className={styles.bookingMeta}>
-                    Customer {booking.customer_id.slice(0, 8)} - Pet{' '}
-                    {booking.pet_id.slice(0, 8)}
+                    {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
+                    {owners[booking.customer_id]?.full_name ??
+                      'Unknown owner'}
                   </span>
                   <BookingStatusBadge status={booking.status} />
                 </div>

@@ -8,6 +8,7 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
+import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../api/booking.api';
 import type { Booking } from '../../booking.types';
 import { ReceptionistBookingsQueuePage } from './ReceptionistBookingsQueuePage';
@@ -18,6 +19,11 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+}));
+
+vi.mock('../../../customers/api/customer.api', () => ({
+  getPet: vi.fn(),
+  getCustomerProfile: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -137,6 +143,39 @@ describe('ReceptionistBookingsQueuePage', () => {
       data: [buildBooking()],
       error: null,
     });
+    vi.mocked(customerApi.getPet).mockResolvedValue({
+      data: {
+        id: 'pet-12345678',
+        customer_id: 'cust-12345678',
+        name: 'Buddy',
+        species: 'Dog',
+        breed: 'Golden Retriever',
+        gender: 'Male',
+        date_of_birth: null,
+        weight_class: 'M',
+        coat_type: 'LC',
+        health_conditions: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        id: 'cust-12345678',
+        full_name: 'Jane Doe',
+        contact_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        account_email: 'jane@example.com',
+        primary_auth_provider: 'email',
+        facebook_id: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
   });
 
   it("AC-1: loads the queue scoped to the receptionist's own branch by default", async () => {
@@ -153,7 +192,8 @@ describe('ReceptionistBookingsQueuePage', () => {
         expect.objectContaining({ branchId: 'branch-makati' })
       )
     );
-    expect(screen.getByText(/Customer cust-123/)).toBeInTheDocument();
+    expect(await screen.findByText(/Buddy/)).toBeInTheDocument();
+    expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
   });
 
   it('AC-2: the branch filter is hidden for a non-Superadmin viewer', async () => {
@@ -164,9 +204,7 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByText(/Customer cust-123/)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
     expect(screen.queryByText('Branch')).not.toBeInTheDocument();
   });
 
@@ -179,6 +217,49 @@ describe('ReceptionistBookingsQueuePage', () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Branch')).toBeInTheDocument());
+  });
+
+  it('defaults the date filter to "Today" and requests a same-day range', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(bookingApi.listBookings).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          dateFrom: expect.any(String),
+          dateTo: expect.any(String),
+        })
+      )
+    );
+    const call = vi
+      .mocked(bookingApi.listBookings)
+      .mock.calls.at(-1) as unknown as [string, { dateFrom: string; dateTo: string }];
+    expect(call[1].dateFrom).toEqual(call[1].dateTo);
+  });
+
+  it('switching the date filter to "This week" widens the requested range', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    vi.mocked(bookingApi.listBookings).mockClear();
+
+    await userEvent.selectOptions(screen.getByLabelText('Date'), 'this_week');
+
+    await waitFor(() => expect(bookingApi.listBookings).toHaveBeenCalled());
+    const call = vi
+      .mocked(bookingApi.listBookings)
+      .mock.calls.at(-1) as unknown as [string, { dateFrom: string; dateTo: string }];
+    expect(call[1].dateFrom).not.toEqual(call[1].dateTo);
   });
 
   it('AC-4: "New booking" navigates to the flow shell in receptionist mode', async () => {
