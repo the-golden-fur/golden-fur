@@ -175,6 +175,10 @@ export const catalogQueryValidator = z.object({
 export const listBookingsQueryValidator = z.object({
   branch_id: z.uuid().optional(),
   date: z.iso.date().optional(),
+  // Inclusive date-range bounds, either may be given alone. Distinct from
+  // `date` (kept for existing exact-day callers, e.g. Daycare Check-in).
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
   service_category: z.enum(CATEGORIES).optional(),
   status: z.enum(BOOKING_STATUSES).optional(),
 });

@@ -121,6 +121,8 @@ export async function listBookingsController(
       filters: {
         branchId: parsed.data.branch_id,
         date: parsed.data.date,
+        dateFrom: parsed.data.date_from,
+        dateTo: parsed.data.date_to,
         serviceCategory: parsed.data.service_category,
         status: parsed.data.status,
       },

@@ -458,6 +458,10 @@ export interface ListBookingsFilters {
   branchId?: string;
   /** YYYY-MM-DD, matched against scheduled_start's calendar date (UTC). */
   date?: string;
+  /** Inclusive date-range bounds (UTC calendar dates) - either may be given
+   * alone. Ignored when `date` is also given. */
+  dateFrom?: string;
+  dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: Booking['status'];
 }
@@ -507,6 +511,19 @@ export async function listBookings({
     query = query
       .gte('scheduled_start', dayStart)
       .lt('scheduled_start', dayEnd);
+  } else {
+    if (filters.dateFrom) {
+      query = query.gte('scheduled_start', `${filters.dateFrom}T00:00:00.000Z`);
+    }
+
+    if (filters.dateTo) {
+      const exclusiveEnd = new Date(
+        new Date(`${filters.dateTo}T00:00:00.000Z`).getTime() +
+          24 * 60 * 60 * 1000
+      ).toISOString();
+
+      query = query.lt('scheduled_start', exclusiveEnd);
+    }
   }
 
   const { data, error } = await query.order('scheduled_start', {
