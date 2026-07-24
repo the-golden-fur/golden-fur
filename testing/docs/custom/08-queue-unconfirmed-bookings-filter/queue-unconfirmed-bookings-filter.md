@@ -29,7 +29,7 @@ Separately, `listGroomingQueue`
 `listConsultationQueue`
 (`server/src/features/veterinary/services/consultation.service.ts`) both
 hardcode `.eq('status', 'Confirmed')` when building today's queue - by design,
-since there's nothing to *service* yet for an unpaid booking. But that also
+since there's nothing to _service_ yet for an unpaid booking. But that also
 means a Groomer/Vet had no way to see a cash client was coming in today until
 the (non-existent) M08 cashier flow confirmed payment.
 
@@ -271,5 +271,5 @@ Daycare and Hotel were checked and don't have an equivalent "queue" list to
 extend: Hotel Check-in has no backend/route wired up yet (dashboard tile has
 no link), and Daycare Check-in
 (`server/src/features/daycare/services/daycareCheckIn.service.ts`) is a
-single-booking check-in *action* gated on `status = 'Confirmed'`, not a
+single-booking check-in _action_ gated on `status = 'Confirmed'`, not a
 browsable list - out of scope for this filter-visibility fix.

@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { DATE_RANGE_PRESET_OPTIONS, type DateRangePreset } from './dateRangePreset';
+import {
+  DATE_RANGE_PRESET_OPTIONS,
+  type DateRangePreset,
+} from './dateRangePreset';
 import styles from './QueueFilterBar.module.css';
 
 export interface QueueStatusOption {

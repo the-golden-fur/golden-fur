@@ -418,8 +418,7 @@ export function ReceptionistBookingsQueuePage() {
                   </span>
                   <span className={styles.bookingMeta}>
                     {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
-                    {owners[booking.customer_id]?.full_name ??
-                      'Unknown owner'}
+                    {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
                   <BookingStatusBadge status={booking.status} />
                 </div>

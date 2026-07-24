@@ -74,9 +74,7 @@ describe('resolveDateRangePreset', () => {
   });
 
   it("'custom' returns the given customDate as both bounds", () => {
-    expect(
-      resolveDateRangePreset('custom', WEDNESDAY, '2026-07-24')
-    ).toEqual({
+    expect(resolveDateRangePreset('custom', WEDNESDAY, '2026-07-24')).toEqual({
       from: '2026-07-24',
       to: '2026-07-24',
     });

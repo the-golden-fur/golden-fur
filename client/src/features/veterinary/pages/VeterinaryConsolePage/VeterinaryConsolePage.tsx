@@ -185,9 +185,7 @@ export function VeterinaryConsolePage() {
     void listConsultationQueue(token, queueDateRange).then(handleQueueResult);
 
     const interval = setInterval(() => {
-      void listConsultationQueue(token, queueDateRange).then(
-        handleQueueResult
-      );
+      void listConsultationQueue(token, queueDateRange).then(handleQueueResult);
     }, REFRESH_INTERVAL_MS);
 
     return () => {
@@ -499,9 +497,7 @@ export function VeterinaryConsolePage() {
                         <span className={styles.rowPetName}>
                           {item.petName}
                         </span>
-                        <span className={styles.rowMeta}>
-                          {item.ownerName}
-                        </span>
+                        <span className={styles.rowMeta}>{item.ownerName}</span>
                         <span className={styles.pendingBadge}>
                           Awaiting payment
                         </span>

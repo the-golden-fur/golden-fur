@@ -53,9 +53,7 @@ describe('grooming.api', () => {
   });
 
   it('listGroomingQueue passes date_from/date_to when a date range is given', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ sessions: [] }));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ sessions: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     await listGroomingQueue('token', {

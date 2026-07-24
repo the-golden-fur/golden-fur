@@ -238,7 +238,10 @@ describe('ReceptionistBookingsQueuePage', () => {
     );
     const call = vi
       .mocked(bookingApi.listBookings)
-      .mock.calls.at(-1) as unknown as [string, { dateFrom: string; dateTo: string }];
+      .mock.calls.at(-1) as unknown as [
+      string,
+      { dateFrom: string; dateTo: string },
+    ];
     expect(call[1].dateFrom).toEqual(call[1].dateTo);
   });
 
@@ -258,7 +261,10 @@ describe('ReceptionistBookingsQueuePage', () => {
     await waitFor(() => expect(bookingApi.listBookings).toHaveBeenCalled());
     const call = vi
       .mocked(bookingApi.listBookings)
-      .mock.calls.at(-1) as unknown as [string, { dateFrom: string; dateTo: string }];
+      .mock.calls.at(-1) as unknown as [
+      string,
+      { dateFrom: string; dateTo: string },
+    ];
     expect(call[1].dateFrom).not.toEqual(call[1].dateTo);
   });
 

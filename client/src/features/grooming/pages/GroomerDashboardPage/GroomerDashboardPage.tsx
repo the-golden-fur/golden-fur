@@ -287,7 +287,8 @@ export function GroomerDashboardPage() {
   // bookings together; a specific session status narrows to just that;
   // 'Unconfirmed' shows only the awaiting-payment bookings.
   const showSessions = statusFilter !== UNCONFIRMED_STATUS;
-  const showPending = statusFilter === 'All' || statusFilter === UNCONFIRMED_STATUS;
+  const showPending =
+    statusFilter === 'All' || statusFilter === UNCONFIRMED_STATUS;
 
   const visibleSessions = useMemo(() => {
     if (!showSessions) return [];
