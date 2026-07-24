@@ -1,7 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import type { Booking } from '../../booking/booking.types.ts';
 import type { GroomingSession, GroomingStatus } from '../grooming.types.ts';
 
 const GROOMING_SESSION_SELECT = '*, booking:bookings(*, booking_addons(*))';
+const BOOKING_SELECT = '*, booking_addons(*)';
 
 const MANAGER_ROLES = ['Admin', 'Supervisor', 'Superadmin'];
 
@@ -18,17 +20,47 @@ function todayRangeUtc(): { dayStart: string; dayEnd: string } {
   return { dayStart: dayStart.toISOString(), dayEnd: dayEnd.toISOString() };
 }
 
+/**
+ * Defaults to today (unchanged from before the queue's date filter existed)
+ * when neither bound is given - every existing caller/test relies on this.
+ * Otherwise resolves the given inclusive [dateFrom, dateTo] (YYYY-MM-DD)
+ * bounds to a UTC instant range, matching the QueueFilterBar date-range
+ * presets on the client (client/src/shared/components/QueueFilterBar).
+ */
+function resolveDateRangeUtc(
+  dateFrom?: string,
+  dateTo?: string
+): { dayStart: string; dayEnd: string } {
+  if (!dateFrom && !dateTo) return todayRangeUtc();
+
+  const dayStart = dateFrom
+    ? `${dateFrom}T00:00:00.000Z`
+    : '1970-01-01T00:00:00.000Z';
+  const dayEnd = dateTo
+    ? new Date(
+        new Date(`${dateTo}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000
+      ).toISOString()
+    : '9999-12-31T00:00:00.000Z';
+
+  return { dayStart, dayEnd };
+}
+
 interface ListGroomingQueueParams {
   requesterId: string;
   requesterRole: string;
   requesterBranchId: string;
+  /** Inclusive date-range bounds (YYYY-MM-DD) - both default to today when
+   * omitted. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**
- * Today's confirmed Grooming bookings, scoped by role (own sessions for a
- * Groomer; own branch for Admin/Supervisor; all branches for Superadmin).
- * Auto-vivifies a grooming_sessions row (status 'Waiting') for any matching
- * booking that doesn't have one yet - #64's Affected Files list only
+ * Confirmed Grooming bookings in the given date range (today by default),
+ * scoped by role (own sessions for a Groomer; own branch for Admin/
+ * Supervisor; all branches for Superadmin). Auto-vivifies a
+ * grooming_sessions row (status 'Waiting') for any matching booking that
+ * doesn't have one yet - #64's Affected Files list only
  * grooming.service.ts/grooming.routes.ts, so booking.service.ts (Sprint 2
  * Epic B, already merged) is never touched; this lazy creation is what lets
  * the queue exist without a DB trigger or a change to booking creation.
@@ -37,8 +69,10 @@ export async function listGroomingQueue({
   requesterId,
   requesterRole,
   requesterBranchId,
+  dateFrom,
+  dateTo,
 }: ListGroomingQueueParams): Promise<GroomingSession[]> {
-  const { dayStart, dayEnd } = todayRangeUtc();
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
 
   let bookingQuery = supabase
     .from('bookings')
@@ -118,6 +152,50 @@ export async function listGroomingQueue({
       new Date(b.booking!.scheduled_start).getTime()
     );
   });
+}
+
+/**
+ * Grooming bookings in the given date range (today by default) still
+ * awaiting payment confirmation (bookings.status = 'Pending' - see #51's
+ * payment gate). Surfaced for awareness only: no grooming_sessions row is
+ * vivified for these, since there's nothing yet to service until a booking
+ * reaches 'Confirmed'.
+ */
+export async function listUnconfirmedGroomingBookings({
+  requesterId,
+  requesterRole,
+  requesterBranchId,
+  dateFrom,
+  dateTo,
+}: ListGroomingQueueParams): Promise<Booking[]> {
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
+
+  let query = supabase
+    .from('bookings')
+    .select(BOOKING_SELECT)
+    .eq('service_category', 'Grooming')
+    .eq('status', 'Pending')
+    .gte('scheduled_start', dayStart)
+    .lt('scheduled_start', dayEnd);
+
+  if (requesterRole === 'Groomer') {
+    query = query.eq('assigned_staff_id', requesterId);
+  } else if (requesterRole === 'Admin' || requesterRole === 'Supervisor') {
+    query = query.eq('branch_id', requesterBranchId);
+  }
+  // Superadmin: no filter - sees every branch.
+
+  const { data, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Booking[];
+
+  return rows.sort(
+    (a, b) =>
+      new Date(a.scheduled_start).getTime() -
+      new Date(b.scheduled_start).getTime()
+  );
 }
 
 const FORWARD_TRANSITIONS: Record<string, GroomingStatus> = {
