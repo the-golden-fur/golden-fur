@@ -13,6 +13,25 @@ async function isAuthorizedStaff(requesterId: string): Promise<boolean> {
   return role !== null && CUSTOMER_MANAGER_ROLES.includes(role);
 }
 
+/**
+ * Broader than CUSTOMER_MANAGER_ROLES, for single-record lookup only (GET
+ * /pets/:id) - mirrors customer.controller.ts's own
+ * isAuthorizedForProfileLookup: a Groomer/Veterinarian needs to see whose
+ * pet they're servicing in their own queue, but that's not the same as the
+ * broader CUSTOMER_MANAGER_ROLES-gated ability to list/create/update/delete
+ * any customer's pets.
+ */
+const PET_LOOKUP_ROLES: readonly string[] = [
+  ...CUSTOMER_MANAGER_ROLES,
+  'Groomer',
+  'Veterinarian',
+];
+
+async function isAuthorizedForPetLookup(requesterId: string): Promise<boolean> {
+  const role = await getStaffRoleOrNull(requesterId);
+  return role !== null && PET_LOOKUP_ROLES.includes(role);
+}
+
 function paramId(req: AuthenticatedRequest, name: string): string | undefined {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : value;
@@ -121,7 +140,7 @@ export async function getPetController(
 
     const isOwner = pet.customer_id === requesterId;
 
-    if (!isOwner && !(await isAuthorizedStaff(requesterId))) {
+    if (!isOwner && !(await isAuthorizedForPetLookup(requesterId))) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
