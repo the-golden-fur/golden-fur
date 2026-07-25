@@ -85,7 +85,7 @@ begin
 end $$;
 
 -- ============================================================
--- Pets: 1-2 per customer, varied species/weight_class/coat_type
+-- Pets: 1-2 per customer, varied pet_type/weight_class/coat_type
 -- ============================================================
 
 do $$
@@ -94,22 +94,22 @@ declare
   v_pet jsonb;
   v_pets_by_email jsonb := '{
     "customer1@goldenfur.com": [
-      {"name": "Max", "species": "Dog", "weight_class": "M", "coat_type": "SC"},
-      {"name": "Luna", "species": "Cat", "weight_class": "S", "coat_type": "LC"}
+      {"name": "Max", "pet_type": "Dog", "weight_class": "M", "coat_type": "SC"},
+      {"name": "Luna", "pet_type": "Cat", "weight_class": "S", "coat_type": "LC"}
     ],
     "customer2@goldenfur.com": [
-      {"name": "Rex", "species": "Dog", "weight_class": "L", "coat_type": "LC"}
+      {"name": "Rex", "pet_type": "Dog", "weight_class": "L", "coat_type": "LC"}
     ],
     "customer3@goldenfur.com": [
-      {"name": "Bruno", "species": "Dog", "weight_class": "XL", "coat_type": "SC"},
-      {"name": "Mimi", "species": "Cat", "weight_class": "M", "coat_type": "LC"}
+      {"name": "Bruno", "pet_type": "Dog", "weight_class": "XL", "coat_type": "SC"},
+      {"name": "Mimi", "pet_type": "Cat", "weight_class": "M", "coat_type": "LC"}
     ],
     "customer4@goldenfur.com": [
-      {"name": "Coco", "species": "Cat", "weight_class": "L", "coat_type": "SC"}
+      {"name": "Coco", "pet_type": "Cat", "weight_class": "L", "coat_type": "SC"}
     ],
     "customer5@goldenfur.com": [
-      {"name": "Bella", "species": "Dog", "weight_class": "S", "coat_type": "LC"},
-      {"name": "Simba", "species": "Cat", "weight_class": "XL", "coat_type": "SC"}
+      {"name": "Bella", "pet_type": "Dog", "weight_class": "S", "coat_type": "LC"},
+      {"name": "Simba", "pet_type": "Cat", "weight_class": "XL", "coat_type": "SC"}
     ]
   }'::jsonb;
 begin
@@ -118,11 +118,13 @@ begin
   loop
     for v_pet in select * from jsonb_array_elements(v_pets_by_email -> v_customer.account_email)
     loop
-      insert into public.pets (customer_id, name, species, weight_class, coat_type)
+      -- breed_id intentionally left NULL (nullable per Issue #71) - none of
+      -- these seed rows need a specific seeded breed.
+      insert into public.pets (customer_id, name, pet_type, weight_class, coat_type)
       values (
         v_customer.id,
         v_pet ->> 'name',
-        (v_pet ->> 'species')::public.pet_species,
+        (v_pet ->> 'pet_type')::public.pet_type,
         (v_pet ->> 'weight_class')::public.pet_weight_class,
         (v_pet ->> 'coat_type')::public.pet_coat_type
       );
