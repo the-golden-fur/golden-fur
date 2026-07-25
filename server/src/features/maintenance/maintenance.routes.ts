@@ -3,16 +3,20 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  createBreedController,
   createPackageController,
   createPromoController,
   createServiceController,
+  deleteBreedController,
   getPackageController,
   getPromoController,
   getServiceController,
+  listBreedsController,
   listPackagesController,
   listPromosController,
   listServicesController,
   setServiceBranchAvailabilityController,
+  updateBreedController,
   updatePackageController,
   updatePromoController,
   updateServiceController,
@@ -64,5 +68,11 @@ router.get('/maintenance/promos', staffRead, listPromosController);
 router.post('/maintenance/promos', adminWrite, createPromoController);
 router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
+
+// Breeds (Epic A follow-up - previously seed-only, no CRUD anywhere)
+router.get('/maintenance/breeds', staffRead, listBreedsController);
+router.post('/maintenance/breeds', adminWrite, createBreedController);
+router.patch('/maintenance/breeds/:id', adminWrite, updateBreedController);
+router.delete('/maintenance/breeds/:id', adminWrite, deleteBreedController);
 
 export default router;

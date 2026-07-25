@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchAvailabilityValidator,
+  createBreedValidator,
   createPackageValidator,
   createPromoValidator,
   createServiceValidator,
+  updateBreedValidator,
   updatePackageValidator,
   updatePromoValidator,
   updateServiceValidator,
@@ -290,5 +292,56 @@ describe('updatePromoValidator', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('createBreedValidator', () => {
+  it('accepts a valid Dog breed', () => {
+    const result = createBreedValidator.safeParse({
+      pet_type: 'Dog',
+      name: 'Beagle',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an invalid pet_type', () => {
+    const result = createBreedValidator.safeParse({
+      pet_type: 'Bird',
+      name: 'Beagle',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a blank name', () => {
+    const result = createBreedValidator.safeParse({
+      pet_type: 'Dog',
+      name: '  ',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized field', () => {
+    const result = createBreedValidator.safeParse({
+      pet_type: 'Dog',
+      name: 'Beagle',
+      is_active: true,
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateBreedValidator', () => {
+  it('accepts a partial rename', () => {
+    expect(updateBreedValidator.safeParse({ name: 'New Name' }).success).toBe(
+      true
+    );
+  });
+
+  it('accepts an empty payload', () => {
+    expect(updateBreedValidator.safeParse({}).success).toBe(true);
   });
 });
