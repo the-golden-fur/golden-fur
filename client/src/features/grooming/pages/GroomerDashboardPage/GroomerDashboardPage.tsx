@@ -246,7 +246,11 @@ export function GroomerDashboardPage() {
           session,
           petName: pet?.name ?? 'Unknown pet',
           ownerName: owner?.full_name ?? 'Unknown owner',
-          breed: pet?.breed ?? null,
+          // pets.breed (free text) was replaced by breed_id (Issue #71) -
+          // resolving it to a display name here is out of this epic's scope
+          // (not one of #71-78's affected files), so this card simply omits
+          // the breed line for now rather than showing a raw id.
+          breed: null,
           weightClass: pet?.weight_class ?? '—',
           coatType: pet?.coat_type ?? '—',
           serviceLabel: serviceId

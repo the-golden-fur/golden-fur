@@ -22,38 +22,52 @@ export interface CustomerProfileUpdatePayload {
   preferred_communication_channel?: CommunicationChannel;
 }
 
-export type PetSpecies = 'Dog' | 'Cat';
+export type PetType = 'Dog' | 'Cat';
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
 export type PetCoatType = 'SC' | 'LC';
+
+export interface Breed {
+  id: string;
+  pet_type: PetType;
+  name: string;
+  created_at: string;
+}
 
 export interface Pet {
   id: string;
   customer_id: string;
   name: string;
-  species: PetSpecies;
-  breed: string | null;
+  pet_type: PetType;
+  breed_id: string | null;
+  photo_url: string | null;
   gender: PetGender | null;
   date_of_birth: string | null;
   weight_class: PetWeightClass;
   coat_type: PetCoatType;
-  health_conditions: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface PetCreatePayload {
   name: string;
-  species: PetSpecies;
+  pet_type: PetType;
   weight_class: PetWeightClass;
   coat_type: PetCoatType;
-  breed?: string;
+  breed_id?: string;
   gender?: PetGender;
   date_of_birth?: string;
-  health_conditions?: string;
 }
 
 export type PetUpdatePayload = Partial<PetCreatePayload>;
+
+export interface PetHealthCondition {
+  id: string;
+  pet_id: string;
+  conditions_text: string | null;
+  updated_by_staff_id: string;
+  updated_at: string;
+}
 
 export type MedicalNoteCategory =
   | 'Medical Note'

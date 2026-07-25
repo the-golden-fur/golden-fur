@@ -544,10 +544,7 @@ export function CustomerBookingFlowPage() {
                 onClick={() => handlePetSelect(pet.id)}
               >
                 <span className={styles.optionTitle}>{pet.name}</span>
-                <span className={styles.optionMeta}>
-                  {pet.species}
-                  {pet.breed ? ` - ${pet.breed}` : ''}
-                </span>
+                <span className={styles.optionMeta}>{pet.pet_type}</span>
               </button>
             ))}
             {pets.length === 0 && !showAddPet ? (
