@@ -30,6 +30,11 @@ function baseProfile(overrides: Partial<StaffProfile> = {}): StaffProfile {
   };
 }
 
+const BRANCHES = [
+  { id: 'branch-a', name: 'Makati', is_vet_branch: true },
+  { id: 'branch-b', name: 'Southwoods', is_vet_branch: false },
+];
+
 function renderForm(
   overrides: {
     viewerRole?: StaffProfile['role'];
@@ -44,7 +49,7 @@ function renderForm(
       staffId: 'staff-2',
       profile: overrides.profile ?? baseProfile(),
       viewerRole: overrides.viewerRole ?? 'Superadmin',
-      branchOptions: ['branch-a', 'branch-b'],
+      branches: BRANCHES,
       accessToken: 'token',
       onUpdated,
     })
@@ -66,13 +71,18 @@ describe('ManageStaffAccountForm', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the role/branch fields for a Superadmin viewer and saves a role change', async () => {
+  it('shows the role/branch fields for a Superadmin viewer, by branch name (not raw UUID), and saves a role change', async () => {
     const onUpdated = vi.fn();
     vi.mocked(staffApi.manageStaffAccount).mockResolvedValue({
       data: baseProfile({ role: 'Supervisor' }),
       error: null,
     });
     renderForm({ onUpdated });
+
+    expect(screen.getByRole('option', { name: 'Makati' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Southwoods' })
+    ).toBeInTheDocument();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/change role to/i),

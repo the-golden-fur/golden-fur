@@ -6,13 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
+import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as staffApi from '../../api/staff.api';
-import type {
-  PendingUnavailabilityBlock,
-  StaffProfile,
-  StaffRole,
-} from '../../staff.types';
-import { AdminStaffListPage } from './AdminStaffListPage';
+import type { StaffProfile, StaffRole } from '../../staff.types';
+import { StaffManagementPage } from './StaffManagementPage';
 
 vi.mock('../../api/staff.api', () => ({
   listStaff: vi.fn(),
@@ -20,6 +17,11 @@ vi.mock('../../api/staff.api', () => ({
   listPendingUnavailabilityRequests: vi.fn(),
   createStaffAccount: vi.fn(),
   manageStaffAccount: vi.fn(),
+  resendAccountEmail: vi.fn(),
+}));
+
+vi.mock('../../../maintenance/api/maintenance.api', () => ({
+  listBranches: vi.fn(),
 }));
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
@@ -47,7 +49,7 @@ function buildProfile(overrides: Partial<StaffProfile> = {}): StaffProfile {
 }
 
 // The viewer's own role is resolved from their own row in the listStaff()
-// response (see AdminStaffListPage's comment on why the auth session can't
+// response (see StaffManagementPage's comment on why the auth session can't
 // be trusted for this), so every test's mocked list must include a row
 // whose id matches the signed-in user - this builds that row.
 function buildViewerProfile(role: StaffRole): StaffProfile {
@@ -81,7 +83,7 @@ function renderPage(initialPath = '/staff/admin/staff') {
           null,
           createElement(Route, {
             path: '/staff/admin/staff',
-            element: createElement(AdminStaffListPage),
+            element: createElement(StaffManagementPage),
           }),
           createElement(Route, {
             path: '/staff/profile',
@@ -93,10 +95,17 @@ function renderPage(initialPath = '/staff/admin/staff') {
   );
 }
 
-describe('AdminStaffListPage', () => {
+describe('StaffManagementPage (#75)', () => {
   beforeEach(() => {
     vi.mocked(staffApi.listPendingUnavailabilityRequests).mockResolvedValue({
       data: [],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: [
+        { id: 'branch-1', name: 'Makati', is_vet_branch: true },
+        { id: 'branch-2', name: 'Southwoods', is_vet_branch: false },
+      ],
       error: null,
     });
   });
@@ -111,6 +120,20 @@ describe('AdminStaffListPage', () => {
     renderPage();
 
     expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
+  });
+
+  it('AC-1: renders under the "Staff Management" label', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewerProfile('Admin')],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Staff Management' })
+    ).toBeInTheDocument();
   });
 
   it('AC-1 & AC-2: renders a StaffCard per staff member for an Admin viewer', async () => {
@@ -132,6 +155,53 @@ describe('AdminStaffListPage', () => {
 
     expect(await screen.findByText('Jamie Cruz')).toBeInTheDocument();
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
+  });
+
+  it('AC-2: every staff card shows the branch name, never a raw branch id', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        // Viewer scoped to the other branch, so only Jamie Cruz's card
+        // matches "Makati" - keeps the assertion below unambiguous.
+        buildProfile({
+          id: 'admin-1',
+          display_name: 'Signed-in Viewer',
+          role: 'Superadmin',
+          branch_id: 'branch-2',
+        }),
+        buildProfile({
+          id: 'staff-1',
+          display_name: 'Jamie Cruz',
+          branch_id: 'branch-1',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    // { selector: 'p' } disambiguates from the Superadmin branch filter's
+    // own "Makati" <option> - both are legitimately on the page at once.
+    expect(
+      await screen.findByText('Makati', { selector: 'p' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('branch-1')).not.toBeInTheDocument();
+  });
+
+  it('AC-3: no approval-queue button or link remains on this page', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewerProfile('Admin')],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Staff Management' });
+    expect(
+      screen.queryByText('Unavailability approval queue')
+    ).not.toBeInTheDocument();
   });
 
   it('AC-2: does not show a branch filter for an Admin (branch-scoped) viewer', async () => {
@@ -233,28 +303,6 @@ describe('AdminStaffListPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('#30 AC-5 (link entry point): shows a pending-count badge on the approval queue link', async () => {
-    vi.mocked(getSupabaseClient).mockReturnValue(null);
-    vi.mocked(staffApi.listStaff).mockResolvedValue({
-      data: [buildViewerProfile('Admin')],
-      error: null,
-    });
-    vi.mocked(staffApi.listPendingUnavailabilityRequests).mockResolvedValue({
-      data: [
-        { id: 'block-1' },
-        { id: 'block-2' },
-      ] as unknown as PendingUnavailabilityBlock[],
-      error: null,
-    });
-
-    renderPage();
-
-    expect(
-      await screen.findByText('Unavailability approval queue')
-    ).toBeInTheDocument();
-    expect(await screen.findByText('2')).toBeInTheDocument();
-  });
-
   it('gap closure: shows a "Create staff account" section for an Admin/Superadmin viewer', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
@@ -307,5 +355,23 @@ describe('AdminStaffListPage', () => {
         { is_active: false }
       )
     );
+  });
+
+  it('AC-4: the resend-email action is reachable from an existing staff profile', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    expect(
+      screen.getAllByRole('button', { name: /resend account email/i }).length
+    ).toBeGreaterThan(0);
   });
 });

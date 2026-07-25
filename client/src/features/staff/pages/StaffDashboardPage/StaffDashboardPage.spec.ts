@@ -102,7 +102,7 @@ describe('StaffDashboardPage', () => {
 
     expect(await screen.findByText('Admin dashboard')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /staff directory/i })
+      screen.getByRole('link', { name: /staff management/i })
     ).toHaveAttribute('href', '/staff/admin/staff');
   });
 
