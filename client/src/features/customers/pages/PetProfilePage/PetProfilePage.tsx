@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getPet } from '../../api/customer.api';
-import { MedicalNoteList } from '../../components/lists/MedicalNoteList/MedicalNoteList';
-import { VaccinationRecordList } from '../../components/lists/VaccinationRecordList/VaccinationRecordList';
+import { PetDetailPanel } from '../../components/panels/PetDetailPanel/PetDetailPanel';
 import type { Pet } from '../../customer.types';
 import styles from './PetProfilePage.module.css';
 
@@ -76,83 +75,15 @@ export function PetProfilePage() {
     <main className={styles.page}>
       <h1 className={styles.title}>{pet.name}</h1>
 
-      <section className={styles.panel}>
-        <dl className={styles.attributes}>
-          <div className={styles.attribute}>
-            <dt className={styles.attributeLabel}>Species</dt>
-            <dd className={styles.attributeValue}>{pet.species}</dd>
-          </div>
-          {pet.breed ? (
-            <div className={styles.attribute}>
-              <dt className={styles.attributeLabel}>Breed</dt>
-              <dd className={styles.attributeValue}>{pet.breed}</dd>
-            </div>
-          ) : null}
-          {pet.gender ? (
-            <div className={styles.attribute}>
-              <dt className={styles.attributeLabel}>Gender</dt>
-              <dd className={styles.attributeValue}>{pet.gender}</dd>
-            </div>
-          ) : null}
-          {pet.date_of_birth ? (
-            <div className={styles.attribute}>
-              <dt className={styles.attributeLabel}>Date of birth</dt>
-              <dd className={styles.attributeValue}>{pet.date_of_birth}</dd>
-            </div>
-          ) : null}
-          <div className={styles.attribute}>
-            <dt className={styles.attributeLabel}>Weight class</dt>
-            <dd className={styles.attributeValue}>{pet.weight_class}</dd>
-          </div>
-          <div className={styles.attribute}>
-            <dt className={styles.attributeLabel}>Coat type</dt>
-            <dd className={styles.attributeValue}>{pet.coat_type}</dd>
-          </div>
-          {pet.health_conditions ? (
-            <div className={styles.attribute}>
-              <dt className={styles.attributeLabel}>Health conditions</dt>
-              <dd className={styles.attributeValue}>{pet.health_conditions}</dd>
-            </div>
-          ) : null}
-        </dl>
-
-        <section
-          className={styles.section}
-          aria-labelledby="vaccination-records-title"
-        >
-          <h2 className={styles.sectionTitle} id="vaccination-records-title">
-            Vaccination Records
-          </h2>
-          <VaccinationRecordList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="medical-notes-title"
-        >
-          <h2 className={styles.sectionTitle} id="medical-notes-title">
-            Medical Notes
-          </h2>
-          <MedicalNoteList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="service-history-title"
-        >
-          <h2 className={styles.sectionTitle} id="service-history-title">
-            Service History
-          </h2>
-          {/*
-            Per Modules-Features M02 Process 6 and the Agile-SprintMap
-            Sprint 1 acceptance criterion ("empty list acceptable at this
-            stage") - grooming/hotel/daycare/consultation records don't
-            exist until Sprint 3/4, so this tab is built now and wired up
-            for real once each source module ships.
-          */}
-          <p className={styles.copy}>No service history yet.</p>
-        </section>
-      </section>
+      {/* This route only ever loads the signed-in customer's own pet -
+          GET /pets/:id 403s a non-owner customer before we'd ever have
+          pet data here - so editing is always allowed. */}
+      <PetDetailPanel
+        pet={pet}
+        accessToken={accessToken}
+        canEdit
+        onUpdated={setPet}
+      />
     </main>
   );
 }
