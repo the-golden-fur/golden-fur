@@ -340,7 +340,7 @@
       ]
     },
     {
-      "name": "10. GET /pets/:id — pet_type/breed_id/photo_url present, species/breed/health_conditions gone (Issue #71/#78)",
+      "name": "10. GET /pets/:id — pet_type/breed_id/photo_url present (Issue #71/#78)",
       "request": {
         "method": "GET",
         "header": [
@@ -367,9 +367,10 @@
               "  pm.expect(pet).to.have.property('pet_type');",
               "  pm.expect(pet).to.have.property('breed_id');",
               "  pm.expect(pet).to.have.property('photo_url');",
-              "  pm.expect(pet).to.not.have.property('species');",
-              "  pm.expect(pet).to.not.have.property('breed');",
-              "  pm.expect(pet).to.not.have.property('health_conditions');",
+              "  // species/breed/health_conditions are deliberately NOT asserted",
+              "  // absent here - migrations 041/042 are additive-only (see the",
+              "  // BREAKING CHANGE fix), so those columns still exist, deprecated,",
+              "  // until 20260725046_m02_drop_deprecated_pet_columns.sql is run.",
               "});"
             ]
           }

@@ -16,7 +16,7 @@ Branch: `dev` (this batch spans 8 issues that the Guide itself splits across 8 f
 
 ## Correction from the original brief (Issue #74)
 
-The Guide's dev notes for #74 assumed a Sprint 1 email service already existed ("reuses the existing account_created email flow"). It didn't — `staffManagement.service.ts` only ever returned the temporary password in the API response, with a comment explicitly noting "no notification/email infrastructure yet." Per direction, this batch builds the actual send path on **Resend** (the transactional email API, not just the English verb) and wires the resend _action_ on top of it:
+The Guide's dev notes for #74 assumed a Sprint 1 email service already existed ("reuses the existing account*created email flow"). It didn't — `staffManagement.service.ts` only ever returned the temporary password in the API response, with a comment explicitly noting "no notification/email infrastructure yet." Per direction, this batch builds the actual send path on **Resend** (the transactional email API, not just the English verb) and wires the resend \_action* on top of it:
 
 - `server/src/shared/email/resend.client.ts` — thin wrapper over the `resend` SDK, reads `RESEND_API_KEY`/`RESEND_FROM_EMAIL`.
 - `server/src/shared/email/accountCreatedEmail.ts` — the one `account_created` template, shared by both the original send (on staff creation) and the resend action.
@@ -34,10 +34,28 @@ The Guide's file paths/component names were approximate — this repo's actual c
 - **#71/#77**: `pets.breed` (free text) is gone; a few _other_ pages outside this epic's issue list display pets (`GroomerDashboardPage`, `CustomerBookingFlowPage`, `PetCard`) previously showed the free-text breed inline. Resolving `breed_id → breed name` for those is out of scope here (not in #71-#78's Affected Files) — they now simply omit the breed line rather than show a raw UUID. Flagged as a small follow-up if a "breed" column is wanted back on those cards.
 - **#77**: the pet-photo upload endpoint/bucket (`pet-photos`) isn't in the Guide's Affected Files either, but "optional pet photo, uploads to Supabase Storage" (AC-3) isn't buildable without one — added `server/src/features/customers/pets/services/petPhotoUpload.service.ts` + `POST /pets/:id/photo`, mirroring the existing staff-avatar upload pattern exactly (same size/MIME limits, same replace-on-reupload behavior).
 
+## Migration strategy: add-then-drop, not rename-and-drop
+
+`20260725041`/`20260725042` originally renamed/dropped `pets.species`,
+`pets.breed`, and `pets.health_conditions` in the same migration that
+added their replacements — a breaking change for anything still reading
+the old columns the moment it shipped. Both are now **additive-only**:
+`pets.pet_type` is added alongside `species` (backfilled from it, not a
+column rename) and `breed`/`health_conditions` are left in place after
+their data is copied to the new table/column. The actual drop is its own
+migration — `20260725046_m02_drop_deprecated_pet_columns.sql` — deliberately
+**not** meant to run automatically with the rest of this batch; apply it
+once you've confirmed nothing else still reads the three old columns.
+
+One consequence: `GET /pets/:id` (and any other `select('*')` pet read)
+now returns `species`/`breed`/`health_conditions` as extra fields
+alongside `pet_type`/`breed_id` until 046 runs. Harmless — the typed
+client only reads the new fields — but expected, not a bug.
+
 ## Files changed (high level)
 
 **Migrations** (`supabase/migrations/`):
-`20260725041_m02_create_breeds_and_pet_fields.sql`, `20260725042_m02_m07_create_pet_health_conditions.sql`, `20260725043_m01_admin_branch_assignment_rls.sql`, `20260725044_m01_staff_temp_credential_and_pet_photos_storage.sql`.
+`20260725041_m02_create_breeds_and_pet_fields.sql`, `20260725042_m02_m07_create_pet_health_conditions.sql`, `20260725043_m01_admin_branch_assignment_rls.sql`, `20260725044_m01_staff_temp_credential_and_pet_photos_storage.sql`, `20260725045_m02_breeds_admin_crud_rls.sql`, `20260725046_m02_drop_deprecated_pet_columns.sql` (deferred cleanup — see above, not run as part of this batch's "done" state).
 
 **Server**: `shared/email/{resend.client,accountCreatedEmail}.ts`, `shared/crypto/tempCredential.ts`, `features/staff/services/{staffManagement,resendAccountEmail}.service.ts`, `features/staff/staff.{controller,routes}.ts`, `features/auth/staff/staffAuth.controller.ts` (clears temp credential on login), `features/customers/pets/{pet.types,pet.routes}.ts`, `features/customers/pets/modules/validators/pet.validator.ts`, `features/customers/pets/services/petPhotoUpload.service.ts`, `features/veterinary/services/petHealthConditions.service.ts`, `features/veterinary/{veterinary.controller,veterinary.routes}.ts`, `features/veterinary/modules/validators/veterinary.validator.ts`.
 
@@ -71,17 +89,18 @@ Both confirmed clean as of this revision.
 
 ## Manual Verification
 
-You'll need: the `server/` and `client/` dev servers running (`npm run dev` from the repo root runs both), a Supabase project with this batch's 4 migrations applied, and Postman (or the included collection) for the API-level checks.
+You'll need: the `server/` and `client/` dev servers running (`npm run dev` from the repo root runs both), a Supabase project with this batch's 5 immediately-applied migrations (041-045; **not** 046 — see above) applied, and Postman (or the included collection) for the API-level checks.
 
 ### 0. Apply migrations + create the `pet-photos` storage bucket
 
-1. From the repo root: `npm run supabase:push` (or, for a fresh local database, `npm run supabase:reset`, which also re-runs the seeds).
+1. From the repo root: `npm run supabase:push` (or, for a fresh local database, `npm run supabase:reset`, which also re-runs the seeds). If your local dev database already had the old (breaking) version of 041/042 applied from earlier testing, run `supabase db reset` so the corrected, additive versions apply cleanly — this is local/dev data only, safe to reset.
 2. In Supabase Studio → **Storage**, click **New bucket**, name it exactly `pet-photos`, and mark it **Public** — same as the existing `avatars` bucket. (No migration creates this automatically, matching how `avatars` itself was set up — migration `20260725044` only adds the bucket's RLS policies.)
 3. If you haven't already, re-run `npm run seed:module-1` and `npm run seed:module-2` against this database so the Postman collection's default identifiers (`makati.admin1`, `makati.superadmin1`, `makati.veterinarian1`, `makati.receptionist1`, `customer1@goldenfur.com`, all password `password123`) resolve to real accounts.
+4. Do **not** run `20260725046_m02_drop_deprecated_pet_columns.sql` yet — it's the deferred, deliberately-breaking cleanup step (see above), not part of this batch's expected "done" state.
 
 ### 1. Schema checks (#71/#72) — `epic-a-revision-batch-1.sql`
 
-Open the SQL file in this folder in Supabase Studio's SQL Editor and run Sections 1-4 (all read-only). Confirm: `breeds` has seeded Dog/Cat rows; `pets` has `pet_type`/`breed_id`/`photo_url` and no longer has `species`/`breed`/`health_conditions`; `pet_health_conditions` exists with a UNIQUE `pet_id` and the 4 expected RLS policies; the staff-creation RLS policy already grants Admin the `branch_id` write.
+Open the SQL file in this folder in Supabase Studio's SQL Editor and run Sections 1-4 (all read-only). Confirm: `breeds` has seeded Dog/Cat rows; `pets` has `pet_type`/`breed_id`/`photo_url` **and still also has** `species`/`breed`/`health_conditions` (deprecated, deferred to migration 046 — this is expected, not a bug); `pet_health_conditions` exists with a UNIQUE `pet_id` and the 4 expected RLS policies; the staff-creation RLS policy already grants Admin the `branch_id` write.
 
 ### 2. API checks (#73/#74/#77/#78) — `epic-a-revision-batch-1.postman_collection.json`
 
@@ -89,7 +108,7 @@ Import the collection and **Run** it top-to-bottom (Collection Runner, or click 
 
 1. **#73** — an Admin token creates a staff account at a branch **other than their own** and gets `201` (previously would've been blocked).
 2. **#74** — that new account's `POST /staff/:id/resend-account-email` succeeds (`200`) for the Admin who created it, and `403`s for a Receptionist token.
-3. **#71/#78** — `GET /pets/:id` on a seeded pet returns `pet_type`/`breed_id`/`photo_url` and none of `species`/`breed`/`health_conditions`.
+3. **#71/#78** — `GET /pets/:id` on a seeded pet returns `pet_type`/`breed_id`/`photo_url` (the old `species`/`breed`/`health_conditions` fields are still present too, deprecated, until migration 046 runs — not asserted absent).
 4. **#78** — `GET /pets/:id/health-conditions` returns `null` (not an error) before any vet has recorded one; a Receptionist token gets `403` trying to `PATCH /veterinary/pets/:petId/health-conditions`; a Veterinarian token succeeds and the change is immediately visible via the read-only `GET` (no stale cache).
 5. **#77** — `PATCH /pets/:id` accepts the renamed `pet_type` field.
 

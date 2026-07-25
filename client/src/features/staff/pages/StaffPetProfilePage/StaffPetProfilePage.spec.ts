@@ -3,12 +3,7 @@ import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import {
-  getPet,
-  getPetHealthConditions,
-  listMedicalNotes,
-  listVaccinationRecords,
-} from '../../../customers/api/customer.api';
+import { getPet } from '../../../customers/api/customer.api';
 import { listStaff } from '../../api/staff.api';
 import { StaffPetProfilePage } from './StaffPetProfilePage';
 

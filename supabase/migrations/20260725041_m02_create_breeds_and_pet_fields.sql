@@ -4,6 +4,14 @@
 -- label change only per Modules-Features). breeds is a new lookup table
 -- backing a searchable/dropdown breed field, replacing the old free-text
 -- pets.breed column. photo_url is new and optional.
+--
+-- Deliberately additive/non-breaking: pets.species and pets.breed are
+-- NOT dropped here. pets.pet_type is added alongside species (backfilled
+-- from it) rather than via a straight column rename, and the old breed
+-- column is left in place holding its existing free-text values. Both
+-- are dropped later, on purpose, by migration
+-- 20260725046_m02_drop_deprecated_pet_columns.sql - only once nothing
+-- still reads them. See that migration's header for why.
 
 alter type public.pet_species rename to pet_type;
 
@@ -59,10 +67,14 @@ insert into public.breeds (pet_type, name) values
   ('Cat', 'Siamese');
 
 -- ---------------------------------------------------------------------------
--- pets: species -> pet_type (rename, follows the type rename above),
+-- pets: pet_type added alongside species (not a rename - see header),
 -- breed_id (new, replaces breed), photo_url (new)
 -- ---------------------------------------------------------------------------
-alter table public.pets rename column species to pet_type;
+alter table public.pets add column pet_type public.pet_type;
+
+update public.pets set pet_type = species;
+
+alter table public.pets alter column pet_type set not null;
 
 alter table public.pets
   add column breed_id uuid references public.breeds(id),
@@ -105,4 +117,5 @@ begin
   raise notice 'pets.breed backfill complete: % unmatched row(s) logged above', v_unmatched_count;
 end $$;
 
-alter table public.pets drop column breed;
+-- pets.breed is intentionally NOT dropped here - see this file's header
+-- and migration 20260725046_m02_drop_deprecated_pet_columns.sql.

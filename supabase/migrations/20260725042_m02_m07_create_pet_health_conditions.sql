@@ -3,6 +3,11 @@
 -- (M07), where a Veterinarian records/maintains it during a consultation.
 -- One row per pet (current-state record, not a history log - consultations
 -- already provide per-visit history via #63/#66).
+--
+-- Deliberately additive/non-breaking: pets.health_conditions is copied into
+-- the new table but NOT dropped here, so nothing still reading that column
+-- breaks the moment this ships. It's dropped later, on purpose, by
+-- migration 20260725046_m02_drop_deprecated_pet_columns.sql.
 
 create table public.pet_health_conditions (
   id uuid primary key default gen_random_uuid(),
@@ -57,14 +62,14 @@ create policy "Customers can read their own pet's health conditions"
 
 -- ---------------------------------------------------------------------------
 -- Backfill: existing pets.health_conditions free-text values are copied into
--- pet_health_conditions.conditions_text before the column is dropped from
--- pets. updated_by_staff_id has no historical author to attribute to, so a
--- placeholder Veterinarian is required by the NOT NULL constraint - the
--- earliest-created Veterinarian on file (any Veterinarian may already view/
--- edit any Makati pet's record, so this is not a meaningful ownership claim,
--- just a valid FK to satisfy the schema). If no Veterinarian exists yet in a
--- given environment, the backfill is skipped for that environment (nothing
--- to attribute to) and pets.health_conditions is still dropped, since the
+-- pet_health_conditions.conditions_text. pets.health_conditions itself is
+-- left in place (see header) - not dropped here. updated_by_staff_id has no
+-- historical author to attribute to, so a placeholder Veterinarian is
+-- required by the NOT NULL constraint - the earliest-created Veterinarian on
+-- file (any Veterinarian may already view/edit any Makati pet's record, so
+-- this is not a meaningful ownership claim, just a valid FK to satisfy the
+-- schema). If no Veterinarian exists yet in a given environment, the
+-- backfill is skipped for that environment (nothing to attribute to) - the
 -- pet profile's read-only badge (#78) will simply show "none recorded".
 -- ---------------------------------------------------------------------------
 do $$
@@ -88,4 +93,5 @@ begin
   end if;
 end $$;
 
-alter table public.pets drop column health_conditions;
+-- pets.health_conditions is intentionally NOT dropped here - see this
+-- file's header and migration 20260725046_m02_drop_deprecated_pet_columns.sql.

@@ -8,12 +8,16 @@
 -- self-rolling-back (wrapped in begin/rollback) — nothing here permanently
 -- changes your data unless explicitly noted.
 --
--- Prerequisite: migrations 20260725041 through 20260725044 applied
+-- Prerequisite: migrations 20260725041 through 20260725045 applied
 -- (supabase db push, or `supabase db reset` for a fresh local database).
+-- Do NOT apply 20260725046 yet - see that migration's header and the
+-- "Migration strategy: add-then-drop" section of the .md in this folder.
+-- 041/042 are additive-only: species/breed/health_conditions are
+-- deliberately still present (deprecated) at this point, not dropped.
 
 -- =========================================================================
 -- SECTION 1 (Issue #71): breeds table seeded, pets.pet_type/breed_id/
--- photo_url exist, pets.species/pets.breed are gone
+-- photo_url exist alongside the still-present (deprecated) species/breed
 -- =========================================================================
 
 select pet_type, count(*) as breed_count
@@ -27,7 +31,10 @@ from information_schema.columns
 where table_schema = 'public' and table_name = 'pets'
 order by ordinal_position;
 -- Expected: pet_type (not null), breed_id (nullable, uuid), photo_url
--- (nullable, text) present. species and breed columns are GONE.
+-- (nullable, text) present - AND species/breed/health_conditions are
+-- still present too (deprecated, not dropped until migration
+-- 20260725046_m02_drop_deprecated_pet_columns.sql is applied - see that
+-- migration's header for why it's deferred).
 
 -- =========================================================================
 -- SECTION 2 (Issue #71 AC-4): backfill correctness — at least one exact
@@ -102,3 +109,23 @@ begin;
   -- Expected: one row back, upserted (insert if none existed, update if one did).
 
 rollback; -- nothing is persisted; safe to run against a live project
+
+-- =========================================================================
+-- SECTION 6 (deferred cleanup, NOT part of this batch's "done" state):
+-- confirm species/breed/health_conditions are still present, and preview
+-- what migration 20260725046_m02_drop_deprecated_pet_columns.sql will do
+-- =========================================================================
+-- Read-only preview - do not apply 046 until you've confirmed nothing else
+-- (another service, a report/export job, a BI tool) still reads these
+-- three columns directly.
+
+select
+  count(*) filter (where species is not null) as pets_with_species,
+  count(*) filter (where breed is not null) as pets_with_breed,
+  count(*) filter (where health_conditions is not null) as pets_with_health_conditions
+from public.pets;
+-- Expected right now: species count matches your total pet count (it was
+-- NOT NULL and backfilled into pet_type, but the original column is
+-- untouched); breed/health_conditions counts reflect however many pets
+-- actually had those free-text values. Once you're ready, apply
+-- 20260725046_m02_drop_deprecated_pet_columns.sql to drop all three.

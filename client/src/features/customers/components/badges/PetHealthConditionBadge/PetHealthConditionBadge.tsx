@@ -27,7 +27,6 @@ export function PetHealthConditionBadge({
 
   useEffect(() => {
     let isMounted = true;
-    setIsLoading(true);
 
     void getPetHealthConditions(petId, accessToken).then((result) => {
       if (!isMounted) {
