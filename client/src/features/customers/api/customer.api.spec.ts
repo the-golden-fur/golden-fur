@@ -78,7 +78,7 @@ describe('customer.api', () => {
 
     const payload = {
       name: 'Buddy',
-      species: 'Dog' as const,
+      pet_type: 'Dog' as const,
       weight_class: 'M' as const,
       coat_type: 'SC' as const,
     };

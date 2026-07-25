@@ -10,27 +10,31 @@ function buildPet(overrides: Partial<Pet> = {}): Pet {
     id: 'pet-1',
     customer_id: 'customer-1',
     name: 'Buddy',
-    species: 'Dog',
-    breed: null,
+    pet_type: 'Dog',
+    breed_id: null,
+    photo_url: null,
     gender: null,
     date_of_birth: null,
     weight_class: 'M',
     coat_type: 'SC',
-    health_conditions: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
 
-function renderWithRouter(pet: Pet) {
+function renderWithRouter(pet: Pet, linkBasePath?: string) {
   return render(
-    createElement(MemoryRouter, null, createElement(PetCard, { pet }))
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(PetCard, { pet, linkBasePath })
+    )
   );
 }
 
 describe('PetCard', () => {
-  it('AC-3: renders name, species, and weight_class/coat_type badges', () => {
+  it('AC-3: renders name, pet_type, and weight_class/coat_type badges', () => {
     renderWithRouter(buildPet());
 
     expect(screen.getByText('Buddy')).toBeInTheDocument();
@@ -39,10 +43,20 @@ describe('PetCard', () => {
     expect(screen.getByText('SC')).toBeInTheDocument();
   });
 
-  it('AC-3: renders breed alongside species when present', () => {
-    renderWithRouter(buildPet({ breed: 'Labrador' }));
+  it('Issue #77: shows a fallback initial when no photo is set', () => {
+    renderWithRouter(buildPet());
 
-    expect(screen.getByText('Labrador · Dog')).toBeInTheDocument();
+    expect(screen.getByText('B')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it("Issue #77: renders the pet's photo when photo_url is set", () => {
+    renderWithRouter(buildPet({ photo_url: 'https://example.com/buddy.jpg' }));
+
+    expect(screen.getByRole('img')).toHaveAttribute(
+      'src',
+      'https://example.com/buddy.jpg'
+    );
   });
 
   it('AC-3: links to the PetProfilePage', () => {
@@ -51,6 +65,15 @@ describe('PetCard', () => {
     expect(screen.getByRole('link')).toHaveAttribute(
       'href',
       '/portal/pets/pet-1'
+    );
+  });
+
+  it('honors a custom linkBasePath (e.g. staff View Pets -> /staff/pets)', () => {
+    renderWithRouter(buildPet(), '/staff/pets');
+
+    expect(screen.getByRole('link')).toHaveAttribute(
+      'href',
+      '/staff/pets/pet-1'
     );
   });
 });

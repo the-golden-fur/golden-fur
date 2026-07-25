@@ -1,9 +1,13 @@
+import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 import type {
+  Breed,
   CustomerProfile,
   CustomerProfileUpdatePayload,
   Pet,
   PetCreatePayload,
+  PetHealthCondition,
   PetMedicalNote,
+  PetType,
   PetUpdatePayload,
   PetVaccinationRecord,
 } from '../customer.types';
@@ -185,6 +189,73 @@ export async function listVaccinationRecords(
 
   const result = await parseBody<{ records: PetVaccinationRecord[] }>(response);
   return { data: result.data?.records ?? null, error: result.error };
+}
+
+/**
+ * No Express endpoint exposes breeds - same pattern as
+ * maintenance.api.ts's listBranches (breeds RLS grants SELECT to every
+ * authenticated user, so this reads directly via the Supabase client).
+ */
+export async function listBreeds(
+  petType: PetType
+): Promise<CustomerApiResult<Breed[]>> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return { data: null, error: 'Supabase client is not configured.' };
+  }
+
+  const { data, error } = await supabase
+    .from('breeds')
+    .select('id, pet_type, name, created_at')
+    .eq('pet_type', petType)
+    .order('name');
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as Breed[], error: null };
+}
+
+export async function uploadPetPhoto(
+  petId: string,
+  accessToken: string,
+  file: File
+): Promise<CustomerApiResult<{ photo_url: string }>> {
+  const formData = new FormData();
+  formData.append('photo', file);
+
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}/photo`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ photo_url: string }>(response);
+}
+
+export async function getPetHealthConditions(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<PetHealthCondition | null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/health-conditions`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    health_conditions: PetHealthCondition | null;
+  }>(response);
+  return { data: result.data?.health_conditions ?? null, error: result.error };
 }
 
 export async function listMedicalNotes(
