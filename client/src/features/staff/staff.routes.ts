@@ -2,8 +2,9 @@ import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { StaffDashboardPage } from './pages/StaffDashboardPage/StaffDashboardPage';
-import { AdminCustomerListPage } from './pages/AdminCustomerListPage/AdminCustomerListPage';
-import { AdminStaffListPage } from './pages/AdminStaffListPage/AdminStaffListPage';
+import { CustomerManagementPage } from './pages/CustomerManagementPage/CustomerManagementPage';
+import { StaffManagementPage } from './pages/StaffManagementPage/StaffManagementPage';
+import { StaffPetProfilePage } from './pages/StaffPetProfilePage/StaffPetProfilePage';
 import { StaffProfilePage } from './pages/StaffProfilePage/StaffProfilePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
 
@@ -27,7 +28,7 @@ export const staffRoutes = createElement(
     }),
     createElement(Route, {
       path: '/staff/admin/staff',
-      element: createElement(AdminStaffListPage),
+      element: createElement(StaffManagementPage),
     }),
     createElement(Route, {
       path: '/staff/admin/unavailability',
@@ -35,7 +36,11 @@ export const staffRoutes = createElement(
     }),
     createElement(Route, {
       path: '/staff/admin/customers',
-      element: createElement(AdminCustomerListPage),
+      element: createElement(CustomerManagementPage),
+    }),
+    createElement(Route, {
+      path: '/staff/pets/:petId',
+      element: createElement(StaffPetProfilePage),
     })
   )
 );
