@@ -1,6 +1,7 @@
 import type { Booking } from '../../booking/booking.types';
 import type {
   Consultation,
+  PetHealthCondition,
   ScheduleFollowUpResult,
   UpdateConsultationPayload,
 } from '../veterinary.types';
@@ -133,6 +134,32 @@ export async function scheduleFollowUp(
   }
 
   return parseBody<ScheduleFollowUpResult>(response);
+}
+
+/** Issue #78: upserts the pet's current known health conditions - Veterinary-
+ * role write, enforced server-side (RLS + petHealthConditions.service.ts). */
+export async function upsertPetHealthConditions(
+  petId: string,
+  accessToken: string,
+  conditionsText: string | null
+): Promise<VeterinaryApiResult<PetHealthCondition>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/pets/${petId}/health-conditions`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ conditions_text: conditionsText }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ health_conditions: PetHealthCondition }>(
+    response
+  );
+  return { data: result.data?.health_conditions ?? null, error: result.error };
 }
 
 export async function getPetConsultationHistory(

@@ -516,6 +516,7 @@ export function VeterinaryConsolePage() {
                 consultation={selectedRow.consultation}
                 petName={selectedRow.petName}
                 ownerName={selectedRow.ownerName}
+                accessToken={accessToken}
                 isSaving={isSaving}
                 saveError={saveError}
                 onStart={() => void handleStart()}

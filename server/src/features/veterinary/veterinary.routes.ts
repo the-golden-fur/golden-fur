@@ -10,6 +10,7 @@ import {
   listConsultationQueueController,
   scheduleFollowUpController,
   updateConsultationController,
+  upsertHealthConditionsController,
 } from './veterinary.controller.ts';
 import {
   VETERINARY_READ_ROLES,
@@ -73,6 +74,12 @@ router.get(
   '/veterinary/pets/:petId/current-prescription',
   staffRead,
   getCurrentPrescriptionController
+);
+
+router.patch(
+  '/veterinary/pets/:petId/health-conditions',
+  vetWrite,
+  upsertHealthConditionsController
 );
 
 export default router;
