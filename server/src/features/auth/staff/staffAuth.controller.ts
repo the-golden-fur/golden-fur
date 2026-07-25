@@ -64,6 +64,25 @@ export async function staffLoginController(req: Request, res: Response) {
       throw new Error('Not a staff account');
     }
 
+    // Issue #74: a resend only makes sense before the staff member's first
+    // successful login (the temporary password is presumably changed by
+    // then). Best-effort, non-blocking - wrapped defensively so it can never
+    // affect the login response either synchronously or via a rejection.
+    try {
+      void supabase
+        .from('staff_profiles')
+        .update({
+          temp_credential_ciphertext: null,
+          temp_credential_iv: null,
+        })
+        .eq('id', authData.user.id)
+        ?.then?.(undefined, (error: unknown) => {
+          console.error('Failed to clear temp credential on login:', error);
+        });
+    } catch (error) {
+      console.error('Failed to clear temp credential on login:', error);
+    }
+
     return res.status(200).json({
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,
