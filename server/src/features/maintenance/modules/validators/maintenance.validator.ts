@@ -222,6 +222,23 @@ export const updatePromoValidator = z
     validatePromoShape(input, ctx, { requireWindow: false })
   );
 
+const PET_TYPES = ['Dog', 'Cat'] as const;
+
+/** Epic A follow-up: breeds CRUD (previously seed-only, migration 20260725045). */
+export const createBreedValidator = z
+  .object({
+    pet_type: z.enum(PET_TYPES),
+    name: z.string().trim().min(1, 'Name is required'),
+  })
+  .strict();
+
+export const updateBreedValidator = z
+  .object({
+    pet_type: z.enum(PET_TYPES).optional(),
+    name: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export type CreateServiceInput = z.infer<typeof createServiceValidator>;
 export type UpdateServiceInput = z.infer<typeof updateServiceValidator>;
 export type BranchAvailabilityInput = z.infer<
@@ -231,3 +248,5 @@ export type CreatePackageInput = z.infer<typeof createPackageValidator>;
 export type UpdatePackageInput = z.infer<typeof updatePackageValidator>;
 export type CreatePromoInput = z.infer<typeof createPromoValidator>;
 export type UpdatePromoInput = z.infer<typeof updatePromoValidator>;
+export type CreateBreedInput = z.infer<typeof createBreedValidator>;
+export type UpdateBreedInput = z.infer<typeof updateBreedValidator>;

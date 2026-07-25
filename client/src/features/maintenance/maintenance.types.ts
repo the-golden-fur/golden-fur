@@ -182,3 +182,23 @@ export interface UpdatePromoPayload {
   is_exclusive?: boolean;
   is_active?: boolean;
 }
+
+/** Same vocabulary as M02 pets.pet_type. */
+export type PetType = 'Dog' | 'Cat';
+
+export interface Breed {
+  id: string;
+  pet_type: PetType;
+  name: string;
+  created_at: string;
+}
+
+export interface CreateBreedPayload {
+  pet_type: PetType;
+  name: string;
+}
+
+export interface UpdateBreedPayload {
+  pet_type?: PetType;
+  name?: string;
+}

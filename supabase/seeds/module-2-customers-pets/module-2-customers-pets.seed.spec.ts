@@ -69,19 +69,19 @@ describe('module-2-customers-pets seed', () => {
     supabase = createMockSupabase();
   });
 
-  it('creates 5 customers, each with 1-2 pets of varied species/weight_class/coat_type', async () => {
+  it('creates 5 customers, each with 1-2 pets of varied pet_type/weight_class/coat_type', async () => {
     await seedCustomers(supabase as never);
 
     expect(supabase.state.customerProfiles.size).toBe(5);
 
     const allPets = [...supabase.state.pets.values()].flat() as {
-      species: string;
+      pet_type: string;
       weight_class: string;
       coat_type: string;
     }[];
 
     expect(allPets.length).toBe(8);
-    expect(new Set(allPets.map((p) => p.species)).size).toBeGreaterThan(1);
+    expect(new Set(allPets.map((p) => p.pet_type)).size).toBeGreaterThan(1);
     expect(new Set(allPets.map((p) => p.weight_class)).size).toBeGreaterThan(1);
     expect(new Set(allPets.map((p) => p.coat_type)).size).toBeGreaterThan(1);
   });

@@ -75,6 +75,16 @@ export interface Package {
   package_services?: Array<{ service_id: string }>;
 }
 
+/** Same vocabulary as M02 pets.pet_type. */
+export type PetType = 'Dog' | 'Cat';
+
+export interface Breed {
+  id: string;
+  pet_type: PetType;
+  name: string;
+  created_at: string;
+}
+
 export type PromoScopeType = 'all_services' | 'specific';
 export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 

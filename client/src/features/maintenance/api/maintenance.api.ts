@@ -2,13 +2,17 @@ import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 import type {
   BranchAvailabilityPayload,
   BranchSummary,
+  Breed,
+  CreateBreedPayload,
   CreatePackagePayload,
   CreatePromoPayload,
   CreateServicePayload,
   Package,
+  PetType,
   Promo,
   Service,
   ServiceBranchAvailability,
+  UpdateBreedPayload,
   UpdatePackagePayload,
   UpdatePromoPayload,
   UpdateServicePayload,
@@ -321,4 +325,87 @@ export async function updatePromo(
 
   const result = await parseBody<{ promo: Promo }>(response);
   return { data: result.data?.promo ?? null, error: result.error };
+}
+
+/**
+ * Epic A follow-up: breeds admin management (previously seed-only, no CRUD
+ * anywhere). Distinct from listBreeds() in customers/api/customer.api.ts,
+ * which reads directly via Supabase for the pet-form's BreedSelect - this
+ * one goes through the new Express /maintenance/breeds routes, matching
+ * every other maintenance (catalog) resource in this file.
+ */
+export async function listBreedsAdmin(
+  accessToken: string,
+  petType?: PetType
+): Promise<MaintenanceApiResult<Breed[]>> {
+  const query = petType ? `?pet_type=${petType}` : '';
+  const response = await fetch(`${API_BASE_URL}/maintenance/breeds${query}`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ breeds: Breed[] }>(response);
+  return { data: result.data?.breeds ?? null, error: result.error };
+}
+
+export async function createBreedAdmin(
+  accessToken: string,
+  payload: CreateBreedPayload
+): Promise<MaintenanceApiResult<Breed>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/breeds`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ breed: Breed }>(response);
+  return { data: result.data?.breed ?? null, error: result.error };
+}
+
+export async function updateBreedAdmin(
+  breedId: string,
+  accessToken: string,
+  payload: UpdateBreedPayload
+): Promise<MaintenanceApiResult<Breed>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/breeds/${breedId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ breed: Breed }>(response);
+  return { data: result.data?.breed ?? null, error: result.error };
+}
+
+export async function deleteBreedAdmin(
+  breedId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/breeds/${breedId}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
 }

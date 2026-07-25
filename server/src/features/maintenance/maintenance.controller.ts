@@ -20,14 +20,23 @@ import {
   updatePromo,
 } from './services/promos.service.ts';
 import {
+  createBreed,
+  deleteBreed,
+  listBreeds,
+  updateBreed,
+} from './services/breeds.service.ts';
+import {
   branchAvailabilityValidator,
+  createBreedValidator,
   createPackageValidator,
   createPromoValidator,
   createServiceValidator,
+  updateBreedValidator,
   updatePackageValidator,
   updatePromoValidator,
   updateServiceValidator,
 } from './modules/validators/maintenance.validator.ts';
+import type { PetType } from './maintenance.types.ts';
 
 /**
  * Role gating (all-staff read, Admin/Superadmin write) happens at the route
@@ -350,6 +359,80 @@ export async function updatePromoController(
     });
 
     return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Breeds (Epic A follow-up - migration 20260725045)
+// ---------------------------------------------------------------------------
+
+export async function listBreedsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const petTypeParam = queryString(req.query.pet_type);
+    const petType =
+      petTypeParam === 'Dog' || petTypeParam === 'Cat'
+        ? (petTypeParam as PetType)
+        : undefined;
+
+    const breeds = await listBreeds({ petType });
+    return res.status(200).json({ breeds });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createBreedController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = createBreedValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const breed = await createBreed(parsed.data);
+    return res.status(201).json({ breed });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updateBreedController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = updateBreedValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const breed = await updateBreed(paramId(req, 'id'), parsed.data);
+    return res.status(200).json({ breed });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deleteBreedController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await deleteBreed(paramId(req, 'id'));
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

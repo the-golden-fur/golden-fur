@@ -54,12 +54,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Admin dashboard',
     tiles: [
       {
-        title: 'Staff Directory',
+        title: 'Staff Management',
         description: 'Create, promote, and manage staff accounts.',
         to: '/staff/admin/staff',
       },
       {
-        title: 'Customer Directory',
+        title: 'Customer Management',
         description: 'Look up customers, pets, and walk-in records.',
         to: '/staff/admin/customers',
       },
@@ -84,6 +84,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         to: '/staff/admin/maintenance/promos',
       },
       {
+        title: 'Breed Management',
+        description: 'Add, rename, or remove breeds available on pet profiles.',
+        to: '/staff/admin/maintenance/breeds',
+      },
+      {
         title: 'Discounts',
         description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
         to: '/staff/admin/discounts',
@@ -100,7 +105,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Supervisor dashboard',
     tiles: [
       {
-        title: 'Customer Directory',
+        title: 'Customer Management',
         description: 'Look up customers, pets, and walk-in records.',
         to: '/staff/admin/customers',
       },
@@ -125,7 +130,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Receptionist dashboard',
     tiles: [
       {
-        title: 'Customer Directory',
+        title: 'Customer Management',
         description: 'Look up customers, pets, and walk-in records.',
         to: '/staff/admin/customers',
       },

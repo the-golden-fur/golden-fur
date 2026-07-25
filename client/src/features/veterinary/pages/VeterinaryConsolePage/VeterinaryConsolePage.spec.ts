@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as staffApi from '../../../staff/api/staff.api';
@@ -18,12 +18,14 @@ vi.mock('../../../staff/api/staff.api', () => ({
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
+  getPetHealthConditions: vi.fn(),
 }));
 vi.mock('../../api/veterinary.api', () => ({
   listConsultationQueue: vi.fn(),
   updateConsultation: vi.fn(),
   scheduleFollowUp: vi.fn(),
   getPetConsultationHistory: vi.fn(),
+  upsertPetHealthConditions: vi.fn(),
 }));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
@@ -100,13 +102,13 @@ function stubPetAndOwner() {
       id: 'pet-1',
       customer_id: 'customer-1',
       name: 'Whiskers',
-      species: 'Cat',
-      breed: null,
+      pet_type: 'Cat',
+      breed_id: null,
+      photo_url: null,
       gender: 'Female',
       date_of_birth: null,
       weight_class: 'S',
       coat_type: 'SC',
-      health_conditions: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     },
@@ -166,6 +168,21 @@ function renderPage() {
 }
 
 describe('VeterinaryConsolePage (#70)', () => {
+  // Issue #78: HealthConditionsField mounts inside ConsultationDetailPanel
+  // whenever a consultation is selected - defaulted here so tests that
+  // select one (but don't care about health conditions) don't have to know
+  // about this unrelated fetch.
+  beforeEach(() => {
+    vi.mocked(customerApi.getPetHealthConditions).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    vi.mocked(veterinaryApi.upsertPetHealthConditions).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+  });
+
   it('AC-1: redirects a non-Veterinarian/Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
@@ -366,13 +383,13 @@ describe('VeterinaryConsolePage (#70)', () => {
         id: 'pet-2',
         customer_id: 'customer-2',
         name: 'Rex',
-        species: 'Dog',
-        breed: null,
+        pet_type: 'Dog',
+        breed_id: null,
+        photo_url: null,
         gender: 'Male',
         date_of_birth: null,
         weight_class: 'M',
         coat_type: 'SC',
-        health_conditions: null,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
       },

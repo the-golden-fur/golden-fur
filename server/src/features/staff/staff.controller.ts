@@ -9,6 +9,7 @@ import {
   updateStaffProfileValidator,
 } from './modules/validators/staff.validator.ts';
 import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
+import { resendAccountEmail } from './services/resendAccountEmail.service.ts';
 import {
   createStaffAccount,
   manageStaffAccount,
@@ -357,6 +358,32 @@ export async function manageStaffAccountController(
     });
 
     return res.status(200).json({ staff });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Issue #74: POST /staff/:id/resend-account-email. Route-level requireRole
+ * already restricts this to Admin/Superadmin (AC-3).
+ */
+export async function resendAccountEmailController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await resendAccountEmail({ targetStaffId: targetId as string });
+
+    return res.status(200).json({ message: 'Account email resent.' });
   } catch (error) {
     return sendServiceError(res, error);
   }

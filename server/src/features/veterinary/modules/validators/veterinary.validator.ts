@@ -95,3 +95,18 @@ export const scheduleFollowUpValidator = z
   .strict();
 
 export type ScheduleFollowUpInput = z.infer<typeof scheduleFollowUpValidator>;
+
+/**
+ * Issue #78: recorded/updated only from the consultation form, by a
+ * Veterinarian. Null/empty clears the pet's current health-condition flag
+ * (e.g. a previously-noted condition that no longer applies).
+ */
+export const upsertHealthConditionsValidator = z
+  .object({
+    conditions_text: z.string().trim().nullable(),
+  })
+  .strict();
+
+export type UpsertHealthConditionsInput = z.infer<
+  typeof upsertHealthConditionsValidator
+>;

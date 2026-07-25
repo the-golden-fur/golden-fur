@@ -1,15 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import { createPet } from '../../../api/customer.api';
+import { createPet, uploadPetPhoto } from '../../../api/customer.api';
 import type {
   Pet,
   PetCoatType,
   PetGender,
-  PetSpecies,
+  PetType,
   PetWeightClass,
 } from '../../../customer.types';
+import { BreedSelect } from '../BreedSelect/BreedSelect';
 import styles from './PetForm.module.css';
 
-const SPECIES_OPTIONS: PetSpecies[] = ['Dog', 'Cat'];
+const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
 const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
@@ -27,23 +28,29 @@ interface PetFormProps {
 
 export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
   const [name, setName] = useState('');
-  const [species, setSpecies] = useState<PetSpecies | ''>('');
-  const [breed, setBreed] = useState('');
+  const [petType, setPetType] = useState<PetType | ''>('');
+  const [breedId, setBreedId] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [gender, setGender] = useState<PetGender | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>('');
   const [coatType, setCoatType] = useState<PetCoatType | ''>('');
-  const [healthConditions, setHealthConditions] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    // AC-4: validates name/species/weight_class/coat_type as required
-    // before allowing submission, matching #32's server-side validator.
-    if (!name.trim() || !species || !weightClass || !coatType) {
-      setError('Name, species, weight class, and coat type are required.');
+    // AC-4: validates name/pet_type/weight_class/coat_type as required, and
+    // (Issue #77 AC-4) breed as required client-side even though breed_id is
+    // nullable at the schema level.
+    if (!name.trim() || !petType || !weightClass || !coatType) {
+      setError('Name, pet type, weight class, and coat type are required.');
+      return;
+    }
+
+    if (!breedId) {
+      setError('Please select a breed.');
       return;
     }
 
@@ -52,33 +59,42 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
 
     const result = await createPet(customerId, accessToken, {
       name: name.trim(),
-      species,
+      pet_type: petType,
+      breed_id: breedId,
       weight_class: weightClass,
       coat_type: coatType,
-      ...(breed.trim() ? { breed: breed.trim() } : {}),
       ...(gender ? { gender } : {}),
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
-      ...(healthConditions.trim()
-        ? { health_conditions: healthConditions.trim() }
-        : {}),
     });
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setError(result.error ?? 'Could not add pet.');
       return;
     }
 
+    let pet = result.data;
+
+    if (photoFile) {
+      const photoResult = await uploadPetPhoto(pet.id, accessToken, photoFile);
+
+      if (photoResult.data?.photo_url) {
+        pet = { ...pet, photo_url: photoResult.data.photo_url };
+      }
+      // A photo-upload failure doesn't roll back pet creation - the pet
+      // profile page still lets a photo be added later.
+    }
+
+    setIsSubmitting(false);
     setName('');
-    setSpecies('');
-    setBreed('');
+    setPetType('');
+    setBreedId(null);
+    setPhotoFile(null);
     setGender('');
     setDateOfBirth('');
     setWeightClass('');
     setCoatType('');
-    setHealthConditions('');
-    onCreated(result.data);
+    onCreated(pet);
   };
 
   return (
@@ -95,14 +111,17 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Species</span>
+        <span className={styles.label}>Pet Type</span>
         <select
           className={styles.input}
-          value={species}
-          onChange={(event) => setSpecies(event.target.value as PetSpecies)}
+          value={petType}
+          onChange={(event) => {
+            setPetType(event.target.value as PetType);
+            setBreedId(null);
+          }}
         >
-          <option value="">Select a species</option>
-          {SPECIES_OPTIONS.map((option) => (
+          <option value="">Select a pet type</option>
+          {PET_TYPE_OPTIONS.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -110,11 +129,28 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
         </select>
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Breed (optional)</span>
+        <span className={styles.label}>Breed</span>
+        {petType ? (
+          <BreedSelect
+            petType={petType}
+            value={breedId}
+            onChange={setBreedId}
+          />
+        ) : (
+          <input
+            className={styles.input}
+            disabled
+            placeholder="Select a pet type first"
+          />
+        )}
+      </label>
+      <label className={styles.field}>
+        <span className={styles.label}>Photo (optional)</span>
         <input
           className={styles.input}
-          value={breed}
-          onChange={(event) => setBreed(event.target.value)}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
         />
       </label>
       <label className={styles.field}>
@@ -172,14 +208,6 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
             </option>
           ))}
         </select>
-      </label>
-      <label className={styles.field}>
-        <span className={styles.label}>Health conditions (optional)</span>
-        <input
-          className={styles.input}
-          value={healthConditions}
-          onChange={(event) => setHealthConditions(event.target.value)}
-        />
       </label>
       {error ? (
         <p className={styles.errorBanner} role="alert">

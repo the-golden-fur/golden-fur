@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { createStaffAccount } from '../../../api/staff.api';
+import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { CreateStaffAccountResult, StaffRole } from '../../../staff.types';
+import { ResendEmailButton } from '../../buttons/ResendEmailButton/ResendEmailButton';
 import styles from './CreateStaffAccountForm.module.css';
 
 const ALL_ROLES: StaffRole[] = [
@@ -16,24 +18,28 @@ const ALL_ROLES: StaffRole[] = [
 
 interface CreateStaffAccountFormProps {
   accessToken: string;
-  /** Superadmin may create at any branch; everyone else is locked to their own. */
+  /** Admin and Superadmin may create at either branch (Issue #73 full parity). */
   viewerRole: StaffRole;
   viewerBranchId: string;
-  branchOptions: string[];
+  /** Every real branch, not just ones with staff already visible to the
+   * viewer - an Admin's own GET /staff is branch-scoped, so deriving options
+   * from the staff list would only ever offer their own branch back. */
+  branches: BranchSummary[];
   onCreated: (result: CreateStaffAccountResult) => void;
 }
 
 /**
- * Implements M01 Process 1 (Admin Creates a Staff Account). There is no
- * notification/email infrastructure yet (M11 is Sprint 6), so the server
- * returns the generated temporary password directly in the response - this
- * form surfaces it so the admin can relay it to the new hire.
+ * Implements M01 Process 1 (Admin Creates a Staff Account). The server now
+ * emails the account_created credentials via Resend (Issue #74) and still
+ * returns the temporary password directly in the response as a fallback the
+ * admin can relay by hand - this form surfaces both, plus a resend action in
+ * case the email didn't arrive.
  */
 export function CreateStaffAccountForm({
   accessToken,
   viewerRole,
   viewerBranchId,
-  branchOptions,
+  branches,
   onCreated,
 }: CreateStaffAccountFormProps) {
   const [username, setUsername] = useState('');
@@ -42,12 +48,13 @@ export function CreateStaffAccountForm({
   const [role, setRole] = useState<StaffRole>(ALL_ROLES[3]);
   const [branchId, setBranchId] = useState(viewerBranchId);
   const [error, setError] = useState<string | null>(null);
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(
-    null
-  );
+  const [createdAccount, setCreatedAccount] =
+    useState<CreateStaffAccountResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canPickBranch = viewerRole === 'Superadmin';
+  // Issue #73: Admin has full branch-assignment parity with Superadmin, not
+  // just same-branch parity - both may pick either branch on creation.
+  const canPickBranch = viewerRole === 'Admin' || viewerRole === 'Superadmin';
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -58,7 +65,7 @@ export function CreateStaffAccountForm({
     }
 
     setError(null);
-    setTemporaryPassword(null);
+    setCreatedAccount(null);
     setIsSubmitting(true);
 
     const result = await createStaffAccount(accessToken, {
@@ -76,7 +83,7 @@ export function CreateStaffAccountForm({
       return;
     }
 
-    setTemporaryPassword(result.data.temporary_password);
+    setCreatedAccount(result.data);
     setUsername('');
     setRegisteredEmail('');
     setDisplayName('');
@@ -137,9 +144,9 @@ export function CreateStaffAccountForm({
               value={branchId}
               onChange={(event) => setBranchId(event.target.value)}
             >
-              {branchOptions.map((option) => (
-                <option key={option} value={option}>
-                  {`Branch ${option.slice(0, 8)}`}
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
                 </option>
               ))}
             </select>
@@ -157,12 +164,18 @@ export function CreateStaffAccountForm({
         </button>
       </form>
 
-      {temporaryPassword ? (
-        <p className={styles.successBanner}>
-          Account created. Temporary password (relay this to the new hire -
-          there is no automated account_created email yet):{' '}
-          <code>{temporaryPassword}</code>
-        </p>
+      {createdAccount ? (
+        <div className={styles.successBanner}>
+          <p>
+            Account created. A credential email has been sent to the new hire;
+            the temporary password is also shown here as a fallback:{' '}
+            <code>{createdAccount.temporary_password}</code>
+          </p>
+          <ResendEmailButton
+            staffId={createdAccount.staff.id}
+            accessToken={accessToken}
+          />
+        </div>
       ) : null}
     </div>
   );

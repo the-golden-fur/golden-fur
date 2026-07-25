@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
@@ -9,6 +10,7 @@ import {
   listCustomerPetsController,
   updatePetController,
 } from './pet.controller.ts';
+import { uploadPetPhoto } from './services/petPhotoUpload.service.ts';
 import {
   createMedicalNote,
   listMedicalNotes,
@@ -19,8 +21,13 @@ import {
   listVaccinationRecords,
   updateVaccinationRecord,
 } from './services/vaccinationRecord.service.ts';
+import { getPetHealthConditions } from '../../veterinary/services/petHealthConditions.service.ts';
 
 const router = Router();
+const petPhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 function paramId(req: AuthenticatedRequest, name: string): string | undefined {
   const value = req.params[name];
@@ -49,6 +56,40 @@ router.post('/customers/:customerId/pets', jwtMiddleware, createPetController);
 router.get('/pets/:id', jwtMiddleware, getPetController);
 router.patch('/pets/:id', jwtMiddleware, updatePetController);
 router.delete('/pets/:id', jwtMiddleware, deletePetController);
+
+router.post(
+  '/pets/:id/photo',
+  jwtMiddleware,
+  petPhotoUpload.single('photo'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const file = req.file as
+      | { buffer: Buffer; mimetype: string; originalname: string; size: number }
+      | undefined;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    try {
+      const result = await uploadPetPhoto({
+        requesterId,
+        petId: petId as string,
+        file,
+      });
+
+      return res.status(200).json({ photo_url: result.photoUrl });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
 
 const createVaccinationRecordValidator = z
   .object({
@@ -262,5 +303,34 @@ router.get(
 
 // Deliberately no PATCH/DELETE route for /pets/:id/medical-notes/:noteId -
 // medical notes are an append-only annotation trail (AC-6).
+
+// Issue #78: read-only from the pet-profile side - writes only happen via
+// the Veterinary console (PATCH /veterinary/pets/:petId/health-conditions,
+// Veterinarian-only). Any authenticated staff role or the owning customer
+// may read (service-level check, same shape as medical notes/vaccination
+// records above).
+router.get(
+  '/pets/:id/health-conditions',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const healthConditions = await getPetHealthConditions({
+        requesterId,
+        petId: petId as string,
+      });
+
+      return res.status(200).json({ health_conditions: healthConditions });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
 
 export default router;

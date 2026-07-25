@@ -14,6 +14,7 @@ import {
   listUnavailabilityBlocksController,
   getStaffProfileController,
   manageStaffAccountController,
+  resendAccountEmailController,
   reviewUnavailabilityBlockController,
   updateStaffProfileController,
   uploadAvatarController,
@@ -82,6 +83,15 @@ router.patch(
   requireRole([...ADMIN_ROLES]),
   requireBranch,
   manageStaffAccountController
+);
+
+router.post(
+  '/staff/:id/resend-account-email',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ADMIN_ROLES]),
+  requireBranch,
+  resendAccountEmailController
 );
 
 router.post(

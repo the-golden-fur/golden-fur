@@ -79,3 +79,12 @@ export interface ScheduleFollowUpResult {
   consultation: Consultation;
   booking: Booking;
 }
+
+/** Issue #78: recorded/maintained from the consultation form only. */
+export interface PetHealthCondition {
+  id: string;
+  pet_id: string;
+  conditions_text: string | null;
+  updated_by_staff_id: string;
+  updated_at: string;
+}

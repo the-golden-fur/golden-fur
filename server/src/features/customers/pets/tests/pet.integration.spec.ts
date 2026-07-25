@@ -45,7 +45,7 @@ function mockCaller(sub: string) {
 const NOT_STAFF: QueryResult = { data: null, error: null };
 const VALID_PET_PAYLOAD = {
   name: 'Buddy',
-  species: 'Dog',
+  pet_type: 'Dog',
   weight_class: 'M',
   coat_type: 'SC',
 };
@@ -78,7 +78,7 @@ describe('pet CRUD (Issue #32)', () => {
       const res = await request(app)
         .post('/customers/customer-1/pets')
         .set('Authorization', 'Bearer token')
-        .send({ name: 'Buddy', species: 'Dog' });
+        .send({ name: 'Buddy', pet_type: 'Dog' });
 
       expect(res.status).toBe(400);
       expect(res.body.details).toBeDefined();

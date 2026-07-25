@@ -34,26 +34,28 @@ const CUSTOMER_COUNT = 5;
 
 interface PetSeed {
   name: string;
-  species: 'Dog' | 'Cat';
+  petType: 'Dog' | 'Cat';
   weightClass: 'S' | 'M' | 'L' | 'XL';
   coatType: 'SC' | 'LC';
 }
 
-// 1-2 pets per customer, deliberately varied species/weight_class/coat_type.
+// 1-2 pets per customer, deliberately varied pet_type/weight_class/coat_type.
+// breed_id is left unset (nullable at the DB level, per Issue #71) - none of
+// these rows need a specific seeded breed.
 export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
   1: [
-    { name: 'Max', species: 'Dog', weightClass: 'M', coatType: 'SC' },
-    { name: 'Luna', species: 'Cat', weightClass: 'S', coatType: 'LC' },
+    { name: 'Max', petType: 'Dog', weightClass: 'M', coatType: 'SC' },
+    { name: 'Luna', petType: 'Cat', weightClass: 'S', coatType: 'LC' },
   ],
-  2: [{ name: 'Rex', species: 'Dog', weightClass: 'L', coatType: 'LC' }],
+  2: [{ name: 'Rex', petType: 'Dog', weightClass: 'L', coatType: 'LC' }],
   3: [
-    { name: 'Bruno', species: 'Dog', weightClass: 'XL', coatType: 'SC' },
-    { name: 'Mimi', species: 'Cat', weightClass: 'M', coatType: 'LC' },
+    { name: 'Bruno', petType: 'Dog', weightClass: 'XL', coatType: 'SC' },
+    { name: 'Mimi', petType: 'Cat', weightClass: 'M', coatType: 'LC' },
   ],
-  4: [{ name: 'Coco', species: 'Cat', weightClass: 'L', coatType: 'SC' }],
+  4: [{ name: 'Coco', petType: 'Cat', weightClass: 'L', coatType: 'SC' }],
   5: [
-    { name: 'Bella', species: 'Dog', weightClass: 'S', coatType: 'LC' },
-    { name: 'Simba', species: 'Cat', weightClass: 'XL', coatType: 'SC' },
+    { name: 'Bella', petType: 'Dog', weightClass: 'S', coatType: 'LC' },
+    { name: 'Simba', petType: 'Cat', weightClass: 'XL', coatType: 'SC' },
   ],
 };
 
@@ -143,7 +145,7 @@ export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
       pets.map((pet) => ({
         customer_id: customerId,
         name: pet.name,
-        species: pet.species,
+        pet_type: pet.petType,
         weight_class: pet.weightClass,
         coat_type: pet.coatType,
       }))

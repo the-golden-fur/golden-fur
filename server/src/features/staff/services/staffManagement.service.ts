@@ -4,6 +4,8 @@ import {
   createStaffAuthUser,
   deleteAuthUser,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import { encryptTempCredential } from '../../../shared/crypto/tempCredential.ts';
+import { sendAccountCreatedEmail } from '../../../shared/email/accountCreatedEmail.ts';
 import type { StaffProfile, StaffRole } from '../staff.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -13,10 +15,12 @@ function throwWithStatus(statusCode: number, message: string): never {
 }
 
 /**
- * Generates a temporary password for a newly created staff account. There is
- * no notification/email infrastructure yet (M11 is Sprint 6), so this is
- * returned directly in the create-account response for the admin to relay to
- * the new hire, rather than emailed - see the create-staff-account issue doc.
+ * Generates a temporary password for a newly created staff account. Still
+ * returned directly in the create-account response (as a fallback the admin
+ * can relay by hand), but as of Issue #74 it's also emailed via Resend
+ * (accountCreatedEmail.ts) and stored encrypted at rest (see
+ * tempCredential.ts) so a later resend can re-deliver this exact password
+ * instead of generating a new one.
  */
 function generateTemporaryPassword(): string {
   return randomBytes(12).toString('base64url');
@@ -37,19 +41,23 @@ export interface CreateStaffAccountResult {
   temporaryPassword: string;
 }
 
+/**
+ * requesterRole/requesterBranchId are accepted for interface compatibility
+ * with the controller (which reads them off requireBranch) but no longer
+ * consulted here - Issue #73 gives Admin full branch-assignment parity with
+ * Superadmin, not just same-branch parity, so branchId is no longer
+ * restricted by who's asking. RLS already allowed Admin to write branch_id
+ * at all (staff_profiles INSERT policy since 20260701015); the same-branch
+ * check removed here was the one remaining restriction narrower than RLS.
+ * Route-level requireRole(ADMIN_ROLES) still gates who can call this at all.
+ */
 export async function createStaffAccount({
-  requesterRole,
-  requesterBranchId,
   username,
   registeredEmail,
   displayName,
   role,
   branchId,
 }: CreateStaffAccountParams): Promise<CreateStaffAccountResult> {
-  if (requesterRole !== 'Superadmin' && branchId !== requesterBranchId) {
-    throwWithStatus(403, 'Admins can only create staff at their own branch');
-  }
-
   const { data: existingUsername, error: usernameError } = await supabase
     .from('staff_profiles')
     .select('id')
@@ -100,6 +108,36 @@ export async function createStaffAccount({
       400,
       profileError?.message ?? 'Failed to create staff profile'
     );
+  }
+
+  // Encrypted so Issue #74's resend action can re-deliver this exact
+  // password later (Supabase Auth itself never retains the plaintext after
+  // createStaffAuthUser above). Best-effort: a failure here shouldn't fail
+  // account creation itself - temporaryPassword is still returned below as
+  // the fallback the admin can relay by hand, same as before this issue.
+  try {
+    const encrypted = encryptTempCredential(temporaryPassword);
+    await supabase
+      .from('staff_profiles')
+      .update({
+        temp_credential_ciphertext: encrypted.ciphertext,
+        temp_credential_iv: encrypted.iv,
+      })
+      .eq('id', profile.id);
+  } catch (error) {
+    console.error('Failed to store encrypted temp credential:', error);
+  }
+
+  // Best-effort: email delivery failing must not fail account creation -
+  // temporaryPassword is still returned below either way.
+  try {
+    await sendAccountCreatedEmail({
+      to: registeredEmail,
+      username,
+      temporaryPassword,
+    });
+  } catch (error) {
+    console.error('Failed to send account_created email:', error);
   }
 
   return { staff: profile, temporaryPassword };

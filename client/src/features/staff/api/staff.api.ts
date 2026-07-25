@@ -219,6 +219,29 @@ export async function listStaff(
   return { data: result.data?.staff ?? null, error: result.error };
 }
 
+/**
+ * Issue #74: re-sends the existing account_created credential email
+ * (via Resend) as-is - does not regenerate the temporary password.
+ */
+export async function resendAccountEmail(
+  staffId: string,
+  accessToken: string
+): Promise<StaffApiResult<{ message: string }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/staff/${staffId}/resend-account-email`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ message: string }>(response);
+}
+
 export async function createStaffAccount(
   accessToken: string,
   payload: CreateStaffAccountPayload

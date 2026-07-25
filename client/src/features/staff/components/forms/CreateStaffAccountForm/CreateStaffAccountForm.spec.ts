@@ -7,7 +7,13 @@ import { CreateStaffAccountForm } from './CreateStaffAccountForm';
 
 vi.mock('../../../api/staff.api', () => ({
   createStaffAccount: vi.fn(),
+  resendAccountEmail: vi.fn(),
 }));
+
+const BRANCHES = [
+  { id: 'branch-a', name: 'Makati', is_vet_branch: true },
+  { id: 'branch-b', name: 'Southwoods', is_vet_branch: false },
+];
 
 function renderForm(
   overrides: {
@@ -22,7 +28,7 @@ function renderForm(
       accessToken: 'token',
       viewerRole: overrides.viewerRole ?? 'Admin',
       viewerBranchId: 'branch-a',
-      branchOptions: ['branch-a', 'branch-b'],
+      branches: BRANCHES,
       onCreated,
     })
   );
@@ -31,7 +37,7 @@ function renderForm(
 }
 
 describe('CreateStaffAccountForm', () => {
-  it('hides the branch selector for an Admin viewer and submits the admin own branch', async () => {
+  it('Issue #73: also shows the branch selector for an Admin viewer (full parity with Superadmin), defaulting to their own branch', async () => {
     vi.mocked(staffApi.createStaffAccount).mockResolvedValue({
       data: {
         staff: { id: 'new-staff' } as never,
@@ -41,7 +47,14 @@ describe('CreateStaffAccountForm', () => {
     });
     renderForm({ viewerRole: 'Admin' });
 
-    expect(screen.queryByLabelText(/^branch$/i)).not.toBeInTheDocument();
+    const branchSelect = screen.getByLabelText(/new hire branch/i);
+    expect(branchSelect).toBeInTheDocument();
+    // Both real branches are offered, by name - not just the Admin's own
+    // branch-scoped staff list, and not a raw UUID.
+    expect(screen.getByRole('option', { name: 'Makati' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Southwoods' })
+    ).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/^username$/i), 'new.hire');
     await userEvent.type(
@@ -64,6 +77,9 @@ describe('CreateStaffAccountForm', () => {
     );
     expect(await screen.findByText(/temporary password/i)).toBeInTheDocument();
     expect(screen.getByText('tmp-pass')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /resend account email/i })
+    ).toBeInTheDocument();
   });
 
   it('shows the branch selector for a Superadmin viewer', () => {

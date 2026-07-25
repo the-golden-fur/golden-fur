@@ -24,11 +24,19 @@
   gap: var(--space-2);
 }
 
+.avatar,
 .avatarFallback {
   flex-shrink: 0;
   width: var(--avatar-size-card);
   height: var(--avatar-size-card);
   border-radius: 50%;
+}
+
+.avatar {
+  object-fit: cover;
+}
+
+.avatarFallback {
   display: flex;
   align-items: center;
   justify-content: center;

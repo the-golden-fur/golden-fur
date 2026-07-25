@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { manageStaffAccount } from '../../../api/staff.api';
+import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../../staff.types';
 import styles from './ManageStaffAccountForm.module.css';
 
@@ -19,8 +20,8 @@ interface ManageStaffAccountFormProps {
   profile: StaffProfile;
   /** Only a Superadmin may change role/branch (M01 Process 5). */
   viewerRole: StaffRole;
-  /** Distinct branch ids already loaded by the caller (see AdminStaffListPage). */
-  branchOptions: string[];
+  /** Every real branch, loaded by the caller (see StaffManagementPage). */
+  branches: BranchSummary[];
   accessToken: string;
   onUpdated: (updated: StaffProfile) => void;
 }
@@ -29,7 +30,7 @@ export function ManageStaffAccountForm({
   staffId,
   profile,
   viewerRole,
-  branchOptions,
+  branches,
   accessToken,
   onUpdated,
 }: ManageStaffAccountFormProps) {
@@ -111,9 +112,9 @@ export function ManageStaffAccountForm({
               value={branchId}
               onChange={(event) => setBranchId(event.target.value)}
             >
-              {branchOptions.map((option) => (
-                <option key={option} value={option}>
-                  {`Branch ${option.slice(0, 8)}`}
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
                 </option>
               ))}
             </select>

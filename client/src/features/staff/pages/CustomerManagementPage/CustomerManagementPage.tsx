@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listStaff } from '../../api/staff.api';
-import { listCustomers } from '../../../customers/api/customer.api';
+import {
+  listCustomerPets,
+  listCustomers,
+} from '../../../customers/api/customer.api';
 import { PetCard } from '../../../customers/components/cards/PetCard/PetCard';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
+import type { CustomerRowAction } from '../../../customers/components/menus/CustomerRowActionMenu/CustomerRowActionMenu';
+import { CustomerRowActionMenu } from '../../../customers/components/menus/CustomerRowActionMenu/CustomerRowActionMenu';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import { listStaff } from '../../api/staff.api';
 import { NewWalkInCustomerForm } from '../../components/forms/NewWalkInCustomerForm/NewWalkInCustomerForm';
-import styles from './AdminCustomerListPage.module.css';
+import styles from './CustomerManagementPage.module.css';
 
 /**
  * Deliberately the exact same role list as the customer_profiles/pets staff
@@ -21,7 +26,15 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-export function AdminCustomerListPage() {
+/**
+ * Issue #76: renamed from AdminCustomerListPage/"Customer Directory" ->
+ * CustomerManagementPage/"Customer Management" (label-only - no route or
+ * permission change). Row expand no longer always opens the create-pet
+ * form directly - it now opens a "…" action menu (CustomerRowActionMenu)
+ * offering Check Profile / View Pets / Add Pet, with Add Pet now one option
+ * among several rather than the only outcome of expanding a row.
+ */
+export function CustomerManagementPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
@@ -31,15 +44,18 @@ export function AdminCustomerListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(
-    null
-  );
+  const [activePanel, setActivePanel] = useState<{
+    customerId: string;
+    action: CustomerRowAction;
+  } | null>(null);
   const [petsByCustomer, setPetsByCustomer] = useState<Record<string, Pet[]>>(
     {}
   );
+  const [isPetsLoading, setIsPetsLoading] = useState(false);
+  const [petsLoadError, setPetsLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Same trick as AdminStaffListPage: the viewer's app-level role isn't on
+  // Same trick as StaffManagementPage: the viewer's app-level role isn't on
   // the Supabase session, so it's read off their own row in the staff list
   // (GET /staff always includes the requester's own row).
   useEffect(() => {
@@ -103,7 +119,7 @@ export function AdminCustomerListPage() {
           )
         : [...prev, customer];
     });
-    setExpandedCustomerId(customer.id);
+    setActivePanel({ customerId: customer.id, action: 'addPet' });
     setMessage('Customer saved. Add a pet below if needed.');
   };
 
@@ -115,6 +131,36 @@ export function AdminCustomerListPage() {
     setMessage('Pet added.');
   };
 
+  function handleSelectAction(customerId: string, action: CustomerRowAction) {
+    const isSameSelection =
+      activePanel?.customerId === customerId && activePanel.action === action;
+
+    setMessage(null);
+
+    if (isSameSelection) {
+      setActivePanel(null);
+      return;
+    }
+
+    setActivePanel({ customerId, action });
+
+    if (action === 'viewPets' && accessToken && !petsByCustomer[customerId]) {
+      setIsPetsLoading(true);
+      setPetsLoadError(null);
+
+      void listCustomerPets(customerId, accessToken).then((result) => {
+        setIsPetsLoading(false);
+
+        if (result.error || !result.data) {
+          setPetsLoadError(result.error ?? 'Could not load pets.');
+          return;
+        }
+
+        setPetsByCustomer((prev) => ({ ...prev, [customerId]: result.data! }));
+      });
+    }
+  }
+
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
@@ -124,14 +170,14 @@ export function AdminCustomerListPage() {
   }
 
   // Decided only once role resolution finishes, so an allowed viewer never
-  // flashes through this redirect (mirrors AdminStaffListPage).
+  // flashes through this redirect (mirrors StaffManagementPage).
   if (!isAllowedViewer) {
     return <Navigate to="/staff/profile" replace />;
   }
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Customer Directory</h1>
+      <h1 className={styles.title}>Customer Management</h1>
 
       {message ? <p className={styles.successBanner}>{message}</p> : null}
 
@@ -166,28 +212,66 @@ export function AdminCustomerListPage() {
                 <span className={styles.customerEmail}>
                   {customer.account_email}
                 </span>
-                <button
-                  type="button"
-                  className={styles.manageButton}
-                  onClick={() =>
-                    setExpandedCustomerId((current) =>
-                      current === customer.id ? null : customer.id
-                    )
-                  }
-                >
-                  {expandedCustomerId === customer.id ? 'Close' : 'Add pet'}
-                </button>
+                <CustomerRowActionMenu
+                  onSelect={(action) => handleSelectAction(customer.id, action)}
+                />
               </div>
 
-              {(petsByCustomer[customer.id] ?? []).length > 0 ? (
-                <div className={styles.petsGrid}>
-                  {(petsByCustomer[customer.id] ?? []).map((pet) => (
-                    <PetCard key={pet.id} pet={pet} />
-                  ))}
-                </div>
+              {activePanel?.customerId === customer.id &&
+              activePanel.action === 'checkProfile' ? (
+                <dl className={styles.profileDetails}>
+                  <div className={styles.detail}>
+                    <dt className={styles.detailLabel}>Contact number</dt>
+                    <dd className={styles.detailValue}>
+                      {customer.contact_number ?? '—'}
+                    </dd>
+                  </div>
+                  <div className={styles.detail}>
+                    <dt className={styles.detailLabel}>Emergency contact</dt>
+                    <dd className={styles.detailValue}>
+                      {customer.emergency_contact_name ?? '—'}
+                      {customer.emergency_contact_number
+                        ? ` (${customer.emergency_contact_number})`
+                        : ''}
+                    </dd>
+                  </div>
+                  <div className={styles.detail}>
+                    <dt className={styles.detailLabel}>
+                      Preferred communication
+                    </dt>
+                    <dd className={styles.detailValue}>
+                      {customer.preferred_communication_channel ?? '—'}
+                    </dd>
+                  </div>
+                </dl>
               ) : null}
 
-              {expandedCustomerId === customer.id && accessToken ? (
+              {activePanel?.customerId === customer.id &&
+              activePanel.action === 'viewPets' ? (
+                isPetsLoading ? (
+                  <p className={styles.copy}>Loading pets...</p>
+                ) : petsLoadError ? (
+                  <p className={styles.errorBanner} role="alert">
+                    {petsLoadError}
+                  </p>
+                ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
+                  <p className={styles.copy}>No pets on file yet.</p>
+                ) : (
+                  <div className={styles.petsGrid}>
+                    {(petsByCustomer[customer.id] ?? []).map((pet) => (
+                      <PetCard
+                        key={pet.id}
+                        pet={pet}
+                        linkBasePath="/staff/pets"
+                      />
+                    ))}
+                  </div>
+                )
+              ) : null}
+
+              {activePanel?.customerId === customer.id &&
+              activePanel.action === 'addPet' &&
+              accessToken ? (
                 <PetForm
                   customerId={customer.id}
                   accessToken={accessToken}

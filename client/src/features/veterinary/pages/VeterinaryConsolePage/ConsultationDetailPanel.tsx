@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ConsultationStatusBadge } from '../../components/ConsultationStatusBadge/ConsultationStatusBadge';
+import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
 import { PetHistoryTab } from '../../components/PetHistoryTab/PetHistoryTab';
 import type {
   Consultation,
@@ -13,6 +14,7 @@ export interface ConsultationDetailPanelProps {
   consultation: Consultation;
   petName: string;
   ownerName: string;
+  accessToken: string;
   isSaving: boolean;
   saveError: string | null;
   onStart: () => void;
@@ -53,6 +55,7 @@ export function ConsultationDetailPanel({
   consultation,
   petName,
   ownerName,
+  accessToken,
   isSaving,
   saveError,
   onStart,
@@ -268,6 +271,12 @@ export function ConsultationDetailPanel({
                   onChange={(event) => setDiagnosis(event.target.value)}
                 />
               </label>
+
+              <HealthConditionsField
+                petId={consultation.pet_id}
+                accessToken={accessToken}
+                disabled={isCompleted}
+              />
 
               <div className={styles.listSection}>
                 <span className={styles.fieldLabel}>Medications</span>

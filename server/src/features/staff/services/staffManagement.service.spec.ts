@@ -55,12 +55,31 @@ describe('staffManagement.service', () => {
       branchId: 'branch-a',
     };
 
-    it('rejects an Admin creating a staff account at a different branch with 403', async () => {
-      await expect(
-        createStaffAccount({ ...baseParams, branchId: 'branch-b' })
-      ).rejects.toMatchObject({ statusCode: 403 });
+    it('Issue #73: allows an Admin to create a staff account at a different branch (full parity with Superadmin)', async () => {
+      queueFromResults(
+        { data: null, error: null },
+        { data: null, error: null },
+        {
+          data: {
+            id: 'new-auth-id',
+            branch_id: 'branch-b',
+            role: 'Receptionist',
+          },
+          error: null,
+        }
+      );
 
-      expect(createStaffAuthUser).not.toHaveBeenCalled();
+      vi.mocked(createStaffAuthUser).mockResolvedValue({
+        data: { user: { id: 'new-auth-id' } },
+        error: null,
+      } as never);
+
+      const result = await createStaffAccount({
+        ...baseParams,
+        branchId: 'branch-b',
+      });
+
+      expect(result.staff.branch_id).toBe('branch-b');
     });
 
     it('rejects a duplicate username with 409', async () => {

@@ -1,4 +1,5 @@
 import { UnavailabilityBlockBadge } from '../../badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
+import { ResendEmailButton } from '../../buttons/ResendEmailButton/ResendEmailButton';
 import type { StaffProfile } from '../../../staff.types';
 import styles from './StaffCard.module.css';
 
@@ -53,6 +54,13 @@ export function StaffCard({
         accessToken={accessToken}
         refreshKey={refreshKey}
       />
+      {/* Issue #74/#75 AC-4: reachable from an existing staff profile, not
+          just the creation-confirmation screen. This card only renders on
+          Staff Management, already Admin/Superadmin-gated at the page
+          level. */}
+      {accessToken ? (
+        <ResendEmailButton staffId={staffId} accessToken={accessToken} />
+      ) : null}
     </article>
   );
 }

@@ -91,6 +91,12 @@
   --color-consult-status-completed-text: #2f5e1f;
   --color-followup-indicator-bg: #fff6df;
   --color-followup-indicator-text: #9a6400;
+  /* Revision Batch 1 - Epic A (#78): pet-profile health-condition flag - a
+     caution-level indicator, distinct from every existing status-badge hue
+     family (grey/queued, amber/in-progress, green/completed, blue/active)
+     used elsewhere in the system. */
+  --color-health-flag-bg: #fceeee;
+  --color-health-flag-text: #8a2a2a;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -177,6 +183,11 @@
   --color-consult-status-completed-text: #bde7c4;
   --color-followup-indicator-bg: #4d3413;
   --color-followup-indicator-text: #ffd27a;
+  /* Revision Batch 1 - Epic A (#78) - dark-theme values, swapping the
+     customer-theme pair's bg/text roles (same convention as every other
+     pair above). */
+  --color-health-flag-bg: #8a2a2a;
+  --color-health-flag-text: #fceeee;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   --radius-sm: 10px;
   --radius-md: 15px;

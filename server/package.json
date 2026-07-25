@@ -24,6 +24,7 @@
     "golden-fur": "file:..",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
+    "resend": "^4.8.0",
     "tsx": "^4.22.4",
     "zod": "^4.4.3"
   },

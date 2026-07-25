@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import {
-  listPendingUnavailabilityRequests,
-  listStaff,
-} from '../../api/staff.api';
+import { listBranches } from '../../../maintenance/api/maintenance.api';
+import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import { listStaff } from '../../api/staff.api';
 import { StaffCard } from '../../components/cards/StaffCard/StaffCard';
 import { CreateStaffAccountForm } from '../../components/forms/CreateStaffAccountForm/CreateStaffAccountForm';
 import { ManageStaffAccountForm } from '../../components/forms/ManageStaffAccountForm/ManageStaffAccountForm';
@@ -14,7 +13,7 @@ import type {
   StaffProfile,
   StaffRole,
 } from '../../staff.types';
-import styles from './AdminStaffListPage.module.css';
+import styles from './StaffManagementPage.module.css';
 
 const ALL_ROLES: StaffRole[] = [
   'Superadmin',
@@ -29,7 +28,16 @@ const ALL_ROLES: StaffRole[] = [
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
-export function AdminStaffListPage() {
+/**
+ * Issue #75: renamed from AdminStaffListPage/"Staff Directory" ->
+ * StaffManagementPage/"Staff Management" (label-only - no route or
+ * permission change). Also fixes the staff card branch-id-instead-of-name
+ * bug (joins against branches) and removes the duplicate unavailability
+ * approval-queue entry point - that queue continues to live, unchanged, on
+ * the branch operations dashboard (StaffDashboardPage's own tile still
+ * links to /staff/admin/unavailability).
+ */
+export function StaffManagementPage() {
   const { user, accessToken } = useAuth();
 
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
@@ -37,6 +45,7 @@ export function AdminStaffListPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<StaffRole | 'All'>('All');
   const [branchFilter, setBranchFilter] = useState('All');
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [expandedStaffId, setExpandedStaffId] = useState<string | null>(null);
   const [expandedManageStaffId, setExpandedManageStaffId] = useState<
     string | null
@@ -45,7 +54,6 @@ export function AdminStaffListPage() {
     Record<string, number>
   >({});
   const [blockMessage, setBlockMessage] = useState<string | null>(null);
-  const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (!accessToken) {
@@ -74,6 +82,25 @@ export function AdminStaffListPage() {
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    void listBranches().then((result) => {
+      if (isMounted && result.data) {
+        setBranches(result.data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const branchNameById = useMemo(
+    () => new Map(branches.map((branch) => [branch.id, branch.name])),
+    [branches]
+  );
+
   // The Supabase session's user.role is the Postgres role ("authenticated"
   // for every signed-in user), not the app-level staff role, and no
   // app_metadata claim carries it either - so the viewer's own role is
@@ -83,29 +110,6 @@ export function AdminStaffListPage() {
   const viewer = staffList.find((staff) => staff.id === user?.id) ?? null;
   const viewerRole = viewer?.role ?? null;
   const isAllowedViewer = ALLOWED_VIEWER_ROLES.has(viewerRole ?? '');
-
-  useEffect(() => {
-    if (!isAllowedViewer || !accessToken) {
-      return;
-    }
-
-    let isMounted = true;
-
-    void listPendingUnavailabilityRequests(accessToken).then((result) => {
-      if (isMounted && result.data) {
-        setPendingCount(result.data.length);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isAllowedViewer, accessToken]);
-
-  const branchOptions = useMemo(
-    () => Array.from(new Set(staffList.map((staff) => staff.branch_id))),
-    [staffList]
-  );
 
   const filteredStaff = useMemo(() => {
     return staffList.filter((staff) => {
@@ -148,7 +152,7 @@ export function AdminStaffListPage() {
     return (
       <main className={styles.page}>
         <p className={styles.errorBanner} role="alert">
-          Unable to load the staff directory.
+          Unable to load staff management.
         </p>
       </main>
     );
@@ -180,14 +184,7 @@ export function AdminStaffListPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Staff Directory</h1>
-
-      <Link to="/staff/admin/unavailability" className={styles.queueLink}>
-        Unavailability approval queue
-        {pendingCount ? (
-          <span className={styles.queueBadge}>{pendingCount}</span>
-        ) : null}
-      </Link>
+      <h1 className={styles.title}>Staff Management</h1>
 
       <section className={styles.panel} aria-labelledby="create-staff-title">
         <h2 className={styles.sectionTitle} id="create-staff-title">
@@ -198,7 +195,7 @@ export function AdminStaffListPage() {
             accessToken={accessToken}
             viewerRole={viewerRole}
             viewerBranchId={viewer?.branch_id ?? ''}
-            branchOptions={branchOptions}
+            branches={branches}
             onCreated={handleAccountCreated}
           />
         ) : null}
@@ -232,9 +229,9 @@ export function AdminStaffListPage() {
               onChange={(event) => setBranchFilter(event.target.value)}
             >
               <option value="All">All branches</option>
-              {branchOptions.map((branchId) => (
-                <option key={branchId} value={branchId}>
-                  {`Branch ${branchId.slice(0, 8)}`}
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
                 </option>
               ))}
             </select>
@@ -258,6 +255,7 @@ export function AdminStaffListPage() {
                 staffId={staff.id}
                 profile={staff}
                 accessToken={accessToken}
+                branchName={branchNameById.get(staff.branch_id)}
                 refreshKey={blockRefreshKeys[staff.id]}
               />
               <button
@@ -296,7 +294,7 @@ export function AdminStaffListPage() {
                   staffId={staff.id}
                   profile={staff}
                   viewerRole={viewerRole}
-                  branchOptions={branchOptions}
+                  branches={branches}
                   accessToken={accessToken}
                   onUpdated={handleAccountManaged}
                 />
