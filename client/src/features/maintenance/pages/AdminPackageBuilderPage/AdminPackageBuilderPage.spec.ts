@@ -8,7 +8,11 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../api/maintenance.api';
-import type { Package, Service } from '../../maintenance.types';
+import type {
+  Package,
+  PackagePricingConfiguration,
+  Service,
+} from '../../maintenance.types';
 import { AdminPackageBuilderPage } from './AdminPackageBuilderPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -21,12 +25,21 @@ vi.mock('../../api/maintenance.api', () => ({
   listPackages: vi.fn(),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
+  getPackagePricingConfiguration: vi.fn(),
+  updatePackagePricingConfiguration: vi.fn(),
 }));
 
 const BRANCHES = [
   { id: 'branch-makati', name: 'Makati' },
   { id: 'branch-southwoods', name: 'Southwoods' },
 ];
+
+const PACKAGE_PRICING_CONFIGURATION: PackagePricingConfiguration = {
+  id: 'package-pricing-1',
+  bundle_discount_percentage: 0.1,
+  updated_by_staff_id: null,
+  updated_at: '2026-07-26T00:00:00.000Z',
+};
 
 function buildService(overrides: Partial<Service> = {}): Service {
   return {
@@ -145,10 +158,11 @@ describe('AdminPackageBuilderPage', () => {
     vi.mocked(maintenanceApi.listServices).mockResolvedValue({
       data: [
         buildService(),
-        buildService({ id: 'service-2', name: 'Blow-dry' }),
+        buildService({ id: 'service-2', name: 'Blow-dry', base_price: 200 }),
         buildService({
           id: 'service-3',
           name: 'Brushing',
+          base_price: 150,
           // Makati-only: must not be offered in a Southwoods package.
           service_branch_availability: [
             {
@@ -163,6 +177,10 @@ describe('AdminPackageBuilderPage', () => {
     });
     vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
       data: [buildPackage()],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.getPackagePricingConfiguration).mockResolvedValue({
+      data: PACKAGE_PRICING_CONFIGURATION,
       error: null,
     });
   });
@@ -219,7 +237,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.getByText('Southwoods Combo')).toBeInTheDocument();
   });
 
-  it('AC-2: builder requires a branch before listing services, then creates the package', async () => {
+  it('Epic B #83: builder requires a branch before listing services, derives the bundled price live, and creates the package with no bundled_price field', async () => {
     vi.mocked(maintenanceApi.createPackage).mockResolvedValue({
       data: buildPackage({ id: 'package-new', name: 'Fresh Coat Bundle' }),
       error: null,
@@ -250,16 +268,21 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.queryByText('Brushing')).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Package name'), 'Fresh Coat Bundle');
-    await user.type(screen.getByLabelText(/Bundled price/), '999');
     await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
     await user.click(screen.getByRole('checkbox', { name: /Blow-dry/ }));
+
+    // Live-derived preview: (300 + 200) * 0.9 = 450, no manual price field.
+    expect(screen.getByText('PHP 450.00')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('spinbutton', { name: /Bundled price/i })
+    ).not.toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'Save package' }));
 
     await waitFor(() => {
       expect(maintenanceApi.createPackage).toHaveBeenCalledWith('token', {
         branch_id: 'branch-southwoods',
         name: 'Fresh Coat Bundle',
-        bundled_price: 999,
         service_ids: ['service-1', 'service-2'],
       });
     });
@@ -267,12 +290,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(await screen.findByText('Package created.')).toBeInTheDocument();
   });
 
-  it('AC-2: the bundled price is not validated against the sum of selected services', async () => {
-    vi.mocked(maintenanceApi.createPackage).mockResolvedValue({
-      data: buildPackage({ id: 'package-new', name: 'Tiny Price Bundle' }),
-      error: null,
-    });
-
+  it('#83 AC-4: shows a clear empty state before two services are selected', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -283,25 +301,16 @@ describe('AdminPackageBuilderPage', () => {
       screen.getAllByLabelText('Branch')[1],
       'branch-makati'
     );
-    await user.type(screen.getByLabelText('Package name'), 'Tiny Price Bundle');
-    // 1.00 despite the two selected services summing to 600.
-    await user.type(screen.getByLabelText(/Bundled price/), '1');
-    await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
-    await user.click(screen.getByRole('checkbox', { name: /Blow-dry/ }));
-    await user.click(screen.getByRole('button', { name: 'Save package' }));
 
-    await waitFor(() => {
-      expect(maintenanceApi.createPackage).toHaveBeenCalledWith(
-        'token',
-        expect.objectContaining({ bundled_price: 1 })
-      );
-    });
+    expect(
+      screen.getByText('Add two or more services to see the bundled price.')
+    ).toBeInTheDocument();
   });
 
-  it('AC-3: editing a package replaces its included services and price in place', async () => {
+  it('AC-3: editing a package replaces its included services in place', async () => {
     vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
       data: buildPackage({
-        bundled_price: 700,
+        bundled_price: 450,
         package_services: [
           { service_id: 'service-1' },
           { service_id: 'service-2' },
@@ -320,10 +329,6 @@ describe('AdminPackageBuilderPage', () => {
 
     // Drop Brushing (service-3) from the included set.
     await user.click(screen.getByRole('checkbox', { name: /Brushing/ }));
-
-    const priceInput = screen.getByLabelText(/Bundled price/);
-    await user.clear(priceInput);
-    await user.type(priceInput, '700');
     await user.click(screen.getByRole('button', { name: 'Save package' }));
 
     await waitFor(() => {
@@ -332,14 +337,42 @@ describe('AdminPackageBuilderPage', () => {
         'token',
         {
           name: 'Golden Package',
-          bundled_price: 700,
           service_ids: ['service-1', 'service-2'],
         }
       );
     });
 
-    expect(await screen.findByText('PHP 700.00')).toBeInTheDocument();
+    expect(await screen.findByText('PHP 450.00')).toBeInTheDocument();
     expect(screen.getByText('2 services')).toBeInTheDocument();
+  });
+
+  it('#83: editing the bundle discount % saves via package_pricing_configuration', async () => {
+    vi.mocked(maintenanceApi.updatePackagePricingConfiguration).mockResolvedValue(
+      {
+        data: { ...PACKAGE_PRICING_CONFIGURATION, bundle_discount_percentage: 0.2 },
+        error: null,
+      }
+    );
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    const discountInput = screen.getByLabelText('Bundle discount (%)');
+    await user.clear(discountInput);
+    await user.type(discountInput, '20');
+    await user.click(screen.getByRole('button', { name: 'Save discount %' }));
+
+    await waitFor(() => {
+      expect(
+        maintenanceApi.updatePackagePricingConfiguration
+      ).toHaveBeenCalledWith('token', { bundle_discount_percentage: 0.2 });
+    });
+
+    expect(
+      await screen.findByText('Bundle discount updated.')
+    ).toBeInTheDocument();
   });
 
   it('AC-3: deactivating a package flips its badge without a reload', async () => {
