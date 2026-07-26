@@ -26,15 +26,30 @@ import {
   updateBreed,
 } from './services/breeds.service.ts';
 import {
+  getPricingConfiguration,
+  updatePricingConfiguration,
+} from './services/pricingConfiguration.service.ts';
+import {
+  getPackagePricingConfiguration,
+  updatePackagePricingConfiguration,
+} from './services/packagePricing.service.ts';
+import {
+  listPromoCapConfigurations,
+  upsertPromoCapConfiguration,
+} from './services/promoCap.service.ts';
+import {
   branchAvailabilityValidator,
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
   createServiceValidator,
   updateBreedValidator,
+  updatePackagePricingConfigurationValidator,
   updatePackageValidator,
+  updatePricingConfigurationValidator,
   updatePromoValidator,
   updateServiceValidator,
+  upsertPromoCapConfigurationValidator,
 } from './modules/validators/maintenance.validator.ts';
 import type { PetType } from './maintenance.types.ts';
 
@@ -359,6 +374,144 @@ export async function updatePromoController(
     });
 
     return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pricing configuration (Epic B #80/#81)
+// ---------------------------------------------------------------------------
+
+export async function getPricingConfigurationController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const configuration = await getPricingConfiguration();
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePricingConfigurationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePricingConfigurationValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const configuration = await updatePricingConfiguration({
+      requesterId,
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Package pricing configuration (Epic B #82/#83)
+// ---------------------------------------------------------------------------
+
+export async function getPackagePricingConfigurationController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const configuration = await getPackagePricingConfiguration();
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePackagePricingConfigurationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePackagePricingConfigurationValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const configuration = await updatePackagePricingConfiguration({
+      requesterId,
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Promo cap configuration (Epic B #84)
+// ---------------------------------------------------------------------------
+
+export async function listPromoCapConfigurationsController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const configurations = await listPromoCapConfigurations();
+    return res.status(200).json({ configurations });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function upsertPromoCapConfigurationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = upsertPromoCapConfigurationValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const configuration = await upsertPromoCapConfiguration({
+      requesterId,
+      input: parsed.data,
+    });
+
+    return res.status(200).json({ configuration });
   } catch (error) {
     return sendServiceError(res, error);
   }

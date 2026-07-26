@@ -8,7 +8,7 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../api/maintenance.api';
-import type { Service } from '../../maintenance.types';
+import type { PricingConfiguration, Service } from '../../maintenance.types';
 import { AdminServicesPage } from './AdminServicesPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -21,12 +21,24 @@ vi.mock('../../api/maintenance.api', () => ({
   createService: vi.fn(),
   updateService: vi.fn(),
   setServiceBranchAvailability: vi.fn(),
+  getPricingConfiguration: vi.fn(),
 }));
 
 const BRANCHES = [
   { id: 'branch-makati', name: 'Makati' },
   { id: 'branch-southwoods', name: 'Southwoods' },
 ];
+
+const PRICING_CONFIGURATION: PricingConfiguration = {
+  id: 'pricing-config-1',
+  size_s_multiplier: 1,
+  size_m_multiplier: 1.1,
+  size_l_multiplier: 1.25,
+  size_xl_multiplier: 1.5,
+  long_coat_addon: 50,
+  updated_by_staff_id: null,
+  updated_at: '2026-07-26T00:00:00.000Z',
+};
 
 function buildService(overrides: Partial<Service> = {}): Service {
   return {
@@ -40,7 +52,15 @@ function buildService(overrides: Partial<Service> = {}): Service {
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
-    service_pricing_tiers: [],
+    service_pricing_tiers: [
+      {
+        id: 'service-1:S:SC',
+        service_id: 'service-1',
+        weight_class: 'S',
+        coat_type: 'SC',
+        price: 300,
+      },
+    ],
     service_branch_availability: [
       {
         service_id: 'service-1',
@@ -128,6 +148,10 @@ describe('AdminServicesPage', () => {
       data: [buildService()],
       error: null,
     });
+    vi.mocked(maintenanceApi.getPricingConfiguration).mockResolvedValue({
+      data: PRICING_CONFIGURATION,
+      error: null,
+    });
   });
 
   it('AC-5: redirects a non-Admin/Superadmin role to /staff/profile', async () => {
@@ -164,6 +188,7 @@ describe('AdminServicesPage', () => {
           id: 'service-2',
           name: 'Wellness Exam',
           category: 'Veterinary',
+          service_pricing_tiers: [],
           service_branch_availability: [],
         }),
       ],
@@ -182,7 +207,7 @@ describe('AdminServicesPage', () => {
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
   });
 
-  it('AC-2: create form submits the Grooming size-coat matrix via pricing_tiers', async () => {
+  it('Epic B #81: create form no longer accepts pricing_tiers - the matrix is derived read-only', async () => {
     vi.mocked(maintenanceApi.createService).mockResolvedValue({
       data: buildService({ id: 'service-new', name: 'Dematting' }),
       error: null,
@@ -196,10 +221,12 @@ describe('AdminServicesPage', () => {
     );
     await user.type(screen.getByLabelText('Name'), 'Dematting');
     await user.type(screen.getByLabelText('Base price (PHP)'), '350');
-    await user.type(
-      screen.getByLabelText('Small (S) / Short Coat (SC) price'),
-      '350'
-    );
+
+    // The derived preview shows the computed price, with no editable inputs
+    // of its own (only the Name/Base price form fields remain spinbuttons).
+    expect(screen.getByText('PHP 350.00')).toBeInTheDocument();
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(1);
+
     await user.click(screen.getByRole('button', { name: 'Save service' }));
 
     await waitFor(() => {
@@ -207,14 +234,13 @@ describe('AdminServicesPage', () => {
         name: 'Dematting',
         category: 'Grooming',
         base_price: 350,
-        pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
       });
     });
 
     expect(await screen.findByText('Service created.')).toBeInTheDocument();
   });
 
-  it('AC-2: the pricing matrix is hidden entirely for non-Grooming categories', async () => {
+  it('the pricing matrix preview is hidden entirely for non-Grooming categories', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -223,7 +249,9 @@ describe('AdminServicesPage', () => {
     );
 
     expect(
-      screen.getByText('Size & coat pricing matrix (Grooming)')
+      screen.getByText(
+        'Size & coat pricing matrix (Grooming) - derived, read-only'
+      )
     ).toBeInTheDocument();
 
     // Two "Category" controls exist once the form is open (the list filter
@@ -231,7 +259,9 @@ describe('AdminServicesPage', () => {
     await user.selectOptions(screen.getAllByLabelText('Category')[1], 'Hotel');
 
     expect(
-      screen.queryByText('Size & coat pricing matrix (Grooming)')
+      screen.queryByText(
+        'Size & coat pricing matrix (Grooming) - derived, read-only'
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -273,7 +303,7 @@ describe('AdminServicesPage', () => {
     });
   });
 
-  it('AC-4: deactivating a service flips its badge and drops it from the Active-only view', async () => {
+  it('Issue #79: a single status toggle replaces the separate Deactivate/Activate actions', async () => {
     vi.mocked(maintenanceApi.updateService).mockResolvedValue({
       data: buildService({ is_active: false }),
       error: null,
@@ -283,8 +313,17 @@ describe('AdminServicesPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('Bath')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Activate' })
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Deactivate' }));
+    const toggle = screen.getByRole('switch', { name: 'Disable Bath' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(toggle);
 
     await waitFor(() => {
       expect(maintenanceApi.updateService).toHaveBeenCalledWith(
@@ -299,11 +338,16 @@ describe('AdminServicesPage', () => {
       expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     });
 
-    // ...and switching to Inactive shows it with the Inactive badge.
+    // ...and switching to Inactive shows it with the Inactive badge and the
+    // toggle now offering to re-enable it.
     await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
     expect(screen.getByText('Bath')).toBeInTheDocument();
     expect(
       screen.getByText('Inactive', { selector: 'span' })
     ).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Enable Bath' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
   });
 });

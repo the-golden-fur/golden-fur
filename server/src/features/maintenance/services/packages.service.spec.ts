@@ -37,16 +37,21 @@ function queueFromResults(...results: QueryResult[]) {
   });
 }
 
-const GOLDEN_PACKAGE = {
+// bundle_discount_percentage 0.1 -> a 700 services sum derives to 630.
+const PACKAGE_PRICING_CONFIGURATION = {
+  id: 'package-pricing-1',
+  bundle_discount_percentage: 0.1,
+};
+
+const RAW_GOLDEN_PACKAGE = {
   id: 'package-1',
   branch_id: 'branch-makati',
   name: 'Golden Package',
-  bundled_price: 600,
   is_active: true,
   package_services: [
-    { service_id: 'service-bath' },
-    { service_id: 'service-blowdry' },
-    { service_id: 'service-brush' },
+    { service_id: 'service-bath', services: { base_price: 300 } },
+    { service_id: 'service-blowdry', services: { base_price: 200 } },
+    { service_id: 'service-brush', services: { base_price: 200 } },
   ],
 };
 
@@ -56,7 +61,7 @@ describe('packages.service', () => {
   });
 
   describe('createPackage', () => {
-    it('AC-1/AC-2: creates a per-branch package whose bundled price differs from the services sum', async () => {
+    it('AC-1/AC-2 (Epic B #83): derives bundled_price from included services minus the configured discount', async () => {
       queueFromResults(
         {
           data: [
@@ -68,7 +73,8 @@ describe('packages.service', () => {
         }, // active-services check
         { data: { id: 'package-1' }, error: null }, // insert package
         { data: null, error: null }, // insert package_services
-        { data: GOLDEN_PACKAGE, error: null } // final fetch
+        { data: RAW_GOLDEN_PACKAGE, error: null }, // final fetch (getPackageById)
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const result = await createPackage({
@@ -76,13 +82,16 @@ describe('packages.service', () => {
         input: {
           branch_id: 'branch-makati',
           name: 'Golden Package',
-          bundled_price: 600, // sum of included services is 700 - no tie
           service_ids: ['service-bath', 'service-blowdry', 'service-brush'],
         },
       });
 
-      expect(result.bundled_price).toBe(600);
-      expect(result.package_services).toHaveLength(3);
+      expect(result.bundled_price).toBe(630);
+      expect(result.package_services).toEqual([
+        { service_id: 'service-bath' },
+        { service_id: 'service-blowdry' },
+        { service_id: 'service-brush' },
+      ]);
     });
 
     it('rejects unknown or inactive service ids with 400', async () => {
@@ -94,7 +103,6 @@ describe('packages.service', () => {
           input: {
             branch_id: 'branch-makati',
             name: 'Golden Package',
-            bundled_price: 600,
             service_ids: ['service-bath', 'service-ghost'],
           },
         })
@@ -106,39 +114,35 @@ describe('packages.service', () => {
   });
 
   describe('updatePackage', () => {
-    it('AC-3: replaces included services and edits price/status', async () => {
+    it('AC-3: replaces included services, deriving the new bundled_price', async () => {
       queueFromResults(
         { data: { id: 'package-1' }, error: null }, // lookup
         {
           data: [{ id: 'service-bath' }, { id: 'service-brush' }],
           error: null,
         }, // active-services check
-        { data: null, error: null }, // update fields
         { data: null, error: null }, // delete old links
         { data: null, error: null }, // insert new links
         {
           data: {
-            ...GOLDEN_PACKAGE,
-            bundled_price: 500,
+            ...RAW_GOLDEN_PACKAGE,
             package_services: [
-              { service_id: 'service-bath' },
-              { service_id: 'service-brush' },
+              { service_id: 'service-bath', services: { base_price: 300 } },
+              { service_id: 'service-brush', services: { base_price: 200 } },
             ],
           },
           error: null,
-        }
+        }, // final fetch
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const result = await updatePackage({
         requesterId: 'admin-1',
         packageId: 'package-1',
-        updates: {
-          bundled_price: 500,
-          service_ids: ['service-bath', 'service-brush'],
-        },
+        updates: { service_ids: ['service-bath', 'service-brush'] },
       });
 
-      expect(result.bundled_price).toBe(500);
+      expect(result.bundled_price).toBe(450); // (300 + 200) * 0.9
       expect(result.package_services).toHaveLength(2);
     });
 
@@ -146,7 +150,8 @@ describe('packages.service', () => {
       queueFromResults(
         { data: { id: 'package-1' }, error: null },
         { data: null, error: null }, // update
-        { data: { ...GOLDEN_PACKAGE, is_active: false }, error: null }
+        { data: { ...RAW_GOLDEN_PACKAGE, is_active: false }, error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await updatePackage({
@@ -173,12 +178,16 @@ describe('packages.service', () => {
 
   describe('listPackages', () => {
     it('AC-5: lists active packages filterable by branch', async () => {
-      queueFromResults({ data: [GOLDEN_PACKAGE], error: null });
+      queueFromResults(
+        { data: [RAW_GOLDEN_PACKAGE], error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+      );
 
       const result = await listPackages({ branchId: 'branch-makati' });
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Golden Package');
+      expect(result[0].bundled_price).toBe(630);
     });
   });
 

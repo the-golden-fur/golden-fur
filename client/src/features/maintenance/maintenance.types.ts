@@ -20,12 +20,67 @@ export type CoatType = 'SC' | 'LC';
 export const WEIGHT_CLASSES: WeightClass[] = ['S', 'M', 'L', 'XL'];
 export const COAT_TYPES: CoatType[] = ['SC', 'LC'];
 
+/**
+ * One cell of the Grooming size x coat matrix, as returned by the API.
+ * Epic B (#80/#81): derived server-side from base_price + pricing_configuration,
+ * no longer editable per-cell - id/service_id are synthesized.
+ */
 export interface ServicePricingTier {
   id: string;
   service_id: string;
   weight_class: WeightClass;
   coat_type: CoatType;
   price: number;
+}
+
+/** Epic B (#80): the shared, singleton grooming size/coat calculation. */
+export interface PricingConfiguration {
+  id: string;
+  size_s_multiplier: number;
+  size_m_multiplier: number;
+  size_l_multiplier: number;
+  size_xl_multiplier: number;
+  long_coat_addon: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePricingConfigurationPayload {
+  size_s_multiplier?: number;
+  size_m_multiplier?: number;
+  size_l_multiplier?: number;
+  size_xl_multiplier?: number;
+  long_coat_addon?: number;
+}
+
+/** Epic B (#82): the shared, singleton package bundled-price calculation. */
+export interface PackagePricingConfiguration {
+  id: string;
+  bundle_discount_percentage: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePackagePricingConfigurationPayload {
+  bundle_discount_percentage: number;
+}
+
+export type CapType = 'percentage' | 'flat';
+
+/** Epic B (#84): per-branch (NULL = both branches) promo cap. */
+export interface PromoCapConfiguration {
+  id: string;
+  branch_id: string | null;
+  cap_type: CapType;
+  cap_value: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpsertPromoCapConfigurationPayload {
+  branch_id?: string | null;
+  cap_type: CapType;
+  cap_value: number;
 }
 
 export interface ServiceBranchAvailability {
@@ -71,19 +126,16 @@ export interface BranchSummary {
   is_vet_branch: boolean;
 }
 
-/** One cell of the Grooming size x coat matrix, as the API accepts it. */
-export interface PricingTierInput {
-  weight_class: WeightClass;
-  coat_type: CoatType;
-  price: number;
-}
-
+/**
+ * Epic B (#81): the Grooming size/coat matrix is derived server-side from
+ * base_price + pricing_configuration - services no longer accept a
+ * pricing_tiers field on create or update.
+ */
 export interface CreateServicePayload {
   name: string;
   category: ServiceCategory;
   base_price: number;
   duration_minutes?: number;
-  pricing_tiers?: PricingTierInput[];
 }
 
 export interface UpdateServicePayload {
@@ -92,7 +144,6 @@ export interface UpdateServicePayload {
   base_price?: number;
   duration_minutes?: number | null;
   is_active?: boolean;
-  pricing_tiers?: PricingTierInput[];
 }
 
 export interface BranchAvailabilityPayload {
@@ -100,16 +151,15 @@ export interface BranchAvailabilityPayload {
   is_available: boolean;
 }
 
+/** Epic B (#83): bundled_price is derived, not accepted as input. */
 export interface CreatePackagePayload {
   branch_id: string;
   name: string;
-  bundled_price: number;
   service_ids: string[];
 }
 
 export interface UpdatePackagePayload {
   name?: string;
-  bundled_price?: number;
   is_active?: boolean;
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
@@ -141,7 +191,6 @@ export interface Promo {
   value: number;
   scope_type: PromoScopeType;
   branch_scope: PromoBranchScope;
-  is_exclusive: boolean;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -166,7 +215,6 @@ export interface CreatePromoPayload {
   scope_type: PromoScopeType;
   scope?: PromoScopeInput[];
   branch_scope: PromoBranchScope;
-  is_exclusive?: boolean;
 }
 
 export interface UpdatePromoPayload {
@@ -179,7 +227,6 @@ export interface UpdatePromoPayload {
   scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
   branch_scope?: PromoBranchScope;
-  is_exclusive?: boolean;
   is_active?: boolean;
 }
 

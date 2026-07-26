@@ -89,7 +89,6 @@ export async function createPromo({
       start_date: promoFields.start_date ?? null,
       end_date: promoFields.end_date ?? null,
       condition_note: promoFields.condition_note ?? null,
-      is_exclusive: promoFields.is_exclusive ?? false,
       created_by: requesterId,
       updated_by: requesterId,
     })

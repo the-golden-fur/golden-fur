@@ -4,17 +4,25 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createPackage,
+  getPackagePricingConfiguration,
   listBranches,
   listPackages,
   listServices,
   updatePackage,
+  updatePackagePricingConfiguration,
 } from '../../api/maintenance.api';
 import {
   ServiceMultiSelect,
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
+import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
-import type { BranchSummary, Package, Service } from '../../maintenance.types';
+import type {
+  BranchSummary,
+  Package,
+  PackagePricingConfiguration,
+  Service,
+} from '../../maintenance.types';
 import styles from './AdminPackageBuilderPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -29,8 +37,11 @@ export function AdminPackageBuilderPage() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [packagePricingConfiguration, setPackagePricingConfiguration] =
+    useState<PackagePricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSavingDiscount, setIsSavingDiscount] = useState(false);
 
   const [branchFilter, setBranchFilter] = useState('All');
 
@@ -38,7 +49,6 @@ export function AdminPackageBuilderPage() {
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [formBranchId, setFormBranchId] = useState('');
   const [formName, setFormName] = useState('');
-  const [formPrice, setFormPrice] = useState('');
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,22 +94,34 @@ export function AdminPackageBuilderPage() {
       // service at creation time (#41 dev notes).
       listServices(accessToken),
       listBranches(),
-    ]).then(([packagesResult, servicesResult, branchesResult]) => {
-      if (!isMounted) {
-        return;
+      getPackagePricingConfiguration(accessToken),
+    ]).then(
+      ([packagesResult, servicesResult, branchesResult, pricingResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLoading(false);
+
+        if (packagesResult.error || !packagesResult.data) {
+          setLoadError(packagesResult.error ?? 'Could not load packages.');
+          return;
+        }
+
+        if (pricingResult.error || !pricingResult.data) {
+          setLoadError(
+            pricingResult.error ??
+              'Could not load package pricing configuration.'
+          );
+          return;
+        }
+
+        setPackages(packagesResult.data);
+        setServices(servicesResult.data ?? []);
+        setBranches(branchesResult.data ?? []);
+        setPackagePricingConfiguration(pricingResult.data);
       }
-
-      setIsLoading(false);
-
-      if (packagesResult.error || !packagesResult.data) {
-        setLoadError(packagesResult.error ?? 'Could not load packages.');
-        return;
-      }
-
-      setPackages(packagesResult.data);
-      setServices(servicesResult.data ?? []);
-      setBranches(branchesResult.data ?? []);
-    });
+    );
 
     return () => {
       isMounted = false;
@@ -149,7 +171,6 @@ export function AdminPackageBuilderPage() {
     setEditingPackageId(null);
     setFormBranchId('');
     setFormName('');
-    setFormPrice('');
     setSelectedServiceIds([]);
     setFormError(null);
     setIsFormOpen(true);
@@ -159,12 +180,33 @@ export function AdminPackageBuilderPage() {
     setEditingPackageId(pkg.id);
     setFormBranchId(pkg.branch_id);
     setFormName(pkg.name);
-    setFormPrice(String(pkg.bundled_price));
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
     setFormError(null);
     setIsFormOpen(true);
+  };
+
+  const handleSaveDiscount = async (bundleDiscountPercentage: number) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setIsSavingDiscount(true);
+
+    const result = await updatePackagePricingConfiguration(accessToken, {
+      bundle_discount_percentage: bundleDiscountPercentage,
+    });
+
+    setIsSavingDiscount(false);
+
+    if (result.error || !result.data) {
+      setMessage(result.error ?? 'Could not update the bundle discount.');
+      return;
+    }
+
+    setPackagePricingConfiguration(result.data);
+    setMessage('Bundle discount updated.');
   };
 
   const closeForm = () => {
@@ -200,10 +242,8 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
-    const bundledPrice = Number(formPrice);
-
-    if (formName.trim() === '' || formPrice === '' || bundledPrice <= 0) {
-      setFormError('A name and a positive bundled price are required.');
+    if (formName.trim() === '') {
+      setFormError('A name is required.');
       return;
     }
 
@@ -225,7 +265,6 @@ export function AdminPackageBuilderPage() {
       const result = await createPackage(accessToken, {
         branch_id: formBranchId,
         name: formName.trim(),
-        bundled_price: bundledPrice,
         service_ids: selectedServiceIds,
       });
 
@@ -244,7 +283,6 @@ export function AdminPackageBuilderPage() {
 
     const result = await updatePackage(editingPackageId, accessToken, {
       name: formName.trim(),
-      bundled_price: bundledPrice,
       service_ids: selectedServiceIds,
     });
 
@@ -379,23 +417,6 @@ export function AdminPackageBuilderPage() {
               />
             </label>
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Bundled price (PHP) - may differ from the sum of the included
-                services
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0.01"
-                step="0.01"
-                inputMode="decimal"
-                value={formPrice}
-                onChange={(event) => setFormPrice(event.target.value)}
-                required
-              />
-            </label>
-
             {formBranchId === '' ? (
               <p className={styles.copy}>
                 Select a branch to pick its available services.
@@ -408,6 +429,19 @@ export function AdminPackageBuilderPage() {
                 onChange={setSelectedServiceIds}
               />
             )}
+
+            {packagePricingConfiguration ? (
+              <PackagePricingPreview
+                includedServiceBasePrices={selectedServiceIds.map(
+                  (serviceId) =>
+                    services.find((service) => service.id === serviceId)
+                      ?.base_price ?? 0
+                )}
+                configuration={packagePricingConfiguration}
+                onSaveDiscount={(value) => void handleSaveDiscount(value)}
+                isSavingDiscount={isSavingDiscount}
+              />
+            ) : null}
 
             {formError ? (
               <p className={styles.errorBanner} role="alert">

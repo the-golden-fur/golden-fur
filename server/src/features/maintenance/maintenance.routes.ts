@@ -9,17 +9,23 @@ import {
   createServiceController,
   deleteBreedController,
   getPackageController,
+  getPackagePricingConfigurationController,
+  getPricingConfigurationController,
   getPromoController,
   getServiceController,
   listBreedsController,
   listPackagesController,
+  listPromoCapConfigurationsController,
   listPromosController,
   listServicesController,
   setServiceBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
+  updatePackagePricingConfigurationController,
+  updatePricingConfigurationController,
   updatePromoController,
   updateServiceController,
+  upsertPromoCapConfigurationController,
 } from './maintenance.controller.ts';
 import {
   MAINTENANCE_READ_ROLES,
@@ -68,6 +74,42 @@ router.get('/maintenance/promos', staffRead, listPromosController);
 router.post('/maintenance/promos', adminWrite, createPromoController);
 router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
+
+// Pricing configuration (Epic B #80/#81)
+router.get(
+  '/maintenance/pricing-configuration',
+  staffRead,
+  getPricingConfigurationController
+);
+router.patch(
+  '/maintenance/pricing-configuration',
+  adminWrite,
+  updatePricingConfigurationController
+);
+
+// Package pricing configuration (Epic B #82/#83)
+router.get(
+  '/maintenance/package-pricing-configuration',
+  staffRead,
+  getPackagePricingConfigurationController
+);
+router.patch(
+  '/maintenance/package-pricing-configuration',
+  adminWrite,
+  updatePackagePricingConfigurationController
+);
+
+// Promo cap configuration (Epic B #84)
+router.get(
+  '/maintenance/promo-cap-configurations',
+  staffRead,
+  listPromoCapConfigurationsController
+);
+router.put(
+  '/maintenance/promo-cap-configurations',
+  adminWrite,
+  upsertPromoCapConfigurationController
+);
 
 // Breeds (Epic A follow-up - previously seed-only, no CRUD anywhere)
 router.get('/maintenance/breeds', staffRead, listBreedsController);

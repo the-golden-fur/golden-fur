@@ -7,9 +7,10 @@ import type {
   CreateServiceInput,
   UpdateServiceInput,
 } from '../modules/validators/maintenance.validator.ts';
+import { getPricingConfiguration } from './pricingConfiguration.service.ts';
+import { deriveGroomingMatrix } from '../utils/deriveGroomingMatrix.ts';
 
-const SERVICE_SELECT =
-  '*, service_pricing_tiers(*), service_branch_availability(*)';
+const SERVICE_SELECT = '*, service_branch_availability(*)';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -41,6 +42,39 @@ interface SetBranchAvailabilityParams {
 }
 
 /**
+ * Epic B (#80/#81): the Grooming size/coat matrix is no longer stored per
+ * cell - it is derived on read from base_price + pricing_configuration and
+ * attached under the same service_pricing_tiers key existing consumers
+ * already read (booking.service.ts's resolveServicePrice, this feature's own
+ * client pages), with a synthesized id/service_id since there is no longer a
+ * real row behind each cell.
+ */
+function attachPricingMatrix(
+  service: Service,
+  pricingConfiguration: Awaited<ReturnType<typeof getPricingConfiguration>>
+): Service {
+  if (service.category !== 'Grooming') {
+    return { ...service, service_pricing_tiers: [] };
+  }
+
+  const matrix = deriveGroomingMatrix(
+    Number(service.base_price),
+    pricingConfiguration
+  );
+
+  return {
+    ...service,
+    service_pricing_tiers: matrix.map((cell) => ({
+      id: `${service.id}:${cell.weight_class}:${cell.coat_type}`,
+      service_id: service.id,
+      weight_class: cell.weight_class,
+      coat_type: cell.coat_type,
+      price: cell.price,
+    })),
+  };
+}
+
+/**
  * Active services by default (#40 AC-3: deactivated rows drop out of the
  * "all active services" GET); pass includeInactive for the admin list view.
  * branchId keeps only services with an is_available = true row at that
@@ -65,7 +99,11 @@ export async function listServices({
 
   if (error) throwWithStatus(400, error.message);
 
-  const services = (data ?? []) as Service[];
+  const rawServices = (data ?? []) as Service[];
+  const pricingConfiguration = await getPricingConfiguration();
+  const services = rawServices.map((service) =>
+    attachPricingMatrix(service, pricingConfiguration)
+  );
 
   if (!branchId) {
     return services;
@@ -89,27 +127,28 @@ export async function getServiceById(serviceId: string): Promise<Service> {
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Service not found');
 
-  return data as Service;
+  const pricingConfiguration = await getPricingConfiguration();
+
+  return attachPricingMatrix(data as Service, pricingConfiguration);
 }
 
 /**
- * Creates the service and, in the same call (#40 AC-1): its full size-coat
- * tier set when Grooming, and an is_available = true
- * service_branch_availability row for every branch. Defaulting both branches
- * to available follows the Guide's recommendation - Modules-Features frames
- * branch availability as a toggle to disable a branch, not an opt-in.
+ * Creates the service and, in the same call (#40 AC-1): an is_available =
+ * true service_branch_availability row for every branch. Defaulting both
+ * branches to available follows the Guide's recommendation -
+ * Modules-Features frames branch availability as a toggle to disable a
+ * branch, not an opt-in. Epic B (#81): no pricing_tiers input anymore - the
+ * Grooming matrix is derived from base_price on read.
  */
 export async function createService({
   requesterId,
   input,
 }: CreateServiceParams): Promise<Service> {
-  const { pricing_tiers: pricingTiers, ...serviceFields } = input;
-
   const { data: service, error } = await supabase
     .from('services')
     .insert({
-      ...serviceFields,
-      duration_minutes: serviceFields.duration_minutes ?? null,
+      ...input,
+      duration_minutes: input.duration_minutes ?? null,
       created_by: requesterId,
       updated_by: requesterId,
     })
@@ -118,16 +157,6 @@ export async function createService({
 
   if (error || !service) {
     throwWithStatus(400, error?.message ?? 'Failed to create service');
-  }
-
-  if (pricingTiers?.length) {
-    const { error: tierError } = await supabase
-      .from('service_pricing_tiers')
-      .insert(
-        pricingTiers.map((tier) => ({ ...tier, service_id: service.id }))
-      );
-
-    if (tierError) throwWithStatus(400, tierError.message);
   }
 
   const { data: branches, error: branchError } = await supabase
@@ -153,20 +182,12 @@ export async function createService({
   return getServiceById(service.id);
 }
 
-/**
- * PATCH semantics per #40 AC-2: any field editable; pricing_tiers upserts
- * individual (weight_class, coat_type) cells without requiring the full set.
- * Tier upserts are rejected for non-Grooming services here in the service
- * layer (#40 Dev Notes) - the effective category is the updated one when the
- * PATCH changes it, otherwise the stored one.
- */
+/** PATCH semantics per #40 AC-2: any field editable. */
 export async function updateService({
   requesterId,
   serviceId,
   updates,
 }: UpdateServiceParams): Promise<Service> {
-  const { pricing_tiers: pricingTiers, ...serviceFields } = updates;
-
   const { data: existing, error: lookupError } = await supabase
     .from('services')
     .select('id, category')
@@ -176,34 +197,17 @@ export async function updateService({
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Service not found');
 
-  const effectiveCategory = serviceFields.category ?? existing.category;
-
-  if (pricingTiers?.length && effectiveCategory !== 'Grooming') {
-    throwWithStatus(400, 'Pricing tiers only apply to Grooming services');
-  }
-
-  if (Object.keys(serviceFields).length > 0) {
+  if (Object.keys(updates).length > 0) {
     const { error: updateError } = await supabase
       .from('services')
       .update({
-        ...serviceFields,
+        ...updates,
         updated_by: requesterId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', serviceId);
 
     if (updateError) throwWithStatus(400, updateError.message);
-  }
-
-  if (pricingTiers?.length) {
-    const { error: tierError } = await supabase
-      .from('service_pricing_tiers')
-      .upsert(
-        pricingTiers.map((tier) => ({ ...tier, service_id: serviceId })),
-        { onConflict: 'service_id,weight_class,coat_type' }
-      );
-
-    if (tierError) throwWithStatus(400, tierError.message);
   }
 
   return getServiceById(serviceId);

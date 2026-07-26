@@ -28,12 +28,52 @@ export type DiscountValueType = 'Percentage' | 'Flat';
 export type WeightClass = 'S' | 'M' | 'L' | 'XL';
 export type CoatType = 'SC' | 'LC';
 
+/**
+ * One cell of the Grooming size x coat matrix, as returned by the API.
+ * Epic B (#80/#81): derived on read from base_price + pricing_configuration
+ * via deriveGroomingMatrix, no longer stored per-cell - id/service_id are
+ * synthesized (not real row ids) so this shape stays unchanged for existing
+ * consumers (booking.service.ts's resolveServicePrice, this feature's own
+ * client pages).
+ */
 export interface ServicePricingTier {
   id: string;
   service_id: string;
   weight_class: WeightClass;
   coat_type: CoatType;
   price: number;
+}
+
+/** Epic B (#80): the shared, singleton grooming size/coat calculation. */
+export interface PricingConfiguration {
+  id: string;
+  size_s_multiplier: number;
+  size_m_multiplier: number;
+  size_l_multiplier: number;
+  size_xl_multiplier: number;
+  long_coat_addon: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+/** Epic B (#82): the shared, singleton package bundled-price calculation. */
+export interface PackagePricingConfiguration {
+  id: string;
+  bundle_discount_percentage: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export type CapType = 'percentage' | 'flat';
+
+/** Epic B (#84): per-branch (NULL = both branches) promo cap. */
+export interface PromoCapConfiguration {
+  id: string;
+  branch_id: string | null;
+  cap_type: CapType;
+  cap_value: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
 }
 
 export interface ServiceBranchAvailability {
@@ -66,6 +106,12 @@ export interface Package {
   id: string;
   branch_id: string;
   name: string;
+  /**
+   * Epic B (#82/#83): derived on read from included services' base_price and
+   * package_pricing_configuration via deriveBundledPrice, no longer a stored
+   * column - the field name/shape is unchanged so existing consumers
+   * (booking.service.ts) need no changes.
+   */
   bundled_price: number;
   is_active: boolean;
   created_by: string | null;
@@ -105,7 +151,6 @@ export interface Promo {
   value: number;
   scope_type: PromoScopeType;
   branch_scope: PromoBranchScope;
-  is_exclusive: boolean;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;

@@ -62,8 +62,21 @@ const SERVICE = {
   name: 'Wellness Exam',
   base_price: 500,
   is_active: true,
-  service_pricing_tiers: [],
   service_branch_availability: [],
+};
+
+const PRICING_CONFIGURATION = {
+  id: 'pricing-config-1',
+  size_s_multiplier: 1,
+  size_m_multiplier: 1.1,
+  size_l_multiplier: 1.25,
+  size_xl_multiplier: 1.5,
+  long_coat_addon: 0,
+};
+
+const PACKAGE_PRICING_CONFIGURATION = {
+  id: 'package-pricing-1',
+  bundle_discount_percentage: 0.1,
 };
 
 const PROMO = {
@@ -76,7 +89,6 @@ const PROMO = {
   value: 15,
   scope_type: 'all_services',
   branch_scope: 'both',
-  is_exclusive: false,
   is_active: true,
   promo_scope: [],
 };
@@ -97,7 +109,8 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       mockCaller('groomer-1');
       queueFromResults(
         { data: { role: 'Groomer' }, error: null },
-        { data: [SERVICE], error: null }
+        { data: [SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
       );
 
       const res = await request(app)
@@ -127,7 +140,8 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         { data: { id: 'service-1' }, error: null }, // insert
         { data: [{ id: BRANCH_ID }], error: null }, // branches
         { data: null, error: null }, // availability insert
-        { data: SERVICE, error: null } // final fetch
+        { data: SERVICE, error: null }, // final fetch
+        { data: PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const res = await request(app)
@@ -200,15 +214,21 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
             id: 'package-1',
             branch_id: BRANCH_ID,
             name: 'Golden Package',
-            bundled_price: 600,
             is_active: true,
             package_services: [
-              { service_id: '22222222-2222-4222-a222-222222222222' },
-              { service_id: '33333333-3333-4333-a333-333333333333' },
+              {
+                service_id: '22222222-2222-4222-a222-222222222222',
+                services: { base_price: 300 },
+              },
+              {
+                service_id: '33333333-3333-4333-a333-333333333333',
+                services: { base_price: 400 },
+              },
             ],
           },
           error: null,
-        }
+        }, // final fetch
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const res = await request(app)
@@ -217,7 +237,6 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         .send({
           branch_id: BRANCH_ID,
           name: 'Golden Package',
-          bundled_price: 600,
           service_ids: [
             '22222222-2222-4222-a222-222222222222',
             '33333333-3333-4333-a333-333333333333',
@@ -232,7 +251,8 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       mockCaller('reception-1');
       queueFromResults(
         { data: { role: 'Receptionist' }, error: null },
-        { data: [], error: null }
+        { data: [], error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
       );
 
       const listRes = await request(app)
@@ -249,7 +269,6 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         .send({
           branch_id: BRANCH_ID,
           name: 'X',
-          bundled_price: 100,
           service_ids: [
             '22222222-2222-4222-a222-222222222222',
             '33333333-3333-4333-a333-333333333333',

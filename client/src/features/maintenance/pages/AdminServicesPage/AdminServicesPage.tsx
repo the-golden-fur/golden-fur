@@ -4,18 +4,19 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createService,
+  getPricingConfiguration,
   listBranches,
   listServices,
   setServiceBranchAvailability,
   updateService,
 } from '../../api/maintenance.api';
-import { ServicePricingTierEditor } from '../../components/ServicePricingTierEditor/ServicePricingTierEditor';
+import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,
-  type PricingTierInput,
+  type PricingConfiguration,
   type Service,
   type ServiceCategory,
   type UpdateServicePayload,
@@ -33,7 +34,6 @@ interface ServiceFormState {
   category: ServiceCategory;
   basePrice: string;
   durationMinutes: string;
-  tiers: PricingTierInput[];
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -41,7 +41,6 @@ const EMPTY_FORM: ServiceFormState = {
   category: 'Grooming',
   basePrice: '',
   durationMinutes: '',
-  tiers: [],
 };
 
 function formStateFromService(service: Service): ServiceFormState {
@@ -51,11 +50,6 @@ function formStateFromService(service: Service): ServiceFormState {
     basePrice: String(service.base_price),
     durationMinutes:
       service.duration_minutes === null ? '' : String(service.duration_minutes),
-    tiers: (service.service_pricing_tiers ?? []).map((tier) => ({
-      weight_class: tier.weight_class,
-      coat_type: tier.coat_type,
-      price: tier.price,
-    })),
   };
 }
 
@@ -67,6 +61,8 @@ export function AdminServicesPage() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [pricingConfiguration, setPricingConfiguration] =
+    useState<PricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -121,7 +117,8 @@ export function AdminServicesPage() {
     void Promise.all([
       listServices(accessToken, { includeInactive: true }),
       listBranches(),
-    ]).then(([servicesResult, branchesResult]) => {
+      getPricingConfiguration(accessToken),
+    ]).then(([servicesResult, branchesResult, pricingResult]) => {
       if (!isMounted) {
         return;
       }
@@ -133,10 +130,18 @@ export function AdminServicesPage() {
         return;
       }
 
+      if (pricingResult.error || !pricingResult.data) {
+        setLoadError(
+          pricingResult.error ?? 'Could not load pricing configuration.'
+        );
+        return;
+      }
+
       setServices(servicesResult.data);
       // Branch names are optional garnish - a failed lookup degrades toggle
       // labels, it doesn't block the page.
       setBranches(branchesResult.data ?? []);
+      setPricingConfiguration(pricingResult.data);
     });
 
     return () => {
@@ -265,7 +270,6 @@ export function AdminServicesPage() {
       return;
     }
 
-    const isGrooming = form.category === 'Grooming';
     const durationMinutes =
       form.durationMinutes === '' ? undefined : Number(form.durationMinutes);
 
@@ -279,9 +283,6 @@ export function AdminServicesPage() {
         base_price: basePrice,
         ...(durationMinutes !== undefined
           ? { duration_minutes: durationMinutes }
-          : {}),
-        ...(isGrooming && form.tiers.length > 0
-          ? { pricing_tiers: form.tiers }
           : {}),
       });
 
@@ -304,10 +305,6 @@ export function AdminServicesPage() {
       base_price: basePrice,
       duration_minutes: durationMinutes ?? null,
     };
-
-    if (isGrooming && form.tiers.length > 0) {
-      payload.pricing_tiers = form.tiers;
-    }
 
     const result = await updateService(editingServiceId, accessToken, payload);
 
@@ -518,10 +515,10 @@ export function AdminServicesPage() {
               </label>
             ) : null}
 
-            {form.category === 'Grooming' ? (
-              <ServicePricingTierEditor
-                tiers={form.tiers}
-                onChange={(tiers) => setForm((prev) => ({ ...prev, tiers }))}
+            {form.category === 'Grooming' && pricingConfiguration ? (
+              <PricingMatrixPreview
+                basePrice={Number(form.basePrice) || 0}
+                configuration={pricingConfiguration}
               />
             ) : null}
 
@@ -591,13 +588,11 @@ export function AdminServicesPage() {
                 >
                   Edit
                 </button>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void handleActiveToggle(service)}
-                >
-                  {service.is_active ? 'Deactivate' : 'Reactivate'}
-                </button>
+                <ToggleSwitch
+                  label={`${service.is_active ? 'Disable' : 'Enable'} ${service.name}`}
+                  checked={service.is_active}
+                  onChange={() => void handleActiveToggle(service)}
+                />
               </div>
             </li>
           ))}
