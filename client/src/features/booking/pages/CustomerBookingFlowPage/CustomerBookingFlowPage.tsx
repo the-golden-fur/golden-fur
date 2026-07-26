@@ -250,7 +250,12 @@ export function CustomerBookingFlowPage() {
 
     if (candidates.length === 0) return null;
 
-    return candidates.find((promo) => promo.is_exclusive) ?? candidates[0];
+    // Epic B (#84): is_exclusive is gone - promo combinability is now a
+    // per-branch cap (promo_cap_configuration), enforced at checkout once
+    // M08 ships (Sprint 5). Until then this pre-M08 pricing preview keeps
+    // its existing single-promo display by taking the first applicable
+    // candidate, rather than guessing at cap math this epic doesn't own.
+    return candidates[0];
   }, [
     promos,
     selectedBranch,
