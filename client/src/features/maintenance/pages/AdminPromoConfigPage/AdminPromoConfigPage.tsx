@@ -4,7 +4,6 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createPromo,
-  listBranches,
   listPackages,
   listPromos,
   listServices,
@@ -14,8 +13,14 @@ import {
   ServiceMultiSelect,
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
-import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
-import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { PromoCard } from '../../components/PromoCard/PromoCard';
+import {
+  PromoFilterBar,
+  type PromoBranchScopeFilter,
+  type PromoStatusFilter,
+  type PromoTimingFilter,
+} from '../../components/PromoFilterBar/PromoFilterBar';
+import { getPromoTiming } from '../../utils/promoTiming';
 import type {
   DiscountValueType,
   Package,
@@ -38,9 +43,6 @@ const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
   southwoods: 'Southwoods',
   both: 'Both branches',
 };
-
-type StatusFilter = 'All' | 'Active' | 'Inactive';
-type PromoKind = 'dateRange' | 'condition';
 
 /**
  * ServiceMultiSelect (#46) takes an opaque id/label list, so a service-vs-
@@ -75,24 +77,6 @@ function scopeToCompositeIds(promo: Promo): string[] {
   );
 }
 
-function formatValue(promo: Promo): string {
-  return promo.discount_type === 'Percentage'
-    ? `${promo.value}% off`
-    : `PHP ${promo.value.toFixed(2)} off`;
-}
-
-function formatWindow(promo: Promo): string {
-  if (promo.condition_note) {
-    return promo.condition_note;
-  }
-
-  if (promo.start_date && promo.end_date) {
-    return `${promo.start_date} to ${promo.end_date}`;
-  }
-
-  return 'No window set';
-}
-
 export function AdminPromoConfigPage() {
   const { user, accessToken } = useAuth();
 
@@ -105,10 +89,11 @@ export function AdminPromoConfigPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [branchFilter, setBranchFilter] = useState<'All' | PromoBranchScope>(
-    'All'
-  );
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('Active');
+  const [search, setSearch] = useState('');
+  const [branchScopeFilter, setBranchScopeFilter] =
+    useState<PromoBranchScopeFilter>('All');
+  const [timingFilter, setTimingFilter] = useState<PromoTimingFilter>('All');
+  const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>('Active');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
@@ -116,16 +101,13 @@ export function AdminPromoConfigPage() {
   const [formDiscountType, setFormDiscountType] =
     useState<DiscountValueType>('Percentage');
   const [formValue, setFormValue] = useState('');
-  const [formKind, setFormKind] = useState<PromoKind>('dateRange');
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
-  const [formConditionNote, setFormConditionNote] = useState('');
   const [formScopeType, setFormScopeType] =
     useState<PromoScopeType>('all_services');
   const [formScopeIds, setFormScopeIds] = useState<string[]>([]);
   const [formBranchScope, setFormBranchScope] =
     useState<PromoBranchScope>('both');
-  const [formIsExclusive, setFormIsExclusive] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -170,7 +152,6 @@ export function AdminPromoConfigPage() {
       // as a new scope target.
       listServices(accessToken),
       listPackages(accessToken),
-      listBranches(),
     ]).then(([promosResult, servicesResult, packagesResult]) => {
       if (!isMounted) {
         return;
@@ -194,8 +175,10 @@ export function AdminPromoConfigPage() {
   }, [accessToken, isAllowedViewer]);
 
   const filteredPromos = useMemo(() => {
+    const searchTerm = search.trim().toLowerCase();
+
     return promos.filter((promo) => {
-      if (branchFilter !== 'All' && promo.branch_scope !== branchFilter) {
+      if (branchScopeFilter !== 'All' && promo.branch_scope !== branchScopeFilter) {
         return false;
       }
 
@@ -207,9 +190,17 @@ export function AdminPromoConfigPage() {
         return false;
       }
 
+      if (timingFilter !== 'All' && getPromoTiming(promo) !== timingFilter) {
+        return false;
+      }
+
+      if (searchTerm && !promo.name.toLowerCase().includes(searchTerm)) {
+        return false;
+      }
+
       return true;
     });
-  }, [promos, branchFilter, statusFilter]);
+  }, [promos, branchScopeFilter, statusFilter, timingFilter, search]);
 
   // Existing scope selections (from an in-edit promo) stay offered even if
   // the referenced service/package has since gone inactive, so editing never
@@ -272,14 +263,11 @@ export function AdminPromoConfigPage() {
     setFormName('');
     setFormDiscountType('Percentage');
     setFormValue('');
-    setFormKind('dateRange');
     setFormStartDate('');
     setFormEndDate('');
-    setFormConditionNote('');
     setFormScopeType('all_services');
     setFormScopeIds([]);
     setFormBranchScope('both');
-    setFormIsExclusive(false);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -289,14 +277,11 @@ export function AdminPromoConfigPage() {
     setFormName(promo.name);
     setFormDiscountType(promo.discount_type);
     setFormValue(String(promo.value));
-    setFormKind(promo.condition_note ? 'condition' : 'dateRange');
     setFormStartDate(promo.start_date ?? '');
     setFormEndDate(promo.end_date ?? '');
-    setFormConditionNote(promo.condition_note ?? '');
     setFormScopeType(promo.scope_type);
     setFormScopeIds(scopeToCompositeIds(promo));
     setFormBranchScope(promo.branch_scope);
-    setFormIsExclusive(promo.is_exclusive);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -307,13 +292,13 @@ export function AdminPromoConfigPage() {
     setFormError(null);
   };
 
-  const handleActiveToggle = async (promo: Promo) => {
+  const handleActiveToggle = async (promo: Promo, isActive: boolean) => {
     if (!accessToken) {
       return;
     }
 
     const result = await updatePromo(promo.id, accessToken, {
-      is_active: !promo.is_active,
+      is_active: isActive,
     });
 
     if (result.error || !result.data) {
@@ -322,9 +307,7 @@ export function AdminPromoConfigPage() {
     }
 
     replacePromo(result.data);
-    setMessage(
-      result.data.is_active ? 'Promo reactivated.' : 'Promo deactivated.'
-    );
+    setMessage(isActive ? 'Promo reactivated.' : 'Promo deactivated.');
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -346,16 +329,8 @@ export function AdminPromoConfigPage() {
       return;
     }
 
-    if (
-      formKind === 'dateRange' &&
-      (formStartDate === '' || formEndDate === '')
-    ) {
-      setFormError('A date-bounded promo needs both a start and end date.');
-      return;
-    }
-
-    if (formKind === 'condition' && formConditionNote.trim() === '') {
-      setFormError('A condition-based promo needs a condition note.');
+    if (formStartDate === '' || formEndDate === '') {
+      setFormError('A promo needs both a start and end date.');
       return;
     }
 
@@ -373,15 +348,13 @@ export function AdminPromoConfigPage() {
     if (editingPromoId === null) {
       const result = await createPromo(accessToken, {
         name: formName.trim(),
-        ...(formKind === 'dateRange'
-          ? { start_date: formStartDate, end_date: formEndDate }
-          : { condition_note: formConditionNote.trim() }),
+        start_date: formStartDate,
+        end_date: formEndDate,
         discount_type: formDiscountType,
         value,
         scope_type: formScopeType,
         ...(formScopeType === 'specific' ? { scope } : {}),
         branch_scope: formBranchScope,
-        is_exclusive: formIsExclusive,
       });
 
       setIsSubmitting(false);
@@ -399,16 +372,17 @@ export function AdminPromoConfigPage() {
 
     const result = await updatePromo(editingPromoId, accessToken, {
       name: formName.trim(),
-      start_date: formKind === 'dateRange' ? formStartDate : null,
-      end_date: formKind === 'dateRange' ? formEndDate : null,
-      condition_note:
-        formKind === 'condition' ? formConditionNote.trim() : null,
+      start_date: formStartDate,
+      end_date: formEndDate,
+      // Clears any legacy condition-based window this promo may have had -
+      // the create/edit form is date-range only now, so the two can never
+      // coexist (the server rejects a promo that's both anyway).
+      condition_note: null,
       discount_type: formDiscountType,
       value,
       scope_type: formScopeType,
       scope,
       branch_scope: formBranchScope,
-      is_exclusive: formIsExclusive,
     });
 
     setIsSubmitting(false);
@@ -468,40 +442,16 @@ export function AdminPromoConfigPage() {
       <h1 className={styles.title}>Promos</h1>
 
       <div className={styles.toolbar}>
-        <div className={styles.filters}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch scope</span>
-            <select
-              className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) =>
-                setBranchFilter(event.target.value as 'All' | PromoBranchScope)
-              }
-            >
-              <option value="All">All</option>
-              {BRANCH_SCOPES.map((scope) => (
-                <option key={scope} value={scope}>
-                  {BRANCH_SCOPE_LABELS[scope]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Status</span>
-            <select
-              className={styles.filterSelect}
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as StatusFilter)
-              }
-            >
-              <option value="Active">Active only</option>
-              <option value="Inactive">Inactive only</option>
-              <option value="All">All</option>
-            </select>
-          </label>
-        </div>
+        <PromoFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          branchScopeFilter={branchScopeFilter}
+          onBranchScopeFilterChange={setBranchScopeFilter}
+          timingFilter={timingFilter}
+          onTimingFilterChange={setTimingFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+        />
 
         <button
           type="button"
@@ -571,73 +521,26 @@ export function AdminPromoConfigPage() {
               />
             </label>
 
-            <div
-              className={styles.segmentedControl}
-              role="radiogroup"
-              aria-label="Promo window type"
-            >
-              <button
-                type="button"
-                className={
-                  formKind === 'dateRange'
-                    ? styles.segmentButtonActive
-                    : styles.segmentButton
-                }
-                aria-pressed={formKind === 'dateRange'}
-                onClick={() => setFormKind('dateRange')}
-              >
-                Date range
-              </button>
-              <button
-                type="button"
-                className={
-                  formKind === 'condition'
-                    ? styles.segmentButtonActive
-                    : styles.segmentButton
-                }
-                aria-pressed={formKind === 'condition'}
-                onClick={() => setFormKind('condition')}
-              >
-                Condition-based
-              </button>
-            </div>
-
-            {formKind === 'dateRange' ? (
-              <>
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Start date</span>
-                  <input
-                    className={styles.input}
-                    type="date"
-                    value={formStartDate}
-                    onChange={(event) => setFormStartDate(event.target.value)}
-                    required
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>End date</span>
-                  <input
-                    className={styles.input}
-                    type="date"
-                    value={formEndDate}
-                    onChange={(event) => setFormEndDate(event.target.value)}
-                    required
-                  />
-                </label>
-              </>
-            ) : (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Condition note</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  placeholder="e.g. First booking of the month"
-                  value={formConditionNote}
-                  onChange={(event) => setFormConditionNote(event.target.value)}
-                  required
-                />
-              </label>
-            )}
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Start date</span>
+              <input
+                className={styles.input}
+                type="date"
+                value={formStartDate}
+                onChange={(event) => setFormStartDate(event.target.value)}
+                required
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>End date</span>
+              <input
+                className={styles.input}
+                type="date"
+                value={formEndDate}
+                onChange={(event) => setFormEndDate(event.target.value)}
+                required
+              />
+            </label>
 
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Scope</span>
@@ -680,12 +583,6 @@ export function AdminPromoConfigPage() {
               </select>
             </label>
 
-            <ToggleSwitch
-              checked={formIsExclusive}
-              onChange={setFormIsExclusive}
-              label="Cannot be combined with other promos"
-            />
-
             {formError ? (
               <p className={styles.errorBanner} role="alert">
                 {formError}
@@ -715,41 +612,16 @@ export function AdminPromoConfigPage() {
       {filteredPromos.length === 0 ? (
         <p className={styles.copy}>No promos match the selected filters.</p>
       ) : (
-        <ul className={styles.promoList}>
+        <div className={styles.promoGrid}>
           {filteredPromos.map((promo) => (
-            <li key={promo.id} className={styles.promoRow}>
-              <div className={styles.promoMain}>
-                <span className={styles.promoName}>{promo.name}</span>
-                <span className={styles.branchBadge}>
-                  {BRANCH_SCOPE_LABELS[promo.branch_scope]}
-                </span>
-                <span className={styles.promoMeta}>{formatValue(promo)}</span>
-                <span className={styles.promoMeta}>{formatWindow(promo)}</span>
-                {promo.is_exclusive ? (
-                  <span className={styles.exclusiveBadge}>Exclusive</span>
-                ) : null}
-                <StatusBadge isActive={promo.is_active} />
-              </div>
-
-              <div className={styles.promoControls}>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => openEditForm(promo)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void handleActiveToggle(promo)}
-                >
-                  {promo.is_active ? 'Deactivate' : 'Reactivate'}
-                </button>
-              </div>
-            </li>
+            <PromoCard
+              key={promo.id}
+              promo={promo}
+              onToggle={(isActive) => void handleActiveToggle(promo, isActive)}
+              onEdit={() => openEditForm(promo)}
+            />
           ))}
-        </ul>
+        </div>
       )}
     </main>
   );

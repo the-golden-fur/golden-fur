@@ -16,18 +16,12 @@ vi.mock('../../../staff/api/staff.api', () => ({
 }));
 
 vi.mock('../../api/maintenance.api', () => ({
-  listBranches: vi.fn(),
   listServices: vi.fn(),
   listPackages: vi.fn(),
   listPromos: vi.fn(),
   createPromo: vi.fn(),
   updatePromo: vi.fn(),
 }));
-
-const BRANCHES = [
-  { id: 'branch-makati', name: 'Makati' },
-  { id: 'branch-southwoods', name: 'Southwoods' },
-];
 
 function buildService(overrides: Partial<Service> = {}): Service {
   return {
@@ -74,7 +68,6 @@ function buildPromo(overrides: Partial<Promo> = {}): Promo {
     value: 15,
     scope_type: 'all_services',
     branch_scope: 'both',
-    is_exclusive: false,
     is_active: true,
     created_by: null,
     updated_by: null,
@@ -146,10 +139,6 @@ describe('AdminPromoConfigPage', () => {
       data: [buildViewer('Admin')],
       error: null,
     });
-    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
-      data: BRANCHES,
-      error: null,
-    });
     vi.mocked(maintenanceApi.listServices).mockResolvedValue({
       data: [buildService()],
       error: null,
@@ -176,16 +165,27 @@ describe('AdminPromoConfigPage', () => {
     expect(maintenanceApi.listPromos).not.toHaveBeenCalled();
   });
 
-  it('AC-1: renders each promo row with name, discount value, and date range', async () => {
+  it('renders each promo as a card, not a table row', async () => {
     renderPage();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('15% off')).toBeInTheDocument();
     expect(screen.getByText('2026-08-01 to 2026-08-31')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('AC-1: branch scope filter narrows the list without navigating', async () => {
+  it('the promo cap is not on this page anymore (moved to its own subpage)', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.queryByText('Promo Cap')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Cap value/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('branch scope filter narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         buildPromo(),
@@ -209,15 +209,67 @@ describe('AdminPromoConfigPage', () => {
     expect(screen.getByText('Makati Only Deal')).toBeInTheDocument();
   });
 
-  it('AC-3: toggling to condition-based hides the date inputs and saves a condition note', async () => {
+  it('search narrows the visible cards by name', async () => {
+    vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
+      data: [buildPromo(), buildPromo({ id: 'promo-2', name: 'Winter Deal' })],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.getByText('Winter Deal')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Search'), 'winter');
+
+    expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
+    expect(screen.getByText('Winter Deal')).toBeInTheDocument();
+  });
+
+  it('the timing filter narrows to Ended promos', async () => {
+    vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
+      data: [
+        buildPromo(),
+        buildPromo({
+          id: 'promo-2',
+          name: 'Old Deal',
+          start_date: '2020-01-01',
+          end_date: '2020-01-31',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.getByText('Old Deal')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Timing'), 'Ended');
+
+    expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
+    expect(screen.getByText('Old Deal')).toBeInTheDocument();
+  });
+
+  it('the create form has no condition-based option - only a date range', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New promo' }));
+
+    expect(screen.getByLabelText('Start date')).toBeInTheDocument();
+    expect(screen.getByLabelText('End date')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Condition-based' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Condition note')).not.toBeInTheDocument();
+  });
+
+  it('creates a date-bounded promo with no condition_note field in the payload', async () => {
     vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
-      data: buildPromo({
-        id: 'promo-new',
-        name: 'First Booking Deal',
-        start_date: null,
-        end_date: null,
-        condition_note: 'First booking of the month',
-      }),
+      data: buildPromo({ id: 'promo-new', name: 'Fall Deal' }),
       error: null,
     });
 
@@ -225,35 +277,23 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'New promo' }));
-
-    expect(screen.getByLabelText('Start date')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Condition-based' }));
-
-    expect(screen.queryByLabelText('Start date')).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText('Name'), 'First Booking Deal');
+    await user.type(screen.getByLabelText('Name'), 'Fall Deal');
     await user.type(screen.getByLabelText(/Discount value/), '10');
-    await user.type(
-      screen.getByLabelText('Condition note'),
-      'First booking of the month'
-    );
+    await user.type(screen.getByLabelText('Start date'), '2026-09-01');
+    await user.type(screen.getByLabelText('End date'), '2026-09-30');
     await user.click(screen.getByRole('button', { name: 'Save promo' }));
 
     await waitFor(() => {
-      expect(maintenanceApi.createPromo).toHaveBeenCalledWith(
-        'token',
-        expect.objectContaining({
-          name: 'First Booking Deal',
-          condition_note: 'First booking of the month',
-          scope_type: 'all_services',
-        })
-      );
+      expect(maintenanceApi.createPromo).toHaveBeenCalledWith('token', {
+        name: 'Fall Deal',
+        start_date: '2026-09-01',
+        end_date: '2026-09-30',
+        discount_type: 'Percentage',
+        value: 10,
+        scope_type: 'all_services',
+        branch_scope: 'both',
+      });
     });
-
-    const [, payload] = vi.mocked(maintenanceApi.createPromo).mock.calls[0];
-    expect(payload).not.toHaveProperty('start_date');
-    expect(payload).not.toHaveProperty('end_date');
 
     expect(await screen.findByText('Promo created.')).toBeInTheDocument();
   });
@@ -272,42 +312,7 @@ describe('AdminPromoConfigPage', () => {
     expect(screen.getByText('Golden Package')).toBeInTheDocument();
   });
 
-  it('AC-4: the exclusivity toggle saves and displays on the list view', async () => {
-    vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
-      data: buildPromo({
-        id: 'promo-new',
-        name: 'Exclusive Deal',
-        is_exclusive: true,
-      }),
-      error: null,
-    });
-
-    renderPage();
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByRole('button', { name: 'New promo' }));
-    await user.type(screen.getByLabelText('Name'), 'Exclusive Deal');
-    await user.type(screen.getByLabelText(/Discount value/), '20');
-    await user.type(screen.getByLabelText('Start date'), '2026-09-01');
-    await user.type(screen.getByLabelText('End date'), '2026-09-30');
-    await user.click(
-      screen.getByRole('switch', {
-        name: 'Cannot be combined with other promos',
-      })
-    );
-    await user.click(screen.getByRole('button', { name: 'Save promo' }));
-
-    await waitFor(() => {
-      expect(maintenanceApi.createPromo).toHaveBeenCalledWith(
-        'token',
-        expect.objectContaining({ is_exclusive: true })
-      );
-    });
-
-    expect(await screen.findByText('Exclusive')).toBeInTheDocument();
-  });
-
-  it('AC-2: editing an existing promo updates it in place', async () => {
+  it('editing an existing promo updates it in place and clears any legacy condition_note', async () => {
     vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
       data: buildPromo({ value: 25 }),
       error: null,
@@ -327,10 +332,44 @@ describe('AdminPromoConfigPage', () => {
       expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
         'promo-1',
         'token',
-        expect.objectContaining({ value: 25 })
+        expect.objectContaining({ value: 25, condition_note: null })
       );
     });
 
     expect(await screen.findByText('25% off')).toBeInTheDocument();
+  });
+
+  it('the status toggle activates/deactivates a promo without a full page reload', async () => {
+    vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
+      data: buildPromo({ is_active: false }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('switch', { name: 'Disable Summer Sale' })
+    );
+
+    await waitFor(() => {
+      expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
+        'promo-1',
+        'token',
+        { is_active: false }
+      );
+    });
+
+    // Default status filter is "Active only", so the card disappears...
+    await waitFor(() => {
+      expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
+    });
+
+    // ...and switching to Inactive shows it again with the Inactive badge.
+    await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
+    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+    expect(
+      screen.getByText('Inactive', { selector: 'span' })
+    ).toBeInTheDocument();
   });
 });
