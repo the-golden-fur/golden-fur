@@ -185,22 +185,30 @@ export function PromoCapConfigurationPage() {
 
       <div className={styles.grid}>
         <PromoCapCard
+          // Remounts (and re-seeds its local edit state) once the default
+          // cap resolves from undefined to a real row on initial load - see
+          // PromoCapCard's own comment for why this replaces a sync effect.
+          key={`default-${capConfigurations.find((config) => config.branch_id === null)?.id ?? 'unsaved'}`}
           scopeLabel="Both branches (system-wide default)"
           config={capConfigurations.find((config) => config.branch_id === null)}
           onSave={(input) => void handleSave(null, DEFAULT_SCOPE_KEY, input)}
           isSaving={savingScopeKey === DEFAULT_SCOPE_KEY}
         />
-        {branches.map((branch) => (
-          <PromoCapCard
-            key={branch.id}
-            scopeLabel={branch.name}
-            config={capConfigurations.find(
-              (config) => config.branch_id === branch.id
-            )}
-            onSave={(input) => void handleSave(branch.id, branch.id, input)}
-            isSaving={savingScopeKey === branch.id}
-          />
-        ))}
+        {branches.map((branch) => {
+          const config = capConfigurations.find(
+            (candidate) => candidate.branch_id === branch.id
+          );
+
+          return (
+            <PromoCapCard
+              key={`${branch.id}-${config?.id ?? 'unsaved'}`}
+              scopeLabel={branch.name}
+              config={config}
+              onSave={(input) => void handleSave(branch.id, branch.id, input)}
+              isSaving={savingScopeKey === branch.id}
+            />
+          );
+        })}
       </div>
     </main>
   );

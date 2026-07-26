@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { CapType, PromoCapConfiguration } from '../../maintenance.types';
 import styles from './PromoCapCard.module.css';
 
@@ -17,6 +17,16 @@ interface PromoCapCardProps {
  * not through a single form with a branch picker (the prior
  * PromoCapConfigForm design made it easy to edit one branch while believing
  * you were looking at another).
+ *
+ * Local state is seeded from `config` once, on mount, and never re-synced
+ * via an effect - syncing derived state from a prop inside a plain effect
+ * causes an extra render pass and is the exact anti-pattern
+ * react-hooks/set-state-in-effect flags. Instead, the parent gives each
+ * card a `key` that changes when `config` first resolves (e.g. from
+ * undefined to a real row once the initial fetch completes, or once a
+ * scope's first save creates its row) so React remounts this component
+ * with a fresh initial state rather than this component reacting to the
+ * prop change itself.
  */
 export function PromoCapCard({
   scopeLabel,
@@ -28,11 +38,6 @@ export function PromoCapCard({
     config?.cap_type ?? 'percentage'
   );
   const [capValue, setCapValue] = useState(String(config?.cap_value ?? 20));
-
-  useEffect(() => {
-    setCapType(config?.cap_type ?? 'percentage');
-    setCapValue(String(config?.cap_value ?? 20));
-  }, [config]);
 
   const handleSave = () => {
     const value = Number(capValue);
