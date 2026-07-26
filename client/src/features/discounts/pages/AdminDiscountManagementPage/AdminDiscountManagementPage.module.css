@@ -29,6 +29,13 @@
   gap: var(--space-3);
 }
 
+.discountGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+}
+
 .filterField {
   display: grid;
   gap: var(--space-0-5);
@@ -167,71 +174,6 @@
 
 .formActions {
   display: flex;
-  gap: var(--space-2);
-}
-
-.discountList {
-  display: grid;
-  gap: var(--space-2);
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-}
-
-.discountRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: var(--admin-table-row-min-height);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  transition:
-    transform 150ms ease,
-    box-shadow 150ms ease;
-}
-
-.discountRow:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-card);
-}
-
-.discountMain {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.discountName {
-  color: var(--color-text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-}
-
-.branchBadge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-pill);
-  background: var(--color-badge-bg-gold);
-  color: var(--color-text-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  padding: var(--space-0-5) var(--space-2);
-}
-
-.discountMeta {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.discountControls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-2);
 }
 

@@ -12,18 +12,22 @@ import type {
   Package,
   Service,
 } from '../../../maintenance/maintenance.types';
-import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
-import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import {
   createDiscount,
   listDiscounts,
   updateDiscount,
 } from '../../api/discounts.api';
+import { DiscountCard } from '../../components/DiscountCard/DiscountCard';
 import {
-  DISCOUNT_CATEGORIES,
-  type Discount,
-  type DiscountScopeType,
-  type DiscountValueType,
+  DiscountFilterBar,
+  type DiscountScopeTypeFilter,
+  type DiscountStatusFilter,
+} from '../../components/DiscountFilterBar/DiscountFilterBar';
+import { DiscountCategoryScopeSelect } from '../../components/DiscountCategoryScopeSelect/DiscountCategoryScopeSelect';
+import type {
+  Discount,
+  DiscountScopeType,
+  DiscountValueType,
 } from '../../discounts.types';
 import styles from './AdminDiscountManagementPage.module.css';
 
@@ -46,6 +50,10 @@ export function AdminDiscountManagementPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [branchFilter, setBranchFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [scopeTypeFilter, setScopeTypeFilter] =
+    useState<DiscountScopeTypeFilter>('All');
+  const [statusFilter, setStatusFilter] = useState<DiscountStatusFilter>('All');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDiscountId, setEditingDiscountId] = useState<string | null>(
@@ -148,12 +156,32 @@ export function AdminDiscountManagementPage() {
   );
 
   const filteredDiscounts = useMemo(() => {
-    if (branchFilter === 'All') {
-      return discounts;
-    }
+    const searchTerm = search.trim().toLowerCase();
 
-    return discounts.filter((discount) => discount.branch_id === branchFilter);
-  }, [discounts, branchFilter]);
+    return discounts.filter((discount) => {
+      if (branchFilter !== 'All' && discount.branch_id !== branchFilter) {
+        return false;
+      }
+
+      if (scopeTypeFilter !== 'All' && discount.scope_type !== scopeTypeFilter) {
+        return false;
+      }
+
+      if (statusFilter === 'Active' && !discount.is_active) {
+        return false;
+      }
+
+      if (statusFilter === 'Inactive' && discount.is_active) {
+        return false;
+      }
+
+      if (searchTerm && !discount.name.toLowerCase().includes(searchTerm)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [discounts, branchFilter, scopeTypeFilter, statusFilter, search]);
 
   const mandatedDiscounts = useMemo(
     () => filteredDiscounts.filter((discount) => discount.is_mandated),
@@ -357,11 +385,6 @@ export function AdminDiscountManagementPage() {
     return `Category: ${discount.scope_category ?? 'Unknown'}`;
   };
 
-  const formatValue = (discount: Discount): string =>
-    discount.discount_type === 'Percentage'
-      ? `${discount.value}%`
-      : `PHP ${discount.value.toFixed(2)}`;
-
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -402,60 +425,40 @@ export function AdminDiscountManagementPage() {
     );
   }
 
-  const renderDiscountRow = (discount: Discount) => (
-    <li key={discount.id} className={styles.discountRow}>
-      <div className={styles.discountMain}>
-        <span className={styles.discountName}>{discount.name}</span>
-        <span className={styles.branchBadge}>
-          {branchNameById.get(discount.branch_id) ??
-            `Branch ${discount.branch_id.slice(0, 8)}`}
-        </span>
-        <span className={styles.discountMeta}>{formatValue(discount)}</span>
-        <span className={styles.discountMeta}>{describeScope(discount)}</span>
-        <StatusBadge isActive={discount.is_active} />
-      </div>
-
-      <div className={styles.discountControls}>
-        <ToggleSwitch
-          label={`${discount.is_active ? 'Disable' : 'Enable'} ${discount.name}`}
-          checked={discount.is_active}
-          onChange={(isActive) => void handleActiveToggle(discount, isActive)}
-        />
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={() => openEditForm(discount)}
-        >
-          Edit
-        </button>
-      </div>
-    </li>
+  const renderDiscountCard = (discount: Discount) => (
+    <DiscountCard
+      key={discount.id}
+      discount={discount}
+      branchName={
+        branchNameById.get(discount.branch_id) ??
+        `Branch ${discount.branch_id.slice(0, 8)}`
+      }
+      scopeDescription={describeScope(discount)}
+      onToggle={(isActive) => void handleActiveToggle(discount, isActive)}
+      onEdit={() => openEditForm(discount)}
+    />
   );
 
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Discounts</h1>
       <p className={styles.copy}>
-        Discounts are switched off by default. Toggle a row to activate it for
-        checkout.
+        Discounts are switched off by default. Toggle a card to activate it
+        for checkout.
       </p>
 
       <div className={styles.toolbar}>
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Branch</span>
-          <select
-            className={styles.filterSelect}
-            value={branchFilter}
-            onChange={(event) => setBranchFilter(event.target.value)}
-          >
-            <option value="All">All branches</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <DiscountFilterBar
+          branches={branches}
+          branchFilter={branchFilter}
+          onBranchFilterChange={setBranchFilter}
+          search={search}
+          onSearchChange={setSearch}
+          scopeTypeFilter={scopeTypeFilter}
+          onScopeTypeFilterChange={setScopeTypeFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+        />
 
         <button
           type="button"
@@ -612,22 +615,10 @@ export function AdminDiscountManagementPage() {
             ) : null}
 
             {formScopeType === 'category' ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Category</span>
-                <select
-                  className={styles.input}
-                  value={formScopeCategory}
-                  onChange={(event) => setFormScopeCategory(event.target.value)}
-                  required
-                >
-                  <option value="">Select a category...</option>
-                  {DISCOUNT_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <DiscountCategoryScopeSelect
+                value={formScopeCategory}
+                onChange={setFormScopeCategory}
+              />
             ) : null}
 
             {formError ? (
@@ -662,11 +653,11 @@ export function AdminDiscountManagementPage() {
         </h2>
 
         {mandatedDiscounts.length === 0 ? (
-          <p className={styles.copy}>No mandated discounts for this branch.</p>
+          <p className={styles.copy}>No mandated discounts match the selected filters.</p>
         ) : (
-          <ul className={styles.discountList}>
-            {mandatedDiscounts.map(renderDiscountRow)}
-          </ul>
+          <div className={styles.discountGrid}>
+            {mandatedDiscounts.map(renderDiscountCard)}
+          </div>
         )}
       </section>
 
@@ -676,11 +667,11 @@ export function AdminDiscountManagementPage() {
         </h2>
 
         {customDiscounts.length === 0 ? (
-          <p className={styles.copy}>No custom discounts yet.</p>
+          <p className={styles.copy}>No custom discounts match the selected filters.</p>
         ) : (
-          <ul className={styles.discountList}>
-            {customDiscounts.map(renderDiscountRow)}
-          </ul>
+          <div className={styles.discountGrid}>
+            {customDiscounts.map(renderDiscountCard)}
+          </div>
         )}
       </section>
     </main>

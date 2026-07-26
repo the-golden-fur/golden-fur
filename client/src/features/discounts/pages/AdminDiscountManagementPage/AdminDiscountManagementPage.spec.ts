@@ -195,7 +195,9 @@ describe('AdminDiscountManagementPage', () => {
     expect(screen.getByText('PWD')).toBeInTheDocument();
     expect(screen.getAllByText('Inactive')).toHaveLength(2);
     expect(screen.getByText('Custom Discounts')).toBeInTheDocument();
-    expect(screen.getByText('No custom discounts yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No custom discounts match the selected filters.')
+    ).toBeInTheDocument();
   });
 
   it('AC-2: the enable/disable toggle activates a discount without a full page reload', async () => {
@@ -274,5 +276,77 @@ describe('AdminDiscountManagementPage', () => {
     );
 
     expect(screen.getByLabelText('Name')).toBeDisabled();
+  });
+
+  it('Epic B #85 AC-1: renders discounts as cards, not table rows', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('row')).toHaveLength(0);
+  });
+
+  it('#85 AC-2: search narrows the visible cards by name', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
+    expect(screen.getByText('PWD')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Search'), 'pwd');
+
+    expect(screen.queryByText('Senior Citizen')).not.toBeInTheDocument();
+    expect(screen.getByText('PWD')).toBeInTheDocument();
+  });
+
+  it('#85 AC-3: the scope-type filter narrows to Category', async () => {
+    vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [
+        buildDiscount(),
+        buildDiscount({
+          id: 'discount-3',
+          name: 'Custom Service Discount',
+          is_mandated: false,
+          scope_type: 'service',
+          scope_category: null,
+          scope_service_id: 'service-1',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
+    expect(screen.getByText('Custom Service Discount')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Scope type'), 'category');
+
+    expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Custom Service Discount')
+    ).not.toBeInTheDocument();
+  });
+
+  it('#85 AC-5: existing Service- and Package-scoped discounts still display and function', async () => {
+    vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [
+        buildDiscount({
+          id: 'discount-service',
+          name: 'Service Scoped',
+          is_mandated: false,
+          scope_type: 'service',
+          scope_category: null,
+          scope_service_id: 'service-1',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Service Scoped')).toBeInTheDocument();
+    expect(screen.getByText('Service: Bath')).toBeInTheDocument();
   });
 });
