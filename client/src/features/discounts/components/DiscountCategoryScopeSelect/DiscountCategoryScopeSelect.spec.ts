@@ -7,10 +7,15 @@ import { DiscountCategoryScopeSelect } from './DiscountCategoryScopeSelect';
 describe('DiscountCategoryScopeSelect', () => {
   it('#85: lists the four service categories', () => {
     render(
-      createElement(DiscountCategoryScopeSelect, { value: '', onChange: vi.fn() })
+      createElement(DiscountCategoryScopeSelect, {
+        value: '',
+        onChange: vi.fn(),
+      })
     );
 
-    expect(screen.getByRole('option', { name: 'Grooming' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Grooming' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Hotel' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Daycare' })).toBeInTheDocument();
     expect(
@@ -22,9 +27,7 @@ describe('DiscountCategoryScopeSelect', () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
 
-    render(
-      createElement(DiscountCategoryScopeSelect, { value: '', onChange })
-    );
+    render(createElement(DiscountCategoryScopeSelect, { value: '', onChange }));
 
     await user.selectOptions(screen.getByLabelText('Category'), 'Hotel');
 

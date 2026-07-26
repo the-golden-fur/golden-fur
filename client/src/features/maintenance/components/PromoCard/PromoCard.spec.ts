@@ -57,9 +57,7 @@ describe('PromoCard', () => {
       })
     );
 
-    expect(
-      screen.getByText('First booking of the month')
-    ).toBeInTheDocument();
+    expect(screen.getByText('First booking of the month')).toBeInTheDocument();
     expect(screen.getByText('Active now')).toBeInTheDocument();
   });
 

@@ -95,30 +95,33 @@ export function AdminPackageBuilderPage() {
       listServices(accessToken),
       listBranches(),
       getPackagePricingConfiguration(accessToken),
-    ]).then(([packagesResult, servicesResult, branchesResult, pricingResult]) => {
-      if (!isMounted) {
-        return;
+    ]).then(
+      ([packagesResult, servicesResult, branchesResult, pricingResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLoading(false);
+
+        if (packagesResult.error || !packagesResult.data) {
+          setLoadError(packagesResult.error ?? 'Could not load packages.');
+          return;
+        }
+
+        if (pricingResult.error || !pricingResult.data) {
+          setLoadError(
+            pricingResult.error ??
+              'Could not load package pricing configuration.'
+          );
+          return;
+        }
+
+        setPackages(packagesResult.data);
+        setServices(servicesResult.data ?? []);
+        setBranches(branchesResult.data ?? []);
+        setPackagePricingConfiguration(pricingResult.data);
       }
-
-      setIsLoading(false);
-
-      if (packagesResult.error || !packagesResult.data) {
-        setLoadError(packagesResult.error ?? 'Could not load packages.');
-        return;
-      }
-
-      if (pricingResult.error || !pricingResult.data) {
-        setLoadError(
-          pricingResult.error ?? 'Could not load package pricing configuration.'
-        );
-        return;
-      }
-
-      setPackages(packagesResult.data);
-      setServices(servicesResult.data ?? []);
-      setBranches(branchesResult.data ?? []);
-      setPackagePricingConfiguration(pricingResult.data);
-    });
+    );
 
     return () => {
       isMounted = false;

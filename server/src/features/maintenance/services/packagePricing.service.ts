@@ -25,7 +25,8 @@ export async function getPackagePricingConfiguration(): Promise<PackagePricingCo
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
-  if (!data) throwWithStatus(500, 'Package pricing configuration is not seeded');
+  if (!data)
+    throwWithStatus(500, 'Package pricing configuration is not seeded');
 
   return data as PackagePricingConfiguration;
 }

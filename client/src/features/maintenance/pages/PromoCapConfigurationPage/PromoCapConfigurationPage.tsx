@@ -116,7 +116,9 @@ export function PromoCapConfigurationPage() {
 
     const saved = result.data;
     setCapConfigurations((prev) => {
-      const exists = prev.some((config) => config.branch_id === saved.branch_id);
+      const exists = prev.some(
+        (config) => config.branch_id === saved.branch_id
+      );
       return exists
         ? prev.map((config) =>
             config.branch_id === saved.branch_id ? saved : config
@@ -172,8 +174,7 @@ export function PromoCapConfigurationPage() {
       <p className={styles.copy}>
         Maximum total discount value that all combined, customer-activated
         promos may contribute to one transaction. Each branch (and the
-        system-wide default) has its own cap, viewed and saved
-        independently.
+        system-wide default) has its own cap, viewed and saved independently.
       </p>
 
       {message ? (
@@ -186,9 +187,7 @@ export function PromoCapConfigurationPage() {
         <PromoCapCard
           scopeLabel="Both branches (system-wide default)"
           config={capConfigurations.find((config) => config.branch_id === null)}
-          onSave={(input) =>
-            void handleSave(null, DEFAULT_SCOPE_KEY, input)
-          }
+          onSave={(input) => void handleSave(null, DEFAULT_SCOPE_KEY, input)}
           isSaving={savingScopeKey === DEFAULT_SCOPE_KEY}
         />
         {branches.map((branch) => (

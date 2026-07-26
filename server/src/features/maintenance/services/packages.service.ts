@@ -37,10 +37,14 @@ function throwWithStatus(statusCode: number, message: string): never {
  */
 function attachBundledPrice(
   pkg: RawPackage,
-  pricingConfiguration: Awaited<ReturnType<typeof getPackagePricingConfiguration>>
+  pricingConfiguration: Awaited<
+    ReturnType<typeof getPackagePricingConfiguration>
+  >
 ): Package {
   const links = pkg.package_services ?? [];
-  const basePrices = links.map((link) => Number(link.services?.base_price ?? 0));
+  const basePrices = links.map((link) =>
+    Number(link.services?.base_price ?? 0)
+  );
 
   return {
     ...pkg,

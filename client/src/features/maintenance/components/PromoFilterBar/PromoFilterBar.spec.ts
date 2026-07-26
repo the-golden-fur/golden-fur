@@ -4,7 +4,9 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PromoFilterBar } from './PromoFilterBar';
 
-function renderBar(overrides: Partial<Parameters<typeof PromoFilterBar>[0]> = {}) {
+function renderBar(
+  overrides: Partial<Parameters<typeof PromoFilterBar>[0]> = {}
+) {
   return render(
     createElement(PromoFilterBar, {
       search: '',

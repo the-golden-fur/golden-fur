@@ -13,10 +13,7 @@ export interface GroomingMatrixCell {
 const WEIGHT_CLASSES: WeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPES: CoatType[] = ['SC', 'LC'];
 
-const SIZE_MULTIPLIER_FIELD: Record<
-  WeightClass,
-  keyof PricingConfiguration
-> = {
+const SIZE_MULTIPLIER_FIELD: Record<WeightClass, keyof PricingConfiguration> = {
   S: 'size_s_multiplier',
   M: 'size_m_multiplier',
   L: 'size_l_multiplier',

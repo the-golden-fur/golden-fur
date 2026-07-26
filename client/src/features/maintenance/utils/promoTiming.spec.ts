@@ -32,14 +32,14 @@ describe('getPromoTiming', () => {
   });
 
   it('classifies a window starting/ending exactly today as Active', () => {
-    expect(
-      getPromoTiming({ start_date: TODAY, end_date: TODAY }, TODAY)
-    ).toBe('Active');
+    expect(getPromoTiming({ start_date: TODAY, end_date: TODAY }, TODAY)).toBe(
+      'Active'
+    );
   });
 
   it('classifies a promo with no window (condition-based) as Active', () => {
-    expect(
-      getPromoTiming({ start_date: null, end_date: null }, TODAY)
-    ).toBe('Active');
+    expect(getPromoTiming({ start_date: null, end_date: null }, TODAY)).toBe(
+      'Active'
+    );
   });
 });

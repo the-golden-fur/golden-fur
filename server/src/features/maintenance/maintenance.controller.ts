@@ -451,9 +451,7 @@ export async function updatePackagePricingConfigurationController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const parsed = updatePackagePricingConfigurationValidator.safeParse(
-    req.body
-  );
+  const parsed = updatePackagePricingConfigurationValidator.safeParse(req.body);
 
   if (!parsed.success) {
     return res

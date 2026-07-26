@@ -50,7 +50,12 @@ describe('promoCap.service', () => {
       queueFromResults({
         data: [
           DEFAULT_CAP,
-          { id: 'cap-makati', branch_id: 'branch-makati', cap_type: 'flat', cap_value: 100 },
+          {
+            id: 'cap-makati',
+            branch_id: 'branch-makati',
+            cap_type: 'flat',
+            cap_value: 100,
+          },
         ],
         error: null,
       });

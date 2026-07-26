@@ -53,7 +53,13 @@ function buildService(overrides: Partial<Service> = {}): Service {
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
     service_pricing_tiers: [
-      { id: 'service-1:S:SC', service_id: 'service-1', weight_class: 'S', coat_type: 'SC', price: 300 },
+      {
+        id: 'service-1:S:SC',
+        service_id: 'service-1',
+        weight_class: 'S',
+        coat_type: 'SC',
+        price: 300,
+      },
     ],
     service_branch_availability: [
       {
@@ -243,7 +249,9 @@ describe('AdminServicesPage', () => {
     );
 
     expect(
-      screen.getByText('Size & coat pricing matrix (Grooming) - derived, read-only')
+      screen.getByText(
+        'Size & coat pricing matrix (Grooming) - derived, read-only'
+      )
     ).toBeInTheDocument();
 
     // Two "Category" controls exist once the form is open (the list filter
@@ -251,7 +259,9 @@ describe('AdminServicesPage', () => {
     await user.selectOptions(screen.getAllByLabelText('Category')[1], 'Hotel');
 
     expect(
-      screen.queryByText('Size & coat pricing matrix (Grooming) - derived, read-only')
+      screen.queryByText(
+        'Size & coat pricing matrix (Grooming) - derived, read-only'
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -335,8 +345,9 @@ describe('AdminServicesPage', () => {
     expect(
       screen.getByText('Inactive', { selector: 'span' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: 'Enable Bath' })
-    ).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Enable Bath' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
   });
 });

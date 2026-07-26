@@ -62,7 +62,10 @@ describe('packagePricing.service', () => {
     it('#83: updates the shared bundle discount percentage', async () => {
       queueFromResults(
         { data: CONFIGURATION, error: null }, // existing
-        { data: { ...CONFIGURATION, bundle_discount_percentage: 0.2 }, error: null }
+        {
+          data: { ...CONFIGURATION, bundle_discount_percentage: 0.2 },
+          error: null,
+        }
       );
 
       const result = await updatePackagePricingConfiguration({

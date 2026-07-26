@@ -163,7 +163,10 @@ export function AdminDiscountManagementPage() {
         return false;
       }
 
-      if (scopeTypeFilter !== 'All' && discount.scope_type !== scopeTypeFilter) {
+      if (
+        scopeTypeFilter !== 'All' &&
+        discount.scope_type !== scopeTypeFilter
+      ) {
         return false;
       }
 
@@ -443,8 +446,8 @@ export function AdminDiscountManagementPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>Discounts</h1>
       <p className={styles.copy}>
-        Discounts are switched off by default. Toggle a card to activate it
-        for checkout.
+        Discounts are switched off by default. Toggle a card to activate it for
+        checkout.
       </p>
 
       <div className={styles.toolbar}>
@@ -653,7 +656,9 @@ export function AdminDiscountManagementPage() {
         </h2>
 
         {mandatedDiscounts.length === 0 ? (
-          <p className={styles.copy}>No mandated discounts match the selected filters.</p>
+          <p className={styles.copy}>
+            No mandated discounts match the selected filters.
+          </p>
         ) : (
           <div className={styles.discountGrid}>
             {mandatedDiscounts.map(renderDiscountCard)}
@@ -667,7 +672,9 @@ export function AdminDiscountManagementPage() {
         </h2>
 
         {customDiscounts.length === 0 ? (
-          <p className={styles.copy}>No custom discounts match the selected filters.</p>
+          <p className={styles.copy}>
+            No custom discounts match the selected filters.
+          </p>
         ) : (
           <div className={styles.discountGrid}>
             {customDiscounts.map(renderDiscountCard)}

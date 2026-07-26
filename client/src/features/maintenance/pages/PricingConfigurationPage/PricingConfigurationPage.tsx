@@ -43,9 +43,8 @@ export function PricingConfigurationPage() {
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
-  const [configuration, setConfiguration] = useState<PricingConfiguration | null>(
-    null
-  );
+  const [configuration, setConfiguration] =
+    useState<PricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -145,7 +144,9 @@ export function PricingConfigurationPage() {
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(result.error ?? 'Could not update the pricing configuration.');
+      setFormError(
+        result.error ?? 'Could not update the pricing configuration.'
+      );
       return;
     }
 
@@ -329,9 +330,12 @@ export function PricingConfigurationPage() {
           basePrice={Number(previewBasePrice) || 0}
           configuration={{
             ...configuration,
-            size_s_multiplier: Number(form.sizeS) || configuration.size_s_multiplier,
-            size_m_multiplier: Number(form.sizeM) || configuration.size_m_multiplier,
-            size_l_multiplier: Number(form.sizeL) || configuration.size_l_multiplier,
+            size_s_multiplier:
+              Number(form.sizeS) || configuration.size_s_multiplier,
+            size_m_multiplier:
+              Number(form.sizeM) || configuration.size_m_multiplier,
+            size_l_multiplier:
+              Number(form.sizeL) || configuration.size_l_multiplier,
             size_xl_multiplier:
               Number(form.sizeXl) || configuration.size_xl_multiplier,
             long_coat_addon:

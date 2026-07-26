@@ -178,7 +178,10 @@ export function AdminPromoConfigPage() {
     const searchTerm = search.trim().toLowerCase();
 
     return promos.filter((promo) => {
-      if (branchScopeFilter !== 'All' && promo.branch_scope !== branchScopeFilter) {
+      if (
+        branchScopeFilter !== 'All' &&
+        promo.branch_scope !== branchScopeFilter
+      ) {
         return false;
       }
 

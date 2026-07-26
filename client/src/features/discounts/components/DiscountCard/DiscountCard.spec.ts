@@ -36,7 +36,9 @@ describe('DiscountCard', () => {
     );
 
     expect(screen.getByText('Senior Citizen Discount')).toBeInTheDocument();
-    expect(screen.getByText('Category', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Category', { selector: 'span' })
+    ).toBeInTheDocument();
     expect(screen.getByText('20%')).toBeInTheDocument();
     expect(screen.getByText('Category: Grooming')).toBeInTheDocument();
     expect(screen.getByText('Inactive')).toBeInTheDocument();

@@ -18,7 +18,10 @@ export function deriveBundledPrice(
   includedServiceBasePrices: number[],
   config: PackagePricingConfiguration
 ): number {
-  const sum = includedServiceBasePrices.reduce((total, price) => total + price, 0);
+  const sum = includedServiceBasePrices.reduce(
+    (total, price) => total + price,
+    0
+  );
 
   return round2(sum * (1 - config.bundle_discount_percentage));
 }

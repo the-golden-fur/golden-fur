@@ -155,7 +155,9 @@ describe('PromoCapConfigurationPage', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Makati');
-    const makatiCard = screen.getByText('Makati').closest('article') as HTMLElement;
+    const makatiCard = screen
+      .getByText('Makati')
+      .closest('article') as HTMLElement;
     const valueInput = within(makatiCard).getByLabelText('Cap value (PHP)');
     await user.clear(valueInput);
     await user.type(valueInput, '300');

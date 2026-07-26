@@ -347,12 +347,15 @@ describe('AdminPackageBuilderPage', () => {
   });
 
   it('#83: editing the bundle discount % saves via package_pricing_configuration', async () => {
-    vi.mocked(maintenanceApi.updatePackagePricingConfiguration).mockResolvedValue(
-      {
-        data: { ...PACKAGE_PRICING_CONFIGURATION, bundle_discount_percentage: 0.2 },
-        error: null,
-      }
-    );
+    vi.mocked(
+      maintenanceApi.updatePackagePricingConfiguration
+    ).mockResolvedValue({
+      data: {
+        ...PACKAGE_PRICING_CONFIGURATION,
+        bundle_discount_percentage: 0.2,
+      },
+      error: null,
+    });
 
     renderPage();
     const user = userEvent.setup();

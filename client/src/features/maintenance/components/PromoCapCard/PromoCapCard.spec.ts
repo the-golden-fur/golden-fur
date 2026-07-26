@@ -26,9 +26,7 @@ describe('PromoCapCard', () => {
 
     expect(screen.getByText('Makati')).toBeInTheDocument();
     expect(screen.getByLabelText('Cap value (PHP)')).toHaveValue(150);
-    expect(
-      screen.queryByText(/No cap saved yet/)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/No cap saved yet/)).not.toBeInTheDocument();
   });
 
   it('shows the default values and an empty-state note when no cap is saved yet', () => {

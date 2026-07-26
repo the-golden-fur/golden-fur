@@ -337,9 +337,12 @@ export async function updatePromo(
 export async function getPricingConfiguration(
   accessToken: string
 ): Promise<MaintenanceApiResult<PricingConfiguration>> {
-  const response = await fetch(`${API_BASE_URL}/maintenance/pricing-configuration`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pricing-configuration`,
+    {
+      headers: authHeaders(accessToken),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -355,11 +358,14 @@ export async function updatePricingConfiguration(
   accessToken: string,
   payload: UpdatePricingConfigurationPayload
 ): Promise<MaintenanceApiResult<PricingConfiguration>> {
-  const response = await fetch(`${API_BASE_URL}/maintenance/pricing-configuration`, {
-    method: 'PATCH',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pricing-configuration`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -384,9 +390,9 @@ export async function getPackagePricingConfiguration(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ configuration: PackagePricingConfiguration }>(
-    response
-  );
+  const result = await parseBody<{
+    configuration: PackagePricingConfiguration;
+  }>(response);
   return { data: result.data?.configuration ?? null, error: result.error };
 }
 
@@ -407,9 +413,9 @@ export async function updatePackagePricingConfiguration(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ configuration: PackagePricingConfiguration }>(
-    response
-  );
+  const result = await parseBody<{
+    configuration: PackagePricingConfiguration;
+  }>(response);
   return { data: result.data?.configuration ?? null, error: result.error };
 }
 

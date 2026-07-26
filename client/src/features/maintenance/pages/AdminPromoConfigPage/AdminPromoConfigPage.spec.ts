@@ -180,9 +180,7 @@ describe('AdminPromoConfigPage', () => {
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.queryByText('Promo Cap')).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(/Cap value/)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Cap value/)).not.toBeInTheDocument();
   });
 
   it('branch scope filter narrows the list without navigating', async () => {

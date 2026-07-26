@@ -45,7 +45,9 @@ export async function upsertPromoCapConfiguration({
   const branchId = input.branch_id ?? null;
 
   let lookup = supabase.from('promo_cap_configuration').select('id');
-  lookup = branchId ? lookup.eq('branch_id', branchId) : lookup.is('branch_id', null);
+  lookup = branchId
+    ? lookup.eq('branch_id', branchId)
+    : lookup.is('branch_id', null);
 
   const { data: existing, error: lookupError } = await lookup.maybeSingle();
 
@@ -82,7 +84,10 @@ export async function upsertPromoCapConfiguration({
     .maybeSingle();
 
   if (error || !data) {
-    throwWithStatus(400, error?.message ?? 'Failed to create promo cap configuration');
+    throwWithStatus(
+      400,
+      error?.message ?? 'Failed to create promo cap configuration'
+    );
   }
 
   return data as PromoCapConfiguration;

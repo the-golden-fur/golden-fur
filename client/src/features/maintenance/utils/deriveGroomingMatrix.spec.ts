@@ -19,16 +19,19 @@ describe('deriveGroomingMatrix', () => {
 
     expect(matrix).toHaveLength(8);
     expect(
-      matrix.find((cell) => cell.weight_class === 'S' && cell.coat_type === 'SC')
-        ?.price
+      matrix.find(
+        (cell) => cell.weight_class === 'S' && cell.coat_type === 'SC'
+      )?.price
     ).toBe(300);
     expect(
-      matrix.find((cell) => cell.weight_class === 'S' && cell.coat_type === 'LC')
-        ?.price
+      matrix.find(
+        (cell) => cell.weight_class === 'S' && cell.coat_type === 'LC'
+      )?.price
     ).toBe(350);
     expect(
-      matrix.find((cell) => cell.weight_class === 'XL' && cell.coat_type === 'LC')
-        ?.price
+      matrix.find(
+        (cell) => cell.weight_class === 'XL' && cell.coat_type === 'LC'
+      )?.price
     ).toBe(500);
   });
 
@@ -36,12 +39,14 @@ describe('deriveGroomingMatrix', () => {
     const matrix = deriveGroomingMatrix(0, CONFIG);
 
     expect(
-      matrix.find((cell) => cell.weight_class === 'S' && cell.coat_type === 'SC')
-        ?.price
+      matrix.find(
+        (cell) => cell.weight_class === 'S' && cell.coat_type === 'SC'
+      )?.price
     ).toBe(0);
     expect(
-      matrix.find((cell) => cell.weight_class === 'S' && cell.coat_type === 'LC')
-        ?.price
+      matrix.find(
+        (cell) => cell.weight_class === 'S' && cell.coat_type === 'LC'
+      )?.price
     ).toBe(50);
   });
 });

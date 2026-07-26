@@ -24,7 +24,9 @@ export function PromoCapCard({
   onSave,
   isSaving = false,
 }: PromoCapCardProps) {
-  const [capType, setCapType] = useState<CapType>(config?.cap_type ?? 'percentage');
+  const [capType, setCapType] = useState<CapType>(
+    config?.cap_type ?? 'percentage'
+  );
   const [capValue, setCapValue] = useState(String(config?.cap_value ?? 20));
 
   useEffect(() => {

@@ -4,11 +4,11 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { DiscountFilterBar } from './DiscountFilterBar';
 
-const BRANCHES = [
-  { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
-];
+const BRANCHES = [{ id: 'branch-makati', name: 'Makati', is_vet_branch: true }];
 
-function renderBar(overrides: Partial<Parameters<typeof DiscountFilterBar>[0]> = {}) {
+function renderBar(
+  overrides: Partial<Parameters<typeof DiscountFilterBar>[0]> = {}
+) {
   return render(
     createElement(DiscountFilterBar, {
       branches: BRANCHES,

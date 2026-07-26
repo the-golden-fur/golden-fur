@@ -64,7 +64,11 @@ export function PromoCard({ promo, onToggle, onEdit }: PromoCardProps) {
           checked={promo.is_active}
           onChange={onToggle}
         />
-        <button type="button" className={styles.secondaryButton} onClick={onEdit}>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={onEdit}
+        >
           Edit
         </button>
       </div>

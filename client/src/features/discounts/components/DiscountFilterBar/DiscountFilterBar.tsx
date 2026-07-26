@@ -67,7 +67,9 @@ export function DiscountFilterBar({
           className={styles.filterSelect}
           value={scopeTypeFilter}
           onChange={(event) =>
-            onScopeTypeFilterChange(event.target.value as DiscountScopeTypeFilter)
+            onScopeTypeFilterChange(
+              event.target.value as DiscountScopeTypeFilter
+            )
           }
         >
           <option value="All">All scopes</option>

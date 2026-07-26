@@ -20,13 +20,19 @@ describe('deriveBundledPrice', () => {
 
   it('a 0% discount returns the exact sum', () => {
     expect(
-      deriveBundledPrice([300, 200], { ...CONFIG, bundle_discount_percentage: 0 })
+      deriveBundledPrice([300, 200], {
+        ...CONFIG,
+        bundle_discount_percentage: 0,
+      })
     ).toBe(500);
   });
 
   it('rounds to 2 decimal places', () => {
     expect(
-      deriveBundledPrice([99.99, 50], { ...CONFIG, bundle_discount_percentage: 0.15 })
+      deriveBundledPrice([99.99, 50], {
+        ...CONFIG,
+        bundle_discount_percentage: 0.15,
+      })
     ).toBe(127.49);
   });
 });

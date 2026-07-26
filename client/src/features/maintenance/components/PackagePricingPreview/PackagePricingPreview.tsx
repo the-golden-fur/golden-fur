@@ -43,7 +43,10 @@ export function PackagePricingPreview({
   };
 
   return (
-    <section className={styles.preview} aria-labelledby="package-pricing-heading">
+    <section
+      className={styles.preview}
+      aria-labelledby="package-pricing-heading"
+    >
       <h3 className={styles.heading} id="package-pricing-heading">
         Bundled price (derived, read-only)
       </h3>
@@ -55,7 +58,9 @@ export function PackagePricingPreview({
       ) : (
         <p className={styles.price}>
           PHP{' '}
-          {deriveBundledPrice(includedServiceBasePrices, configuration).toFixed(2)}
+          {deriveBundledPrice(includedServiceBasePrices, configuration).toFixed(
+            2
+          )}
         </p>
       )}
 

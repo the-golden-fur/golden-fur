@@ -1,4 +1,7 @@
-import { DISCOUNT_CATEGORIES, type DiscountCategory } from '../../discounts.types';
+import {
+  DISCOUNT_CATEGORIES,
+  type DiscountCategory,
+} from '../../discounts.types';
 import styles from './DiscountCategoryScopeSelect.module.css';
 
 interface DiscountCategoryScopeSelectProps {
