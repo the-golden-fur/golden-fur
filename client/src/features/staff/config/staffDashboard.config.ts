@@ -70,8 +70,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       },
       {
         title: 'Services',
-        description: 'Manage the service catalog and pricing tiers.',
+        description: 'Manage the service catalog.',
         to: '/staff/admin/maintenance/services',
+      },
+      {
+        title: 'Pricing Configuration',
+        description: 'Set the shared grooming size/coat pricing calculation.',
+        to: '/staff/admin/maintenance/pricing-configuration',
       },
       {
         title: 'Packages',
@@ -80,8 +85,14 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       },
       {
         title: 'Promos',
-        description: 'Configure time- or condition-limited promotions.',
+        description: 'Configure time-limited promotions.',
         to: '/staff/admin/maintenance/promos',
+      },
+      {
+        title: 'Promo Cap Configuration',
+        description:
+          'Set the per-branch and system-wide cap on combined promo discounts.',
+        to: '/staff/admin/maintenance/promo-cap-configuration',
       },
       {
         title: 'Breed Management',
