@@ -151,6 +151,17 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         error: null,
       }, // pet ownership
       { data: DAYCARE_SERVICE, error: null }, // getServiceById
+      {
+        data: {
+          id: 'pricing-config-1',
+          size_s_multiplier: 1,
+          size_m_multiplier: 1.1,
+          size_l_multiplier: 1.25,
+          size_xl_multiplier: 1.5,
+          long_coat_addon: 0,
+        },
+        error: null,
+      }, // pricing configuration (getServiceById always reads it, Epic B #80)
       { data: [], error: null }, // daycare capacity overlap - empty
       { data: PENDING_BOOKING, error: null }, // insert
       { data: PENDING_BOOKING, error: null } // final fetch

@@ -4,13 +4,49 @@ import type {
   CreatePackageInput,
   UpdatePackageInput,
 } from '../modules/validators/maintenance.validator.ts';
+import { getPackagePricingConfiguration } from './packagePricing.service.ts';
+import { deriveBundledPrice } from '../utils/deriveBundledPrice.ts';
 
-const PACKAGE_SELECT = '*, package_services(service_id)';
+// Epic B (#82/#83): pulls each included service's base_price in the same
+// query so bundled_price can be derived without an N+1 follow-up lookup.
+const PACKAGE_SELECT = '*, package_services(service_id, services(base_price))';
+
+interface RawPackageServiceLink {
+  service_id: string;
+  services: { base_price: number } | null;
+}
+
+/** The shape PACKAGE_SELECT actually returns - packages no longer has a
+ * bundled_price column, and package_services carries the nested service join
+ * used to derive it. */
+type RawPackage = Omit<Package, 'bundled_price' | 'package_services'> & {
+  package_services?: RawPackageServiceLink[];
+};
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
+}
+
+/**
+ * Epic B (#83): bundled_price is derived from the included services'
+ * base_price and package_pricing_configuration, not a stored column. The
+ * nested services(base_price) join is stripped back down to the
+ * { service_id } shape existing consumers expect on package_services.
+ */
+function attachBundledPrice(
+  pkg: RawPackage,
+  pricingConfiguration: Awaited<ReturnType<typeof getPackagePricingConfiguration>>
+): Package {
+  const links = pkg.package_services ?? [];
+  const basePrices = links.map((link) => Number(link.services?.base_price ?? 0));
+
+  return {
+    ...pkg,
+    bundled_price: deriveBundledPrice(basePrices, pricingConfiguration),
+    package_services: links.map((link) => ({ service_id: link.service_id })),
+  };
 }
 
 interface ListPackagesParams {
@@ -75,7 +111,11 @@ export async function listPackages({
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as Package[];
+  const pricingConfiguration = await getPackagePricingConfiguration();
+
+  return ((data ?? []) as RawPackage[]).map((pkg) =>
+    attachBundledPrice(pkg, pricingConfiguration)
+  );
 }
 
 export async function getPackageById(packageId: string): Promise<Package> {
@@ -88,14 +128,16 @@ export async function getPackageById(packageId: string): Promise<Package> {
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Package not found');
 
-  return data as Package;
+  const pricingConfiguration = await getPackagePricingConfiguration();
+
+  return attachBundledPrice(data as RawPackage, pricingConfiguration);
 }
 
 /**
  * A package is always scoped to exactly one branch (MA22) - branch_id is a
  * required create field, and "the same" package at both branches means two
- * rows. bundled_price is stored independently of the sum of the included
- * services' prices (#41 AC-2) - no validation ties the two together.
+ * rows. Epic B (#83): bundled_price is no longer accepted as input - it is
+ * derived from the included services' base_price on read.
  */
 export async function createPackage({
   requesterId,
@@ -132,8 +174,8 @@ export async function createPackage({
 }
 
 /**
- * PATCH per #41 AC-3: name/price/active status edits, and service_ids as a
- * full replacement of the included-services set when provided.
+ * PATCH per #41 AC-3: name/active status edits, and service_ids as a full
+ * replacement of the included-services set when provided.
  */
 export async function updatePackage({
   requesterId,

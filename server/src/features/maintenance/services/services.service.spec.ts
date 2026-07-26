@@ -40,13 +40,21 @@ function queueFromResults(...results: QueryResult[]) {
   });
 }
 
+const PRICING_CONFIGURATION = {
+  id: 'pricing-config-1',
+  size_s_multiplier: 1,
+  size_m_multiplier: 1.1,
+  size_l_multiplier: 1.25,
+  size_xl_multiplier: 1.5,
+  long_coat_addon: 50,
+};
+
 const GROOMING_SERVICE = {
   id: 'service-1',
   category: 'Grooming',
   name: 'Bath',
   base_price: 300,
   is_active: true,
-  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 300 }],
   service_branch_availability: [
     { service_id: 'service-1', branch_id: 'branch-makati', is_available: true },
     { service_id: 'service-1', branch_id: 'branch-south', is_available: false },
@@ -59,30 +67,24 @@ describe('services.service', () => {
   });
 
   describe('createService', () => {
-    it('AC-1: creates a Grooming service with tiers and both-branch availability in one call', async () => {
+    it('AC-1: creates a service and both-branch availability in one call', async () => {
       queueFromResults(
         { data: { id: 'service-1' }, error: null }, // insert service
-        { data: null, error: null }, // insert tiers
         {
           data: [{ id: 'branch-makati' }, { id: 'branch-south' }],
           error: null,
         }, // branches
         { data: null, error: null }, // insert availability
-        { data: GROOMING_SERVICE, error: null } // final fetch
+        { data: GROOMING_SERVICE, error: null }, // final fetch (getServiceById)
+        { data: PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const result = await createService({
         requesterId: 'admin-1',
-        input: {
-          name: 'Bath',
-          category: 'Grooming',
-          base_price: 300,
-          pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 300 }],
-        },
+        input: { name: 'Bath', category: 'Grooming', base_price: 300 },
       });
 
       expect(result.id).toBe('service-1');
-      expect(supabase.from).toHaveBeenCalledWith('service_pricing_tiers');
       expect(supabase.from).toHaveBeenCalledWith('service_branch_availability');
     });
 
@@ -99,49 +101,29 @@ describe('services.service', () => {
   });
 
   describe('updateService', () => {
-    it('AC-2: upserts individual pricing tiers without the full set', async () => {
+    it('AC-2: updates editable fields', async () => {
       queueFromResults(
-        { data: { id: 'service-1', category: 'Grooming' }, error: null },
-        { data: null, error: null }, // tier upsert
-        { data: GROOMING_SERVICE, error: null }
+        { data: { id: 'service-1', category: 'Grooming' }, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: GROOMING_SERVICE, error: null }, // final fetch
+        { data: PRICING_CONFIGURATION, error: null } // pricing configuration
       );
 
       const result = await updateService({
         requesterId: 'admin-1',
         serviceId: 'service-1',
-        updates: {
-          pricing_tiers: [{ weight_class: 'M', coat_type: 'LC', price: 450 }],
-        },
+        updates: { base_price: 350 },
       });
 
       expect(result.id).toBe('service-1');
-    });
-
-    it('rejects a tier upsert for a non-Grooming service with 400 (#40 Dev Notes)', async () => {
-      queueFromResults({
-        data: { id: 'service-2', category: 'Veterinary' },
-        error: null,
-      });
-
-      await expect(
-        updateService({
-          requesterId: 'admin-1',
-          serviceId: 'service-2',
-          updates: {
-            pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 100 }],
-          },
-        })
-      ).rejects.toMatchObject({ statusCode: 400 });
     });
 
     it('AC-3: soft-deletes via is_active = false (no hard DELETE path exists)', async () => {
       queueFromResults(
         { data: { id: 'service-1', category: 'Grooming' }, error: null },
         { data: null, error: null }, // update
-        {
-          data: { ...GROOMING_SERVICE, is_active: false },
-          error: null,
-        }
+        { data: { ...GROOMING_SERVICE, is_active: false }, error: null },
+        { data: PRICING_CONFIGURATION, error: null }
       );
 
       const result = await updateService({
@@ -167,21 +149,51 @@ describe('services.service', () => {
   });
 
   describe('listServices', () => {
-    it('AC-3: filters to active services by default', async () => {
-      queueFromResults({ data: [GROOMING_SERVICE], error: null });
+    it('AC-3: filters to active services by default, derives the Grooming matrix', async () => {
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
 
       const result = await listServices({});
 
       expect(result).toHaveLength(1);
+      expect(result[0].service_pricing_tiers).toHaveLength(8);
+      const smallShortCoat = result[0].service_pricing_tiers?.find(
+        (tier) => tier.weight_class === 'S' && tier.coat_type === 'SC'
+      );
+      expect(smallShortCoat?.price).toBe(300);
+      const smallLongCoat = result[0].service_pricing_tiers?.find(
+        (tier) => tier.weight_class === 'S' && tier.coat_type === 'LC'
+      );
+      expect(smallLongCoat?.price).toBe(350);
+    });
+
+    it('returns an empty matrix for non-Grooming services', async () => {
+      const vetService = { ...GROOMING_SERVICE, category: 'Veterinary' };
+      queueFromResults(
+        { data: [vetService], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await listServices({});
+
+      expect(result[0].service_pricing_tiers).toEqual([]);
     });
 
     it('filters by branch availability when branchId is provided', async () => {
-      queueFromResults({ data: [GROOMING_SERVICE], error: null });
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
 
       const atMakati = await listServices({ branchId: 'branch-makati' });
       expect(atMakati).toHaveLength(1);
 
-      queueFromResults({ data: [GROOMING_SERVICE], error: null });
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
 
       const atSouth = await listServices({ branchId: 'branch-south' });
       expect(atSouth).toHaveLength(0);
@@ -190,10 +202,10 @@ describe('services.service', () => {
 
   describe('getServiceById', () => {
     it('AC-3: an inactive service remains queryable by id', async () => {
-      queueFromResults({
-        data: { ...GROOMING_SERVICE, is_active: false },
-        error: null,
-      });
+      queueFromResults(
+        { data: { ...GROOMING_SERVICE, is_active: false }, error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
 
       const result = await getServiceById('service-1');
 

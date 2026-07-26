@@ -6,9 +6,12 @@ import {
   createPromoValidator,
   createServiceValidator,
   updateBreedValidator,
+  updatePackagePricingConfigurationValidator,
   updatePackageValidator,
+  updatePricingConfigurationValidator,
   updatePromoValidator,
   updateServiceValidator,
+  upsertPromoCapConfigurationValidator,
 } from './maintenance.validator.ts';
 
 const BRANCH_ID = '11111111-1111-4111-a111-111111111111';
@@ -17,29 +20,14 @@ const SERVICE_ID_2 = '33333333-3333-4333-a333-333333333333';
 const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
 
 describe('createServiceValidator', () => {
-  it('accepts a Grooming service with a full size-coat tier set', () => {
+  it('accepts a valid Grooming service', () => {
     const result = createServiceValidator.safeParse({
       name: 'Bath',
       category: 'Grooming',
       base_price: 300,
-      pricing_tiers: [
-        { weight_class: 'S', coat_type: 'SC', price: 300 },
-        { weight_class: 'XL', coat_type: 'LC', price: 650 },
-      ],
     });
 
     expect(result.success).toBe(true);
-  });
-
-  it('rejects pricing tiers on a non-Grooming category', () => {
-    const result = createServiceValidator.safeParse({
-      name: 'Wellness Exam',
-      category: 'Veterinary',
-      base_price: 500,
-      pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 500 }],
-    });
-
-    expect(result.success).toBe(false);
   });
 
   it('rejects a negative base price', () => {
@@ -63,12 +51,12 @@ describe('createServiceValidator', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an invalid weight class or coat type in a tier', () => {
+  it('rejects a pricing_tiers key (Epic B #81: the matrix is derived, not accepted as input)', () => {
     const result = createServiceValidator.safeParse({
       name: 'Bath',
       category: 'Grooming',
       base_price: 300,
-      pricing_tiers: [{ weight_class: 'XXL', coat_type: 'SC', price: 100 }],
+      pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 300 }],
     });
 
     expect(result.success).toBe(false);
@@ -76,18 +64,18 @@ describe('createServiceValidator', () => {
 });
 
 describe('updateServiceValidator', () => {
-  it('accepts a partial tier update without the full set', () => {
-    const result = updateServiceValidator.safeParse({
-      pricing_tiers: [{ weight_class: 'M', coat_type: 'LC', price: 420 }],
-    });
-
-    expect(result.success).toBe(true);
-  });
-
   it('accepts an is_active-only toggle', () => {
     expect(updateServiceValidator.safeParse({ is_active: false }).success).toBe(
       true
     );
+  });
+
+  it('rejects a pricing_tiers key (Epic B #81)', () => {
+    const result = updateServiceValidator.safeParse({
+      pricing_tiers: [{ weight_class: 'M', coat_type: 'LC', price: 420 }],
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 
@@ -116,7 +104,6 @@ describe('createPackageValidator', () => {
     const result = createPackageValidator.safeParse({
       branch_id: BRANCH_ID,
       name: 'Golden Package',
-      bundled_price: 600,
       service_ids: [SERVICE_ID, SERVICE_ID_2],
     });
 
@@ -127,19 +114,7 @@ describe('createPackageValidator', () => {
     const result = createPackageValidator.safeParse({
       branch_id: BRANCH_ID,
       name: 'Solo',
-      bundled_price: 100,
       service_ids: [SERVICE_ID],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects a non-positive bundled price (M13 Process 2 validation)', () => {
-    const result = createPackageValidator.safeParse({
-      branch_id: BRANCH_ID,
-      name: 'Golden Package',
-      bundled_price: 0,
-      service_ids: [SERVICE_ID, SERVICE_ID_2],
     });
 
     expect(result.success).toBe(false);
@@ -147,6 +122,16 @@ describe('createPackageValidator', () => {
 
   it('rejects a missing branch_id - packages are per-branch rows (MA22)', () => {
     const result = createPackageValidator.safeParse({
+      name: 'Golden Package',
+      service_ids: [SERVICE_ID, SERVICE_ID_2],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a bundled_price key (Epic B #83: the price is derived, not accepted as input)', () => {
+    const result = createPackageValidator.safeParse({
+      branch_id: BRANCH_ID,
       name: 'Golden Package',
       bundled_price: 600,
       service_ids: [SERVICE_ID, SERVICE_ID_2],
@@ -157,13 +142,20 @@ describe('createPackageValidator', () => {
 });
 
 describe('updatePackageValidator', () => {
-  it('accepts a bundle replacement plus price edit', () => {
+  it('accepts a bundle replacement alone', () => {
     const result = updatePackageValidator.safeParse({
-      bundled_price: 700,
       service_ids: [SERVICE_ID, SERVICE_ID_2],
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('rejects a bundled_price key (Epic B #83)', () => {
+    const result = updatePackageValidator.safeParse({
+      bundled_price: 700,
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 
@@ -276,6 +268,17 @@ describe('createPromoValidator', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('rejects an is_exclusive key (Epic B #84: replaced by promo_cap_configuration)', () => {
+    const result = createPromoValidator.safeParse({
+      ...base,
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+      is_exclusive: true,
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updatePromoValidator', () => {
@@ -290,6 +293,12 @@ describe('updatePromoValidator', () => {
       start_date: '2026-09-30',
       end_date: '2026-09-01',
     });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an is_exclusive key (Epic B #84)', () => {
+    const result = updatePromoValidator.safeParse({ is_exclusive: false });
 
     expect(result.success).toBe(false);
   });
@@ -343,5 +352,94 @@ describe('updateBreedValidator', () => {
 
   it('accepts an empty payload', () => {
     expect(updateBreedValidator.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('updatePricingConfigurationValidator (Epic B #80)', () => {
+  it('accepts a partial multiplier update', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({ long_coat_addon: 75 })
+        .success
+    ).toBe(true);
+  });
+
+  it('rejects a non-positive multiplier', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({ size_s_multiplier: 0 })
+        .success
+    ).toBe(false);
+  });
+
+  it('rejects a negative long_coat_addon', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({ long_coat_addon: -1 })
+        .success
+    ).toBe(false);
+  });
+});
+
+describe('updatePackagePricingConfigurationValidator (Epic B #82)', () => {
+  it('accepts a fraction between 0 and 1', () => {
+    expect(
+      updatePackagePricingConfigurationValidator.safeParse({
+        bundle_discount_percentage: 0.15,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a fraction above 1', () => {
+    expect(
+      updatePackagePricingConfigurationValidator.safeParse({
+        bundle_discount_percentage: 1.5,
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a negative fraction', () => {
+    expect(
+      updatePackagePricingConfigurationValidator.safeParse({
+        bundle_discount_percentage: -0.1,
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('upsertPromoCapConfigurationValidator (Epic B #84)', () => {
+  it('accepts a branch-scoped percentage cap', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        branch_id: BRANCH_ID,
+        cap_type: 'percentage',
+        cap_value: 20,
+      }).success
+    ).toBe(true);
+  });
+
+  it('accepts a null branch_id for the system-wide default cap', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        branch_id: null,
+        cap_type: 'flat',
+        cap_value: 100,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a negative cap_value', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        cap_type: 'percentage',
+        cap_value: -5,
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects an unrecognized cap_type', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        cap_type: 'exclusive',
+        cap_value: 10,
+      }).success
+    ).toBe(false);
   });
 });

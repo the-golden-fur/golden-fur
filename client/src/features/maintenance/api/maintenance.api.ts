@@ -8,14 +8,20 @@ import type {
   CreatePromoPayload,
   CreateServicePayload,
   Package,
+  PackagePricingConfiguration,
   PetType,
+  PricingConfiguration,
   Promo,
+  PromoCapConfiguration,
   Service,
   ServiceBranchAvailability,
   UpdateBreedPayload,
   UpdatePackagePayload,
+  UpdatePackagePricingConfigurationPayload,
+  UpdatePricingConfigurationPayload,
   UpdatePromoPayload,
   UpdateServicePayload,
+  UpsertPromoCapConfigurationPayload,
 } from '../maintenance.types';
 
 interface MaintenanceApiResult<T> {
@@ -325,6 +331,128 @@ export async function updatePromo(
 
   const result = await parseBody<{ promo: Promo }>(response);
   return { data: result.data?.promo ?? null, error: result.error };
+}
+
+/** Epic B (#80/#81): the shared, singleton grooming size/coat calculation. */
+export async function getPricingConfiguration(
+  accessToken: string
+): Promise<MaintenanceApiResult<PricingConfiguration>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/pricing-configuration`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configuration: PricingConfiguration }>(
+    response
+  );
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+export async function updatePricingConfiguration(
+  accessToken: string,
+  payload: UpdatePricingConfigurationPayload
+): Promise<MaintenanceApiResult<PricingConfiguration>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/pricing-configuration`, {
+    method: 'PATCH',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configuration: PricingConfiguration }>(
+    response
+  );
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+/** Epic B (#82/#83): the shared, singleton package bundled-price calculation. */
+export async function getPackagePricingConfiguration(
+  accessToken: string
+): Promise<MaintenanceApiResult<PackagePricingConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/package-pricing-configuration`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configuration: PackagePricingConfiguration }>(
+    response
+  );
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+export async function updatePackagePricingConfiguration(
+  accessToken: string,
+  payload: UpdatePackagePricingConfigurationPayload
+): Promise<MaintenanceApiResult<PackagePricingConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/package-pricing-configuration`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configuration: PackagePricingConfiguration }>(
+    response
+  );
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+/** Epic B (#84): one row per branch plus one system-wide default (NULL branch_id). */
+export async function listPromoCapConfigurations(
+  accessToken: string
+): Promise<MaintenanceApiResult<PromoCapConfiguration[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promo-cap-configurations`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configurations: PromoCapConfiguration[] }>(
+    response
+  );
+  return { data: result.data?.configurations ?? null, error: result.error };
+}
+
+export async function upsertPromoCapConfiguration(
+  accessToken: string,
+  payload: UpsertPromoCapConfigurationPayload
+): Promise<MaintenanceApiResult<PromoCapConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promo-cap-configurations`,
+    {
+      method: 'PUT',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ configuration: PromoCapConfiguration }>(
+    response
+  );
+  return { data: result.data?.configuration ?? null, error: result.error };
 }
 
 /**

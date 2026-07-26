@@ -56,7 +56,6 @@ const DATE_PROMO = {
   value: 15,
   scope_type: 'all_services',
   branch_scope: 'both',
-  is_exclusive: false,
   is_active: true,
   promo_scope: [],
 };
