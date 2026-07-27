@@ -124,4 +124,28 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     expect(slots).toHaveLength(1);
     expect(slots[0]).toMatchObject({ available: true, level: 'available' });
   });
+
+  it('a Hotel booking spans past the same day close time (1440-minute duration) and still produces one candidate at opening time', async () => {
+    queueFromResults(
+      BRANCH_ROW, // branch lookup
+      { data: [], error: null } // overlapping bookings (none)
+    );
+
+    const slots = await getDaySlots({
+      branchId: 'branch-1',
+      serviceCategory: 'Hotel',
+      date: '2026-08-03', // a Monday, 09:00-12:00 operating hours per BRANCH_ROW
+      slotDurationMinutes: 1440, // the seeded Hotel service's one-night length
+      petWeightClass: 'S',
+    });
+
+    expect(slots).toHaveLength(1);
+    // Regression guard: the old back-to-back-within-[open,close] stepping
+    // loop would never emit a candidate here at all (1440 min never fits
+    // inside a 180-min window), silently showing "no availability" for
+    // every Hotel booking attempt.
+    expect(slots[0].start).toBe('2026-08-03T01:00:00.000Z'); // 09:00 Asia/Manila
+    expect(slots[0].end).toBe('2026-08-04T01:00:00.000Z'); // +1440 min, next day
+    expect(slots[0]).toMatchObject({ available: true, level: 'available' });
+  });
 });

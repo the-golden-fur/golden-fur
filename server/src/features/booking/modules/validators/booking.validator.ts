@@ -153,7 +153,10 @@ export const availabilityQueryValidator = z
     branch_id: z.uuid(),
     service_category: z.enum(CATEGORIES),
     date: z.iso.date(),
-    slot_duration_minutes: z.coerce.number().int().min(15).max(480),
+    // Up to 1440 (24h) - Hotel's seeded service duration is a full night
+    // (M13 seed data), unlike Grooming/Veterinary/Daycare's within-a-day
+    // appointment lengths.
+    slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
     pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
   })
   .strict()

@@ -143,6 +143,31 @@ describe('capacity.service (#51)', () => {
         checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
       ).rejects.toMatchObject({ statusCode: 400 });
     });
+
+    it('#78 (Sprint 4, M05): with no env override, capacity is the real count of cages of that size at the branch', async () => {
+      queueFromResults(
+        {
+          data: [
+            { id: 'b1', pet_id: 'p1', created_at: '' },
+            { id: 'b2', pet_id: 'p2', created_at: '' },
+          ],
+          error: null,
+        }, // overlapping bookings
+        { data: [{ id: 'p1' }, { id: 'p2' }], error: null }, // same-size pets
+        { data: null, error: null, count: 2 } // cages count query
+      );
+
+      const result = await checkCapacity({
+        ...WINDOW,
+        serviceCategory: 'Hotel',
+        petWeightClass: 'L',
+      });
+
+      // 2 same-size overlapping Confirmed bookings already fill the 2 real
+      // cages of that size - the old DEFAULT_HOTEL_CAGE_CAPACITY.L stub (6)
+      // would have incorrectly reported this as available.
+      expect(result.available).toBe(false);
+    });
   });
 
   describe('checkCapacity - Daycare (session-capacity stub)', () => {
