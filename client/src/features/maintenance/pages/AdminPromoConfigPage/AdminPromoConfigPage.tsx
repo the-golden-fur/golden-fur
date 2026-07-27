@@ -403,11 +403,11 @@ export function AdminPromoConfigPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the promo configuration panel.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the promo configuration panel.
+          </p>
+        </div>
       </main>
     );
   }
@@ -415,9 +415,9 @@ export function AdminPromoConfigPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -429,9 +429,9 @@ export function AdminPromoConfigPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading promos...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading promos...</p>
+        </div>
       </main>
     );
   }
@@ -439,11 +439,11 @@ export function AdminPromoConfigPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
@@ -451,190 +451,192 @@ export function AdminPromoConfigPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Promos</h1>
+        <h1 className={styles.title}>Promos</h1>
 
-      <div className={styles.toolbar}>
-        <PromoFilterBar
-          search={search}
-          onSearchChange={setSearch}
-          branchScopeFilter={branchScopeFilter}
-          onBranchScopeFilterChange={setBranchScopeFilter}
-          timingFilter={timingFilter}
-          onTimingFilterChange={setTimingFilter}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-        />
+        <div className={styles.toolbar}>
+          <PromoFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            branchScopeFilter={branchScopeFilter}
+            onBranchScopeFilterChange={setBranchScopeFilter}
+            timingFilter={timingFilter}
+            onTimingFilterChange={setTimingFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+          />
 
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={openCreateForm}
-        >
-          New promo
-        </button>
-      </div>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
-        </p>
-      ) : null}
-
-      {isFormOpen ? (
-        <section className={styles.formPanel} aria-labelledby="promo-form">
-          <h2 className={styles.sectionTitle} id="promo-form">
-            {editingPromoId === null ? 'Create promo' : 'Edit promo'}
-          </h2>
-
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Name</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={formName}
-                onChange={(event) => setFormName(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Discount type</span>
-              <select
-                className={styles.input}
-                value={formDiscountType}
-                onChange={(event) =>
-                  setFormDiscountType(event.target.value as DiscountValueType)
-                }
-              >
-                {DISCOUNT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Discount value
-                {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                max={formDiscountType === 'Percentage' ? 100 : undefined}
-                step="0.01"
-                inputMode="decimal"
-                value={formValue}
-                onChange={(event) => setFormValue(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Start date</span>
-              <input
-                className={styles.input}
-                type="date"
-                value={formStartDate}
-                onChange={(event) => setFormStartDate(event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>End date</span>
-              <input
-                className={styles.input}
-                type="date"
-                value={formEndDate}
-                onChange={(event) => setFormEndDate(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Scope</span>
-              <select
-                className={styles.input}
-                value={formScopeType}
-                onChange={(event) => {
-                  setFormScopeType(event.target.value as PromoScopeType);
-                  setFormScopeIds([]);
-                }}
-              >
-                <option value="all_services">All services</option>
-                <option value="specific">Specific services/packages</option>
-              </select>
-            </label>
-
-            {formScopeType === 'specific' ? (
-              <ServiceMultiSelect
-                label="Included services/packages"
-                options={scopeOptions}
-                selectedIds={formScopeIds}
-                onChange={setFormScopeIds}
-              />
-            ) : null}
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Branch scope</span>
-              <select
-                className={styles.input}
-                value={formBranchScope}
-                onChange={(event) =>
-                  setFormBranchScope(event.target.value as PromoBranchScope)
-                }
-              >
-                {BRANCH_SCOPES.map((scope) => (
-                  <option key={scope} value={scope}>
-                    {BRANCH_SCOPE_LABELS[scope]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                className={styles.primaryButton}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : 'Save promo'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={closeForm}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      {filteredPromos.length === 0 ? (
-        <p className={styles.copy}>No promos match the selected filters.</p>
-      ) : (
-        <div className={styles.promoGrid}>
-          {filteredPromos.map((promo) => (
-            <PromoCard
-              key={promo.id}
-              promo={promo}
-              onToggle={(isActive) => void handleActiveToggle(promo, isActive)}
-              onEdit={() => openEditForm(promo)}
-            />
-          ))}
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={openCreateForm}
+          >
+            New promo
+          </button>
         </div>
-      )}
+
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
+
+        {isFormOpen ? (
+          <section className={styles.formPanel} aria-labelledby="promo-form">
+            <h2 className={styles.sectionTitle} id="promo-form">
+              {editingPromoId === null ? 'Create promo' : 'Edit promo'}
+            </h2>
+
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Name</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Discount type</span>
+                <select
+                  className={styles.input}
+                  value={formDiscountType}
+                  onChange={(event) =>
+                    setFormDiscountType(event.target.value as DiscountValueType)
+                  }
+                >
+                  {DISCOUNT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Discount value
+                  {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  max={formDiscountType === 'Percentage' ? 100 : undefined}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={formValue}
+                  onChange={(event) => setFormValue(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Start date</span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  value={formStartDate}
+                  onChange={(event) => setFormStartDate(event.target.value)}
+                  required
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>End date</span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  value={formEndDate}
+                  onChange={(event) => setFormEndDate(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Scope</span>
+                <select
+                  className={styles.input}
+                  value={formScopeType}
+                  onChange={(event) => {
+                    setFormScopeType(event.target.value as PromoScopeType);
+                    setFormScopeIds([]);
+                  }}
+                >
+                  <option value="all_services">All services</option>
+                  <option value="specific">Specific services/packages</option>
+                </select>
+              </label>
+
+              {formScopeType === 'specific' ? (
+                <ServiceMultiSelect
+                  label="Included services/packages"
+                  options={scopeOptions}
+                  selectedIds={formScopeIds}
+                  onChange={setFormScopeIds}
+                />
+              ) : null}
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Branch scope</span>
+                <select
+                  className={styles.input}
+                  value={formBranchScope}
+                  onChange={(event) =>
+                    setFormBranchScope(event.target.value as PromoBranchScope)
+                  }
+                >
+                  {BRANCH_SCOPES.map((scope) => (
+                    <option key={scope} value={scope}>
+                      {BRANCH_SCOPE_LABELS[scope]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save promo'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : null}
+
+        {filteredPromos.length === 0 ? (
+          <p className={styles.copy}>No promos match the selected filters.</p>
+        ) : (
+          <div className={styles.promoGrid}>
+            {filteredPromos.map((promo) => (
+              <PromoCard
+                key={promo.id}
+                promo={promo}
+                onToggle={(isActive) =>
+                  void handleActiveToggle(promo, isActive)
+                }
+                onEdit={() => openEditForm(promo)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

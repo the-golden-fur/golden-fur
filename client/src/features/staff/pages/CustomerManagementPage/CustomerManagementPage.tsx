@@ -164,9 +164,9 @@ export function CustomerManagementPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -180,111 +180,113 @@ export function CustomerManagementPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Customer Management</h1>
+        <h1 className={styles.title}>Customer Management</h1>
 
-      {message ? <p className={styles.successBanner}>{message}</p> : null}
+        {message ? <p className={styles.successBanner}>{message}</p> : null}
 
-      <section className={styles.panel} aria-labelledby="new-walkin-title">
-        <h2 className={styles.sectionTitle} id="new-walkin-title">
-          New walk-in customer
-        </h2>
-        {accessToken ? (
-          <NewWalkInCustomerForm
-            accessToken={accessToken}
-            onSaved={handleCustomerSaved}
-          />
-        ) : null}
-      </section>
+        <section className={styles.panel} aria-labelledby="new-walkin-title">
+          <h2 className={styles.sectionTitle} id="new-walkin-title">
+            New walk-in customer
+          </h2>
+          {accessToken ? (
+            <NewWalkInCustomerForm
+              accessToken={accessToken}
+              onSaved={handleCustomerSaved}
+            />
+          ) : null}
+        </section>
 
-      {isLoading ? (
-        <p className={styles.copy}>Loading customers...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : customers.length === 0 ? (
-        <p className={styles.copy}>No customers on file yet.</p>
-      ) : (
-        <ul className={styles.list}>
-          {customers.map((customer) => (
-            <li className={styles.listItem} key={customer.id}>
-              <div className={styles.customerRow}>
-                <span className={styles.customerName}>
-                  {customer.full_name}
-                </span>
-                <span className={styles.customerEmail}>
-                  {customer.account_email}
-                </span>
-                <CustomerRowActionMenu
-                  onSelect={(action) => handleSelectAction(customer.id, action)}
-                />
-              </div>
+        {isLoading ? (
+          <p className={styles.copy}>Loading customers...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : customers.length === 0 ? (
+          <p className={styles.copy}>No customers on file yet.</p>
+        ) : (
+          <ul className={styles.list}>
+            {customers.map((customer) => (
+              <li className={styles.listItem} key={customer.id}>
+                <div className={styles.customerRow}>
+                  <span className={styles.customerName}>
+                    {customer.full_name}
+                  </span>
+                  <span className={styles.customerEmail}>
+                    {customer.account_email}
+                  </span>
+                  <CustomerRowActionMenu
+                    onSelect={(action) =>
+                      handleSelectAction(customer.id, action)
+                    }
+                  />
+                </div>
 
-              {activePanel?.customerId === customer.id &&
-              activePanel.action === 'checkProfile' ? (
-                <dl className={styles.profileDetails}>
-                  <div className={styles.detail}>
-                    <dt className={styles.detailLabel}>Contact number</dt>
-                    <dd className={styles.detailValue}>
-                      {customer.contact_number ?? '—'}
-                    </dd>
-                  </div>
-                  <div className={styles.detail}>
-                    <dt className={styles.detailLabel}>Emergency contact</dt>
-                    <dd className={styles.detailValue}>
-                      {customer.emergency_contact_name ?? '—'}
-                      {customer.emergency_contact_number
-                        ? ` (${customer.emergency_contact_number})`
-                        : ''}
-                    </dd>
-                  </div>
-                  <div className={styles.detail}>
-                    <dt className={styles.detailLabel}>
-                      Preferred communication
-                    </dt>
-                    <dd className={styles.detailValue}>
-                      {customer.preferred_communication_channel ?? '—'}
-                    </dd>
-                  </div>
-                </dl>
-              ) : null}
+                {activePanel?.customerId === customer.id &&
+                activePanel.action === 'checkProfile' ? (
+                  <dl className={styles.profileDetails}>
+                    <div className={styles.detail}>
+                      <dt className={styles.detailLabel}>Contact number</dt>
+                      <dd className={styles.detailValue}>
+                        {customer.contact_number ?? '—'}
+                      </dd>
+                    </div>
+                    <div className={styles.detail}>
+                      <dt className={styles.detailLabel}>Emergency contact</dt>
+                      <dd className={styles.detailValue}>
+                        {customer.emergency_contact_name ?? '—'}
+                        {customer.emergency_contact_number
+                          ? ` (${customer.emergency_contact_number})`
+                          : ''}
+                      </dd>
+                    </div>
+                    <div className={styles.detail}>
+                      <dt className={styles.detailLabel}>
+                        Preferred communication
+                      </dt>
+                      <dd className={styles.detailValue}>
+                        {customer.preferred_communication_channel ?? '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
 
-              {activePanel?.customerId === customer.id &&
-              activePanel.action === 'viewPets' ? (
-                isPetsLoading ? (
-                  <p className={styles.copy}>Loading pets...</p>
-                ) : petsLoadError ? (
-                  <p className={styles.errorBanner} role="alert">
-                    {petsLoadError}
-                  </p>
-                ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
-                  <p className={styles.copy}>No pets on file yet.</p>
-                ) : (
-                  <div className={styles.petsGrid}>
-                    {(petsByCustomer[customer.id] ?? []).map((pet) => (
-                      <PetCard
-                        key={pet.id}
-                        pet={pet}
-                        linkBasePath="/staff/pets"
-                      />
-                    ))}
-                  </div>
-                )
-              ) : null}
+                {activePanel?.customerId === customer.id &&
+                activePanel.action === 'viewPets' ? (
+                  isPetsLoading ? (
+                    <p className={styles.copy}>Loading pets...</p>
+                  ) : petsLoadError ? (
+                    <p className={styles.errorBanner} role="alert">
+                      {petsLoadError}
+                    </p>
+                  ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
+                    <p className={styles.copy}>No pets on file yet.</p>
+                  ) : (
+                    <div className={styles.petsGrid}>
+                      {(petsByCustomer[customer.id] ?? []).map((pet) => (
+                        <PetCard
+                          key={pet.id}
+                          pet={pet}
+                          linkBasePath="/staff/pets"
+                        />
+                      ))}
+                    </div>
+                  )
+                ) : null}
 
-              {activePanel?.customerId === customer.id &&
-              activePanel.action === 'addPet' &&
-              accessToken ? (
-                <PetForm
-                  customerId={customer.id}
-                  accessToken={accessToken}
-                  onCreated={(pet) => handlePetCreated(customer.id, pet)}
-                />
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
+                {activePanel?.customerId === customer.id &&
+                activePanel.action === 'addPet' &&
+                accessToken ? (
+                  <PetForm
+                    customerId={customer.id}
+                    accessToken={accessToken}
+                    onCreated={(pet) => handlePetCreated(customer.id, pet)}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </main>
   );

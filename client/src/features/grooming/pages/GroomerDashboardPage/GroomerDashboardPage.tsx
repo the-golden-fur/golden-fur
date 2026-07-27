@@ -338,11 +338,11 @@ export function GroomerDashboardPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load your dashboard.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load your dashboard.
+          </p>
+        </div>
       </main>
     );
   }
@@ -350,9 +350,9 @@ export function GroomerDashboardPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -364,88 +364,88 @@ export function GroomerDashboardPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Grooming Queue</h1>
+        <h1 className={styles.title}>Grooming Queue</h1>
 
-      <QueueFilterBar
-        dateRangePreset={dateRangePreset}
-        onDateRangePresetChange={setDateRangePreset}
-        customDate={customDate}
-        onCustomDateChange={setCustomDate}
-        statusValue={statusFilter}
-        onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
-        statusOptions={STATUS_OPTIONS}
-      />
+        <QueueFilterBar
+          dateRangePreset={dateRangePreset}
+          onDateRangePresetChange={setDateRangePreset}
+          customDate={customDate}
+          onCustomDateChange={setCustomDate}
+          statusValue={statusFilter}
+          onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
+          statusOptions={STATUS_OPTIONS}
+        />
 
-      {actionError ? (
-        <p className={styles.errorBanner} role="alert">
-          {actionError}
-        </p>
-      ) : null}
+        {actionError ? (
+          <p className={styles.errorBanner} role="alert">
+            {actionError}
+          </p>
+        ) : null}
 
-      {isLoading ? (
-        <p className={styles.copy}>Loading appointments...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : !hasSessions && !hasPending ? (
-        <p className={styles.copy}>
-          {statusFilter === UNCONFIRMED_STATUS
-            ? 'No unconfirmed bookings match these filters.'
-            : 'No grooming appointments match these filters.'}
-        </p>
-      ) : (
-        <>
-          {hasSessions ? (
-            <ul className={styles.list}>
-              {visibleSessions.map((item) => (
-                <AppointmentCard
-                  key={item.session.id}
-                  session={item.session}
-                  petName={item.petName}
-                  ownerName={item.ownerName}
-                  breed={item.breed}
-                  weightClass={item.weightClass}
-                  coatType={item.coatType}
-                  serviceLabel={item.serviceLabel}
-                  addonLabels={item.addonLabels}
-                  specialInstructions={item.specialInstructions}
-                  isAdvancing={advancingId === item.session.id}
-                  onAdvance={handleAdvance}
-                />
-              ))}
-            </ul>
-          ) : null}
+        {isLoading ? (
+          <p className={styles.copy}>Loading appointments...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : !hasSessions && !hasPending ? (
+          <p className={styles.copy}>
+            {statusFilter === UNCONFIRMED_STATUS
+              ? 'No unconfirmed bookings match these filters.'
+              : 'No grooming appointments match these filters.'}
+          </p>
+        ) : (
+          <>
+            {hasSessions ? (
+              <ul className={styles.list}>
+                {visibleSessions.map((item) => (
+                  <AppointmentCard
+                    key={item.session.id}
+                    session={item.session}
+                    petName={item.petName}
+                    ownerName={item.ownerName}
+                    breed={item.breed}
+                    weightClass={item.weightClass}
+                    coatType={item.coatType}
+                    serviceLabel={item.serviceLabel}
+                    addonLabels={item.addonLabels}
+                    specialInstructions={item.specialInstructions}
+                    isAdvancing={advancingId === item.session.id}
+                    onAdvance={handleAdvance}
+                  />
+                ))}
+              </ul>
+            ) : null}
 
-          {hasPending ? (
-            <ul className={styles.list}>
-              {enrichedPending.map((item) => (
-                <li key={item.booking.id} className={styles.pendingCard}>
-                  <div className={styles.header}>
-                    <div className={styles.identity}>
-                      <h3 className={styles.petName}>{item.petName}</h3>
-                      <span className={styles.subtitle}>
-                        Owner: {item.ownerName}
+            {hasPending ? (
+              <ul className={styles.list}>
+                {enrichedPending.map((item) => (
+                  <li key={item.booking.id} className={styles.pendingCard}>
+                    <div className={styles.header}>
+                      <div className={styles.identity}>
+                        <h3 className={styles.petName}>{item.petName}</h3>
+                        <span className={styles.subtitle}>
+                          Owner: {item.ownerName}
+                        </span>
+                      </div>
+                      <span className={styles.pendingBadge}>
+                        Awaiting payment
                       </span>
                     </div>
-                    <span className={styles.pendingBadge}>
-                      Awaiting payment
-                    </span>
-                  </div>
 
-                  <p className={styles.serviceLabel}>{item.serviceLabel}</p>
-                  <p className={styles.copy}>
-                    {new Date(item.booking.scheduled_start).toLocaleString(
-                      undefined,
-                      { dateStyle: 'medium', timeStyle: 'short' }
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </>
-      )}
+                    <p className={styles.serviceLabel}>{item.serviceLabel}</p>
+                    <p className={styles.copy}>
+                      {new Date(item.booking.scheduled_start).toLocaleString(
+                        undefined,
+                        { dateStyle: 'medium', timeStyle: 'short' }
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        )}
       </div>
     </main>
   );

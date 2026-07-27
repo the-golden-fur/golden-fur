@@ -296,11 +296,11 @@ export function ReceptionistBookingsQueuePage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the bookings queue.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the bookings queue.
+          </p>
+        </div>
       </main>
     );
   }
@@ -308,9 +308,9 @@ export function ReceptionistBookingsQueuePage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -318,241 +318,244 @@ export function ReceptionistBookingsQueuePage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Bookings queue</h1>
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={() => navigate('/staff/bookings/new')}
-        >
-          New booking
-        </button>
-      </div>
-
-      <QueueFilterBar
-        dateRangePreset={dateRangePreset}
-        onDateRangePresetChange={setDateRangePreset}
-        customDate={customDate}
-        onCustomDateChange={setCustomDate}
-        statusValue={statusFilter}
-        onStatusChange={(value) =>
-          setStatusFilter(value as BookingStatus | 'All')
-        }
-        statusOptions={STATUS_OPTIONS}
-      >
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Service type</span>
-          <select
-            className={styles.filterSelect}
-            value={categoryFilter}
-            onChange={(event) =>
-              setCategoryFilter(event.target.value as ServiceCategory | 'All')
-            }
+        <div className={styles.header}>
+          <h1 className={styles.title}>Bookings queue</h1>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => navigate('/staff/bookings/new')}
           >
-            <option value="All">All service types</option>
-            {SERVICE_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
+            New booking
+          </button>
+        </div>
 
-        {isSuperadmin ? (
+        <QueueFilterBar
+          dateRangePreset={dateRangePreset}
+          onDateRangePresetChange={setDateRangePreset}
+          customDate={customDate}
+          onCustomDateChange={setCustomDate}
+          statusValue={statusFilter}
+          onStatusChange={(value) =>
+            setStatusFilter(value as BookingStatus | 'All')
+          }
+          statusOptions={STATUS_OPTIONS}
+        >
           <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch</span>
+            <span className={styles.filterLabel}>Service type</span>
             <select
               className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(event.target.value as ServiceCategory | 'All')
+              }
             >
-              <option value="All">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
+              <option value="All">All service types</option>
+              {SERVICE_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
                 </option>
               ))}
             </select>
           </label>
+
+          {isSuperadmin ? (
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Branch</span>
+              <select
+                className={styles.filterSelect}
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+              >
+                <option value="All">All branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </QueueFilterBar>
+
+        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+
+        {loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
         ) : null}
-      </QueueFilterBar>
 
-      {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {!isLoading && !loadError && bookings.length === 0 ? (
+          <p className={styles.copy}>No bookings match these filters.</p>
+        ) : null}
 
-      {loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : null}
+        {!isLoading && !loadError && bookings.length > 0 ? (
+          <ul className={styles.bookingList}>
+            {bookings.map((booking) => {
+              const isActionable = RESCHEDULABLE_STATUSES.has(booking.status);
+              const isRescheduling =
+                activeAction?.bookingId === booking.id &&
+                activeAction.type === 'reschedule';
+              const isCancelling =
+                activeAction?.bookingId === booking.id &&
+                activeAction.type === 'cancel';
 
-      {!isLoading && !loadError && bookings.length === 0 ? (
-        <p className={styles.copy}>No bookings match these filters.</p>
-      ) : null}
+              const durationMinutes = Math.round(
+                (new Date(booking.scheduled_end).getTime() -
+                  new Date(booking.scheduled_start).getTime()) /
+                  60000
+              );
+              const showStaffPicker =
+                (booking.service_category === 'Grooming' ||
+                  booking.service_category === 'Veterinary') &&
+                rescheduleSlot !== null &&
+                !staffPickerUnavailable;
 
-      {!isLoading && !loadError && bookings.length > 0 ? (
-        <ul className={styles.bookingList}>
-          {bookings.map((booking) => {
-            const isActionable = RESCHEDULABLE_STATUSES.has(booking.status);
-            const isRescheduling =
-              activeAction?.bookingId === booking.id &&
-              activeAction.type === 'reschedule';
-            const isCancelling =
-              activeAction?.bookingId === booking.id &&
-              activeAction.type === 'cancel';
-
-            const durationMinutes = Math.round(
-              (new Date(booking.scheduled_end).getTime() -
-                new Date(booking.scheduled_start).getTime()) /
-                60000
-            );
-            const showStaffPicker =
-              (booking.service_category === 'Grooming' ||
-                booking.service_category === 'Veterinary') &&
-              rescheduleSlot !== null &&
-              !staffPickerUnavailable;
-
-            return (
-              <li key={booking.id} className={styles.bookingRow}>
-                <div className={styles.bookingMain}>
-                  <span className={styles.bookingTitle}>
-                    {booking.service_category}
-                  </span>
-                  <span className={styles.bookingMeta}>
-                    {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
-                    {formatDateTime(booking.scheduled_start)}
-                  </span>
-                  <span className={styles.bookingMeta}>
-                    {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
-                    {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
-                  </span>
-                  <BookingStatusBadge status={booking.status} />
-                </div>
-
-                {isActionable && !isRescheduling && !isCancelling ? (
-                  <div className={styles.bookingControls}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => openReschedule(booking)}
-                    >
-                      Reschedule
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => openCancel(booking)}
-                    >
-                      Cancel
-                    </button>
+              return (
+                <li key={booking.id} className={styles.bookingRow}>
+                  <div className={styles.bookingMain}>
+                    <span className={styles.bookingTitle}>
+                      {booking.service_category}
+                    </span>
+                    <span className={styles.bookingMeta}>
+                      {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
+                      {formatDateTime(booking.scheduled_start)}
+                    </span>
+                    <span className={styles.bookingMeta}>
+                      {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
+                      {owners[booking.customer_id]?.full_name ??
+                        'Unknown owner'}
+                    </span>
+                    <BookingStatusBadge status={booking.status} />
                   </div>
-                ) : null}
 
-                {isRescheduling ? (
-                  <div className={styles.actionPanel}>
-                    <SlotPicker
-                      accessToken={accessToken}
-                      branchId={booking.branch_id}
-                      serviceCategory={booking.service_category}
-                      slotDurationMinutes={durationMinutes}
-                      viewerMode="staff"
-                      selectedSlot={rescheduleSlot}
-                      onSelect={setRescheduleSlot}
-                    />
+                  {isActionable && !isRescheduling && !isCancelling ? (
+                    <div className={styles.bookingControls}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => openReschedule(booking)}
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => openCancel(booking)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : null}
 
-                    {showStaffPicker && rescheduleSlot ? (
-                      <StaffPickerList
+                  {isRescheduling ? (
+                    <div className={styles.actionPanel}>
+                      <SlotPicker
                         accessToken={accessToken}
                         branchId={booking.branch_id}
-                        serviceCategory={
-                          booking.service_category as 'Grooming' | 'Veterinary'
-                        }
-                        scheduledStart={rescheduleSlot.start}
-                        scheduledEnd={rescheduleSlot.end}
-                        selected={rescheduleStaffPreference}
-                        onSelect={setRescheduleStaffPreference}
-                        onUnavailable={() => setStaffPickerUnavailable(true)}
+                        serviceCategory={booking.service_category}
+                        slotDurationMinutes={durationMinutes}
+                        viewerMode="staff"
+                        selectedSlot={rescheduleSlot}
+                        onSelect={setRescheduleSlot}
                       />
-                    ) : null}
 
-                    {actionError ? (
-                      <p className={styles.errorBanner} role="alert">
-                        {actionError}
-                      </p>
-                    ) : null}
+                      {showStaffPicker && rescheduleSlot ? (
+                        <StaffPickerList
+                          accessToken={accessToken}
+                          branchId={booking.branch_id}
+                          serviceCategory={
+                            booking.service_category as
+                              | 'Grooming'
+                              | 'Veterinary'
+                          }
+                          scheduledStart={rescheduleSlot.start}
+                          scheduledEnd={rescheduleSlot.end}
+                          selected={rescheduleStaffPreference}
+                          onSelect={setRescheduleStaffPreference}
+                          onUnavailable={() => setStaffPickerUnavailable(true)}
+                        />
+                      ) : null}
 
-                    <div className={styles.bookingControls}>
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        disabled={!rescheduleSlot || isSubmittingAction}
-                        onClick={() => void confirmReschedule(booking)}
-                      >
-                        {isSubmittingAction
-                          ? 'Rescheduling...'
-                          : 'Confirm new time'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={closeAction}
-                      >
-                        Cancel reschedule
-                      </button>
+                      {actionError ? (
+                        <p className={styles.errorBanner} role="alert">
+                          {actionError}
+                        </p>
+                      ) : null}
+
+                      <div className={styles.bookingControls}>
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={!rescheduleSlot || isSubmittingAction}
+                          onClick={() => void confirmReschedule(booking)}
+                        >
+                          {isSubmittingAction
+                            ? 'Rescheduling...'
+                            : 'Confirm new time'}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={closeAction}
+                        >
+                          Cancel reschedule
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
 
-                {isCancelling ? (
-                  <div className={styles.actionPanel}>
-                    <p className={styles.copy} role="alert">
-                      Cancel this booking on the customer's behalf? This cannot
-                      be undone.
-                    </p>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        Reason (optional)
-                      </span>
-                      <textarea
-                        className={styles.input}
-                        value={cancellationReason}
-                        onChange={(event) =>
-                          setCancellationReason(event.target.value)
-                        }
-                      />
-                    </label>
-
-                    {actionError ? (
-                      <p className={styles.errorBanner} role="alert">
-                        {actionError}
+                  {isCancelling ? (
+                    <div className={styles.actionPanel}>
+                      <p className={styles.copy} role="alert">
+                        Cancel this booking on the customer's behalf? This
+                        cannot be undone.
                       </p>
-                    ) : null}
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Reason (optional)
+                        </span>
+                        <textarea
+                          className={styles.input}
+                          value={cancellationReason}
+                          onChange={(event) =>
+                            setCancellationReason(event.target.value)
+                          }
+                        />
+                      </label>
 
-                    <div className={styles.bookingControls}>
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        disabled={isSubmittingAction}
-                        onClick={() => void confirmCancel(booking)}
-                      >
-                        {isSubmittingAction
-                          ? 'Cancelling...'
-                          : 'Yes, cancel booking'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={closeAction}
-                      >
-                        Keep booking
-                      </button>
+                      {actionError ? (
+                        <p className={styles.errorBanner} role="alert">
+                          {actionError}
+                        </p>
+                      ) : null}
+
+                      <div className={styles.bookingControls}>
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={isSubmittingAction}
+                          onClick={() => void confirmCancel(booking)}
+                        >
+                          {isSubmittingAction
+                            ? 'Cancelling...'
+                            : 'Yes, cancel booking'}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={closeAction}
+                        >
+                          Keep booking
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
       </div>
     </main>
   );

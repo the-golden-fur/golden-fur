@@ -301,11 +301,11 @@ export function AdminPackageBuilderPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the package builder.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the package builder.
+          </p>
+        </div>
       </main>
     );
   }
@@ -313,9 +313,9 @@ export function AdminPackageBuilderPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -327,9 +327,9 @@ export function AdminPackageBuilderPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading packages...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading packages...</p>
+        </div>
       </main>
     );
   }
@@ -337,11 +337,11 @@ export function AdminPackageBuilderPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
@@ -349,176 +349,176 @@ export function AdminPackageBuilderPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Packages</h1>
+        <h1 className={styles.title}>Packages</h1>
 
-      <div className={styles.toolbar}>
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Branch</span>
-          <select
-            className={styles.filterSelect}
-            value={branchFilter}
-            onChange={(event) => setBranchFilter(event.target.value)}
+        <div className={styles.toolbar}>
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Branch</span>
+            <select
+              className={styles.filterSelect}
+              value={branchFilter}
+              onChange={(event) => setBranchFilter(event.target.value)}
+            >
+              <option value="All">All branches</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={openCreateForm}
           >
-            <option value="All">All branches</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
+            New package
+          </button>
+        </div>
+
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
+
+        {isFormOpen ? (
+          <section className={styles.formPanel} aria-labelledby="package-form">
+            <h2 className={styles.sectionTitle} id="package-form">
+              {editingPackageId === null ? 'Build package' : 'Edit package'}
+            </h2>
+
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Branch</span>
+                <select
+                  className={styles.input}
+                  value={formBranchId}
+                  onChange={(event) => {
+                    setFormBranchId(event.target.value);
+                    // A different branch offers a different service list, so a
+                    // stale selection can't carry across.
+                    setSelectedServiceIds([]);
+                  }}
+                  // A package is one branch's row forever (MA22) - creating
+                  // "the same" package at the other branch is a second row.
+                  disabled={editingPackageId !== null}
+                  required
+                >
+                  <option value="">Select a branch...</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Package name</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  required
+                />
+              </label>
+
+              {formBranchId === '' ? (
+                <p className={styles.copy}>
+                  Select a branch to pick its available services.
+                </p>
+              ) : (
+                <ServiceMultiSelect
+                  label="Included services (pick two or more)"
+                  options={serviceOptions}
+                  selectedIds={selectedServiceIds}
+                  onChange={setSelectedServiceIds}
+                />
+              )}
+
+              {packagePricingConfiguration ? (
+                <PackagePricingPreview
+                  includedServiceBasePrices={selectedServiceIds.map(
+                    (serviceId) =>
+                      services.find((service) => service.id === serviceId)
+                        ?.base_price ?? 0
+                  )}
+                  configuration={packagePricingConfiguration}
+                  onSaveDiscount={(value) => void handleSaveDiscount(value)}
+                  isSavingDiscount={isSavingDiscount}
+                />
+              ) : null}
+
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save package'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : null}
+
+        {filteredPackages.length === 0 ? (
+          <p className={styles.copy}>No packages match the selected filter.</p>
+        ) : (
+          <ul className={styles.packageList}>
+            {filteredPackages.map((pkg) => (
+              <li key={pkg.id} className={styles.packageRow}>
+                <div className={styles.packageMain}>
+                  <span className={styles.packageName}>{pkg.name}</span>
+                  <span className={styles.branchBadge}>
+                    {branchNameById.get(pkg.branch_id) ??
+                      `Branch ${pkg.branch_id.slice(0, 8)}`}
+                  </span>
+                  <span className={styles.packageMeta}>
+                    {(pkg.package_services ?? []).length} services
+                  </span>
+                  <span className={styles.packageMeta}>
+                    PHP {pkg.bundled_price.toFixed(2)}
+                  </span>
+                  <StatusBadge isActive={pkg.is_active} />
+                </div>
+
+                <div className={styles.packageControls}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => openEditForm(pkg)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => void handleActiveToggle(pkg)}
+                  >
+                    {pkg.is_active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                </div>
+              </li>
             ))}
-          </select>
-        </label>
-
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={openCreateForm}
-        >
-          New package
-        </button>
-      </div>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
-        </p>
-      ) : null}
-
-      {isFormOpen ? (
-        <section className={styles.formPanel} aria-labelledby="package-form">
-          <h2 className={styles.sectionTitle} id="package-form">
-            {editingPackageId === null ? 'Build package' : 'Edit package'}
-          </h2>
-
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Branch</span>
-              <select
-                className={styles.input}
-                value={formBranchId}
-                onChange={(event) => {
-                  setFormBranchId(event.target.value);
-                  // A different branch offers a different service list, so a
-                  // stale selection can't carry across.
-                  setSelectedServiceIds([]);
-                }}
-                // A package is one branch's row forever (MA22) - creating
-                // "the same" package at the other branch is a second row.
-                disabled={editingPackageId !== null}
-                required
-              >
-                <option value="">Select a branch...</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Package name</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={formName}
-                onChange={(event) => setFormName(event.target.value)}
-                required
-              />
-            </label>
-
-            {formBranchId === '' ? (
-              <p className={styles.copy}>
-                Select a branch to pick its available services.
-              </p>
-            ) : (
-              <ServiceMultiSelect
-                label="Included services (pick two or more)"
-                options={serviceOptions}
-                selectedIds={selectedServiceIds}
-                onChange={setSelectedServiceIds}
-              />
-            )}
-
-            {packagePricingConfiguration ? (
-              <PackagePricingPreview
-                includedServiceBasePrices={selectedServiceIds.map(
-                  (serviceId) =>
-                    services.find((service) => service.id === serviceId)
-                      ?.base_price ?? 0
-                )}
-                configuration={packagePricingConfiguration}
-                onSaveDiscount={(value) => void handleSaveDiscount(value)}
-                isSavingDiscount={isSavingDiscount}
-              />
-            ) : null}
-
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                className={styles.primaryButton}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : 'Save package'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={closeForm}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      {filteredPackages.length === 0 ? (
-        <p className={styles.copy}>No packages match the selected filter.</p>
-      ) : (
-        <ul className={styles.packageList}>
-          {filteredPackages.map((pkg) => (
-            <li key={pkg.id} className={styles.packageRow}>
-              <div className={styles.packageMain}>
-                <span className={styles.packageName}>{pkg.name}</span>
-                <span className={styles.branchBadge}>
-                  {branchNameById.get(pkg.branch_id) ??
-                    `Branch ${pkg.branch_id.slice(0, 8)}`}
-                </span>
-                <span className={styles.packageMeta}>
-                  {(pkg.package_services ?? []).length} services
-                </span>
-                <span className={styles.packageMeta}>
-                  PHP {pkg.bundled_price.toFixed(2)}
-                </span>
-                <StatusBadge isActive={pkg.is_active} />
-              </div>
-
-              <div className={styles.packageControls}>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => openEditForm(pkg)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void handleActiveToggle(pkg)}
-                >
-                  {pkg.is_active ? 'Deactivate' : 'Reactivate'}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+          </ul>
+        )}
       </div>
     </main>
   );

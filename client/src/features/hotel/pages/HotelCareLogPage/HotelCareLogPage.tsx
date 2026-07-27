@@ -55,11 +55,11 @@ export function HotelCareLogPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the Care Log.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the Care Log.
+          </p>
+        </div>
       </main>
     );
   }
@@ -67,9 +67,9 @@ export function HotelCareLogPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -81,12 +81,12 @@ export function HotelCareLogPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Hotel Care Log</h1>
-      {role === 'Pet Assistant' ? (
-        <CareLogChecklist accessToken={accessToken} />
-      ) : (
-        <UncompletedCareFlagPanel accessToken={accessToken} />
-      )}
+        <h1 className={styles.title}>Hotel Care Log</h1>
+        {role === 'Pet Assistant' ? (
+          <CareLogChecklist accessToken={accessToken} />
+        ) : (
+          <UncompletedCareFlagPanel accessToken={accessToken} />
+        )}
       </div>
     </main>
   );

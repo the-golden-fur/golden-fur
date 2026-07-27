@@ -189,11 +189,11 @@ export function DaycareCheckInPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load Daycare check-in.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load Daycare check-in.
+          </p>
+        </div>
       </main>
     );
   }
@@ -201,9 +201,9 @@ export function DaycareCheckInPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -215,30 +215,30 @@ export function DaycareCheckInPage() {
   if (checkedInSessionId) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <h1 className={styles.title}>Daycare Check-in</h1>
-        <p className={styles.successBanner} role="status">
-          Pet checked in successfully.
-        </p>
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() =>
-              navigate(`/staff/daycare/checkout/${checkedInSessionId}`)
-            }
-          >
-            Go to checkout
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setCheckedInSessionId(null)}
-          >
-            Check in another pet
-          </button>
+        <div className={styles.content}>
+          <h1 className={styles.title}>Daycare Check-in</h1>
+          <p className={styles.successBanner} role="status">
+            Pet checked in successfully.
+          </p>
+          <div className={styles.controls}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() =>
+                navigate(`/staff/daycare/checkout/${checkedInSessionId}`)
+              }
+            >
+              Go to checkout
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setCheckedInSessionId(null)}
+            >
+              Check in another pet
+            </button>
+          </div>
         </div>
-      </div>
       </main>
     );
   }
@@ -250,154 +250,154 @@ export function DaycareCheckInPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Daycare Check-in</h1>
+        <h1 className={styles.title}>Daycare Check-in</h1>
 
-      <div className={styles.tabs}>
-        <button
-          type="button"
-          className={mode === 'booking' ? styles.tabActive : styles.tab}
-          onClick={() => setMode('booking')}
-        >
-          Existing booking
-        </button>
-        <button
-          type="button"
-          className={mode === 'walkin' ? styles.tabActive : styles.tab}
-          onClick={() => setMode('walkin')}
-        >
-          Walk-in
-        </button>
-      </div>
-
-      {blockedMessage ? (
-        <p className={styles.errorBanner} role="alert">
-          {blockedMessage}
-        </p>
-      ) : null}
-      {submitError ? (
-        <p className={styles.errorBanner} role="alert">
-          {submitError}
-        </p>
-      ) : null}
-
-      {mode === 'booking' ? (
-        <div className={styles.section}>
-          {isLoadingBookings ? (
-            <p className={styles.copy}>Loading today's Daycare bookings...</p>
-          ) : bookings.length === 0 ? (
-            <p className={styles.copy}>
-              No confirmed Daycare bookings for today at this branch.
-            </p>
-          ) : (
-            <ul className={styles.list}>
-              {bookings.map((booking) => (
-                <li key={booking.id}>
-                  <label className={styles.radioRow}>
-                    <input
-                      type="radio"
-                      name="booking"
-                      checked={selectedBookingId === booking.id}
-                      onChange={() => setSelectedBookingId(booking.id)}
-                    />
-                    {petNames[booking.pet_id] ?? 'Pet'} -{' '}
-                    {new Date(booking.scheduled_start).toLocaleTimeString()}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className={styles.tabs}>
+          <button
+            type="button"
+            className={mode === 'booking' ? styles.tabActive : styles.tab}
+            onClick={() => setMode('booking')}
+          >
+            Existing booking
+          </button>
+          <button
+            type="button"
+            className={mode === 'walkin' ? styles.tabActive : styles.tab}
+            onClick={() => setMode('walkin')}
+          >
+            Walk-in
+          </button>
         </div>
-      ) : (
-        <div className={styles.section}>
-          <div className={styles.searchRow}>
-            <input
-              className={styles.input}
-              type="email"
-              placeholder="Customer email"
-              value={emailQuery}
-              onChange={(event) => setEmailQuery(event.target.value)}
-            />
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleSearchCustomers}
-            >
-              Search
-            </button>
-          </div>
 
-          {customers.length > 0 ? (
-            <ul className={styles.list}>
-              {customers.map((customer) => (
-                <li key={customer.id}>
+        {blockedMessage ? (
+          <p className={styles.errorBanner} role="alert">
+            {blockedMessage}
+          </p>
+        ) : null}
+        {submitError ? (
+          <p className={styles.errorBanner} role="alert">
+            {submitError}
+          </p>
+        ) : null}
+
+        {mode === 'booking' ? (
+          <div className={styles.section}>
+            {isLoadingBookings ? (
+              <p className={styles.copy}>Loading today's Daycare bookings...</p>
+            ) : bookings.length === 0 ? (
+              <p className={styles.copy}>
+                No confirmed Daycare bookings for today at this branch.
+              </p>
+            ) : (
+              <ul className={styles.list}>
+                {bookings.map((booking) => (
+                  <li key={booking.id}>
+                    <label className={styles.radioRow}>
+                      <input
+                        type="radio"
+                        name="booking"
+                        checked={selectedBookingId === booking.id}
+                        onChange={() => setSelectedBookingId(booking.id)}
+                      />
+                      {petNames[booking.pet_id] ?? 'Pet'} -{' '}
+                      {new Date(booking.scheduled_start).toLocaleTimeString()}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className={styles.section}>
+            <div className={styles.searchRow}>
+              <input
+                className={styles.input}
+                type="email"
+                placeholder="Customer email"
+                value={emailQuery}
+                onChange={(event) => setEmailQuery(event.target.value)}
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={handleSearchCustomers}
+              >
+                Search
+              </button>
+            </div>
+
+            {customers.length > 0 ? (
+              <ul className={styles.list}>
+                {customers.map((customer) => (
+                  <li key={customer.id}>
+                    <button
+                      type="button"
+                      className={
+                        selectedCustomer?.id === customer.id
+                          ? styles.rowButtonActive
+                          : styles.rowButton
+                      }
+                      onClick={() => handleSelectCustomer(customer)}
+                    >
+                      {customer.full_name} ({customer.account_email})
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {selectedCustomer ? (
+              <div className={styles.section}>
+                {customerPets.length > 0 ? (
+                  <ul className={styles.list}>
+                    {customerPets.map((pet) => (
+                      <li key={pet.id}>
+                        <label className={styles.radioRow}>
+                          <input
+                            type="radio"
+                            name="pet"
+                            checked={selectedPetId === pet.id}
+                            onChange={() => setSelectedPetId(pet.id)}
+                          />
+                          {pet.name}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={styles.copy}>
+                    This customer has no pets on file yet.
+                  </p>
+                )}
+
+                {isRegisteringPet ? (
+                  <PetForm
+                    customerId={selectedCustomer.id}
+                    accessToken={accessToken}
+                    onCreated={handlePetRegistered}
+                  />
+                ) : (
                   <button
                     type="button"
-                    className={
-                      selectedCustomer?.id === customer.id
-                        ? styles.rowButtonActive
-                        : styles.rowButton
-                    }
-                    onClick={() => handleSelectCustomer(customer)}
+                    className={styles.secondaryButton}
+                    onClick={() => setIsRegisteringPet(true)}
                   >
-                    {customer.full_name} ({customer.account_email})
+                    Register a new pet
                   </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
 
-          {selectedCustomer ? (
-            <div className={styles.section}>
-              {customerPets.length > 0 ? (
-                <ul className={styles.list}>
-                  {customerPets.map((pet) => (
-                    <li key={pet.id}>
-                      <label className={styles.radioRow}>
-                        <input
-                          type="radio"
-                          name="pet"
-                          checked={selectedPetId === pet.id}
-                          onChange={() => setSelectedPetId(pet.id)}
-                        />
-                        {pet.name}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.copy}>
-                  This customer has no pets on file yet.
-                </p>
-              )}
-
-              {isRegisteringPet ? (
-                <PetForm
-                  customerId={selectedCustomer.id}
-                  accessToken={accessToken}
-                  onCreated={handlePetRegistered}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => setIsRegisteringPet(true)}
-                >
-                  Register a new pet
-                </button>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      <button
-        type="button"
-        className={styles.primaryButton}
-        disabled={!canSubmit || isSubmitting}
-        onClick={() => void submitCheckIn()}
-      >
-        {isSubmitting ? 'Checking in...' : 'Check in'}
-      </button>
+        <button
+          type="button"
+          className={styles.primaryButton}
+          disabled={!canSubmit || isSubmitting}
+          onClick={() => void submitCheckIn()}
+        >
+          {isSubmitting ? 'Checking in...' : 'Check in'}
+        </button>
       </div>
     </main>
   );

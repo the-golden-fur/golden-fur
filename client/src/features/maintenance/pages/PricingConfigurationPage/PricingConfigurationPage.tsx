@@ -158,11 +158,11 @@ export function PricingConfigurationPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the pricing configuration panel.
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the pricing configuration panel.
+          </p>
+        </div>
       </main>
     );
   }
@@ -170,9 +170,9 @@ export function PricingConfigurationPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -184,9 +184,9 @@ export function PricingConfigurationPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.copy}>Loading pricing configuration...</p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading pricing configuration...</p>
+        </div>
       </main>
     );
   }
@@ -194,11 +194,11 @@ export function PricingConfigurationPage() {
   if (loadError || !configuration || !form) {
     return (
       <main className={styles.page}>
-      <div className={styles.content}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError ?? 'Pricing configuration could not be loaded.'}
-        </p>
-      </div>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError ?? 'Pricing configuration could not be loaded.'}
+          </p>
+        </div>
       </main>
     );
   }
@@ -206,154 +206,163 @@ export function PricingConfigurationPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-      <h1 className={styles.title}>Grooming Pricing Configuration</h1>
-      <p className={styles.copy}>
-        One shared calculation drives every Grooming service&apos;s size/coat
-        matrix. Changing a multiplier or the long coat add-on here updates the
-        derived matrix everywhere it is shown, not just one service.
-      </p>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
+        <h1 className={styles.title}>Grooming Pricing Configuration</h1>
+        <p className={styles.copy}>
+          One shared calculation drives every Grooming service&apos;s size/coat
+          matrix. Changing a multiplier or the long coat add-on here updates the
+          derived matrix everywhere it is shown, not just one service.
         </p>
-      ) : null}
 
-      <form className={styles.form} onSubmit={handleSubmit}>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Size S multiplier</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
-            value={form.sizeS}
-            onChange={(event) =>
-              setForm((prev) => prev && { ...prev, sizeS: event.target.value })
-            }
-            required
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Size M multiplier</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
-            value={form.sizeM}
-            onChange={(event) =>
-              setForm((prev) => prev && { ...prev, sizeM: event.target.value })
-            }
-            required
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Size L multiplier</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
-            value={form.sizeL}
-            onChange={(event) =>
-              setForm((prev) => prev && { ...prev, sizeL: event.target.value })
-            }
-            required
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Size XL multiplier</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
-            value={form.sizeXl}
-            onChange={(event) =>
-              setForm((prev) => prev && { ...prev, sizeXl: event.target.value })
-            }
-            required
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Long coat add-on (PHP)</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            value={form.longCoatAddon}
-            onChange={(event) =>
-              setForm(
-                (prev) => prev && { ...prev, longCoatAddon: event.target.value }
-              )
-            }
-            required
-          />
-        </label>
-
-        {formError ? (
-          <p className={styles.errorBanner} role="alert">
-            {formError}
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
           </p>
         ) : null}
 
-        <div className={styles.formActions}>
-          <button
-            type="submit"
-            className={styles.primaryButton}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? 'Saving...' : 'Save pricing configuration'}
-          </button>
-        </div>
-      </form>
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Size S multiplier</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={form.sizeS}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, sizeS: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
 
-      <section aria-labelledby="preview-heading">
-        <h2 className={styles.sectionTitle} id="preview-heading">
-          Preview
-        </h2>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Sample base price (PHP)</span>
-          <input
-            className={styles.input}
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            value={previewBasePrice}
-            onChange={(event) => setPreviewBasePrice(event.target.value)}
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Size M multiplier</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={form.sizeM}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, sizeM: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Size L multiplier</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={form.sizeL}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, sizeL: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Size XL multiplier</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={form.sizeXl}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, sizeXl: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Long coat add-on (PHP)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={form.longCoatAddon}
+              onChange={(event) =>
+                setForm(
+                  (prev) =>
+                    prev && { ...prev, longCoatAddon: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+
+          <div className={styles.formActions}>
+            <button
+              type="submit"
+              className={styles.primaryButton}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Saving...' : 'Save pricing configuration'}
+            </button>
+          </div>
+        </form>
+
+        <section aria-labelledby="preview-heading">
+          <h2 className={styles.sectionTitle} id="preview-heading">
+            Preview
+          </h2>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Sample base price (PHP)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={previewBasePrice}
+              onChange={(event) => setPreviewBasePrice(event.target.value)}
+            />
+          </label>
+          <PricingMatrixPreview
+            basePrice={Number(previewBasePrice) || 0}
+            configuration={{
+              ...configuration,
+              size_s_multiplier:
+                Number(form.sizeS) || configuration.size_s_multiplier,
+              size_m_multiplier:
+                Number(form.sizeM) || configuration.size_m_multiplier,
+              size_l_multiplier:
+                Number(form.sizeL) || configuration.size_l_multiplier,
+              size_xl_multiplier:
+                Number(form.sizeXl) || configuration.size_xl_multiplier,
+              long_coat_addon:
+                form.longCoatAddon === ''
+                  ? configuration.long_coat_addon
+                  : Number(form.longCoatAddon),
+            }}
           />
-        </label>
-        <PricingMatrixPreview
-          basePrice={Number(previewBasePrice) || 0}
-          configuration={{
-            ...configuration,
-            size_s_multiplier:
-              Number(form.sizeS) || configuration.size_s_multiplier,
-            size_m_multiplier:
-              Number(form.sizeM) || configuration.size_m_multiplier,
-            size_l_multiplier:
-              Number(form.sizeL) || configuration.size_l_multiplier,
-            size_xl_multiplier:
-              Number(form.sizeXl) || configuration.size_xl_multiplier,
-            long_coat_addon:
-              form.longCoatAddon === ''
-                ? configuration.long_coat_addon
-                : Number(form.longCoatAddon),
-          }}
-        />
-      </section>
+        </section>
       </div>
     </main>
   );
