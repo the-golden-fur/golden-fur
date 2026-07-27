@@ -311,6 +311,16 @@
       }
     },
     {
+      "label": "🌱 Seed: Module 4 - Hotel",
+      "type": "npm",
+      "script": "seed:module-4",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "🌱 Seed: All Modules",
       "type": "npm",
       "script": "seed:all",
