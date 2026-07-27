@@ -185,7 +185,9 @@ export function AdminBreedsPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -196,129 +198,133 @@ export function AdminBreedsPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Breed Management</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Breed Management</h1>
 
-      {message ? <p className={styles.successBanner}>{message}</p> : null}
+        {message ? <p className={styles.successBanner}>{message}</p> : null}
 
-      <section className={styles.panel} aria-labelledby="add-breed-title">
-        <h2 className={styles.sectionTitle} id="add-breed-title">
-          Add breed
-        </h2>
-        <form
-          className={styles.form}
-          onSubmit={(event) => void handleCreate(event)}
-        >
-          <label className={styles.field}>
-            <span className={styles.label}>Pet Type</span>
-            <select
-              className={styles.input}
-              value={newPetType}
-              onChange={(event) => setNewPetType(event.target.value as PetType)}
-            >
-              {PET_TYPES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span className={styles.label}>Name</span>
-            <input
-              className={styles.input}
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-            />
-          </label>
-          {formError ? (
-            <p className={styles.errorBanner} role="alert">
-              {formError}
-            </p>
-          ) : null}
-          <button
-            className={styles.button}
-            type="submit"
-            disabled={isSubmitting}
+        <section className={styles.panel} aria-labelledby="add-breed-title">
+          <h2 className={styles.sectionTitle} id="add-breed-title">
+            Add breed
+          </h2>
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleCreate(event)}
           >
-            {isSubmitting ? 'Adding...' : 'Add breed'}
-          </button>
-        </form>
-      </section>
-
-      {isLoading ? (
-        <p className={styles.copy}>Loading breeds...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : (
-        PET_TYPES.map((petType) => (
-          <section key={petType} className={styles.group}>
-            <h2 className={styles.groupTitle}>{petType} breeds</h2>
-            {(breedsByType.get(petType) ?? []).length === 0 ? (
-              <p className={styles.copy}>
-                No {petType.toLowerCase()} breeds yet.
-              </p>
-            ) : (
-              <ul className={styles.list}>
-                {(breedsByType.get(petType) ?? []).map((breed) => (
-                  <li className={styles.listItem} key={breed.id}>
-                    {editingId === breed.id ? (
-                      <>
-                        <input
-                          className={styles.input}
-                          value={editingName}
-                          onChange={(event) =>
-                            setEditingName(event.target.value)
-                          }
-                        />
-                        <button
-                          type="button"
-                          className={styles.smallButton}
-                          onClick={() => void handleRename(breed.id)}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.smallButtonSecondary}
-                          onClick={() => setEditingId(null)}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className={styles.breedName}>{breed.name}</span>
-                        <button
-                          type="button"
-                          className={styles.smallButtonSecondary}
-                          onClick={() => startEditing(breed)}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.smallButtonSecondary}
-                          onClick={() => void handleDelete(breed.id)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </li>
+            <label className={styles.field}>
+              <span className={styles.label}>Pet Type</span>
+              <select
+                className={styles.input}
+                value={newPetType}
+                onChange={(event) =>
+                  setNewPetType(event.target.value as PetType)
+                }
+              >
+                {PET_TYPES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
                 ))}
-              </ul>
-            )}
-          </section>
-        ))
-      )}
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span className={styles.label}>Name</span>
+              <input
+                className={styles.input}
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+            </label>
+            {formError ? (
+              <p className={styles.errorBanner} role="alert">
+                {formError}
+              </p>
+            ) : null}
+            <button
+              className={styles.button}
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Adding...' : 'Add breed'}
+            </button>
+          </form>
+        </section>
 
-      {rowError ? (
-        <p className={styles.errorBanner} role="alert">
-          {rowError}
-        </p>
-      ) : null}
+        {isLoading ? (
+          <p className={styles.copy}>Loading breeds...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : (
+          PET_TYPES.map((petType) => (
+            <section key={petType} className={styles.group}>
+              <h2 className={styles.groupTitle}>{petType} breeds</h2>
+              {(breedsByType.get(petType) ?? []).length === 0 ? (
+                <p className={styles.copy}>
+                  No {petType.toLowerCase()} breeds yet.
+                </p>
+              ) : (
+                <ul className={styles.list}>
+                  {(breedsByType.get(petType) ?? []).map((breed) => (
+                    <li className={styles.listItem} key={breed.id}>
+                      {editingId === breed.id ? (
+                        <>
+                          <input
+                            className={styles.input}
+                            value={editingName}
+                            onChange={(event) =>
+                              setEditingName(event.target.value)
+                            }
+                          />
+                          <button
+                            type="button"
+                            className={styles.smallButton}
+                            onClick={() => void handleRename(breed.id)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.smallButtonSecondary}
+                            onClick={() => setEditingId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className={styles.breedName}>{breed.name}</span>
+                          <button
+                            type="button"
+                            className={styles.smallButtonSecondary}
+                            onClick={() => startEditing(breed)}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.smallButtonSecondary}
+                            onClick={() => void handleDelete(breed.id)}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))
+        )}
+
+        {rowError ? (
+          <p className={styles.errorBanner} role="alert">
+            {rowError}
+          </p>
+        ) : null}
+      </div>
     </main>
   );
 }

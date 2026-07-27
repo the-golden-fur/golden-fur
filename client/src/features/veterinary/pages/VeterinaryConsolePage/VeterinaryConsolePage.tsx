@@ -406,9 +406,11 @@ export function VeterinaryConsolePage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the veterinary console.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the veterinary console.
+          </p>
+        </div>
       </main>
     );
   }
@@ -416,7 +418,9 @@ export function VeterinaryConsolePage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -427,114 +431,120 @@ export function VeterinaryConsolePage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Veterinary Console</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Veterinary Console</h1>
 
-      <QueueFilterBar
-        dateRangePreset={dateRangePreset}
-        onDateRangePresetChange={setDateRangePreset}
-        customDate={customDate}
-        onCustomDateChange={setCustomDate}
-        statusValue={statusFilter}
-        onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
-        statusOptions={STATUS_OPTIONS}
-      />
+        <QueueFilterBar
+          dateRangePreset={dateRangePreset}
+          onDateRangePresetChange={setDateRangePreset}
+          customDate={customDate}
+          onCustomDateChange={setCustomDate}
+          statusValue={statusFilter}
+          onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
+          statusOptions={STATUS_OPTIONS}
+        />
 
-      {isLoading ? (
-        <p className={styles.copy}>Loading consultations...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : (
-        <div className={styles.layout}>
-          <div className={styles.queue}>
-            {visibleStatusGroups.map((status) => (
-              <section key={status} className={styles.statusGroup}>
-                <h2 className={styles.statusGroupTitle}>
-                  <ConsultationStatusBadge status={status} />
-                </h2>
-                {grouped.get(status)!.length === 0 ? (
-                  <p className={styles.copy}>None</p>
-                ) : (
-                  <ul className={styles.rowList}>
-                    {grouped.get(status)!.map((row) => (
-                      <li key={row.consultation.id}>
-                        <button
-                          type="button"
-                          className={
-                            row.consultation.id === selectedId
-                              ? styles.rowButtonActive
-                              : styles.rowButton
-                          }
-                          onClick={() =>
-                            selectConsultation(row.consultation.id)
-                          }
-                        >
+        {isLoading ? (
+          <p className={styles.copy}>Loading consultations...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : (
+          <div className={styles.layout}>
+            <div className={styles.queue}>
+              {visibleStatusGroups.map((status) => (
+                <section key={status} className={styles.statusGroup}>
+                  <h2 className={styles.statusGroupTitle}>
+                    <ConsultationStatusBadge status={status} />
+                  </h2>
+                  {grouped.get(status)!.length === 0 ? (
+                    <p className={styles.copy}>None</p>
+                  ) : (
+                    <ul className={styles.rowList}>
+                      {grouped.get(status)!.map((row) => (
+                        <li key={row.consultation.id}>
+                          <button
+                            type="button"
+                            className={
+                              row.consultation.id === selectedId
+                                ? styles.rowButtonActive
+                                : styles.rowButton
+                            }
+                            onClick={() =>
+                              selectConsultation(row.consultation.id)
+                            }
+                          >
+                            <span className={styles.rowPetName}>
+                              {row.petName}
+                            </span>
+                            <span className={styles.rowMeta}>
+                              {row.ownerName}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ))}
+
+              {showPendingSection ? (
+                <section className={styles.unconfirmedSection}>
+                  {enrichedPending.length === 0 ? (
+                    <p className={styles.copy}>
+                      No unconfirmed bookings match these filters.
+                    </p>
+                  ) : (
+                    <ul className={styles.rowList}>
+                      {enrichedPending.map((item) => (
+                        <li key={item.booking.id} className={styles.pendingRow}>
                           <span className={styles.rowPetName}>
-                            {row.petName}
+                            {item.petName}
                           </span>
                           <span className={styles.rowMeta}>
-                            {row.ownerName}
+                            {item.ownerName}
                           </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
+                          <span className={styles.pendingBadge}>
+                            Awaiting payment
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ) : null}
+            </div>
 
-            {showPendingSection ? (
-              <section className={styles.unconfirmedSection}>
-                {enrichedPending.length === 0 ? (
-                  <p className={styles.copy}>
-                    No unconfirmed bookings match these filters.
-                  </p>
-                ) : (
-                  <ul className={styles.rowList}>
-                    {enrichedPending.map((item) => (
-                      <li key={item.booking.id} className={styles.pendingRow}>
-                        <span className={styles.rowPetName}>
-                          {item.petName}
-                        </span>
-                        <span className={styles.rowMeta}>{item.ownerName}</span>
-                        <span className={styles.pendingBadge}>
-                          Awaiting payment
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ) : null}
+            <div className={styles.detail}>
+              {selectedRow ? (
+                <ConsultationDetailPanel
+                  key={selectedRow.consultation.id}
+                  consultation={selectedRow.consultation}
+                  petName={selectedRow.petName}
+                  ownerName={selectedRow.ownerName}
+                  accessToken={accessToken}
+                  isSaving={isSaving}
+                  saveError={saveError}
+                  onStart={() => void handleStart()}
+                  onComplete={(fields) => void handleComplete(fields)}
+                  petHistory={petHistory}
+                  isPetHistoryLoading={isPetHistoryLoading}
+                  petHistoryError={petHistoryError}
+                  onOpenPetHistory={handleOpenPetHistory}
+                  onScheduleFollowUp={(date) =>
+                    void handleScheduleFollowUp(date)
+                  }
+                  isSchedulingFollowUp={isSchedulingFollowUp}
+                  followUpError={followUpError}
+                />
+              ) : (
+                <p className={styles.copy}>Select a consultation to begin.</p>
+              )}
+            </div>
           </div>
-
-          <div className={styles.detail}>
-            {selectedRow ? (
-              <ConsultationDetailPanel
-                key={selectedRow.consultation.id}
-                consultation={selectedRow.consultation}
-                petName={selectedRow.petName}
-                ownerName={selectedRow.ownerName}
-                accessToken={accessToken}
-                isSaving={isSaving}
-                saveError={saveError}
-                onStart={() => void handleStart()}
-                onComplete={(fields) => void handleComplete(fields)}
-                petHistory={petHistory}
-                isPetHistoryLoading={isPetHistoryLoading}
-                petHistoryError={petHistoryError}
-                onOpenPetHistory={handleOpenPetHistory}
-                onScheduleFollowUp={(date) => void handleScheduleFollowUp(date)}
-                isSchedulingFollowUp={isSchedulingFollowUp}
-                followUpError={followUpError}
-              />
-            ) : (
-              <p className={styles.copy}>Select a consultation to begin.</p>
-            )}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

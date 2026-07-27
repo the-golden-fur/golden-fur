@@ -323,9 +323,11 @@ export function AdminServicesPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the services panel.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the services panel.
+          </p>
+        </div>
       </main>
     );
   }
@@ -333,7 +335,9 @@ export function AdminServicesPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -348,7 +352,9 @@ export function AdminServicesPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading services...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading services...</p>
+        </div>
       </main>
     );
   }
@@ -356,116 +362,34 @@ export function AdminServicesPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Services</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Services</h1>
 
-      <div className={styles.toolbar}>
-        <div className={styles.filters}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Category</span>
-            <select
-              className={styles.filterSelect}
-              value={categoryFilter}
-              onChange={(event) =>
-                setCategoryFilter(event.target.value as ServiceCategory | 'All')
-              }
-            >
-              <option value="All">All categories</option>
-              {SERVICE_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch</span>
-            <select
-              className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
-            >
-              <option value="All">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Status</span>
-            <select
-              className={styles.filterSelect}
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as StatusFilter)
-              }
-            >
-              <option value="Active">Active only</option>
-              <option value="Inactive">Inactive only</option>
-              <option value="All">All</option>
-            </select>
-          </label>
-        </div>
-
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={openCreateForm}
-        >
-          New service
-        </button>
-      </div>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
-        </p>
-      ) : null}
-
-      {isFormOpen ? (
-        <section className={styles.formPanel} aria-labelledby="service-form">
-          <h2 className={styles.sectionTitle} id="service-form">
-            {editingServiceId === null ? 'Create service' : 'Edit service'}
-          </h2>
-
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Name</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Category</span>
+        <div className={styles.toolbar}>
+          <div className={styles.filters}>
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Category</span>
               <select
-                className={styles.input}
-                value={form.category}
+                className={styles.filterSelect}
+                value={categoryFilter}
                 onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    category: event.target.value as ServiceCategory,
-                  }))
+                  setCategoryFilter(
+                    event.target.value as ServiceCategory | 'All'
+                  )
                 }
               >
+                <option value="All">All categories</option>
                 {SERVICE_CATEGORIES.map((category) => (
                   <option key={category} value={category}>
                     {category}
@@ -474,130 +398,224 @@ export function AdminServicesPage() {
               </select>
             </label>
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Base price (PHP)</span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={form.basePrice}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    basePrice: event.target.value,
-                  }))
-                }
-                required
-              />
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Branch</span>
+              <select
+                className={styles.filterSelect}
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+              >
+                <option value="All">All branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
             </label>
 
-            {form.category === 'Hotel' || form.category === 'Daycare' ? (
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Status</span>
+              <select
+                className={styles.filterSelect}
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as StatusFilter)
+                }
+              >
+                <option value="Active">Active only</option>
+                <option value="Inactive">Inactive only</option>
+                <option value="All">All</option>
+              </select>
+            </label>
+          </div>
+
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={openCreateForm}
+          >
+            New service
+          </button>
+        </div>
+
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
+
+        {isFormOpen ? (
+          <section className={styles.formPanel} aria-labelledby="service-form">
+            <h2 className={styles.sectionTitle} id="service-form">
+              {editingServiceId === null ? 'Create service' : 'Edit service'}
+            </h2>
+
+            <form className={styles.form} onSubmit={handleSubmit}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>
-                  Duration (minutes per block/night)
-                </span>
+                <span className={styles.fieldLabel}>Name</span>
                 <input
                   className={styles.input}
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputMode="numeric"
-                  value={form.durationMinutes}
+                  type="text"
+                  value={form.name}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Category</span>
+                <select
+                  className={styles.input}
+                  value={form.category}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      durationMinutes: event.target.value,
+                      category: event.target.value as ServiceCategory,
                     }))
                   }
+                >
+                  {SERVICE_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Base price (PHP)</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={form.basePrice}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      basePrice: event.target.value,
+                    }))
+                  }
+                  required
                 />
               </label>
-            ) : null}
 
-            {form.category === 'Grooming' && pricingConfiguration ? (
-              <PricingMatrixPreview
-                basePrice={Number(form.basePrice) || 0}
-                configuration={pricingConfiguration}
-              />
-            ) : null}
+              {form.category === 'Hotel' || form.category === 'Daycare' ? (
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    Duration (minutes per block/night)
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    value={form.durationMinutes}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        durationMinutes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
 
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
+              {form.category === 'Grooming' && pricingConfiguration ? (
+                <PricingMatrixPreview
+                  basePrice={Number(form.basePrice) || 0}
+                  configuration={pricingConfiguration}
+                />
+              ) : null}
 
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                className={styles.primaryButton}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : 'Save service'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={closeForm}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
 
-      {filteredServices.length === 0 ? (
-        <p className={styles.copy}>No services match the selected filters.</p>
-      ) : (
-        <ul className={styles.serviceList}>
-          {filteredServices.map((service) => (
-            <li key={service.id} className={styles.serviceRow}>
-              <div className={styles.serviceMain}>
-                <span className={styles.serviceName}>{service.name}</span>
-                <span className={styles.categoryBadge}>{service.category}</span>
-                <span className={styles.servicePrice}>
-                  PHP {service.base_price.toFixed(2)}
-                </span>
-                <StatusBadge isActive={service.is_active} />
-              </div>
-
-              <div className={styles.serviceControls}>
-                {branches.map((branch) => {
-                  const availability = (
-                    service.service_branch_availability ?? []
-                  ).find((row) => row.branch_id === branch.id);
-
-                  return (
-                    <ToggleSwitch
-                      key={branch.id}
-                      label={branch.name}
-                      checked={availability?.is_available ?? false}
-                      onChange={(isAvailable) =>
-                        void handleBranchToggle(service, branch.id, isAvailable)
-                      }
-                    />
-                  );
-                })}
-
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save service'}
+                </button>
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={() => openEditForm(service)}
+                  onClick={closeForm}
                 >
-                  Edit
+                  Cancel
                 </button>
-                <ToggleSwitch
-                  label={`${service.is_active ? 'Disable' : 'Enable'} ${service.name}`}
-                  checked={service.is_active}
-                  onChange={() => void handleActiveToggle(service)}
-                />
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            </form>
+          </section>
+        ) : null}
+
+        {filteredServices.length === 0 ? (
+          <p className={styles.copy}>No services match the selected filters.</p>
+        ) : (
+          <ul className={styles.serviceList}>
+            {filteredServices.map((service) => (
+              <li key={service.id} className={styles.serviceRow}>
+                <div className={styles.serviceMain}>
+                  <span className={styles.serviceName}>{service.name}</span>
+                  <span className={styles.categoryBadge}>
+                    {service.category}
+                  </span>
+                  <span className={styles.servicePrice}>
+                    PHP {service.base_price.toFixed(2)}
+                  </span>
+                  <StatusBadge isActive={service.is_active} />
+                </div>
+
+                <div className={styles.serviceControls}>
+                  {branches.map((branch) => {
+                    const availability = (
+                      service.service_branch_availability ?? []
+                    ).find((row) => row.branch_id === branch.id);
+
+                    return (
+                      <ToggleSwitch
+                        key={branch.id}
+                        label={branch.name}
+                        checked={availability?.is_available ?? false}
+                        onChange={(isAvailable) =>
+                          void handleBranchToggle(
+                            service,
+                            branch.id,
+                            isAvailable
+                          )
+                        }
+                      />
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => openEditForm(service)}
+                  >
+                    Edit
+                  </button>
+                  <ToggleSwitch
+                    label={`${service.is_active ? 'Disable' : 'Enable'} ${service.name}`}
+                    checked={service.is_active}
+                    onChange={() => void handleActiveToggle(service)}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </main>
   );
 }

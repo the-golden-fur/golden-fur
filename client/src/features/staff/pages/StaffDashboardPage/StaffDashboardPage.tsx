@@ -61,9 +61,11 @@ export function StaffDashboardPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load your dashboard.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load your dashboard.
+          </p>
+        </div>
       </main>
     );
   }
@@ -71,7 +73,9 @@ export function StaffDashboardPage() {
   if (status === 'loading') {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading your dashboard...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading your dashboard...</p>
+        </div>
       </main>
     );
   }
@@ -88,11 +92,13 @@ export function StaffDashboardPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>{config.heading}</h1>
-      <div className={styles.grid}>
-        {config.tiles.map((tile) => (
-          <DashboardTile key={tile.title} {...tile} />
-        ))}
+      <div className={styles.content}>
+        <h1 className={styles.title}>{config.heading}</h1>
+        <div className={styles.grid}>
+          {config.tiles.map((tile) => (
+            <DashboardTile key={tile.title} {...tile} />
+          ))}
+        </div>
       </div>
     </main>
   );

@@ -151,9 +151,11 @@ export function StaffManagementPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load staff management.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load staff management.
+          </p>
+        </div>
       </main>
     );
   }
@@ -161,7 +163,9 @@ export function StaffManagementPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading staff...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading staff...</p>
+        </div>
       </main>
     );
   }
@@ -169,9 +173,11 @@ export function StaffManagementPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
@@ -184,125 +190,129 @@ export function StaffManagementPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Staff Management</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Staff Management</h1>
 
-      <section className={styles.panel} aria-labelledby="create-staff-title">
-        <h2 className={styles.sectionTitle} id="create-staff-title">
-          Create staff account
-        </h2>
-        {viewerRole ? (
-          <CreateStaffAccountForm
-            accessToken={accessToken}
-            viewerRole={viewerRole}
-            viewerBranchId={viewer?.branch_id ?? ''}
-            branches={branches}
-            onCreated={handleAccountCreated}
-          />
-        ) : null}
-      </section>
+        <section className={styles.panel} aria-labelledby="create-staff-title">
+          <h2 className={styles.sectionTitle} id="create-staff-title">
+            Create staff account
+          </h2>
+          {viewerRole ? (
+            <CreateStaffAccountForm
+              accessToken={accessToken}
+              viewerRole={viewerRole}
+              viewerBranchId={viewer?.branch_id ?? ''}
+              branches={branches}
+              onCreated={handleAccountCreated}
+            />
+          ) : null}
+        </section>
 
-      <div className={styles.filters}>
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Role</span>
-          <select
-            className={styles.filterSelect}
-            value={roleFilter}
-            onChange={(event) =>
-              setRoleFilter(event.target.value as StaffRole | 'All')
-            }
-          >
-            <option value="All">All roles</option>
-            {ALL_ROLES.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {viewerRole === 'Superadmin' ? (
+        <div className={styles.filters}>
           <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch</span>
+            <span className={styles.filterLabel}>Role</span>
             <select
               className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
+              value={roleFilter}
+              onChange={(event) =>
+                setRoleFilter(event.target.value as StaffRole | 'All')
+              }
             >
-              <option value="All">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
+              <option value="All">All roles</option>
+              {ALL_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
                 </option>
               ))}
             </select>
           </label>
+
+          {viewerRole === 'Superadmin' ? (
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Branch</span>
+              <select
+                className={styles.filterSelect}
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+              >
+                <option value="All">All branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+
+        {blockMessage ? (
+          <p className={styles.successBanner}>{blockMessage}</p>
         ) : null}
-      </div>
 
-      {blockMessage ? (
-        <p className={styles.successBanner}>{blockMessage}</p>
-      ) : null}
-
-      {filteredStaff.length === 0 ? (
-        <p className={styles.copy}>
-          No staff members match the selected filters.
-        </p>
-      ) : (
-        <div className={styles.grid}>
-          {filteredStaff.map((staff) => (
-            <div className={styles.gridItem} key={staff.id}>
-              <StaffCard
-                staffId={staff.id}
-                profile={staff}
-                accessToken={accessToken}
-                branchName={branchNameById.get(staff.branch_id)}
-                refreshKey={blockRefreshKeys[staff.id]}
-              />
-              <button
-                type="button"
-                className={styles.manageButton}
-                onClick={() =>
-                  setExpandedStaffId((current) =>
-                    current === staff.id ? null : staff.id
-                  )
-                }
-              >
-                {expandedStaffId === staff.id ? 'Close' : 'Set unavailability'}
-              </button>
-              {expandedStaffId === staff.id ? (
-                <UnavailabilityBlockForm
-                  staffId={staff.id}
-                  accessToken={accessToken}
-                  onCreated={() => handleBlockCreated(staff.id)}
-                />
-              ) : null}
-              <button
-                type="button"
-                className={styles.manageButton}
-                onClick={() =>
-                  setExpandedManageStaffId((current) =>
-                    current === staff.id ? null : staff.id
-                  )
-                }
-              >
-                {expandedManageStaffId === staff.id
-                  ? 'Close'
-                  : 'Manage account'}
-              </button>
-              {expandedManageStaffId === staff.id && viewerRole ? (
-                <ManageStaffAccountForm
+        {filteredStaff.length === 0 ? (
+          <p className={styles.copy}>
+            No staff members match the selected filters.
+          </p>
+        ) : (
+          <div className={styles.grid}>
+            {filteredStaff.map((staff) => (
+              <div className={styles.gridItem} key={staff.id}>
+                <StaffCard
                   staffId={staff.id}
                   profile={staff}
-                  viewerRole={viewerRole}
-                  branches={branches}
                   accessToken={accessToken}
-                  onUpdated={handleAccountManaged}
+                  branchName={branchNameById.get(staff.branch_id)}
+                  refreshKey={blockRefreshKeys[staff.id]}
                 />
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
+                <button
+                  type="button"
+                  className={styles.manageButton}
+                  onClick={() =>
+                    setExpandedStaffId((current) =>
+                      current === staff.id ? null : staff.id
+                    )
+                  }
+                >
+                  {expandedStaffId === staff.id
+                    ? 'Close'
+                    : 'Set unavailability'}
+                </button>
+                {expandedStaffId === staff.id ? (
+                  <UnavailabilityBlockForm
+                    staffId={staff.id}
+                    accessToken={accessToken}
+                    onCreated={() => handleBlockCreated(staff.id)}
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  className={styles.manageButton}
+                  onClick={() =>
+                    setExpandedManageStaffId((current) =>
+                      current === staff.id ? null : staff.id
+                    )
+                  }
+                >
+                  {expandedManageStaffId === staff.id
+                    ? 'Close'
+                    : 'Manage account'}
+                </button>
+                {expandedManageStaffId === staff.id && viewerRole ? (
+                  <ManageStaffAccountForm
+                    staffId={staff.id}
+                    profile={staff}
+                    viewerRole={viewerRole}
+                    branches={branches}
+                    accessToken={accessToken}
+                    onUpdated={handleAccountManaged}
+                  />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

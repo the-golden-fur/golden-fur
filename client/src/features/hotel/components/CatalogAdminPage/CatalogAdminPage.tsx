@@ -189,138 +189,140 @@ export function CatalogAdminPage({
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>{title}</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>{title}</h1>
 
-      {message ? <p className={styles.successBanner}>{message}</p> : null}
+        {message ? <p className={styles.successBanner}>{message}</p> : null}
 
-      <section className={styles.panel} aria-labelledby="add-item-title">
-        <h2 className={styles.sectionTitle} id="add-item-title">
-          Add {itemNoun}
-        </h2>
-        <form
-          className={styles.form}
-          onSubmit={(event) => void handleCreate(event)}
-        >
-          <label className={styles.field}>
-            <span className={styles.label}>Name</span>
-            <input
-              className={styles.input}
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-            />
-          </label>
-          <label className={styles.field}>
-            <span className={styles.label}>Price (PHP)</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              value={newPrice}
-              onChange={(event) => setNewPrice(event.target.value)}
-            />
-          </label>
-          {formError ? (
-            <p className={styles.errorBanner} role="alert">
-              {formError}
-            </p>
-          ) : null}
-          <button
-            className={styles.button}
-            type="submit"
-            disabled={isSubmitting}
+        <section className={styles.panel} aria-labelledby="add-item-title">
+          <h2 className={styles.sectionTitle} id="add-item-title">
+            Add {itemNoun}
+          </h2>
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleCreate(event)}
           >
-            {isSubmitting ? 'Adding...' : `Add ${itemNoun}`}
-          </button>
-        </form>
-      </section>
+            <label className={styles.field}>
+              <span className={styles.label}>Name</span>
+              <input
+                className={styles.input}
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.label}>Price (PHP)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={newPrice}
+                onChange={(event) => setNewPrice(event.target.value)}
+              />
+            </label>
+            {formError ? (
+              <p className={styles.errorBanner} role="alert">
+                {formError}
+              </p>
+            ) : null}
+            <button
+              className={styles.button}
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Adding...' : `Add ${itemNoun}`}
+            </button>
+          </form>
+        </section>
 
-      {isLoading ? (
-        <p className={styles.copy}>Loading {itemNoun} catalog...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : items.length === 0 ? (
-        <p className={styles.copy}>No {itemNoun} items yet.</p>
-      ) : (
-        <ul className={styles.list}>
-          {items.map((item) => (
-            <li className={styles.listItem} key={item.id}>
-              {editingId === item.id ? (
-                <>
-                  <input
-                    className={styles.input}
-                    value={editingName}
-                    onChange={(event) => setEditingName(event.target.value)}
-                  />
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editingPrice}
-                    onChange={(event) => setEditingPrice(event.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className={styles.smallButton}
-                    onClick={() => void handleSaveEdit(item.id)}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.smallButtonSecondary}
-                    onClick={() => setEditingId(null)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className={styles.itemName}>
-                    {item.name}
-                    {!item.is_active ? (
-                      <span className={styles.inactiveBadge}>Inactive</span>
-                    ) : null}
-                  </span>
-                  <span className={styles.itemPrice}>
-                    PHP {item.price.toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.smallButtonSecondary}
-                    onClick={() => startEditing(item)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.smallButtonSecondary}
-                    onClick={() => void handleToggleActive(item)}
-                  >
-                    {item.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.smallButtonSecondary}
-                    onClick={() => void handleDelete(item.id)}
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+        {isLoading ? (
+          <p className={styles.copy}>Loading {itemNoun} catalog...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : items.length === 0 ? (
+          <p className={styles.copy}>No {itemNoun} items yet.</p>
+        ) : (
+          <ul className={styles.list}>
+            {items.map((item) => (
+              <li className={styles.listItem} key={item.id}>
+                {editingId === item.id ? (
+                  <>
+                    <input
+                      className={styles.input}
+                      value={editingName}
+                      onChange={(event) => setEditingName(event.target.value)}
+                    />
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editingPrice}
+                      onChange={(event) => setEditingPrice(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={styles.smallButton}
+                      onClick={() => void handleSaveEdit(item.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.smallButtonSecondary}
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className={styles.itemName}>
+                      {item.name}
+                      {!item.is_active ? (
+                        <span className={styles.inactiveBadge}>Inactive</span>
+                      ) : null}
+                    </span>
+                    <span className={styles.itemPrice}>
+                      PHP {item.price.toFixed(2)}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.smallButtonSecondary}
+                      onClick={() => startEditing(item)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.smallButtonSecondary}
+                      onClick={() => void handleToggleActive(item)}
+                    >
+                      {item.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.smallButtonSecondary}
+                      onClick={() => void handleDelete(item.id)}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {rowError ? (
-        <p className={styles.errorBanner} role="alert">
-          {rowError}
-        </p>
-      ) : null}
+        {rowError ? (
+          <p className={styles.errorBanner} role="alert">
+            {rowError}
+          </p>
+        ) : null}
+      </div>
     </main>
   );
 }

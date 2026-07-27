@@ -122,9 +122,11 @@ export function UnavailabilityApprovalQueuePage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the approval queue.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the approval queue.
+          </p>
+        </div>
       </main>
     );
   }
@@ -132,7 +134,9 @@ export function UnavailabilityApprovalQueuePage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -143,54 +147,56 @@ export function UnavailabilityApprovalQueuePage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Unavailability Approval Queue</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Unavailability Approval Queue</h1>
 
-      {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Branch</span>
-          <select
-            className={styles.filterSelect}
-            value={branchFilter}
-            onChange={(event) => setBranchFilter(event.target.value)}
-          >
-            <option value="All">All branches</option>
-            {branchOptions.map((branchId) => (
-              <option key={branchId} value={branchId}>
-                {`Branch ${branchId.slice(0, 8)}`}
-              </option>
+        {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Branch</span>
+            <select
+              className={styles.filterSelect}
+              value={branchFilter}
+              onChange={(event) => setBranchFilter(event.target.value)}
+            >
+              <option value="All">All branches</option>
+              {branchOptions.map((branchId) => (
+                <option key={branchId} value={branchId}>
+                  {`Branch ${branchId.slice(0, 8)}`}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {actionError ? (
+          <p className={styles.errorBanner} role="alert">
+            {actionError}
+          </p>
+        ) : null}
+
+        {isLoading ? (
+          <p className={styles.copy}>Loading pending requests...</p>
+        ) : loadError ? (
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        ) : filteredPending.length === 0 ? (
+          <p className={styles.copy}>No pending requests.</p>
+        ) : (
+          <div className={styles.grid}>
+            {filteredPending.map((block) => (
+              <UnavailabilityReviewCard
+                key={block.id}
+                block={block}
+                onApprove={() => handleReview(block, 'approved')}
+                onDeny={(denialReason) =>
+                  handleReview(block, 'denied', denialReason)
+                }
+              />
             ))}
-          </select>
-        </label>
-      ) : null}
-
-      {actionError ? (
-        <p className={styles.errorBanner} role="alert">
-          {actionError}
-        </p>
-      ) : null}
-
-      {isLoading ? (
-        <p className={styles.copy}>Loading pending requests...</p>
-      ) : loadError ? (
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
-      ) : filteredPending.length === 0 ? (
-        <p className={styles.copy}>No pending requests.</p>
-      ) : (
-        <div className={styles.grid}>
-          {filteredPending.map((block) => (
-            <UnavailabilityReviewCard
-              key={block.id}
-              block={block}
-              onApprove={() => handleReview(block, 'approved')}
-              onDeny={(denialReason) =>
-                handleReview(block, 'denied', denialReason)
-              }
-            />
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

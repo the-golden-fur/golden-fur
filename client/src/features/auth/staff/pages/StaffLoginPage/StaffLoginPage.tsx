@@ -12,7 +12,7 @@ export function StaffLoginPage() {
   return (
     <main className={styles.page}>
       <div className={styles.left}>
-        <div className={styles.logo}>Golden Fur MIS</div>
+        <div className={styles.logo}>Golden Fur</div>
 
         <div className={styles.hero}>
           <h2>Run the clinic, all in one place.</h2>

@@ -131,9 +131,11 @@ export function PromoCapConfigurationPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the promo cap configuration panel.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the promo cap configuration panel.
+          </p>
+        </div>
       </main>
     );
   }
@@ -141,7 +143,9 @@ export function PromoCapConfigurationPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -153,7 +157,9 @@ export function PromoCapConfigurationPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading promo cap configuration...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading promo cap configuration...</p>
+        </div>
       </main>
     );
   }
@@ -161,54 +167,60 @@ export function PromoCapConfigurationPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Promo Cap Configuration</h1>
-      <p className={styles.copy}>
-        Maximum total discount value that all combined, customer-activated
-        promos may contribute to one transaction. Each branch (and the
-        system-wide default) has its own cap, viewed and saved independently.
-      </p>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
+      <div className={styles.content}>
+        <h1 className={styles.title}>Promo Cap Configuration</h1>
+        <p className={styles.copy}>
+          Maximum total discount value that all combined, customer-activated
+          promos may contribute to one transaction. Each branch (and the
+          system-wide default) has its own cap, viewed and saved independently.
         </p>
-      ) : null}
 
-      <div className={styles.grid}>
-        <PromoCapCard
-          // Remounts (and re-seeds its local edit state) once the default
-          // cap resolves from undefined to a real row on initial load - see
-          // PromoCapCard's own comment for why this replaces a sync effect.
-          key={`default-${capConfigurations.find((config) => config.branch_id === null)?.id ?? 'unsaved'}`}
-          scopeLabel="Both branches (system-wide default)"
-          config={capConfigurations.find((config) => config.branch_id === null)}
-          onSave={(input) => void handleSave(null, DEFAULT_SCOPE_KEY, input)}
-          isSaving={savingScopeKey === DEFAULT_SCOPE_KEY}
-        />
-        {branches.map((branch) => {
-          const config = capConfigurations.find(
-            (candidate) => candidate.branch_id === branch.id
-          );
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
 
-          return (
-            <PromoCapCard
-              key={`${branch.id}-${config?.id ?? 'unsaved'}`}
-              scopeLabel={branch.name}
-              config={config}
-              onSave={(input) => void handleSave(branch.id, branch.id, input)}
-              isSaving={savingScopeKey === branch.id}
-            />
-          );
-        })}
+        <div className={styles.grid}>
+          <PromoCapCard
+            // Remounts (and re-seeds its local edit state) once the default
+            // cap resolves from undefined to a real row on initial load - see
+            // PromoCapCard's own comment for why this replaces a sync effect.
+            key={`default-${capConfigurations.find((config) => config.branch_id === null)?.id ?? 'unsaved'}`}
+            scopeLabel="Both branches (system-wide default)"
+            config={capConfigurations.find(
+              (config) => config.branch_id === null
+            )}
+            onSave={(input) => void handleSave(null, DEFAULT_SCOPE_KEY, input)}
+            isSaving={savingScopeKey === DEFAULT_SCOPE_KEY}
+          />
+          {branches.map((branch) => {
+            const config = capConfigurations.find(
+              (candidate) => candidate.branch_id === branch.id
+            );
+
+            return (
+              <PromoCapCard
+                key={`${branch.id}-${config?.id ?? 'unsaved'}`}
+                scopeLabel={branch.name}
+                config={config}
+                onSave={(input) => void handleSave(branch.id, branch.id, input)}
+                isSaving={savingScopeKey === branch.id}
+              />
+            );
+          })}
+        </div>
       </div>
     </main>
   );

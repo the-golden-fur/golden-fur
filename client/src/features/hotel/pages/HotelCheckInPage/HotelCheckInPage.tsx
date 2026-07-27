@@ -465,9 +465,11 @@ export function HotelCheckInPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load Hotel check-in.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load Hotel check-in.
+          </p>
+        </div>
       </main>
     );
   }
@@ -475,7 +477,9 @@ export function HotelCheckInPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -487,32 +491,36 @@ export function HotelCheckInPage() {
   if (checkedInStayId) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Hotel Check-in</h1>
-        <p className={styles.successBanner} role="status">
-          Pet checked in successfully.
-        </p>
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => navigate(`/staff/hotel/checkout/${checkedInStayId}`)}
-          >
-            Go to checkout
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => {
-              setCheckedInStayId(null);
-              setSelectedBooking(null);
-              setFeeding({ Morning: null, Afternoon: null, Evening: null });
-              setWalking([]);
-              setMedications([]);
-              setNotifyOptIn(false);
-            }}
-          >
-            Check in another pet
-          </button>
+        <div className={styles.content}>
+          <h1 className={styles.title}>Hotel Check-in</h1>
+          <p className={styles.successBanner} role="status">
+            Pet checked in successfully.
+          </p>
+          <div className={styles.controls}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() =>
+                navigate(`/staff/hotel/checkout/${checkedInStayId}`)
+              }
+            >
+              Go to checkout
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setCheckedInStayId(null);
+                setSelectedBooking(null);
+                setFeeding({ Morning: null, Afternoon: null, Evening: null });
+                setWalking([]);
+                setMedications([]);
+                setNotifyOptIn(false);
+              }}
+            >
+              Check in another pet
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -520,350 +528,357 @@ export function HotelCheckInPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Hotel Check-in</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Hotel Check-in</h1>
 
-      {submitError ? (
-        <p className={styles.errorBanner} role="alert">
-          {submitError}
-        </p>
-      ) : null}
-
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>1. Select a confirmed booking</h2>
-        {branchId ? (
-          <HotelBookingPicker
-            accessToken={accessToken!}
-            branchId={branchId}
-            onSelect={handleSelectBooking}
-            selectedBookingId={selectedBooking?.id ?? null}
-          />
+        {submitError ? (
+          <p className={styles.errorBanner} role="alert">
+            {submitError}
+          </p>
         ) : null}
-      </section>
 
-      {selectedBooking ? (
-        <>
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>2. Cage assignment</h2>
-            <p className={styles.copy}>
-              Suggested size: {suggestedSize ?? '...'} - the recommended cage is
-              highlighted below, or pick any other Available cage.
-            </p>
-            {branchId && role ? (
-              <CageStatusGrid
-                accessToken={accessToken}
-                viewerRole={role}
-                onSelectCage={(cage) => setSelectedCageId(cage.id)}
-                selectedCageId={selectedCageId}
-                suggestedCageIds={suggestedCages.map((cage) => cage.id)}
-              />
-            ) : null}
-          </section>
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>1. Select a confirmed booking</h2>
+          {branchId ? (
+            <HotelBookingPicker
+              accessToken={accessToken!}
+              branchId={branchId}
+              onSelect={handleSelectBooking}
+              selectedBookingId={selectedBooking?.id ?? null}
+            />
+          ) : null}
+        </section>
 
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>3. Feeding instructions</h2>
-            {MEAL_TIMES.map((mealTime) => {
-              const state = feeding[mealTime];
+        {selectedBooking ? (
+          <>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>2. Cage assignment</h2>
+              <p className={styles.copy}>
+                Suggested size: {suggestedSize ?? '...'} - the recommended cage
+                is highlighted below, or pick any other Available cage.
+              </p>
+              {branchId && role ? (
+                <CageStatusGrid
+                  accessToken={accessToken}
+                  viewerRole={role}
+                  onSelectCage={(cage) => setSelectedCageId(cage.id)}
+                  selectedCageId={selectedCageId}
+                  suggestedCageIds={suggestedCages.map((cage) => cage.id)}
+                />
+              ) : null}
+            </section>
 
-              return (
-                <div key={mealTime} className={styles.instructionRow}>
-                  <label className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={state !== null}
-                      onChange={() => toggleMealTime(mealTime)}
-                    />
-                    {mealTime}
-                  </label>
-                  {state ? (
-                    <div className={styles.instructionBlock}>
-                      <div className={styles.inlineFields}>
-                        <CatalogComboBox
-                          items={foodCatalog}
-                          value={state.foodType}
-                          placeholder="Food type - search or type a custom value..."
-                          onChange={(next) =>
-                            updateFeeding(mealTime, {
-                              foodType: next,
-                              // A fresh catalog match defaults to "customer
-                              // brought it" until explicitly unchecked.
-                              broughtByCustomer: next.catalogId
-                                ? true
-                                : state.broughtByCustomer,
-                            })
-                          }
-                        />
-                        <input
-                          className={styles.input}
-                          placeholder="Quantity"
-                          value={state.quantity}
-                          onChange={(event) =>
-                            updateFeeding(mealTime, {
-                              quantity: event.target.value,
-                            })
-                          }
-                        />
-                        <input
-                          className={styles.input}
-                          placeholder="Special instructions (optional)"
-                          value={state.specialInstructions}
-                          onChange={(event) =>
-                            updateFeeding(mealTime, {
-                              specialInstructions: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      {state.foodType.catalogId ? (
-                        <label className={styles.checkboxRow}>
-                          <input
-                            type="checkbox"
-                            checked={!state.broughtByCustomer}
-                            onChange={(event) =>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>3. Feeding instructions</h2>
+              {MEAL_TIMES.map((mealTime) => {
+                const state = feeding[mealTime];
+
+                return (
+                  <div key={mealTime} className={styles.instructionRow}>
+                    <label className={styles.checkboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={state !== null}
+                        onChange={() => toggleMealTime(mealTime)}
+                      />
+                      {mealTime}
+                    </label>
+                    {state ? (
+                      <div className={styles.instructionBlock}>
+                        <div className={styles.inlineFields}>
+                          <CatalogComboBox
+                            items={foodCatalog}
+                            value={state.foodType}
+                            placeholder="Food type - search or type a custom value..."
+                            onChange={(next) =>
                               updateFeeding(mealTime, {
-                                broughtByCustomer: !event.target.checked,
+                                foodType: next,
+                                // A fresh catalog match defaults to "customer
+                                // brought it" until explicitly unchecked.
+                                broughtByCustomer: next.catalogId
+                                  ? true
+                                  : state.broughtByCustomer,
                               })
                             }
                           />
-                          Hotel supplies this (bill customer PHP{' '}
-                          {foodCatalog
-                            .find(
-                              (item) => item.id === state.foodType.catalogId
+                          <input
+                            className={styles.input}
+                            placeholder="Quantity"
+                            value={state.quantity}
+                            onChange={(event) =>
+                              updateFeeding(mealTime, {
+                                quantity: event.target.value,
+                              })
+                            }
+                          />
+                          <input
+                            className={styles.input}
+                            placeholder="Special instructions (optional)"
+                            value={state.specialInstructions}
+                            onChange={(event) =>
+                              updateFeeding(mealTime, {
+                                specialInstructions: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        {state.foodType.catalogId ? (
+                          <label className={styles.checkboxRow}>
+                            <input
+                              type="checkbox"
+                              checked={!state.broughtByCustomer}
+                              onChange={(event) =>
+                                updateFeeding(mealTime, {
+                                  broughtByCustomer: !event.target.checked,
+                                })
+                              }
+                            />
+                            Hotel supplies this (bill customer PHP{' '}
+                            {foodCatalog
+                              .find(
+                                (item) => item.id === state.foodType.catalogId
+                              )
+                              ?.price.toFixed(2)}
                             )
-                            ?.price.toFixed(2)}
-                          )
-                        </label>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </section>
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </section>
 
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>4. Walking instructions</h2>
-            {walking.map((block, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.tabRow}>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'range' ? styles.tabActive : styles.tab
-                    }
-                    onClick={() => updateWalkBlock(index, { mode: 'range' })}
-                  >
-                    Time range
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'duration' ? styles.tabActive : styles.tab
-                    }
-                    onClick={() => updateWalkBlock(index, { mode: 'duration' })}
-                  >
-                    Start + duration
-                  </button>
-                </div>
-                <div className={styles.walkFieldsGrid}>
-                  <label className={styles.fieldGroup}>
-                    <span className={styles.fieldGroupLabel}>Start</span>
-                    <TimeInput
-                      aria-label="Walk start time"
-                      value={block.startTime}
-                      onChange={(value) =>
-                        updateWalkBlock(index, { startTime: value })
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>4. Walking instructions</h2>
+              {walking.map((block, index) => (
+                <div key={index} className={styles.instructionBlock}>
+                  <div className={styles.tabRow}>
+                    <button
+                      type="button"
+                      className={
+                        block.mode === 'range' ? styles.tabActive : styles.tab
                       }
-                    />
-                  </label>
-                  {block.mode === 'range' ? (
+                      onClick={() => updateWalkBlock(index, { mode: 'range' })}
+                    >
+                      Time range
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        block.mode === 'duration'
+                          ? styles.tabActive
+                          : styles.tab
+                      }
+                      onClick={() =>
+                        updateWalkBlock(index, { mode: 'duration' })
+                      }
+                    >
+                      Start + duration
+                    </button>
+                  </div>
+                  <div className={styles.walkFieldsGrid}>
                     <label className={styles.fieldGroup}>
-                      <span className={styles.fieldGroupLabel}>End</span>
+                      <span className={styles.fieldGroupLabel}>Start</span>
                       <TimeInput
-                        aria-label="Walk end time"
-                        value={block.endTime}
+                        aria-label="Walk start time"
+                        value={block.startTime}
                         onChange={(value) =>
-                          updateWalkBlock(index, { endTime: value })
+                          updateWalkBlock(index, { startTime: value })
                         }
                       />
                     </label>
-                  ) : (
-                    <label className={styles.fieldGroup}>
+                    {block.mode === 'range' ? (
+                      <label className={styles.fieldGroup}>
+                        <span className={styles.fieldGroupLabel}>End</span>
+                        <TimeInput
+                          aria-label="Walk end time"
+                          value={block.endTime}
+                          onChange={(value) =>
+                            updateWalkBlock(index, { endTime: value })
+                          }
+                        />
+                      </label>
+                    ) : (
+                      <label className={styles.fieldGroup}>
+                        <span className={styles.fieldGroupLabel}>
+                          Duration (min)
+                        </span>
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          value={block.durationMinutes}
+                          onChange={(event) =>
+                            updateWalkBlock(index, {
+                              durationMinutes: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                    )}
+                    <label className={styles.fieldGroupWide}>
                       <span className={styles.fieldGroupLabel}>
-                        Duration (min)
+                        Notes (optional)
                       </span>
                       <input
                         className={styles.input}
-                        type="number"
-                        min={1}
-                        value={block.durationMinutes}
+                        value={block.notes}
                         onChange={(event) =>
-                          updateWalkBlock(index, {
-                            durationMinutes: Number(event.target.value),
-                          })
+                          updateWalkBlock(index, { notes: event.target.value })
                         }
                       />
                     </label>
-                  )}
-                  <label className={styles.fieldGroupWide}>
-                    <span className={styles.fieldGroupLabel}>
-                      Notes (optional)
-                    </span>
-                    <input
-                      className={styles.input}
-                      value={block.notes}
-                      onChange={(event) =>
-                        updateWalkBlock(index, { notes: event.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => removeWalkBlock(index)}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={addWalkBlock}
-            >
-              Add walk time
-            </button>
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>5. Medications</h2>
-            {medications.map((medication, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <CatalogComboBox
-                    items={medicationCatalog}
-                    value={medication.name}
-                    placeholder="Medication name - search or type a custom value..."
-                    onChange={(next) =>
-                      updateMedication(index, {
-                        name: next,
-                        broughtByCustomer: next.catalogId
-                          ? true
-                          : medication.broughtByCustomer,
-                      })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Dose"
-                    value={medication.dose}
-                    onChange={(event) =>
-                      updateMedication(index, { dose: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Notes (optional)"
-                    value={medication.administrationNotes}
-                    onChange={(event) =>
-                      updateMedication(index, {
-                        administrationNotes: event.target.value,
-                      })
-                    }
-                  />
+                  </div>
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    onClick={() => removeMedication(index)}
+                    onClick={() => removeWalkBlock(index)}
                   >
                     Remove
                   </button>
                 </div>
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addWalkBlock}
+              >
+                Add walk time
+              </button>
+            </section>
 
-                {medication.name.catalogId ? (
-                  <label className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={!medication.broughtByCustomer}
-                      onChange={(event) =>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>5. Medications</h2>
+              {medications.map((medication, index) => (
+                <div key={index} className={styles.instructionBlock}>
+                  <div className={styles.inlineFields}>
+                    <CatalogComboBox
+                      items={medicationCatalog}
+                      value={medication.name}
+                      placeholder="Medication name - search or type a custom value..."
+                      onChange={(next) =>
                         updateMedication(index, {
-                          broughtByCustomer: !event.target.checked,
+                          name: next,
+                          broughtByCustomer: next.catalogId
+                            ? true
+                            : medication.broughtByCustomer,
                         })
                       }
                     />
-                    Hotel supplies this (bill customer PHP{' '}
-                    {medicationCatalog
-                      .find((item) => item.id === medication.name.catalogId)
-                      ?.price.toFixed(2)}
-                    )
-                  </label>
-                ) : null}
+                    <input
+                      className={styles.input}
+                      placeholder="Dose"
+                      value={medication.dose}
+                      onChange={(event) =>
+                        updateMedication(index, { dose: event.target.value })
+                      }
+                    />
+                    <input
+                      className={styles.input}
+                      placeholder="Notes (optional)"
+                      value={medication.administrationNotes}
+                      onChange={(event) =>
+                        updateMedication(index, {
+                          administrationNotes: event.target.value,
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeMedication(index)}
+                    >
+                      Remove
+                    </button>
+                  </div>
 
-                <div className={styles.inlineFields}>
-                  <span className={styles.copy}>Scheduled times:</span>
-                  {medication.scheduledTimes.map((time, timeIndex) => (
-                    <div key={timeIndex} className={styles.timeChip}>
-                      <TimeInput
-                        aria-label={`Medication time ${timeIndex + 1}`}
-                        value={time}
-                        onChange={(value) =>
-                          updateMedicationTime(index, timeIndex, value)
+                  {medication.name.catalogId ? (
+                    <label className={styles.checkboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={!medication.broughtByCustomer}
+                        onChange={(event) =>
+                          updateMedication(index, {
+                            broughtByCustomer: !event.target.checked,
+                          })
                         }
                       />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeMedicationTime(index, timeIndex)}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => addMedicationTime(index)}
-                  >
-                    Add time
-                  </button>
+                      Hotel supplies this (bill customer PHP{' '}
+                      {medicationCatalog
+                        .find((item) => item.id === medication.name.catalogId)
+                        ?.price.toFixed(2)}
+                      )
+                    </label>
+                  ) : null}
+
+                  <div className={styles.inlineFields}>
+                    <span className={styles.copy}>Scheduled times:</span>
+                    {medication.scheduledTimes.map((time, timeIndex) => (
+                      <div key={timeIndex} className={styles.timeChip}>
+                        <TimeInput
+                          aria-label={`Medication time ${timeIndex + 1}`}
+                          value={time}
+                          onChange={(value) =>
+                            updateMedicationTime(index, timeIndex, value)
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => removeMedicationTime(index, timeIndex)}
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => addMedicationTime(index)}
+                    >
+                      Add time
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addMedication}
+              >
+                Add medication
+              </button>
+            </section>
+
+            <section className={styles.section}>
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={notifyOptIn}
+                  onChange={(event) => setNotifyOptIn(event.target.checked)}
+                />
+                Owner opted in to pet status notifications for this stay
+              </label>
+            </section>
+
+            <p className={styles.chargesTotal}>
+              Estimated additional charges (hotel-supplied items, billed at
+              checkout):{' '}
+              <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
+            </p>
+
             <button
               type="button"
-              className={styles.secondaryButton}
-              onClick={addMedication}
+              className={styles.primaryButton}
+              disabled={!selectedCageId || isSubmitting}
+              onClick={() => void submitCheckIn()}
             >
-              Add medication
+              {isSubmitting ? 'Checking in...' : 'Check in'}
             </button>
-          </section>
-
-          <section className={styles.section}>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={notifyOptIn}
-                onChange={(event) => setNotifyOptIn(event.target.checked)}
-              />
-              Owner opted in to pet status notifications for this stay
-            </label>
-          </section>
-
-          <p className={styles.chargesTotal}>
-            Estimated additional charges (hotel-supplied items, billed at
-            checkout): <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
-          </p>
-
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={!selectedCageId || isSubmitting}
-            onClick={() => void submitCheckIn()}
-          >
-            {isSubmitting ? 'Checking in...' : 'Check in'}
-          </button>
-        </>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </main>
   );
 }

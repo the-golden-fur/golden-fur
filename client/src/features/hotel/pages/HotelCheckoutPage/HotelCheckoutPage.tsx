@@ -88,9 +88,11 @@ export function HotelCheckoutPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load Hotel checkout.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load Hotel checkout.
+          </p>
+        </div>
       </main>
     );
   }
@@ -98,7 +100,9 @@ export function HotelCheckoutPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -110,36 +114,38 @@ export function HotelCheckoutPage() {
   if (result) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Hotel Checkout</h1>
-        <p className={styles.successBanner} role="status">
-          Stay checked out. Cage released.
-        </p>
-        <dl className={styles.breakdown}>
-          <div className={styles.breakdownRow}>
-            <dt>Downpayment already collected</dt>
-            <dd>₱{result.downpaymentAmount}</dd>
-          </div>
-          <div className={styles.breakdownRow}>
-            <dt>Extension fee</dt>
-            <dd>
-              {result.extensionFee === null
-                ? 'None'
-                : `₱${result.extensionFee}`}
-            </dd>
-          </div>
-          <div className={styles.breakdownRow}>
-            <dt>Hotel-supplied items</dt>
-            <dd>
-              {result.suppliedItemsCharge === null
-                ? 'None'
-                : `₱${result.suppliedItemsCharge}`}
-            </dd>
-          </div>
-          <div className={styles.breakdownTotal}>
-            <dt>Remaining balance</dt>
-            <dd>₱{result.remainingBalance}</dd>
-          </div>
-        </dl>
+        <div className={styles.content}>
+          <h1 className={styles.title}>Hotel Checkout</h1>
+          <p className={styles.successBanner} role="status">
+            Stay checked out. Cage released.
+          </p>
+          <dl className={styles.breakdown}>
+            <div className={styles.breakdownRow}>
+              <dt>Downpayment already collected</dt>
+              <dd>₱{result.downpaymentAmount}</dd>
+            </div>
+            <div className={styles.breakdownRow}>
+              <dt>Extension fee</dt>
+              <dd>
+                {result.extensionFee === null
+                  ? 'None'
+                  : `₱${result.extensionFee}`}
+              </dd>
+            </div>
+            <div className={styles.breakdownRow}>
+              <dt>Hotel-supplied items</dt>
+              <dd>
+                {result.suppliedItemsCharge === null
+                  ? 'None'
+                  : `₱${result.suppliedItemsCharge}`}
+              </dd>
+            </div>
+            <div className={styles.breakdownTotal}>
+              <dt>Remaining balance</dt>
+              <dd>₱{result.remainingBalance}</dd>
+            </div>
+          </dl>
+        </div>
       </main>
     );
   }
@@ -149,24 +155,26 @@ export function HotelCheckoutPage() {
   if (routeStayId && !selectedStay) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Hotel Checkout</h1>
+        <div className={styles.content}>
+          <h1 className={styles.title}>Hotel Checkout</h1>
 
-        {error ? (
-          <p className={styles.errorBanner} role="alert">
-            {error}
-          </p>
-        ) : null}
+          {error ? (
+            <p className={styles.errorBanner} role="alert">
+              {error}
+            </p>
+          ) : null}
 
-        <p className={styles.copy}>Ready to check out this stay?</p>
+          <p className={styles.copy}>Ready to check out this stay?</p>
 
-        <button
-          type="button"
-          className={styles.primaryButton}
-          disabled={isSubmitting}
-          onClick={() => void submitCheckout(routeStayId)}
-        >
-          {isSubmitting ? 'Checking out...' : 'Check out now'}
-        </button>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={isSubmitting}
+            onClick={() => void submitCheckout(routeStayId)}
+          >
+            {isSubmitting ? 'Checking out...' : 'Check out now'}
+          </button>
+        </div>
       </main>
     );
   }
@@ -174,45 +182,47 @@ export function HotelCheckoutPage() {
   if (selectedStay) {
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Hotel Checkout</h1>
+        <div className={styles.content}>
+          <h1 className={styles.title}>Hotel Checkout</h1>
 
-        <dl className={styles.breakdown}>
-          <div className={styles.breakdownRow}>
-            <dt>Cage</dt>
-            <dd>{selectedStay.cage_label}</dd>
-          </div>
-          <div className={styles.breakdownRow}>
-            <dt>Checkout due</dt>
-            <dd>{formatDate(selectedStay.scheduled_check_out_date)}</dd>
-          </div>
-          <div className={styles.breakdownRow}>
-            <dt>Downpayment already collected</dt>
-            <dd>₱{selectedStay.downpayment_amount.toFixed(2)}</dd>
-          </div>
-        </dl>
+          <dl className={styles.breakdown}>
+            <div className={styles.breakdownRow}>
+              <dt>Cage</dt>
+              <dd>{selectedStay.cage_label}</dd>
+            </div>
+            <div className={styles.breakdownRow}>
+              <dt>Checkout due</dt>
+              <dd>{formatDate(selectedStay.scheduled_check_out_date)}</dd>
+            </div>
+            <div className={styles.breakdownRow}>
+              <dt>Downpayment already collected</dt>
+              <dd>₱{selectedStay.downpayment_amount.toFixed(2)}</dd>
+            </div>
+          </dl>
 
-        {error ? (
-          <p className={styles.errorBanner} role="alert">
-            {error}
-          </p>
-        ) : null}
+          {error ? (
+            <p className={styles.errorBanner} role="alert">
+              {error}
+            </p>
+          ) : null}
 
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={isSubmitting}
-            onClick={() => void submitCheckout(selectedStay.id)}
-          >
-            {isSubmitting ? 'Checking out...' : 'Check out now'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setSelectedStay(null)}
-          >
-            Choose a different stay
-          </button>
+          <div className={styles.controls}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isSubmitting}
+              onClick={() => void submitCheckout(selectedStay.id)}
+            >
+              {isSubmitting ? 'Checking out...' : 'Check out now'}
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setSelectedStay(null)}
+            >
+              Choose a different stay
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -220,15 +230,17 @@ export function HotelCheckoutPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Hotel Checkout</h1>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Hotel Checkout</h1>
 
-      {error ? (
-        <p className={styles.errorBanner} role="alert">
-          {error}
-        </p>
-      ) : null}
+        {error ? (
+          <p className={styles.errorBanner} role="alert">
+            {error}
+          </p>
+        ) : null}
 
-      <HotelStayPicker accessToken={accessToken} onSelect={setSelectedStay} />
+        <HotelStayPicker accessToken={accessToken} onSelect={setSelectedStay} />
+      </div>
     </main>
   );
 }

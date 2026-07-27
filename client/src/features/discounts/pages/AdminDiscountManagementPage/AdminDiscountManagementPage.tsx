@@ -391,9 +391,11 @@ export function AdminDiscountManagementPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load the discount management panel.
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the discount management panel.
+          </p>
+        </div>
       </main>
     );
   }
@@ -401,7 +403,9 @@ export function AdminDiscountManagementPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
       </main>
     );
   }
@@ -413,7 +417,9 @@ export function AdminDiscountManagementPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading discounts...</p>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading discounts...</p>
+        </div>
       </main>
     );
   }
@@ -421,9 +427,11 @@ export function AdminDiscountManagementPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          {loadError}
-        </p>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            {loadError}
+          </p>
+        </div>
       </main>
     );
   }
@@ -444,243 +452,245 @@ export function AdminDiscountManagementPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Discounts</h1>
-      <p className={styles.copy}>
-        Discounts are switched off by default. Toggle a card to activate it for
-        checkout.
-      </p>
-
-      <div className={styles.toolbar}>
-        <DiscountFilterBar
-          branches={branches}
-          branchFilter={branchFilter}
-          onBranchFilterChange={setBranchFilter}
-          search={search}
-          onSearchChange={setSearch}
-          scopeTypeFilter={scopeTypeFilter}
-          onScopeTypeFilterChange={setScopeTypeFilter}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-        />
-
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={openCreateForm}
-        >
-          New custom discount
-        </button>
-      </div>
-
-      {message ? (
-        <p className={styles.successBanner} role="status">
-          {message}
+      <div className={styles.content}>
+        <h1 className={styles.title}>Discounts</h1>
+        <p className={styles.copy}>
+          Discounts are switched off by default. Toggle a card to activate it
+          for checkout.
         </p>
-      ) : null}
 
-      {isFormOpen ? (
-        <section className={styles.formPanel} aria-labelledby="discount-form">
-          <h2 className={styles.sectionTitle} id="discount-form">
-            {editingDiscountId === null ? 'Create discount' : 'Edit discount'}
-          </h2>
+        <div className={styles.toolbar}>
+          <DiscountFilterBar
+            branches={branches}
+            branchFilter={branchFilter}
+            onBranchFilterChange={setBranchFilter}
+            search={search}
+            onSearchChange={setSearch}
+            scopeTypeFilter={scopeTypeFilter}
+            onScopeTypeFilterChange={setScopeTypeFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+          />
 
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Branch</span>
-              <select
-                className={styles.input}
-                value={formBranchId}
-                onChange={(event) => {
-                  setFormBranchId(event.target.value);
-                  setFormScopePackageId('');
-                }}
-                disabled={editingDiscountId !== null}
-                required
-              >
-                <option value="">Select a branch...</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={openCreateForm}
+          >
+            New custom discount
+          </button>
+        </div>
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Name</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={formName}
-                onChange={(event) => setFormName(event.target.value)}
-                disabled={editingIsMandated}
-                required
-              />
-            </label>
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Discount type</span>
-              <select
-                className={styles.input}
-                value={formDiscountType}
-                onChange={(event) =>
-                  setFormDiscountType(event.target.value as DiscountValueType)
-                }
-              >
-                {DISCOUNT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {isFormOpen ? (
+          <section className={styles.formPanel} aria-labelledby="discount-form">
+            <h2 className={styles.sectionTitle} id="discount-form">
+              {editingDiscountId === null ? 'Create discount' : 'Edit discount'}
+            </h2>
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Discount value
-                {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                max={formDiscountType === 'Percentage' ? 100 : undefined}
-                step="0.01"
-                inputMode="decimal"
-                value={formValue}
-                onChange={(event) => setFormValue(event.target.value)}
-                required
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Scope</span>
-              <select
-                className={styles.input}
-                value={formScopeType}
-                onChange={(event) => {
-                  setFormScopeType(event.target.value as DiscountScopeType);
-                  resetScopeFields();
-                }}
-              >
-                <option value="service">Service</option>
-                <option value="package">Package</option>
-                <option value="category">Category</option>
-              </select>
-            </label>
-
-            {formScopeType === 'service' ? (
+            <form className={styles.form} onSubmit={handleSubmit}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Service</span>
+                <span className={styles.fieldLabel}>Branch</span>
                 <select
                   className={styles.input}
-                  value={formScopeServiceId}
-                  onChange={(event) =>
-                    setFormScopeServiceId(event.target.value)
-                  }
+                  value={formBranchId}
+                  onChange={(event) => {
+                    setFormBranchId(event.target.value);
+                    setFormScopePackageId('');
+                  }}
+                  disabled={editingDiscountId !== null}
                   required
                 >
-                  <option value="">Select a service...</option>
-                  {services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
+                  <option value="">Select a branch...</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
                     </option>
                   ))}
                 </select>
               </label>
-            ) : null}
 
-            {formScopeType === 'package' ? (
-              formBranchId === '' ? (
-                <p className={styles.copy}>
-                  Select a branch to pick its packages.
-                </p>
-              ) : (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Name</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  disabled={editingIsMandated}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Discount type</span>
+                <select
+                  className={styles.input}
+                  value={formDiscountType}
+                  onChange={(event) =>
+                    setFormDiscountType(event.target.value as DiscountValueType)
+                  }
+                >
+                  {DISCOUNT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Discount value
+                  {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  max={formDiscountType === 'Percentage' ? 100 : undefined}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={formValue}
+                  onChange={(event) => setFormValue(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Scope</span>
+                <select
+                  className={styles.input}
+                  value={formScopeType}
+                  onChange={(event) => {
+                    setFormScopeType(event.target.value as DiscountScopeType);
+                    resetScopeFields();
+                  }}
+                >
+                  <option value="service">Service</option>
+                  <option value="package">Package</option>
+                  <option value="category">Category</option>
+                </select>
+              </label>
+
+              {formScopeType === 'service' ? (
                 <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Package</span>
+                  <span className={styles.fieldLabel}>Service</span>
                   <select
                     className={styles.input}
-                    value={formScopePackageId}
+                    value={formScopeServiceId}
                     onChange={(event) =>
-                      setFormScopePackageId(event.target.value)
+                      setFormScopeServiceId(event.target.value)
                     }
                     required
                   >
-                    <option value="">Select a package...</option>
-                    {packageOptionsForBranch.map((pkg) => (
-                      <option key={pkg.id} value={pkg.id}>
-                        {pkg.name}
+                    <option value="">Select a service...</option>
+                    {services.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              )
-            ) : null}
+              ) : null}
 
-            {formScopeType === 'category' ? (
-              <DiscountCategoryScopeSelect
-                value={formScopeCategory}
-                onChange={setFormScopeCategory}
-              />
-            ) : null}
+              {formScopeType === 'package' ? (
+                formBranchId === '' ? (
+                  <p className={styles.copy}>
+                    Select a branch to pick its packages.
+                  </p>
+                ) : (
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Package</span>
+                    <select
+                      className={styles.input}
+                      value={formScopePackageId}
+                      onChange={(event) =>
+                        setFormScopePackageId(event.target.value)
+                      }
+                      required
+                    >
+                      <option value="">Select a package...</option>
+                      {packageOptionsForBranch.map((pkg) => (
+                        <option key={pkg.id} value={pkg.id}>
+                          {pkg.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
+              ) : null}
 
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
+              {formScopeType === 'category' ? (
+                <DiscountCategoryScopeSelect
+                  value={formScopeCategory}
+                  onChange={setFormScopeCategory}
+                />
+              ) : null}
 
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                className={styles.primaryButton}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : 'Save discount'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={closeForm}
-              >
-                Cancel
-              </button>
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save discount'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : null}
+
+        <section aria-labelledby="mandated-heading">
+          <h2 className={styles.sectionTitle} id="mandated-heading">
+            Government-Mandated
+          </h2>
+
+          {mandatedDiscounts.length === 0 ? (
+            <p className={styles.copy}>
+              No mandated discounts match the selected filters.
+            </p>
+          ) : (
+            <div className={styles.discountGrid}>
+              {mandatedDiscounts.map(renderDiscountCard)}
             </div>
-          </form>
+          )}
         </section>
-      ) : null}
 
-      <section aria-labelledby="mandated-heading">
-        <h2 className={styles.sectionTitle} id="mandated-heading">
-          Government-Mandated
-        </h2>
+        <section aria-labelledby="custom-heading">
+          <h2 className={styles.sectionTitle} id="custom-heading">
+            Custom Discounts
+          </h2>
 
-        {mandatedDiscounts.length === 0 ? (
-          <p className={styles.copy}>
-            No mandated discounts match the selected filters.
-          </p>
-        ) : (
-          <div className={styles.discountGrid}>
-            {mandatedDiscounts.map(renderDiscountCard)}
-          </div>
-        )}
-      </section>
-
-      <section aria-labelledby="custom-heading">
-        <h2 className={styles.sectionTitle} id="custom-heading">
-          Custom Discounts
-        </h2>
-
-        {customDiscounts.length === 0 ? (
-          <p className={styles.copy}>
-            No custom discounts match the selected filters.
-          </p>
-        ) : (
-          <div className={styles.discountGrid}>
-            {customDiscounts.map(renderDiscountCard)}
-          </div>
-        )}
-      </section>
+          {customDiscounts.length === 0 ? (
+            <p className={styles.copy}>
+              No custom discounts match the selected filters.
+            </p>
+          ) : (
+            <div className={styles.discountGrid}>
+              {customDiscounts.map(renderDiscountCard)}
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }
