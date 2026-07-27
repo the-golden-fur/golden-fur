@@ -6,7 +6,7 @@ application code.
 
 ## What changed
 
-`prompts/workflow/2-commit-pr.md` previously only asked Claude to produce
+`prompts/workflow/commit-pr.md` previously only asked Claude to produce
 commit messages and a per-commit directory structure, leaving staging
 (`git add`) as a manual step. Added one line to `process:` and updated the
 `output:` bullet so that, for every commit it proposes, Claude now also
@@ -20,7 +20,7 @@ Postman/SQL files accompany this doc.
 
 ## How to verify yourself
 
-1. Open [prompts/workflow/2-commit-pr.md](../../../prompts/workflow/2-commit-pr.md)
+1. Open [prompts/workflow/commit-pr.md](../../../prompts/workflow/commit-pr.md)
    and confirm it now reads:
    - Under `process:` — a bullet saying to add `git add` commands for each
      commit's files directly under its directory structure block.
@@ -30,7 +30,7 @@ Postman/SQL files accompany this doc.
    changes:
    1. Make a couple of unrelated edits in a scratch file or two (or use any
       changes you already have pending).
-   2. Feed `prompts/workflow/2-commit-pr.md` to Claude along with those
+   2. Feed `prompts/workflow/commit-pr.md` to Claude along with those
       changes, the same way you normally invoke this workflow.
    3. Confirm the response includes, for each proposed commit: the commit
       message, the directory structure block, and immediately under it a
