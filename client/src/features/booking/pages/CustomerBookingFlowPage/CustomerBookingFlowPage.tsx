@@ -4,7 +4,7 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
-import { NewWalkInCustomerForm } from '../../../staff/components/forms/NewWalkInCustomerForm/NewWalkInCustomerForm';
+import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
@@ -47,10 +47,18 @@ interface StepDef {
  * Issue #55: 8-step booking flow shell + step navigation, with #56 (Slot
  * Picker), #57 (Staff Picker), and #58 (add-ons/pricing/payment) plugged
  * into the steps this shell defines. The receptionist walk-in/phone-in
- * variant reuses this exact component with a customer lookup-or-create step
- * prepended (AC-5) - which variant is active is resolved from the route
- * itself (mounted at both /portal/book and /staff/bookings/new), not a
- * separate implementation.
+ * variant reuses this exact component with a customer-picker step prepended
+ * (AC-5) - which variant is active is resolved from the route itself
+ * (mounted at both /portal/book and /staff/bookings/new), not a separate
+ * implementation.
+ *
+ * The Customer step is a search/sort/filter picker over existing customers
+ * (CustomerPicker) - it does not create or update customer records itself.
+ * Walk-in customer creation already has its own dedicated flow at
+ * CustomerManagementPage (/staff/admin/customers), linked from within the
+ * picker; duplicating create-or-update logic here would also risk silently
+ * overwriting a matched customer's profile just from booking on their
+ * behalf, which is not something this step should ever do.
  */
 export function CustomerBookingFlowPage() {
   const { user, accessToken } = useAuth();
@@ -368,7 +376,7 @@ export function CustomerBookingFlowPage() {
 
   // ---- Selection handlers (reset dependent state on change, AC-2) ----
 
-  function handleCustomerSaved(customer: CustomerProfile) {
+  function handleCustomerSelect(customer: CustomerProfile) {
     setWalkInCustomer(customer);
     advanceTo(currentStepIndex + 1);
   }
@@ -527,9 +535,10 @@ export function CustomerBookingFlowPage() {
     switch (currentStep.key) {
       case 'customer':
         return (
-          <NewWalkInCustomerForm
+          <CustomerPicker
             accessToken={accessToken!}
-            onSaved={handleCustomerSaved}
+            onSelect={handleCustomerSelect}
+            selectedCustomerId={walkInCustomer?.id ?? null}
           />
         );
 

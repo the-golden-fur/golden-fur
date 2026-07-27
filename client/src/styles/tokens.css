@@ -97,6 +97,20 @@
      used elsewhere in the system. */
   --color-health-flag-bg: #fceeee;
   --color-health-flag-text: #8a2a2a;
+  /* Sprint 4 Epic A (#79): cage occupancy status badge set - distinct from
+     the Sprint 3 execution-record status badges since a cage's occupancy
+     state is a different concept from a session's execution state.
+     Available aliases the existing green tier, Occupied the amber tier,
+     Under Maintenance the grey tier; Reserved gets Daycare's blue tier
+     (booked but not yet physically occupied is distinct from Occupied). */
+  --color-cage-status-available-bg: #e4f0de;
+  --color-cage-status-available-text: #2f5e1f;
+  --color-cage-status-occupied-bg: #fbefd2;
+  --color-cage-status-occupied-text: #8a6a1a;
+  --color-cage-status-reserved-bg: #e3ecf5;
+  --color-cage-status-reserved-text: #2a4a6b;
+  --color-cage-status-maintenance-bg: #ece7de;
+  --color-cage-status-maintenance-text: #7a7263;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   --radius-sm: 10px;
   --radius-md: 15px;
@@ -188,6 +202,16 @@
      pair above). */
   --color-health-flag-bg: #8a2a2a;
   --color-health-flag-text: #fceeee;
+  /* Sprint 4 Epic A (#79) - dark-theme values, same aliasing rationale as
+     the customer-theme block above. */
+  --color-cage-status-available-bg: #24462d;
+  --color-cage-status-available-text: #bde7c4;
+  --color-cage-status-occupied-bg: #4d3413;
+  --color-cage-status-occupied-text: #ffd27a;
+  --color-cage-status-reserved-bg: #22405c;
+  --color-cage-status-reserved-text: #b7d2ea;
+  --color-cage-status-maintenance-bg: #43392a;
+  --color-cage-status-maintenance-text: #cfc3a9;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   --radius-sm: 10px;
   --radius-md: 15px;

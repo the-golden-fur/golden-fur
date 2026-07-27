@@ -173,12 +173,28 @@ export async function getDaySlots({
 
   const candidates: Array<{ start: Date; end: Date }> = [];
 
-  for (
-    let start = openUtc.getTime();
-    start + stepMs <= closeUtc.getTime();
-    start += stepMs
-  ) {
-    candidates.push({ start: new Date(start), end: new Date(start + stepMs) });
+  if (serviceCategory === 'Hotel') {
+    // A Hotel stay's duration (the seeded service's 1440-minute/one-night
+    // length) routinely runs past this same day's close time by design - the
+    // stay continues into the next day, unlike a same-day Grooming/
+    // Veterinary/Daycare appointment. So there is exactly one check-in
+    // candidate per date, at opening time, not a back-to-back stepping
+    // within [open, close] the way every other category works below.
+    candidates.push({
+      start: openUtc,
+      end: new Date(openUtc.getTime() + stepMs),
+    });
+  } else {
+    for (
+      let start = openUtc.getTime();
+      start + stepMs <= closeUtc.getTime();
+      start += stepMs
+    ) {
+      candidates.push({
+        start: new Date(start),
+        end: new Date(start + stepMs),
+      });
+    }
   }
 
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
@@ -222,7 +238,7 @@ export async function getDaySlots({
 
       if (serviceCategory === 'Hotel') {
         const sameSize = await filterSameSizeRows(overlapping, petWeightClass!);
-        const capacity = getHotelCageCapacity(branchId, petWeightClass!);
+        const capacity = await getHotelCageCapacity(branchId, petWeightClass!);
 
         return {
           start: start.toISOString(),

@@ -1,0 +1,42 @@
+.wrapper {
+  display: flex;
+  width: 100%;
+}
+
+.input,
+.presetSelect {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  height: 2.5rem;
+  box-sizing: border-box;
+}
+
+.input {
+  flex: 3 1 7rem;
+  min-width: 6rem;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  padding: 0 var(--space-1);
+}
+
+.presetSelect {
+  flex: 2 1 5rem;
+  min-width: 4.5rem;
+  max-width: 6.5rem;
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 0 var(--space-0-5);
+  color: var(--color-text-secondary);
+}
+
+.input:focus,
+.presetSelect:focus {
+  position: relative;
+  z-index: 1;
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}

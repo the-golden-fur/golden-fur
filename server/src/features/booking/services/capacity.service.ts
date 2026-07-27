@@ -50,10 +50,22 @@ function parseJsonEnv(name: string): unknown {
   }
 }
 
-export function getHotelCageCapacity(
+/**
+ * #78 (Sprint 4, M05): the cages table now exists, replacing the stub
+ * numbers as the default - HOTEL_CAGE_CAPACITY remains available as a
+ * manual override (e.g. for a branch temporarily reducing capacity without
+ * marking individual cages Under Maintenance). This counts *total* cages of
+ * the size, not merely currently-Available ones - reservation capacity for
+ * a future date range is governed by counting overlapping Confirmed
+ * bookings against this total (see checkCapacity below), not by
+ * cages.status, which only reflects physical occupancy at this instant and
+ * would incorrectly shrink capacity for future dates whenever any cage of
+ * that size happens to be occupied today.
+ */
+export async function getHotelCageCapacity(
   branchId: string,
   weightClass: WeightClass
-): number {
+): Promise<number> {
   const configured = parseJsonEnv('HOTEL_CAGE_CAPACITY') as
     | Record<string, unknown>
     | undefined;
@@ -72,7 +84,15 @@ export function getHotelCageCapacity(
     }
   }
 
-  return DEFAULT_HOTEL_CAGE_CAPACITY[weightClass];
+  const { count, error } = await supabase
+    .from('cages')
+    .select('id', { count: 'exact', head: true })
+    .eq('branch_id', branchId)
+    .eq('size', weightClass);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return count ?? DEFAULT_HOTEL_CAGE_CAPACITY[weightClass];
 }
 
 export function getDaycareSessionCapacity(branchId: string): number {
@@ -220,7 +240,7 @@ export async function checkCapacity(
       overlapping,
       params.petWeightClass
     );
-    const capacity = getHotelCageCapacity(
+    const capacity = await getHotelCageCapacity(
       params.branchId,
       params.petWeightClass
     );
@@ -300,7 +320,7 @@ export async function confirmCapacityAfterInsert(
     const weightClass = pet.weight_class as WeightClass;
     const overlapping = await listOverlappingConfirmedBookings(baseParams);
     const sameSize = await filterSameSizeRows(overlapping, weightClass);
-    const capacity = getHotelCageCapacity(booking.branch_id, weightClass);
+    const capacity = await getHotelCageCapacity(booking.branch_id, weightClass);
 
     return sameSize.slice(0, capacity).some((row) => row.id === booking.id);
   }

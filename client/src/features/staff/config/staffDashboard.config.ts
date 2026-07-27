@@ -100,6 +100,16 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         to: '/staff/admin/maintenance/breeds',
       },
       {
+        title: 'Hotel Food Catalog',
+        description: 'Manage hotel-suppliable food items and their prices.',
+        to: '/staff/hotel/food-catalog',
+      },
+      {
+        title: 'Hotel Medication Catalog',
+        description: 'Manage hotel-suppliable medications and their prices.',
+        to: '/staff/hotel/medication-catalog',
+      },
+      {
         title: 'Discounts',
         description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
         to: '/staff/admin/discounts',
@@ -109,6 +119,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         description:
           'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
         to: '/staff/bookings/queue',
+      },
+      {
+        title: 'Hotel Care Log',
+        description: 'End-of-day uncompleted care log flags.',
+        to: '/staff/hotel/care-log',
       },
     ],
   },
@@ -132,8 +147,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         to: '/staff/bookings/queue',
       },
       {
+        title: 'Hotel Care Log',
+        description: 'End-of-day uncompleted care log flags.',
+        to: '/staff/hotel/care-log',
+      },
+      {
         title: 'Branch Reports',
-        description: 'Branch-wide performance and end-of-day care log flags.',
+        description: 'Branch-wide performance reporting.',
       },
     ],
   },
@@ -153,6 +173,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Hotel Check-in',
         description: 'Cage assignment and care instructions capture.',
+        to: '/staff/hotel/check-in',
+      },
+      {
+        title: 'Hotel Checkout',
+        description: 'Extension fees, billing handoff, and cage release.',
+        to: '/staff/hotel/checkout',
       },
       {
         title: 'Daycare Check-in',
@@ -196,6 +222,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         title: 'Care Log',
         description: "Today's feeding, walking, and medication checklist.",
+        to: '/staff/hotel/care-log',
       },
     ],
   },

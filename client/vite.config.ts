@@ -68,6 +68,11 @@ export default defineConfig(({ mode }) => {
         '/grooming': apiProxy,
         '/daycare': apiProxy,
         '/veterinary': apiProxy,
+        // hotel.routes.ts (server) is mounted at the server root, same as
+        // the other execution-module routes above - its client-side page
+        // routes live under '/staff/hotel/...', not bare '/hotel', so no
+        // bypass is needed here either (Sprint 4 Epic A, #75-#78).
+        '/hotel': apiProxy,
       },
     },
   };

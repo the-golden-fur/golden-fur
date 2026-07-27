@@ -1,0 +1,71 @@
+.wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 10rem;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.input:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
+.listbox {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--space-0-5));
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  list-style: none;
+  padding: var(--space-0-5);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.option:hover {
+  background: var(--color-badge-bg-gold);
+}
+
+.optionPrice {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+}
