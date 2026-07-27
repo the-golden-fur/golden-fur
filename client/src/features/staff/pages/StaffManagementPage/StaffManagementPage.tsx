@@ -151,9 +151,11 @@ export function StaffManagementPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load staff management.
         </p>
+      </div>
       </main>
     );
   }
@@ -161,7 +163,9 @@ export function StaffManagementPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading staff...</p>
+      </div>
       </main>
     );
   }
@@ -169,9 +173,11 @@ export function StaffManagementPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
+      </div>
       </main>
     );
   }
@@ -184,6 +190,7 @@ export function StaffManagementPage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Staff Management</h1>
 
       <section className={styles.panel} aria-labelledby="create-staff-title">
@@ -303,6 +310,7 @@ export function StaffManagementPage() {
           ))}
         </div>
       )}
+      </div>
     </main>
   );
 }

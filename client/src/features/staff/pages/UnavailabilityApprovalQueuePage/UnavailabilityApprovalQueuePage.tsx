@@ -122,9 +122,11 @@ export function UnavailabilityApprovalQueuePage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the approval queue.
         </p>
+      </div>
       </main>
     );
   }
@@ -132,7 +134,9 @@ export function UnavailabilityApprovalQueuePage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -143,6 +147,7 @@ export function UnavailabilityApprovalQueuePage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Unavailability Approval Queue</h1>
 
       {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
@@ -191,6 +196,7 @@ export function UnavailabilityApprovalQueuePage() {
           ))}
         </div>
       )}
+      </div>
     </main>
   );
 }

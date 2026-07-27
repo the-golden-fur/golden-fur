@@ -131,9 +131,11 @@ export function PromoCapConfigurationPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the promo cap configuration panel.
         </p>
+      </div>
       </main>
     );
   }
@@ -141,7 +143,9 @@ export function PromoCapConfigurationPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -153,7 +157,9 @@ export function PromoCapConfigurationPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading promo cap configuration...</p>
+      </div>
       </main>
     );
   }
@@ -161,15 +167,18 @@ export function PromoCapConfigurationPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Promo Cap Configuration</h1>
       <p className={styles.copy}>
         Maximum total discount value that all combined, customer-activated
@@ -209,6 +218,7 @@ export function PromoCapConfigurationPage() {
             />
           );
         })}
+      </div>
       </div>
     </main>
   );

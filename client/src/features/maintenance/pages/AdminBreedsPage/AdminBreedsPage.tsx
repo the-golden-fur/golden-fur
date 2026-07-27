@@ -185,7 +185,9 @@ export function AdminBreedsPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -196,6 +198,7 @@ export function AdminBreedsPage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Breed Management</h1>
 
       {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -319,6 +322,7 @@ export function AdminBreedsPage() {
           {rowError}
         </p>
       ) : null}
+      </div>
     </main>
   );
 }

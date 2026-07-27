@@ -1,15 +1,22 @@
 .page {
   composes: animate-fade-in from global;
   display: grid;
+  min-height: 100vh;
+  background: linear-gradient(160deg, #ffe9d6, #ffdbbb);
+}
+
+.content {
+  display: grid;
   gap: var(--space-4);
   max-width: 64rem;
+  width: 100%;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
 }
 
 .title {
   margin: 0;
-  color: var(--color-text-primary);
+  color: #3d2b1f;
   font-family: var(--font-main);
   font-size: var(--text-heading-lg);
   font-weight: var(--weight-bold);
@@ -17,7 +24,7 @@
 
 .copy {
   margin: 0;
-  color: var(--color-text-secondary);
+  color: #6f5945;
   font-size: var(--text-sm);
 }
 

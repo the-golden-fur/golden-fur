@@ -88,9 +88,11 @@ export function HotelCheckoutPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load Hotel checkout.
         </p>
+      </div>
       </main>
     );
   }
@@ -98,7 +100,9 @@ export function HotelCheckoutPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -110,6 +114,7 @@ export function HotelCheckoutPage() {
   if (result) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <h1 className={styles.title}>Hotel Checkout</h1>
         <p className={styles.successBanner} role="status">
           Stay checked out. Cage released.
@@ -140,6 +145,7 @@ export function HotelCheckoutPage() {
             <dd>₱{result.remainingBalance}</dd>
           </div>
         </dl>
+      </div>
       </main>
     );
   }
@@ -149,6 +155,7 @@ export function HotelCheckoutPage() {
   if (routeStayId && !selectedStay) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <h1 className={styles.title}>Hotel Checkout</h1>
 
         {error ? (
@@ -167,6 +174,7 @@ export function HotelCheckoutPage() {
         >
           {isSubmitting ? 'Checking out...' : 'Check out now'}
         </button>
+      </div>
       </main>
     );
   }
@@ -174,6 +182,7 @@ export function HotelCheckoutPage() {
   if (selectedStay) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <h1 className={styles.title}>Hotel Checkout</h1>
 
         <dl className={styles.breakdown}>
@@ -214,12 +223,14 @@ export function HotelCheckoutPage() {
             Choose a different stay
           </button>
         </div>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Hotel Checkout</h1>
 
       {error ? (
@@ -229,6 +240,7 @@ export function HotelCheckoutPage() {
       ) : null}
 
       <HotelStayPicker accessToken={accessToken} onSelect={setSelectedStay} />
+      </div>
     </main>
   );
 }

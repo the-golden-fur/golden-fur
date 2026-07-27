@@ -465,9 +465,11 @@ export function HotelCheckInPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load Hotel check-in.
         </p>
+      </div>
       </main>
     );
   }
@@ -475,7 +477,9 @@ export function HotelCheckInPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -487,6 +491,7 @@ export function HotelCheckInPage() {
   if (checkedInStayId) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <h1 className={styles.title}>Hotel Check-in</h1>
         <p className={styles.successBanner} role="status">
           Pet checked in successfully.
@@ -514,12 +519,14 @@ export function HotelCheckInPage() {
             Check in another pet
           </button>
         </div>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Hotel Check-in</h1>
 
       {submitError ? (
@@ -864,6 +871,7 @@ export function HotelCheckInPage() {
           </button>
         </>
       ) : null}
+      </div>
     </main>
   );
 }

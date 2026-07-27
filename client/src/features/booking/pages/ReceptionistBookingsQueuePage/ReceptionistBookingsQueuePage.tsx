@@ -296,9 +296,11 @@ export function ReceptionistBookingsQueuePage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the bookings queue.
         </p>
+      </div>
       </main>
     );
   }
@@ -306,13 +308,16 @@ export function ReceptionistBookingsQueuePage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <div className={styles.header}>
         <h1 className={styles.title}>Bookings queue</h1>
         <button
@@ -548,6 +553,7 @@ export function ReceptionistBookingsQueuePage() {
           })}
         </ul>
       ) : null}
+      </div>
     </main>
   );
 }

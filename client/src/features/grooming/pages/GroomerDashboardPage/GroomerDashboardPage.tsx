@@ -338,9 +338,11 @@ export function GroomerDashboardPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load your dashboard.
         </p>
+      </div>
       </main>
     );
   }
@@ -348,7 +350,9 @@ export function GroomerDashboardPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -359,6 +363,7 @@ export function GroomerDashboardPage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Grooming Queue</h1>
 
       <QueueFilterBar
@@ -441,6 +446,7 @@ export function GroomerDashboardPage() {
           ) : null}
         </>
       )}
+      </div>
     </main>
   );
 }

@@ -323,9 +323,11 @@ export function AdminServicesPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the services panel.
         </p>
+      </div>
       </main>
     );
   }
@@ -333,7 +335,9 @@ export function AdminServicesPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -348,7 +352,9 @@ export function AdminServicesPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading services...</p>
+      </div>
       </main>
     );
   }
@@ -356,15 +362,18 @@ export function AdminServicesPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Services</h1>
 
       <div className={styles.toolbar}>
@@ -598,6 +607,7 @@ export function AdminServicesPage() {
           ))}
         </ul>
       )}
+      </div>
     </main>
   );
 }

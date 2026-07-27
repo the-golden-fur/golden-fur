@@ -189,6 +189,7 @@ export function CatalogAdminPage({
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>{title}</h1>
 
       {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -321,6 +322,7 @@ export function CatalogAdminPage({
           {rowError}
         </p>
       ) : null}
+      </div>
     </main>
   );
 }

@@ -189,9 +189,11 @@ export function DaycareCheckInPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load Daycare check-in.
         </p>
+      </div>
       </main>
     );
   }
@@ -199,7 +201,9 @@ export function DaycareCheckInPage() {
   if (roleStatus === 'loading') {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -211,6 +215,7 @@ export function DaycareCheckInPage() {
   if (checkedInSessionId) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <h1 className={styles.title}>Daycare Check-in</h1>
         <p className={styles.successBanner} role="status">
           Pet checked in successfully.
@@ -233,6 +238,7 @@ export function DaycareCheckInPage() {
             Check in another pet
           </button>
         </div>
+      </div>
       </main>
     );
   }
@@ -243,6 +249,7 @@ export function DaycareCheckInPage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Daycare Check-in</h1>
 
       <div className={styles.tabs}>
@@ -391,6 +398,7 @@ export function DaycareCheckInPage() {
       >
         {isSubmitting ? 'Checking in...' : 'Check in'}
       </button>
+      </div>
     </main>
   );
 }

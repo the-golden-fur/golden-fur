@@ -301,9 +301,11 @@ export function AdminPackageBuilderPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the package builder.
         </p>
+      </div>
       </main>
     );
   }
@@ -311,7 +313,9 @@ export function AdminPackageBuilderPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -323,7 +327,9 @@ export function AdminPackageBuilderPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading packages...</p>
+      </div>
       </main>
     );
   }
@@ -331,15 +337,18 @@ export function AdminPackageBuilderPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
+      </div>
       </main>
     );
   }
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Packages</h1>
 
       <div className={styles.toolbar}>
@@ -510,6 +519,7 @@ export function AdminPackageBuilderPage() {
           ))}
         </ul>
       )}
+      </div>
     </main>
   );
 }

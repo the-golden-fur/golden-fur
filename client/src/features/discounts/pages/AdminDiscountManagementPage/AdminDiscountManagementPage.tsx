@@ -391,9 +391,11 @@ export function AdminDiscountManagementPage() {
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           Unable to load the discount management panel.
         </p>
+      </div>
       </main>
     );
   }
@@ -401,7 +403,9 @@ export function AdminDiscountManagementPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading...</p>
+      </div>
       </main>
     );
   }
@@ -413,7 +417,9 @@ export function AdminDiscountManagementPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.copy}>Loading discounts...</p>
+      </div>
       </main>
     );
   }
@@ -421,9 +427,11 @@ export function AdminDiscountManagementPage() {
   if (loadError) {
     return (
       <main className={styles.page}>
+      <div className={styles.content}>
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
+      </div>
       </main>
     );
   }
@@ -444,6 +452,7 @@ export function AdminDiscountManagementPage() {
 
   return (
     <main className={styles.page}>
+      <div className={styles.content}>
       <h1 className={styles.title}>Discounts</h1>
       <p className={styles.copy}>
         Discounts are switched off by default. Toggle a card to activate it for
@@ -681,6 +690,7 @@ export function AdminDiscountManagementPage() {
           </div>
         )}
       </section>
+      </div>
     </main>
   );
 }
