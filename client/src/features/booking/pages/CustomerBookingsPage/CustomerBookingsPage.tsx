@@ -12,10 +12,13 @@ import {
   listBookings,
   rescheduleBooking,
 } from '../../api/booking.api';
-import type { Booking, StaffPreferenceInput } from '../../booking.types';
+import {
+  CANCELLABLE_BOOKING_STATUSES,
+  RESCHEDULABLE_BOOKING_STATUSES,
+  type Booking,
+  type StaffPreferenceInput,
+} from '../../booking.types';
 import styles from './CustomerBookingsPage.module.css';
-
-const RESCHEDULABLE_STATUSES = new Set(['Confirmed', 'Pending']);
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -222,7 +225,17 @@ export function CustomerBookingsPage() {
       ) : (
         <ul className={styles.bookingList}>
           {bookings.map((booking) => {
-            const isActionable = RESCHEDULABLE_STATUSES.has(booking.status);
+            // Reschedule additionally requires the appointment itself to
+            // still be ahead of us - matches reschedule.service.ts's own
+            // past-due guard server-side.
+            const isPastDue =
+              new Date(booking.scheduled_start).getTime() <= Date.now();
+            const canReschedule =
+              RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
+              !isPastDue;
+            const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
+              booking.status
+            );
             const isRescheduling =
               activeAction?.bookingId === booking.id &&
               activeAction.type === 'reschedule';
@@ -259,22 +272,26 @@ export function CustomerBookingsPage() {
                   <BookingStatusBadge status={booking.status} />
                 </div>
 
-                {isActionable && !isRescheduling && !isCancelling ? (
+                {(canReschedule || canCancel) && !isRescheduling && !isCancelling ? (
                   <div className={styles.bookingControls}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => openReschedule(booking)}
-                    >
-                      Reschedule
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => openCancel(booking)}
-                    >
-                      Cancel
-                    </button>
+                    {canReschedule ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => openReschedule(booking)}
+                      >
+                        Reschedule
+                      </button>
+                    ) : null}
+                    {canCancel ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => openCancel(booking)}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 

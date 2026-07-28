@@ -1,5 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { Booking } from '../booking.types.ts';
+import { CANCELLABLE_BOOKING_STATUSES, type Booking } from '../booking.types.ts';
 import type { CancelBookingInput } from '../modules/validators/booking.validator.ts';
 import {
   evaluateNoticePeriod,
@@ -45,7 +45,7 @@ export async function cancelBooking({
 }: CancelParams): Promise<CancellationResult> {
   const { booking } = await loadBookingForChange(requesterId, bookingId);
 
-  if (booking.status !== 'Confirmed' && booking.status !== 'Pending') {
+  if (!CANCELLABLE_BOOKING_STATUSES.includes(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be cancelled`);
   }
 

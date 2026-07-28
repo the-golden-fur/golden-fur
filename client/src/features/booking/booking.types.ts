@@ -20,12 +20,61 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
   'Veterinary',
 ];
 
+/**
+ * Unified booking lifecycle (booking-status revision): no manual "staff
+ * confirms a booking" step ever existed - status was always set
+ * automatically - so 'Confirmed' was retired rather than relabeled.
+ * Pending (booked, appointment hasn't started) -> In Progress (a Start
+ * action, or physical check-in for Hotel/Daycare) -> Completed (a Complete
+ * action or checkout) -> Paid (automatic on Complete for an
+ * already-confirmed online payment, otherwise a manual Mark as Paid
+ * action). No-show is a lazy, read-time server transition: any Pending
+ * booking whose scheduled_start has passed is flipped to No-show the next
+ * time it's read. Cancelled is unchanged.
+ */
 export type BookingStatus =
-  | 'Confirmed'
+  | 'Pending'
+  | 'In Progress'
   | 'Completed'
+  | 'Paid'
   | 'Cancelled'
-  | 'No-show'
-  | 'Pending';
+  | 'No-show';
+
+export const BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+  'Completed',
+  'Paid',
+  'Cancelled',
+  'No-show',
+];
+
+/** Holds a real capacity/staff-time slot - mirrors the server's
+ * ACTIVE_BOOKING_STATUSES. */
+export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+  'Completed',
+  'Paid',
+];
+
+/** The service itself already happened, payment status aside. */
+export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Completed',
+  'Paid',
+];
+
+export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+];
+
+/** Only before the service has started - a booking whose scheduled_start
+ * has already passed is separately blocked even while still Pending (see
+ * ReceptionistBookingsQueuePage/CustomerBookingsPage's own time check). */
+export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+];
 
 /** STUB vocabulary mirroring M08's future payment_method enum (Sprint 5). */
 export const PAYMENT_METHODS = [
@@ -51,6 +100,39 @@ export type EnforcementMode = 'Strict' | 'Soft';
 
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
+/**
+ * Freetext preferences captured at booking time for a Hotel booking, so the
+ * check-in form (HotelCheckInPage's structured, staff-only, billable care
+ * instructions) can be pre-filled instead of starting blank. Not the
+ * authoritative care record - the receptionist still confirms/edits
+ * everything at physical check-in.
+ */
+export interface HotelBookingPreferenceFeeding {
+  meal_time: 'Morning' | 'Afternoon' | 'Evening';
+  food_type: string;
+  quantity: string;
+  special_instructions?: string;
+}
+
+export interface HotelBookingPreferenceWalking {
+  time_block: string;
+  duration_minutes: number;
+  notes?: string;
+}
+
+export interface HotelBookingPreferenceMedication {
+  medication_name: string;
+  dose: string;
+  scheduled_times: string[];
+  administration_notes?: string;
+}
+
+export interface HotelBookingPreferences {
+  feeding: HotelBookingPreferenceFeeding[];
+  walking: HotelBookingPreferenceWalking[];
+  medications: HotelBookingPreferenceMedication[];
+}
+
 export interface Booking {
   id: string;
   customer_id: string;
@@ -69,6 +151,10 @@ export interface Booking {
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   special_instructions: string | null;
+  hotel_preferences: HotelBookingPreferences | null;
+  started_at: string | null;
+  completed_at: string | null;
+  paid_at: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
   reschedule_count: number;
@@ -154,6 +240,7 @@ export interface CreateBookingPayload {
   payment_method?: PaymentMethod;
   payment_confirmed?: boolean;
   special_instructions?: string;
+  hotel_preferences?: HotelBookingPreferences;
 }
 
 export interface RescheduleBookingPayload {
@@ -188,6 +275,9 @@ export interface SlotAvailability {
   available: boolean;
   level: SlotLevel;
   eligible_staff_count?: number;
+  /** Hotel only - how many petWeightClass-size cages remain free/total. */
+  cage_capacity_remaining?: number;
+  cage_capacity_total?: number;
 }
 
 export interface ListBookingsFilters {

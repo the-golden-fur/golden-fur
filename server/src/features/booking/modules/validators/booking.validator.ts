@@ -1,16 +1,9 @@
 import { z } from 'zod';
-import { PAYMENT_METHODS } from '../../booking.types.ts';
+import { BOOKING_STATUSES, PAYMENT_METHODS } from '../../booking.types.ts';
 
 const CATEGORIES = ['Grooming', 'Hotel', 'Daycare', 'Veterinary'] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
-const BOOKING_STATUSES = [
-  'Confirmed',
-  'Completed',
-  'Cancelled',
-  'No-show',
-  'Pending',
-] as const;
 
 /** ISO-8601 with offset, matching the timestamptz columns. */
 const isoDatetime = z.iso.datetime({ offset: true });
@@ -67,6 +60,53 @@ function requireEndAfterStart(
   }
 }
 
+/**
+ * Freetext booking-time preferences for a Hotel booking - deliberately not
+ * the same shape as hotel.validator.ts's checkInValidator (no catalog_id/
+ * brought_by_customer/pricing fields, which are check-in-time-only, staff-
+ * owned concerns). This is a preview the check-in form can pre-fill from,
+ * never the authoritative record.
+ */
+const hotelPreferencesValidator = z
+  .object({
+    feeding: z
+      .array(
+        z
+          .object({
+            meal_time: z.enum(['Morning', 'Afternoon', 'Evening']),
+            food_type: z.string().trim().min(1),
+            quantity: z.string().trim().min(1),
+            special_instructions: z.string().trim().optional(),
+          })
+          .strict()
+      )
+      .default([]),
+    walking: z
+      .array(
+        z
+          .object({
+            time_block: z.string().trim().min(1),
+            duration_minutes: z.number().int().positive(),
+            notes: z.string().trim().optional(),
+          })
+          .strict()
+      )
+      .default([]),
+    medications: z
+      .array(
+        z
+          .object({
+            medication_name: z.string().trim().min(1),
+            dose: z.string().trim().min(1),
+            scheduled_times: z.array(z.string().min(1)).default([]),
+            administration_notes: z.string().trim().optional(),
+          })
+          .strict()
+      )
+      .default([]),
+  })
+  .strict();
+
 export const createBookingValidator = z
   .object({
     // Required when a staff member books on behalf of a walk-in/phone-in
@@ -85,11 +125,20 @@ export const createBookingValidator = z
     payment_method: z.enum(PAYMENT_METHODS).optional(),
     payment_confirmed: z.boolean().optional(),
     special_instructions: z.string().trim().min(1).optional(),
+    hotel_preferences: hotelPreferencesValidator.optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
     requireExactlyOneTarget(input, ctx);
     requireEndAfterStart(input, ctx);
+
+    if (input.hotel_preferences && input.service_category !== 'Hotel') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hotel_preferences'],
+        message: 'hotel_preferences is only valid for Hotel bookings',
+      });
+    }
   });
 
 export const rescheduleBookingValidator = z

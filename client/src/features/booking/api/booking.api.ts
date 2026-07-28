@@ -259,6 +259,43 @@ export async function cancelBooking(
   return parseBody<CancellationResult>(response);
 }
 
+/**
+ * Manual status-advance actions (booking-status revision): Start (Pending
+ * -> In Progress), Complete (In Progress -> Completed, or straight to Paid
+ * when an online payment was already confirmed), Mark as Paid (Completed ->
+ * Paid, for a pay-at-counter booking). No-show has no endpoint - it's a
+ * lazy transition the server applies whenever a booking is read.
+ */
+async function postBookingAction(
+  bookingId: string,
+  action: 'start' | 'complete' | 'mark-paid',
+  accessToken: string
+): Promise<BookingApiResult<Booking>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/${action}`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ booking: Booking }>(response);
+  return { data: result.data?.booking ?? null, error: result.error };
+}
+
+export function startBooking(bookingId: string, accessToken: string) {
+  return postBookingAction(bookingId, 'start', accessToken);
+}
+
+export function completeBooking(bookingId: string, accessToken: string) {
+  return postBookingAction(bookingId, 'complete', accessToken);
+}
+
+export function markBookingPaid(bookingId: string, accessToken: string) {
+  return postBookingAction(bookingId, 'mark-paid', accessToken);
+}
+
 export async function getBookingPolicy(
   accessToken: string
 ): Promise<BookingApiResult<PolicyConfiguration[]>> {

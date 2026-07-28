@@ -37,18 +37,22 @@
   --color-active-text: #2f5e1f;
   --color-inactive-bg: #edeae3;
   --color-inactive-text: #6b6558;
-  /* Sprint 2 Epic B - booking status badge set (#55/#59/#60), distinct from
-     the M13 active/inactive and M01 status-neutral/warning pairs above.
-     Confirmed/Completed alias success and status-neutral respectively
-     (same "good/settled" meaning); Pending aliases warning ("action still
-     pending"); Cancelled/No-show get their own muted/error-toned pairs so
+  /* Booking-status revision - booking status badge set (#55/#59/#60),
+     distinct from the M13 active/inactive and M01 status-neutral/warning
+     pairs above. Paid aliases success (the fully-settled terminal state,
+     was "Confirmed" before the status revision); Completed keeps the
+     tan/status-neutral tone ("done, not paid yet"); Pending aliases warning
+     ("appointment hasn't started"); In Progress gets its own blue ("active
+     right now"); Cancelled/No-show get their own muted/error-toned pairs so
      the two negative outcomes read as visually distinct. */
-  --color-booking-confirmed-bg: #eaf6eb;
-  --color-booking-confirmed-text: #2f6f3b;
+  --color-booking-paid-bg: #eaf6eb;
+  --color-booking-paid-text: #2f6f3b;
   --color-booking-completed-bg: #efe4cd;
   --color-booking-completed-text: #725a35;
   --color-booking-pending-bg: #fff6df;
   --color-booking-pending-text: #9a6400;
+  --color-booking-in-progress-bg: #e3edfa;
+  --color-booking-in-progress-text: #2a5ba8;
   --color-booking-cancelled-bg: #edeae3;
   --color-booking-cancelled-text: #6b6558;
   --color-booking-noshow-bg: #fde9e6;
@@ -158,14 +162,16 @@
   --color-active-text: #bde7c4;
   --color-inactive-bg: #43392a;
   --color-inactive-text: #cfc3a9;
-  /* Sprint 2 Epic B - booking status badge set (dark-theme values, same
-     aliasing rationale as the customer-theme block above). */
-  --color-booking-confirmed-bg: #20462d;
-  --color-booking-confirmed-text: #bde7c4;
+  /* Booking-status revision - booking status badge set (dark-theme values,
+     same aliasing rationale as the customer-theme block above). */
+  --color-booking-paid-bg: #20462d;
+  --color-booking-paid-text: #bde7c4;
   --color-booking-completed-bg: #4d3d28;
   --color-booking-completed-text: #f0dfbf;
   --color-booking-pending-bg: #4d3413;
   --color-booking-pending-text: #ffd27a;
+  --color-booking-in-progress-bg: #1f3a5c;
+  --color-booking-in-progress-text: #a9c8f0;
   --color-booking-cancelled-bg: #43392a;
   --color-booking-cancelled-text: #cfc3a9;
   --color-booking-noshow-bg: #4b221b;

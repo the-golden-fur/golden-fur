@@ -48,12 +48,16 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_start: '2026-08-03T01:00:00.000Z',
     scheduled_end: '2026-08-03T02:00:00.000Z',
     assigned_staff_id: 'staff-1',
-    status: 'Confirmed',
+    status: 'Pending',
     total_price: 500,
     downpayment_amount: null,
     payment_method: 'Cash',
     payment_confirmed: false,
     special_instructions: null,
+    hotel_preferences: null,
+    started_at: null,
+    completed_at: null,
+    paid_at: null,
     cancelled_at: null,
     cancellation_reason: null,
     reschedule_count: 0,
@@ -109,14 +113,14 @@ describe('CustomerBookingsPage', () => {
 
   it("AC-1: shows only the caller's bookings with a status badge", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Confirmed' })],
+      data: [buildBooking({ status: 'Pending' })],
       error: null,
     });
 
     renderPage();
 
     await waitFor(() =>
-      expect(screen.getByText('Confirmed')).toBeInTheDocument()
+      expect(screen.getByText('Pending')).toBeInTheDocument()
     );
     expect(bookingApi.listBookings).toHaveBeenCalledWith('token');
   });
@@ -124,7 +128,7 @@ describe('CustomerBookingsPage', () => {
   it('AC-5: cancel requires an explicit confirm step before calling the API', async () => {
     const user = userEvent.setup();
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Confirmed' })],
+      data: [buildBooking({ status: 'Pending' })],
       error: null,
     });
 
@@ -162,7 +166,7 @@ describe('CustomerBookingsPage', () => {
   it('AC-4: surfaces a policy_violation flag from a cancellation to the customer', async () => {
     const user = userEvent.setup();
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Confirmed' })],
+      data: [buildBooking({ status: 'Pending' })],
       error: null,
     });
     vi.mocked(bookingApi.cancelBooking).mockResolvedValue({

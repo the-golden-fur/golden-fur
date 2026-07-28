@@ -1,6 +1,7 @@
-.confirmed,
-.completed,
 .pending,
+.inProgress,
+.completed,
+.paid,
 .cancelled,
 .noshow {
   display: inline-flex;
@@ -15,18 +16,24 @@
     box-shadow 0.15s ease;
 }
 
-.confirmed:hover,
-.completed:hover,
 .pending:hover,
+.inProgress:hover,
+.completed:hover,
+.paid:hover,
 .cancelled:hover,
 .noshow:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 
-.confirmed {
-  background: var(--color-booking-confirmed-bg);
-  color: var(--color-booking-confirmed-text);
+.pending {
+  background: var(--color-booking-pending-bg);
+  color: var(--color-booking-pending-text);
+}
+
+.inProgress {
+  background: var(--color-booking-in-progress-bg);
+  color: var(--color-booking-in-progress-text);
 }
 
 .completed {
@@ -34,9 +41,9 @@
   color: var(--color-booking-completed-text);
 }
 
-.pending {
-  background: var(--color-booking-pending-bg);
-  color: var(--color-booking-pending-text);
+.paid {
+  background: var(--color-booking-paid-bg);
+  color: var(--color-booking-paid-text);
 }
 
 .cancelled {

@@ -1,9 +1,12 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  completeBooking,
   createBooking,
   getBookingById,
   listBookings,
+  markBookingPaid,
+  startBooking,
 } from './services/booking.service.ts';
 import {
   getStaffPickerOptions,
@@ -318,6 +321,49 @@ export async function cancelBookingController(
     });
 
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Manual status-advance actions (booking-status revision): Start/Complete
+ * are staff-only, gated broadly at the route level (any staff role, not
+ * customer) since whoever is physically doing the work should be able to
+ * advance it regardless of category; Mark as Paid is narrower (see
+ * booking.routes.ts's role list) since it's a money-handling action.
+ */
+export async function startBookingController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const booking = await startBooking({ bookingId: paramId(req, 'id') });
+    return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function completeBookingController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const booking = await completeBooking({ bookingId: paramId(req, 'id') });
+    return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function markBookingPaidController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const booking = await markBookingPaid({ bookingId: paramId(req, 'id') });
+    return res.status(200).json({ booking });
   } catch (error) {
     return sendServiceError(res, error);
   }

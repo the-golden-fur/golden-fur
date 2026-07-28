@@ -162,8 +162,18 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         },
         error: null,
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
-      { data: [], error: null }, // daycare capacity overlap - empty
+      { data: [], error: null }, // pre-insert daycare capacity overlap - empty
       { data: PENDING_BOOKING, error: null }, // insert
+      {
+        data: [
+          {
+            id: 'booking-1',
+            pet_id: CREATE_PAYLOAD.pet_id,
+            created_at: '2026-07-18T00:00:00Z',
+          },
+        ],
+        error: null,
+      }, // post-insert re-count (always runs now, regardless of status) - winner
       { data: PENDING_BOOKING, error: null } // final fetch
     );
 
@@ -306,7 +316,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       {
         data: {
           ...PENDING_BOOKING,
-          status: 'Confirmed',
+          status: 'Pending',
           scheduled_start: daysFromNow(1),
           scheduled_end: daysFromNow(1.1),
         },
@@ -330,20 +340,20 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
 
   it('#54 AC-5: cancellation sets Cancelled and reports the notice outcome', async () => {
     mockCaller(CUSTOMER_ID);
-    const confirmedBooking = {
+    const activeBooking = {
       ...PENDING_BOOKING,
-      status: 'Confirmed',
+      status: 'Pending',
       scheduled_start: daysFromNow(10),
       scheduled_end: daysFromNow(10.1),
     };
 
     queueFromResults(
-      { data: confirmedBooking, error: null }, // booking fetch
+      { data: activeBooking, error: null }, // booking fetch
       { data: null, error: null }, // getStaffRoleOrNull - not staff
       { data: [DEFAULT_POLICY], error: null }, // policy
       {
         data: {
-          ...confirmedBooking,
+          ...activeBooking,
           status: 'Cancelled',
           cancelled_at: '2026-07-18T08:00:00Z',
           cancellation_reason: 'sick pet',

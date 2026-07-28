@@ -6,9 +6,10 @@ import type { BookingStatus } from '../../../booking.types';
 
 describe('BookingStatusBadge', () => {
   const statuses: BookingStatus[] = [
-    'Confirmed',
-    'Completed',
     'Pending',
+    'In Progress',
+    'Completed',
+    'Paid',
     'Cancelled',
     'No-show',
   ];

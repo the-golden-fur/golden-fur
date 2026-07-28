@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -30,6 +30,9 @@ vi.mock('../../api/booking.api', () => ({
   listBookings: vi.fn(),
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
+  startBooking: vi.fn(),
+  completeBooking: vi.fn(),
+  markBookingPaid: vi.fn(),
 }));
 
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
@@ -83,7 +86,11 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_start: '2026-08-03T01:00:00.000Z',
     scheduled_end: '2026-08-03T02:00:00.000Z',
     assigned_staff_id: 'staff-2',
-    status: 'Confirmed',
+    status: 'Pending',
+    started_at: null,
+    completed_at: null,
+    paid_at: null,
+    hotel_preferences: null,
     total_price: 500,
     downpayment_amount: null,
     payment_method: 'Cash',
@@ -266,6 +273,119 @@ describe('ReceptionistBookingsQueuePage', () => {
       { dateFrom: string; dateTo: string },
     ];
     expect(call[1].dateFrom).not.toEqual(call[1].dateTo);
+  });
+
+  it('booking-status revision: shows Start for a Pending booking, and it advances to In Progress on click', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.startBooking).mockResolvedValue({
+      data: buildBooking({ status: 'In Progress' }),
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Start')).toBeInTheDocument());
+    await user.click(screen.getByText('Start'));
+
+    await waitFor(() =>
+      expect(bookingApi.startBooking).toHaveBeenCalledWith('booking-1', 'token')
+    );
+    const row = screen.getByRole('listitem');
+    expect(await within(row).findByText('In Progress')).toBeInTheDocument();
+  });
+
+  it('booking-status revision: shows Complete for an In Progress booking, not Start', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'In Progress' })],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Complete')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Start')).not.toBeInTheDocument();
+  });
+
+  it('booking-status revision: shows Mark as Paid for a Completed booking', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Completed' })],
+      error: null,
+    });
+    vi.mocked(bookingApi.markBookingPaid).mockResolvedValue({
+      data: buildBooking({ status: 'Paid' }),
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Mark as Paid')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Mark as Paid'));
+
+    await waitFor(() =>
+      expect(bookingApi.markBookingPaid).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      )
+    );
+    const row = screen.getByRole('listitem');
+    expect(await within(row).findByText('Paid')).toBeInTheDocument();
+  });
+
+  it("shouldn't offer Reschedule once a Pending booking's own scheduled time has already passed", async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          scheduled_start: '2020-01-01T01:00:00.000Z',
+          scheduled_end: '2020-01-01T02:00:00.000Z',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
+    // Still cancellable even though it's overdue - only Reschedule is time-gated.
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  it('a Cancelled booking offers neither Reschedule nor Cancel', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Cancelled' })],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });
 
   it('AC-4: "New booking" navigates to the flow shell in receptionist mode', async () => {

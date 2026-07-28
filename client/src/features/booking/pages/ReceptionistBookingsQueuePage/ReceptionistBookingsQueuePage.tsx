@@ -22,10 +22,16 @@ import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
   cancelBooking,
+  completeBooking,
   listBookings,
+  markBookingPaid,
   rescheduleBooking,
+  startBooking,
 } from '../../api/booking.api';
 import {
+  BOOKING_STATUSES,
+  CANCELLABLE_BOOKING_STATUSES,
+  RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingStatus,
@@ -34,18 +40,10 @@ import {
 } from '../../booking.types';
 import styles from './ReceptionistBookingsQueuePage.module.css';
 
-const BOOKING_STATUSES: BookingStatus[] = [
-  'Confirmed',
-  'Pending',
-  'Completed',
-  'Cancelled',
-  'No-show',
-];
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
-const RESCHEDULABLE_STATUSES = new Set(['Confirmed', 'Pending']);
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -293,6 +291,67 @@ export function ReceptionistBookingsQueuePage() {
     setActiveAction(null);
   }
 
+  // Manual status-advance actions (booking-status revision): any staff role
+  // may Start/Complete; Mark as Paid is server-restricted to money-handling
+  // roles (a disallowed click surfaces as an inline error rather than being
+  // hidden client-side, matching this page's existing no-role-gating-on-
+  // buttons pattern for Reschedule/Cancel). Error is kept alongside the
+  // booking id it belongs to (unlike the single shared `actionError` the
+  // reschedule/cancel panels use) so it still renders under the right row
+  // after `advancingBookingId` itself has already cleared.
+  const [advancingBookingId, setAdvancingBookingId] = useState<string | null>(
+    null
+  );
+  const [advanceError, setAdvanceError] = useState<{
+    bookingId: string;
+    message: string;
+  } | null>(null);
+
+  async function runAdvanceAction(
+    booking: Booking,
+    action: (bookingId: string, accessToken: string) => ReturnType<typeof startBooking>,
+    failureMessage: string
+  ) {
+    if (!accessToken) return;
+
+    setAdvancingBookingId(booking.id);
+    setAdvanceError(null);
+
+    const result = await action(booking.id, accessToken);
+
+    setAdvancingBookingId(null);
+
+    if (result.error || !result.data) {
+      setAdvanceError({
+        bookingId: booking.id,
+        message: result.error ?? failureMessage,
+      });
+      return;
+    }
+
+    replaceBooking(result.data);
+  }
+
+  function handleStart(booking: Booking) {
+    return runAdvanceAction(booking, startBooking, 'Could not start this booking.');
+  }
+
+  function handleComplete(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      completeBooking,
+      'Could not complete this booking.'
+    );
+  }
+
+  function handleMarkPaid(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      markBookingPaid,
+      'Could not mark this booking paid.'
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -392,13 +451,26 @@ export function ReceptionistBookingsQueuePage() {
         {!isLoading && !loadError && bookings.length > 0 ? (
           <ul className={styles.bookingList}>
             {bookings.map((booking) => {
-              const isActionable = RESCHEDULABLE_STATUSES.has(booking.status);
+              // Reschedule additionally requires the appointment itself to
+              // still be ahead of us - a Pending booking whose own time has
+              // already passed is effectively a no-show waiting for the
+              // server's lazy transition, not something to move to a new
+              // slot (matches reschedule.service.ts's own past-due guard).
+              const isPastDue =
+                new Date(booking.scheduled_start).getTime() <= Date.now();
+              const canReschedule =
+                RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
+                !isPastDue;
+              const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
+                booking.status
+              );
               const isRescheduling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'reschedule';
               const isCancelling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'cancel';
+              const isAdvancing = advancingBookingId === booking.id;
 
               const durationMinutes = Math.round(
                 (new Date(booking.scheduled_end).getTime() -
@@ -429,23 +501,63 @@ export function ReceptionistBookingsQueuePage() {
                     <BookingStatusBadge status={booking.status} />
                   </div>
 
-                  {isActionable && !isRescheduling && !isCancelling ? (
+                  {!isRescheduling && !isCancelling ? (
                     <div className={styles.bookingControls}>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => openReschedule(booking)}
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => openCancel(booking)}
-                      >
-                        Cancel
-                      </button>
+                      {booking.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={isAdvancing}
+                          onClick={() => void handleStart(booking)}
+                        >
+                          {isAdvancing ? 'Starting...' : 'Start'}
+                        </button>
+                      ) : null}
+                      {booking.status === 'In Progress' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={isAdvancing}
+                          onClick={() => void handleComplete(booking)}
+                        >
+                          {isAdvancing ? 'Completing...' : 'Complete'}
+                        </button>
+                      ) : null}
+                      {booking.status === 'Completed' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={isAdvancing}
+                          onClick={() => void handleMarkPaid(booking)}
+                        >
+                          {isAdvancing ? 'Marking paid...' : 'Mark as Paid'}
+                        </button>
+                      ) : null}
+                      {canReschedule ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => openReschedule(booking)}
+                        >
+                          Reschedule
+                        </button>
+                      ) : null}
+                      {canCancel ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => openCancel(booking)}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
                     </div>
+                  ) : null}
+
+                  {advanceError && advanceError.bookingId === booking.id ? (
+                    <p className={styles.errorBanner} role="alert">
+                      {advanceError.message}
+                    </p>
                   ) : null}
 
                   {isRescheduling ? (
