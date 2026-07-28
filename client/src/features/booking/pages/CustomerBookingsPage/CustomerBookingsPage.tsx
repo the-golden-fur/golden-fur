@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
@@ -37,6 +38,7 @@ type ActiveAction = { bookingId: string; type: 'reschedule' | 'cancel' };
  */
 export function CustomerBookingsPage() {
   const { user, accessToken } = useAuth();
+  const nowMs = useNowMs();
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -229,7 +231,7 @@ export function CustomerBookingsPage() {
             // still be ahead of us - matches reschedule.service.ts's own
             // past-due guard server-side.
             const isPastDue =
-              new Date(booking.scheduled_start).getTime() <= Date.now();
+              new Date(booking.scheduled_start).getTime() <= nowMs;
             const canReschedule =
               RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
               !isPastDue;

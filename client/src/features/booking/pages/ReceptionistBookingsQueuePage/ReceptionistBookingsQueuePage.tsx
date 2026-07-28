@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -64,6 +65,7 @@ type ActiveAction = { bookingId: string; type: 'reschedule' | 'cancel' };
 export function ReceptionistBookingsQueuePage() {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
+  const nowMs = useNowMs();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
@@ -464,7 +466,7 @@ export function ReceptionistBookingsQueuePage() {
               // server's lazy transition, not something to move to a new
               // slot (matches reschedule.service.ts's own past-due guard).
               const isPastDue =
-                new Date(booking.scheduled_start).getTime() <= Date.now();
+                new Date(booking.scheduled_start).getTime() <= nowMs;
               const canReschedule =
                 RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
                 !isPastDue;
