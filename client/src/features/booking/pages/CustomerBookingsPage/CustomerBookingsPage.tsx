@@ -272,7 +272,9 @@ export function CustomerBookingsPage() {
                   <BookingStatusBadge status={booking.status} />
                 </div>
 
-                {(canReschedule || canCancel) && !isRescheduling && !isCancelling ? (
+                {(canReschedule || canCancel) &&
+                !isRescheduling &&
+                !isCancelling ? (
                   <div className={styles.bookingControls}>
                     {canReschedule ? (
                       <button

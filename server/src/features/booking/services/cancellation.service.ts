@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { CANCELLABLE_BOOKING_STATUSES, type Booking } from '../booking.types.ts';
+import {
+  CANCELLABLE_BOOKING_STATUSES,
+  type Booking,
+} from '../booking.types.ts';
 import type { CancelBookingInput } from '../modules/validators/booking.validator.ts';
 import {
   evaluateNoticePeriod,

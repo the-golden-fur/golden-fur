@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listGroomingQueue, transitionGroomingSessionStatus } from './grooming.service.ts';
+import {
+  listGroomingQueue,
+  transitionGroomingSessionStatus,
+} from './grooming.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   completeBooking,
@@ -272,7 +275,9 @@ describe('grooming.service (#64, booking-status revision)', () => {
           });
         }
 
-        builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
+        builder.maybeSingle = vi.fn(() =>
+          Promise.resolve({ data: null, error: null })
+        );
         builder.then = (resolve: (_result: QueryResult) => void) =>
           resolve({ data: [], error: null });
 

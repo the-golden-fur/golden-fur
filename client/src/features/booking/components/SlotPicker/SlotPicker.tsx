@@ -144,7 +144,9 @@ export function SlotPicker({
             min={minDate}
             value={date}
             onChange={(event) =>
-              setDate(event.target.value < minDate ? minDate : event.target.value)
+              setDate(
+                event.target.value < minDate ? minDate : event.target.value
+              )
             }
           />
         </label>
@@ -188,9 +190,8 @@ export function SlotPicker({
       serviceCategory === 'Hotel' &&
       slots[0]?.cage_capacity_total !== undefined ? (
         <p className={styles.copy}>
-          Cage availability for this size:{' '}
-          {slots[0].cage_capacity_remaining} of {slots[0].cage_capacity_total}{' '}
-          free.
+          Cage availability for this size: {slots[0].cage_capacity_remaining} of{' '}
+          {slots[0].cage_capacity_total} free.
         </p>
       ) : null}
 

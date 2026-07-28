@@ -40,7 +40,10 @@ describe('currentPrescription.service (#66)', () => {
         {
           id: 'consultation-1',
           medications: [{ name: 'Rimadyl', dose: '75mg', notes: null }],
-          booking: { status: 'Completed', completed_at: '2026-07-01T00:00:00.000Z' },
+          booking: {
+            status: 'Completed',
+            completed_at: '2026-07-01T00:00:00.000Z',
+          },
         },
         {
           id: 'consultation-2',

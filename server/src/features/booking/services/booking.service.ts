@@ -693,5 +693,9 @@ export async function markBookingPaid({
   }
 
   const now = new Date().toISOString();
-  return updateBookingRow(bookingId, { status: 'Paid', paid_at: now, updated_at: now });
+  return updateBookingRow(bookingId, {
+    status: 'Paid',
+    paid_at: now,
+    updated_at: now,
+  });
 }

@@ -177,7 +177,10 @@ export function CustomerBookingFlowPage() {
   // booking time so the receptionist's check-in form isn't starting blank
   // (see booking.types.ts's HotelBookingPreferences doc comment).
   const [hotelFeeding, setHotelFeeding] = useState<
-    Record<HotelBookingPreferenceFeeding['meal_time'], HotelFeedingRowState | null>
+    Record<
+      HotelBookingPreferenceFeeding['meal_time'],
+      HotelFeedingRowState | null
+    >
   >({ Morning: null, Afternoon: null, Evening: null });
   const [hotelWalking, setHotelWalking] = useState<
     Array<typeof EMPTY_HOTEL_WALKING_ROW>
@@ -536,7 +539,9 @@ export function CustomerBookingFlowPage() {
     );
   }
 
-  function toggleHotelMealTime(mealTime: HotelBookingPreferenceFeeding['meal_time']) {
+  function toggleHotelMealTime(
+    mealTime: HotelBookingPreferenceFeeding['meal_time']
+  ) {
     setHotelFeeding((prev) => ({
       ...prev,
       [mealTime]: prev[mealTime]
@@ -613,24 +618,29 @@ export function CustomerBookingFlowPage() {
     // Kept as raw "HH:MM" (not formatTimeValue()'d to "7:00 AM") so
     // HotelCheckInPage can drop these straight into its own "HH:MM" TimeInput
     // state at check-in without a lossy round-trip re-parse.
-    const walking: HotelBookingPreferenceWalking[] = hotelWalking.map((row) => ({
-      time_block: row.time_block,
-      duration_minutes: row.duration_minutes,
-      ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
-    }));
-
-    const medications: HotelBookingPreferenceMedication[] = hotelMedications.map(
+    const walking: HotelBookingPreferenceWalking[] = hotelWalking.map(
       (row) => ({
+        time_block: row.time_block,
+        duration_minutes: row.duration_minutes,
+        ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
+      })
+    );
+
+    const medications: HotelBookingPreferenceMedication[] =
+      hotelMedications.map((row) => ({
         medication_name: row.medication_name,
         dose: row.dose,
         scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
         ...(row.administration_notes.trim()
           ? { administration_notes: row.administration_notes.trim() }
           : {}),
-      })
-    );
+      }));
 
-    if (feeding.length === 0 && walking.length === 0 && medications.length === 0) {
+    if (
+      feeding.length === 0 &&
+      walking.length === 0 &&
+      medications.length === 0
+    ) {
       return undefined;
     }
 
@@ -710,10 +720,13 @@ export function CustomerBookingFlowPage() {
         <h1 className={styles.title}>Booking confirmed</h1>
         <p className={styles.copy}>
           Status: {confirmedBooking.status}. Your appointment is booked for{' '}
-          {new Date(confirmedBooking.scheduled_start).toLocaleString(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })}
+          {new Date(confirmedBooking.scheduled_start).toLocaleString(
+            undefined,
+            {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            }
+          )}
           .{' '}
           {requiresPayment
             ? confirmedBooking.payment_confirmed
@@ -767,8 +780,8 @@ export function CustomerBookingFlowPage() {
                 <span className={styles.optionTitle}>{pet.name}</span>
                 <span className={styles.optionMeta}>
                   {PET_TYPE_LABEL[pet.pet_type]} &middot;{' '}
-                  {WEIGHT_CLASS_LABEL[pet.weight_class]} ({pet.weight_class}
-                  ) &middot; {COAT_TYPE_LABEL[pet.coat_type]}
+                  {WEIGHT_CLASS_LABEL[pet.weight_class]} ({pet.weight_class})
+                  &middot; {COAT_TYPE_LABEL[pet.coat_type]}
                 </span>
               </button>
             ))}
@@ -860,9 +873,10 @@ export function CustomerBookingFlowPage() {
 
             {category === 'Hotel' && selectedPet ? (
               <p className={styles.copy}>
-                {selectedPet.name} is {WEIGHT_CLASS_LABEL[selectedPet.weight_class]}{' '}
-                ({selectedPet.weight_class}) - the matching cage size is
-                marked Recommended below.
+                {selectedPet.name} is{' '}
+                {WEIGHT_CLASS_LABEL[selectedPet.weight_class]} (
+                {selectedPet.weight_class}) - the matching cage size is marked
+                Recommended below.
               </p>
             ) : null}
 
@@ -877,7 +891,8 @@ export function CustomerBookingFlowPage() {
                   const isRecommendedCage =
                     category === 'Hotel' &&
                     selectedPet !== null &&
-                    deriveHotelCageSize(service.name) === selectedPet.weight_class;
+                    deriveHotelCageSize(service.name) ===
+                      selectedPet.weight_class;
 
                   return (
                     <button
@@ -889,7 +904,9 @@ export function CustomerBookingFlowPage() {
                       onClick={() => handleServiceSelect(service.id)}
                     >
                       <span className={styles.optionTitleRow}>
-                        <span className={styles.optionTitle}>{service.name}</span>
+                        <span className={styles.optionTitle}>
+                          {service.name}
+                        </span>
                         {isRecommendedCage ? (
                           <span className={styles.recommendedBadge}>
                             Recommended
@@ -1083,7 +1100,9 @@ export function CustomerBookingFlowPage() {
                       placeholder="Notes (optional)"
                       value={row.notes}
                       onChange={(event) =>
-                        updateHotelWalkBlock(index, { notes: event.target.value })
+                        updateHotelWalkBlock(index, {
+                          notes: event.target.value,
+                        })
                       }
                     />
                     <button
@@ -1125,7 +1144,9 @@ export function CustomerBookingFlowPage() {
                       placeholder="Dose"
                       value={row.dose}
                       onChange={(event) =>
-                        updateHotelMedication(index, { dose: event.target.value })
+                        updateHotelMedication(index, {
+                          dose: event.target.value,
+                        })
                       }
                     />
                     <TimeInput

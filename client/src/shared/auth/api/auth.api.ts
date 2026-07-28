@@ -74,7 +74,9 @@ export function setSessionPersistence(persist: boolean): void {
 const dualStorage = {
   getItem(key: string): string | null {
     try {
-      return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key);
+      return (
+        window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key)
+      );
     } catch {
       return null;
     }

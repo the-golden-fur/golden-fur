@@ -31,7 +31,10 @@ export interface AppointmentCardProps {
   addonLabels: string[];
   specialInstructions: string | null;
   isAdvancing: boolean;
-  onAdvance: (sessionId: string, targetStatus: GroomingTransitionTarget) => void;
+  onAdvance: (
+    sessionId: string,
+    targetStatus: GroomingTransitionTarget
+  ) => void;
 }
 
 /**
@@ -53,7 +56,9 @@ export function AppointmentCard({
   onAdvance,
 }: AppointmentCardProps) {
   const bookingStatus = session.booking?.status;
-  const advanceAction = bookingStatus ? ADVANCE_ACTION[bookingStatus] : undefined;
+  const advanceAction = bookingStatus
+    ? ADVANCE_ACTION[bookingStatus]
+    : undefined;
 
   return (
     <li className={styles.card}>

@@ -79,16 +79,14 @@ describe('grooming.api (booking-status revision)', () => {
   });
 
   it('transitionGroomingStatus PATCHes the target status', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({
-          session: {
-            id: 'session-1',
-            booking: { status: 'In Progress' },
-          },
-        })
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        session: {
+          id: 'session-1',
+          booking: { status: 'In Progress' },
+        },
+      })
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await transitionGroomingStatus(

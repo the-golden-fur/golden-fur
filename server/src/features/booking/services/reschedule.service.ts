@@ -119,7 +119,7 @@ export async function rescheduleBooking({
   if (new Date(booking.scheduled_start).getTime() <= Date.now()) {
     throwWithStatus(
       409,
-      'This booking\'s scheduled time has already passed and cannot be rescheduled'
+      "This booking's scheduled time has already passed and cannot be rescheduled"
     );
   }
 

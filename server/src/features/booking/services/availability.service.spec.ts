@@ -182,7 +182,10 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       BRANCH_ROW, // branch lookup
       { data: null, error: null, count: 1 } // roster count (1 groomer)
     );
-    vi.mocked(supabase.rpc).mockResolvedValue({ data: [], error: null } as never);
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: [],
+      error: null,
+    } as never);
 
     const slots = await getDaySlots({
       branchId: 'branch-1',

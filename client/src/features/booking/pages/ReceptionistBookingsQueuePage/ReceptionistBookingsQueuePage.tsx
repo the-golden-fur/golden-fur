@@ -309,7 +309,10 @@ export function ReceptionistBookingsQueuePage() {
 
   async function runAdvanceAction(
     booking: Booking,
-    action: (bookingId: string, accessToken: string) => ReturnType<typeof startBooking>,
+    action: (
+      bookingId: string,
+      accessToken: string
+    ) => ReturnType<typeof startBooking>,
     failureMessage: string
   ) {
     if (!accessToken) return;
@@ -333,7 +336,11 @@ export function ReceptionistBookingsQueuePage() {
   }
 
   function handleStart(booking: Booking) {
-    return runAdvanceAction(booking, startBooking, 'Could not start this booking.');
+    return runAdvanceAction(
+      booking,
+      startBooking,
+      'Could not start this booking.'
+    );
   }
 
   function handleComplete(booking: Booking) {

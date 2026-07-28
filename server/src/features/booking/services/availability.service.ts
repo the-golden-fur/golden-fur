@@ -229,7 +229,9 @@ export async function getDaySlots({
   const futureCandidates =
     serviceCategory === 'Hotel'
       ? candidates
-      : candidates.filter((candidate) => candidate.start.getTime() > now.getTime());
+      : candidates.filter(
+          (candidate) => candidate.start.getTime() > now.getTime()
+        );
 
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
 

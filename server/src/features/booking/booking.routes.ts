@@ -111,11 +111,7 @@ router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
 // Mark as Paid restricted to money-handling roles. No-show has no route -
 // it's a lazy transition applied on read (see booking.service.ts).
 router.post('/bookings/:id/start', statusAdvance, startBookingController);
-router.post(
-  '/bookings/:id/complete',
-  statusAdvance,
-  completeBookingController
-);
+router.post('/bookings/:id/complete', statusAdvance, completeBookingController);
 router.post('/bookings/:id/mark-paid', markPaid, markBookingPaidController);
 
 export default router;

@@ -145,7 +145,7 @@ describe('SlotPicker', () => {
     });
   });
 
-  it("never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)", async () => {
+  it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
       data: SLOTS,
       error: null,

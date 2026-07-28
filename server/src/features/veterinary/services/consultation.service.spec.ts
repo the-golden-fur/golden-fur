@@ -333,7 +333,10 @@ describe('consultation.service (#66)', () => {
         { data: { id: 'pet-1' }, error: null }, // createVaccinationRecord's pet lookup
         { data: { id: 'vax-1', vaccine_name: 'Rabies' }, error: null }, // vaccination insert
         {
-          data: consultationRow({ bookingStatus: 'Completed', pet_id: 'pet-1' }),
+          data: consultationRow({
+            bookingStatus: 'Completed',
+            pet_id: 'pet-1',
+          }),
           error: null,
         } // final consultations update
       );
