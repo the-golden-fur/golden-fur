@@ -1,5 +1,5 @@
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import type { Consultation } from '../../veterinary.types';
-import { ConsultationStatusBadge } from '../ConsultationStatusBadge/ConsultationStatusBadge';
 import styles from './PetHistoryTab.module.css';
 
 interface PetHistoryTabProps {
@@ -51,7 +51,9 @@ export function PetHistoryTab({
             <span className={styles.entryDate}>
               {formatDate(consultation.created_at)}
             </span>
-            <ConsultationStatusBadge status={consultation.status} />
+            {consultation.booking ? (
+              <BookingStatusBadge status={consultation.booking.status} />
+            ) : null}
           </div>
           <p className={styles.reason}>{consultation.reason_for_visit}</p>
           {consultation.diagnosis ? (

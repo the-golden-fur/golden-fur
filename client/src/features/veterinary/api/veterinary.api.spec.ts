@@ -18,28 +18,20 @@ describe('veterinary.api', () => {
     vi.unstubAllGlobals();
   });
 
-  it('listConsultationQueue returns consultations and pendingBookings on success', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        consultations: [{ id: 'c-1' }],
-        pendingBookings: [{ id: 'booking-2' }],
-      })
-    );
+  it('listConsultationQueue returns consultations on success', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ consultations: [{ id: 'c-1' }] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await listConsultationQueue('token');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining(
-        '/veterinary/consultations/queue?includePending=true'
-      ),
+      expect.stringContaining('/veterinary/consultations/queue'),
       expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
     );
     expect(result).toEqual({
-      data: {
-        consultations: [{ id: 'c-1' }],
-        pendingBookings: [{ id: 'booking-2' }],
-      },
+      data: { consultations: [{ id: 'c-1' }] },
       error: null,
     });
   });
@@ -65,20 +57,6 @@ describe('veterinary.api', () => {
     );
   });
 
-  it('listConsultationQueue defaults pendingBookings to an empty array when omitted', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ consultations: [] }))
-    );
-
-    const result = await listConsultationQueue('token');
-
-    expect(result).toEqual({
-      data: { consultations: [], pendingBookings: [] },
-      error: null,
-    });
-  });
-
   it('listConsultationQueue returns an error instead of throwing on a non-ok response', async () => {
     vi.stubGlobal(
       'fetch',
@@ -93,11 +71,14 @@ describe('veterinary.api', () => {
   });
 
   it('updateConsultation PATCHes the given payload', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ consultation: { id: 'c-1', status: 'Ongoing' } })
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        consultation: {
+          id: 'c-1',
+          booking: { id: 'booking-1', status: 'In Progress' },
+        },
+      })
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await updateConsultation('c-1', 'token', {
@@ -112,7 +93,9 @@ describe('veterinary.api', () => {
         body: JSON.stringify({ status: 'Ongoing', diagnosis: 'Ear infection' }),
       })
     );
-    expect(result.data).toMatchObject({ status: 'Ongoing' });
+    expect(result.data).toMatchObject({
+      booking: { status: 'In Progress' },
+    });
   });
 
   it('scheduleFollowUp POSTs the follow_up_date', async () => {

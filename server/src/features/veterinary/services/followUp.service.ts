@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { Booking } from '../../booking/booking.types.ts';
+import {
+  FINISHED_BOOKING_STATUSES,
+  type Booking,
+} from '../../booking/booking.types.ts';
 import { getConsultation } from './consultation.service.ts';
 import type { Consultation } from '../veterinary.types.ts';
 
@@ -46,11 +49,17 @@ export async function scheduleFollowUp({
   followUpDate,
 }: ScheduleFollowUpParams): Promise<ScheduleFollowUpResult> {
   const consultation = await getConsultation(consultationId);
+  const bookingStatus = consultation.booking?.status;
 
-  if (consultation.status === 'Pending') {
+  // Booking-status revision: consultation.status no longer exists - "has
+  // this consultation started" is now read off the joined booking's status.
+  // Per the booking-status revision brief, a follow-up now requires the
+  // booking to have actually finished (Completed/Paid), not merely started
+  // (In Progress) - tightened from the old Pending-only gate.
+  if (!bookingStatus || !FINISHED_BOOKING_STATUSES.includes(bookingStatus)) {
     throwWithStatus(
       409,
-      'A follow-up can only be scheduled on a consultation that has started'
+      'A follow-up can only be scheduled once this consultation is finished'
     );
   }
 

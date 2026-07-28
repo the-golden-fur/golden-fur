@@ -1,12 +1,28 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { Booking } from '../../booking/booking.types.ts';
+import {
+  FINISHED_BOOKING_STATUSES,
+  type BookingStatus,
+} from '../../booking/booking.types.ts';
+import {
+  completeBooking,
+  startBooking,
+} from '../../booking/services/booking.service.ts';
 import { assertVeterinaryBranchEligibility } from '../../booking/services/veterinaryEligibility.service.ts';
 import { createVaccinationRecord } from '../../customers/pets/services/vaccinationRecord.service.ts';
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
 import type { Consultation } from '../veterinary.types.ts';
 
 const CONSULTATION_SELECT = '*, booking:bookings(*)';
-const BOOKING_SELECT = '*, booking_addons(*)';
+
+/** Booking-status revision: Veterinary never had a payment gate on initial
+ * status (#51 dev notes), so the old "Confirmed queue" vs "Pending awaiting
+ * payment" split (listUnconfirmedVeterinaryBookings) no longer means
+ * anything - both statuses are actionable today, so listConsultationQueue
+ * alone now covers everything. */
+const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+];
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -57,8 +73,9 @@ interface ListConsultationQueueParams {
 /**
  * Issue #66: the Makati Veterinary consultation queue for the given date
  * range (today by default). Auto-vivifies a 'Pending' consultations row for
- * any confirmed Veterinary booking that doesn't have one yet - mirrors #64's
- * grooming_sessions pattern (no DB trigger exists anywhere in this
+ * any actionable Veterinary booking (bookings.status Pending or In
+ * Progress - booking-status revision) that doesn't have one yet - mirrors
+ * #64's grooming_sessions pattern (no DB trigger exists anywhere in this
  * codebase; see grooming.service.ts's own dev note on why). Any
  * Veterinarian may see and open any row - no per-vet scoping, matching the
  * explicit "no per-pet assigned-vet restriction" carve-out - so unlike
@@ -74,7 +91,7 @@ export async function listConsultationQueue({
     .from('bookings')
     .select('id, pet_id, branch_id, assigned_staff_id, special_instructions')
     .eq('service_category', 'Veterinary')
-    .eq('status', 'Confirmed')
+    .in('status', QUEUE_BOOKING_STATUSES)
     .gte('scheduled_start', dayStart)
     .lt('scheduled_start', dayEnd);
 
@@ -121,7 +138,6 @@ export async function listConsultationQueue({
         booking_id: row.id,
         pet_id: row.pet_id,
         veterinarian_id: row.assigned_staff_id,
-        status: 'Pending',
         reason_for_visit: row.special_instructions ?? 'General consultation',
       }))
     );
@@ -142,39 +158,6 @@ export async function listConsultationQueue({
     (a, b) =>
       new Date(a.booking!.scheduled_start).getTime() -
       new Date(b.booking!.scheduled_start).getTime()
-  );
-}
-
-/**
- * Veterinary bookings in the given date range (today by default) still
- * awaiting payment confirmation (bookings.status = 'Pending' - see #51's
- * payment gate). Surfaced for awareness only: no consultations row is
- * vivified for these, mirroring listGroomingQueue's own
- * listUnconfirmedGroomingBookings. No per-vet or per-branch scoping,
- * matching listConsultationQueue's own carve-out.
- */
-export async function listUnconfirmedVeterinaryBookings({
-  dateFrom,
-  dateTo,
-}: ListConsultationQueueParams = {}): Promise<Booking[]> {
-  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
-
-  const { data, error } = await supabase
-    .from('bookings')
-    .select(BOOKING_SELECT)
-    .eq('service_category', 'Veterinary')
-    .eq('status', 'Pending')
-    .gte('scheduled_start', dayStart)
-    .lt('scheduled_start', dayEnd);
-
-  if (error) throwWithStatus(400, error.message);
-
-  const rows = (data ?? []) as Booking[];
-
-  return rows.sort(
-    (a, b) =>
-      new Date(a.scheduled_start).getTime() -
-      new Date(b.scheduled_start).getTime()
   );
 }
 
@@ -215,11 +198,6 @@ export async function listPetConsultationHistory(
   return (data ?? []) as Consultation[];
 }
 
-const FORWARD_TRANSITIONS: Record<string, string> = {
-  Pending: 'Ongoing',
-  Ongoing: 'Completed',
-};
-
 interface UpdateConsultationParams {
   requesterId: string;
   consultationId: string;
@@ -234,6 +212,14 @@ interface UpdateConsultationParams {
  * procedure - AC-2) and, if a vaccination was administered, writes through
  * to pet_vaccination_records immediately (AC-3), reusing the existing #33
  * service rather than duplicating the insert.
+ *
+ * Booking-status revision: consultations.status/completed_at no longer
+ * exist - a status transition here delegates entirely to
+ * booking.service.ts's startBooking/completeBooking, which already enforce
+ * the Pending -> In Progress -> Completed/Paid ordering (409 on an invalid
+ * jump) and are what now actually sets bookings.status. This also fixes the
+ * pre-existing asymmetry where this function used to finalize a
+ * consultation without ever syncing bookings.status back (unlike Grooming).
  */
 export async function updateConsultation({
   requesterId,
@@ -241,59 +227,16 @@ export async function updateConsultation({
   input,
 }: UpdateConsultationParams): Promise<Consultation> {
   const consultation = await getConsultation(consultationId);
+  const bookingStatus = consultation.booking?.status;
 
-  if (consultation.status === 'Completed') {
+  if (bookingStatus && FINISHED_BOOKING_STATUSES.includes(bookingStatus)) {
     throwWithStatus(409, 'This consultation is already finalized');
   }
 
-  if (
-    input.status &&
-    FORWARD_TRANSITIONS[consultation.status] !== input.status
-  ) {
-    throwWithStatus(
-      409,
-      `Cannot transition from ${consultation.status} to ${input.status}`
-    );
-  }
-
-  const now = new Date().toISOString();
-  const update: Record<string, unknown> = { updated_at: now };
-
-  if (input.temperature !== undefined) update.temperature = input.temperature;
-  if (input.weight !== undefined) update.weight = input.weight;
-  if (input.heart_rate !== undefined) update.heart_rate = input.heart_rate;
-  if (input.respiratory_rate !== undefined) {
-    update.respiratory_rate = input.respiratory_rate;
-  }
-  if (input.diagnosis !== undefined) update.diagnosis = input.diagnosis;
-  if (input.reason_for_visit !== undefined) {
-    update.reason_for_visit = input.reason_for_visit;
-  }
-  if (input.medications !== undefined) {
-    // consultations.medications stores {name, dose, notes} only (#63
-    // migration comment) - amount is a billing-time-only input, stripped
-    // before persisting to the clinical record.
-    update.medications = input.medications.map(({ name, dose, notes }) => ({
-      name,
-      dose,
-      notes: notes ?? null,
-    }));
-  }
-  if (input.status) update.status = input.status;
-  if (input.status === 'Completed') update.completed_at = now;
-
-  const { data: updated, error: updateError } = await supabase
-    .from('consultations')
-    .update(update)
-    .eq('id', consultationId)
-    .select(CONSULTATION_SELECT)
-    .maybeSingle();
-
-  if (updateError || !updated) {
-    throwWithStatus(
-      400,
-      updateError?.message ?? 'Failed to update consultation'
-    );
+  if (input.status === 'Ongoing') {
+    await startBooking({ bookingId: consultation.booking_id });
+  } else if (input.status === 'Completed') {
+    await completeBooking({ bookingId: consultation.booking_id });
   }
 
   if (input.status === 'Completed') {
@@ -331,13 +274,54 @@ export async function updateConsultation({
     if (input.vaccination) {
       await createVaccinationRecord({
         requesterId,
-        petId: updated.pet_id,
+        petId: consultation.pet_id,
         vaccineName: input.vaccination.vaccine_name,
         dateAdministered: input.vaccination.date_administered,
         nextDueDate: input.vaccination.next_due_date,
         notes: input.vaccination.notes,
       });
     }
+  }
+
+  const now = new Date().toISOString();
+  const update: Record<string, unknown> = { updated_at: now };
+
+  if (input.temperature !== undefined) update.temperature = input.temperature;
+  if (input.weight !== undefined) update.weight = input.weight;
+  if (input.heart_rate !== undefined) update.heart_rate = input.heart_rate;
+  if (input.respiratory_rate !== undefined) {
+    update.respiratory_rate = input.respiratory_rate;
+  }
+  if (input.diagnosis !== undefined) update.diagnosis = input.diagnosis;
+  if (input.reason_for_visit !== undefined) {
+    update.reason_for_visit = input.reason_for_visit;
+  }
+  if (input.medications !== undefined) {
+    // consultations.medications stores {name, dose, notes} only (#63
+    // migration comment) - amount is a billing-time-only input, stripped
+    // before persisting to the clinical record.
+    update.medications = input.medications.map(({ name, dose, notes }) => ({
+      name,
+      dose,
+      notes: notes ?? null,
+    }));
+  }
+
+  // Applied last so the returned booking join (CONSULTATION_SELECT embeds
+  // booking:bookings(*)) reflects the post-transition bookings.status from
+  // startBooking/completeBooking above, not the pre-transition snapshot.
+  const { data: updated, error: updateError } = await supabase
+    .from('consultations')
+    .update(update)
+    .eq('id', consultationId)
+    .select(CONSULTATION_SELECT)
+    .maybeSingle();
+
+  if (updateError || !updated) {
+    throwWithStatus(
+      400,
+      updateError?.message ?? 'Failed to update consultation'
+    );
   }
 
   return updated as Consultation;
