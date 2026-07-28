@@ -117,12 +117,21 @@ export function SlotPicker({
     [slots]
   );
 
+  // A past date is never bookable (server-side: getDaySlots returns []
+  // for any date before "today" in the branch's own timezone) - blocking
+  // navigation to one here too is just the matching client-side guard, so
+  // Previous day/the date input can't even be used to reach a date that
+  // would always come back empty anyway.
+  const minDate = todayIso();
+  const isAtMinDate = date <= minDate;
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.dateNav}>
         <button
           type="button"
           className={styles.secondaryButton}
+          disabled={isAtMinDate}
           onClick={() => setDate((current) => shiftDate(current, -1))}
         >
           Previous day
@@ -132,8 +141,11 @@ export function SlotPicker({
           <input
             className={styles.dateInput}
             type="date"
+            min={minDate}
             value={date}
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) =>
+              setDate(event.target.value < minDate ? minDate : event.target.value)
+            }
           />
         </label>
         <button
@@ -164,6 +176,21 @@ export function SlotPicker({
       {!isLoading && !error && slots.length > 0 && availableCount === 0 ? (
         <p className={styles.copy}>
           No open slots on this date. Try another date above.
+        </p>
+      ) : null}
+
+      {/* Hotel's single day-level slot doesn't otherwise explain WHY it's
+          enabled/disabled - cage size is a separate concern from the date/
+          time picker itself, but its availability should still be visible
+          here rather than just a plain enabled/disabled button. */}
+      {!isLoading &&
+      !error &&
+      serviceCategory === 'Hotel' &&
+      slots[0]?.cage_capacity_total !== undefined ? (
+        <p className={styles.copy}>
+          Cage availability for this size:{' '}
+          {slots[0].cage_capacity_remaining} of {slots[0].cage_capacity_total}{' '}
+          free.
         </p>
       ) : null}
 
