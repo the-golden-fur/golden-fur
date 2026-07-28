@@ -458,7 +458,7 @@ export function ConsultationDetailPanel({
                       ? ` for ${consultation.follow_up_date}`
                       : ''}
                   </span>
-                ) : bookingStatus && bookingStatus !== 'Pending' ? (
+                ) : isCompleted ? (
                   <>
                     <label className={styles.field}>
                       <span className={styles.fieldLabel}>Follow-up date</span>
