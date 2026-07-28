@@ -1,9 +1,12 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { Booking } from '../../booking/booking.types.ts';
-import type { GroomingSession, GroomingStatus } from '../grooming.types.ts';
+import {
+  completeBooking,
+  startBooking,
+} from '../../booking/services/booking.service.ts';
+import type { GroomingSession } from '../grooming.types.ts';
+import type { TransitionGroomingStatusInput } from '../modules/validators/grooming.validator.ts';
 
 const GROOMING_SESSION_SELECT = '*, booking:bookings(*, booking_addons(*))';
-const BOOKING_SELECT = '*, booking_addons(*)';
 
 const MANAGER_ROLES = ['Admin', 'Supervisor', 'Superadmin'];
 
@@ -56,10 +59,16 @@ interface ListGroomingQueueParams {
 }
 
 /**
- * Confirmed Grooming bookings in the given date range (today by default),
- * scoped by role (own sessions for a Groomer; own branch for Admin/
- * Supervisor; all branches for Superadmin). Auto-vivifies a
- * grooming_sessions row (status 'Waiting') for any matching booking that
+ * Grooming bookings in the given date range (today by default) that haven't
+ * finished yet (bookings.status IN Pending/In Progress), scoped by role (own
+ * sessions for a Groomer; own branch for Admin/Supervisor; all branches for
+ * Superadmin). Booking-status revision: there's no more separate
+ * Pending-awaiting-payment split (every booking holds its slot from
+ * 'Pending' onward - ACTIVE_BOOKING_STATUSES), so what used to be two
+ * functions (this one for 'Confirmed' bookings, plus
+ * listUnconfirmedGroomingBookings for 'Pending' ones shown read-only) is now
+ * one: every not-yet-finished booking gets a vivified grooming_sessions row.
+ * Auto-vivifies a grooming_sessions row for any matching booking that
  * doesn't have one yet - #64's Affected Files list only
  * grooming.service.ts/grooming.routes.ts, so booking.service.ts (Sprint 2
  * Epic B, already merged) is never touched; this lazy creation is what lets
@@ -78,7 +87,7 @@ export async function listGroomingQueue({
     .from('bookings')
     .select('id, assigned_staff_id, branch_id')
     .eq('service_category', 'Grooming')
-    .eq('status', 'Confirmed')
+    .in('status', ['Pending', 'In Progress'])
     .gte('scheduled_start', dayStart)
     .lt('scheduled_start', dayEnd);
 
@@ -121,7 +130,6 @@ export async function listGroomingQueue({
         missing.map((row) => ({
           booking_id: row.id,
           assigned_groomer_id: row.assigned_staff_id,
-          status: 'Waiting',
         }))
       );
 
@@ -154,71 +162,22 @@ export async function listGroomingQueue({
   });
 }
 
-/**
- * Grooming bookings in the given date range (today by default) still
- * awaiting payment confirmation (bookings.status = 'Pending' - see #51's
- * payment gate). Surfaced for awareness only: no grooming_sessions row is
- * vivified for these, since there's nothing yet to service until a booking
- * reaches 'Confirmed'.
- */
-export async function listUnconfirmedGroomingBookings({
-  requesterId,
-  requesterRole,
-  requesterBranchId,
-  dateFrom,
-  dateTo,
-}: ListGroomingQueueParams): Promise<Booking[]> {
-  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
-
-  let query = supabase
-    .from('bookings')
-    .select(BOOKING_SELECT)
-    .eq('service_category', 'Grooming')
-    .eq('status', 'Pending')
-    .gte('scheduled_start', dayStart)
-    .lt('scheduled_start', dayEnd);
-
-  if (requesterRole === 'Groomer') {
-    query = query.eq('assigned_staff_id', requesterId);
-  } else if (requesterRole === 'Admin' || requesterRole === 'Supervisor') {
-    query = query.eq('branch_id', requesterBranchId);
-  }
-  // Superadmin: no filter - sees every branch.
-
-  const { data, error } = await query;
-
-  if (error) throwWithStatus(400, error.message);
-
-  const rows = (data ?? []) as Booking[];
-
-  return rows.sort(
-    (a, b) =>
-      new Date(a.scheduled_start).getTime() -
-      new Date(b.scheduled_start).getTime()
-  );
-}
-
-const FORWARD_TRANSITIONS: Record<string, GroomingStatus> = {
-  Waiting: 'In Progress',
-  'In Progress': 'Completed',
-};
-
 interface TransitionGroomingStatusParams {
   requesterId: string;
   requesterRole: string;
   sessionId: string;
-  targetStatus: GroomingStatus;
+  targetStatus: TransitionGroomingStatusInput['status'];
 }
 
 /**
- * Issue #64: Waiting -> In Progress just sets started_at + status (no side
- * effects). In Progress -> Completed sets completed_at + status, then sets
- * the underlying bookings.status = 'Completed', marking the record
- * billing-ready. No transactions table exists yet (M08 is Sprint 5), so
- * "billing-ready" here just means the booking's status is Completed and its
- * already-snapshotted total_price is queryable by whatever surfaces the
- * future Cashier view.
- * TODO(Sprint 5, M08): create a real transaction here once M08 lands.
+ * Booking-status revision: grooming_sessions no longer has its own
+ * Waiting/In Progress/Completed state machine - the underlying booking's
+ * status (driven by the shared startBooking/completeBooking in
+ * booking.service.ts) is the single source of truth now. This function's
+ * job shrinks to authorization (unchanged: the assigned groomer, or an
+ * Admin/Supervisor/Superadmin manager, per #64 AC-3) plus dispatching to the
+ * right shared transition - their own 409s (invalid transition) propagate
+ * naturally instead of being re-implemented here.
  */
 export async function transitionGroomingSessionStatus({
   requesterId,
@@ -242,47 +201,23 @@ export async function transitionGroomingSessionStatus({
     throwWithStatus(403, 'Forbidden');
   }
 
-  if (session.status === 'Completed') {
-    throwWithStatus(409, 'This grooming session is already finalized');
+  if (targetStatus === 'In Progress') {
+    await startBooking({ bookingId: session.booking_id });
+  } else {
+    await completeBooking({ bookingId: session.booking_id });
   }
 
-  if (FORWARD_TRANSITIONS[session.status] !== targetStatus) {
-    throwWithStatus(
-      409,
-      `Cannot transition from ${session.status} to ${targetStatus}`
-    );
-  }
-
-  const now = new Date().toISOString();
-  const update: Record<string, unknown> = {
-    status: targetStatus,
-    updated_at: now,
-  };
-
-  if (targetStatus === 'In Progress') update.started_at = now;
-  if (targetStatus === 'Completed') update.completed_at = now;
-
-  const { data: updated, error: updateError } = await supabase
+  const { data: updated, error: refetchError } = await supabase
     .from('grooming_sessions')
-    .update(update)
+    .select(GROOMING_SESSION_SELECT)
     .eq('id', sessionId)
-    .select('*')
     .maybeSingle();
 
-  if (updateError || !updated) {
+  if (refetchError || !updated) {
     throwWithStatus(
       400,
-      updateError?.message ?? 'Failed to update grooming session'
+      refetchError?.message ?? 'Failed to load the updated grooming session'
     );
-  }
-
-  if (targetStatus === 'Completed') {
-    const { error: bookingError } = await supabase
-      .from('bookings')
-      .update({ status: 'Completed', updated_at: now })
-      .eq('id', session.booking_id);
-
-    if (bookingError) throwWithStatus(400, bookingError.message);
   }
 
   return updated as GroomingSession;

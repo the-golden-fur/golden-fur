@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  listGroomingQueue,
-  listUnconfirmedGroomingBookings,
-  transitionGroomingSessionStatus,
-} from './grooming.service.ts';
+import { listGroomingQueue, transitionGroomingSessionStatus } from './grooming.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  completeBooking,
+  startBooking,
+} from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+
+vi.mock('../../booking/services/booking.service.ts', () => ({
+  startBooking: vi.fn(),
+  completeBooking: vi.fn(),
 }));
 
 interface QueryResult {
@@ -56,25 +61,39 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     id: 'session-1',
     booking_id: 'booking-1',
     assigned_groomer_id: GROOMER_ID,
-    status: 'Waiting',
     queue_position: null,
-    started_at: null,
-    completed_at: null,
     ...overrides,
   };
 }
 
-describe('grooming.service (#64)', () => {
+function bookingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'booking-1',
+    status: 'Pending',
+    ...overrides,
+  };
+}
+
+describe('grooming.service (#64, booking-status revision)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recordedWrites.length = 0;
   });
 
   describe('transitionGroomingSessionStatus', () => {
-    it('AC-1: the assigned groomer can move Waiting -> In Progress, setting started_at', async () => {
+    it('AC-1: the assigned groomer can move a session to In Progress, delegating to startBooking', async () => {
       queueFromResults(
-        { data: sessionRow(), error: null },
-        { data: sessionRow({ status: 'In Progress' }), error: null }
+        { data: sessionRow(), error: null }, // load session
+        {
+          data: {
+            ...sessionRow(),
+            booking: bookingRow({ status: 'In Progress' }),
+          },
+          error: null,
+        } // refetch
+      );
+      vi.mocked(startBooking).mockResolvedValue(
+        bookingRow({ status: 'In Progress' }) as never
       );
 
       const result = await transitionGroomingSessionStatus({
@@ -84,20 +103,24 @@ describe('grooming.service (#64)', () => {
         targetStatus: 'In Progress',
       });
 
-      expect(result.status).toBe('In Progress');
-
-      const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({ status: 'In Progress' });
-      expect(
-        (update?.payload as { started_at?: string }).started_at
-      ).toBeTruthy();
+      expect(startBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(completeBooking).not.toHaveBeenCalled();
+      expect(result.booking?.status).toBe('In Progress');
     });
 
-    it('AC-1/AC-2: In Progress -> Completed sets completed_at and marks the booking Completed', async () => {
+    it('AC-1/AC-2: moving to Completed delegates to completeBooking', async () => {
       queueFromResults(
-        { data: sessionRow({ status: 'In Progress' }), error: null },
-        { data: sessionRow({ status: 'Completed' }), error: null },
-        { data: null, error: null } // bookings update
+        { data: sessionRow(), error: null },
+        {
+          data: {
+            ...sessionRow(),
+            booking: bookingRow({ status: 'Completed' }),
+          },
+          error: null,
+        }
+      );
+      vi.mocked(completeBooking).mockResolvedValue(
+        bookingRow({ status: 'Completed' }) as never
       );
 
       const result = await transitionGroomingSessionStatus({
@@ -107,27 +130,18 @@ describe('grooming.service (#64)', () => {
         targetStatus: 'Completed',
       });
 
-      expect(result.status).toBe('Completed');
-
-      const sessionUpdate = recordedWrites.find(
-        (write) =>
-          write.table === 'grooming_sessions' && write.method === 'update'
-      );
-      expect(
-        (sessionUpdate?.payload as { completed_at?: string }).completed_at
-      ).toBeTruthy();
-
-      const bookingUpdate = recordedWrites.find(
-        (write) => write.table === 'bookings'
-      );
-      expect(bookingUpdate?.payload).toMatchObject({ status: 'Completed' });
+      expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(startBooking).not.toHaveBeenCalled();
+      expect(result.booking?.status).toBe('Completed');
     });
 
-    it('AC-1: skipping a state (Waiting -> Completed) is rejected', async () => {
-      queueFromResults({
-        data: sessionRow({ status: 'Waiting' }),
-        error: null,
-      });
+    it('AC-1: an invalid transition rejected by the shared booking service propagates its 409', async () => {
+      queueFromResults({ data: sessionRow(), error: null });
+      vi.mocked(completeBooking).mockRejectedValue(
+        Object.assign(new Error('A Pending booking cannot be completed'), {
+          statusCode: 409,
+        })
+      );
 
       await expect(
         transitionGroomingSessionStatus({
@@ -150,12 +164,23 @@ describe('grooming.service (#64)', () => {
           targetStatus: 'In Progress',
         })
       ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(startBooking).not.toHaveBeenCalled();
     });
 
     it('AC-3: Admin/Supervisor/Superadmin can transition any session', async () => {
       queueFromResults(
         { data: sessionRow(), error: null },
-        { data: sessionRow({ status: 'In Progress' }), error: null }
+        {
+          data: {
+            ...sessionRow(),
+            booking: bookingRow({ status: 'In Progress' }),
+          },
+          error: null,
+        }
+      );
+      vi.mocked(startBooking).mockResolvedValue(
+        bookingRow({ status: 'In Progress' }) as never
       );
 
       const result = await transitionGroomingSessionStatus({
@@ -165,31 +190,25 @@ describe('grooming.service (#64)', () => {
         targetStatus: 'In Progress',
       });
 
-      expect(result.status).toBe('In Progress');
+      expect(result.booking?.status).toBe('In Progress');
     });
 
-    it('AC-4: transitioning an already-Completed session is rejected with a clear error', async () => {
-      queueFromResults({
-        data: sessionRow({ status: 'Completed' }),
-        error: null,
-      });
+    it('returns a 404 when the session does not exist', async () => {
+      queueFromResults({ data: null, error: null });
 
       await expect(
         transitionGroomingSessionStatus({
           requesterId: GROOMER_ID,
           requesterRole: 'Groomer',
-          sessionId: 'session-1',
-          targetStatus: 'Completed',
+          sessionId: 'session-missing',
+          targetStatus: 'In Progress',
         })
-      ).rejects.toMatchObject({
-        statusCode: 409,
-        message: expect.stringContaining('already finalized'),
-      });
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
   describe('listGroomingQueue', () => {
-    it('auto-creates a Waiting session for a confirmed booking without one yet', async () => {
+    it('auto-creates a grooming_sessions row for a Pending/In Progress booking without one yet', async () => {
       queueFromResults(
         {
           data: [{ id: 'booking-1', assigned_staff_id: GROOMER_ID }],
@@ -223,9 +242,50 @@ describe('grooming.service (#64)', () => {
         {
           booking_id: 'booking-1',
           assigned_groomer_id: GROOMER_ID,
-          status: 'Waiting',
         },
       ]);
+      // The dropped `status` column must never be written.
+      expect(
+        (insert?.payload as Array<Record<string, unknown>>)[0]
+      ).not.toHaveProperty('status');
+    });
+
+    it('queries bookings with status IN (Pending, In Progress) - no more separate Confirmed/Pending split', async () => {
+      const inSpy = vi.fn();
+
+      vi.mocked(supabase.from).mockImplementation(((table: string) => {
+        const builder: Record<string, unknown> = {};
+
+        for (const method of ['select', 'eq', 'gte', 'lt']) {
+          builder[method] = vi.fn(() => builder);
+        }
+
+        builder.in = vi.fn((column: string, values: unknown) => {
+          if (table === 'bookings') inSpy(column, values);
+          return builder;
+        });
+
+        for (const method of ['insert', 'update']) {
+          builder[method] = vi.fn((payload?: unknown) => {
+            recordedWrites.push({ table, method, payload });
+            return builder;
+          });
+        }
+
+        builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
+        builder.then = (resolve: (_result: QueryResult) => void) =>
+          resolve({ data: [], error: null });
+
+        return builder;
+      }) as never);
+
+      await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(inSpy).toHaveBeenCalledWith('status', ['Pending', 'In Progress']);
     });
 
     it('sorts by queue_position when set, otherwise scheduled_start', async () => {
@@ -267,86 +327,6 @@ describe('grooming.service (#64)', () => {
       expect(result.map((session) => session.id)).toEqual([
         'session-early',
         'session-late',
-      ]);
-    });
-  });
-
-  describe('listUnconfirmedGroomingBookings', () => {
-    it('returns Pending bookings for the day, scoped to the requesting groomer', async () => {
-      queueFromResults({
-        data: [
-          {
-            id: 'booking-3',
-            status: 'Pending',
-            assigned_staff_id: GROOMER_ID,
-            scheduled_start: '2026-07-19T04:00:00.000Z',
-          },
-        ],
-        error: null,
-      });
-
-      const result = await listUnconfirmedGroomingBookings({
-        requesterId: GROOMER_ID,
-        requesterRole: 'Groomer',
-        requesterBranchId: 'branch-1',
-      });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('booking-3');
-    });
-
-    it('does not vivify a grooming_sessions row for a Pending booking', async () => {
-      queueFromResults({
-        data: [
-          {
-            id: 'booking-3',
-            status: 'Pending',
-            assigned_staff_id: GROOMER_ID,
-            scheduled_start: '2026-07-19T04:00:00.000Z',
-          },
-        ],
-        error: null,
-      });
-
-      await listUnconfirmedGroomingBookings({
-        requesterId: GROOMER_ID,
-        requesterRole: 'Groomer',
-        requesterBranchId: 'branch-1',
-      });
-
-      expect(
-        recordedWrites.find((write) => write.table === 'grooming_sessions')
-      ).toBeUndefined();
-    });
-
-    it('sorts multiple Pending bookings by scheduled_start', async () => {
-      queueFromResults({
-        data: [
-          {
-            id: 'booking-late',
-            status: 'Pending',
-            assigned_staff_id: GROOMER_ID,
-            scheduled_start: '2026-07-19T05:00:00.000Z',
-          },
-          {
-            id: 'booking-early',
-            status: 'Pending',
-            assigned_staff_id: GROOMER_ID,
-            scheduled_start: '2026-07-19T01:00:00.000Z',
-          },
-        ],
-        error: null,
-      });
-
-      const result = await listUnconfirmedGroomingBookings({
-        requesterId: GROOMER_ID,
-        requesterRole: 'Groomer',
-        requesterBranchId: 'branch-1',
-      });
-
-      expect(result.map((booking) => booking.id)).toEqual([
-        'booking-early',
-        'booking-late',
       ]);
     });
   });

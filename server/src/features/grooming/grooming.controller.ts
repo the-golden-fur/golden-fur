@@ -2,7 +2,6 @@ import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
   listGroomingQueue,
-  listUnconfirmedGroomingBookings,
   transitionGroomingSessionStatus,
 } from './services/grooming.service.ts';
 import { transitionGroomingStatusValidator } from './modules/validators/grooming.validator.ts';
@@ -43,7 +42,6 @@ export async function listGroomingQueueController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const includePending = req.query.includePending === 'true';
   const dateFrom = queryDate(req, 'date_from');
   const dateTo = queryDate(req, 'date_to');
 
@@ -56,19 +54,7 @@ export async function listGroomingQueueController(
       dateTo,
     });
 
-    if (!includePending) {
-      return res.status(200).json({ sessions });
-    }
-
-    const pendingBookings = await listUnconfirmedGroomingBookings({
-      requesterId,
-      requesterRole,
-      requesterBranchId,
-      dateFrom,
-      dateTo,
-    });
-
-    return res.status(200).json({ sessions, pendingBookings });
+    return res.status(200).json({ sessions });
   } catch (error) {
     return sendServiceError(res, error);
   }

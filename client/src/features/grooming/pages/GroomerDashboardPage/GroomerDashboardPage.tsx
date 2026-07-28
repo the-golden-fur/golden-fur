@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import type { Booking } from '../../../booking/booking.types';
+import type { BookingStatus } from '../../../booking/booking.types';
 import {
   getCustomerProfile,
   getPet,
@@ -23,9 +23,10 @@ import {
 import {
   listGroomingQueue,
   transitionGroomingStatus,
+  type GroomingTransitionTarget,
 } from '../../api/grooming.api';
 import { AppointmentCard } from '../../components/AppointmentCard/AppointmentCard';
-import type { GroomingSession, GroomingStatus } from '../../grooming.types';
+import type { GroomingSession } from '../../grooming.types';
 import styles from './GroomerDashboardPage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -35,16 +36,16 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-const GROOMING_STATUSES: GroomingStatus[] = [
-  'Waiting',
-  'In Progress',
-  'Completed',
-];
-const UNCONFIRMED_STATUS = 'Unconfirmed';
-type StatusFilter = GroomingStatus | typeof UNCONFIRMED_STATUS | 'All';
+// Booking-status revision: the queue endpoint only ever returns bookings
+// that haven't finished yet (bookings.status IN Pending/In Progress - see
+// grooming.service.ts's merged listGroomingQueue), so those are the only
+// two meaningful values to filter by here. The old separate "Unconfirmed
+// (awaiting payment)" option is gone along with the server's now-merged
+// two-function split.
+const GROOMING_STATUSES: BookingStatus[] = ['Pending', 'In Progress'];
+type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
-  { value: UNCONFIRMED_STATUS, label: 'Unconfirmed (awaiting payment)' },
   ...GROOMING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
 
@@ -79,7 +80,6 @@ export function GroomerDashboardPage() {
   );
 
   const [sessions, setSessions] = useState<GroomingSession[]>([]);
-  const [pendingBookings, setPendingBookings] = useState<Booking[]>([]);
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -171,7 +171,6 @@ export function GroomerDashboardPage() {
 
       setLoadError(null);
       setSessions(result.data.sessions);
-      setPendingBookings(result.data.pendingBookings);
       setIsLoading(false);
 
       const petIds = new Set<string>();
@@ -182,11 +181,6 @@ export function GroomerDashboardPage() {
           petIds.add(session.booking.pet_id);
           customerIds.add(session.booking.customer_id);
         }
-      }
-
-      for (const booking of result.data.pendingBookings) {
-        petIds.add(booking.pet_id);
-        customerIds.add(booking.customer_id);
       }
 
       void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
@@ -264,48 +258,18 @@ export function GroomerDashboardPage() {
       });
   }, [sessions, pets, owners, serviceNames]);
 
-  const enrichedPending = useMemo(() => {
-    return [...pendingBookings]
-      .sort(
-        (a, b) =>
-          new Date(a.scheduled_start).getTime() -
-          new Date(b.scheduled_start).getTime()
-      )
-      .map((booking) => {
-        const pet = pets[booking.pet_id];
-        const owner = owners[booking.customer_id];
-        const serviceId = booking.service_id ?? booking.package_id ?? null;
-
-        return {
-          booking,
-          petName: pet?.name ?? 'Unknown pet',
-          ownerName: owner?.full_name ?? 'Unknown owner',
-          serviceLabel: serviceId
-            ? (serviceNames[serviceId] ?? 'Service')
-            : 'Service',
-        };
-      });
-  }, [pendingBookings, pets, owners, serviceNames]);
-
-  // 'All' shows both confirmed sessions and unconfirmed (awaiting payment)
-  // bookings together; a specific session status narrows to just that;
-  // 'Unconfirmed' shows only the awaiting-payment bookings.
-  const showSessions = statusFilter !== UNCONFIRMED_STATUS;
-  const showPending =
-    statusFilter === 'All' || statusFilter === UNCONFIRMED_STATUS;
-
   const visibleSessions = useMemo(() => {
-    if (!showSessions) return [];
     if (statusFilter === 'All') return enriched;
-    return enriched.filter((item) => item.session.status === statusFilter);
-  }, [enriched, statusFilter, showSessions]);
+    return enriched.filter(
+      (item) => item.session.booking?.status === statusFilter
+    );
+  }, [enriched, statusFilter]);
 
-  const hasSessions = showSessions && visibleSessions.length > 0;
-  const hasPending = showPending && enrichedPending.length > 0;
+  const hasSessions = visibleSessions.length > 0;
 
   async function handleAdvance(
     sessionId: string,
-    targetStatus: GroomingStatus
+    targetStatus: GroomingTransitionTarget
   ) {
     if (!accessToken) return;
 
@@ -325,13 +289,12 @@ export function GroomerDashboardPage() {
       return;
     }
 
+    // The transition response already carries the freshly refetched booking
+    // (grooming.service.ts's transitionGroomingSessionStatus re-selects with
+    // GROOMING_SESSION_SELECT), so it can replace the old session wholesale.
     const updated = result.data;
     setSessions((prev) =>
-      prev.map((session) =>
-        session.id === updated.id
-          ? { ...updated, booking: session.booking }
-          : session
-      )
+      prev.map((session) => (session.id === updated.id ? updated : session))
     );
   }
 
@@ -388,63 +351,29 @@ export function GroomerDashboardPage() {
           <p className={styles.errorBanner} role="alert">
             {loadError}
           </p>
-        ) : !hasSessions && !hasPending ? (
+        ) : !hasSessions ? (
           <p className={styles.copy}>
-            {statusFilter === UNCONFIRMED_STATUS
-              ? 'No unconfirmed bookings match these filters.'
-              : 'No grooming appointments match these filters.'}
+            No grooming appointments match these filters.
           </p>
         ) : (
-          <>
-            {hasSessions ? (
-              <ul className={styles.list}>
-                {visibleSessions.map((item) => (
-                  <AppointmentCard
-                    key={item.session.id}
-                    session={item.session}
-                    petName={item.petName}
-                    ownerName={item.ownerName}
-                    breed={item.breed}
-                    weightClass={item.weightClass}
-                    coatType={item.coatType}
-                    serviceLabel={item.serviceLabel}
-                    addonLabels={item.addonLabels}
-                    specialInstructions={item.specialInstructions}
-                    isAdvancing={advancingId === item.session.id}
-                    onAdvance={handleAdvance}
-                  />
-                ))}
-              </ul>
-            ) : null}
-
-            {hasPending ? (
-              <ul className={styles.list}>
-                {enrichedPending.map((item) => (
-                  <li key={item.booking.id} className={styles.pendingCard}>
-                    <div className={styles.header}>
-                      <div className={styles.identity}>
-                        <h3 className={styles.petName}>{item.petName}</h3>
-                        <span className={styles.subtitle}>
-                          Owner: {item.ownerName}
-                        </span>
-                      </div>
-                      <span className={styles.pendingBadge}>
-                        Awaiting payment
-                      </span>
-                    </div>
-
-                    <p className={styles.serviceLabel}>{item.serviceLabel}</p>
-                    <p className={styles.copy}>
-                      {new Date(item.booking.scheduled_start).toLocaleString(
-                        undefined,
-                        { dateStyle: 'medium', timeStyle: 'short' }
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </>
+          <ul className={styles.list}>
+            {visibleSessions.map((item) => (
+              <AppointmentCard
+                key={item.session.id}
+                session={item.session}
+                petName={item.petName}
+                ownerName={item.ownerName}
+                breed={item.breed}
+                weightClass={item.weightClass}
+                coatType={item.coatType}
+                serviceLabel={item.serviceLabel}
+                addonLabels={item.addonLabels}
+                specialInstructions={item.specialInstructions}
+                isAdvancing={advancingId === item.session.id}
+                onAdvance={handleAdvance}
+              />
+            ))}
+          </ul>
         )}
       </div>
     </main>

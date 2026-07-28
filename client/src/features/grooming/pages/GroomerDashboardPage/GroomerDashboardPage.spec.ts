@@ -10,6 +10,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import * as groomingApi from '../../api/grooming.api';
 import type { StaffProfile } from '../../../staff/staff.types';
 import type { GroomingSession } from '../../grooming.types';
+import type { Booking, BookingStatus } from '../../../booking/booking.types';
 import { GroomerDashboardPage } from './GroomerDashboardPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -47,73 +48,51 @@ function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   };
 }
 
-function buildSession(
-  overrides: Partial<GroomingSession> = {}
-): GroomingSession {
+function buildBooking(overrides: Partial<Booking> = {}): Booking {
   return {
-    id: 'session-1',
-    booking_id: 'booking-1',
-    assigned_groomer_id: 'groomer-1',
-    status: 'Waiting',
-    queue_position: null,
-    started_at: null,
-    completed_at: null,
-    created_at: '2026-07-19T00:00:00.000Z',
-    updated_at: '2026-07-19T00:00:00.000Z',
-    booking: {
-      id: 'booking-1',
-      customer_id: 'customer-1',
-      pet_id: 'pet-1',
-      branch_id: 'branch-a',
-      created_by_staff_id: null,
-      service_category: 'Grooming',
-      service_id: 'service-1',
-      package_id: null,
-      scheduled_start: '2026-07-19T02:00:00.000Z',
-      scheduled_end: '2026-07-19T03:00:00.000Z',
-      assigned_staff_id: 'groomer-1',
-      status: 'Confirmed',
-      total_price: 500,
-      downpayment_amount: null,
-      payment_method: null,
-      payment_confirmed: true,
-      special_instructions: 'Puppy cut',
-      cancelled_at: null,
-      cancellation_reason: null,
-      reschedule_count: 0,
-      created_at: '2026-07-18T00:00:00.000Z',
-      updated_at: '2026-07-18T00:00:00.000Z',
-      booking_addons: [],
-    },
-    ...overrides,
-  };
-}
-
-function buildPendingBooking(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'booking-pending-1',
-    customer_id: 'customer-2',
-    pet_id: 'pet-2',
+    id: 'booking-1',
+    customer_id: 'customer-1',
+    pet_id: 'pet-1',
     branch_id: 'branch-a',
     created_by_staff_id: null,
     service_category: 'Grooming',
     service_id: 'service-1',
     package_id: null,
-    scheduled_start: '2026-07-19T06:00:00.000Z',
-    scheduled_end: '2026-07-19T07:00:00.000Z',
+    scheduled_start: '2026-07-19T02:00:00.000Z',
+    scheduled_end: '2026-07-19T03:00:00.000Z',
     assigned_staff_id: 'groomer-1',
     status: 'Pending',
     total_price: 500,
     downpayment_amount: null,
-    payment_method: 'Cash',
-    payment_confirmed: false,
-    special_instructions: null,
+    payment_method: null,
+    payment_confirmed: true,
+    special_instructions: 'Puppy cut',
+    hotel_preferences: null,
+    started_at: null,
+    completed_at: null,
+    paid_at: null,
     cancelled_at: null,
     cancellation_reason: null,
     reschedule_count: 0,
     created_at: '2026-07-18T00:00:00.000Z',
     updated_at: '2026-07-18T00:00:00.000Z',
     booking_addons: [],
+    ...overrides,
+  };
+}
+
+function buildSession(
+  bookingStatus: BookingStatus = 'Pending',
+  overrides: Partial<GroomingSession> = {}
+): GroomingSession {
+  return {
+    id: 'session-1',
+    booking_id: 'booking-1',
+    assigned_groomer_id: 'groomer-1',
+    queue_position: null,
+    created_at: '2026-07-19T00:00:00.000Z',
+    updated_at: '2026-07-19T00:00:00.000Z',
+    booking: buildBooking({ status: bookingStatus }),
     ...overrides,
   };
 }
@@ -153,7 +132,7 @@ function renderPage() {
   );
 }
 
-describe('GroomerDashboardPage (#68)', () => {
+describe('GroomerDashboardPage (#68, booking-status revision)', () => {
   it('AC-1: redirects a non-Groomer/Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
@@ -171,7 +150,7 @@ describe('GroomerDashboardPage (#68)', () => {
       error: null,
     });
     vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
-      data: { sessions: [buildSession()], pendingBookings: [] },
+      data: { sessions: [buildSession('Pending')] },
       error: null,
     });
     vi.mocked(customerApi.getPet).mockResolvedValue({
@@ -214,13 +193,13 @@ describe('GroomerDashboardPage (#68)', () => {
     expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
   });
 
-  it('AC-3: advancing a session calls transitionGroomingStatus and updates the badge', async () => {
+  it('AC-3: advancing a Pending session calls transitionGroomingStatus with In Progress and updates the badge', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
       error: null,
     });
     vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
-      data: { sessions: [buildSession()], pendingBookings: [] },
+      data: { sessions: [buildSession('Pending')] },
       error: null,
     });
     vi.mocked(customerApi.getPet).mockResolvedValue({
@@ -232,14 +211,14 @@ describe('GroomerDashboardPage (#68)', () => {
       error: 'not found',
     });
     vi.mocked(groomingApi.transitionGroomingStatus).mockResolvedValue({
-      data: buildSession({ status: 'In Progress' }),
+      data: buildSession('In Progress'),
       error: null,
     });
 
     renderPage();
 
     const advanceButton = await screen.findByRole('button', {
-      name: /mark in progress/i,
+      name: /start/i,
     });
     await userEvent.click(advanceButton);
 
@@ -255,72 +234,55 @@ describe('GroomerDashboardPage (#68)', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows unconfirmed bookings alongside sessions under "All statuses", narrows to just them under "Unconfirmed", and hides them under a specific session status', async () => {
+  it('filters the queue by booking status', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
       error: null,
     });
     vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
       data: {
-        sessions: [],
-        pendingBookings: [buildPendingBooking()],
+        sessions: [
+          buildSession('Pending', {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            booking: buildBooking({ id: 'booking-1', status: 'Pending' }),
+          }),
+          buildSession('In Progress', {
+            id: 'session-2',
+            booking_id: 'booking-2',
+            booking: buildBooking({ id: 'booking-2', status: 'In Progress' }),
+          }),
+        ],
       },
       error: null,
     });
     vi.mocked(customerApi.getPet).mockResolvedValue({
-      data: {
-        id: 'pet-2',
-        customer_id: 'customer-2',
-        name: 'Max',
-        pet_type: 'Dog',
-        breed_id: null,
-        photo_url: null,
-        gender: 'Male',
-        date_of_birth: null,
-        weight_class: 'S',
-        coat_type: 'SC',
-        created_at: '2026-01-01T00:00:00.000Z',
-        updated_at: '2026-01-01T00:00:00.000Z',
-      },
-      error: null,
+      data: null,
+      error: 'not found',
     });
     vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
-      data: {
-        id: 'customer-2',
-        full_name: 'Sam Reyes',
-        contact_number: null,
-        emergency_contact_name: null,
-        emergency_contact_number: null,
-        preferred_communication_channel: null,
-        account_email: 'sam@example.com',
-        primary_auth_provider: 'email',
-        facebook_id: null,
-        created_at: '2026-01-01T00:00:00.000Z',
-        updated_at: '2026-01-01T00:00:00.000Z',
-      },
-      error: null,
+      data: null,
+      error: 'not found',
     });
 
     renderPage();
 
-    // Default "All statuses": unconfirmed bookings show immediately since
-    // there are no confirmed sessions to show alongside them.
-    expect(await screen.findByText('Max')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting payment')).toBeInTheDocument();
+    // Both sessions are visible under "All statuses".
+    await waitFor(() =>
+      expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    );
 
-    // Narrowing to "Unconfirmed" keeps showing it (nothing else changes).
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'Pending');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /start/i })).toBeInTheDocument();
+
     await userEvent.selectOptions(
       screen.getByLabelText('Status'),
-      'Unconfirmed'
+      'In Progress'
     );
-    expect(screen.getByText('Max')).toBeInTheDocument();
-
-    // Narrowing to a specific session status hides it - there's nothing to
-    // service yet for an unconfirmed (unpaid) booking.
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'Waiting');
-    expect(screen.queryByText('Max')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(
-      screen.getByText('No grooming appointments match these filters.')
+      screen.getByRole('button', { name: /complete/i })
     ).toBeInTheDocument();
   });
 });
