@@ -25,8 +25,6 @@ describe('useNowMs', () => {
       vi.advanceTimersByTime(1_000);
     });
 
-    expect(result.current).toBe(
-      new Date('2026-08-03T01:00:01.000Z').getTime()
-    );
+    expect(result.current).toBe(new Date('2026-08-03T01:00:01.000Z').getTime());
   });
 });
