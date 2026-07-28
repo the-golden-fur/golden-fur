@@ -298,11 +298,20 @@ describe('VeterinaryConsolePage (#70)', () => {
     });
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
       data: {
+        // The queue endpoint only ever returns Pending/In Progress bookings
+        // (STATUS_GROUPS), so the follow-up form - only reachable once the
+        // booking is finished (FINISHED_BOOKING_STATUSES) - has to be reached
+        // by actually completing the consultation below, not by seeding an
+        // already-Completed row here.
         consultations: [buildConsultation({}, 'In Progress')],
       },
       error: null,
     });
     stubPetAndOwner();
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'Completed'),
+      error: null,
+    });
     vi.mocked(veterinaryApi.scheduleFollowUp).mockResolvedValue({
       data: {
         consultation: buildConsultation(
@@ -310,7 +319,7 @@ describe('VeterinaryConsolePage (#70)', () => {
             follow_up_date: '2026-08-01',
             follow_up_booking_id: 'booking-2',
           },
-          'In Progress'
+          'Completed'
         ),
         booking: {
           id: 'booking-2',
@@ -347,8 +356,11 @@ describe('VeterinaryConsolePage (#70)', () => {
     renderPage();
 
     await userEvent.click(await screen.findByText('Whiskers'));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /complete consultation/i })
+    );
 
-    const dateInput = screen.getByLabelText(/follow-up date/i);
+    const dateInput = await screen.findByLabelText(/follow-up date/i);
     await userEvent.type(dateInput, '2026-08-01');
     await userEvent.click(
       screen.getByRole('button', { name: /schedule follow-up/i })

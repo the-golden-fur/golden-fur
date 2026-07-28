@@ -261,9 +261,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
@@ -316,9 +314,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
@@ -366,9 +362,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data.consultation;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
