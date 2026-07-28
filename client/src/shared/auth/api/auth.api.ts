@@ -34,6 +34,81 @@ export function getSessionAal(session: Session | null): string | null {
   }
 }
 
+/**
+ * Staff and customers share one Supabase Auth user table/session shape, so
+ * the storage backend can't be picked at client-construction time by role -
+ * it isn't known yet. Instead this always writes to sessionStorage (cleared
+ * the moment the browser/tab closes) and mirrors into localStorage only
+ * while PERSIST_FLAG_KEY is set. Customer login/signup/OAuth call
+ * setSessionPersistence(true) before establishing a session so their session
+ * survives a browser restart; staff flows never do, so closing the browser
+ * signs them out even though the underlying Supabase session/refresh token
+ * would otherwise still be valid.
+ */
+const PERSIST_FLAG_KEY = 'gf-auth-persist';
+
+function isPersistenceEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(PERSIST_FLAG_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/** Call with `true` right before establishing a customer session (login,
+ * signup, OAuth callback) so it survives closing the browser; staff flows
+ * leave this unset/false so their session is sessionStorage-only. */
+export function setSessionPersistence(persist: boolean): void {
+  try {
+    if (persist) {
+      window.localStorage.setItem(PERSIST_FLAG_KEY, 'true');
+    } else {
+      window.localStorage.removeItem(PERSIST_FLAG_KEY);
+    }
+  } catch {
+    // Storage unavailable (e.g. private-mode edge cases) - falls back to
+    // sessionStorage-only behavior, which is the safer default anyway.
+  }
+}
+
+const dualStorage = {
+  getItem(key: string): string | null {
+    try {
+      return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      window.sessionStorage.setItem(key, value);
+    } catch {
+      // ignore
+    }
+    try {
+      if (isPersistenceEnabled()) {
+        window.localStorage.setItem(key, value);
+      } else {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+      // ignore
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  },
+};
+
 let authClient: SupabaseClient | null = null;
 
 export function getSupabaseClient() {
@@ -52,6 +127,7 @@ export function getSupabaseClient() {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
+      storage: dualStorage,
       // Handled manually in customerAuth.api.ts's handleOAuthCallback().
       // With this on, the SDK auto-consumes and strips the OAuth redirect's
       // URL fragment the moment any auth call runs (e.g. AuthProvider's own
@@ -99,6 +175,7 @@ export function onAuthStateChange(
 
 export async function signOut() {
   const client = getSupabaseClient();
+  setSessionPersistence(false);
 
   if (!client) {
     return { error: null } as { error: Error | null };

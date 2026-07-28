@@ -11,6 +11,7 @@ import {
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
   getSupabaseClient: vi.fn(),
+  setSessionPersistence: vi.fn(),
 }));
 
 describe('staffAuth.api', () => {

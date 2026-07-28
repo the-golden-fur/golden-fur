@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Chrome, Facebook, Lock, Mail, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import {
   signup,
   signInWithGoogle,
@@ -45,6 +46,8 @@ export function CustomerSignupForm() {
 
     const { access_token, refresh_token } = result.data;
     if (access_token && refresh_token) {
+      // Customer sessions survive closing the browser, unlike staff's.
+      setSessionPersistence(true);
       await applySession(access_token, refresh_token);
     }
     navigate('/portal', { replace: true });

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { mfaVerify } from '../../../api/staffAuth.api';
 import { totpCodeSchema } from '../../../modules/validators/staffAuth.validator';
 import styles from '../StaffLoginForm/StaffLoginForm.module.css';
@@ -32,6 +33,7 @@ export function MfaChallengeForm() {
     }
 
     if (result.data && 'access_token' in result.data) {
+      setSessionPersistence(false);
       await applySession(result.data.access_token, result.data.refresh_token);
     }
 

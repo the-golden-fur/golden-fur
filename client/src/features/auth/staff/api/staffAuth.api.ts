@@ -1,4 +1,7 @@
-import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
+import {
+  getSupabaseClient,
+  setSessionPersistence,
+} from '../../../../shared/auth/api/auth.api';
 import type {
   StaffAuthMessageResponse,
   StaffForgotPasswordPayload,
@@ -131,6 +134,8 @@ export async function establishRecoverySession(): Promise<
       error: 'Reset link is invalid or has expired. Request a new one.',
     };
   }
+
+  setSessionPersistence(false);
 
   const { error } = await client.auth.setSession({
     access_token: accessToken,

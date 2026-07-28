@@ -1,4 +1,7 @@
-import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
+import {
+  getSupabaseClient,
+  setSessionPersistence,
+} from '../../../../shared/auth/api/auth.api';
 import type {
   CustomerLoginPayload,
   CustomerSignupPayload,
@@ -189,6 +192,9 @@ export async function handleOAuthCallback(): Promise<
   if (!accessToken || !refreshToken) {
     return { data: null, error: 'OAuth session could not be established' };
   }
+
+  // Customer sessions survive closing the browser, unlike staff's.
+  setSessionPersistence(true);
 
   const { data: setSessionData, error: setSessionError } =
     await client.auth.setSession({

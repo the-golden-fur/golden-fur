@@ -4,6 +4,7 @@ import { handleOAuthCallback, signInWithGoogle } from './customerAuth.api';
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
   getSupabaseClient: vi.fn(),
+  setSessionPersistence: vi.fn(),
 }));
 
 describe('customerAuth.api', () => {

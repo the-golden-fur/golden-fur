@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Chrome, Facebook, Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import {
   login,
@@ -42,6 +43,8 @@ export function CustomerLoginForm() {
       return;
     }
 
+    // Customer sessions survive closing the browser, unlike staff's.
+    setSessionPersistence(true);
     await applySession(result.data.access_token, result.data.refresh_token);
 
     // The login response doesn't carry enrollment status - ask the

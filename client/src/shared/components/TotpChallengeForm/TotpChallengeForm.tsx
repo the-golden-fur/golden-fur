@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { verifyMfa } from '../../api/mfa.api';
+import { setSessionPersistence } from '../../auth/api/auth.api';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import { totpCodeSchema } from '../../auth/mfa.validator';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
@@ -47,6 +48,9 @@ export function TotpChallengeForm({
     }
 
     if (result.data?.access_token && result.data.refresh_token) {
+      // Customers' sessions survive a browser restart; staff sessions are
+      // sessionStorage-only and end when the browser closes (see auth.api.ts).
+      setSessionPersistence(role === 'customer');
       await applySession(result.data.access_token, result.data.refresh_token);
     }
 
