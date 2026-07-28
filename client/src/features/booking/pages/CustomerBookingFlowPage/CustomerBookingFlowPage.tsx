@@ -21,14 +21,52 @@ import {
   PAYMENT_METHODS,
   SERVICE_CATEGORIES,
   type Booking,
+  type HotelBookingPreferenceFeeding,
+  type HotelBookingPreferenceMedication,
+  type HotelBookingPreferenceWalking,
   type PaymentMethod,
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
+import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import styles from './CustomerBookingFlowPage.module.css';
 
 const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
 const HOTEL_DOWNPAYMENT_RATE = 0.5;
+
+const PET_TYPE_LABEL: Record<Pet['pet_type'], string> = {
+  Dog: 'Dog',
+  Cat: 'Cat',
+};
+
+const WEIGHT_CLASS_LABEL: Record<Pet['weight_class'], string> = {
+  S: 'Small',
+  M: 'Medium',
+  L: 'Large',
+  XL: 'XL',
+};
+
+const COAT_TYPE_LABEL: Record<Pet['coat_type'], string> = {
+  SC: 'Short coat',
+  LC: 'Long coat',
+};
+
+/**
+ * Hotel service/package names are freetext (e.g. "Hotel Stay - Medium Cage")
+ * with no dedicated size column (maintenance.types.ts's Service has none) -
+ * this mirrors the S/M/L/XL vocabulary those names are seeded with so the
+ * Service step can flag which cage size actually matches the selected pet,
+ * instead of leaving a small pet able to pick a Large/XL cage (or vice
+ * versa) with no guidance at all.
+ */
+function deriveHotelCageSize(serviceName: string): Pet['weight_class'] | null {
+  const lower = serviceName.toLowerCase();
+  if (lower.includes('xl')) return 'XL';
+  if (lower.includes('large')) return 'L';
+  if (lower.includes('medium')) return 'M';
+  if (lower.includes('small')) return 'S';
+  return null;
+}
 
 interface StepDef {
   key:
@@ -39,9 +77,35 @@ interface StepDef {
     | 'slot'
     | 'staff'
     | 'addons'
+    | 'hotelDetails'
     | 'payment';
   label: string;
 }
+
+const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
+  'Morning',
+  'Afternoon',
+  'Evening',
+];
+
+interface HotelFeedingRowState {
+  food_type: string;
+  quantity: string;
+  special_instructions: string;
+}
+
+const EMPTY_HOTEL_WALKING_ROW = {
+  time_block: '07:00',
+  duration_minutes: 15,
+  notes: '',
+};
+
+const EMPTY_HOTEL_MEDICATION_ROW = {
+  medication_name: '',
+  dose: '',
+  scheduled_time: '08:00',
+  administration_notes: '',
+};
 
 /**
  * Issue #55: 8-step booking flow shell + step navigation, with #56 (Slot
@@ -109,6 +173,19 @@ export function CustomerBookingFlowPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [specialInstructions, setSpecialInstructions] = useState('');
 
+  // Hotel-only: freetext feeding/walking/medication preferences captured at
+  // booking time so the receptionist's check-in form isn't starting blank
+  // (see booking.types.ts's HotelBookingPreferences doc comment).
+  const [hotelFeeding, setHotelFeeding] = useState<
+    Record<HotelBookingPreferenceFeeding['meal_time'], HotelFeedingRowState | null>
+  >({ Morning: null, Afternoon: null, Evening: null });
+  const [hotelWalking, setHotelWalking] = useState<
+    Array<typeof EMPTY_HOTEL_WALKING_ROW>
+  >([]);
+  const [hotelMedications, setHotelMedications] = useState<
+    Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
+  >([]);
+
   const [rawCurrentStepIndex, setCurrentStepIndex] = useState(0);
   const [rawMaxReachedIndex, setMaxReachedIndex] = useState(0);
 
@@ -162,6 +239,11 @@ export function CustomerBookingFlowPage() {
   }, [accessToken, selectedBranchId]);
 
   // ---- Derived data ----
+
+  const selectedPet = useMemo(
+    () => pets.find((pet) => pet.id === selectedPetId) ?? null,
+    [pets, selectedPetId]
+  );
 
   const selectedBranch = useMemo(
     () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
@@ -309,6 +391,10 @@ export function CustomerBookingFlowPage() {
       list.push({ key: 'addons', label: 'Add-ons' });
     }
 
+    if (category === 'Hotel') {
+      list.push({ key: 'hotelDetails', label: 'Care Instructions' });
+    }
+
     list.push({ key: 'payment', label: 'Review & Pay' });
 
     return list;
@@ -343,6 +429,8 @@ export function CustomerBookingFlowPage() {
       case 'staff':
         return staffPreference !== null;
       case 'addons':
+        return true;
+      case 'hotelDetails':
         return true;
       case 'payment':
         return !requiresPayment || paymentMethod !== '';
@@ -385,6 +473,12 @@ export function CustomerBookingFlowPage() {
     setSelectedPetId(petId);
   }
 
+  function resetHotelPreferences() {
+    setHotelFeeding({ Morning: null, Afternoon: null, Evening: null });
+    setHotelWalking([]);
+    setHotelMedications([]);
+  }
+
   function handleBranchSelect(branchId: string) {
     setSelectedBranchId(branchId);
     setCategory('');
@@ -395,6 +489,7 @@ export function CustomerBookingFlowPage() {
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
+    resetHotelPreferences();
   }
 
   function handleCategorySelect(nextCategory: ServiceCategory) {
@@ -406,6 +501,7 @@ export function CustomerBookingFlowPage() {
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
+    resetHotelPreferences();
   }
 
   function handleServiceSelect(serviceId: string) {
@@ -439,6 +535,107 @@ export function CustomerBookingFlowPage() {
         : [...current, serviceId]
     );
   }
+
+  function toggleHotelMealTime(mealTime: HotelBookingPreferenceFeeding['meal_time']) {
+    setHotelFeeding((prev) => ({
+      ...prev,
+      [mealTime]: prev[mealTime]
+        ? null
+        : { food_type: '', quantity: '', special_instructions: '' },
+    }));
+  }
+
+  function updateHotelFeeding(
+    mealTime: HotelBookingPreferenceFeeding['meal_time'],
+    updates: Partial<HotelFeedingRowState>
+  ) {
+    setHotelFeeding((prev) => {
+      const current = prev[mealTime];
+      if (!current) return prev;
+      return { ...prev, [mealTime]: { ...current, ...updates } };
+    });
+  }
+
+  function addHotelWalkBlock() {
+    setHotelWalking((prev) => [...prev, { ...EMPTY_HOTEL_WALKING_ROW }]);
+  }
+
+  function updateHotelWalkBlock(
+    index: number,
+    updates: Partial<typeof EMPTY_HOTEL_WALKING_ROW>
+  ) {
+    setHotelWalking((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...updates } : row))
+    );
+  }
+
+  function removeHotelWalkBlock(index: number) {
+    setHotelWalking((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addHotelMedication() {
+    setHotelMedications((prev) => [...prev, { ...EMPTY_HOTEL_MEDICATION_ROW }]);
+  }
+
+  function updateHotelMedication(
+    index: number,
+    updates: Partial<typeof EMPTY_HOTEL_MEDICATION_ROW>
+  ) {
+    setHotelMedications((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...updates } : row))
+    );
+  }
+
+  function removeHotelMedication(index: number) {
+    setHotelMedications((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /** Undefined (never sent) unless the customer/receptionist actually
+   * entered something - an empty-everything payload adds nothing the
+   * check-in form's own blank state doesn't already give. */
+  const hotelPreferencesPayload = useMemo(() => {
+    if (category !== 'Hotel') return undefined;
+
+    const feeding: HotelBookingPreferenceFeeding[] = MEAL_TIMES.filter(
+      (mealTime) => hotelFeeding[mealTime] !== null
+    ).map((mealTime) => {
+      const row = hotelFeeding[mealTime]!;
+      return {
+        meal_time: mealTime,
+        food_type: row.food_type,
+        quantity: row.quantity,
+        ...(row.special_instructions.trim()
+          ? { special_instructions: row.special_instructions.trim() }
+          : {}),
+      };
+    });
+
+    // Kept as raw "HH:MM" (not formatTimeValue()'d to "7:00 AM") so
+    // HotelCheckInPage can drop these straight into its own "HH:MM" TimeInput
+    // state at check-in without a lossy round-trip re-parse.
+    const walking: HotelBookingPreferenceWalking[] = hotelWalking.map((row) => ({
+      time_block: row.time_block,
+      duration_minutes: row.duration_minutes,
+      ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
+    }));
+
+    const medications: HotelBookingPreferenceMedication[] = hotelMedications.map(
+      (row) => ({
+        medication_name: row.medication_name,
+        dose: row.dose,
+        scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
+        ...(row.administration_notes.trim()
+          ? { administration_notes: row.administration_notes.trim() }
+          : {}),
+      })
+    );
+
+    if (feeding.length === 0 && walking.length === 0 && medications.length === 0) {
+      return undefined;
+    }
+
+    return { feeding, walking, medications };
+  }, [category, hotelFeeding, hotelWalking, hotelMedications]);
 
   async function handleSubmit() {
     if (
@@ -480,6 +677,9 @@ export function CustomerBookingFlowPage() {
       ...(specialInstructions.trim()
         ? { special_instructions: specialInstructions.trim() }
         : {}),
+      ...(hotelPreferencesPayload
+        ? { hotel_preferences: hotelPreferencesPayload }
+        : {}),
     });
 
     setIsSubmitting(false);
@@ -509,9 +709,16 @@ export function CustomerBookingFlowPage() {
       <main className={styles.page}>
         <h1 className={styles.title}>Booking confirmed</h1>
         <p className={styles.copy}>
-          Status: {confirmedBooking.status}.{' '}
-          {confirmedBooking.status === 'Pending'
-            ? 'This booking will be confirmed once payment is received at the counter.'
+          Status: {confirmedBooking.status}. Your appointment is booked for{' '}
+          {new Date(confirmedBooking.scheduled_start).toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}
+          .{' '}
+          {requiresPayment
+            ? confirmedBooking.payment_confirmed
+              ? 'Your payment has been received.'
+              : 'Payment is due at the counter.'
             : "You're all set!"}
         </p>
         <button
@@ -558,7 +765,11 @@ export function CustomerBookingFlowPage() {
                 onClick={() => handlePetSelect(pet.id)}
               >
                 <span className={styles.optionTitle}>{pet.name}</span>
-                <span className={styles.optionMeta}>{pet.pet_type}</span>
+                <span className={styles.optionMeta}>
+                  {PET_TYPE_LABEL[pet.pet_type]} &middot;{' '}
+                  {WEIGHT_CLASS_LABEL[pet.weight_class]} ({pet.weight_class}
+                  ) &middot; {COAT_TYPE_LABEL[pet.coat_type]}
+                </span>
               </button>
             ))}
             {pets.length === 0 && !showAddPet ? (
@@ -647,6 +858,14 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
+            {category === 'Hotel' && selectedPet ? (
+              <p className={styles.copy}>
+                {selectedPet.name} is {WEIGHT_CLASS_LABEL[selectedPet.weight_class]}{' '}
+                ({selectedPet.weight_class}) - the matching cage size is
+                marked Recommended below.
+              </p>
+            ) : null}
+
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
@@ -654,21 +873,35 @@ export function CustomerBookingFlowPage() {
                     No {category} services available at this branch.
                   </p>
                 ) : null}
-                {servicesForCategory.map((service) => (
-                  <button
-                    key={service.id}
-                    type="button"
-                    className={`${styles.optionCard} ${
-                      selectedServiceId === service.id ? styles.selected : ''
-                    }`}
-                    onClick={() => handleServiceSelect(service.id)}
-                  >
-                    <span className={styles.optionTitle}>{service.name}</span>
-                    <span className={styles.optionMeta}>
-                      PHP {service.base_price.toFixed(2)}
-                    </span>
-                  </button>
-                ))}
+                {servicesForCategory.map((service) => {
+                  const isRecommendedCage =
+                    category === 'Hotel' &&
+                    selectedPet !== null &&
+                    deriveHotelCageSize(service.name) === selectedPet.weight_class;
+
+                  return (
+                    <button
+                      key={service.id}
+                      type="button"
+                      className={`${styles.optionCard} ${
+                        selectedServiceId === service.id ? styles.selected : ''
+                      }`}
+                      onClick={() => handleServiceSelect(service.id)}
+                    >
+                      <span className={styles.optionTitleRow}>
+                        <span className={styles.optionTitle}>{service.name}</span>
+                        {isRecommendedCage ? (
+                          <span className={styles.recommendedBadge}>
+                            Recommended
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className={styles.optionMeta}>
+                        PHP {service.base_price.toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
@@ -753,6 +986,183 @@ export function CustomerBookingFlowPage() {
                 </span>
               </label>
             ))}
+          </div>
+        );
+
+      case 'hotelDetails':
+        return (
+          <div className={styles.hotelDetailsStep}>
+            <p className={styles.copy}>
+              Optional - let us know your pet's usual feeding, walking, and
+              medication routine. Our receptionist will confirm and finalize
+              these details when your pet checks in.
+            </p>
+
+            <section className={styles.hotelDetailsSection}>
+              <span className={styles.sectionTitle}>Feeding</span>
+              {MEAL_TIMES.map((mealTime) => {
+                const row = hotelFeeding[mealTime];
+
+                return (
+                  <div key={mealTime} className={styles.instructionRow}>
+                    <label className={styles.checkboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={row !== null}
+                        onChange={() => toggleHotelMealTime(mealTime)}
+                      />
+                      {mealTime}
+                    </label>
+                    {row ? (
+                      <div className={styles.instructionBlock}>
+                        <div className={styles.inlineFields}>
+                          <input
+                            className={styles.input}
+                            placeholder="Food type"
+                            value={row.food_type}
+                            onChange={(event) =>
+                              updateHotelFeeding(mealTime, {
+                                food_type: event.target.value,
+                              })
+                            }
+                          />
+                          <input
+                            className={styles.input}
+                            placeholder="Quantity"
+                            value={row.quantity}
+                            onChange={(event) =>
+                              updateHotelFeeding(mealTime, {
+                                quantity: event.target.value,
+                              })
+                            }
+                          />
+                          <input
+                            className={styles.input}
+                            placeholder="Special instructions (optional)"
+                            value={row.special_instructions}
+                            onChange={(event) =>
+                              updateHotelFeeding(mealTime, {
+                                special_instructions: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className={styles.hotelDetailsSection}>
+              <span className={styles.sectionTitle}>Walking</span>
+              {hotelWalking.map((row, index) => (
+                <div key={index} className={styles.instructionBlock}>
+                  <div className={styles.inlineFields}>
+                    <TimeInput
+                      aria-label="Walk time"
+                      value={row.time_block}
+                      onChange={(value) =>
+                        updateHotelWalkBlock(index, { time_block: value })
+                      }
+                    />
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min={1}
+                      placeholder="Duration (min)"
+                      value={row.duration_minutes}
+                      onChange={(event) =>
+                        updateHotelWalkBlock(index, {
+                          duration_minutes: Number(event.target.value),
+                        })
+                      }
+                    />
+                    <input
+                      className={styles.input}
+                      placeholder="Notes (optional)"
+                      value={row.notes}
+                      onChange={(event) =>
+                        updateHotelWalkBlock(index, { notes: event.target.value })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeHotelWalkBlock(index)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addHotelWalkBlock}
+              >
+                Add walk time
+              </button>
+            </section>
+
+            <section className={styles.hotelDetailsSection}>
+              <span className={styles.sectionTitle}>Medications</span>
+              {hotelMedications.map((row, index) => (
+                <div key={index} className={styles.instructionBlock}>
+                  <div className={styles.inlineFields}>
+                    <input
+                      className={styles.input}
+                      placeholder="Medication name"
+                      value={row.medication_name}
+                      onChange={(event) =>
+                        updateHotelMedication(index, {
+                          medication_name: event.target.value,
+                        })
+                      }
+                    />
+                    <input
+                      className={styles.input}
+                      placeholder="Dose"
+                      value={row.dose}
+                      onChange={(event) =>
+                        updateHotelMedication(index, { dose: event.target.value })
+                      }
+                    />
+                    <TimeInput
+                      aria-label="Medication time"
+                      value={row.scheduled_time}
+                      onChange={(value) =>
+                        updateHotelMedication(index, { scheduled_time: value })
+                      }
+                    />
+                    <input
+                      className={styles.input}
+                      placeholder="Notes (optional)"
+                      value={row.administration_notes}
+                      onChange={(event) =>
+                        updateHotelMedication(index, {
+                          administration_notes: event.target.value,
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeHotelMedication(index)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addHotelMedication}
+              >
+                Add medication
+              </button>
+            </section>
           </div>
         );
 
