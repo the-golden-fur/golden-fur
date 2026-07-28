@@ -53,7 +53,7 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     scheduled_start: '2026-07-27T01:00:00.000Z',
     scheduled_end: '2026-07-28T01:00:00.000Z',
     assigned_staff_id: null,
-    status: 'Confirmed',
+    status: 'Pending',
     total_price: 500,
     downpayment_amount: 250,
     payment_method: 'Cash',
@@ -120,7 +120,7 @@ function setupMocks(bookings: Booking[]) {
 }
 
 describe('HotelBookingPicker', () => {
-  it('renders a detailed card for a matching Confirmed booking (pet, weight class, owner, service, dates)', async () => {
+  it('renders a detailed card for a matching Pending booking (pet, weight class, owner, service, dates)', async () => {
     setupMocks([booking()]);
 
     renderPicker({
@@ -135,7 +135,7 @@ describe('HotelBookingPicker', () => {
     expect(screen.getByText('Hotel Stay - Small Cage')).toBeInTheDocument();
   });
 
-  it('clicking a Confirmed card calls onSelect with that booking', async () => {
+  it('clicking a Pending card calls onSelect with that booking', async () => {
     setupMocks([booking()]);
     const onSelect = vi.fn();
 
@@ -148,21 +148,21 @@ describe('HotelBookingPicker', () => {
     );
   });
 
-  it('a non-Confirmed booking renders its status badge and is not selectable', async () => {
-    setupMocks([booking({ id: 'booking-2', status: 'Pending' })]);
+  it('a non-Pending booking renders its status badge and is not selectable', async () => {
+    setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
     const onSelect = vi.fn();
 
     renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
 
     await screen.findByText('Mochi');
-    expect(screen.getAllByText('Pending').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText('Mochi'));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('an already-checked-in booking shows a badge, a checkout link, and is not selectable for check-in again', async () => {
-    setupMocks([booking()]);
+  it('an already-checked-in booking (In Progress, with a hotel_stays row) shows a badge, a checkout link, and is not selectable for check-in again', async () => {
+    setupMocks([booking({ status: 'In Progress' })]);
     vi.mocked(listHotelStays).mockResolvedValue({
       data: [
         {
@@ -171,7 +171,6 @@ describe('HotelBookingPicker', () => {
           pet_id: 'pet-1',
           cage_id: 'cage-1',
           cage_label: 'Makati-S-01',
-          status: 'Active',
           check_in_at: '2026-07-27T01:00:00.000Z',
           scheduled_check_out_date: '2026-07-28',
           actual_check_out_at: null,
@@ -195,6 +194,42 @@ describe('HotelBookingPicker', () => {
       'href',
       '/staff/hotel/checkout/stay-1'
     );
+
+    fireEvent.click(screen.getByText('Mochi'));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('a checked-out booking (Completed, with a hotel_stays row) shows its booking-status badge instead of a checkout link', async () => {
+    setupMocks([booking({ status: 'Completed' })]);
+    vi.mocked(listHotelStays).mockResolvedValue({
+      data: [
+        {
+          id: 'stay-1',
+          booking_id: 'booking-1',
+          pet_id: 'pet-1',
+          cage_id: 'cage-1',
+          cage_label: 'Makati-S-01',
+          check_in_at: '2026-07-27T01:00:00.000Z',
+          scheduled_check_out_date: '2026-07-28',
+          actual_check_out_at: '2026-07-28T09:00:00.000Z',
+          downpayment_amount: 250,
+          extension_fee: null,
+          supplied_items_charge: null,
+          notify_opt_in: false,
+          created_by_staff_id: 'staff-1',
+          created_at: '2026-07-27T01:00:00.000Z',
+          updated_at: '2026-07-28T09:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+    const onSelect = vi.fn();
+
+    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
+
+    expect(await screen.findByText('Completed')).toBeInTheDocument();
+    expect(screen.queryByText('Already checked in')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Go to checkout/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Mochi'));
     expect(onSelect).not.toHaveBeenCalled();

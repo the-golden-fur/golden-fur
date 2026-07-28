@@ -18,7 +18,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'update']) {
+    for (const method of ['select', 'eq', 'update', 'is']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -29,14 +29,24 @@ function queueFromResults(...results: QueryResult[]) {
   }) as never);
 }
 
+/** completeBooking's own internal load-then-update, queued right after
+ * getSuppliedItemsCharge's two parallel queries and before the hotel_stays
+ * update - see checkout.service.ts's call order. */
+function completeBookingQueue(bookingId = 'booking-1') {
+  return [
+    { data: { id: bookingId, status: 'In Progress' }, error: null }, // completeBooking: load
+    { data: { id: bookingId, status: 'Completed' }, error: null }, // completeBooking: update
+  ];
+}
+
 const ACTIVE_STAY = {
   id: 'stay-1',
-  status: 'Active',
+  booking_id: 'booking-1',
   scheduled_check_out_date: '2026-08-05',
   downpayment_amount: 1000,
   cage_id: 'cage-1',
   cages: { branch_id: 'branch-1' },
-  bookings: { total_price: 2000 },
+  bookings: { total_price: 2000, status: 'In Progress' },
 };
 
 describe('checkout.service (#78)', () => {
@@ -74,8 +84,9 @@ describe('checkout.service (#78)', () => {
         { data: ACTIVE_STAY, error: null },
         { data: [], error: null }, // supplied feeding items (none)
         { data: [], error: null }, // supplied medication items (none)
+        ...completeBookingQueue(),
         {
-          data: { ...ACTIVE_STAY, status: 'Completed', extension_fee: null },
+          data: { ...ACTIVE_STAY, extension_fee: null },
           error: null,
         },
         { data: {}, error: null }
@@ -99,8 +110,9 @@ describe('checkout.service (#78)', () => {
         { data: ACTIVE_STAY, error: null },
         { data: [], error: null }, // supplied feeding items (none)
         { data: [], error: null }, // supplied medication items (none)
+        ...completeBookingQueue(),
         {
-          data: { ...ACTIVE_STAY, status: 'Completed', extension_fee: 1000 },
+          data: { ...ACTIVE_STAY, extension_fee: 1000 },
           error: null,
         },
         { data: {}, error: null }
@@ -123,10 +135,10 @@ describe('checkout.service (#78)', () => {
         { data: ACTIVE_STAY, error: null },
         { data: [{ charged_price: 150 }], error: null }, // supplied feeding item
         { data: [{ charged_price: 80 }, { charged_price: 40 }], error: null }, // supplied medication items
+        ...completeBookingQueue(),
         {
           data: {
             ...ACTIVE_STAY,
-            status: 'Completed',
             extension_fee: null,
             supplied_items_charge: 270,
           },
@@ -149,7 +161,8 @@ describe('checkout.service (#78)', () => {
         { data: ACTIVE_STAY, error: null },
         { data: [], error: null },
         { data: [], error: null },
-        { data: { ...ACTIVE_STAY, status: 'Completed' }, error: null },
+        ...completeBookingQueue(),
+        { data: { ...ACTIVE_STAY }, error: null },
         { data: {}, error: null }
       );
 
@@ -158,11 +171,42 @@ describe('checkout.service (#78)', () => {
       expect(supabase.from).toHaveBeenCalledWith('cages');
     });
 
-    it('rejects checkout on a stay that is already Completed', async () => {
+    it('rejects checkout on a stay whose booking has already finished (Completed/Paid)', async () => {
       queueFromResults({
-        data: { ...ACTIVE_STAY, status: 'Completed' },
+        data: {
+          ...ACTIVE_STAY,
+          bookings: { ...ACTIVE_STAY.bookings, status: 'Completed' },
+        },
         error: null,
       });
+
+      await expect(
+        checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('rejects checkout on a stay whose booking never started (still Pending)', async () => {
+      queueFromResults({
+        data: {
+          ...ACTIVE_STAY,
+          bookings: { ...ACTIVE_STAY.bookings, status: 'Pending' },
+        },
+        error: null,
+      });
+
+      await expect(
+        checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('rejects checkout when the race-safe conditional update loses (actual_check_out_at was already set by a concurrent call)', async () => {
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        ...completeBookingQueue(),
+        { data: null, error: null } // conditional update matched 0 rows - lost the race
+      );
 
       await expect(
         checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })

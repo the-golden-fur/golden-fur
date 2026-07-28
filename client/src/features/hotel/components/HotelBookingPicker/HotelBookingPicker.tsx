@@ -9,7 +9,12 @@ import {
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { listBookings } from '../../../booking/api/booking.api';
-import type { Booking, BookingStatus } from '../../../booking/booking.types';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import {
+  BOOKING_STATUSES,
+  type Booking,
+  type BookingStatus,
+} from '../../../booking/booking.types';
 import {
   getCustomerProfile,
   getPet,
@@ -20,7 +25,6 @@ import {
   listServices,
 } from '../../../maintenance/api/maintenance.api';
 import { listHotelStays } from '../../api/hotel.api';
-import type { HotelStayStatus } from '../../hotel.types';
 import styles from './HotelBookingPicker.module.css';
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
@@ -32,17 +36,10 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
 
-const BOOKING_STATUSES: BookingStatus[] = [
-  'Confirmed',
-  'Pending',
-  'Completed',
-  'Cancelled',
-  'No-show',
-];
 const STATUS_OPTIONS: QueueStatusOption[] = [
-  { value: 'Confirmed', label: 'Confirmed (checkinable)' },
+  { value: 'Pending', label: 'Pending (checkinable)' },
   { value: 'All', label: 'All statuses' },
-  ...BOOKING_STATUSES.filter((status) => status !== 'Confirmed').map(
+  ...BOOKING_STATUSES.filter((status) => status !== 'Pending').map(
     (status) => ({ value: status, label: status })
   ),
 ];
@@ -54,7 +51,13 @@ interface EnrichedBooking {
   ownerName: string;
   ownerContact: string;
   serviceLabel: string;
-  existingStay: { stayId: string; status: HotelStayStatus } | null;
+  /** hotel_stays.id for this booking, if a stay already exists (booking-
+   * status revision - a stay only ever exists once a booking has been
+   * physically checked in, and hotel_stays no longer carries its own status
+   * column; whether that stay is still in progress or already checked out
+   * is read off the booking's own status below, not a separate stay
+   * status). */
+  existingStayId: string | null;
 }
 
 interface HotelBookingPickerProps {
@@ -82,10 +85,12 @@ function formatDateTime(iso: string): string {
  * ReceptionistBookingsQueuePage - the original version of this step only
  * ever queried today's date, so a booking made for any other day (or found
  * via a slightly different "today" boundary) was simply invisible with no
- * way to widen the search. Only Confirmed bookings are selectable; other
+ * way to widen the search. Only Pending bookings are selectable (matches
+ * the server's check-in gate - a Hotel booking becomes checkinable once
+ * booked and stops being checkinable the moment it's checked in, since
+ * check-in itself advances bookings.status to 'In Progress'); other
  * statuses are shown (when the status filter is widened) so a receptionist
- * can see *why* a booking isn't checkinable yet (e.g. still Pending
- * payment) instead of it just not existing on screen.
+ * can see *why* a booking isn't checkinable yet, or that it already was.
  */
 export function HotelBookingPicker({
   accessToken,
@@ -99,7 +104,7 @@ export function HotelBookingPicker({
     new Date().toISOString().slice(0, 10)
   );
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
-    'Confirmed'
+    'Pending'
   );
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('soonest');
@@ -114,7 +119,7 @@ export function HotelBookingPicker({
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [serviceNames, setServiceNames] = useState<Record<string, string>>({});
   const [stayByBookingId, setStayByBookingId] = useState<
-    Record<string, { stayId: string; status: HotelStayStatus }>
+    Record<string, string>
   >({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,19 +144,18 @@ export function HotelBookingPicker({
     });
   }, [accessToken]);
 
-  // #79 revision: cross-references every branch stay (any status) against
-  // booking_id, so a booking that already has a check-in never shows as
-  // checkinable again just because bookings.status stays 'Confirmed'
-  // forever (check-in only ever writes hotel_stays, never touches the
-  // booking's own status) - a real gap surfaced by manual testing.
+  // Cross-references every branch stay (regardless of its booking's status)
+  // against booking_id, so a booking that already has a hotel_stays row -
+  // whatever stage its stay has reached - can show "Go to checkout" (still
+  // In Progress) or "Checked out" (Completed/Paid) instead of offering
+  // check-in again.
   useEffect(() => {
     void listHotelStays(accessToken).then((result) => {
       if (!result.data) return;
 
-      const map: Record<string, { stayId: string; status: HotelStayStatus }> =
-        {};
+      const map: Record<string, string> = {};
       for (const stay of result.data) {
-        map[stay.booking_id] = { stayId: stay.id, status: stay.status };
+        map[stay.booking_id] = stay.id;
       }
       setStayByBookingId(map);
     });
@@ -233,7 +237,7 @@ export function HotelBookingPicker({
           serviceLabel: serviceId
             ? (serviceNames[serviceId] ?? 'Hotel stay')
             : 'Hotel stay',
-          existingStay: stayByBookingId[booking.id] ?? null,
+          existingStayId: stayByBookingId[booking.id] ?? null,
         };
       }),
     [bookings, pets, owners, serviceNames, stayByBookingId]
@@ -328,8 +332,15 @@ export function HotelBookingPicker({
       {!isLoading && filteredAndSorted.length > 0 ? (
         <ul className={styles.list}>
           {filteredAndSorted.map((item) => {
-            const isCheckinable =
-              item.booking.status === 'Confirmed' && !item.existingStay;
+            // A Pending booking has, by definition, never been checked in
+            // (check-in advances bookings.status to 'In Progress'), so no
+            // separate existingStayId check is needed here.
+            const isCheckinable = item.booking.status === 'Pending';
+            // Still checked in (has a stay, and that stay's booking hasn't
+            // reached Completed/Paid yet) - offer the checkout shortcut.
+            const isCheckedIn =
+              item.booking.status === 'In Progress' &&
+              item.existingStayId !== null;
 
             return (
               <li key={item.booking.id}>
@@ -357,19 +368,12 @@ export function HotelBookingPicker({
                     <span className={styles.weightBadge}>
                       {item.weightClass}
                     </span>
-                    {!item.existingStay &&
-                    item.booking.status !== 'Confirmed' ? (
-                      <span className={styles.statusBadge}>
-                        {item.booking.status}
-                      </span>
-                    ) : null}
-                    {item.existingStay?.status === 'Active' ? (
+                    {isCheckedIn ? (
                       <span className={styles.checkedInBadge}>
                         Already checked in
                       </span>
-                    ) : null}
-                    {item.existingStay?.status === 'Completed' ? (
-                      <span className={styles.statusBadge}>Checked out</span>
+                    ) : !isCheckinable ? (
+                      <BookingStatusBadge status={item.booking.status} />
                     ) : null}
                   </div>
                   <span className={styles.metaLine}>
@@ -393,10 +397,10 @@ export function HotelBookingPicker({
                       {item.booking.special_instructions}
                     </span>
                   ) : null}
-                  {item.existingStay?.status === 'Active' ? (
+                  {isCheckedIn && item.existingStayId ? (
                     <Link
                       className={styles.checkoutLink}
-                      to={`/staff/hotel/checkout/${item.existingStay.stayId}`}
+                      to={`/staff/hotel/checkout/${item.existingStayId}`}
                       onClick={(event) => event.stopPropagation()}
                     >
                       Go to checkout &rarr;

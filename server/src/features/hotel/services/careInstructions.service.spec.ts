@@ -50,7 +50,7 @@ const CONFIRMED_HOTEL_BOOKING = {
   branch_id: 'branch-1',
   scheduled_end: '2026-08-05T12:00:00.000Z',
   service_category: 'Hotel',
-  status: 'Confirmed',
+  status: 'Pending',
   downpayment_amount: 500,
 };
 
@@ -84,7 +84,9 @@ describe('careInstructions.service (#75)', () => {
         { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
-        { data: { id: 'stay-1', status: 'Active' }, error: null }, // hotel_stays insert
+        { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update // hotel_stays insert
         {
           data: [
             {
@@ -128,7 +130,9 @@ describe('careInstructions.service (#75)', () => {
         { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
-        { data: { id: 'stay-1', status: 'Active' }, error: null }, // hotel_stays insert
+        { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update // hotel_stays insert
         { data: [{ id: 'food-1', price: 150 }], error: null }, // food_catalog price lookup
         {
           data: [
@@ -185,6 +189,8 @@ describe('careInstructions.service (#75)', () => {
         { data: null, error: null },
         { data: { id: 'cage-1', status: 'Occupied' }, error: null },
         { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update
         // No catalog-price-lookup call expected here - no food_catalog_id
         // was provided, so getCatalogPrices short-circuits before touching
         // supabase at all.
@@ -243,15 +249,22 @@ describe('careInstructions.service (#75)', () => {
         { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
-        { data: { id: 'stay-1', status: 'Active' }, error: null }, // hotel_stays insert
+        { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update // hotel_stays insert
         {
-          data: {
-            id: 'consult-1',
-            medications: [
-              { name: 'Rimadyl', dose: '75mg', notes: 'with food' },
-            ],
-            completed_at: '2026-08-01T00:00:00.000Z',
-          },
+          data: [
+            {
+              id: 'consult-1',
+              medications: [
+                { name: 'Rimadyl', dose: '75mg', notes: 'with food' },
+              ],
+              booking: {
+                status: 'Paid',
+                completed_at: '2026-08-01T00:00:00.000Z',
+              },
+            },
+          ],
           error: null,
         }, // getCurrentPrescription
         {
@@ -290,6 +303,8 @@ describe('careInstructions.service (#75)', () => {
         { data: null, error: null },
         { data: { id: 'cage-1', status: 'Occupied' }, error: null },
         { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update
         { data: null, error: null } // getCurrentPrescription: none
       );
 
