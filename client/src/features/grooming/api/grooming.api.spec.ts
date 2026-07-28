@@ -9,16 +9,15 @@ function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 400) {
   } as Response;
 }
 
-describe('grooming.api', () => {
+describe('grooming.api (booking-status revision)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('listGroomingQueue returns sessions and pendingBookings on success', async () => {
+  it('listGroomingQueue returns sessions on success', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         sessions: [{ id: 'session-1' }],
-        pendingBookings: [{ id: 'booking-2' }],
       })
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -26,30 +25,25 @@ describe('grooming.api', () => {
     const result = await listGroomingQueue('token');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/grooming/queue?includePending=true'),
+      expect.stringContaining('/grooming/queue'),
       expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
     );
     expect(result).toEqual({
-      data: {
-        sessions: [{ id: 'session-1' }],
-        pendingBookings: [{ id: 'booking-2' }],
-      },
+      data: { sessions: [{ id: 'session-1' }] },
       error: null,
     });
   });
 
-  it('listGroomingQueue defaults pendingBookings to an empty array when omitted', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ sessions: [] }))
+  it('listGroomingQueue omits the query string when no date range is given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ sessions: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listGroomingQueue('token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/grooming\/queue$/),
+      expect.anything()
     );
-
-    const result = await listGroomingQueue('token');
-
-    expect(result).toEqual({
-      data: { sessions: [], pendingBookings: [] },
-      error: null,
-    });
   });
 
   it('listGroomingQueue passes date_from/date_to when a date range is given', async () => {
@@ -85,11 +79,14 @@ describe('grooming.api', () => {
   });
 
   it('transitionGroomingStatus PATCHes the target status', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ session: { id: 'session-1', status: 'In Progress' } })
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        session: {
+          id: 'session-1',
+          booking: { status: 'In Progress' },
+        },
+      })
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await transitionGroomingStatus(
@@ -105,6 +102,9 @@ describe('grooming.api', () => {
         body: JSON.stringify({ status: 'In Progress' }),
       })
     );
-    expect(result.data).toMatchObject({ status: 'In Progress' });
+    expect(result.data).toMatchObject({
+      id: 'session-1',
+      booking: { status: 'In Progress' },
+    });
   });
 });

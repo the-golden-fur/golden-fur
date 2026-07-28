@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ConsultationStatusBadge } from '../../components/ConsultationStatusBadge/ConsultationStatusBadge';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
 import { PetHistoryTab } from '../../components/PetHistoryTab/PetHistoryTab';
 import type {
@@ -163,7 +164,10 @@ export function ConsultationDetailPanel({
     });
   }
 
-  const isCompleted = consultation.status === 'Completed';
+  const bookingStatus = consultation.booking?.status;
+  const isCompleted = bookingStatus
+    ? FINISHED_BOOKING_STATUSES.includes(bookingStatus)
+    : false;
 
   return (
     <div className={styles.panel}>
@@ -172,7 +176,7 @@ export function ConsultationDetailPanel({
           <h2 className={styles.petName}>{petName}</h2>
           <span className={styles.subtitle}>Owner: {ownerName}</span>
         </div>
-        <ConsultationStatusBadge status={consultation.status} />
+        {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>
 
       <div className={styles.tabs} role="tablist">
@@ -208,7 +212,7 @@ export function ConsultationDetailPanel({
             Reason: {consultation.reason_for_visit}
           </p>
 
-          {consultation.status === 'Pending' ? (
+          {bookingStatus === 'Pending' ? (
             <button
               type="button"
               className={styles.primaryButton}
@@ -454,8 +458,7 @@ export function ConsultationDetailPanel({
                       ? ` for ${consultation.follow_up_date}`
                       : ''}
                   </span>
-                ) : consultation.status === 'Completed' ||
-                  consultation.status === 'Ongoing' ? (
+                ) : isCompleted ? (
                   <>
                     <label className={styles.field}>
                       <span className={styles.fieldLabel}>Follow-up date</span>

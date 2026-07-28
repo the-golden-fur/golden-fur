@@ -1,15 +1,23 @@
-import type { GroomingSession, GroomingStatus } from '../../grooming.types';
-import { GroomingStatusBadge } from '../GroomingStatusBadge/GroomingStatusBadge';
+import type { BookingStatus } from '../../../booking/booking.types';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import type { GroomingSession } from '../../grooming.types';
+import type { GroomingTransitionTarget } from '../../api/grooming.api';
 import styles from './AppointmentCard.module.css';
 
-const NEXT_STATUS: Partial<Record<GroomingStatus, GroomingStatus>> = {
-  Waiting: 'In Progress',
-  'In Progress': 'Completed',
-};
-
-const ADVANCE_LABEL: Partial<Record<GroomingStatus, string>> = {
-  Waiting: 'Mark In Progress',
-  'In Progress': 'Mark Completed',
+/**
+ * Booking-status revision: the "advance" button is now keyed off the
+ * joined booking's status (bookings.status), not a grooming-local field -
+ * grooming_sessions dropped its own status column entirely. Pending ->
+ * Start (In Progress); In Progress -> Complete (Completed); anything else
+ * (Completed/Paid/Cancelled/No-show) has nothing forward for this card to
+ * do - Mark as Paid is a queue-level/cashier action, not this card's
+ * concern.
+ */
+const ADVANCE_ACTION: Partial<
+  Record<BookingStatus, { target: GroomingTransitionTarget; label: string }>
+> = {
+  Pending: { target: 'In Progress', label: 'Start' },
+  'In Progress': { target: 'Completed', label: 'Complete' },
 };
 
 export interface AppointmentCardProps {
@@ -23,7 +31,10 @@ export interface AppointmentCardProps {
   addonLabels: string[];
   specialInstructions: string | null;
   isAdvancing: boolean;
-  onAdvance: (sessionId: string, targetStatus: GroomingStatus) => void;
+  onAdvance: (
+    sessionId: string,
+    targetStatus: GroomingTransitionTarget
+  ) => void;
 }
 
 /**
@@ -44,7 +55,10 @@ export function AppointmentCard({
   isAdvancing,
   onAdvance,
 }: AppointmentCardProps) {
-  const nextStatus = NEXT_STATUS[session.status];
+  const bookingStatus = session.booking?.status;
+  const advanceAction = bookingStatus
+    ? ADVANCE_ACTION[bookingStatus]
+    : undefined;
 
   return (
     <li className={styles.card}>
@@ -56,7 +70,7 @@ export function AppointmentCard({
             {breed ? ` · ${breed}` : ''}
           </span>
         </div>
-        <GroomingStatusBadge status={session.status} />
+        {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>
 
       <div className={styles.badges}>
@@ -76,14 +90,14 @@ export function AppointmentCard({
         </p>
       ) : null}
 
-      {nextStatus ? (
+      {advanceAction ? (
         <button
           type="button"
           className={styles.primaryButton}
           disabled={isAdvancing}
-          onClick={() => onAdvance(session.id, nextStatus)}
+          onClick={() => onAdvance(session.id, advanceAction.target)}
         >
-          {isAdvancing ? 'Updating...' : ADVANCE_LABEL[session.status]}
+          {isAdvancing ? 'Updating...' : advanceAction.label}
         </button>
       ) : null}
     </li>

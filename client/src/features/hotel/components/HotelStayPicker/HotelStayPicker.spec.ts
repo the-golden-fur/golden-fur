@@ -26,7 +26,6 @@ function stay(overrides: Partial<HotelStayWithCage> = {}): HotelStayWithCage {
     pet_id: 'pet-1',
     cage_id: 'cage-1',
     cage_label: 'Makati-S-01',
-    status: 'Active',
     check_in_at: '2026-07-27T01:00:00.000Z',
     scheduled_check_out_date: '2026-07-28',
     actual_check_out_at: null,
@@ -92,7 +91,7 @@ describe('HotelStayPicker', () => {
     expect(screen.getByText(/Ana Cruz/)).toBeInTheDocument();
   });
 
-  it('only ever requests Active stays', async () => {
+  it('only ever requests In Progress stays', async () => {
     setupMocks([stay()]);
 
     render(
@@ -103,7 +102,7 @@ describe('HotelStayPicker', () => {
     );
 
     await screen.findByText('Mochi');
-    expect(listHotelStays).toHaveBeenCalledWith('token', 'Active');
+    expect(listHotelStays).toHaveBeenCalledWith('token', 'In Progress');
   });
 
   it('clicking a card calls onSelect with that stay', async () => {

@@ -21,7 +21,6 @@ export type CageStatus =
   | 'Occupied'
   | 'Reserved'
   | 'Under Maintenance';
-export type HotelStayStatus = 'Active' | 'Completed';
 export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
 export type CareType = 'Feeding' | 'Walking' | 'Medication';
 
@@ -40,7 +39,6 @@ export interface HotelStay {
   booking_id: string;
   pet_id: string;
   cage_id: string;
-  status: HotelStayStatus;
   check_in_at: string | null;
   scheduled_check_out_date: string;
   actual_check_out_at: string | null;

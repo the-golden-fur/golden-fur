@@ -43,19 +43,6 @@ function queueFromResults(...results: QueryResult[]) {
   }) as never);
 }
 
-function consultationRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'consultation-1',
-    booking_id: 'booking-1',
-    pet_id: 'pet-1',
-    veterinarian_id: 'vet-1',
-    status: 'Ongoing',
-    follow_up_date: null,
-    follow_up_booking_id: null,
-    ...overrides,
-  };
-}
-
 function bookingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'booking-1',
@@ -68,7 +55,23 @@ function bookingRow(overrides: Record<string, unknown> = {}) {
     scheduled_start: '2026-07-19T02:00:00.000Z',
     scheduled_end: '2026-07-19T03:00:00.000Z',
     total_price: 800,
-    status: 'Confirmed',
+    status: 'Completed',
+    ...overrides,
+  };
+}
+
+/** getConsultation's CONSULTATION_SELECT ('*, booking:bookings(*)') embeds
+ * the full booking row - "has this consultation finished" is read off the
+ * joined booking's status now that consultations.status no longer exists. */
+function consultationRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'consultation-1',
+    booking_id: 'booking-1',
+    pet_id: 'pet-1',
+    veterinarian_id: 'vet-1',
+    follow_up_date: null,
+    follow_up_booking_id: null,
+    booking: bookingRow(),
     ...overrides,
   };
 }
@@ -127,9 +130,9 @@ describe('followUp.service (#67)', () => {
     });
   });
 
-  it('rejects scheduling a follow-up on a Pending (not-yet-started) consultation', async () => {
+  it('rejects scheduling a follow-up while the consultation booking is still Pending or In Progress (not finished yet)', async () => {
     queueFromResults({
-      data: consultationRow({ status: 'Pending' }),
+      data: consultationRow({ booking: bookingRow({ status: 'In Progress' }) }),
       error: null,
     });
 

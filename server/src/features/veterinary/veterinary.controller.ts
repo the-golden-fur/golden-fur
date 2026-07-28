@@ -4,7 +4,6 @@ import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
-  listUnconfirmedVeterinaryBookings,
   updateConsultation,
 } from './services/consultation.service.ts';
 import { getCurrentPrescription } from './services/currentPrescription.service.ts';
@@ -44,22 +43,12 @@ export async function listConsultationQueueController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  const includePending = req.query.includePending === 'true';
   const dateFrom = queryDate(req, 'date_from');
   const dateTo = queryDate(req, 'date_to');
 
   try {
     const consultations = await listConsultationQueue({ dateFrom, dateTo });
-
-    if (!includePending) {
-      return res.status(200).json({ consultations });
-    }
-
-    const pendingBookings = await listUnconfirmedVeterinaryBookings({
-      dateFrom,
-      dateTo,
-    });
-    return res.status(200).json({ consultations, pendingBookings });
+    return res.status(200).json({ consultations });
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -12,7 +12,10 @@ import {
   setCageMaintenanceStatus,
 } from './services/cageStatus.service.ts';
 import { checkOutHotelStay } from './services/checkout.service.ts';
-import { listHotelStays } from './services/hotelStay.service.ts';
+import {
+  listHotelStays,
+  type HotelStayFilterStatus,
+} from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
 import {
@@ -377,7 +380,7 @@ export async function deleteMedicationCatalogItemController(
   }
 }
 
-const VALID_STAY_STATUSES = new Set(['Active', 'Completed']);
+const VALID_STAY_STATUSES = new Set(['In Progress', 'Completed', 'Paid']);
 
 export async function listHotelStaysController(
   req: AuthenticatedRequest,
@@ -392,7 +395,7 @@ export async function listHotelStaysController(
   const statusParam = req.query.status;
   const status =
     typeof statusParam === 'string' && VALID_STAY_STATUSES.has(statusParam)
-      ? (statusParam as 'Active' | 'Completed')
+      ? (statusParam as HotelStayFilterStatus)
       : undefined;
 
   try {

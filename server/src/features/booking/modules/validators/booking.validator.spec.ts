@@ -84,6 +84,51 @@ describe('createBookingValidator', () => {
       ).toBe(true);
     }
   });
+
+  it('accepts hotel_preferences on a Hotel booking', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [
+            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+          ],
+          walking: [{ time_block: '07:00', duration_minutes: 15 }],
+          medications: [],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects hotel_preferences on a non-Hotel booking', () => {
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        hotel_preferences: { feeding: [], walking: [], medications: [] },
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a malformed hotel_preferences meal_time', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [
+            { meal_time: 'Midnight', food_type: 'Kibble', quantity: '1 cup' },
+          ],
+          walking: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(false);
+  });
 });
 
 describe('staffPreferenceValidator', () => {

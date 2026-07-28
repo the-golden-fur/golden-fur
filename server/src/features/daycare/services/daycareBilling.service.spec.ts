@@ -4,9 +4,14 @@ import {
   computeDaycareCharge,
 } from './daycareBilling.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { completeBooking } from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+
+vi.mock('../../booking/services/booking.service.ts', () => ({
+  completeBooking: vi.fn(),
 }));
 
 interface QueryResult {
@@ -83,6 +88,7 @@ describe('daycareBilling.service (#65)', () => {
         {
           data: {
             id: 'session-1',
+            booking_id: null,
             status: 'Active',
             check_in_at: '2026-07-19T08:00:00.000Z',
           },
@@ -91,6 +97,7 @@ describe('daycareBilling.service (#65)', () => {
         {
           data: {
             id: 'session-1',
+            booking_id: null,
             status: 'Completed',
             computed_charge: 100,
           },
@@ -106,6 +113,68 @@ describe('daycareBilling.service (#65)', () => {
       expect(
         (update?.payload as { computed_charge?: number }).computed_charge
       ).not.toBeNull();
+      // Walk-ins have no booking_id, so there's nothing to sync.
+      expect(completeBooking).not.toHaveBeenCalled();
+    });
+
+    it('a booking-linked session completes the linked booking on checkout', async () => {
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Completed',
+            computed_charge: 100,
+          },
+          error: null,
+        }
+      );
+
+      const result = await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      expect(result.status).toBe('Completed');
+      expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+    });
+
+    it('does not let a 409 from a stale/cancelled linked booking block checkout', async () => {
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Completed',
+            computed_charge: 100,
+          },
+          error: null,
+        }
+      );
+
+      const conflict = new Error('A Cancelled booking cannot be completed');
+      (conflict as Error & { statusCode?: number }).statusCode = 409;
+      vi.mocked(completeBooking).mockRejectedValueOnce(conflict);
+
+      const result = await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      expect(result.status).toBe('Completed');
+      expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
     });
 
     it('refuses to check out an already-Completed session', async () => {

@@ -1,5 +1,4 @@
-import type { Booking } from '../../booking/booking.types';
-import type { GroomingSession, GroomingStatus } from '../grooming.types';
+import type { GroomingSession } from '../grooming.types';
 
 interface GroomingApiResult<T> {
   data: T | null;
@@ -8,10 +7,12 @@ interface GroomingApiResult<T> {
 
 export interface GroomingQueueResult {
   sessions: GroomingSession[];
-  /** Today's Grooming bookings still awaiting payment confirmation - no
-   * session exists for these yet, surfaced for staff awareness only. */
-  pendingBookings: Booking[];
 }
+
+/** Booking-status revision: the only two forward transitions a grooming
+ * session's Start/Complete action can request - mirrors the server's
+ * transitionGroomingStatusValidator. */
+export type GroomingTransitionTarget = 'In Progress' | 'Completed';
 
 // grooming.routes.ts (server) is mounted at the server root (not under
 // /auth), same as booking.routes.ts.
@@ -53,12 +54,13 @@ export async function listGroomingQueue(
   accessToken: string,
   dateRange: GroomingQueueDateRange = {}
 ): Promise<GroomingApiResult<GroomingQueueResult>> {
-  const params = new URLSearchParams({ includePending: 'true' });
+  const params = new URLSearchParams();
   if (dateRange.dateFrom) params.set('date_from', dateRange.dateFrom);
   if (dateRange.dateTo) params.set('date_to', dateRange.dateTo);
 
+  const queryString = params.toString();
   const response = await fetch(
-    `${API_BASE_URL}/grooming/queue?${params.toString()}`,
+    `${API_BASE_URL}/grooming/queue${queryString ? `?${queryString}` : ''}`,
     { headers: authHeaders(accessToken) }
   );
 
@@ -66,20 +68,14 @@ export async function listGroomingQueue(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{
-    sessions: GroomingSession[];
-    pendingBookings?: Booking[];
-  }>(response);
+  const result = await parseBody<{ sessions: GroomingSession[] }>(response);
 
   if (!result.data) {
     return { data: null, error: result.error };
   }
 
   return {
-    data: {
-      sessions: result.data.sessions,
-      pendingBookings: result.data.pendingBookings ?? [],
-    },
+    data: { sessions: result.data.sessions },
     error: null,
   };
 }
@@ -87,7 +83,7 @@ export async function listGroomingQueue(
 export async function transitionGroomingStatus(
   sessionId: string,
   accessToken: string,
-  status: GroomingStatus
+  status: GroomingTransitionTarget
 ): Promise<GroomingApiResult<GroomingSession>> {
   const response = await fetch(
     `${API_BASE_URL}/grooming/sessions/${sessionId}/status`,

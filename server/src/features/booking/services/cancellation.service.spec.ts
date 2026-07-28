@@ -72,7 +72,7 @@ const HOTEL_BOOKING = {
   pet_id: 'pet-1',
   branch_id: 'branch-1',
   service_category: 'Hotel',
-  status: 'Confirmed',
+  status: 'Pending',
   scheduled_start: daysFromNow(10),
   scheduled_end: daysFromNow(12),
   downpayment_amount: 500,

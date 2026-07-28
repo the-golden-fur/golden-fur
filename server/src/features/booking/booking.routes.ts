@@ -6,17 +6,22 @@ import {
   availabilityController,
   cancelBookingController,
   catalogController,
+  completeBookingController,
   createBookingController,
   getBookingController,
   listBookingsController,
   listPolicyConfigurationsController,
+  markBookingPaidController,
   rescheduleBookingController,
   staffPickerOptionsController,
+  startBookingController,
   updatePolicyConfigurationController,
 } from './booking.controller.ts';
 import {
+  BOOKING_MARK_PAID_ROLES,
   BOOKING_POLICY_READ_ROLES,
   BOOKING_POLICY_WRITE_ROLES,
+  BOOKING_STATUS_ADVANCE_ROLES,
 } from './booking.types.ts';
 
 /**
@@ -43,6 +48,18 @@ const adminWrite = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...BOOKING_POLICY_WRITE_ROLES]),
+];
+
+const statusAdvance = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_STATUS_ADVANCE_ROLES]),
+];
+
+const markPaid = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_MARK_PAID_ROLES]),
 ];
 
 // Booking creation + capacity enforcement (#51)
@@ -88,5 +105,13 @@ router.post(
   rescheduleBookingController
 );
 router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
+
+// Manual status-advance actions (booking-status revision, replacing the
+// retired 'Confirmed' payment gate): Start/Complete open to any staff role;
+// Mark as Paid restricted to money-handling roles. No-show has no route -
+// it's a lazy transition applied on read (see booking.service.ts).
+router.post('/bookings/:id/start', statusAdvance, startBookingController);
+router.post('/bookings/:id/complete', statusAdvance, completeBookingController);
+router.post('/bookings/:id/mark-paid', markPaid, markBookingPaidController);
 
 export default router;

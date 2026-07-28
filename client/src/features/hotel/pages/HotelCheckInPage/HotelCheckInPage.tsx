@@ -175,6 +175,56 @@ export function HotelCheckInPage() {
 
     setSelectedBooking(booking);
     setSelectedCageId(null);
+    setFeeding({ Morning: null, Afternoon: null, Evening: null });
+    setWalking([]);
+    setMedications([]);
+
+    // Pre-fills from whatever the customer/receptionist entered at booking
+    // time (CustomerBookingFlowPage's "Care Instructions" step), so this
+    // form doesn't start blank - still just a starting point, freely
+    // editable below before it becomes the authoritative record.
+    const preferences = booking.hotel_preferences;
+
+    if (preferences) {
+      if (preferences.feeding.length > 0) {
+        setFeeding((prev) => {
+          const next = { ...prev };
+          for (const item of preferences.feeding) {
+            next[item.meal_time] = {
+              foodType: { catalogId: null, text: item.food_type },
+              quantity: item.quantity,
+              specialInstructions: item.special_instructions ?? '',
+              broughtByCustomer: true,
+            };
+          }
+          return next;
+        });
+      }
+
+      if (preferences.walking.length > 0) {
+        setWalking(
+          preferences.walking.map((item) => ({
+            mode: 'duration',
+            startTime: item.time_block,
+            endTime: '',
+            durationMinutes: item.duration_minutes,
+            notes: item.notes ?? '',
+          }))
+        );
+      }
+
+      if (preferences.medications.length > 0) {
+        setMedications(
+          preferences.medications.map((item) => ({
+            name: { catalogId: null, text: item.medication_name },
+            dose: item.dose,
+            scheduledTimes: item.scheduled_times,
+            administrationNotes: item.administration_notes ?? '',
+            broughtByCustomer: true,
+          }))
+        );
+      }
+    }
 
     void getCageSuggestion(booking.pet_id, accessToken).then((result) => {
       if (result.data) {
@@ -186,9 +236,9 @@ export function HotelCheckInPage() {
 
     void getCurrentPrescriptionForPet(booking.pet_id, accessToken).then(
       (result) => {
-        if (result.data) {
-          setMedications(
-            result.data.medications.map((medication) => ({
+        if (result.data && result.data.medications.length > 0) {
+          const prescriptionMedications = result.data.medications.map(
+            (medication) => ({
               // Pre-filled from M07, not the hotel's medication catalog -
               // stays freetext (no catalogId), matching the "one-time copy,
               // never billable" pre-fill behavior.
@@ -197,8 +247,12 @@ export function HotelCheckInPage() {
               scheduledTimes: [],
               administrationNotes: medication.notes ?? '',
               broughtByCustomer: true,
-            }))
+            })
           );
+
+          // Prepended, not replaced - a booking-time preference entered
+          // above (synchronously) must survive this later-resolving fetch.
+          setMedications((prev) => [...prescriptionMedications, ...prev]);
         }
       }
     );

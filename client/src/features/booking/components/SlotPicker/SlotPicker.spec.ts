@@ -144,4 +144,68 @@ describe('SlotPicker', () => {
       end: SLOTS[0].end,
     });
   });
+
+  it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: SLOTS,
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
+
+    expect(dateInput.min).toBe(today);
+    expect(screen.getByText('Previous day')).toBeDisabled();
+
+    // Typing/pasting an earlier date directly clamps back to today rather
+    // than accepting it (defense in depth beyond the native min attribute,
+    // which some browsers don't strictly enforce on typed input).
+    fireEvent.change(dateInput, { target: { value: '2000-01-01' } });
+    expect(dateInput.value).toBe(today);
+  });
+
+  it('shows cage availability for Hotel bookings, separate from the date/time slot itself', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: [
+        {
+          start: '2026-08-03T01:00:00.000Z',
+          end: '2026-08-04T01:00:00.000Z',
+          available: true,
+          level: 'partial',
+          cage_capacity_remaining: 3,
+          cage_capacity_total: 8,
+        },
+      ],
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Hotel',
+        slotDurationMinutes: 1440,
+        petWeightClass: 'M',
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    expect(
+      await screen.findByText(/Cage availability for this size: 3 of 8 free/)
+    ).toBeInTheDocument();
+  });
 });

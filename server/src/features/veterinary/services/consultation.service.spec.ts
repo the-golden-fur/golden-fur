@@ -3,7 +3,6 @@ import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
-  listUnconfirmedVeterinaryBookings,
   updateConsultation,
 } from './consultation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -61,13 +60,25 @@ function queueFromResults(...results: QueryResult[]) {
 const VET_ID = 'vet-1';
 const MAKATI = { id: 'branch-makati', name: 'Makati', is_vet_branch: true };
 
+function bookingFor(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'booking-1',
+    scheduled_start: '2026-07-19T02:00:00.000Z',
+    status: 'Pending',
+    ...overrides,
+  };
+}
+
 function consultationRow(overrides: Record<string, unknown> = {}) {
+  const { bookingStatus, ...rest } = overrides as {
+    bookingStatus?: string;
+  } & Record<string, unknown>;
+
   return {
     id: 'consultation-1',
     booking_id: 'booking-1',
     pet_id: 'pet-1',
     veterinarian_id: VET_ID,
-    status: 'Pending',
     temperature: null,
     weight: null,
     heart_rate: null,
@@ -77,8 +88,8 @@ function consultationRow(overrides: Record<string, unknown> = {}) {
     reason_for_visit: 'Checkup',
     follow_up_date: null,
     follow_up_booking_id: null,
-    completed_at: null,
-    ...overrides,
+    booking: bookingFor({ status: bookingStatus ?? 'Pending' }),
+    ...rest,
   };
 }
 
@@ -89,7 +100,7 @@ describe('consultation.service (#66)', () => {
   });
 
   describe('listConsultationQueue', () => {
-    it('auto-vivifies a Pending consultation for a confirmed Veterinary booking without one yet', async () => {
+    it('auto-vivifies a consultation for an actionable (Pending/In Progress) Veterinary booking without one yet', async () => {
       queueFromResults(
         {
           data: [
@@ -128,10 +139,14 @@ describe('consultation.service (#66)', () => {
           booking_id: 'booking-1',
           pet_id: 'pet-1',
           veterinarian_id: VET_ID,
-          status: 'Pending',
           reason_for_visit: 'Annual checkup',
         },
       ]);
+      // consultations.status was dropped (M07) - the auto-vivify insert must
+      // never write it.
+      expect(
+        (insert?.payload as Array<Record<string, unknown>>)[0]
+      ).not.toHaveProperty('status');
     });
 
     it('AC-5: rejects auto-vivifying a consultation against a non-Makati booking', async () => {
@@ -165,55 +180,6 @@ describe('consultation.service (#66)', () => {
     });
   });
 
-  describe('listUnconfirmedVeterinaryBookings', () => {
-    it('returns Pending Veterinary bookings for the day without vivifying a consultation', async () => {
-      queueFromResults({
-        data: [
-          {
-            id: 'booking-3',
-            status: 'Pending',
-            service_category: 'Veterinary',
-            scheduled_start: '2026-07-19T04:00:00.000Z',
-          },
-        ],
-        error: null,
-      });
-
-      const result = await listUnconfirmedVeterinaryBookings();
-
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('booking-3');
-      expect(
-        recordedWrites.find((write) => write.table === 'consultations')
-      ).toBeUndefined();
-    });
-
-    it('sorts multiple Pending bookings by scheduled_start', async () => {
-      queueFromResults({
-        data: [
-          {
-            id: 'booking-late',
-            status: 'Pending',
-            scheduled_start: '2026-07-19T05:00:00.000Z',
-          },
-          {
-            id: 'booking-early',
-            status: 'Pending',
-            scheduled_start: '2026-07-19T01:00:00.000Z',
-          },
-        ],
-        error: null,
-      });
-
-      const result = await listUnconfirmedVeterinaryBookings();
-
-      expect(result.map((booking) => booking.id)).toEqual([
-        'booking-early',
-        'booking-late',
-      ]);
-    });
-  });
-
   describe('getConsultation', () => {
     it('returns 404 when the consultation does not exist', async () => {
       queueFromResults({ data: null, error: null });
@@ -238,16 +204,19 @@ describe('consultation.service (#66)', () => {
   });
 
   describe('updateConsultation', () => {
-    it('AC-1: records vitals/diagnosis/medications while Ongoing', async () => {
+    it('AC-1: records vitals/diagnosis/medications while the booking is In Progress', async () => {
       queueFromResults(
-        { data: consultationRow({ status: 'Ongoing' }), error: null },
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
         {
           data: consultationRow({
-            status: 'Ongoing',
+            bookingStatus: 'In Progress',
             diagnosis: 'Ear infection',
           }),
           error: null,
-        }
+        } // final consultations update
       );
 
       const result = await updateConsultation({
@@ -271,11 +240,11 @@ describe('consultation.service (#66)', () => {
       });
     });
 
-    it('rejects skipping Pending -> Completed', async () => {
-      queueFromResults({
-        data: consultationRow({ status: 'Pending' }),
-        error: null,
-      });
+    it('rejects skipping Pending -> Completed (delegates to completeBooking, which requires In Progress)', async () => {
+      queueFromResults(
+        { data: consultationRow({ bookingStatus: 'Pending' }), error: null }, // getConsultation
+        { data: bookingFor({ status: 'Pending' }), error: null } // completeBooking's getRawBookingById
+      );
 
       await expect(
         updateConsultation({
@@ -286,9 +255,9 @@ describe('consultation.service (#66)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
-    it('rejects updating an already-Completed consultation', async () => {
+    it('rejects updating an already-finalized (Completed/Paid) consultation', async () => {
       queueFromResults({
-        data: consultationRow({ status: 'Completed' }),
+        data: consultationRow({ bookingStatus: 'Completed' }),
         error: null,
       });
 
@@ -304,21 +273,29 @@ describe('consultation.service (#66)', () => {
       });
     });
 
-    it('AC-2: marking Completed writes a line item for the professional fee, each medication, and each procedure', async () => {
+    it('AC-2: marking Completed delegates to completeBooking, writes a line item for the professional fee/each medication/each procedure, and returns the post-transition booking status', async () => {
       queueFromResults(
-        { data: consultationRow({ status: 'Ongoing' }), error: null },
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
+        { data: bookingFor({ status: 'In Progress' }), error: null }, // completeBooking's getRawBookingById
+        {
+          data: bookingFor({ status: 'Completed' }),
+          error: null,
+        }, // completeBooking's updateBookingRow
+        { data: null, error: null }, // consultation_line_items insert
         {
           data: consultationRow({
-            status: 'Completed',
+            bookingStatus: 'Completed',
             pet_id: 'pet-1',
             medications: [{ name: 'Amoxicillin', dose: '50mg', notes: null }],
           }),
           error: null,
-        },
-        { data: null, error: null } // consultation_line_items insert
+        } // final consultations update
       );
 
-      await updateConsultation({
+      const result = await updateConsultation({
         requesterId: VET_ID,
         consultationId: 'consultation-1',
         input: {
@@ -330,6 +307,8 @@ describe('consultation.service (#66)', () => {
           ],
         },
       });
+
+      expect(result.booking?.status).toBe('Completed');
 
       const lineItemsInsert = recordedWrites.find(
         (write) => write.table === 'consultation_line_items'
@@ -343,15 +322,23 @@ describe('consultation.service (#66)', () => {
 
     it('AC-3: a vaccination entered at completion writes through to pet_vaccination_records immediately', async () => {
       queueFromResults(
-        { data: consultationRow({ status: 'Ongoing' }), error: null },
         {
-          data: consultationRow({ status: 'Completed', pet_id: 'pet-1' }),
+          data: consultationRow({ bookingStatus: 'In Progress' }),
           error: null,
-        },
+        }, // getConsultation
+        { data: bookingFor({ status: 'In Progress' }), error: null }, // completeBooking's getRawBookingById
+        { data: bookingFor({ status: 'Completed' }), error: null }, // completeBooking's updateBookingRow
         { data: null, error: null }, // consultation_line_items insert
         { data: { role: 'Veterinarian' }, error: null }, // createVaccinationRecord's role check
         { data: { id: 'pet-1' }, error: null }, // createVaccinationRecord's pet lookup
-        { data: { id: 'vax-1', vaccine_name: 'Rabies' }, error: null } // vaccination insert
+        { data: { id: 'vax-1', vaccine_name: 'Rabies' }, error: null }, // vaccination insert
+        {
+          data: consultationRow({
+            bookingStatus: 'Completed',
+            pet_id: 'pet-1',
+          }),
+          error: null,
+        } // final consultations update
       );
 
       await updateConsultation({

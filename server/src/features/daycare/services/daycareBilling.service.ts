@@ -1,5 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { DaycareSession } from '../daycare.types.ts';
+import { completeBooking } from '../../booking/services/booking.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -80,6 +81,33 @@ export async function checkOutDaycareSession({
       400,
       updateError?.message ?? 'Failed to check out daycare session'
     );
+  }
+
+  // Booking-status revision: sync the linked booking to Completed/Paid now
+  // that checkout happened. Walk-ins (booking_id is null) have no booking
+  // row to sync at all.
+  //
+  // Every booking-linked check-in calls startBooking (daycareCheckIn.service
+  // .ts), so the linked booking should always be In Progress by the time
+  // checkout runs. The one edge case where that wouldn't hold is if the
+  // booking was independently cancelled in the meantime -
+  // CANCELLABLE_BOOKING_STATUSES includes 'In Progress', so a booking-side
+  // cancellation action (outside daycare's control) could flip it to
+  // Cancelled between check-in and checkout. completeBooking would then
+  // throw a 409 ("A Cancelled booking cannot be completed"). By this point
+  // the daycare_sessions row is already durably Completed - that's the
+  // authoritative record that the physical checkout happened - so we don't
+  // let a stale/cancelled booking's 409 block this response; we just skip
+  // the sync for that one status-mismatch case and let any other error
+  // propagate normally.
+  if (session.booking_id) {
+    try {
+      await completeBooking({ bookingId: session.booking_id });
+    } catch (syncError) {
+      if ((syncError as { statusCode?: number }).statusCode !== 409) {
+        throw syncError;
+      }
+    }
   }
 
   return updated as DaycareSession;

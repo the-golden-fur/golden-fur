@@ -53,8 +53,8 @@ function isOverdue(scheduledCheckOutDate: string): boolean {
  * Checkout's own search/filter/sort picker (#79 revision) - replaces a raw
  * "paste the stay id" text field with the same detailed-card pattern
  * HotelBookingPicker already established, sourced from the same
- * GET /hotel/stays endpoint. Only ever lists Active stays - a Completed one
- * has nothing left to check out.
+ * GET /hotel/stays endpoint. Only ever lists In Progress stays (booking-
+ * status revision) - a Completed/Paid one has nothing left to check out.
  */
 export function HotelStayPicker({
   accessToken,
@@ -74,7 +74,7 @@ export function HotelStayPicker({
     const token = accessToken;
     let isMounted = true;
 
-    void listHotelStays(token, 'Active').then((result) => {
+    void listHotelStays(token, 'In Progress').then((result) => {
       if (!isMounted) return;
 
       setIsLoading(false);

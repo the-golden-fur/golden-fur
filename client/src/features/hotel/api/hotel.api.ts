@@ -1,3 +1,4 @@
+import type { BookingStatus } from '../../booking/booking.types';
 import type {
   Cage,
   CageSize,
@@ -11,11 +12,20 @@ import type {
   CurrentPrescription,
   FoodCatalogItem,
   HotelStay,
-  HotelStayStatus,
   HotelStayWithCage,
   MedicationCatalogItem,
   UpdateCatalogItemPayload,
 } from '../hotel.types';
+
+/** A hotel_stays row only ever exists once its booking has been physically
+ * checked in, so these are the only statuses meaningful to filter by here
+ * (booking-status revision - hotel_stays no longer carries its own status
+ * column; mirrors server/src/features/hotel/services/hotelStay.service.ts's
+ * HotelStayFilterStatus). */
+export type HotelStayFilterStatus = Extract<
+  BookingStatus,
+  'In Progress' | 'Completed' | 'Paid'
+>;
 
 interface HotelApiResult<T> {
   data: T | null;
@@ -190,7 +200,7 @@ export async function completeCareLogEntry(
 
 export async function listHotelStays(
   accessToken: string,
-  status?: HotelStayStatus
+  status?: HotelStayFilterStatus
 ): Promise<HotelApiResult<HotelStayWithCage[]>> {
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
   const response = await fetch(`${API_BASE_URL}/hotel/stays${query}`, {

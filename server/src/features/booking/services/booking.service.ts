@@ -2,7 +2,11 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
-import type { Booking, ServiceCategory } from '../booking.types.ts';
+import {
+  ONLINE_PAYMENT_METHODS,
+  type Booking,
+  type ServiceCategory,
+} from '../booking.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import {
@@ -43,10 +47,13 @@ interface CreateBookingParams {
 /**
  * M11's notifications table is Sprint 6 scope, so the booking_confirmed
  * notification (email + in-app) is a stub/log call - it must never block
- * booking confirmation waiting on a real send (Guide #51 dev notes).
+ * booking creation waiting on a real send (Guide #51 dev notes). Fires on
+ * every successful creation now (booking-status revision retired the
+ * 'Confirmed' status value, but M11's booking_confirmed event still refers
+ * to "a booking was successfully made", not that specific status name).
  * TODO(Sprint 6, M11): replace with the real notification dispatch.
  */
-function sendBookingConfirmedNotificationStub(booking: Booking): void {
+function sendBookingCreatedNotificationStub(booking: Booking): void {
   // eslint-disable-next-line no-console
   console.info(
     `[M11 stub] booking_confirmed notification for booking ${booking.id} (customer ${booking.customer_id})`
@@ -303,22 +310,18 @@ export async function createBooking({
       ? Math.round(totalPrice * HOTEL_DOWNPAYMENT_RATE * 100) / 100
       : null;
 
-  // Payment gate (#51 AC-4): Hotel/Grooming/Daycare only reach Confirmed once
-  // payment_confirmed = true; Veterinary confirms with no payment gate. A
-  // pay-at-counter booking (payment_confirmed = false, #58 AC-4) persists as
-  // Pending until the Sprint 5 M08 cashier-confirmation flow exists to
-  // promote it - it does not occupy capacity (all capacity counts filter on
-  // status = 'Confirmed').
-  // TODO(Sprint 5, M08): cashier-side payment confirmation promotes Pending
-  // bookings to Confirmed (re-running the capacity check at that moment).
+  // Booking-status revision: there is no more payment gate on the initial
+  // status - every booking starts 'Pending' and holds its capacity/staff-
+  // time slot immediately (ACTIVE_BOOKING_STATUSES), regardless of category
+  // or payment method. payment_confirmed is still recorded as data (it
+  // drives the automatic Pending->...->Paid fast path once the service
+  // completes - see completeBooking below), it just no longer gates status
+  // at creation time.
   const paymentConfirmed =
     input.service_category === 'Veterinary'
       ? false
       : (input.payment_confirmed ?? false);
-  const status =
-    input.service_category === 'Veterinary' || paymentConfirmed
-      ? 'Confirmed'
-      : 'Pending';
+  const status: Booking['status'] = 'Pending';
 
   // Staff resolution (Grooming/Veterinary) happens before the generic
   // capacity check because for these categories staff availability IS the
@@ -363,6 +366,7 @@ export async function createBooking({
       payment_method: input.payment_method ?? null,
       payment_confirmed: paymentConfirmed,
       special_instructions: input.special_instructions ?? null,
+      hotel_preferences: input.hotel_preferences ?? null,
     })
     .select('*')
     .maybeSingle();
@@ -405,20 +409,20 @@ export async function createBooking({
 
   // AC-5: with no client-side transaction, the post-insert re-count decides
   // races deterministically - the loser's row is removed and the caller gets
-  // the same capacity-taken error the flow diagram describes.
-  if (status === 'Confirmed') {
-    const won = await confirmCapacityAfterInsert(booking);
+  // the same capacity-taken error the flow diagram describes. Every booking
+  // holds capacity from 'Pending' onward now (booking-status revision), so
+  // this always runs, not just for a payment-confirmed booking.
+  const won = await confirmCapacityAfterInsert(booking);
 
-    if (!won) {
-      await supabase.from('bookings').delete().eq('id', booking.id);
-      throwWithStatus(
-        409,
-        'Capacity was taken between slot selection and payment — please select another slot'
-      );
-    }
-
-    sendBookingConfirmedNotificationStub(booking);
+  if (!won) {
+    await supabase.from('bookings').delete().eq('id', booking.id);
+    throwWithStatus(
+      409,
+      'Capacity was taken between slot selection and payment — please select another slot'
+    );
   }
+
+  sendBookingCreatedNotificationStub(booking);
 
   return getBookingById({ requesterId, bookingId: booking.id });
 }
@@ -451,7 +455,8 @@ export async function getBookingById({
     }
   }
 
-  return booking;
+  const [withNoShow] = await applyNoShowTransition([booking]);
+  return withNoShow;
 }
 
 export interface ListBookingsFilters {
@@ -532,5 +537,165 @@ export async function listBookings({
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as Booking[];
+  const withNoShow = await applyNoShowTransition((data ?? []) as Booking[]);
+
+  // A row flipped to No-show by the lazy transition above may no longer
+  // match an explicit status filter the caller asked for (e.g. "show me
+  // Pending bookings") - re-filter rather than return a stale match.
+  return filters.status
+    ? withNoShow.filter((booking) => booking.status === filters.status)
+    : withNoShow;
+}
+
+/**
+ * No-show is a lazy, read-time transition - no cron/scheduled-job infra
+ * exists in this app. Any Pending booking whose scheduled_start has already
+ * passed is flipped to No-show the moment it's next read through
+ * getBookingById/listBookings, matching "the label did not change from
+ * pending to in-progress" as the definition of a no-show. A single bulk
+ * update covers every stale row in the result set, not one query per row.
+ */
+async function applyNoShowTransition(bookings: Booking[]): Promise<Booking[]> {
+  const now = new Date();
+  const staleIds = bookings
+    .filter(
+      (booking) =>
+        booking.status === 'Pending' &&
+        new Date(booking.scheduled_start).getTime() < now.getTime()
+    )
+    .map((booking) => booking.id);
+
+  if (staleIds.length === 0) return bookings;
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({ status: 'No-show', updated_at: now.toISOString() })
+    .in('id', staleIds)
+    .select(BOOKING_SELECT);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const updatedById = new Map(
+    ((data ?? []) as Booking[]).map((row) => [row.id, row])
+  );
+
+  return bookings.map((booking) => updatedById.get(booking.id) ?? booking);
+}
+
+interface AdvanceStatusParams {
+  bookingId: string;
+}
+
+async function getRawBookingById(bookingId: string): Promise<Booking> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(BOOKING_SELECT)
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Booking not found');
+
+  return data as Booking;
+}
+
+async function updateBookingRow(
+  bookingId: string,
+  update: Record<string, unknown>
+): Promise<Booking> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .update(update)
+    .eq('id', bookingId)
+    .select(BOOKING_SELECT)
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to update booking');
+  }
+
+  return data as Booking;
+}
+
+/**
+ * Manual Start action: Pending -> In Progress. Staff-only, enforced at the
+ * route level (booking.routes.ts) - this function only checks the booking
+ * is in a startable state, so it's also safely callable internally by a
+ * category's own "the service physically began" trigger (Hotel/Daycare
+ * check-in) without a second HTTP round-trip.
+ */
+export async function startBooking({
+  bookingId,
+}: AdvanceStatusParams): Promise<Booking> {
+  const booking = await getRawBookingById(bookingId);
+
+  if (booking.status !== 'Pending') {
+    throwWithStatus(409, `A ${booking.status} booking cannot be started`);
+  }
+
+  const now = new Date().toISOString();
+  return updateBookingRow(bookingId, {
+    status: 'In Progress',
+    started_at: now,
+    updated_at: now,
+  });
+}
+
+/**
+ * Manual Complete action: In Progress -> Completed. When the booking was
+ * already paid online (payment_method is GCash/Maya and payment_confirmed
+ * is true), this skips straight to Paid instead of requiring a separate
+ * Mark as Paid click - the money was already collected before the service
+ * even started. Every pay-at-counter booking (Cash/Card/Bank Transfer/
+ * Grabmart/Pickaroo, or an online booking that was never actually
+ * confirmed) lands on Completed and waits for markBookingPaid.
+ */
+export async function completeBooking({
+  bookingId,
+}: AdvanceStatusParams): Promise<Booking> {
+  const booking = await getRawBookingById(bookingId);
+
+  if (booking.status !== 'In Progress') {
+    throwWithStatus(409, `A ${booking.status} booking cannot be completed`);
+  }
+
+  const now = new Date().toISOString();
+  const autoPaid =
+    booking.payment_method !== null &&
+    booking.payment_confirmed &&
+    ONLINE_PAYMENT_METHODS.includes(booking.payment_method);
+
+  return updateBookingRow(bookingId, {
+    status: autoPaid ? 'Paid' : 'Completed',
+    completed_at: now,
+    paid_at: autoPaid ? now : null,
+    updated_at: now,
+  });
+}
+
+/**
+ * Manual Mark as Paid action, for a pay-at-counter booking (Cash/Card/Bank
+ * Transfer/Grabmart/Pickaroo, or Veterinary, which never has an upfront
+ * payment gate at all) - completeBooking already promoted an
+ * already-confirmed online payment straight to Paid, so this is only
+ * reachable from Completed.
+ */
+export async function markBookingPaid({
+  bookingId,
+}: AdvanceStatusParams): Promise<Booking> {
+  const booking = await getRawBookingById(bookingId);
+
+  if (booking.status !== 'Completed') {
+    throwWithStatus(
+      409,
+      `A ${booking.status} booking cannot be marked paid - it must be Completed first`
+    );
+  }
+
+  const now = new Date().toISOString();
+  return updateBookingRow(bookingId, {
+    status: 'Paid',
+    paid_at: now,
+    updated_at: now,
+  });
 }

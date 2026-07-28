@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBooking, listBookings } from './booking.service.ts';
+import {
+  completeBooking,
+  createBooking,
+  listBookings,
+  markBookingPaid,
+  startBooking,
+} from './booking.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
@@ -138,7 +144,7 @@ const INSERTED_BOOKING = {
   branch_id: 'branch-1',
   service_category: 'Grooming',
   assigned_staff_id: 'groomer-1',
-  status: 'Confirmed',
+  status: 'Pending',
   scheduled_start: BASE_INPUT.scheduled_start,
   scheduled_end: BASE_INPUT.scheduled_end,
   total_price: 350,
@@ -156,7 +162,7 @@ describe('booking.service (#51)', () => {
     } as never);
   });
 
-  it('AC-1/AC-4: creates a Confirmed Grooming booking (tiered price, auto-assigned staff)', async () => {
+  it('AC-1/AC-4: creates a Pending Grooming booking (tiered price, auto-assigned staff, capacity re-verified post-insert)', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -179,22 +185,32 @@ describe('booking.service (#51)', () => {
     );
 
     expect(insert?.payload).toMatchObject({
-      status: 'Confirmed',
+      status: 'Pending',
       assigned_staff_id: 'groomer-1',
       total_price: 350, // S/SC tier price, not base_price
       downpayment_amount: null,
     });
   });
 
-  it('AC-4: a pay-at-counter (payment_confirmed=false) Daycare booking persists as Pending, not Confirmed', async () => {
+  it('AC-4: a pay-at-counter (payment_confirmed=false) Daycare booking still starts Pending and still holds its capacity slot immediately', async () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
-      { data: [], error: null }, // daycare overlap count - empty
+      { data: [], error: null }, // pre-insert daycare overlap count - empty
       {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
         error: null,
       }, // insert
+      {
+        data: [
+          {
+            id: 'booking-2',
+            pet_id: PET.id,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        error: null,
+      }, // post-insert re-count (always runs now, regardless of status) - winner
       {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
         error: null,
@@ -253,7 +269,7 @@ describe('booking.service (#51)', () => {
     );
 
     expect(insert?.payload).toMatchObject({
-      status: 'Confirmed',
+      status: 'Pending',
       payment_confirmed: false,
     });
   });
@@ -371,7 +387,7 @@ describe('booking.service (#51)', () => {
           id: 'booking-3',
           service_category: 'Daycare',
           assigned_staff_id: null,
-          status: 'Confirmed',
+          status: 'Pending',
         },
         error: null,
       }, // insert
@@ -406,11 +422,20 @@ describe('booking.service (#51)', () => {
   describe('listBookings (#59/#60 supporting infra)', () => {
     it('scopes a customer caller to their own rows regardless of branch/status filters', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
-      queueFromResults({ data: [{ id: 'booking-1' }], error: null });
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-1',
+            status: 'Pending',
+            scheduled_start: '2099-01-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
 
       const result = await listBookings({
         requesterId: CUSTOMER_ID,
-        filters: { branchId: 'branch-1', status: 'Confirmed' },
+        filters: { branchId: 'branch-1', status: 'Pending' },
       });
 
       expect(result).toHaveLength(1);
@@ -434,7 +459,7 @@ describe('booking.service (#51)', () => {
         filters: {
           branchId: 'branch-1',
           serviceCategory: 'Grooming',
-          status: 'Confirmed',
+          status: 'Pending',
         },
       });
 
@@ -444,7 +469,43 @@ describe('booking.service (#51)', () => {
       >;
       expect(builder.eq).toHaveBeenCalledWith('branch_id', 'branch-1');
       expect(builder.eq).toHaveBeenCalledWith('service_category', 'Grooming');
-      expect(builder.eq).toHaveBeenCalledWith('status', 'Confirmed');
+      expect(builder.eq).toHaveBeenCalledWith('status', 'Pending');
+    });
+
+    it('re-filters out a row the lazy No-show transition flipped away from the requested status filter', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-stale',
+              status: 'Pending',
+              scheduled_start: '2020-01-01T00:00:00.000Z', // long past
+            },
+          ],
+          error: null,
+        }, // list query
+        {
+          data: [
+            {
+              id: 'booking-stale',
+              status: 'No-show',
+              scheduled_start: '2020-01-01T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        } // the No-show bulk-update's own .select()
+      );
+
+      const result = await listBookings({
+        requesterId: 'staff-1',
+        filters: { status: 'Pending' },
+      });
+
+      // The row flipped to No-show mid-request, so it no longer belongs in
+      // a "status = Pending" result even though the initial DB query (which
+      // ran before the flip) matched it.
+      expect(result).toHaveLength(0);
     });
 
     it('applies a date_from/date_to range as an inclusive [start, end+1day) window', async () => {
@@ -495,6 +556,135 @@ describe('booking.service (#51)', () => {
         'scheduled_start',
         '2026-07-01T00:00:00.000Z'
       );
+    });
+  });
+
+  describe('startBooking/completeBooking/markBookingPaid (booking-status revision manual actions)', () => {
+    it('startBooking: Pending -> In Progress, sets started_at', async () => {
+      queueFromResults(
+        { data: { ...INSERTED_BOOKING, status: 'Pending' }, error: null }, // load
+        { data: { ...INSERTED_BOOKING, status: 'In Progress' }, error: null } // update
+      );
+
+      const booking = await startBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('In Progress');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({ status: 'In Progress' });
+      expect(
+        (update?.payload as { started_at?: string }).started_at
+      ).toBeTruthy();
+    });
+
+    it('startBooking: rejects a booking that is not Pending', async () => {
+      queueFromResults({
+        data: { ...INSERTED_BOOKING, status: 'In Progress' },
+        error: null,
+      });
+
+      await expect(
+        startBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('completeBooking: In Progress -> Completed for a pay-at-counter booking (no auto-Paid)', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'In Progress',
+            payment_method: 'Cash',
+            payment_confirmed: false,
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
+      );
+
+      const booking = await completeBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('Completed');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({
+        status: 'Completed',
+        paid_at: null,
+      });
+    });
+
+    it('completeBooking: skips straight to Paid when payment_method is an already-confirmed online method', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'In Progress',
+            payment_method: 'GCash',
+            payment_confirmed: true,
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
+      );
+
+      const booking = await completeBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('Paid');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({ status: 'Paid' });
+      expect((update?.payload as { paid_at?: string }).paid_at).toBeTruthy();
+    });
+
+    it('completeBooking: an online method that was never actually confirmed still lands on Completed, not Paid', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'In Progress',
+            payment_method: 'GCash',
+            payment_confirmed: false,
+          },
+          error: null,
+        },
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null }
+      );
+
+      const booking = await completeBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('Completed');
+    });
+
+    it('completeBooking: rejects a booking that is not In Progress', async () => {
+      queueFromResults({
+        data: { ...INSERTED_BOOKING, status: 'Pending' },
+        error: null,
+      });
+
+      await expect(
+        completeBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('markBookingPaid: Completed -> Paid', async () => {
+      queueFromResults(
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
+      );
+
+      const booking = await markBookingPaid({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('Paid');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({ status: 'Paid' });
+    });
+
+    it('markBookingPaid: rejects a booking that is not Completed (e.g. still In Progress)', async () => {
+      queueFromResults({
+        data: { ...INSERTED_BOOKING, status: 'In Progress' },
+        error: null,
+      });
+
+      await expect(
+        markBookingPaid({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
     });
   });
 });

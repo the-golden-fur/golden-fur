@@ -72,7 +72,7 @@ const DAYCARE_BOOKING = {
   pet_id: 'pet-1',
   branch_id: 'branch-1',
   service_category: 'Daycare',
-  status: 'Confirmed',
+  status: 'Pending',
   scheduled_start: daysFromNow(10),
   scheduled_end: daysFromNow(10.1),
   assigned_staff_id: null,
@@ -319,5 +319,38 @@ describe('reschedule.service (#54)', () => {
         input: NEW_WINDOW,
       })
     ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('refuses to reschedule an In Progress booking - only Pending is reschedulable', async () => {
+    queueFromResults({
+      data: { ...DAYCARE_BOOKING, status: 'In Progress' },
+      error: null,
+    });
+
+    await expect(
+      rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: NEW_WINDOW,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("refuses to reschedule a Pending booking whose own scheduled_start has already passed (shouldn't be reschedulable once it's overdue)", async () => {
+    queueFromResults({
+      data: { ...DAYCARE_BOOKING, scheduled_start: daysFromNow(-1) },
+      error: null,
+    });
+
+    await expect(
+      rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: NEW_WINDOW,
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining('already passed'),
+    });
   });
 });

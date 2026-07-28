@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import { forgotPassword, login } from '../../../api/staffAuth.api';
 import {
@@ -45,6 +46,10 @@ export function StaffLoginForm() {
       return;
     }
 
+    // Staff sessions are sessionStorage-only - closing the browser signs
+    // them out even if a customer session on the same browser had
+    // persistence turned on.
+    setSessionPersistence(false);
     await applySession(result.data.access_token, result.data.refresh_token);
 
     // The login response doesn't carry role/enrollment - ask the

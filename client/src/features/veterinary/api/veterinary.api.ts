@@ -1,4 +1,3 @@
-import type { Booking } from '../../booking/booking.types';
 import type {
   Consultation,
   PetHealthCondition,
@@ -11,11 +10,16 @@ interface VeterinaryApiResult<T> {
   error: string | null;
 }
 
+/**
+ * Booking-status revision: the queue endpoint now only ever returns
+ * consultations whose booking is still actionable (bookings.status IN
+ * Pending/In Progress - see consultation.service.ts's merged
+ * listConsultationQueue) - the old separate "pendingBookings" (awaiting
+ * payment confirmation, no consultation yet) list is gone along with the
+ * server's now-merged two-function split.
+ */
 export interface ConsultationQueueResult {
   consultations: Consultation[];
-  /** Today's Veterinary bookings still awaiting payment confirmation - no
-   * consultation exists for these yet, surfaced for staff awareness only. */
-  pendingBookings: Booking[];
 }
 
 // veterinary.routes.ts (server) is mounted at the server root (not under
@@ -60,12 +64,13 @@ export async function listConsultationQueue(
   accessToken: string,
   dateRange: ConsultationQueueDateRange = {}
 ): Promise<VeterinaryApiResult<ConsultationQueueResult>> {
-  const params = new URLSearchParams({ includePending: 'true' });
+  const params = new URLSearchParams();
   if (dateRange.dateFrom) params.set('date_from', dateRange.dateFrom);
   if (dateRange.dateTo) params.set('date_to', dateRange.dateTo);
 
+  const queryString = params.toString();
   const response = await fetch(
-    `${API_BASE_URL}/veterinary/consultations/queue?${params.toString()}`,
+    `${API_BASE_URL}/veterinary/consultations/queue${queryString ? `?${queryString}` : ''}`,
     {
       headers: authHeaders(accessToken),
     }
@@ -75,20 +80,14 @@ export async function listConsultationQueue(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{
-    consultations: Consultation[];
-    pendingBookings?: Booking[];
-  }>(response);
+  const result = await parseBody<{ consultations: Consultation[] }>(response);
 
   if (!result.data) {
     return { data: null, error: result.error };
   }
 
   return {
-    data: {
-      consultations: result.data.consultations,
-      pendingBookings: result.data.pendingBookings ?? [],
-    },
+    data: { consultations: result.data.consultations },
     error: null,
   };
 }

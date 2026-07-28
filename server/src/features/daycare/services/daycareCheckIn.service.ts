@@ -1,6 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
 import type { DaycareSession } from '../daycare.types.ts';
+import { startBooking } from '../../booking/services/booking.service.ts';
 
 /** Fixed per Modules-Features - not read from branches.daycare_checkin_cutoff
  * even though the column exists on every branch (#62 migration note); only
@@ -112,7 +113,10 @@ export async function checkInDaycareSession({
     if (booking.service_category !== 'Daycare') {
       throwWithStatus(400, 'Booking is not a Daycare booking');
     }
-    if (booking.status !== 'Confirmed') {
+    // Booking-status revision: there is no more separate Confirmed gate -
+    // check-in itself is the "service started" event, so a booking may be
+    // checked in only while it's still Pending (hasn't started yet).
+    if (booking.status !== 'Pending') {
       throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
     }
 
@@ -165,6 +169,13 @@ export async function checkInDaycareSession({
       400,
       insertError?.message ?? 'Failed to check in daycare session'
     );
+  }
+
+  // Booking-status revision: sync the linked booking to In Progress now that
+  // the pet has physically checked in. Walk-ins (bookingId is null) have no
+  // booking row to sync at all.
+  if (bookingId) {
+    await startBooking({ bookingId });
   }
 
   return inserted as DaycareSession;

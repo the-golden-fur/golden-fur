@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import type { Booking } from '../../../booking/booking.types';
+import type { BookingStatus } from '../../../booking/booking.types';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   getCustomerProfile,
   getPet,
@@ -22,10 +23,8 @@ import {
   scheduleFollowUp,
   updateConsultation,
 } from '../../api/veterinary.api';
-import { ConsultationStatusBadge } from '../../components/ConsultationStatusBadge/ConsultationStatusBadge';
 import type {
   Consultation,
-  ConsultationStatus,
   MedicationInput,
   ProcedureInput,
 } from '../../veterinary.types';
@@ -39,12 +38,17 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-const STATUS_GROUPS: ConsultationStatus[] = ['Pending', 'Ongoing', 'Completed'];
-const UNCONFIRMED_STATUS = 'Unconfirmed';
-type StatusFilter = ConsultationStatus | typeof UNCONFIRMED_STATUS | 'All';
+// Booking-status revision: the queue endpoint only ever returns
+// consultations whose booking hasn't finished yet (bookings.status IN
+// Pending/In Progress - see consultation.service.ts's merged
+// listConsultationQueue), so those are the only two meaningful values to
+// group/filter by here (mirrors GroomerDashboardPage's own
+// GROOMING_STATUSES). The old separate "Unconfirmed (awaiting payment)"
+// option is gone along with the server's now-merged two-function split.
+const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress'];
+type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
-  { value: UNCONFIRMED_STATUS, label: 'Unconfirmed (awaiting payment)' },
   ...STATUS_GROUPS.map((status) => ({ value: status, label: status })),
 ];
 
@@ -61,7 +65,6 @@ export function VeterinaryConsolePage() {
   );
 
   const [consultations, setConsultations] = useState<Consultation[]>([]);
-  const [pendingBookings, setPendingBookings] = useState<Booking[]>([]);
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -132,7 +135,6 @@ export function VeterinaryConsolePage() {
 
       setLoadError(null);
       setConsultations(result.data.consultations);
-      setPendingBookings(result.data.pendingBookings);
       setIsLoading(false);
 
       const petIds = new Set<string>();
@@ -143,11 +145,6 @@ export function VeterinaryConsolePage() {
           petIds.add(consultation.booking.pet_id);
           customerIds.add(consultation.booking.customer_id);
         }
-      }
-
-      for (const booking of result.data.pendingBookings) {
-        petIds.add(booking.pet_id);
-        customerIds.add(booking.customer_id);
       }
 
       void Promise.all(Array.from(petIds).map((id) => getPet(id, token))).then(
@@ -210,10 +207,12 @@ export function VeterinaryConsolePage() {
   }, [consultations, pets, owners]);
 
   const grouped = useMemo(() => {
-    const map = new Map<ConsultationStatus, typeof rows>();
+    const map = new Map<BookingStatus, typeof rows>();
     for (const status of STATUS_GROUPS) map.set(status, []);
     for (const row of rows) {
-      map.get(row.consultation.status)!.push(row);
+      const status = row.consultation.booking?.status;
+      if (!status) continue;
+      map.get(status)?.push(row);
     }
     for (const group of map.values()) {
       group.sort(
@@ -225,37 +224,8 @@ export function VeterinaryConsolePage() {
     return map;
   }, [rows]);
 
-  const enrichedPending = useMemo(() => {
-    return [...pendingBookings]
-      .sort(
-        (a, b) =>
-          new Date(a.scheduled_start).getTime() -
-          new Date(b.scheduled_start).getTime()
-      )
-      .map((booking) => {
-        const pet = pets[booking.pet_id];
-        const owner = owners[booking.customer_id];
-
-        return {
-          booking,
-          petName: pet?.name ?? 'Unknown pet',
-          ownerName: owner?.full_name ?? 'Unknown owner',
-        };
-      });
-  }, [pendingBookings, pets, owners]);
-
-  // 'All' shows both the consultation status groups and unconfirmed
-  // (awaiting payment) bookings together; a specific consultation status
-  // narrows to just that group; 'Unconfirmed' shows only the
-  // awaiting-payment bookings.
-  const showPendingSection =
-    statusFilter === 'All' || statusFilter === UNCONFIRMED_STATUS;
   const visibleStatusGroups =
-    statusFilter === 'All'
-      ? STATUS_GROUPS
-      : statusFilter === UNCONFIRMED_STATUS
-        ? []
-        : [statusFilter];
+    statusFilter === 'All' ? STATUS_GROUPS : [statusFilter];
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
 
@@ -291,9 +261,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
@@ -346,9 +314,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
@@ -396,9 +362,7 @@ export function VeterinaryConsolePage() {
     const updated = result.data.consultation;
     setConsultations((prev) =>
       prev.map((consultation) =>
-        consultation.id === updated.id
-          ? { ...updated, booking: consultation.booking }
-          : consultation
+        consultation.id === updated.id ? updated : consultation
       )
     );
   }
@@ -456,7 +420,7 @@ export function VeterinaryConsolePage() {
               {visibleStatusGroups.map((status) => (
                 <section key={status} className={styles.statusGroup}>
                   <h2 className={styles.statusGroupTitle}>
-                    <ConsultationStatusBadge status={status} />
+                    <BookingStatusBadge status={status} />
                   </h2>
                   {grouped.get(status)!.length === 0 ? (
                     <p className={styles.copy}>None</p>
@@ -488,32 +452,6 @@ export function VeterinaryConsolePage() {
                   )}
                 </section>
               ))}
-
-              {showPendingSection ? (
-                <section className={styles.unconfirmedSection}>
-                  {enrichedPending.length === 0 ? (
-                    <p className={styles.copy}>
-                      No unconfirmed bookings match these filters.
-                    </p>
-                  ) : (
-                    <ul className={styles.rowList}>
-                      {enrichedPending.map((item) => (
-                        <li key={item.booking.id} className={styles.pendingRow}>
-                          <span className={styles.rowPetName}>
-                            {item.petName}
-                          </span>
-                          <span className={styles.rowMeta}>
-                            {item.ownerName}
-                          </span>
-                          <span className={styles.pendingBadge}>
-                            Awaiting payment
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ) : null}
             </div>
 
             <div className={styles.detail}>

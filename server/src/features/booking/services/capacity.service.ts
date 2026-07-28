@@ -1,8 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type {
-  AvailableStaff,
-  Booking,
-  ServiceCategory,
+import {
+  ACTIVE_BOOKING_STATUSES,
+  type AvailableStaff,
+  type Booking,
+  type ServiceCategory,
 } from '../booking.types.ts';
 import { listAvailableStaff } from './staffPicker.service.ts';
 
@@ -140,7 +141,7 @@ interface OverlappingBookingRow {
   created_at: string;
 }
 
-export async function listOverlappingConfirmedBookings({
+export async function listOverlappingActiveBookings({
   branchId,
   serviceCategory,
   scheduledStart,
@@ -152,7 +153,7 @@ export async function listOverlappingConfirmedBookings({
     .select('id, pet_id, created_at')
     .eq('branch_id', branchId)
     .eq('service_category', serviceCategory)
-    .eq('status', 'Confirmed')
+    .in('status', ACTIVE_BOOKING_STATUSES)
     .lt('scheduled_start', scheduledEnd)
     .gt('scheduled_end', scheduledStart)
     .order('created_at', { ascending: true })
@@ -235,7 +236,7 @@ export async function checkCapacity(
       throwWithStatus(400, 'Pet weight class is required for Hotel capacity');
     }
 
-    const overlapping = await listOverlappingConfirmedBookings(params);
+    const overlapping = await listOverlappingActiveBookings(params);
     const sameSize = await filterSameSizeRows(
       overlapping,
       params.petWeightClass
@@ -254,7 +255,7 @@ export async function checkCapacity(
   }
 
   // Daycare
-  const overlapping = await listOverlappingConfirmedBookings(params);
+  const overlapping = await listOverlappingActiveBookings(params);
   const capacity = getDaycareSessionCapacity(params.branchId);
 
   return overlapping.length < capacity
@@ -285,7 +286,7 @@ export async function confirmCapacityAfterInsert(
       .from('bookings')
       .select('id, created_at')
       .eq('assigned_staff_id', booking.assigned_staff_id)
-      .eq('status', 'Confirmed')
+      .in('status', ACTIVE_BOOKING_STATUSES)
       .lt('scheduled_start', booking.scheduled_end)
       .gt('scheduled_end', booking.scheduled_start)
       .order('created_at', { ascending: true })
@@ -318,7 +319,7 @@ export async function confirmCapacityAfterInsert(
     if (!pet) throwWithStatus(404, 'Pet not found');
 
     const weightClass = pet.weight_class as WeightClass;
-    const overlapping = await listOverlappingConfirmedBookings(baseParams);
+    const overlapping = await listOverlappingActiveBookings(baseParams);
     const sameSize = await filterSameSizeRows(overlapping, weightClass);
     const capacity = await getHotelCageCapacity(booking.branch_id, weightClass);
 
@@ -326,7 +327,7 @@ export async function confirmCapacityAfterInsert(
   }
 
   // Daycare
-  const overlapping = await listOverlappingConfirmedBookings(baseParams);
+  const overlapping = await listOverlappingActiveBookings(baseParams);
   const capacity = getDaycareSessionCapacity(booking.branch_id);
 
   return overlapping.slice(0, capacity).some((row) => row.id === booking.id);

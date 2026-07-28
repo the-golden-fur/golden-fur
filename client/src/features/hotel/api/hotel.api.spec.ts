@@ -128,7 +128,7 @@ describe('hotel.api', () => {
   it('checkOutHotelStay POSTs to the checkout endpoint', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
-        stay: { id: 'stay-1', status: 'Completed' },
+        stay: { id: 'stay-1' },
         downpaymentAmount: 1000,
         extensionFee: null,
         remainingBalance: 1000,

@@ -16,8 +16,6 @@ export const VETERINARY_READ_ROLES: readonly string[] = [
 
 export const VETERINARY_WRITE_ROLES: readonly string[] = ['Veterinarian'];
 
-export type ConsultationStatus = 'Pending' | 'Ongoing' | 'Completed';
-
 /** Array element shape stored on consultations.medications (#63 migration). */
 export interface ConsultationMedication {
   name: string;
@@ -25,12 +23,16 @@ export interface ConsultationMedication {
   notes?: string | null;
 }
 
+/**
+ * Booking-status revision: consultations.status/completed_at were dropped
+ * (M07 migration) - the consultation's execution state now lives entirely
+ * on the joined booking's bookings.status/completed_at instead.
+ */
 export interface Consultation {
   id: string;
   booking_id: string;
   pet_id: string;
   veterinarian_id: string;
-  status: ConsultationStatus;
   temperature: number | null;
   weight: number | null;
   heart_rate: number | null;
@@ -40,7 +42,6 @@ export interface Consultation {
   reason_for_visit: string;
   follow_up_date: string | null;
   follow_up_booking_id: string | null;
-  completed_at: string | null;
   created_at: string;
   updated_at: string;
   booking?: Booking;

@@ -1,6 +1,10 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
-import type { Booking, EffectivePolicy } from '../booking.types.ts';
+import {
+  RESCHEDULABLE_BOOKING_STATUSES,
+  type Booking,
+  type EffectivePolicy,
+} from '../booking.types.ts';
 import type { RescheduleBookingInput } from '../modules/validators/booking.validator.ts';
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import { checkCapacity } from './capacity.service.ts';
@@ -104,8 +108,19 @@ export async function rescheduleBooking({
 }: RescheduleParams): Promise<RescheduleResult> {
   const { booking } = await loadBookingForChange(requesterId, bookingId);
 
-  if (booking.status !== 'Confirmed' && booking.status !== 'Pending') {
+  if (!RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be rescheduled`);
+  }
+
+  // A Pending booking whose own appointment time has already passed is
+  // effectively a no-show waiting to be lazily flipped on next read (see
+  // applyNoShowTransition) - reschedule must not let it slip through in the
+  // gap before that read happens.
+  if (new Date(booking.scheduled_start).getTime() <= Date.now()) {
+    throwWithStatus(
+      409,
+      "This booking's scheduled time has already passed and cannot be rescheduled"
+    );
   }
 
   const targetBranchId = input.branch_id ?? booking.branch_id;

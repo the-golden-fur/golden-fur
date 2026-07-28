@@ -4,7 +4,7 @@ import {
   filterSameSizeRows,
   getDaycareSessionCapacity,
   getHotelCageCapacity,
-  listOverlappingConfirmedBookings,
+  listOverlappingActiveBookings,
   type WeightClass,
 } from './capacity.service.ts';
 import { listAvailableStaff } from './staffPicker.service.ts';
@@ -39,6 +39,11 @@ export interface SlotAvailability {
   level: SlotLevel;
   /** Grooming/Veterinary only - how many eligible staff remain for this slot. */
   eligible_staff_count?: number;
+  /** Hotel only - how many petWeightClass-size cages remain free/total, so
+   * the booking flow can show real cage availability instead of just an
+   * enabled/disabled button with no explanation. */
+  cage_capacity_remaining?: number;
+  cage_capacity_total?: number;
 }
 
 export interface GetDaySlotsParams {
@@ -154,6 +159,22 @@ export async function getDaySlots({
   if (!branch) throwWithStatus(404, 'Branch not found');
 
   const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+
+  // A fully past date is never bookable, in any category - previously Hotel
+  // was exempt from every time-based check below (by design, for its
+  // single opening-time candidate), which left a past date's slot showing
+  // as bookable indefinitely (repro: navigating the Slot Picker back a few
+  // days still showed a green/available Hotel slot). YYYY-MM-DD strings
+  // sort lexically, so a plain string comparison against "today" in the
+  // branch's own timezone is enough - no Date parsing/timezone math needed.
+  const todayInBranchTz = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+  }).format(new Date());
+
+  if (date < todayInBranchTz) {
+    return [];
+  }
+
   const dayName = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     weekday: 'long',
@@ -197,13 +218,28 @@ export async function getDaySlots({
     }
   }
 
+  // Same-day bookings are allowed, but a slot whose start time is already in
+  // the past is never a real option (e.g. 8:00 AM showing as bookable at
+  // 3:00 PM) - this only applies to the time-stepped categories above.
+  // Hotel's single candidate instead marks the whole day as bookable; actual
+  // arrival time is chosen separately at physical check-in (see
+  // HotelCheckInPage), so same-day Hotel bookings stay available all day
+  // regardless of the current time.
+  const now = new Date();
+  const futureCandidates =
+    serviceCategory === 'Hotel'
+      ? candidates
+      : candidates.filter(
+          (candidate) => candidate.start.getTime() > now.getTime()
+        );
+
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
 
   if (role) {
     const roster = await countActiveRoster(branchId, role);
 
     const slots = await Promise.all(
-      candidates.map(async ({ start, end }) => {
+      futureCandidates.map(async ({ start, end }) => {
         const eligible: AvailableStaff[] = await listAvailableStaff({
           branchId,
           serviceCategory,
@@ -226,7 +262,7 @@ export async function getDaySlots({
 
   // Hotel/Daycare: capacity-count path, mirroring checkCapacity exactly.
   return Promise.all(
-    candidates.map(async ({ start, end }) => {
+    futureCandidates.map(async ({ start, end }) => {
       const params = {
         branchId,
         serviceCategory,
@@ -234,7 +270,7 @@ export async function getDaySlots({
         scheduledEnd: end.toISOString(),
       };
 
-      const overlapping = await listOverlappingConfirmedBookings(params);
+      const overlapping = await listOverlappingActiveBookings(params);
 
       if (serviceCategory === 'Hotel') {
         const sameSize = await filterSameSizeRows(overlapping, petWeightClass!);
@@ -245,6 +281,8 @@ export async function getDaySlots({
           end: end.toISOString(),
           available: sameSize.length < capacity,
           level: levelFromUsage(sameSize.length, capacity),
+          cage_capacity_remaining: Math.max(capacity - sameSize.length, 0),
+          cage_capacity_total: capacity,
         };
       }
 

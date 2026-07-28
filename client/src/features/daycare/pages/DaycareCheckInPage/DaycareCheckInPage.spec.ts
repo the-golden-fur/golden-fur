@@ -98,7 +98,7 @@ describe('DaycareCheckInPage (#69)', () => {
     expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
   });
 
-  it('AC-1: checks in via an existing confirmed booking', async () => {
+  it('AC-1: checks in via an existing Pending booking', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
       error: null,
@@ -117,7 +117,7 @@ describe('DaycareCheckInPage (#69)', () => {
           scheduled_start: '2026-07-19T02:00:00.000Z',
           scheduled_end: '2026-07-19T03:00:00.000Z',
           assigned_staff_id: null,
-          status: 'Confirmed',
+          status: 'Pending',
           total_price: 300,
           downpayment_amount: null,
           payment_method: null,

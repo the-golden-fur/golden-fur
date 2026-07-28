@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { completeBooking } from '../../booking/services/booking.service.ts';
 import type { CheckoutResult, HotelStay } from '../hotel.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -84,9 +85,26 @@ async function getSuppliedItemsCharge(
  * #78 dev notes). Reconciliation is stay total (booking.total_price,
  * snapshotted at booking time) minus the downpayment already collected plus
  * any extension fee. The cage is released to Available in the same call
- * that marks the stay Completed. Billing-ready only, per Out of Scope - no
+ * that finishes the checkout. Billing-ready only, per Out of Scope - no
  * transactions row is created.
  * TODO(Sprint 5, M08): replace with a real transaction-creation call.
+ *
+ * Booking-status revision: hotel_stays no longer has its own status column,
+ * so checkout is only possible while the joined booking is 'In Progress',
+ * and completeBooking() is what actually advances the booking (In Progress
+ * -> Completed/Paid). completeBooking's own read-then-write isn't itself
+ * atomic against a second concurrent checkout call for the same stay (it
+ * reads the booking, checks status, then writes - no conditional guard in
+ * the UPDATE itself), so it alone would NOT reproduce the single-writer
+ * guarantee the old `.eq('status', 'Active')` conditional update gave us.
+ * The real race gate is still a conditional UPDATE against hotel_stays -
+ * `actual_check_out_at IS NULL` takes over from the dropped `status =
+ * 'Active'` predicate (both columns were kept for exactly this kind of
+ * reason - see the M05 migration notes). Only the request that wins that
+ * conditional update goes on to release the cage / return a result; the
+ * loser gets the same 409 as before. completeBooking is called first so an
+ * illegal transition (e.g. the booking was never started) fails fast without
+ * mutating hotel_stays at all.
  */
 export async function checkOutHotelStay({
   stayId,
@@ -94,7 +112,7 @@ export async function checkOutHotelStay({
 }: CheckoutParams): Promise<CheckoutResult> {
   const { data: stay, error: stayError } = await supabase
     .from('hotel_stays')
-    .select('*, cages!inner(branch_id), bookings!inner(total_price)')
+    .select('*, cages!inner(branch_id), bookings!inner(total_price, status)')
     .eq('id', stayId)
     .maybeSingle();
 
@@ -108,7 +126,10 @@ export async function checkOutHotelStay({
     throwWithStatus(403, 'Hotel stay does not belong to your branch');
   }
 
-  if (stay.status === 'Completed') {
+  const bookingStatus = (stay as unknown as { bookings: { status: string } })
+    .bookings.status;
+
+  if (bookingStatus !== 'In Progress') {
     throwWithStatus(409, 'This hotel stay is already checked out');
   }
 
@@ -125,17 +146,18 @@ export async function checkOutHotelStay({
     (extensionFee ?? 0) +
     (suppliedItemsCharge ?? 0);
 
+  await completeBooking({ bookingId: stay.booking_id });
+
   const { data: updated, error: updateError } = await supabase
     .from('hotel_stays')
     .update({
-      status: 'Completed',
       actual_check_out_at: now.toISOString(),
       extension_fee: extensionFee,
       supplied_items_charge: suppliedItemsCharge,
       updated_at: now.toISOString(),
     })
     .eq('id', stayId)
-    .eq('status', 'Active')
+    .is('actual_check_out_at', null)
     .select('*')
     .maybeSingle();
 

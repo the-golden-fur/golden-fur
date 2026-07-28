@@ -42,10 +42,10 @@ export async function getTodayCareLogEntries({
   const { data, error } = await supabase
     .from('care_log_entries')
     .select(
-      '*, completed_by_staff:staff_profiles(display_name), hotel_stays!inner(status, cage_id, cages!inner(branch_id))'
+      '*, completed_by_staff:staff_profiles(display_name), hotel_stays!inner(cage_id, cages!inner(branch_id), bookings!inner(status))'
     )
     .eq('scheduled_date', date)
-    .eq('hotel_stays.status', 'Active')
+    .eq('hotel_stays.bookings.status', 'In Progress')
     .eq('hotel_stays.cages.branch_id', branchId);
 
   if (error) throwWithStatus(400, error.message);
