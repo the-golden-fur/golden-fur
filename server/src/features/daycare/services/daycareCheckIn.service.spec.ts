@@ -4,9 +4,14 @@ import {
   resolveCutoffInstant,
 } from './daycareCheckIn.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { startBooking } from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+
+vi.mock('../../booking/services/booking.service.ts', () => ({
+  startBooking: vi.fn(),
 }));
 
 interface QueryResult {
@@ -73,7 +78,7 @@ describe('daycareCheckIn.service (#65)', () => {
   });
 
   describe('checkInDaycareSession', () => {
-    it('AC-1: an existing confirmed Daycare booking succeeds', async () => {
+    it('AC-1: an existing Pending Daycare booking succeeds and starts the booking', async () => {
       const beforeCutoff = new Date('2026-07-19T01:00:00.000Z'); // 09:00 Asia/Manila
       vi.useFakeTimers();
       vi.setSystemTime(beforeCutoff);
@@ -85,7 +90,7 @@ describe('daycareCheckIn.service (#65)', () => {
             pet_id: 'pet-1',
             branch_id: 'branch-makati',
             service_category: 'Daycare',
-            status: 'Confirmed',
+            status: 'Pending',
           },
           error: null,
         },
@@ -108,8 +113,31 @@ describe('daycareCheckIn.service (#65)', () => {
         pet_id: 'pet-1',
         branch_id: 'branch-makati',
       });
+      expect(startBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
 
       vi.useRealTimers();
+    });
+
+    it('rejects check-in for a booking that is not Pending', async () => {
+      queueFromResults({
+        data: {
+          id: 'booking-1',
+          pet_id: 'pet-1',
+          branch_id: 'branch-makati',
+          service_category: 'Daycare',
+          status: 'In Progress',
+        },
+        error: null,
+      });
+
+      await expect(
+        checkInDaycareSession({
+          requesterId: 'staff-1',
+          input: { booking_id: 'booking-1' },
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+
+      expect(startBooking).not.toHaveBeenCalled();
     });
 
     it('AC-1: a fresh walk-in with no booking succeeds', async () => {
@@ -136,6 +164,8 @@ describe('daycareCheckIn.service (#65)', () => {
         booking_id: null,
         pet_id: 'pet-2',
       });
+      // Walk-ins have no booking_id, so there's nothing to sync.
+      expect(startBooking).not.toHaveBeenCalled();
 
       vi.useRealTimers();
     });
@@ -192,7 +222,7 @@ describe('daycareCheckIn.service (#65)', () => {
           pet_id: 'pet-1',
           branch_id: 'branch-makati',
           service_category: 'Grooming',
-          status: 'Confirmed',
+          status: 'Pending',
         },
         error: null,
       });

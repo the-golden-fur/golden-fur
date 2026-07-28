@@ -98,7 +98,10 @@ export function DaycareCheckInPage() {
       branchId,
       date: todayIso(),
       serviceCategory: 'Daycare',
-      status: 'Confirmed',
+      // Booking-status revision: there is no more separate Confirmed status -
+      // a booking is checkinable while still Pending (matches the server-side
+      // gate in daycareCheckIn.service.ts).
+      status: 'Pending',
     }).then((result) => {
       if (!isMounted) return;
 
@@ -286,7 +289,7 @@ export function DaycareCheckInPage() {
               <p className={styles.copy}>Loading today's Daycare bookings...</p>
             ) : bookings.length === 0 ? (
               <p className={styles.copy}>
-                No confirmed Daycare bookings for today at this branch.
+                No pending Daycare bookings for today at this branch.
               </p>
             ) : (
               <ul className={styles.list}>
