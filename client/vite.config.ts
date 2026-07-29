@@ -73,6 +73,14 @@ export default defineConfig(({ mode }) => {
         // routes live under '/staff/hotel/...', not bare '/hotel', so no
         // bypass is needed here either (Sprint 4 Epic A, #75-#78).
         '/hotel': apiProxy,
+        // branches.routes.ts (server, Superadmin System Configuration) is
+        // mounted at the server root too - its client-side page route lives
+        // under '/staff/admin/maintenance/system-configuration', not bare
+        // '/branches', so no bypass is needed here either. Without this
+        // entry, GET/PATCH /branches falls through to Vite's own dev server
+        // instead of reaching Express, returning a cached/non-JSON response
+        // (the repro: a 304 with no JSON body, not a 404 or 403).
+        '/branches': apiProxy,
       },
     },
   };

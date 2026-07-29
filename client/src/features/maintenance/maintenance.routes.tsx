@@ -7,6 +7,7 @@ import { AdminPackageBuilderPage } from './pages/AdminPackageBuilderPage/AdminPa
 import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { PromoCapConfigurationPage } from './pages/PromoCapConfigurationPage/PromoCapConfigurationPage';
 import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
+import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -40,6 +41,10 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/breeds"
         element={<AdminBreedsPage />}
+      />
+      <Route
+        path="/staff/admin/maintenance/system-configuration"
+        element={<SystemConfigurationPage />}
       />
     </Route>
   </Fragment>
