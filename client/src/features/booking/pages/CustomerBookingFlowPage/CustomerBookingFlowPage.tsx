@@ -30,7 +30,10 @@ import {
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import { CatalogComboBox } from '../../../hotel/components/CatalogComboBox/CatalogComboBox';
-import { listFoodCatalog, listMedicationCatalog } from '../../../hotel/api/hotel.api';
+import {
+  listFoodCatalog,
+  listMedicationCatalog,
+} from '../../../hotel/api/hotel.api';
 import type {
   FoodCatalogItem,
   MedicationCatalogItem,
@@ -104,7 +107,10 @@ function SupplierChoice({
 }: SupplierChoiceProps) {
   const parsedQuantity = Number(quantity);
   const estimate =
-    catalogItem && quantity && Number.isFinite(parsedQuantity) && parsedQuantity > 0
+    catalogItem &&
+    quantity &&
+    Number.isFinite(parsedQuantity) &&
+    parsedQuantity > 0
       ? catalogItem.price * parsedQuantity
       : catalogItem?.price;
 
@@ -483,7 +489,9 @@ export function CustomerBookingFlowPage() {
       const row = hotelFeeding[mealTime];
       if (!row?.food_catalog_id || row.brought_by_customer) continue;
 
-      const item = foodCatalog.find((entry) => entry.id === row.food_catalog_id);
+      const item = foodCatalog.find(
+        (entry) => entry.id === row.food_catalog_id
+      );
       const quantity = Number(row.quantity);
       total +=
         (item?.price ?? 0) *
@@ -503,7 +511,13 @@ export function CustomerBookingFlowPage() {
     }
 
     return total;
-  }, [category, hotelFeeding, hotelMedications, foodCatalog, medicationCatalog]);
+  }, [
+    category,
+    hotelFeeding,
+    hotelMedications,
+    foodCatalog,
+    medicationCatalog,
+  ]);
 
   const requiresPayment = category !== 'Veterinary';
   const downpaymentAmount =
@@ -1481,9 +1495,8 @@ export function CustomerBookingFlowPage() {
               ) : null}
               {suppliesEstimateTotal > 0 ? (
                 <p className={styles.copy}>
-                  Estimated additional charges (hotel-supplied food/
-                  medication, billed at checkout): PHP{' '}
-                  {suppliesEstimateTotal.toFixed(2)}
+                  Estimated additional charges (hotel-supplied food/ medication,
+                  billed at checkout): PHP {suppliesEstimateTotal.toFixed(2)}
                 </p>
               ) : null}
             </section>

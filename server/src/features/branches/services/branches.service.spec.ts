@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getBranch, listBranchesFull, updateBranch } from './branches.service.ts';
+import {
+  getBranch,
+  listBranchesFull,
+  updateBranch,
+} from './branches.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({

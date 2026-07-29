@@ -17,9 +17,7 @@ async function parseError(response: Response): Promise<string> {
   return body?.error ?? 'Request failed. Please try again.';
 }
 
-async function parseBody<T>(
-  response: Response
-): Promise<BranchesApiResult<T>> {
+async function parseBody<T>(response: Response): Promise<BranchesApiResult<T>> {
   const body = (await response.json().catch(() => null)) as T | null;
 
   if (body === null) {

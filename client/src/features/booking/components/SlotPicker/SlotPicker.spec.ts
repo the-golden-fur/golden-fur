@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SlotPicker } from './SlotPicker';
@@ -142,9 +148,7 @@ describe('SlotPicker', () => {
     const listbox = await screen.findByRole('listbox');
 
     await waitFor(() =>
-      expect(within(listbox).getAllByRole('button')).toHaveLength(
-        SLOTS.length
-      )
+      expect(within(listbox).getAllByRole('button')).toHaveLength(SLOTS.length)
     );
 
     fireEvent.click(within(listbox).getAllByRole('button')[0]);

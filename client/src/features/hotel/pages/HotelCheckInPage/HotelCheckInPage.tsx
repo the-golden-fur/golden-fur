@@ -637,9 +637,7 @@ export function HotelCheckInPage() {
                   accessToken={accessToken}
                   viewerRole={role}
                   onSelectCage={
-                    isEditing
-                      ? (cage) => setSelectedCageId(cage.id)
-                      : undefined
+                    isEditing ? (cage) => setSelectedCageId(cage.id) : undefined
                   }
                   selectedCageId={selectedCageId}
                   suggestedCageIds={suggestedCages.map((cage) => cage.id)}
@@ -651,8 +649,8 @@ export function HotelCheckInPage() {
               <h2 className={styles.sectionTitle}>3. Feeding instructions</h2>
               {!isEditing ? (
                 <p className={styles.copy}>
-                  Read-only - captured from the customer's booking. Click
-                  Edit below to correct a mistake.
+                  Read-only - captured from the customer's booking. Click Edit
+                  below to correct a mistake.
                 </p>
               ) : null}
               {MEAL_TIMES.map((mealTime) => {

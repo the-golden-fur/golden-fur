@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  getDaySlots,
-  resolveOperatingWindow,
-} from './availability.service.ts';
+import { getDaySlots, resolveOperatingWindow } from './availability.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({

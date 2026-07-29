@@ -255,7 +255,7 @@ describe('unavailabilityBlock.service', () => {
       expect(supabase.from).not.toHaveBeenCalled();
     });
 
-    it('Entire Day option: resolves start/end from that date\'s full branch operating hours', async () => {
+    it("Entire Day option: resolves start/end from that date's full branch operating hours", async () => {
       queueFromResults(
         { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
         {

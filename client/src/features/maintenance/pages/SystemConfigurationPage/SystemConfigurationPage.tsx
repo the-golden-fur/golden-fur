@@ -209,7 +209,9 @@ export function SystemConfigurationPage() {
     }
 
     setBranches((prev) =>
-      prev.map((branch) => (branch.id === result.data!.id ? result.data! : branch))
+      prev.map((branch) =>
+        branch.id === result.data!.id ? result.data! : branch
+      )
     );
     setMessage('Branch configuration updated.');
   };
@@ -267,9 +269,9 @@ export function SystemConfigurationPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>System Configuration</h1>
         <p className={styles.copy}>
-          Branch identity and operating hours - the same operating_hours
-          this drives Date &amp; Time slot generation and staff day-off
-          shift-end resolution everywhere else in the app.
+          Branch identity and operating hours - the same operating_hours this
+          drives Date &amp; Time slot generation and staff day-off shift-end
+          resolution everywhere else in the app.
         </p>
 
         <label className={styles.field}>

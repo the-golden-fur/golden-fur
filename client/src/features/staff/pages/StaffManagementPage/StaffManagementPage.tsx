@@ -274,9 +274,7 @@ export function StaffManagementPage() {
                     )
                   }
                 >
-                  {expandedStaffId === staff.id
-                    ? 'Close'
-                    : 'Set day(s) off'}
+                  {expandedStaffId === staff.id ? 'Close' : 'Set day(s) off'}
                 </button>
                 {expandedStaffId === staff.id ? (
                   <UnavailabilityBlockForm

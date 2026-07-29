@@ -124,7 +124,9 @@ describe('UnavailabilityBlockForm', () => {
     const onCreated = vi.fn();
     renderForm(onCreated);
 
-    await userEvent.click(screen.getByRole('checkbox', { name: /entire day/i }));
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /entire day/i })
+    );
 
     expect(screen.queryByLabelText(/^start$/i)).not.toBeInTheDocument();
 

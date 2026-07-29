@@ -143,15 +143,21 @@ describe('HotelCheckInPage', () => {
 
     expect(screen.getByLabelText('Morning')).toBeDisabled();
     expect(
-      screen.getByPlaceholderText('Food type - search or type a custom value...')
+      screen.getByPlaceholderText(
+        'Food type - search or type a custom value...'
+      )
     ).toBeDisabled();
     expect(screen.getByPlaceholderText('Quantity')).toBeDisabled();
-    expect(screen.getByPlaceholderText('Special instructions (optional)')).toBeDisabled();
-    expect(screen.getByText(/Hotel supplies this/).closest('label'))
-      .toHaveTextContent('Hotel supplies this');
     expect(
-      (screen.getByText(/Hotel supplies this/).closest('label') as HTMLElement)
-        .querySelector('input')
+      screen.getByPlaceholderText('Special instructions (optional)')
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/Hotel supplies this/).closest('label')
+    ).toHaveTextContent('Hotel supplies this');
+    expect(
+      (
+        screen.getByText(/Hotel supplies this/).closest('label') as HTMLElement
+      ).querySelector('input')
     ).toBeDisabled();
   });
 
@@ -166,7 +172,9 @@ describe('HotelCheckInPage', () => {
 
     expect(screen.getByLabelText('Morning')).not.toBeDisabled();
     expect(
-      screen.getByPlaceholderText('Food type - search or type a custom value...')
+      screen.getByPlaceholderText(
+        'Food type - search or type a custom value...'
+      )
     ).not.toBeDisabled();
     expect(screen.getByPlaceholderText('Quantity')).not.toBeDisabled();
     expect(

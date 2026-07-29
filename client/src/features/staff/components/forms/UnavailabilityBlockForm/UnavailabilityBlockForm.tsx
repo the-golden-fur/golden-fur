@@ -73,9 +73,7 @@ export function UnavailabilityBlockForm({
       });
 
       if (!parsed.success) {
-        setError(
-          parsed.error.issues[0]?.message ?? 'Check the selected date.'
-        );
+        setError(parsed.error.issues[0]?.message ?? 'Check the selected date.');
         return;
       }
 

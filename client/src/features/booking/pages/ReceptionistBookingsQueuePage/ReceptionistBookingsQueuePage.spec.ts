@@ -396,7 +396,11 @@ describe('ReceptionistBookingsQueuePage', () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [
         buildBooking({ id: 'booking-1', pet_id: 'pet-12345678' }),
-        buildBooking({ id: 'booking-2', pet_id: 'pet-other', customer_id: 'cust-other' }),
+        buildBooking({
+          id: 'booking-2',
+          pet_id: 'pet-other',
+          customer_id: 'cust-other',
+        }),
       ],
       error: null,
     });

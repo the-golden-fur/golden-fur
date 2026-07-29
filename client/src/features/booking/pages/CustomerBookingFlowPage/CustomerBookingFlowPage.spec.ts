@@ -373,8 +373,5 @@ describe('CustomerBookingFlowPage', () => {
     await user.type(medicationQuantityInput, '2');
 
     expect(await screen.findByText('PHP 80.00')).toBeInTheDocument();
-  }, // Long, many-step walk through the whole flow - generous timeout so a
-  // busy full-suite run (vs. this file in isolation) doesn't flake on
-  // vitest's 5s default.
-  15000);
+  }, 15000); // vitest's 5s default. // busy full-suite run (vs. this file in isolation) doesn't flake on // Long, many-step walk through the whole flow - generous timeout so a
 });
