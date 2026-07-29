@@ -3,6 +3,39 @@
   gap: var(--space-3);
 }
 
+.reviewerPicker {
+  display: grid;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.quickTimes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+}
+
+.quickTimeButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-2);
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.quickTimeButton:hover {
+  border-color: var(--color-accent-gold-primary);
+  color: var(--color-text-primary);
+}
+
 .quickButton {
   border: 0;
   border-radius: var(--radius-pill);

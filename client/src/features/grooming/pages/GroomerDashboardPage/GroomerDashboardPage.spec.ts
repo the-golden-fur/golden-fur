@@ -123,7 +123,7 @@ function renderPage() {
             element: createElement(GroomerDashboardPage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -133,7 +133,7 @@ function renderPage() {
 }
 
 describe('GroomerDashboardPage (#68, booking-status revision)', () => {
-  it('AC-1: redirects a non-Groomer/Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
+  it('AC-1: redirects a non-Groomer/Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
       error: null,

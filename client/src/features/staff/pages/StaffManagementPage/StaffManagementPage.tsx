@@ -185,7 +185,7 @@ export function StaffManagementPage() {
   // Only decided once loading has resolved, so an Admin/Superadmin never
   // flashes through this redirect while their own role is still unknown.
   if (!isAllowedViewer) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   return (

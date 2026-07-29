@@ -112,7 +112,7 @@ export function DaycareCheckoutPage() {
   }
 
   if (roleStatus === 'denied') {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   if (checkedOut) {

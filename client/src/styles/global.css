@@ -7,8 +7,7 @@
 @import './base/layout.css';
 @import './animations.css';
 
-[data-theme='customer'] {
-  color-scheme: light;
+:root {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-family: var(--font-main);
@@ -17,12 +16,13 @@
   -webkit-font-smoothing: antialiased;
 }
 
-[data-theme='staff'] {
+/* Native form control (scrollbars, checkboxes, date pickers, etc.)
+   rendering follows light/dark mode, not role - a staff member in light
+   mode should see light-styled native controls same as a customer would. */
+[data-color-mode='light'] {
+  color-scheme: light;
+}
+
+[data-color-mode='dark'] {
   color-scheme: dark;
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-family: var(--font-main);
-  font-size: var(--text-base);
-  line-height: var(--lh-base);
-  -webkit-font-smoothing: antialiased;
 }

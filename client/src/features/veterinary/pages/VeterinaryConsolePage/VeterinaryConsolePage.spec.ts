@@ -166,7 +166,7 @@ function renderPage() {
             element: createElement(VeterinaryConsolePage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -191,7 +191,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     });
   });
 
-  it('AC-1: redirects a non-Veterinarian/Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
+  it('AC-1: redirects a non-Veterinarian/Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
       error: null,

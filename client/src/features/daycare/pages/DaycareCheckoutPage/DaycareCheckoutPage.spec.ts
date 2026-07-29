@@ -62,7 +62,7 @@ function renderPage(initialPath = '/staff/daycare/checkout/session-1') {
             element: createElement(DaycareCheckoutPage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -72,7 +72,7 @@ function renderPage(initialPath = '/staff/daycare/checkout/session-1') {
 }
 
 describe('DaycareCheckoutPage (#69)', () => {
-  it('AC-1: redirects a non-Receptionist/Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
+  it('AC-1: redirects a non-Receptionist/Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
       error: null,

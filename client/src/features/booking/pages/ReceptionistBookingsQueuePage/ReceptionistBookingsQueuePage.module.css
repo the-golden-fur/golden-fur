@@ -2,7 +2,6 @@
   composes: animate-fade-in from global;
   display: grid;
   min-height: 100vh;
-  background: linear-gradient(160deg, #ffe9d6, #ffdbbb);
 }
 
 .content {
@@ -24,14 +23,14 @@
 
 .title {
   margin: 0;
-  color: #3d2b1f;
+  color: var(--color-text-primary);
   font-size: var(--text-heading-lg);
   font-weight: var(--weight-bold);
 }
 
 .copy {
   margin: 0;
-  color: #6f5945;
+  color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }
 
@@ -60,17 +59,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-  padding: var(--space-2);
-}
-
-.searchInput {
-  flex: 1;
-  min-width: 12rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   font: inherit;
   padding: var(--space-2);

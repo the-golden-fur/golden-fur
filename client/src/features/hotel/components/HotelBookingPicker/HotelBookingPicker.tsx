@@ -25,6 +25,8 @@ import {
   listServices,
 } from '../../../maintenance/api/maintenance.api';
 import { listHotelStays } from '../../api/hotel.api';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import styles from './HotelBookingPicker.module.css';
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
@@ -106,8 +108,6 @@ export function HotelBookingPicker({
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'Pending'
   );
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('soonest');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -243,39 +243,30 @@ export function HotelBookingPicker({
     [bookings, pets, owners, serviceNames, stayByBookingId]
   );
 
-  const filteredAndSorted = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    const matches = enriched.filter((item) => {
-      if (!query) return true;
-      return (
-        item.petName.toLowerCase().includes(query) ||
-        item.ownerName.toLowerCase().includes(query) ||
-        item.weightClass.toLowerCase().includes(query)
-      );
-    });
-
-    return [...matches].sort((a, b) => {
-      switch (sortKey) {
-        case 'soonest':
-          return (
-            new Date(a.booking.scheduled_start).getTime() -
-            new Date(b.booking.scheduled_start).getTime()
-          );
-        case 'latest':
-          return (
-            new Date(b.booking.scheduled_start).getTime() -
-            new Date(a.booking.scheduled_start).getTime()
-          );
-        case 'pet-name':
-          return a.petName.localeCompare(b.petName);
-        case 'owner-name':
-          return a.ownerName.localeCompare(b.ownerName);
-        default:
-          return 0;
-      }
-    });
-  }, [enriched, search, sortKey]);
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: filteredAndSorted,
+  } = useSearchAndSort<EnrichedBooking, SortKey>({
+    items: enriched,
+    matchesQuery: (item, query) =>
+      item.petName.toLowerCase().includes(query) ||
+      item.ownerName.toLowerCase().includes(query) ||
+      item.weightClass.toLowerCase().includes(query),
+    comparators: {
+      soonest: (a, b) =>
+        new Date(a.booking.scheduled_start).getTime() -
+        new Date(b.booking.scheduled_start).getTime(),
+      latest: (a, b) =>
+        new Date(b.booking.scheduled_start).getTime() -
+        new Date(a.booking.scheduled_start).getTime(),
+      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
+      'owner-name': (a, b) => a.ownerName.localeCompare(b.ownerName),
+    },
+    initialSortKey: 'soonest',
+  });
 
   return (
     <div className={styles.wrapper}>
@@ -290,24 +281,14 @@ export function HotelBookingPicker({
         }
         statusOptions={STATUS_OPTIONS}
       >
-        <input
-          className={styles.searchInput}
-          type="search"
-          placeholder="Search by pet, owner, or cage size..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+        <SearchSortBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by pet, owner, or cage size..."
+          sortValue={sortKey}
+          onSortChange={setSortKey}
+          sortOptions={SORT_OPTIONS}
         />
-        <select
-          className={styles.filterSelect}
-          value={sortKey}
-          onChange={(event) => setSortKey(event.target.value as SortKey)}
-        >
-          {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
       </QueueFilterBar>
 
       <p className={styles.resultCount}>

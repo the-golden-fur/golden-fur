@@ -69,6 +69,12 @@ export function UnavailabilityReviewCard({
         {formatWindow(block.start_time, block.end_time, block.is_full_day)}
       </p>
 
+      {block.requested_reviewer ? (
+        <p className={styles.requestedFor}>
+          Requested for: {block.requested_reviewer.display_name}
+        </p>
+      ) : null}
+
       {block.reason ? <p className={styles.reason}>{block.reason}</p> : null}
 
       {!block.reviewable ? (

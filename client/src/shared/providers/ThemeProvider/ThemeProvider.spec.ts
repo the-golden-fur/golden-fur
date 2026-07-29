@@ -22,4 +22,18 @@ describe('ThemeProvider', () => {
       'customer'
     );
   });
+
+  it('defaults --font-scale to 1 (Medium) with no stored preference', () => {
+    render(
+      createElement(
+        ThemeProvider,
+        { theme: 'customer' },
+        createElement('div', null, 'theme content')
+      )
+    );
+
+    expect(
+      document.documentElement.style.getPropertyValue('--font-scale')
+    ).toBe('1');
+  });
 });

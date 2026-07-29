@@ -1,22 +1,27 @@
 import { useState } from 'react';
+import { Settings } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './Navbar.module.css';
 
+export interface NavbarIdentity {
+  /** Staff: username. Customer: full name (customers have no username/role). */
+  primary: string;
+  /** Staff role label - omitted for customers. */
+  secondary?: string;
+}
+
 interface NavbarProps {
   role: ThemeRole;
   brandLabel: string;
+  /** null while the profile fetch that supplies it is still in flight. */
+  identity?: NavbarIdentity | null;
 }
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
   staff: '/staff',
   customer: '/portal',
-};
-
-const PROFILE_PATH_BY_ROLE: Record<ThemeRole, string> = {
-  staff: '/staff/profile',
-  customer: '/portal/profile',
 };
 
 const SETTINGS_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -31,11 +36,14 @@ const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
 
 /**
  * Persistent top bar for the authenticated staff/customer areas - rendered
- * once by StaffAuthGuard/CustomerAuthGuard rather than duplicated per page.
- * Sign out lives here (not on SettingsPage) since it's an account-wide
- * action, not a setting.
+ * once by AppShell (StaffAuthGuard/CustomerAuthGuard) rather than duplicated
+ * per page. Navigation itself lives in the Sidebar now. The identity chip is
+ * a plain (non-interactive) display of who's signed in - Settings gets its
+ * own explicit icon button instead of being an undiscoverable side effect of
+ * clicking the username. Sign out stays a dedicated button (not folded into
+ * Settings) since it's an account-wide action, not a setting.
  */
-export function Navbar({ role, brandLabel }: NavbarProps) {
+export function Navbar({ role, brandLabel, identity }: NavbarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -69,19 +77,24 @@ export function Navbar({ role, brandLabel }: NavbarProps) {
         id="primary-nav-links"
         className={isMenuOpen ? styles.linksOpen : styles.links}
       >
-        <Link
-          to={PROFILE_PATH_BY_ROLE[role]}
-          className={styles.link}
-          onClick={() => setIsMenuOpen(false)}
-        >
-          My Profile
-        </Link>
+        {identity ? (
+          <div className={styles.identity}>
+            <span className={styles.identityPrimary}>{identity.primary}</span>
+            {identity.secondary ? (
+              <span className={styles.identitySecondary}>
+                {identity.secondary}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <Link
           to={SETTINGS_PATH_BY_ROLE[role]}
-          className={styles.link}
+          className={styles.settingsLink}
+          aria-label="Settings"
           onClick={() => setIsMenuOpen(false)}
         >
-          Settings
+          <Settings size={18} aria-hidden="true" />
+          <span className={styles.settingsLabel}>Settings</span>
         </Link>
         <button
           type="button"

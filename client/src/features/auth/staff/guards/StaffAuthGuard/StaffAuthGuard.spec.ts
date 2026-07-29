@@ -195,6 +195,39 @@ describe('StaffAuthGuard', () => {
     expect(await screen.findByText('Protected staff area')).toBeInTheDocument();
   });
 
+  it('renders the identity chip (username + role) and a role-appropriate sidebar', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Groomer', username: 'gwash' }),
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'staff@example.com' },
+        },
+        user: { id: 'user-1', email: 'staff@example.com' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(await screen.findByText('gwash')).toBeInTheDocument();
+    expect(
+      screen.getByText('Groomer', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Grooming Queue' })
+    ).toHaveAttribute('href', '/staff/grooming/queue');
+  });
+
   it('shows the mandatory MFA setup popup for an Admin without an enrolled factor, without redirecting away', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Admin', mfa_enrolled: false },

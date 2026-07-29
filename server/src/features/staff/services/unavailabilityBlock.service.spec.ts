@@ -111,6 +111,7 @@ describe('unavailabilityBlock.service', () => {
         startTime: '2026-07-14T01:00:00.000Z',
         endTime: '2026-07-14T03:00:00.000Z',
         reason: 'Vet appointment',
+        now: new Date('2026-07-01T00:00:00.000Z'),
       });
 
       expect(result.start_time).toBe('2026-07-14T01:00:00.000Z');
@@ -177,6 +178,7 @@ describe('unavailabilityBlock.service', () => {
           targetStaffId: 'staff-1',
           startTime: '2026-07-14T01:00:00.000Z',
           endTime: '2026-07-14T03:00:00.000Z',
+          now: new Date('2026-07-01T00:00:00.000Z'),
         })
       ).rejects.toMatchObject({ statusCode: 409 });
     });
@@ -205,6 +207,7 @@ describe('unavailabilityBlock.service', () => {
         targetStaffId: 'staff-2',
         startTime: '2026-07-14T01:00:00.000Z',
         endTime: '2026-07-14T03:00:00.000Z',
+        now: new Date('2026-07-01T00:00:00.000Z'),
       });
 
       expect(result.created_by).toBe('admin-1');
@@ -235,6 +238,7 @@ describe('unavailabilityBlock.service', () => {
         targetStaffId: 'staff-2',
         startTime: '2026-07-14T01:00:00.000Z',
         endTime: '2026-07-14T03:00:00.000Z',
+        now: new Date('2026-07-01T00:00:00.000Z'),
       });
 
       expect(result.created_by).toBe('supervisor-1');
@@ -287,6 +291,7 @@ describe('unavailabilityBlock.service', () => {
         targetStaffId: 'staff-1',
         isFullDay: true,
         date: '2026-07-13', // a Monday
+        now: new Date('2026-07-01T00:00:00.000Z'),
       });
 
       // 09:00-18:00 Asia/Manila == 01:00-10:00 UTC
@@ -332,6 +337,86 @@ describe('unavailabilityBlock.service', () => {
           endTime: '2026-07-14T01:00:00.000Z',
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('rejects a custom range whose start_time is in the past', async () => {
+      queueFromResults({
+        data: { id: 'staff-1', branch_id: 'branch-a' },
+        error: null,
+      });
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          startTime: '2026-07-13T01:00:00.000Z',
+          endTime: '2026-07-13T03:00:00.000Z',
+          now: new Date('2026-07-14T00:00:00.000Z'),
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('rejects an Entire Day request for a date whose window has already passed', async () => {
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        }
+      );
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          isFullDay: true,
+          date: '2026-07-13', // a Monday
+          now: new Date('2026-07-14T00:00:00.000Z'),
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('a quick action is never rejected as "in the past", even though its window starts at now', async () => {
+      const now = new Date('2026-07-13T05:00:00.000Z');
+
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        },
+        { data: [], error: null },
+        {
+          data: {
+            id: 'block-6',
+            staff_id: 'staff-1',
+            start_time: now.toISOString(),
+            end_time: '2026-07-13T10:00:00.000Z',
+            reason: null,
+            created_by: 'staff-1',
+            created_at: now.toISOString(),
+          },
+          error: null,
+        }
+      );
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          quickAction: true,
+          now,
+        })
+      ).resolves.toMatchObject({ id: 'block-6' });
     });
   });
 

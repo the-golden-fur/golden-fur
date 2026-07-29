@@ -1,23 +1,50 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../../shared/auth/providers/AuthProvider/useAuth';
-import { getMfaStatus, unenrollMfa } from '../../shared/api/mfa.api';
-import { TotpEnrollPanel } from '../../shared/components/TotpEnrollPanel/TotpEnrollPanel';
+import { getMfaStatus } from '../../shared/api/mfa.api';
 import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import type { MfaStatusResponse } from '../../shared/auth/mfa.types';
+import { ProfileTab } from './tabs/ProfileTab';
+import { AppearanceTab } from './tabs/AppearanceTab';
+import { AccountTab } from './tabs/AccountTab';
+import { SecurityTab } from './tabs/SecurityTab';
+import { ConfigTab } from './tabs/ConfigTab';
 import styles from './SettingsPage.module.css';
 
 interface SettingsPageProps {
   role: ThemeRole;
 }
 
-const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin']);
+type SettingsTab = 'profile' | 'appearance' | 'account' | 'security' | 'config';
 
+const TAB_LABELS: Record<SettingsTab, string> = {
+  profile: 'Profile',
+  appearance: 'Appearance',
+  account: 'Account',
+  security: 'Security',
+  config: 'Config',
+};
+
+function isSettingsTab(
+  value: string | null,
+  tabs: SettingsTab[]
+): value is SettingsTab {
+  return Boolean(value) && tabs.includes(value as SettingsTab);
+}
+
+/**
+ * Settings shell: Profile / Account / Security / Config (Admin/Superadmin
+ * only). Replaces the previous MFA-only page - Security below is that page's
+ * original body, unchanged. `status` (from getMfaStatus, which already
+ * returns the viewer's staff role) stays fetched here rather than per-tab
+ * since it gates both the Config tab's visibility and reflects account-wide
+ * state Security itself needs to render.
+ */
 export function SettingsPage({ role }: SettingsPageProps) {
-  const { accessToken } = useAuth();
+  const { user, accessToken } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [isDisabling, setIsDisabling] = useState(false);
-  const [disableError, setDisableError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken) {
@@ -37,81 +64,76 @@ export function SettingsPage({ role }: SettingsPageProps) {
     };
   }, [role, accessToken, refreshKey]);
 
-  const isMandatoryRole = Boolean(
-    status?.role && MANDATORY_MFA_ROLES.has(status.role)
-  );
+  const isAdmin =
+    role === 'staff' &&
+    (status?.role === 'Admin' || status?.role === 'Superadmin');
 
-  const handleDisable = async () => {
-    if (!accessToken) {
-      return;
-    }
+  const tabs: SettingsTab[] = isAdmin
+    ? ['profile', 'appearance', 'account', 'security', 'config']
+    : ['profile', 'appearance', 'account', 'security'];
 
-    setIsDisabling(true);
-    setDisableError(null);
-    const result = await unenrollMfa(role, accessToken);
-    setIsDisabling(false);
+  const activeTab = isSettingsTab(searchParams.get('tab'), tabs)
+    ? (searchParams.get('tab') as SettingsTab)
+    : 'profile';
 
-    if (result.error) {
-      setDisableError(result.error);
-      return;
-    }
-
-    setRefreshKey((key) => key + 1);
+  const setActiveTab = (tab: SettingsTab) => {
+    setSearchParams(tab === 'profile' ? {} : { tab });
   };
+
+  if (!user?.id || !accessToken) {
+    return (
+      <main className={styles.page}>
+        <p className={styles.errorBanner} role="alert">
+          Unable to load your settings.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Settings</h1>
-      <section className={styles.section} aria-labelledby="mfa-section-title">
-        <h2 className={styles.sectionTitle} id="mfa-section-title">
-          Multi-Factor Authentication
-        </h2>
-        {status === null ? (
-          <p className={styles.copy}>Loading your MFA status...</p>
-        ) : status.mfa_enrolled ? (
-          <p className={styles.statusEnabled}>
-            MFA is enabled on your account.
-          </p>
-        ) : isMandatoryRole ? (
-          <p className={styles.statusRequired}>
-            MFA is required for your role and is not yet set up. Complete setup
-            in the popup - it will keep appearing until enrollment is finished.
-          </p>
-        ) : (
-          <p className={styles.copy}>
-            Add an extra layer of security with an authenticator app. This is
-            optional for your role.
-          </p>
-        )}
-        {/*
-          Admin/Superadmin get their enroll UI exclusively from the guard's
-          MfaSetupModal. Rendering a second TotpEnrollPanel here at the same
-          time would race it - both instances enroll independently, and each
-          invalidates whichever QR/key the user just scanned from the other.
-        */}
-        {status && !status.mfa_enrolled && !isMandatoryRole && accessToken ? (
-          <TotpEnrollPanel
-            role={role}
-            accessToken={accessToken}
-            onEnrolled={() => setRefreshKey((key) => key + 1)}
-          />
-        ) : null}
-        {status?.mfa_enrolled && !isMandatoryRole ? (
-          <div>
-            <button
-              className={styles.button}
-              type="button"
-              disabled={isDisabling}
-              onClick={() => void handleDisable()}
-            >
-              {isDisabling ? 'Disabling...' : 'Disable MFA'}
-            </button>
-            {disableError ? (
-              <p className={styles.statusRequired}>{disableError}</p>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
+      <div
+        className={styles.tabList}
+        role="tablist"
+        aria-label="Settings sections"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            className={
+              activeTab === tab
+                ? `${styles.tab} ${styles.tabActive}`
+                : styles.tab
+            }
+            onClick={() => setActiveTab(tab)}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'profile' ? (
+        <ProfileTab role={role} userId={user.id} accessToken={accessToken} />
+      ) : null}
+      {activeTab === 'appearance' ? <AppearanceTab /> : null}
+      {activeTab === 'account' ? (
+        <AccountTab role={role} userId={user.id} accessToken={accessToken} />
+      ) : null}
+      {activeTab === 'security' ? (
+        <SecurityTab
+          role={role}
+          accessToken={accessToken}
+          status={status}
+          onChanged={() => setRefreshKey((key) => key + 1)}
+        />
+      ) : null}
+      {activeTab === 'config' && isAdmin ? (
+        <ConfigTab isSuperadmin={status?.role === 'Superadmin'} />
+      ) : null}
     </main>
   );
 }

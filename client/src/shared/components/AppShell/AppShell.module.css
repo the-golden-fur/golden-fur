@@ -1,0 +1,29 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.navbarWrapper {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-navbar);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .body {
+    position: relative;
+  }
+}

@@ -69,6 +69,20 @@ describe('avatarFileSchema', () => {
 });
 
 describe('createUnavailabilityBlockValidator', () => {
+  // Computed relative to "now" (not a hardcoded date) so these stay valid as
+  // time passes - the validator now rejects past start times/dates.
+  function tomorrowDatetimeLocal(hour: string): string {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const datePart = tomorrow.toISOString().slice(0, 10);
+    return `${datePart}T${hour}`;
+  }
+
+  function tomorrowDate(): string {
+    return new Date(Date.now() + 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+  }
+
   it('accepts a quick-action payload', () => {
     const result = createUnavailabilityBlockValidator.safeParse({
       quick_action: true,
@@ -79,8 +93,8 @@ describe('createUnavailabilityBlockValidator', () => {
 
   it('accepts a valid custom range', () => {
     const result = createUnavailabilityBlockValidator.safeParse({
-      start_time: '2026-07-11T09:00',
-      end_time: '2026-07-11T17:00',
+      start_time: tomorrowDatetimeLocal('09:00'),
+      end_time: tomorrowDatetimeLocal('17:00'),
       reason: 'Vet appointment',
     });
 
@@ -95,11 +109,38 @@ describe('createUnavailabilityBlockValidator', () => {
 
   it('rejects an end time before the start time', () => {
     const result = createUnavailabilityBlockValidator.safeParse({
-      start_time: '2026-07-11T17:00',
-      end_time: '2026-07-11T09:00',
+      start_time: tomorrowDatetimeLocal('17:00'),
+      end_time: tomorrowDatetimeLocal('09:00'),
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it('rejects a start time in the past', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      start_time: '2020-01-01T09:00',
+      end_time: '2020-01-01T17:00',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a full-day date in the past', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      is_full_day: true,
+      date: '2020-01-01',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a full-day date today or later', () => {
+    const result = createUnavailabilityBlockValidator.safeParse({
+      is_full_day: true,
+      date: tomorrowDate(),
+    });
+
+    expect(result.success).toBe(true);
   });
 });
 

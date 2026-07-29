@@ -12,15 +12,15 @@
   flex: 1 1 50%;
   background: linear-gradient(
     135deg,
-    var(--color-accent-gold-card-border) 0%,
-    var(--color-accent-gold-primary) 55%,
-    var(--color-accent-gold-highlight) 100%
+    var(--color-hero-gradient-start) 0%,
+    var(--color-hero-gradient-mid) 55%,
+    var(--color-hero-gradient-end) 100%
   );
   overflow: hidden;
   padding: var(--space-6) var(--space-8);
   display: flex;
   flex-direction: column;
-  color: var(--color-text-on-accent);
+  color: var(--color-text-on-heropanel);
 }
 
 .paw {
@@ -71,7 +71,7 @@
   font-weight: var(--weight-bold);
   font-size: var(--text-4xl);
   line-height: var(--lh-tight);
-  color: var(--color-text-on-accent);
+  color: var(--color-text-on-heropanel);
 }
 
 .hero h2 em {
@@ -116,7 +116,7 @@
 .feature .label {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--color-text-on-accent);
+  color: var(--color-text-on-heropanel);
 }
 
 .right {

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  getFontSizePreference,
   getThemePreference,
+  updateFontSizePreference,
   updateThemePreference,
 } from '../../api/preferences.api';
-import { ThemeContext, type ColorMode, type ThemeRole } from './themeContext';
+import {
+  ThemeContext,
+  type ColorMode,
+  type FontSizePreference,
+  type ThemeRole,
+} from './themeContext';
 
 interface ThemeProviderProps {
   theme: ThemeRole;
@@ -11,6 +18,16 @@ interface ThemeProviderProps {
   accessToken?: string | null;
   children: React.ReactNode;
 }
+
+/** Unitless multiplier consumed by --font-scale (typography.css), which
+ * every --text-* size is expressed in terms of - so this one value scales
+ * the whole app's type instead of needing per-component wiring. */
+const FONT_SCALE_BY_SIZE: Record<FontSizePreference, number> = {
+  small: 0.875,
+  medium: 1,
+  large: 1.125,
+  'x-large': 1.25,
+};
 
 function resolveColorScheme(mode: ColorMode): 'light' | 'dark' {
   if (mode !== 'system') {
@@ -33,6 +50,7 @@ export function ThemeProvider({
   children,
 }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ColorMode>('system');
+  const [fontSize, setFontSizeState] = useState<FontSizePreference>('medium');
 
   // Role-based palette (data-theme='staff'/'customer') is selected by route and
   // stays untouched by the light/dark/system mode layered on top below.
@@ -50,6 +68,12 @@ export function ThemeProvider({
     getThemePreference(theme, userId).then((preference) => {
       if (!cancelled && preference) {
         setModeState(preference);
+      }
+    });
+
+    getFontSizePreference(theme, userId).then((preference) => {
+      if (!cancelled && preference) {
+        setFontSizeState(preference);
       }
     });
 
@@ -84,6 +108,13 @@ export function ThemeProvider({
     return () => media.removeEventListener('change', handleChange);
   }, [mode]);
 
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--font-scale',
+      String(FONT_SCALE_BY_SIZE[fontSize])
+    );
+  }, [fontSize]);
+
   const setMode = useCallback(
     (nextMode: ColorMode) => {
       setModeState(nextMode);
@@ -94,9 +125,19 @@ export function ThemeProvider({
     [theme, accessToken]
   );
 
+  const setFontSize = useCallback(
+    (nextFontSize: FontSizePreference) => {
+      setFontSizeState(nextFontSize);
+      if (accessToken) {
+        void updateFontSizePreference(theme, accessToken, nextFontSize);
+      }
+    },
+    [theme, accessToken]
+  );
+
   const value = useMemo(
-    () => ({ theme: { role: theme, mode }, setMode }),
-    [theme, mode, setMode]
+    () => ({ theme: { role: theme, mode }, setMode, fontSize, setFontSize }),
+    [theme, mode, setMode, fontSize, setFontSize]
   );
 
   return (

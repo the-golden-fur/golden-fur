@@ -46,7 +46,7 @@ export function HotelFoodCatalogPage() {
   }
 
   if (!isAllowedViewer || !accessToken) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   return (

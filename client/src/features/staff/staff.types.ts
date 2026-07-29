@@ -53,6 +53,10 @@ export interface UnavailabilityBlock {
   reviewed_by: string | null;
   reviewed_at: string | null;
   denial_reason: string | null;
+  /** Optional, non-binding: which Supervisor/Admin/Superadmin the requester
+   * addressed this to. Does not restrict who may actually approve/deny -
+   * any manager at the branch still can. */
+  requested_reviewer_id: string | null;
 }
 
 export interface UnavailabilityBlockPayload {
@@ -63,6 +67,7 @@ export interface UnavailabilityBlockPayload {
   start_time?: string;
   end_time?: string;
   reason?: string;
+  requested_reviewer_id?: string;
 }
 
 export interface PendingUnavailabilityBlockStaffSummary {
@@ -73,10 +78,16 @@ export interface PendingUnavailabilityBlockStaffSummary {
   branch_id: string;
 }
 
+export interface RequestedReviewerSummary {
+  id: string;
+  display_name: string;
+}
+
 export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
   /** False when this row belongs to the viewer themselves (#29 AC-8). */
   reviewable: boolean;
   staff: PendingUnavailabilityBlockStaffSummary | null;
+  requested_reviewer: RequestedReviewerSummary | null;
 }
 
 export interface ReviewUnavailabilityBlockPayload {

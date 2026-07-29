@@ -390,7 +390,7 @@ export function VeterinaryConsolePage() {
   }
 
   if (roleStatus === 'denied') {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   return (

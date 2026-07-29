@@ -80,3 +80,23 @@ export const createStaffAccountValidator = z
 export type CreateStaffAccountInput = z.infer<
   typeof createStaffAccountValidator
 >;
+
+/**
+ * Self-service username change (Account settings). Deliberately its own
+ * endpoint/validator rather than folded into updateStaffProfileValidator,
+ * which is intentionally scoped away from username per that validator's own
+ * Issue #22 comment - this one is scoped the opposite way: username only,
+ * self-only (enforced in the controller, not here).
+ */
+export const updateStaffUsernameValidator = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .min(3, 'Username must be at least 3 characters'),
+  })
+  .strict();
+
+export type UpdateStaffUsernameInput = z.infer<
+  typeof updateStaffUsernameValidator
+>;

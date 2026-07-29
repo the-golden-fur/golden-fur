@@ -66,6 +66,7 @@ export const createUnavailabilityBlockValidator = z
     start_time: z.string().min(1, 'Start time is required').optional(),
     end_time: z.string().min(1, 'End time is required').optional(),
     reason: z.string().trim().min(1).optional(),
+    requested_reviewer_id: z.string().uuid().optional(),
   })
   .refine(
     (data) =>
@@ -86,6 +87,24 @@ export const createUnavailabilityBlockValidator = z
     {
       message: 'End time must be after start time',
       path: ['end_time'],
+    }
+  )
+  .refine(
+    (data) =>
+      !data.start_time || new Date(data.start_time).getTime() >= Date.now(),
+    {
+      message: 'Start time cannot be in the past',
+      path: ['start_time'],
+    }
+  )
+  .refine(
+    (data) =>
+      !data.is_full_day ||
+      !data.date ||
+      data.date >= new Date().toISOString().slice(0, 10),
+    {
+      message: 'Date cannot be in the past',
+      path: ['date'],
     }
   );
 

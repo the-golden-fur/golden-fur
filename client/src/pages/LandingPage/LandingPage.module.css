@@ -73,7 +73,7 @@ body {
 
 :global(.nav-links a) {
   text-decoration: none;
-  color: var(--color-text-on-accent);
+  color: rgba(255, 247, 234, 0.92);
   font-weight: 500;
   font-size: 0.95rem;
   letter-spacing: 0.2px;
@@ -120,7 +120,7 @@ body {
   width: 18px;
   height: 2px;
   border-radius: 99px;
-  background: var(--color-text-on-accent);
+  background: rgba(255, 247, 234, 0.92);
   transition:
     transform 220ms ease,
     opacity 220ms ease;
@@ -157,7 +157,7 @@ body {
 }
 
 :global(.btn-outline) {
-  color: var(--color-text-on-accent);
+  color: rgba(255, 247, 234, 0.92);
   border: 1px solid rgba(255, 247, 234, 0.6);
   background: transparent;
 }
@@ -225,8 +225,8 @@ body {
   width: min(680px, 92vw);
   padding: clamp(24px, 4vw, 46px);
   border-radius: 26px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.82);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   transition:
     transform 300ms ease,
     box-shadow 300ms ease;
@@ -275,8 +275,8 @@ body {
   width: min(680px, 92vw);
   padding: 24px;
   border-radius: 26px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.82);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   box-shadow: 10px 10px 19px rgba(0, 0, 0, 0.3);
   transition:
     transform 0.3s ease,
@@ -319,7 +319,7 @@ body {
 :global(.service-branch-btn) {
   appearance: none;
   border: 1px solid var(--color-accent-gold-primary);
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.75);
   color: var(--color-text-secondary);
   font-weight: 700;
   font-family: var(--font-main);
@@ -353,8 +353,8 @@ body {
 }
 
 :global(.service-card) {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.86);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   border-left: 3px solid var(--color-accent-gold-primary);
   border-radius: 10px;
   color: var(--color-text-secondary);
@@ -377,7 +377,7 @@ body {
 :global(.service-card.is-selected) {
   border-color: rgba(201, 151, 26, 0.65);
   border-left-color: var(--color-accent-gold-primary);
-  background: rgba(255, 249, 236, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.95);
   box-shadow: 0 10px 20px rgba(201, 151, 26, 0.2);
 }
 
@@ -402,8 +402,8 @@ body {
 
 :global(.service-details) {
   margin-top: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.9);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   border-left: 4px solid var(--color-accent-gold-primary);
   border-radius: 12px;
   padding: 14px 16px;
@@ -476,7 +476,7 @@ body {
   min-height: clamp(88px, 15vw, 1106px); /* default thin size */
   border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.92);
   box-shadow: 0 7px 18px rgba(68, 44, 16, 0.16);
   cursor: pointer;
   transition:
@@ -531,7 +531,7 @@ body {
   width: 100%;
   border-radius: 8px;
   box-shadow: 0 14px 30px rgba(68, 44, 16, 0.26);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   transform: translateY(calc(-110px - (var(--click-extra, 0px) / 2)));
   z-index: 3;
   animation: featureCardExpand 260ms ease;
@@ -615,7 +615,7 @@ body {
 :global(.feature-strip-content) {
   position: relative;
   z-index: 1;
-  color: var(--color-text-on-accent);
+  color: rgba(255, 247, 234, 0.92);
   height: 100%;
   display: flex;
   align-items: center;
@@ -634,7 +634,7 @@ body {
   appearance: none;
   border: 1px solid rgba(255, 247, 234, 0.85);
   background: rgba(255, 247, 234, 0.18);
-  color: var(--color-text-on-accent);
+  color: rgba(255, 247, 234, 0.92);
   font-weight: 700;
   font-size: 0.82rem;
   letter-spacing: 0.3px;
@@ -652,7 +652,7 @@ body {
 :global(.feature-strip-btn:hover) {
   transform: translateY(-1px);
   background: rgba(255, 247, 234, 0.92);
-  color: var(--color-text-primary);
+  color: #241a10;
   border-color: rgba(255, 247, 234, 0.98);
 }
 
@@ -718,8 +718,8 @@ body {
   border: 1px solid rgba(201, 151, 26, 0.42);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(252, 241, 216, 0.9) 100%
+    rgba(var(--color-landing-glass-bg-rgb), 0.95) 0%,
+    rgba(var(--color-landing-glass-bg-rgb), 0.85) 100%
   );
   color: var(--color-text-secondary);
   border-radius: var(--radius-pill);
@@ -730,7 +730,7 @@ body {
   cursor: pointer;
   box-shadow:
     0 6px 14px rgba(90, 58, 22, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    inset 0 1px 0 rgba(var(--color-landing-glass-border-rgb), 0.9);
   transition:
     background-color 180ms ease,
     color 180ms ease,
@@ -743,7 +743,7 @@ body {
   transform: translateY(-2px);
   box-shadow:
     0 10px 18px rgba(90, 58, 22, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    inset 0 1px 0 rgba(var(--color-landing-glass-border-rgb), 0.9);
 }
 
 /* Current step tab */
@@ -778,8 +778,8 @@ body {
 }
 
 :global(.booking-step-card) {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.9);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   border-left: 4px solid var(--color-accent-gold-primary); /* edit accent color/thickness */
   border-radius: 14px; /* edit card roundness */
   padding: 18px 16px 16px; /* edit inner spacing */
@@ -958,7 +958,7 @@ body {
   min-height: clamp(380px, 50vw, 680px);
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   box-shadow: 0 10px 24px rgba(68, 44, 16, 0.14);
   transform: translateX(0) rotate(0deg) scale(0.94);
   opacity: 0.56;
@@ -1005,8 +1005,8 @@ body {
 }
 
 :global(.scroll-story-copy) {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.9);
+  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.95);
   border-left: 4px solid var(--color-accent-gold-primary);
   border-radius: 14px;
   padding: clamp(16px, 2.3vw, 24px);
@@ -1148,7 +1148,7 @@ body {
        - Increase second value (78vw) for more viewport-relative width */
   max-width: min(280px, 78vw);
 
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.96);
   color: var(--color-text-secondary);
   border: 1px solid rgba(201, 151, 26, 0.45);
   border-radius: 14px;
@@ -1183,7 +1183,7 @@ body {
   bottom: -8px;
   width: 14px;
   height: 14px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.96);
   border-right: 1px solid rgba(201, 151, 26, 0.45);
   border-bottom: 1px solid rgba(201, 151, 26, 0.45);
   transform: rotate(45deg);
@@ -1312,7 +1312,7 @@ body {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.96);
   border: 1px solid rgba(201, 151, 26, 0.42);
   border-radius: var(--radius-pill);
   padding: 6px 10px;
@@ -1342,7 +1342,7 @@ body {
 
 :global(.help-mascot-link:hover),
 :global(.help-mascot-link:focus-visible) {
-  background: #fff3d8;
+  background: var(--color-badge-bg-gold);
   border-color: var(--color-accent-gold-primary);
   box-shadow:
     0 0 0 2px rgba(201, 151, 26, 0.38),
@@ -1742,7 +1742,7 @@ body {
 }
 
 :global(.footer-col a:hover) {
-  color: var(--color-text-on-accent);
+  color: var(--color-brand-gold-logo);
 }
 
 :global(.footer-social) {
@@ -1804,7 +1804,7 @@ body {
 }
 
 :global(.footer-bottom-links a:hover) {
-  color: var(--color-text-on-accent);
+  color: var(--color-brand-gold-logo);
 }
 
 @media (max-width: 900px) {

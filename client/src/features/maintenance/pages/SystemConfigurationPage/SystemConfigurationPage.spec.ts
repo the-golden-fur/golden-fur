@@ -78,7 +78,7 @@ function renderPage() {
             element: createElement(SystemConfigurationPage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -100,7 +100,7 @@ describe('SystemConfigurationPage', () => {
     });
   });
 
-  it('redirects a non-Superadmin (e.g. Admin) role to /staff/profile', async () => {
+  it('redirects a non-Superadmin (e.g. Admin) role to /staff/settings', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Admin')],
       error: null,

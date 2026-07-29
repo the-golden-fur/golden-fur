@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../auth/api/auth.api';
 import type {
   ColorMode,
+  FontSizePreference,
   ThemeRole,
 } from '../providers/ThemeProvider/themeContext';
 
@@ -46,6 +47,28 @@ export async function getThemePreference(
   }
 
   return data.theme_preference as ColorMode;
+}
+
+export async function getFontSizePreference(
+  role: ThemeRole,
+  userId: string
+): Promise<FontSizePreference | null> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from(PROFILE_TABLE_BY_ROLE[role])
+    .select('font_size_preference')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data?.font_size_preference) {
+    return null;
+  }
+
+  return data.font_size_preference as FontSizePreference;
 }
 
 // Guards use this to confirm the signed-in user actually belongs to the
@@ -101,6 +124,43 @@ export async function updateThemePreference(
 
   return {
     data: { theme_preference: body?.theme_preference ?? themePreference },
+    error: null,
+  };
+}
+
+export async function updateFontSizePreference(
+  role: ThemeRole,
+  accessToken: string,
+  fontSizePreference: FontSizePreference
+): Promise<PreferencesApiResult<{ font_size_preference: FontSizePreference }>> {
+  const response = await fetch(
+    `${API_BASE_URL}${AUTH_PREFIX}${PREFERENCES_PATH_BY_ROLE[role]}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ font_size_preference: fontSizePreference }),
+    }
+  );
+
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+    font_size_preference?: FontSizePreference;
+  } | null;
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: body?.error ?? 'Request failed. Please try again.',
+    };
+  }
+
+  return {
+    data: {
+      font_size_preference: body?.font_size_preference ?? fontSizePreference,
+    },
     error: null,
   };
 }

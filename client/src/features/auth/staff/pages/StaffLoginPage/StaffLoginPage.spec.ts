@@ -40,4 +40,35 @@ describe('StaffLoginPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
   });
+
+  it('links back to the customer login and signup pages', () => {
+    const authValue: AuthContextValue = {
+      session: null,
+      user: null,
+      accessToken: null,
+      isLoading: false,
+      refreshSession: vi.fn(),
+      applySession: vi.fn(),
+      signOut: vi.fn(),
+    };
+
+    render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(
+          AuthContext.Provider,
+          { value: authValue },
+          createElement(StaffLoginPage)
+        )
+      )
+    );
+
+    expect(
+      screen.getByRole('link', { name: /customer sign in/i })
+    ).toHaveAttribute('href', '/login');
+    expect(
+      screen.getByRole('link', { name: /create an account/i })
+    ).toHaveAttribute('href', '/signup');
+  });
 });

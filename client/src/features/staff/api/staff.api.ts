@@ -78,6 +78,29 @@ export async function updateStaffProfile(
   return { data: result.data?.staff ?? null, error: result.error };
 }
 
+/** Self-service username change (Account settings tab). */
+export async function updateStaffUsername(
+  staffId: string,
+  accessToken: string,
+  username: string
+): Promise<StaffApiResult<StaffProfile>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}/username`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify({ username }),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ staff: StaffProfile }>(response);
+  return { data: result.data?.staff ?? null, error: result.error };
+}
+
 export async function uploadAvatar(
   staffId: string,
   accessToken: string,

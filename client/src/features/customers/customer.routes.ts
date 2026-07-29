@@ -1,7 +1,7 @@
 import { createElement, Fragment } from 'react';
 import { Route } from 'react-router';
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
-import { CustomerProfilePage } from './pages/CustomerProfilePage/CustomerProfilePage';
+import { CustomerPetManagerPage } from './pages/CustomerPetManagerPage/CustomerPetManagerPage';
 import { PetProfilePage } from './pages/PetProfilePage/PetProfilePage';
 
 export const customerRoutes = createElement(
@@ -11,8 +11,8 @@ export const customerRoutes = createElement(
     Route,
     { element: createElement(CustomerAuthGuard) },
     createElement(Route, {
-      path: '/portal/profile',
-      element: createElement(CustomerProfilePage),
+      path: '/portal/pets',
+      element: createElement(CustomerPetManagerPage),
     }),
     createElement(Route, {
       path: '/portal/pets/:petId',

@@ -7,12 +7,14 @@ import {
   createStaffAccountValidator,
   manageStaffAccountValidator,
   updateStaffProfileValidator,
+  updateStaffUsernameValidator,
 } from './modules/validators/staff.validator.ts';
 import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
 import { resendAccountEmail } from './services/resendAccountEmail.service.ts';
 import {
   createStaffAccount,
   manageStaffAccount,
+  updateStaffUsername,
 } from './services/staffManagement.service.ts';
 import {
   cancelUnavailabilityBlock,
@@ -32,6 +34,8 @@ const createUnavailabilityBlockValidator = z
     start_time: z.string().min(1).optional(),
     end_time: z.string().min(1).optional(),
     reason: z.string().trim().min(1).optional(),
+    /** Optional, non-binding "send to" hint - see staff.types.ts. */
+    requested_reviewer_id: z.string().uuid().optional(),
   })
   .strict();
 
@@ -279,6 +283,45 @@ export async function updateStaffProfileController(
 }
 
 /**
+ * Self-service username change (Account settings tab). Deliberately
+ * self-only, unlike updateStaffProfileController's isSelf-or-Admin pattern -
+ * an Admin changing another staff member's username isn't a supported flow.
+ */
+export async function updateStaffUsernameController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (requesterId !== targetId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const parsed = updateStaffUsernameValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const staff = await updateStaffUsername(requesterId, parsed.data.username);
+
+    return res.status(200).json({ staff });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
  * M01 Process 1: Admin Creates a Staff Account. Route-level requireRole
  * already restricts this to Admin/Superadmin; the Admin-own-branch
  * restriction is enforced in createStaffAccount().
@@ -425,6 +468,7 @@ export async function createUnavailabilityBlockController(
       startTime: parsed.data.start_time,
       endTime: parsed.data.end_time,
       reason: parsed.data.reason,
+      requestedReviewerId: parsed.data.requested_reviewer_id,
     });
 
     return res.status(201).json({ block });

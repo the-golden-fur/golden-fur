@@ -346,7 +346,7 @@ export function AdminServicesPage() {
   // never flashes through this redirect (same ordering as the other admin
   // pages).
   if (!isAllowedViewer) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   if (isLoading) {
