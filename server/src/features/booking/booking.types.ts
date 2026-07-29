@@ -137,6 +137,8 @@ export interface HotelBookingPreferenceFeeding {
   food_type: string;
   quantity: string;
   special_instructions?: string;
+  food_catalog_id?: string;
+  brought_by_customer?: boolean;
 }
 
 export interface HotelBookingPreferenceWalking {
@@ -150,6 +152,8 @@ export interface HotelBookingPreferenceMedication {
   dose: string;
   scheduled_times: string[];
   administration_notes?: string;
+  medication_catalog_id?: string;
+  brought_by_customer?: boolean;
 }
 
 export interface HotelBookingPreferences {

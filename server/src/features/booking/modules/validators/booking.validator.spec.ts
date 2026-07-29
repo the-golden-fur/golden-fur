@@ -112,6 +112,38 @@ describe('createBookingValidator', () => {
     ).toBe(false);
   });
 
+  it('accepts hotel_preferences with catalog linkage from the staff booking flow', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [
+            {
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1',
+              food_catalog_id: '11111111-1111-4111-a111-111111111111',
+              brought_by_customer: false,
+            },
+          ],
+          walking: [],
+          medications: [
+            {
+              medication_name: 'Amoxicillin',
+              dose: '250mg',
+              scheduled_times: ['08:00'],
+              medication_catalog_id: '22222222-2222-4222-a222-222222222222',
+              brought_by_customer: false,
+            },
+          ],
+        },
+      }).success
+    ).toBe(true);
+  });
+
   it('rejects a malformed hotel_preferences meal_time', () => {
     const { service_category: _category, ...rest } = BASE_BOOKING;
 

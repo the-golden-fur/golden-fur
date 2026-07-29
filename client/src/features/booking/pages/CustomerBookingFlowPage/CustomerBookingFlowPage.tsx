@@ -29,6 +29,12 @@ import {
   type StaffPreferenceInput,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { CatalogComboBox } from '../../../hotel/components/CatalogComboBox/CatalogComboBox';
+import { listFoodCatalog, listMedicationCatalog } from '../../../hotel/api/hotel.api';
+import type {
+  FoodCatalogItem,
+  MedicationCatalogItem,
+} from '../../../hotel/hotel.types';
 import styles from './CustomerBookingFlowPage.module.css';
 
 const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
@@ -68,6 +74,69 @@ function deriveHotelCageSize(serviceName: string): Pet['weight_class'] | null {
   return null;
 }
 
+interface SupplierChoiceProps {
+  /** Unique per feeding/medication row so each row's two radios form their
+   * own group instead of fighting over a single page-wide selection. */
+  radioGroup: string;
+  broughtByCustomer: boolean;
+  /** Purely client-side for medications (a units-to-purchase count, distinct
+   * from dose) - never sent in the submitted payload, so it only drives this
+   * on-screen estimate. */
+  quantity?: string;
+  catalogItem: { price: number } | undefined;
+  onChange: (broughtByCustomer: boolean) => void;
+}
+
+/**
+ * Staff-view-only supplier choice for a catalog-matched feeding/medication
+ * row - the user's ask was specifically for a radio button (HotelCheckInPage
+ * uses a single checkbox for the same boolean; a two-option radio group reads
+ * more clearly here). Shows a price x quantity estimate only when the staff
+ * will purchase it - HotelCheckInPage itself doesn't compute this today, so
+ * this is a new estimate, not a copy of existing behavior.
+ */
+function SupplierChoice({
+  radioGroup,
+  broughtByCustomer,
+  quantity,
+  catalogItem,
+  onChange,
+}: SupplierChoiceProps) {
+  const parsedQuantity = Number(quantity);
+  const estimate =
+    catalogItem && quantity && Number.isFinite(parsedQuantity) && parsedQuantity > 0
+      ? catalogItem.price * parsedQuantity
+      : catalogItem?.price;
+
+  return (
+    <div className={styles.supplierChoice}>
+      <label className={styles.radioOption}>
+        <input
+          type="radio"
+          name={radioGroup}
+          checked={broughtByCustomer}
+          onChange={() => onChange(true)}
+        />
+        Owner will bring it
+      </label>
+      <label className={styles.radioOption}>
+        <input
+          type="radio"
+          name={radioGroup}
+          checked={!broughtByCustomer}
+          onChange={() => onChange(false)}
+        />
+        Staff will purchase it
+        {!broughtByCustomer && catalogItem ? (
+          <span className={styles.priceEstimate}>
+            PHP {estimate!.toFixed(2)}
+          </span>
+        ) : null}
+      </label>
+    </div>
+  );
+}
+
 interface StepDef {
   key:
     | 'customer'
@@ -92,6 +161,12 @@ interface HotelFeedingRowState {
   food_type: string;
   quantity: string;
   special_instructions: string;
+  /** Set only when food_type matched a catalog item - staff view only, since
+   * the catalog dropdown (CatalogComboBox) is only shown there (the hotel
+   * catalog endpoints are staff-only). */
+  food_catalog_id: string | null;
+  /** true (default) = owner brings it; false = staff purchases it. */
+  brought_by_customer: boolean;
 }
 
 const EMPTY_HOTEL_WALKING_ROW = {
@@ -105,6 +180,13 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   dose: '',
   scheduled_time: '08:00',
   administration_notes: '',
+  medication_catalog_id: null as string | null,
+  brought_by_customer: true,
+  // Client-only (never sent in hotel_preferences.medications - dose already
+  // encodes amount per administration, and hotel.types.ts's
+  // MedicationInstructionPayload has no quantity field to round-trip through
+  // to check-in) - purely drives the price x quantity estimate below.
+  quantity: '1',
 };
 
 /**
@@ -168,7 +250,6 @@ export function CustomerBookingFlowPage() {
   // staff-only (#52). Tentatively assume the step exists until proven
   // otherwise, per StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
-
   const [promos, setPromos] = useState<Promo[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [specialInstructions, setSpecialInstructions] = useState('');
@@ -188,6 +269,31 @@ export function CustomerBookingFlowPage() {
   const [hotelMedications, setHotelMedications] = useState<
     Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
   >([]);
+
+  // Staff view only - GET /hotel/food-catalog and /hotel/medication-catalog
+  // are staff-gated (requireRole(frontDeskAndAssistants)), so the customer
+  // portal never fetches these and keeps its plain freetext fields.
+  const [foodCatalog, setFoodCatalog] = useState<FoodCatalogItem[]>([]);
+  const [medicationCatalog, setMedicationCatalog] = useState<
+    MedicationCatalogItem[]
+  >([]);
+
+  useEffect(() => {
+    if (!isReceptionistMode || !accessToken) return;
+
+    let isMounted = true;
+
+    void listFoodCatalog(accessToken).then((result) => {
+      if (isMounted && result.data) setFoodCatalog(result.data);
+    });
+    void listMedicationCatalog(accessToken).then((result) => {
+      if (isMounted && result.data) setMedicationCatalog(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceptionistMode, accessToken]);
 
   const [rawCurrentStepIndex, setCurrentStepIndex] = useState(0);
   const [rawMaxReachedIndex, setMaxReachedIndex] = useState(0);
@@ -363,6 +469,42 @@ export function CustomerBookingFlowPage() {
       : Math.min(applicablePromo.value, subtotal)
     : 0;
 
+  // Hotel-supplied feeding/medication items (staff will purchase them) are
+  // billed at checkout, not part of the upfront downpayment (mirrors
+  // HotelCheckInPage's own separate "estimated additional charges" line,
+  // computed there from the same brought_by_customer flag) - shown here so
+  // Review & Pay doesn't silently omit money the customer will owe.
+  const suppliesEstimateTotal = useMemo(() => {
+    if (category !== 'Hotel') return 0;
+
+    let total = 0;
+
+    for (const mealTime of MEAL_TIMES) {
+      const row = hotelFeeding[mealTime];
+      if (!row?.food_catalog_id || row.brought_by_customer) continue;
+
+      const item = foodCatalog.find((entry) => entry.id === row.food_catalog_id);
+      const quantity = Number(row.quantity);
+      total +=
+        (item?.price ?? 0) *
+        (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }
+
+    for (const row of hotelMedications) {
+      if (!row.medication_catalog_id || row.brought_by_customer) continue;
+
+      const item = medicationCatalog.find(
+        (entry) => entry.id === row.medication_catalog_id
+      );
+      const quantity = Number(row.quantity);
+      total +=
+        (item?.price ?? 0) *
+        (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }
+
+    return total;
+  }, [category, hotelFeeding, hotelMedications, foodCatalog, medicationCatalog]);
+
   const requiresPayment = category !== 'Veterinary';
   const downpaymentAmount =
     category === 'Hotel'
@@ -371,6 +513,12 @@ export function CustomerBookingFlowPage() {
 
   // ---- Steps ----
 
+  // Grooming/Veterinary bookings get a staff choice folded into the Date &
+  // Time step itself (merged step - see 'slot' case in isStepValid/render
+  // below) rather than a separate stepper entry, so a step disappearing
+  // when the branch+service-type combo has Staff Picker disabled (M09
+  // policy) or is a category with no staff concept (Hotel/Daycare) never
+  // leaves an orphaned nav entry to clean up.
   const steps: StepDef[] = useMemo(() => {
     const list: StepDef[] = [];
 
@@ -546,7 +694,13 @@ export function CustomerBookingFlowPage() {
       ...prev,
       [mealTime]: prev[mealTime]
         ? null
-        : { food_type: '', quantity: '', special_instructions: '' },
+        : {
+            food_type: '',
+            quantity: '1',
+            special_instructions: '',
+            food_catalog_id: null,
+            brought_by_customer: true,
+          },
     }));
   }
 
@@ -612,6 +766,12 @@ export function CustomerBookingFlowPage() {
         ...(row.special_instructions.trim()
           ? { special_instructions: row.special_instructions.trim() }
           : {}),
+        ...(row.food_catalog_id
+          ? {
+              food_catalog_id: row.food_catalog_id,
+              brought_by_customer: row.brought_by_customer,
+            }
+          : {}),
       };
     });
 
@@ -633,6 +793,12 @@ export function CustomerBookingFlowPage() {
         scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
         ...(row.administration_notes.trim()
           ? { administration_notes: row.administration_notes.trim() }
+          : {}),
+        ...(row.medication_catalog_id
+          ? {
+              medication_catalog_id: row.medication_catalog_id,
+              brought_by_customer: row.brought_by_customer,
+            }
           : {}),
       }));
 
@@ -1033,18 +1199,42 @@ export function CustomerBookingFlowPage() {
                     {row ? (
                       <div className={styles.instructionBlock}>
                         <div className={styles.inlineFields}>
+                          {isReceptionistMode ? (
+                            <CatalogComboBox
+                              placeholder="Food type"
+                              items={foodCatalog}
+                              value={{
+                                catalogId: row.food_catalog_id,
+                                text: row.food_type,
+                              }}
+                              onChange={(next) =>
+                                updateHotelFeeding(mealTime, {
+                                  food_type: next.text,
+                                  food_catalog_id: next.catalogId,
+                                  // Fresh catalog match defaults to owner-
+                                  // brought, matching HotelCheckInPage.
+                                  ...(next.catalogId
+                                    ? { brought_by_customer: true }
+                                    : {}),
+                                })
+                              }
+                            />
+                          ) : (
+                            <input
+                              className={styles.input}
+                              placeholder="Food type"
+                              value={row.food_type}
+                              onChange={(event) =>
+                                updateHotelFeeding(mealTime, {
+                                  food_type: event.target.value,
+                                })
+                              }
+                            />
+                          )}
                           <input
                             className={styles.input}
-                            placeholder="Food type"
-                            value={row.food_type}
-                            onChange={(event) =>
-                              updateHotelFeeding(mealTime, {
-                                food_type: event.target.value,
-                              })
-                            }
-                          />
-                          <input
-                            className={styles.input}
+                            type="number"
+                            min={1}
                             placeholder="Quantity"
                             value={row.quantity}
                             onChange={(event) =>
@@ -1064,6 +1254,22 @@ export function CustomerBookingFlowPage() {
                             }
                           />
                         </div>
+
+                        {isReceptionistMode && row.food_catalog_id ? (
+                          <SupplierChoice
+                            radioGroup={`feeding-${mealTime}`}
+                            broughtByCustomer={row.brought_by_customer}
+                            quantity={row.quantity}
+                            catalogItem={foodCatalog.find(
+                              (item) => item.id === row.food_catalog_id
+                            )}
+                            onChange={(broughtByCustomer) =>
+                              updateHotelFeeding(mealTime, {
+                                brought_by_customer: broughtByCustomer,
+                              })
+                            }
+                          />
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1129,16 +1335,36 @@ export function CustomerBookingFlowPage() {
               {hotelMedications.map((row, index) => (
                 <div key={index} className={styles.instructionBlock}>
                   <div className={styles.inlineFields}>
-                    <input
-                      className={styles.input}
-                      placeholder="Medication name"
-                      value={row.medication_name}
-                      onChange={(event) =>
-                        updateHotelMedication(index, {
-                          medication_name: event.target.value,
-                        })
-                      }
-                    />
+                    {isReceptionistMode ? (
+                      <CatalogComboBox
+                        placeholder="Medication name"
+                        items={medicationCatalog}
+                        value={{
+                          catalogId: row.medication_catalog_id,
+                          text: row.medication_name,
+                        }}
+                        onChange={(next) =>
+                          updateHotelMedication(index, {
+                            medication_name: next.text,
+                            medication_catalog_id: next.catalogId,
+                            ...(next.catalogId
+                              ? { brought_by_customer: true }
+                              : {}),
+                          })
+                        }
+                      />
+                    ) : (
+                      <input
+                        className={styles.input}
+                        placeholder="Medication name"
+                        value={row.medication_name}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            medication_name: event.target.value,
+                          })
+                        }
+                      />
+                    )}
                     <input
                       className={styles.input}
                       placeholder="Dose"
@@ -1149,6 +1375,20 @@ export function CustomerBookingFlowPage() {
                         })
                       }
                     />
+                    {isReceptionistMode ? (
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min={1}
+                        placeholder="Quantity"
+                        value={row.quantity}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            quantity: event.target.value,
+                          })
+                        }
+                      />
+                    ) : null}
                     <TimeInput
                       aria-label="Medication time"
                       value={row.scheduled_time}
@@ -1174,6 +1414,22 @@ export function CustomerBookingFlowPage() {
                       Remove
                     </button>
                   </div>
+
+                  {isReceptionistMode && row.medication_catalog_id ? (
+                    <SupplierChoice
+                      radioGroup={`medication-${index}`}
+                      broughtByCustomer={row.brought_by_customer}
+                      quantity={row.quantity}
+                      catalogItem={medicationCatalog.find(
+                        (item) => item.id === row.medication_catalog_id
+                      )}
+                      onChange={(broughtByCustomer) =>
+                        updateHotelMedication(index, {
+                          brought_by_customer: broughtByCustomer,
+                        })
+                      }
+                    />
+                  ) : null}
                 </div>
               ))}
               <button
@@ -1221,6 +1477,13 @@ export function CustomerBookingFlowPage() {
                 <p className={styles.copy}>
                   50% downpayment required now: PHP{' '}
                   {downpaymentAmount.toFixed(2)}
+                </p>
+              ) : null}
+              {suppliesEstimateTotal > 0 ? (
+                <p className={styles.copy}>
+                  Estimated additional charges (hotel-supplied food/
+                  medication, billed at checkout): PHP{' '}
+                  {suppliesEstimateTotal.toFixed(2)}
                 </p>
               ) : null}
             </section>

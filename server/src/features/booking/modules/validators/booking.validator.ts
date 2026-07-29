@@ -61,11 +61,14 @@ function requireEndAfterStart(
 }
 
 /**
- * Freetext booking-time preferences for a Hotel booking - deliberately not
- * the same shape as hotel.validator.ts's checkInValidator (no catalog_id/
- * brought_by_customer/pricing fields, which are check-in-time-only, staff-
- * owned concerns). This is a preview the check-in form can pre-fill from,
- * never the authoritative record.
+ * Booking-time preferences for a Hotel booking - a preview the check-in form
+ * pre-fills from, never the authoritative record (the receptionist still
+ * confirms/edits everything at physical check-in). food_catalog_id/
+ * medication_catalog_id/brought_by_customer are optional and only populated
+ * by the staff booking flow's catalog-aware Care Instructions step (the
+ * customer portal still submits plain freetext, since the hotel catalog
+ * endpoints are staff-only) - without them, HotelCheckInPage falls back to
+ * its older freetext-only prefill behavior.
  */
 const hotelPreferencesValidator = z
   .object({
@@ -77,6 +80,8 @@ const hotelPreferencesValidator = z
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
             special_instructions: z.string().trim().optional(),
+            food_catalog_id: z.uuid().optional(),
+            brought_by_customer: z.boolean().optional(),
           })
           .strict()
       )
@@ -100,6 +105,8 @@ const hotelPreferencesValidator = z
             dose: z.string().trim().min(1),
             scheduled_times: z.array(z.string().min(1)).default([]),
             administration_notes: z.string().trim().optional(),
+            medication_catalog_id: z.uuid().optional(),
+            brought_by_customer: z.boolean().optional(),
           })
           .strict()
       )

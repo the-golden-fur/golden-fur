@@ -264,6 +264,26 @@
   padding: var(--space-2);
 }
 
+.supplierChoice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.radioOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+}
+
+.priceEstimate {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
 .paymentStep {
   display: grid;
   gap: var(--space-2);
