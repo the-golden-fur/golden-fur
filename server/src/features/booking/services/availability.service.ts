@@ -30,6 +30,10 @@ const CATEGORY_STAFF_ROLE: Partial<Record<ServiceCategory, string>> = {
   Veterinary: 'Veterinarian',
 };
 
+/** Arrival-time granularity for Hotel candidates - independent of the stay's
+ * own duration (slotDurationMinutes), which only sets how far `end` extends. */
+const HOTEL_ARRIVAL_STEP_MS = 60 * 60000;
+
 export type SlotLevel = 'available' | 'partial' | 'full';
 
 export interface SlotAvailability {
@@ -132,6 +136,51 @@ function levelFromUsage(occupied: number, capacity: number): SlotLevel {
   return 'partial';
 }
 
+export interface OperatingWindow {
+  /** "HH:MM", branch-local wall-clock time. */
+  open: string;
+  close: string;
+}
+
+export interface ResolveOperatingWindowParams {
+  branchId: string;
+  /** YYYY-MM-DD, interpreted in the branch's own timezone. */
+  date: string;
+}
+
+/**
+ * The branch's open/close wall-clock times for a single date, so the
+ * client's hybrid time input can bound what it accepts (typed or picked)
+ * without duplicating getDaySlots' own slot-stepping - this only resolves
+ * the window, not the stepped candidate list, and doesn't change getDaySlots'
+ * own signature/return shape (still consumed as-is by capacity.service.ts,
+ * reschedule.service.ts, and existing specs).
+ */
+export async function resolveOperatingWindow({
+  branchId,
+  date,
+}: ResolveOperatingWindowParams): Promise<OperatingWindow | null> {
+  const { data: branch, error: branchError } = await supabase
+    .from('branches')
+    .select('operating_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (branchError) throwWithStatus(400, branchError.message);
+  if (!branch) throwWithStatus(404, 'Branch not found');
+
+  const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+
+  const dayName = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+  })
+    .format(zonedTimeToUtc(date, '12:00', timezone))
+    .toLowerCase();
+
+  return operatingHours?.[dayName] ?? null;
+}
+
 /**
  * One day's worth of candidate slots for the Slot Picker, stepped back-to-
  * back by slotDurationMinutes across the branch's operating hours for that
@@ -198,13 +247,21 @@ export async function getDaySlots({
     // A Hotel stay's duration (the seeded service's 1440-minute/one-night
     // length) routinely runs past this same day's close time by design - the
     // stay continues into the next day, unlike a same-day Grooming/
-    // Veterinary/Daycare appointment. So there is exactly one check-in
-    // candidate per date, at opening time, not a back-to-back stepping
-    // within [open, close] the way every other category works below.
-    candidates.push({
-      start: openUtc,
-      end: new Date(openUtc.getTime() + stepMs),
-    });
+    // Veterinary/Daycare appointment. Arrival TIME is still meaningful
+    // though (the customer picks when they'll drop the pet off), so
+    // candidates step hourly across [open, close) the same way every other
+    // category steps by its own slotDurationMinutes - just with `end`
+    // always start + the full stay length, never bounded by same-day close.
+    for (
+      let start = openUtc.getTime();
+      start < closeUtc.getTime();
+      start += HOTEL_ARRIVAL_STEP_MS
+    ) {
+      candidates.push({
+        start: new Date(start),
+        end: new Date(start + stepMs),
+      });
+    }
   } else {
     for (
       let start = openUtc.getTime();
@@ -220,18 +277,12 @@ export async function getDaySlots({
 
   // Same-day bookings are allowed, but a slot whose start time is already in
   // the past is never a real option (e.g. 8:00 AM showing as bookable at
-  // 3:00 PM) - this only applies to the time-stepped categories above.
-  // Hotel's single candidate instead marks the whole day as bookable; actual
-  // arrival time is chosen separately at physical check-in (see
-  // HotelCheckInPage), so same-day Hotel bookings stay available all day
-  // regardless of the current time.
+  // 3:00 PM) - applies to every category, Hotel included now that Hotel
+  // offers real arrival-time candidates rather than a single day-level flag.
   const now = new Date();
-  const futureCandidates =
-    serviceCategory === 'Hotel'
-      ? candidates
-      : candidates.filter(
-          (candidate) => candidate.start.getTime() > now.getTime()
-        );
+  const futureCandidates = candidates.filter(
+    (candidate) => candidate.start.getTime() > now.getTime()
+  );
 
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
 

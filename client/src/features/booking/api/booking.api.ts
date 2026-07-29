@@ -4,6 +4,7 @@ import type {
   CancellationResult,
   CreateBookingPayload,
   ListBookingsFilters,
+  OperatingWindow,
   PolicyConfiguration,
   RescheduleBookingPayload,
   RescheduleResult,
@@ -122,10 +123,15 @@ export interface AvailabilityQuery {
   petWeightClass?: string;
 }
 
+export interface DayAvailability {
+  slots: SlotAvailability[];
+  window: OperatingWindow | null;
+}
+
 export async function getDayAvailability(
   accessToken: string,
   query: AvailabilityQuery
-): Promise<BookingApiResult<SlotAvailability[]>> {
+): Promise<BookingApiResult<DayAvailability>> {
   const params = new URLSearchParams({
     branch_id: query.branchId,
     service_category: query.serviceCategory,
@@ -146,8 +152,13 @@ export async function getDayAvailability(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ slots: SlotAvailability[] }>(response);
-  return { data: result.data?.slots ?? null, error: result.error };
+  const result = await parseBody<DayAvailability>(response);
+  return {
+    data: result.data
+      ? { slots: result.data.slots, window: result.data.window }
+      : null,
+    error: result.error,
+  };
 }
 
 export interface BookingCatalog {

@@ -112,6 +112,12 @@ export interface HotelBookingPreferenceFeeding {
   food_type: string;
   quantity: string;
   special_instructions?: string;
+  /** Set only when food_type matched a hotel food-catalog item - mirrors
+   * hotel.types.ts's FeedingInstructionPayload naming so HotelCheckInPage's
+   * prefill can pass these straight through at check-in. */
+  food_catalog_id?: string;
+  /** true (default) = owner brings it; false = staff purchases it. */
+  brought_by_customer?: boolean;
 }
 
 export interface HotelBookingPreferenceWalking {
@@ -125,6 +131,8 @@ export interface HotelBookingPreferenceMedication {
   dose: string;
   scheduled_times: string[];
   administration_notes?: string;
+  medication_catalog_id?: string;
+  brought_by_customer?: boolean;
 }
 
 export interface HotelBookingPreferences {
@@ -278,6 +286,13 @@ export interface SlotAvailability {
   /** Hotel only - how many petWeightClass-size cages remain free/total. */
   cage_capacity_remaining?: number;
   cage_capacity_total?: number;
+}
+
+/** Branch open/close wall-clock time for the requested date - "HH:MM",
+ * branch-local. Null when the branch is closed that day. */
+export interface OperatingWindow {
+  open: string;
+  close: string;
 }
 
 export interface ListBookingsFilters {
