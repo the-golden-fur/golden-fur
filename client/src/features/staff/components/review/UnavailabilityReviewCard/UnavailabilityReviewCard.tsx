@@ -17,7 +17,12 @@ function getInitials(displayName: string) {
     .join('');
 }
 
-function formatWindow(startTime: string, endTime: string) {
+function formatWindow(startTime: string, endTime: string, isFullDay: boolean) {
+  if (isFullDay) {
+    const date = new Date(startTime).toLocaleDateString();
+    return `Full day off – ${date}`;
+  }
+
   const start = new Date(startTime).toLocaleString();
   const end = new Date(endTime).toLocaleString();
   return `${start} – ${end}`;
@@ -61,7 +66,7 @@ export function UnavailabilityReviewCard({
       </div>
 
       <p className={styles.window}>
-        {formatWindow(block.start_time, block.end_time)}
+        {formatWindow(block.start_time, block.end_time, block.is_full_day)}
       </p>
 
       {block.reason ? <p className={styles.reason}>{block.reason}</p> : null}

@@ -285,10 +285,10 @@ describe('StaffManagementPage (#75)', () => {
 
     await screen.findByText('Jamie Cruz');
     await userEvent.click(
-      screen.getAllByRole('button', { name: /set unavailability/i })[0]
+      screen.getAllByRole('button', { name: /set day\(s\) off/i })[0]
     );
     await userEvent.click(
-      screen.getByRole('button', { name: /unavailable until end of shift/i })
+      screen.getByRole('button', { name: /take the rest of today off/i })
     );
 
     await waitFor(() =>
@@ -299,7 +299,7 @@ describe('StaffManagementPage (#75)', () => {
       )
     );
     expect(
-      await screen.findByText('Unavailability block created.')
+      await screen.findByText('Day-off request created.')
     ).toBeInTheDocument();
   });
 

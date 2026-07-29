@@ -42,7 +42,7 @@ describe('UnavailabilityBlockBadge', () => {
     expect(await screen.findByText('Available')).toBeInTheDocument();
   });
 
-  it('shows "Unavailable until" with a formatted time for an active block', async () => {
+  it('shows "Off until" with a formatted time for an active block', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(
       mockClient([
         { id: 'block-1', end_time: '2026-07-11T17:00:00.000Z' },
@@ -56,7 +56,28 @@ describe('UnavailabilityBlockBadge', () => {
       })
     );
 
-    expect(await screen.findByText(/unavailable until/i)).toBeInTheDocument();
+    expect(await screen.findByText(/off until/i)).toBeInTheDocument();
+  });
+
+  it('shows "Full day off" for an active full-day block instead of a time', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      mockClient([
+        {
+          id: 'block-2',
+          end_time: '2026-07-11T17:00:00.000Z',
+          is_full_day: true,
+        } as never,
+      ]) as unknown as ReturnType<typeof getSupabaseClient>
+    );
+
+    render(
+      createElement(UnavailabilityBlockBadge, {
+        staffId: 'staff-1',
+        accessToken: 'token',
+      })
+    );
+
+    expect(await screen.findByText('Full day off')).toBeInTheDocument();
   });
 
   it('shows an error state when no Supabase client is configured', async () => {

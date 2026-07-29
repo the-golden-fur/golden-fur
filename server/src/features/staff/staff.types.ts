@@ -56,6 +56,9 @@ export interface UnavailabilityBlock {
   created_at: string;
   status: UnavailabilityBlockStatus;
   is_quick_action: boolean;
+  /** Entire Day option - the window spans that date's full branch
+   * operating hours rather than a specific start_time/end_time range. */
+  is_full_day: boolean;
   reviewed_by: string | null;
   reviewed_at: string | null;
   denial_reason: string | null;
