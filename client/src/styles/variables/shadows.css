@@ -17,13 +17,16 @@
     0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
-/* Dark mode adjustment for shadows */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Shadows need to be darker and heavier in dark mode to be visible */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
-  }
+/* Dark mode adjustment for shadows - keyed on the app's own data-color-mode
+   (Settings > Appearance), not the OS-level prefers-color-scheme media
+   query. Those two could previously disagree (e.g. OS light + in-app Dark
+   picked) since ThemeProvider already resolves "Device default" from
+   prefers-color-scheme itself and writes data-color-mode either way - using
+   the media query here bypassed that resolution instead of following it. */
+[data-color-mode='dark'] {
+  /* Shadows need to be darker and heavier in dark mode to be visible */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
 }

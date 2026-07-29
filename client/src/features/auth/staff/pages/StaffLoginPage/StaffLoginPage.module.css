@@ -69,7 +69,7 @@
 }
 
 .feature .icon {
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: 1;
   width: 20px;
   text-align: center;
@@ -84,8 +84,10 @@
 .right {
   flex: 1 1 50%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
   padding: 56px 48px;
 }
 
@@ -112,6 +114,22 @@
 .sub {
   margin: 0;
   color: var(--color-text-secondary);
+}
+
+.customerLink {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.customerLink a {
+  color: var(--color-accent-gold-primary);
+  transition: color 0.15s ease;
+}
+
+.customerLink a:hover {
+  color: var(--color-accent-gold-highlight);
 }
 
 @media (max-width: 900px) {

@@ -2,7 +2,6 @@
   composes: animate-fade-in from global;
   display: grid;
   min-height: 100vh;
-  background: linear-gradient(160deg, #ffe9d6, #ffdbbb);
 }
 
 .content {
@@ -16,7 +15,7 @@
 
 .title {
   margin: 0;
-  color: #3d2b1f;
+  color: var(--color-text-primary);
   font-family: var(--font-main);
   font-size: var(--text-heading-lg);
   font-weight: var(--weight-bold);
@@ -24,7 +23,7 @@
 
 .copy {
   margin: 0;
-  color: #6f5945;
+  color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }
 

@@ -14,7 +14,11 @@ function Paw({ className }: { className: string }) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
       {pawEllipses.map((ellipse) => (
-        <ellipse key={`${ellipse.cx}-${ellipse.cy}`} {...ellipse} fill="#fff" />
+        <ellipse
+          key={`${ellipse.cx}-${ellipse.cy}`}
+          {...ellipse}
+          fill="var(--color-text-on-heropanel)"
+        />
       ))}
     </svg>
   );

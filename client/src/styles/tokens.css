@@ -1,4 +1,22 @@
-[data-theme='customer'] {
+:root {
+  --radius-sm: 10px;
+  --radius-md: 15px;
+  --radius-lg: 20px;
+  --radius-xl: 25px;
+  --radius-pill: 50px;
+}
+
+/*
+ * Light/dark mode (Settings > Appearance) - not staff/customer role.
+ * Every token below was originally written as one full palette per role
+ * (data-theme='customer'/'staff'), but every single pair - error/warning/
+ * success, every status-badge set, even color-scheme in global.css - is
+ * really a light-mode/dark-mode pair that happened to default to customer=
+ * light and staff=dark. Keyed on data-color-mode instead, so the toggle
+ * actually changes the whole app regardless of role, and either role can
+ * use either mode. data-theme (role) no longer carries any color tokens.
+ */
+[data-color-mode='light'] {
   --color-bg-primary: #f7f2e8;
   --color-bg-secondary: #fffdf7;
   --color-text-primary: #3d2b1f;
@@ -29,6 +47,14 @@
   --color-badge-bg-gold: #f7e3b6;
   --color-text-on-sidebar: #f1e0bf;
   --color-text-on-accent: #fff8e8;
+  /* Customer login/signup hero panel (the paw-print side) - light mode
+     keeps the gold gradient brand moment; dark mode swaps it for a neutral
+     dark gradient instead of staying gold (a bright gold panel read as
+     "theme not applied" against an otherwise dark page). */
+  --color-hero-gradient-start: #d9b36b;
+  --color-hero-gradient-mid: #c88a1b;
+  --color-hero-gradient-end: #d0a24d;
+  --color-text-on-heropanel: #fff8e8;
   --color-status-neutral-bg: #efe4cd;
   --color-status-neutral-text: #725a35;
   /* Sprint 2 Epic A: sale-enabled/disabled badge pair (distinct from the
@@ -116,21 +142,30 @@
   --color-cage-status-maintenance-bg: #ece7de;
   --color-cage-status-maintenance-text: #7a7263;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
-  --radius-sm: 10px;
-  --radius-md: 15px;
-  --radius-lg: 20px;
-  --radius-xl: 25px;
-  --radius-pill: 50px;
+  /* LandingPage "glass card" panels (translucent cards floating over the
+     hero photo/gradient) - RGB-only so each card can keep its own
+     hand-tuned alpha via rgba(var(--color-landing-glass-bg-rgb), X) while
+     the base color still swaps with the mode. */
+  --color-landing-glass-bg-rgb: 255, 255, 255;
+  --color-landing-glass-border-rgb: 255, 255, 255;
 }
 
-[data-theme='staff'] {
+[data-color-mode='dark'] {
+  /*
+   * Dark structural palette: warm espresso/mahogany browns, not neutral
+   * charcoal - a fully desaturated attempt at this read as flat and cold
+   * ("where did the warmth go"). Kept warm, but --color-border/-surface are
+   * a touch darker than the very first pass of this palette so borders and
+   * cards don't pop as a lighter muddy stripe against the near-black
+   * backgrounds (the "poop brown" complaint that started this revamp).
+   */
   --color-bg-primary: #1f140b;
   --color-bg-secondary: #2c1d12;
   --color-text-primary: #f7ebd7;
   --color-text-secondary: #e0c190;
   --color-text-muted: #b79b6e;
-  --color-border: #6b4c2c;
-  --color-surface: #3a2717;
+  --color-border: #4a3320;
+  --color-surface: #33220f;
   --color-accent: #c1871d;
   --color-accent-hover: #d6a23d;
   --color-accent-fg: #20150b;
@@ -152,8 +187,12 @@
   --color-accent-gold-card-border: #8b6424;
   --color-accent-gold-link: #f0cf84;
   --color-badge-bg-gold: #5c4218;
-  --color-text-on-sidebar: #f3e2bb;
+  --color-text-on-sidebar: #efe6d4;
   --color-text-on-accent: #24150a;
+  --color-hero-gradient-start: #33220f;
+  --color-hero-gradient-mid: #2c1d12;
+  --color-hero-gradient-end: #1f140b;
+  --color-text-on-heropanel: #efe6d4;
   --color-status-neutral-bg: #4d3d28;
   --color-status-neutral-text: #f0dfbf;
   /* Sprint 2 Epic A: sale-enabled/disabled badge pair (dark-theme values
@@ -219,9 +258,10 @@
   --color-cage-status-maintenance-bg: #43392a;
   --color-cage-status-maintenance-text: #cfc3a9;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
-  --radius-sm: 10px;
-  --radius-md: 15px;
-  --radius-lg: 20px;
-  --radius-xl: 25px;
-  --radius-pill: 50px;
+  /* LandingPage glass cards - dark mode swaps the translucent white panel
+     for a translucent dark one (matches --color-surface/--color-border)
+     instead of staying white, so text drawn on top (already mode-aware)
+     stays readable. */
+  --color-landing-glass-bg-rgb: 51, 34, 15;
+  --color-landing-glass-border-rgb: 74, 51, 32;
 }
