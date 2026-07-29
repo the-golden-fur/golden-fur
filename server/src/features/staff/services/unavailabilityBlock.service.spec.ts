@@ -255,6 +255,68 @@ describe('unavailabilityBlock.service', () => {
       expect(supabase.from).not.toHaveBeenCalled();
     });
 
+    it("Entire Day option: resolves start/end from that date's full branch operating hours", async () => {
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        },
+        { data: [], error: null },
+        {
+          data: {
+            id: 'block-5',
+            staff_id: 'staff-1',
+            start_time: '2026-07-13T01:00:00.000Z',
+            end_time: '2026-07-13T10:00:00.000Z',
+            reason: null,
+            created_by: 'staff-1',
+            created_at: '2026-07-13T00:00:00.000Z',
+            is_full_day: true,
+          },
+          error: null,
+        }
+      );
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        isFullDay: true,
+        date: '2026-07-13', // a Monday
+      });
+
+      // 09:00-18:00 Asia/Manila == 01:00-10:00 UTC
+      expect(result.start_time).toBe('2026-07-13T01:00:00.000Z');
+      expect(result.end_time).toBe('2026-07-13T10:00:00.000Z');
+      expect(supabase.from).toHaveBeenCalledWith('branches');
+    });
+
+    it('Entire Day option: requires date', async () => {
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        }
+      );
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          isFullDay: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     it('rejects a custom range where end_time is not after start_time', async () => {
       queueFromResults({
         data: { id: 'staff-1', branch_id: 'branch-a' },

@@ -25,6 +25,7 @@ export function UnavailabilityBlockBadge({
 }: UnavailabilityBlockBadgeProps) {
   const [status, setStatus] = useState<BadgeStatus>('checking');
   const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
+  const [isFullDay, setIsFullDay] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,7 +53,7 @@ export function UnavailabilityBlockBadge({
       const now = new Date().toISOString();
       const { data, error } = await client
         .from('staff_unavailability_blocks')
-        .select('id, end_time')
+        .select('id, end_time, is_full_day')
         .eq('staff_id', staffId)
         .lte('start_time', now)
         .gt('end_time', now)
@@ -72,9 +73,11 @@ export function UnavailabilityBlockBadge({
 
       if (activeBlock) {
         setBlockedUntil(activeBlock.end_time as string);
+        setIsFullDay(Boolean(activeBlock.is_full_day));
         setStatus('blocked');
       } else {
         setBlockedUntil(null);
+        setIsFullDay(false);
         setStatus('available');
       }
     };
@@ -92,7 +95,9 @@ export function UnavailabilityBlockBadge({
       : status === 'error'
         ? 'Unable to check availability'
         : status === 'blocked'
-          ? `Unavailable until ${blockedUntil ? formatTime(blockedUntil) : ''}`
+          ? isFullDay
+            ? 'Full day off'
+            : `Off until ${blockedUntil ? formatTime(blockedUntil) : ''}`
           : 'Available';
 
   const variantClass =

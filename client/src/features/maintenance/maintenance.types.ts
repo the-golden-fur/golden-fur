@@ -126,6 +126,50 @@ export interface BranchSummary {
   is_vet_branch: boolean;
 }
 
+export const WEEKDAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+export type Weekday = (typeof WEEKDAYS)[number];
+
+export interface OperatingHoursEntry {
+  /** "HH:MM", branch-local wall-clock time. */
+  open: string;
+  close: string;
+}
+
+/** A day absent from this map means the branch is closed that day. */
+export type OperatingHours = Partial<Record<Weekday, OperatingHoursEntry>>;
+
+/** Full branch row - Superadmin System Configuration only (server/src/
+ * features/branches). Distinct from BranchSummary, which every staff role
+ * reads directly via Supabase RLS for branch-name dropdowns. */
+export interface Branch {
+  id: string;
+  name: string;
+  address: string;
+  contact_number: string | null;
+  is_vet_branch: boolean;
+  operating_hours: OperatingHours;
+  timezone: string;
+  created_at: string;
+}
+
+export interface UpdateBranchPayload {
+  name?: string;
+  address?: string;
+  contact_number?: string | null;
+  is_vet_branch?: boolean;
+  timezone?: string;
+  operating_hours?: OperatingHours;
+}
+
 /**
  * Epic B (#81): the Grooming size/coat matrix is derived server-side from
  * base_price + pricing_configuration - services no longer accept a

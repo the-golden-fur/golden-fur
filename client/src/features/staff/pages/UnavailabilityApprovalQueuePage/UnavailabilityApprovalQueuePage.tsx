@@ -148,7 +148,7 @@ export function UnavailabilityApprovalQueuePage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Unavailability Approval Queue</h1>
+        <h1 className={styles.title}>Days Off Approval Queue</h1>
 
         {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
           <label className={styles.filterField}>

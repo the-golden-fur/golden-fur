@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getDayAvailability } from '../../api/booking.api';
-import type { ServiceCategory, SlotAvailability } from '../../booking.types';
+import type {
+  OperatingWindow,
+  ServiceCategory,
+  SlotAvailability,
+} from '../../booking.types';
+import { TimeSlotInput } from '../TimeSlotInput/TimeSlotInput';
 import styles from './SlotPicker.module.css';
 
 interface SelectedSlot {
@@ -23,8 +28,17 @@ interface SlotPickerProps {
   onSelect: (slot: SelectedSlot) => void;
 }
 
+/** Browser-LOCAL calendar date, not UTC - `.toISOString()` reports the UTC
+ * date, which lags a full local day behind for any positive UTC offset
+ * (e.g. Asia/Manila, UTC+8) during the local-midnight-to-8AM window, letting
+ * "today" (and therefore the min-date guard below) silently resolve to
+ * yesterday during that window. */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function shiftDate(date: string, days: number): string {
@@ -32,19 +46,6 @@ function shiftDate(date: string, days: number): string {
   next.setUTCDate(next.getUTCDate() + days);
   return next.toISOString().slice(0, 10);
 }
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-const LEVEL_LABEL: Record<SlotAvailability['level'], string> = {
-  available: 'Available',
-  partial: 'Partially available',
-  full: 'Fully booked',
-};
 
 /**
  * One SlotPicker, two render modes gated by viewerMode (#56 dev notes) -
@@ -64,6 +65,8 @@ export function SlotPicker({
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
   const [slots, setSlots] = useState<SlotAvailability[]>([]);
+  const [operatingWindow, setOperatingWindow] =
+    useState<OperatingWindow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +100,8 @@ export function SlotPicker({
       }
 
       setError(null);
-      setSlots(result.data);
+      setSlots(result.data.slots);
+      setOperatingWindow(result.data.window);
     });
 
     return () => {
@@ -196,34 +200,13 @@ export function SlotPicker({
       ) : null}
 
       {!isLoading && !error && slots.length > 0 ? (
-        <div className={styles.grid} aria-label="Time slots">
-          {slots.map((slot) => {
-            const isSelected = selectedSlot?.start === slot.start;
-            const levelClass =
-              viewerMode === 'staff' ? styles[slot.level] : undefined;
-
-            return (
-              <button
-                key={slot.start}
-                type="button"
-                className={`${styles.slot} ${levelClass ?? ''} ${
-                  isSelected ? styles.selected : ''
-                }`}
-                disabled={!slot.available}
-                aria-label={
-                  viewerMode === 'staff'
-                    ? `${formatTime(slot.start)} - ${LEVEL_LABEL[slot.level]}`
-                    : `${formatTime(slot.start)} - ${
-                        slot.available ? 'Available' : 'Unavailable'
-                      }`
-                }
-                onClick={() => onSelect({ start: slot.start, end: slot.end })}
-              >
-                {formatTime(slot.start)}
-              </button>
-            );
-          })}
-        </div>
+        <TimeSlotInput
+          slots={slots}
+          operatingWindow={operatingWindow}
+          viewerMode={viewerMode}
+          selectedStart={selectedSlot?.start ?? null}
+          onSelect={(slot) => onSelect({ start: slot.start, end: slot.end })}
+        />
       ) : null}
     </div>
   );

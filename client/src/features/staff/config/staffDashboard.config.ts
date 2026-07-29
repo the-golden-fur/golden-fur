@@ -54,6 +54,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Admin dashboard',
     tiles: [
       {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
+      {
         title: 'Staff Management',
         description: 'Create, promote, and manage staff accounts.',
         to: '/staff/admin/staff',
@@ -64,8 +69,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         to: '/staff/admin/customers',
       },
       {
-        title: 'Unavailability Approval Queue',
-        description: 'Review pending staff unavailability requests.',
+        title: 'Days Off Approval Queue',
+        description: 'Review pending staff day-off requests.',
         to: '/staff/admin/unavailability',
       },
       {
@@ -125,19 +130,30 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         description: 'End-of-day uncompleted care log flags.',
         to: '/staff/hotel/care-log',
       },
+      {
+        title: 'System Configuration',
+        description:
+          'Superadmin only - branch name, address, and operating hours.',
+        to: '/staff/admin/maintenance/system-configuration',
+      },
     ],
   },
   supervisor: {
     heading: 'Supervisor dashboard',
     tiles: [
       {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
+      {
         title: 'Customer Management',
         description: 'Look up customers, pets, and walk-in records.',
         to: '/staff/admin/customers',
       },
       {
-        title: 'Unavailability Approval Queue',
-        description: 'Review pending staff unavailability requests.',
+        title: 'Days Off Approval Queue',
+        description: 'Review pending staff day-off requests.',
         to: '/staff/admin/unavailability',
       },
       {
@@ -160,6 +176,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
   receptionist: {
     heading: 'Receptionist dashboard',
     tiles: [
+      {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
       {
         title: 'Customer Management',
         description: 'Look up customers, pets, and walk-in records.',
@@ -191,6 +212,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Groomer dashboard',
     tiles: [
       {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
+      {
         title: 'Grooming Queue',
         description: "Today's grooming appointments and status updates.",
         to: '/staff/grooming/queue',
@@ -200,6 +226,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
   veterinarian: {
     heading: 'Veterinarian dashboard',
     tiles: [
+      {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
       {
         title: 'Consultation Queue',
         description: "Today's consultations and pet medical history.",
@@ -211,6 +242,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
     heading: 'Cashier dashboard',
     tiles: [
       {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
+      {
         title: 'Checkout & Billing',
         description: 'Assemble charges, apply discounts, and take payment.',
       },
@@ -219,6 +255,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
   'pet-assistant': {
     heading: 'Pet Assistant dashboard',
     tiles: [
+      {
+        title: 'Days Off',
+        description: 'Request a day off, or take the rest of today off.',
+        to: '/staff/days-off',
+      },
       {
         title: 'Care Log',
         description: "Today's feeding, walking, and medication checklist.",

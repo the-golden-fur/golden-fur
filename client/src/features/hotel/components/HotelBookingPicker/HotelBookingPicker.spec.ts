@@ -227,7 +227,8 @@ describe('HotelBookingPicker', () => {
 
     renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
 
-    expect(await screen.findByText('Completed')).toBeInTheDocument();
+    await screen.findByText('Mochi');
+    expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.queryByText('Already checked in')).not.toBeInTheDocument();
     expect(screen.queryByText(/Go to checkout/)).not.toBeInTheDocument();
 

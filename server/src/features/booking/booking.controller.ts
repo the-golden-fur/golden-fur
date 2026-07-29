@@ -15,7 +15,10 @@ import {
 } from './services/staffPicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
-import { getDaySlots } from './services/availability.service.ts';
+import {
+  getDaySlots,
+  resolveOperatingWindow,
+} from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
 import {
   availabilityQueryValidator,
@@ -156,15 +159,21 @@ export async function availabilityController(
   }
 
   try {
-    const slots = await getDaySlots({
-      branchId: parsed.data.branch_id,
-      serviceCategory: parsed.data.service_category,
-      date: parsed.data.date,
-      slotDurationMinutes: parsed.data.slot_duration_minutes,
-      petWeightClass: parsed.data.pet_weight_class,
-    });
+    const [slots, window] = await Promise.all([
+      getDaySlots({
+        branchId: parsed.data.branch_id,
+        serviceCategory: parsed.data.service_category,
+        date: parsed.data.date,
+        slotDurationMinutes: parsed.data.slot_duration_minutes,
+        petWeightClass: parsed.data.pet_weight_class,
+      }),
+      resolveOperatingWindow({
+        branchId: parsed.data.branch_id,
+        date: parsed.data.date,
+      }),
+    ]);
 
-    return res.status(200).json({ slots });
+    return res.status(200).json({ slots, window });
   } catch (error) {
     return sendServiceError(res, error);
   }

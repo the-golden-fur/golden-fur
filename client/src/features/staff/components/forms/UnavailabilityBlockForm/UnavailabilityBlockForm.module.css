@@ -44,6 +44,14 @@
   gap: var(--space-0-5);
 }
 
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
 .label {
   color: var(--color-text-secondary);
   font-size: var(--text-label);

@@ -9,6 +9,7 @@ import groomingRoutes from '../features/grooming/grooming.routes.ts';
 import daycareRoutes from '../features/daycare/daycare.routes.ts';
 import veterinaryRoutes from '../features/veterinary/veterinary.routes.ts';
 import hotelRoutes from '../features/hotel/hotel.routes.ts';
+import branchesRoutes from '../features/branches/branches.routes.ts';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use(groomingRoutes);
 router.use(daycareRoutes);
 router.use(veterinaryRoutes);
 router.use(hotelRoutes);
+router.use(branchesRoutes);
 
 export default router;

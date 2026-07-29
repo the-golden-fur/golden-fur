@@ -134,7 +134,7 @@ export function StaffManagementPage() {
       ...prev,
       [staffId]: (prev[staffId] ?? 0) + 1,
     }));
-    setBlockMessage('Unavailability block created.');
+    setBlockMessage('Day-off request created.');
     setExpandedStaffId(null);
   };
 
@@ -274,9 +274,7 @@ export function StaffManagementPage() {
                     )
                   }
                 >
-                  {expandedStaffId === staff.id
-                    ? 'Close'
-                    : 'Set unavailability'}
+                  {expandedStaffId === staff.id ? 'Close' : 'Set day(s) off'}
                 </button>
                 {expandedStaffId === staff.id ? (
                   <UnavailabilityBlockForm

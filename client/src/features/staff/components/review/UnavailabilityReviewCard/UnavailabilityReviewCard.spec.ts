@@ -18,6 +18,7 @@ function makeBlock(
     created_at: '2026-07-13T00:00:00.000Z',
     status: 'pending',
     is_quick_action: false,
+    is_full_day: false,
     reviewed_by: null,
     reviewed_at: null,
     denial_reason: null,
@@ -50,6 +51,18 @@ describe('UnavailabilityReviewCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /approve/i }));
 
     expect(onApprove).toHaveBeenCalled();
+  });
+
+  it('shows "Full day off" with the date instead of a time range for a full-day block', () => {
+    render(
+      createElement(UnavailabilityReviewCard, {
+        block: makeBlock({ is_full_day: true }),
+        onApprove: vi.fn(),
+        onDeny: vi.fn(),
+      })
+    );
+
+    expect(screen.getByText(/full day off/i)).toBeInTheDocument();
   });
 
   it('opens the deny reason field and calls onDeny with the trimmed reason', async () => {

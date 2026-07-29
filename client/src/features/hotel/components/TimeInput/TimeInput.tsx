@@ -9,6 +9,10 @@ interface TimeInputProps {
   onChange: (value: string) => void;
   presets?: string[];
   'aria-label'?: string;
+  /** Read-only display - HotelCheckInPage's Care Instructions section uses
+   * this once check-in makes feeding/walking/medication instructions
+   * read-only for every staff role. */
+  disabled?: boolean;
 }
 
 /**
@@ -22,6 +26,7 @@ export function TimeInput({
   onChange,
   presets = DEFAULT_PRESETS,
   'aria-label': ariaLabel,
+  disabled = false,
 }: TimeInputProps) {
   return (
     <div className={styles.wrapper}>
@@ -31,6 +36,7 @@ export function TimeInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={ariaLabel}
+        disabled={disabled}
       />
       <select
         className={styles.presetSelect}
@@ -38,6 +44,7 @@ export function TimeInput({
           ariaLabel ? `${ariaLabel} quick-pick` : 'Quick-pick a common time'
         }
         value=""
+        disabled={disabled}
         onChange={(event) => {
           if (event.target.value) onChange(event.target.value);
         }}

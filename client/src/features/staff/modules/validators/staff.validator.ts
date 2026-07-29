@@ -55,20 +55,26 @@ export const avatarFileSchema = z
 
 /**
  * Mirrors the server's create-block payload shape (staff.controller.ts). A
- * quick-action request only needs the flag; a custom range needs both times,
- * with end strictly after start.
+ * quick-action request only needs the flag; an Entire Day request needs a
+ * date; a custom range needs both times, with end strictly after start.
  */
 export const createUnavailabilityBlockValidator = z
   .object({
     quick_action: z.boolean().optional(),
+    is_full_day: z.boolean().optional(),
+    date: z.string().min(1, 'Date is required').optional(),
     start_time: z.string().min(1, 'Start time is required').optional(),
     end_time: z.string().min(1, 'End time is required').optional(),
     reason: z.string().trim().min(1).optional(),
   })
   .refine(
-    (data) => data.quick_action === true || (data.start_time && data.end_time),
+    (data) =>
+      data.quick_action === true ||
+      (data.is_full_day === true && Boolean(data.date)) ||
+      (data.start_time && data.end_time),
     {
-      message: 'Choose the quick action or provide a start and end time',
+      message:
+        'Choose the quick action, an entire day, or a start and end time',
       path: ['start_time'],
     }
   )

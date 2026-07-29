@@ -11,11 +11,17 @@ interface UnavailabilityBlockFormProps {
   onCreated: (block: UnavailabilityBlock) => void;
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function UnavailabilityBlockForm({
   staffId,
   accessToken,
   onCreated,
 }: UnavailabilityBlockFormProps) {
+  const [isFullDay, setIsFullDay] = useState(false);
+  const [fullDayDate, setFullDayDate] = useState(todayIso);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
@@ -24,6 +30,8 @@ export function UnavailabilityBlockForm({
 
   const submitBlock = async (payload: {
     quick_action?: boolean;
+    is_full_day?: boolean;
+    date?: string;
     start_time?: string;
     end_time?: string;
     reason?: string;
@@ -38,7 +46,7 @@ export function UnavailabilityBlockForm({
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setError(result.error ?? 'Could not create unavailability block.');
+      setError(result.error ?? 'Could not create the day-off request.');
       return;
     }
 
@@ -56,6 +64,27 @@ export function UnavailabilityBlockForm({
     event.preventDefault();
 
     const trimmedReason = reason.trim();
+
+    if (isFullDay) {
+      const parsed = createUnavailabilityBlockValidator.safeParse({
+        is_full_day: true,
+        date: fullDayDate,
+        reason: trimmedReason ? trimmedReason : undefined,
+      });
+
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Check the selected date.');
+        return;
+      }
+
+      void submitBlock({
+        is_full_day: true,
+        date: parsed.data.date,
+        reason: parsed.data.reason,
+      });
+      return;
+    }
+
     const parsed = createUnavailabilityBlockValidator.safeParse({
       start_time: startTime,
       end_time: endTime,
@@ -82,31 +111,55 @@ export function UnavailabilityBlockForm({
         disabled={isSubmitting}
         onClick={handleQuickAction}
       >
-        Unavailable until end of shift
+        Take the rest of today off
       </button>
 
       <form
         className={styles.form}
         onSubmit={(event) => void handleCustomRange(event)}
       >
-        <label className={styles.field}>
-          <span className={styles.label}>Start</span>
+        <label className={styles.checkboxField}>
           <input
-            className={styles.input}
-            type="datetime-local"
-            value={startTime}
-            onChange={(event) => setStartTime(event.target.value)}
+            type="checkbox"
+            checked={isFullDay}
+            onChange={(event) => setIsFullDay(event.target.checked)}
           />
+          <span>Entire day</span>
         </label>
-        <label className={styles.field}>
-          <span className={styles.label}>End</span>
-          <input
-            className={styles.input}
-            type="datetime-local"
-            value={endTime}
-            onChange={(event) => setEndTime(event.target.value)}
-          />
-        </label>
+
+        {isFullDay ? (
+          <label className={styles.field}>
+            <span className={styles.label}>Date</span>
+            <input
+              className={styles.input}
+              type="date"
+              value={fullDayDate}
+              onChange={(event) => setFullDayDate(event.target.value)}
+            />
+          </label>
+        ) : (
+          <>
+            <label className={styles.field}>
+              <span className={styles.label}>Start</span>
+              <input
+                className={styles.input}
+                type="datetime-local"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.label}>End</span>
+              <input
+                className={styles.input}
+                type="datetime-local"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+              />
+            </label>
+          </>
+        )}
+
         <label className={styles.field}>
           <span className={styles.label}>Reason (internal only)</span>
           <input
@@ -122,7 +175,7 @@ export function UnavailabilityBlockForm({
           </p>
         ) : null}
         <button className={styles.button} type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating...' : 'Create custom block'}
+          {isSubmitting ? 'Requesting...' : 'Request day(s) off'}
         </button>
       </form>
     </div>

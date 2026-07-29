@@ -26,6 +26,9 @@ import { ADMIN_ROLES } from './staff.types.ts';
 const createUnavailabilityBlockValidator = z
   .object({
     quick_action: z.boolean().optional(),
+    is_full_day: z.boolean().optional(),
+    /** YYYY-MM-DD - required when is_full_day is set. */
+    date: z.string().min(1).optional(),
     start_time: z.string().min(1).optional(),
     end_time: z.string().min(1).optional(),
     reason: z.string().trim().min(1).optional(),
@@ -417,6 +420,8 @@ export async function createUnavailabilityBlockController(
       requesterRole,
       targetStaffId: targetId as string,
       quickAction: parsed.data.quick_action,
+      isFullDay: parsed.data.is_full_day,
+      date: parsed.data.date,
       startTime: parsed.data.start_time,
       endTime: parsed.data.end_time,
       reason: parsed.data.reason,

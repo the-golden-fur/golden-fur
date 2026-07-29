@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SlotPicker } from './SlotPicker';
@@ -7,6 +13,8 @@ import * as bookingApi from '../../api/booking.api';
 vi.mock('../../api/booking.api', () => ({
   getDayAvailability: vi.fn(),
 }));
+
+const WINDOW = { open: '08:00', close: '18:00' };
 
 const SLOTS = [
   {
@@ -25,14 +33,16 @@ const SLOTS = [
   },
 ];
 
-// Button order once slots render: [Previous day, Next day, slot 1, slot 2] -
-// the date <input> isn't a button.
-const SLOT_BUTTON_OFFSET = 2;
+function openDropdown() {
+  const input = screen.getByLabelText('Appointment time');
+  fireEvent.focus(input);
+  return input;
+}
 
 describe('SlotPicker', () => {
-  it('AC-1: customer mode exposes only available/unavailable, no color-level classes', async () => {
+  it('AC-1: customer mode does not expose staff coverage-level text', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: SLOTS,
+      data: { slots: SLOTS, window: WINDOW },
       error: null,
     });
 
@@ -48,21 +58,21 @@ describe('SlotPicker', () => {
       })
     );
 
+    await waitFor(() => screen.getByLabelText('Appointment time'));
+    openDropdown();
+
     await waitFor(() =>
-      expect(screen.getAllByRole('button')).toHaveLength(
-        SLOT_BUTTON_OFFSET + SLOTS.length
-      )
+      expect(screen.getAllByRole('option')).toHaveLength(SLOTS.length)
     );
 
-    const buttons = screen.getAllByRole('button');
-    expect(
-      buttons.some((button) => /available|partial|full/.test(button.className))
-    ).toBe(false);
+    expect(screen.queryByText('2 slots available')).not.toBeInTheDocument();
+    expect(screen.queryByText('No slots available')).not.toBeInTheDocument();
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
   });
 
-  it('AC-2: staff mode applies the 3-color level class', async () => {
+  it('AC-2: staff mode shows the actual available-slot count as text', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: SLOTS,
+      data: { slots: SLOTS, window: WINDOW },
       error: null,
     });
 
@@ -78,20 +88,20 @@ describe('SlotPicker', () => {
       })
     );
 
+    await waitFor(() => screen.getByLabelText('Appointment time'));
+    openDropdown();
+
     await waitFor(() =>
-      expect(screen.getAllByRole('button')).toHaveLength(
-        SLOT_BUTTON_OFFSET + SLOTS.length
-      )
+      expect(screen.getAllByRole('option')).toHaveLength(SLOTS.length)
     );
 
-    const buttons = screen.getAllByRole('button');
-    expect(buttons.some((b) => b.className.includes('available'))).toBe(true);
-    expect(buttons.some((b) => b.className.includes('full'))).toBe(true);
+    expect(screen.getByText('2 slots available')).toBeInTheDocument();
+    expect(screen.getByText('No slots available')).toBeInTheDocument();
   });
 
   it('AC-3: shows an empty state with no slots for the date', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: [],
+      data: { slots: [], window: null },
       error: null,
     });
 
@@ -113,9 +123,9 @@ describe('SlotPicker', () => {
     );
   });
 
-  it('calls onSelect with the slot window when an available slot is clicked', async () => {
+  it('calls onSelect with the slot window when an available option is clicked', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: SLOTS,
+      data: { slots: SLOTS, window: WINDOW },
       error: null,
     });
     const onSelect = vi.fn();
@@ -132,12 +142,16 @@ describe('SlotPicker', () => {
       })
     );
 
+    await waitFor(() => screen.getByLabelText('Appointment time'));
+    openDropdown();
+
+    const listbox = await screen.findByRole('listbox');
+
     await waitFor(() =>
-      expect(screen.getAllByRole('button')).toHaveLength(
-        SLOT_BUTTON_OFFSET + SLOTS.length
-      )
+      expect(within(listbox).getAllByRole('button')).toHaveLength(SLOTS.length)
     );
-    fireEvent.click(screen.getAllByRole('button')[SLOT_BUTTON_OFFSET]);
+
+    fireEvent.click(within(listbox).getAllByRole('button')[0]);
 
     expect(onSelect).toHaveBeenCalledWith({
       start: SLOTS[0].start,
@@ -145,9 +159,9 @@ describe('SlotPicker', () => {
     });
   });
 
-  it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
+  it('disables the unavailable option in the dropdown', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: SLOTS,
+      data: { slots: SLOTS, window: WINDOW },
       error: null,
     });
 
@@ -163,7 +177,68 @@ describe('SlotPicker', () => {
       })
     );
 
-    const today = new Date().toISOString().slice(0, 10);
+    await waitFor(() => screen.getByLabelText('Appointment time'));
+    openDropdown();
+
+    const listbox = await screen.findByRole('listbox');
+    const buttons = await waitFor(() => {
+      const found = within(listbox).getAllByRole('button');
+      expect(found).toHaveLength(SLOTS.length);
+      return found;
+    });
+
+    expect(buttons[1]).toBeDisabled();
+  });
+
+  it('bounds the time input to the branch operating-hours window', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    const input = (await waitFor(() =>
+      screen.getByLabelText('Appointment time')
+    )) as HTMLInputElement;
+
+    expect(input.min).toBe(WINDOW.open);
+    expect(input.max).toBe(WINDOW.close);
+  });
+
+  it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    // Local calendar date, matching the component's own todayIso() - not
+    // .toISOString(), which reports the UTC date and would flake in any
+    // positive-UTC-offset timezone (see the regression test below).
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
 
     expect(dateInput.min).toBe(today);
@@ -176,18 +251,54 @@ describe('SlotPicker', () => {
     expect(dateInput.value).toBe(today);
   });
 
+  it('regression: min date is the local calendar date, not the UTC one (repro: 7:40 AM Asia/Manila still let yesterday be picked)', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'Asia/Manila';
+    vi.useFakeTimers();
+    // 07:40 AM Asia/Manila (UTC+8) on 2026-07-29 == 2026-07-28T23:40:00Z.
+    vi.setSystemTime(new Date('2026-07-28T23:40:00.000Z'));
+
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
+
+    expect(dateInput.min).toBe('2026-07-29');
+    expect(dateInput.value).toBe('2026-07-29');
+
+    process.env.TZ = originalTz;
+    vi.useRealTimers();
+  });
+
   it('shows cage availability for Hotel bookings, separate from the date/time slot itself', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-      data: [
-        {
-          start: '2026-08-03T01:00:00.000Z',
-          end: '2026-08-04T01:00:00.000Z',
-          available: true,
-          level: 'partial',
-          cage_capacity_remaining: 3,
-          cage_capacity_total: 8,
-        },
-      ],
+      data: {
+        slots: [
+          {
+            start: '2026-08-03T01:00:00.000Z',
+            end: '2026-08-04T01:00:00.000Z',
+            available: true,
+            level: 'partial',
+            cage_capacity_remaining: 3,
+            cage_capacity_total: 8,
+          },
+        ],
+        window: { open: '08:00', close: '08:00' },
+      },
       error: null,
     });
 

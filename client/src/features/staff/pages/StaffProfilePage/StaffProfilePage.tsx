@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile, updateStaffProfile } from '../../api/staff.api';
 import { AvatarUploader } from '../../components/forms/AvatarUploader/AvatarUploader';
-import { UnavailabilityBlockForm } from '../../components/forms/UnavailabilityBlockForm/UnavailabilityBlockForm';
 import { UnavailabilityBlockBadge } from '../../components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import type { CommunicationChannel, StaffProfile } from '../../staff.types';
 import styles from './StaffProfilePage.module.css';
@@ -31,8 +30,6 @@ export function StaffProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [blockRefreshKey, setBlockRefreshKey] = useState(0);
-  const [blockMessage, setBlockMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id || !accessToken) {
@@ -68,11 +65,6 @@ export function StaffProfilePage() {
 
   const handleAvatarUploaded = (url: string) => {
     setProfile((prev) => (prev ? { ...prev, profile_photo_url: url } : prev));
-  };
-
-  const handleBlockCreated = () => {
-    setBlockRefreshKey((key) => key + 1);
-    setBlockMessage('Unavailability block created.');
   };
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
@@ -153,7 +145,6 @@ export function StaffProfilePage() {
             <UnavailabilityBlockBadge
               staffId={profile.id}
               accessToken={accessToken}
-              refreshKey={blockRefreshKey}
             />
           </div>
         </div>
@@ -227,23 +218,6 @@ export function StaffProfilePage() {
             {isSaving ? 'Saving...' : 'Save Profile'}
           </button>
         </form>
-
-        <section
-          className={styles.blockSection}
-          aria-labelledby="unavailability-block-title"
-        >
-          <h2 className={styles.sectionTitle} id="unavailability-block-title">
-            Unavailability Block
-          </h2>
-          {blockMessage ? (
-            <p className={styles.successBanner}>{blockMessage}</p>
-          ) : null}
-          <UnavailabilityBlockForm
-            staffId={profile.id}
-            accessToken={accessToken}
-            onCreated={handleBlockCreated}
-          />
-        </section>
       </section>
     </main>
   );

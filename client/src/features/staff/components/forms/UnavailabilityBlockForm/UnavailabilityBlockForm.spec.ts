@@ -38,7 +38,7 @@ describe('UnavailabilityBlockForm', () => {
     renderForm(onCreated);
 
     await userEvent.click(
-      screen.getByRole('button', { name: /unavailable until end of shift/i })
+      screen.getByRole('button', { name: /take the rest of today off/i })
     );
 
     expect(staffApi.createUnavailabilityBlock).toHaveBeenCalledWith(
@@ -75,7 +75,7 @@ describe('UnavailabilityBlockForm', () => {
     await userEvent.type(screen.getByLabelText(/reason/i), 'Vet appointment');
 
     await userEvent.click(
-      screen.getByRole('button', { name: /create custom block/i })
+      screen.getByRole('button', { name: /request day\(s\) off/i })
     );
 
     expect(staffApi.createUnavailabilityBlock).toHaveBeenCalledWith(
@@ -97,12 +97,52 @@ describe('UnavailabilityBlockForm', () => {
     });
 
     await userEvent.click(
-      screen.getByRole('button', { name: /create custom block/i })
+      screen.getByRole('button', { name: /request day\(s\) off/i })
     );
 
     expect(
       await screen.findByText(/end time must be after start time/i)
     ).toBeInTheDocument();
     expect(staffApi.createUnavailabilityBlock).not.toHaveBeenCalled();
+  });
+
+  it('Entire day option submits is_full_day + date instead of a time range', async () => {
+    const block = {
+      id: 'block-3',
+      staff_id: 'staff-1',
+      start_time: '2026-07-13T01:00:00.000Z',
+      end_time: '2026-07-13T10:00:00.000Z',
+      reason: null,
+      created_by: 'staff-1',
+      created_at: '2026-07-13T00:00:00.000Z',
+      is_full_day: true,
+    };
+    vi.mocked(staffApi.createUnavailabilityBlock).mockResolvedValue({
+      data: block,
+      error: null,
+    });
+    const onCreated = vi.fn();
+    renderForm(onCreated);
+
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /entire day/i })
+    );
+
+    expect(screen.queryByLabelText(/^start$/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^date$/i), {
+      target: { value: '2026-07-13' },
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /request day\(s\) off/i })
+    );
+
+    expect(staffApi.createUnavailabilityBlock).toHaveBeenCalledWith(
+      'staff-1',
+      'token',
+      expect.objectContaining({ is_full_day: true, date: '2026-07-13' })
+    );
+    expect(onCreated).toHaveBeenCalledWith(block);
   });
 });

@@ -18,6 +18,14 @@ interface CreateUnavailabilityBlockParams {
   requesterRole: string;
   targetStaffId: string;
   quickAction?: boolean;
+  /** Entire Day option - blocks the target's branch operating-hours window
+   * for `date` instead of a start_time/end_time range. Still goes through
+   * the same pending-vs-auto-approved rule as any other custom-range
+   * request (self-request = pending, on-behalf = auto-approved) - it isn't
+   * a third approval path, just a different way of computing the window. */
+  isFullDay?: boolean;
+  /** YYYY-MM-DD, branch-local - required when isFullDay is set. */
+  date?: string;
   startTime?: string;
   endTime?: string;
   reason?: string;
@@ -146,11 +154,58 @@ export function resolveShiftEnd(
   return new Date(naiveLocalMs - offsetMs);
 }
 
+/**
+ * Entire Day option: the target's branch operating-hours window for a given
+ * date, rather than "now until end of shift" (resolveShiftEnd above). Same
+ * fixed-offset approximation resolveShiftEnd/availability.service.ts's
+ * zonedTimeToUtc already rely on - safe since every branch today is
+ * Asia/Manila, which never observes DST.
+ */
+function resolveDateWindow(
+  timezone: string,
+  operatingHours: OperatingHours,
+  date: string
+): { start: Date; end: Date } {
+  const dayName = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+  })
+    .format(new Date(`${date}T12:00:00Z`))
+    .toLowerCase();
+
+  const hours = operatingHours?.[dayName];
+
+  if (!hours?.open || !hours?.close) {
+    throwWithStatus(
+      400,
+      'Branch has no operating hours configured for that date'
+    );
+  }
+
+  function toUtc(time: string): Date {
+    const [hour, minute] = time.split(':').map(Number);
+    const naiveLocalMs = Date.UTC(
+      Number(date.slice(0, 4)),
+      Number(date.slice(5, 7)) - 1,
+      Number(date.slice(8, 10)),
+      hour,
+      minute,
+      0
+    );
+    const offsetMs = getTimezoneOffsetMs(timezone, new Date(naiveLocalMs));
+    return new Date(naiveLocalMs - offsetMs);
+  }
+
+  return { start: toUtc(hours.open), end: toUtc(hours.close) };
+}
+
 export async function createUnavailabilityBlock({
   requesterId,
   requesterRole,
   targetStaffId,
   quickAction,
+  isFullDay,
+  date,
   startTime,
   endTime,
   reason,
@@ -170,9 +225,7 @@ export async function createUnavailabilityBlock({
   let resolvedStart: Date;
   let resolvedEnd: Date;
 
-  if (quickAction) {
-    resolvedStart = now;
-
+  if (quickAction || isFullDay) {
     const { data: branch, error: branchError } = await supabase
       .from('branches')
       .select('operating_hours, timezone')
@@ -182,11 +235,26 @@ export async function createUnavailabilityBlock({
     if (branchError) throwWithStatus(400, branchError.message);
     if (!branch) throwWithStatus(400, 'Branch not found for staff member');
 
-    resolvedEnd = resolveShiftEnd(
-      branch.timezone,
-      branch.operating_hours ?? {},
-      resolvedStart
-    );
+    if (quickAction) {
+      resolvedStart = now;
+      resolvedEnd = resolveShiftEnd(
+        branch.timezone,
+        branch.operating_hours ?? {},
+        resolvedStart
+      );
+    } else {
+      if (!date) {
+        throwWithStatus(400, 'date is required for a full-day request');
+      }
+
+      const window = resolveDateWindow(
+        branch.timezone,
+        branch.operating_hours ?? {},
+        date
+      );
+      resolvedStart = window.start;
+      resolvedEnd = window.end;
+    }
   } else {
     if (!startTime || !endTime) {
       throwWithStatus(400, 'start_time and end_time are required');
@@ -229,6 +297,7 @@ export async function createUnavailabilityBlock({
       reason: reason ?? null,
       created_by: requesterId,
       is_quick_action: Boolean(quickAction),
+      is_full_day: Boolean(isFullDay),
     })
     .select('*')
     .maybeSingle();
