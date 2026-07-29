@@ -204,3 +204,37 @@ export async function manageStaffAccount({
 
   return data;
 }
+
+/**
+ * Self-service username change (Account settings). Deliberately self-only -
+ * no requester/target split like manageStaffAccount above, since an
+ * Admin/Superadmin changing another staff member's username isn't a
+ * supported flow here (see the validator's Issue #22 comment).
+ */
+export async function updateStaffUsername(
+  staffId: string,
+  username: string
+): Promise<StaffProfile> {
+  const { data: existing, error: lookupError } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('username', username)
+    .neq('id', staffId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (existing) throwWithStatus(409, 'Username already exists');
+
+  const { data, error } = await supabase
+    .from('staff_profiles')
+    .update({ username })
+    .eq('id', staffId)
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to update username');
+  }
+
+  return data;
+}

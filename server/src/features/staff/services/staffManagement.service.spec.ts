@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createStaffAccount,
   manageStaffAccount,
+  updateStaffUsername,
 } from './staffManagement.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
@@ -33,6 +34,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.eq = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.neq = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
 
     return builder as never;
@@ -290,6 +292,27 @@ describe('staffManagement.service', () => {
 
       expect(result.role).toBe('Supervisor');
       expect(result.branch_id).toBe('branch-b');
+    });
+  });
+
+  describe('updateStaffUsername', () => {
+    it('rejects a username already taken by a different staff member with 409', async () => {
+      queueFromResults({ data: { id: 'other-staff' }, error: null });
+
+      await expect(
+        updateStaffUsername('staff-1', 'taken.name')
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('updates the username when it is free', async () => {
+      queueFromResults(
+        { data: null, error: null },
+        { data: { id: 'staff-1', username: 'new.name' }, error: null }
+      );
+
+      const result = await updateStaffUsername('staff-1', 'new.name');
+
+      expect(result.username).toBe('new.name');
     });
   });
 });

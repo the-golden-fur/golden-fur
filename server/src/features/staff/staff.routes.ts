@@ -17,6 +17,7 @@ import {
   resendAccountEmailController,
   reviewUnavailabilityBlockController,
   updateStaffProfileController,
+  updateStaffUsernameController,
   uploadAvatarController,
 } from './staff.controller.ts';
 import {
@@ -74,6 +75,15 @@ router.patch(
   requireRole([...ALL_STAFF_ROLES]),
   requireBranch,
   updateStaffProfileController
+);
+
+router.patch(
+  '/staff/:id/username',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ALL_STAFF_ROLES]),
+  requireBranch,
+  updateStaffUsernameController
 );
 
 router.patch(

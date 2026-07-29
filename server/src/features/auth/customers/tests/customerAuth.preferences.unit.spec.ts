@@ -25,6 +25,15 @@ function mockResponse() {
   return res as Response;
 }
 
+function mockUpdateChain(result: { data: unknown; error: unknown }) {
+  const single = vi.fn().mockResolvedValue(result);
+  const select = vi.fn().mockReturnValue({ single });
+  const eq = vi.fn().mockReturnValue({ select });
+  const update = vi.fn().mockReturnValue({ eq });
+  mockUserClient.from.mockReturnValue({ update });
+  return { update, eq, select };
+}
+
 describe('customerPreferencesController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,6 +49,20 @@ describe('customerPreferencesController', () => {
     await customerPreferencesController(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
+    expect(mockUserClient.from).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when neither preference is provided', async () => {
+    const req = {
+      body: {},
+      headers: { authorization: 'Bearer customer-token' },
+      user: { sub: 'customer-id' },
+    } as unknown as AuthenticatedRequest;
+    const res = mockResponse();
+
+    await customerPreferencesController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
     expect(mockUserClient.from).not.toHaveBeenCalled();
   });
 
@@ -60,15 +83,28 @@ describe('customerPreferencesController', () => {
     expect(mockUserClient.from).not.toHaveBeenCalled();
   });
 
-  it('updates theme_preference and returns it on success', async () => {
-    const single = vi.fn().mockResolvedValue({
-      data: { theme_preference: 'light' },
+  it('returns 400 for an invalid font_size_preference value', async () => {
+    const req = {
+      body: { font_size_preference: 'huge' },
+      headers: { authorization: 'Bearer customer-token' },
+      user: { sub: 'customer-id' },
+    } as unknown as AuthenticatedRequest;
+    const res = mockResponse();
+
+    await customerPreferencesController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Invalid font size preference',
+    });
+    expect(mockUserClient.from).not.toHaveBeenCalled();
+  });
+
+  it('updates theme_preference only and returns both current values', async () => {
+    const { update, eq } = mockUpdateChain({
+      data: { theme_preference: 'light', font_size_preference: 'medium' },
       error: null,
     });
-    const select = vi.fn().mockReturnValue({ single });
-    const eq = vi.fn().mockReturnValue({ select });
-    const update = vi.fn().mockReturnValue({ eq });
-    mockUserClient.from.mockReturnValue({ update });
 
     const req = {
       body: { theme_preference: 'light' },
@@ -83,18 +119,33 @@ describe('customerPreferencesController', () => {
     expect(update).toHaveBeenCalledWith({ theme_preference: 'light' });
     expect(eq).toHaveBeenCalledWith('id', 'customer-id');
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ theme_preference: 'light' });
+    expect(res.json).toHaveBeenCalledWith({
+      theme_preference: 'light',
+      font_size_preference: 'medium',
+    });
+  });
+
+  it('updates font_size_preference only', async () => {
+    const { update } = mockUpdateChain({
+      data: { theme_preference: 'system', font_size_preference: 'x-large' },
+      error: null,
+    });
+
+    const req = {
+      body: { font_size_preference: 'x-large' },
+      headers: { authorization: 'Bearer customer-token' },
+      user: { sub: 'customer-id' },
+    } as unknown as AuthenticatedRequest;
+    const res = mockResponse();
+
+    await customerPreferencesController(req, res);
+
+    expect(update).toHaveBeenCalledWith({ font_size_preference: 'x-large' });
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it('returns 400 when the update is rejected (e.g. by RLS)', async () => {
-    const single = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'permission denied' },
-    });
-    const select = vi.fn().mockReturnValue({ single });
-    const eq = vi.fn().mockReturnValue({ select });
-    const update = vi.fn().mockReturnValue({ eq });
-    mockUserClient.from.mockReturnValue({ update });
+    mockUpdateChain({ data: null, error: { message: 'permission denied' } });
 
     const req = {
       body: { theme_preference: 'dark' },

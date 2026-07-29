@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { updateStaffProfileValidator } from './staff.validator.ts';
+import {
+  updateStaffProfileValidator,
+  updateStaffUsernameValidator,
+} from './staff.validator.ts';
 
 describe('updateStaffProfileValidator', () => {
   it('passes a single allowed field', () => {
@@ -84,6 +87,36 @@ describe('updateStaffProfileValidator', () => {
   it('rejects a mix of valid and unknown fields', () => {
     const result = updateStaffProfileValidator.safeParse({
       display_name: 'Jane Doe',
+      role: 'Admin',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateStaffUsernameValidator', () => {
+  it('passes a valid username', () => {
+    const result = updateStaffUsernameValidator.safeParse({
+      username: 'jamiec',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ username: 'jamiec' });
+    }
+  });
+
+  it('rejects a username shorter than 3 characters', () => {
+    const result = updateStaffUsernameValidator.safeParse({ username: 'jc' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a missing username', () => {
+    const result = updateStaffUsernameValidator.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown field alongside username', () => {
+    const result = updateStaffUsernameValidator.safeParse({
+      username: 'jamiec',
       role: 'Admin',
     });
     expect(result.success).toBe(false);

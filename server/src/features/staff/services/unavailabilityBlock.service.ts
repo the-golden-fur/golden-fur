@@ -3,6 +3,7 @@ import { UNAVAILABILITY_MANAGER_ROLES } from '../staff.types.ts';
 import type {
   PendingUnavailabilityBlock,
   PendingUnavailabilityBlockStaffSummary,
+  RequestedReviewerSummary,
   UnavailabilityBlock,
 } from '../staff.types.ts';
 
@@ -29,6 +30,8 @@ interface CreateUnavailabilityBlockParams {
   startTime?: string;
   endTime?: string;
   reason?: string;
+  /** Optional, non-binding "send to" hint - see staff.types.ts. */
+  requestedReviewerId?: string;
   now?: Date;
 }
 
@@ -209,6 +212,7 @@ export async function createUnavailabilityBlock({
   startTime,
   endTime,
   reason,
+  requestedReviewerId,
   now = new Date(),
 }: CreateUnavailabilityBlockParams): Promise<UnavailabilityBlock> {
   assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
@@ -221,6 +225,26 @@ export async function createUnavailabilityBlock({
 
   if (profileError) throwWithStatus(400, profileError.message);
   if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+
+  if (requestedReviewerId) {
+    const { data: reviewer, error: reviewerError } = await supabase
+      .from('staff_profiles')
+      .select('id, role, branch_id')
+      .eq('id', requestedReviewerId)
+      .maybeSingle();
+
+    if (reviewerError) throwWithStatus(400, reviewerError.message);
+    if (
+      !reviewer ||
+      reviewer.branch_id !== targetProfile.branch_id ||
+      !UNAVAILABILITY_MANAGER_ROLES.includes(reviewer.role)
+    ) {
+      throwWithStatus(
+        400,
+        'requested_reviewer_id must be a Supervisor, Admin, or Superadmin at the same branch'
+      );
+    }
+  }
 
   let resolvedStart: Date;
   let resolvedEnd: Date;
@@ -275,6 +299,12 @@ export async function createUnavailabilityBlock({
     throwWithStatus(400, 'end_time must be after start_time');
   }
 
+  // quickAction's resolvedStart is `now` itself, so it's always exactly
+  // non-past - excluded explicitly rather than relying on that equality.
+  if (!quickAction && resolvedStart.getTime() < now.getTime()) {
+    throwWithStatus(400, 'start_time cannot be in the past');
+  }
+
   const { data: overlapping, error: overlapError } = await supabase
     .from('staff_unavailability_blocks')
     .select('id')
@@ -298,6 +328,7 @@ export async function createUnavailabilityBlock({
       created_by: requesterId,
       is_quick_action: Boolean(quickAction),
       is_full_day: Boolean(isFullDay),
+      requested_reviewer_id: requestedReviewerId ?? null,
     })
     .select('*')
     .maybeSingle();
@@ -435,7 +466,7 @@ export async function listPendingUnavailabilityBlocks({
   const { data, error } = await supabase
     .from('staff_unavailability_blocks')
     .select(
-      '*, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(id, display_name, profile_photo_url, role, branch_id)'
+      '*, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(id, display_name, profile_photo_url, role, branch_id), requested_reviewer:staff_profiles!staff_unavailability_blocks_requested_reviewer_id_fkey(id, display_name)'
     )
     .eq('status', 'pending')
     .order('start_time', { ascending: true });
@@ -445,6 +476,7 @@ export async function listPendingUnavailabilityBlocks({
   const rows = (data ?? []) as Array<
     UnavailabilityBlock & {
       staff: PendingUnavailabilityBlockStaffSummary | null;
+      requested_reviewer: RequestedReviewerSummary | null;
     }
   >;
 
