@@ -79,8 +79,11 @@ function minutesBetween(start: string, end: string): number {
 /**
  * Issue #79 revision: check-in form capturing structured feeding/walking/
  * medication instructions, the notification opt-in toggle, and cage size
- * suggestion with a manual, never-disabled override (the CageStatusGrid
- * grid below the form doubles as the override control - AC-4).
+ * suggestion. Cage assignment and Care Instructions load read-only (the
+ * auto-suggested cage plus whatever the booking already captured) - the
+ * single `isEditing` toggle (an "Edit"/"Done editing" button at the end of
+ * the form) unlocks both together, so a receptionist correcting a customer's
+ * mistake doesn't first have to know they need to click something.
  *
  * Food type and medication name use CatalogComboBox - a hybrid dropdown
  * (admin-managed food_catalog/medication_catalog, #79 revision) or freetext
@@ -131,6 +134,12 @@ export function HotelCheckInPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [checkedInStayId, setCheckedInStayId] = useState<string | null>(null);
 
+  // Cage assignment and Care Instructions load read-only (the auto-suggested
+  // cage plus whatever the booking already captured) - a single "Edit"
+  // toggle unlocks both together, so the receptionist can correct a mistake
+  // without every check-in requiring a click first.
+  const [isEditing, setIsEditing] = useState(false);
+
   useEffect(() => {
     if (!accessToken || !user?.id) return;
 
@@ -178,6 +187,7 @@ export function HotelCheckInPage() {
     setFeeding({ Morning: null, Afternoon: null, Evening: null });
     setWalking([]);
     setMedications([]);
+    setIsEditing(false);
 
     // Pre-fills from whatever the customer/receptionist entered at booking
     // time (CustomerBookingFlowPage's "Care Instructions" step), so this
@@ -191,10 +201,18 @@ export function HotelCheckInPage() {
           const next = { ...prev };
           for (const item of preferences.feeding) {
             next[item.meal_time] = {
-              foodType: { catalogId: null, text: item.food_type },
+              // Carries the staff booking flow's catalog match through when
+              // present (its Care Instructions step now uses the same
+              // catalog), instead of always discarding it as freetext - the
+              // customer portal never captures catalog_id, so this still
+              // falls back to freetext exactly as before for those bookings.
+              foodType: {
+                catalogId: item.food_catalog_id ?? null,
+                text: item.food_type,
+              },
               quantity: item.quantity,
               specialInstructions: item.special_instructions ?? '',
-              broughtByCustomer: true,
+              broughtByCustomer: item.brought_by_customer ?? true,
             };
           }
           return next;
@@ -216,11 +234,14 @@ export function HotelCheckInPage() {
       if (preferences.medications.length > 0) {
         setMedications(
           preferences.medications.map((item) => ({
-            name: { catalogId: null, text: item.medication_name },
+            name: {
+              catalogId: item.medication_catalog_id ?? null,
+              text: item.medication_name,
+            },
             dose: item.dose,
             scheduledTimes: item.scheduled_times,
             administrationNotes: item.administration_notes ?? '',
-            broughtByCustomer: true,
+            broughtByCustomer: item.brought_by_customer ?? true,
           }))
         );
       }
@@ -327,6 +348,10 @@ export function HotelCheckInPage() {
     );
   }
 
+  function removeMedication(index: number) {
+    setMedications((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function addMedicationTime(index: number) {
     setMedications((prev) =>
       prev.map((medication, i) =>
@@ -334,6 +359,21 @@ export function HotelCheckInPage() {
           ? {
               ...medication,
               scheduledTimes: [...medication.scheduledTimes, '08:00'],
+            }
+          : medication
+      )
+    );
+  }
+
+  function removeMedicationTime(medicationIndex: number, timeIndex: number) {
+    setMedications((prev) =>
+      prev.map((medication, i) =>
+        i === medicationIndex
+          ? {
+              ...medication,
+              scheduledTimes: medication.scheduledTimes.filter(
+                (_, j) => j !== timeIndex
+              ),
             }
           : medication
       )
@@ -357,25 +397,6 @@ export function HotelCheckInPage() {
           : medication
       )
     );
-  }
-
-  function removeMedicationTime(medicationIndex: number, timeIndex: number) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === medicationIndex
-          ? {
-              ...medication,
-              scheduledTimes: medication.scheduledTimes.filter(
-                (_, j) => j !== timeIndex
-              ),
-            }
-          : medication
-      )
-    );
-  }
-
-  function removeMedication(index: number) {
-    setMedications((prev) => prev.filter((_, i) => i !== index));
   }
 
   // #79 revision: additional-charges live total, so "hotel supplies this"
@@ -615,7 +636,11 @@ export function HotelCheckInPage() {
                 <CageStatusGrid
                   accessToken={accessToken}
                   viewerRole={role}
-                  onSelectCage={(cage) => setSelectedCageId(cage.id)}
+                  onSelectCage={
+                    isEditing
+                      ? (cage) => setSelectedCageId(cage.id)
+                      : undefined
+                  }
                   selectedCageId={selectedCageId}
                   suggestedCageIds={suggestedCages.map((cage) => cage.id)}
                 />
@@ -624,6 +649,12 @@ export function HotelCheckInPage() {
 
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>3. Feeding instructions</h2>
+              {!isEditing ? (
+                <p className={styles.copy}>
+                  Read-only - captured from the customer's booking. Click
+                  Edit below to correct a mistake.
+                </p>
+              ) : null}
               {MEAL_TIMES.map((mealTime) => {
                 const state = feeding[mealTime];
 
@@ -633,6 +664,7 @@ export function HotelCheckInPage() {
                       <input
                         type="checkbox"
                         checked={state !== null}
+                        disabled={!isEditing}
                         onChange={() => toggleMealTime(mealTime)}
                       />
                       {mealTime}
@@ -644,6 +676,7 @@ export function HotelCheckInPage() {
                             items={foodCatalog}
                             value={state.foodType}
                             placeholder="Food type - search or type a custom value..."
+                            disabled={!isEditing}
                             onChange={(next) =>
                               updateFeeding(mealTime, {
                                 foodType: next,
@@ -659,6 +692,7 @@ export function HotelCheckInPage() {
                             className={styles.input}
                             placeholder="Quantity"
                             value={state.quantity}
+                            disabled={!isEditing}
                             onChange={(event) =>
                               updateFeeding(mealTime, {
                                 quantity: event.target.value,
@@ -669,6 +703,7 @@ export function HotelCheckInPage() {
                             className={styles.input}
                             placeholder="Special instructions (optional)"
                             value={state.specialInstructions}
+                            disabled={!isEditing}
                             onChange={(event) =>
                               updateFeeding(mealTime, {
                                 specialInstructions: event.target.value,
@@ -681,6 +716,7 @@ export function HotelCheckInPage() {
                             <input
                               type="checkbox"
                               checked={!state.broughtByCustomer}
+                              disabled={!isEditing}
                               onChange={(event) =>
                                 updateFeeding(mealTime, {
                                   broughtByCustomer: !event.target.checked,
@@ -713,6 +749,7 @@ export function HotelCheckInPage() {
                       className={
                         block.mode === 'range' ? styles.tabActive : styles.tab
                       }
+                      disabled={!isEditing}
                       onClick={() => updateWalkBlock(index, { mode: 'range' })}
                     >
                       Time range
@@ -724,6 +761,7 @@ export function HotelCheckInPage() {
                           ? styles.tabActive
                           : styles.tab
                       }
+                      disabled={!isEditing}
                       onClick={() =>
                         updateWalkBlock(index, { mode: 'duration' })
                       }
@@ -737,6 +775,7 @@ export function HotelCheckInPage() {
                       <TimeInput
                         aria-label="Walk start time"
                         value={block.startTime}
+                        disabled={!isEditing}
                         onChange={(value) =>
                           updateWalkBlock(index, { startTime: value })
                         }
@@ -748,6 +787,7 @@ export function HotelCheckInPage() {
                         <TimeInput
                           aria-label="Walk end time"
                           value={block.endTime}
+                          disabled={!isEditing}
                           onChange={(value) =>
                             updateWalkBlock(index, { endTime: value })
                           }
@@ -763,6 +803,7 @@ export function HotelCheckInPage() {
                           type="number"
                           min={1}
                           value={block.durationMinutes}
+                          disabled={!isEditing}
                           onChange={(event) =>
                             updateWalkBlock(index, {
                               durationMinutes: Number(event.target.value),
@@ -778,28 +819,36 @@ export function HotelCheckInPage() {
                       <input
                         className={styles.input}
                         value={block.notes}
+                        disabled={!isEditing}
                         onChange={(event) =>
                           updateWalkBlock(index, { notes: event.target.value })
                         }
                       />
                     </label>
                   </div>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeWalkBlock(index)}
-                  >
-                    Remove
-                  </button>
+                  {isEditing ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeWalkBlock(index)}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               ))}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addWalkBlock}
-              >
-                Add walk time
-              </button>
+              {walking.length === 0 ? (
+                <p className={styles.copy}>No walk times were requested.</p>
+              ) : null}
+              {isEditing ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addWalkBlock}
+                >
+                  Add walk time
+                </button>
+              ) : null}
             </section>
 
             <section className={styles.section}>
@@ -811,6 +860,7 @@ export function HotelCheckInPage() {
                       items={medicationCatalog}
                       value={medication.name}
                       placeholder="Medication name - search or type a custom value..."
+                      disabled={!isEditing}
                       onChange={(next) =>
                         updateMedication(index, {
                           name: next,
@@ -824,6 +874,7 @@ export function HotelCheckInPage() {
                       className={styles.input}
                       placeholder="Dose"
                       value={medication.dose}
+                      disabled={!isEditing}
                       onChange={(event) =>
                         updateMedication(index, { dose: event.target.value })
                       }
@@ -832,19 +883,22 @@ export function HotelCheckInPage() {
                       className={styles.input}
                       placeholder="Notes (optional)"
                       value={medication.administrationNotes}
+                      disabled={!isEditing}
                       onChange={(event) =>
                         updateMedication(index, {
                           administrationNotes: event.target.value,
                         })
                       }
                     />
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeMedication(index)}
-                    >
-                      Remove
-                    </button>
+                    {isEditing ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeMedication(index)}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
 
                   {medication.name.catalogId ? (
@@ -852,6 +906,7 @@ export function HotelCheckInPage() {
                       <input
                         type="checkbox"
                         checked={!medication.broughtByCustomer}
+                        disabled={!isEditing}
                         onChange={(event) =>
                           updateMedication(index, {
                             broughtByCustomer: !event.target.checked,
@@ -873,36 +928,48 @@ export function HotelCheckInPage() {
                         <TimeInput
                           aria-label={`Medication time ${timeIndex + 1}`}
                           value={time}
+                          disabled={!isEditing}
                           onChange={(value) =>
                             updateMedicationTime(index, timeIndex, value)
                           }
                         />
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() => removeMedicationTime(index, timeIndex)}
-                        >
-                          &times;
-                        </button>
+                        {isEditing ? (
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              removeMedicationTime(index, timeIndex)
+                            }
+                          >
+                            &times;
+                          </button>
+                        ) : null}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => addMedicationTime(index)}
-                    >
-                      Add time
-                    </button>
+                    {isEditing ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => addMedicationTime(index)}
+                      >
+                        Add time
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ))}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addMedication}
-              >
-                Add medication
-              </button>
+              {medications.length === 0 ? (
+                <p className={styles.copy}>No medications were requested.</p>
+              ) : null}
+              {isEditing ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addMedication}
+                >
+                  Add medication
+                </button>
+              ) : null}
             </section>
 
             <section className={styles.section}>
@@ -921,6 +988,14 @@ export function HotelCheckInPage() {
               checkout):{' '}
               <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
             </p>
+
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setIsEditing((prev) => !prev)}
+            >
+              {isEditing ? 'Done editing' : 'Edit'}
+            </button>
 
             <button
               type="button"

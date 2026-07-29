@@ -48,6 +48,38 @@ const BOOKING = {
   branch_id: 'branch-1',
 } as never;
 
+const BOOKING_WITH_CATALOG_FEEDING = {
+  ...BOOKING,
+  hotel_preferences: {
+    feeding: [
+      {
+        meal_time: 'Morning',
+        food_type: 'Dry kibble',
+        quantity: '1',
+        food_catalog_id: 'food-1',
+        brought_by_customer: false,
+      },
+    ],
+    walking: [],
+    medications: [],
+  },
+} as never;
+
+const BOOKING_WITH_FREETEXT_FEEDING = {
+  ...BOOKING,
+  hotel_preferences: {
+    feeding: [
+      {
+        meal_time: 'Morning',
+        food_type: "Owner's own mix",
+        quantity: '1 cup',
+      },
+    ],
+    walking: [],
+    medications: [],
+  },
+} as never;
+
 const FOOD_ITEM = {
   id: 'food-1',
   name: 'Dry kibble',
@@ -55,7 +87,7 @@ const FOOD_ITEM = {
   is_active: true,
 };
 
-function setupMocks() {
+function setupMocks(booking: unknown = BOOKING) {
   vi.mocked(useAuth).mockReturnValue({
     user: { id: 'staff-1' },
     accessToken: 'token',
@@ -89,7 +121,7 @@ function setupMocks() {
   vi.mocked(HotelBookingPicker).mockImplementation(({ onSelect }) =>
     createElement(
       'button',
-      { type: 'button', onClick: () => onSelect(BOOKING) },
+      { type: 'button', onClick: () => onSelect(booking as never) },
       'Pick booking'
     )
   );
@@ -102,53 +134,72 @@ function renderPage() {
 }
 
 describe('HotelCheckInPage', () => {
-  it('#79 revision: blocks submission with a specific message when a checked meal time has no food type, instead of a generic 400', async () => {
-    setupMocks();
+  it('Care Instructions load read-only - every feeding field is disabled until Edit is clicked', async () => {
+    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
     renderPage();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
-    fireEvent.click(screen.getByLabelText('Afternoon'));
-    // Leave food type/quantity blank on purpose.
-
-    fireEvent.click(screen.getByRole('button', { name: /Check in/ }));
-
+    expect(screen.getByLabelText('Morning')).toBeDisabled();
     expect(
-      await screen.findByText('Afternoon feeding is missing a food type.')
-    ).toBeInTheDocument();
-    expect(checkInHotelStay).not.toHaveBeenCalled();
+      screen.getByPlaceholderText('Food type - search or type a custom value...')
+    ).toBeDisabled();
+    expect(screen.getByPlaceholderText('Quantity')).toBeDisabled();
+    expect(screen.getByPlaceholderText('Special instructions (optional)')).toBeDisabled();
+    expect(screen.getByText(/Hotel supplies this/).closest('label'))
+      .toHaveTextContent('Hotel supplies this');
+    expect(
+      (screen.getByText(/Hotel supplies this/).closest('label') as HTMLElement)
+        .querySelector('input')
+    ).toBeDisabled();
   });
 
-  it('#79 revision: shows a live running total of hotel-supplied charges as items are marked billable', async () => {
-    setupMocks();
+  it('clicking Edit unlocks every care instruction field, in case the customer made a mistake', async () => {
+    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
     renderPage();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
-    fireEvent.click(screen.getByLabelText('Morning'));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    const combobox = screen.getByPlaceholderText(
-      'Food type - search or type a custom value...'
-    );
-    fireEvent.focus(combobox);
-    fireEvent.click(screen.getByText('Dry kibble'));
+    expect(screen.getByLabelText('Morning')).not.toBeDisabled();
+    expect(
+      screen.getByPlaceholderText('Food type - search or type a custom value...')
+    ).not.toBeDisabled();
+    expect(screen.getByPlaceholderText('Quantity')).not.toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Done editing' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add walk time' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add medication' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows a running total of hotel-supplied charges computed from the booking-time preferences, with no staff interaction', async () => {
+    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
+    renderPage();
+
+    fireEvent.click(await screen.findByText('Pick booking'));
+    await screen.findByText(/Suggested size: S/);
 
     expect(
       screen.getByText(
         'Estimated additional charges (hotel-supplied items, billed at checkout):'
       )
     ).toBeInTheDocument();
-    expect(screen.getByText('PHP 0.00')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText(/Hotel supplies this/));
-
+    // The booking's own preference already set brought_by_customer: false
+    // and matched the Dry kibble catalog item (PHP 50) - no staff toggling
+    // needed or possible now that this section is read-only.
     expect(screen.getByText('PHP 50.00')).toBeInTheDocument();
   });
 
-  it('a freetext food type (no catalog match) submits as customer-brought with no catalog id', async () => {
-    setupMocks();
+  it('a freetext food type from the booking (no catalog match) submits as customer-brought with no catalog id', async () => {
+    setupMocks(BOOKING_WITH_FREETEXT_FEEDING);
     vi.mocked(checkInHotelStay).mockResolvedValue({
       data: { stay: { id: 'stay-1' } },
       error: null,
@@ -157,17 +208,6 @@ describe('HotelCheckInPage', () => {
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
-
-    fireEvent.click(screen.getByLabelText('Morning'));
-
-    const combobox = screen.getByPlaceholderText(
-      'Food type - search or type a custom value...'
-    );
-    fireEvent.focus(combobox);
-    fireEvent.change(combobox, { target: { value: "Owner's own mix" } });
-    fireEvent.change(screen.getByPlaceholderText('Quantity'), {
-      target: { value: '1 cup' },
-    });
 
     fireEvent.click(screen.getByRole('button', { name: /Check in/ }));
 

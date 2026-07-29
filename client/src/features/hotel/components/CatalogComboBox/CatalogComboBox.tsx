@@ -21,6 +21,10 @@ interface CatalogComboBoxProps {
   value: CatalogComboBoxValue;
   onChange: (next: CatalogComboBoxValue) => void;
   placeholder?: string;
+  /** Read-only display - HotelCheckInPage's Care Instructions section uses
+   * this once check-in makes feeding/walking/medication instructions
+   * read-only for every staff role. */
+  disabled?: boolean;
 }
 
 /**
@@ -36,6 +40,7 @@ export function CatalogComboBox({
   value,
   onChange,
   placeholder = 'Search or type a custom value...',
+  disabled = false,
 }: CatalogComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -54,7 +59,9 @@ export function CatalogComboBox({
         aria-autocomplete="list"
         placeholder={placeholder}
         value={isOpen ? search : value.text}
+        disabled={disabled}
         onFocus={() => {
+          if (disabled) return;
           setIsOpen(true);
           setSearch(value.text);
         }}
