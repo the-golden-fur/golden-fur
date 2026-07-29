@@ -46,6 +46,15 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
   ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
 
+type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
+
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
+  { value: 'latest', label: 'Sort: Scheduled time (latest)' },
+  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
+  { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
+];
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     dateStyle: 'medium',
@@ -84,6 +93,8 @@ export function ReceptionistBookingsQueuePage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'All'
   );
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('soonest');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -220,6 +231,51 @@ export function ReceptionistBookingsQueuePage() {
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
     [branches]
   );
+
+  // Search/sort mirror HotelBookingPicker's own filteredAndSorted pattern
+  // (client-side, over the already date/status/category-filtered `bookings`
+  // fetched above) so the two queues offer a consistent search/sort
+  // vocabulary.
+  const filteredAndSorted = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    const matches = bookings.filter((booking) => {
+      if (!query) return true;
+
+      const petName = pets[booking.pet_id]?.name ?? '';
+      const ownerName = owners[booking.customer_id]?.full_name ?? '';
+
+      return (
+        petName.toLowerCase().includes(query) ||
+        ownerName.toLowerCase().includes(query)
+      );
+    });
+
+    return [...matches].sort((a, b) => {
+      switch (sortKey) {
+        case 'soonest':
+          return (
+            new Date(a.scheduled_start).getTime() -
+            new Date(b.scheduled_start).getTime()
+          );
+        case 'latest':
+          return (
+            new Date(b.scheduled_start).getTime() -
+            new Date(a.scheduled_start).getTime()
+          );
+        case 'pet-name':
+          return (pets[a.pet_id]?.name ?? '').localeCompare(
+            pets[b.pet_id]?.name ?? ''
+          );
+        case 'owner-name':
+          return (owners[a.customer_id]?.full_name ?? '').localeCompare(
+            owners[b.customer_id]?.full_name ?? ''
+          );
+        default:
+          return 0;
+      }
+    });
+  }, [bookings, pets, owners, search, sortKey]);
 
   function replaceBooking(updated: Booking) {
     setBookings((prev) =>
@@ -408,6 +464,25 @@ export function ReceptionistBookingsQueuePage() {
           }
           statusOptions={STATUS_OPTIONS}
         >
+          <input
+            className={styles.searchInput}
+            type="search"
+            placeholder="Search by pet or owner name..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select
+            className={styles.filterSelect}
+            value={sortKey}
+            onChange={(event) => setSortKey(event.target.value as SortKey)}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
           <label className={styles.filterField}>
             <span className={styles.filterLabel}>Service type</span>
             <select
@@ -453,13 +528,13 @@ export function ReceptionistBookingsQueuePage() {
           </p>
         ) : null}
 
-        {!isLoading && !loadError && bookings.length === 0 ? (
+        {!isLoading && !loadError && filteredAndSorted.length === 0 ? (
           <p className={styles.copy}>No bookings match these filters.</p>
         ) : null}
 
-        {!isLoading && !loadError && bookings.length > 0 ? (
+        {!isLoading && !loadError && filteredAndSorted.length > 0 ? (
           <ul className={styles.bookingList}>
-            {bookings.map((booking) => {
+            {filteredAndSorted.map((booking) => {
               // Reschedule additionally requires the appointment itself to
               // still be ahead of us - a Pending booking whose own time has
               // already passed is effectively a no-show waiting for the

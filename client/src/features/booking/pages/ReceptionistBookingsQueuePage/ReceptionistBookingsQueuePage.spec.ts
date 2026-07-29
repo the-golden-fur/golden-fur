@@ -388,6 +388,112 @@ describe('ReceptionistBookingsQueuePage', () => {
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });
 
+  it('search filters the already-loaded bookings by pet or owner name', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({ id: 'booking-1', pet_id: 'pet-12345678' }),
+        buildBooking({ id: 'booking-2', pet_id: 'pet-other', customer_id: 'cust-other' }),
+      ],
+      error: null,
+    });
+    vi.mocked(customerApi.getPet).mockImplementation((id) =>
+      Promise.resolve({
+        data: {
+          id,
+          customer_id: id === 'pet-12345678' ? 'cust-12345678' : 'cust-other',
+          name: id === 'pet-12345678' ? 'Buddy' : 'Whiskers',
+          pet_type: 'Dog',
+          breed_id: 'breed-1',
+          photo_url: null,
+          gender: 'Male',
+          date_of_birth: null,
+          weight_class: 'M',
+          coat_type: 'LC',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+        error: null,
+      })
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    expect(screen.getByText(/Whiskers/)).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Search by pet or owner name...'),
+      'buddy'
+    );
+
+    expect(screen.getByText(/Buddy/)).toBeInTheDocument();
+    expect(screen.queryByText(/Whiskers/)).not.toBeInTheDocument();
+  });
+
+  it('sort dropdown reorders bookings by scheduled time', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          id: 'booking-early',
+          pet_id: 'pet-early',
+          scheduled_start: '2026-08-03T01:00:00.000Z',
+        }),
+        buildBooking({
+          id: 'booking-late',
+          pet_id: 'pet-late',
+          scheduled_start: '2026-08-03T09:00:00.000Z',
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(customerApi.getPet).mockImplementation((id) =>
+      Promise.resolve({
+        data: {
+          id,
+          customer_id: 'cust-12345678',
+          name: id === 'pet-early' ? 'Early Bird' : 'Late Riser',
+          pet_type: 'Dog',
+          breed_id: 'breed-1',
+          photo_url: null,
+          gender: 'Male',
+          date_of_birth: null,
+          weight_class: 'M',
+          coat_type: 'LC',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+        error: null,
+      })
+    );
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    );
+
+    let rows = screen.getAllByRole('listitem');
+    expect(rows[0].textContent).toContain('Early Bird');
+    expect(rows[1].textContent).toContain('Late Riser');
+
+    await userEvent.selectOptions(
+      screen.getByDisplayValue('Sort: Scheduled time (soonest)'),
+      'latest'
+    );
+
+    rows = screen.getAllByRole('listitem');
+    expect(rows[0].textContent).toContain('Late Riser');
+    expect(rows[1].textContent).toContain('Early Bird');
+  });
+
   it('AC-4: "New booking" navigates to the flow shell in receptionist mode', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({

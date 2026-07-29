@@ -65,6 +65,23 @@
   padding: var(--space-2);
 }
 
+.searchInput {
+  flex: 1;
+  min-width: 12rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.resultCount {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
 .bookingList {
   display: grid;
   gap: var(--space-2);
