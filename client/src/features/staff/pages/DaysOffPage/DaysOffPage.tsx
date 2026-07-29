@@ -100,6 +100,7 @@ export function DaysOffPage() {
           staffId={profile.id}
           accessToken={accessToken}
           onCreated={handleBlockCreated}
+          showReviewerPicker
         />
       </section>
     </main>

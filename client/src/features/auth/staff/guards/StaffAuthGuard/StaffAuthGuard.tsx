@@ -1,14 +1,47 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
-import { Navbar } from '../../../../../shared/components/Navbar/Navbar';
+import { LayoutDashboard } from 'lucide-react';
+import { Navigate, useLocation, useNavigate } from 'react-router';
+import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
+import type { SidebarSection } from '../../../../../shared/components/Sidebar/Sidebar';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
-import { UnavailabilityBlockBadge } from '../../../../staff/components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import { getStaffProfile } from '../../../../staff/api/staff.api';
+import {
+  ROLE_TO_DASHBOARD_SLUG,
+  STAFF_DASHBOARD_CONFIG,
+  toSidebarSections,
+} from '../../../../staff/config/staffDashboard.config';
+import type { StaffRole } from '../../../../staff/staff.types';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
+
+function isStaffRole(role: string | null): role is StaffRole {
+  return Boolean(role) && role! in ROLE_TO_DASHBOARD_SLUG;
+}
+
+function buildSidebarSections(role: string | null): SidebarSection[] {
+  if (!isStaffRole(role)) {
+    return [];
+  }
+
+  const slug = ROLE_TO_DASHBOARD_SLUG[role];
+
+  return [
+    {
+      label: null,
+      items: [
+        {
+          title: 'Dashboard',
+          to: `/staff/dashboard/${slug}`,
+          icon: LayoutDashboard,
+        },
+      ],
+    },
+    ...toSidebarSections(STAFF_DASHBOARD_CONFIG[slug]),
+  ];
+}
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {
   Superadmin: 30 * 60 * 1000,
@@ -36,6 +69,9 @@ export function StaffAuthGuard() {
   // staff_profiles.role has to come from the server, same as mfaEnrolled
   // below.
   const [role, setRole] = useState<string | null>(null);
+  // Populated alongside role from the same getStaffProfile call, for the
+  // Navbar identity chip (username · role).
+  const [username, setUsername] = useState<string | null>(null);
   // null = not yet known. Drives whether an Admin/Superadmin without a TOTP
   // factor sees the mandatory setup popup instead of being redirected to a
   // challenge page that would 400 with "No TOTP factor found".
@@ -64,6 +100,7 @@ export function StaffAuthGuard() {
 
       if (result.data) {
         setRole(result.data.role ?? null);
+        setUsername(result.data.username ?? null);
         setProfileStatus('ok');
       } else if (result.error) {
         setProfileStatus('denied');
@@ -144,11 +181,14 @@ export function StaffAuthGuard() {
 
   return (
     <>
-      <Navbar role="staff" brandLabel="Golden Fur Staff" />
-      <div style={{ padding: '1rem 1rem 0' }}>
-        <UnavailabilityBlockBadge accessToken={accessToken} staffId={user.id} />
-      </div>
-      <Outlet />
+      <AppShell
+        role="staff"
+        brandLabel="Golden Fur Staff"
+        identity={
+          username && role ? { primary: username, secondary: role } : null
+        }
+        sidebarSections={buildSidebarSections(role)}
+      />
       <SessionExpiryModal
         isOpen={isWarningVisible}
         remainingMs={remainingMs}

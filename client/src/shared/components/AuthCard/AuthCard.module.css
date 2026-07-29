@@ -15,7 +15,7 @@
   box-shadow: var(--shadow-card);
   padding: var(--space-5);
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .title {
@@ -26,8 +26,8 @@
   color: var(--color-text-primary);
 }
 
-.copy {
-  margin: 0;
+.subtitle {
+  margin: var(--space-1) 0 0;
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }

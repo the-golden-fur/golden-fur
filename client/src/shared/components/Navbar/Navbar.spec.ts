@@ -7,7 +7,11 @@ import { AuthContext } from '../../auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../auth/providers/AuthProvider/AuthContext';
 import { Navbar } from './Navbar';
 
-function renderNavbar(role: 'staff' | 'customer', signOut = vi.fn()) {
+function renderNavbar(
+  role: 'staff' | 'customer',
+  signOut = vi.fn(),
+  identity: { primary: string; secondary?: string } | null = null
+) {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'user-1', email: 'user@example.com' },
@@ -25,7 +29,7 @@ function renderNavbar(role: 'staff' | 'customer', signOut = vi.fn()) {
       createElement(
         AuthContext.Provider,
         { value: authValue },
-        createElement(Navbar, { role, brandLabel: 'Golden Fur' })
+        createElement(Navbar, { role, brandLabel: 'Golden Fur', identity })
       )
     )
   );
@@ -36,26 +40,37 @@ describe('Navbar', () => {
     window.sessionStorage.clear();
   });
 
-  it('links to the role-appropriate profile and settings paths', () => {
+  it('shows the staff identity (username + role) as plain text, not a link', () => {
+    renderNavbar('staff', vi.fn(), { primary: 'jdoe', secondary: 'Admin' });
+
+    expect(screen.getByText('jdoe')).toBeInTheDocument();
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /jdoe/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the customer identity (full name only, no role) as plain text', () => {
+    renderNavbar('customer', vi.fn(), { primary: 'Jane Doe' });
+
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /jane doe/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders no identity text while identity is still loading, but always shows the Settings link', () => {
     renderNavbar('staff');
 
-    expect(screen.getByRole('link', { name: 'My Profile' })).toHaveAttribute(
-      'href',
-      '/staff/profile'
-    );
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/staff/settings'
     );
   });
 
-  it('links to the customer portal paths for a customer', () => {
+  it("links the Settings icon to the customer portal's settings path", () => {
     renderNavbar('customer');
 
-    expect(screen.getByRole('link', { name: 'My Profile' })).toHaveAttribute(
-      'href',
-      '/portal/profile'
-    );
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/portal/settings'

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
-import { Navbar } from '../../../../../shared/components/Navbar/Navbar';
+import { Navigate, useLocation, useNavigate } from 'react-router';
+import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { hasProfile } from '../../../../../shared/api/preferences.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
+import { getCustomerProfile } from '../../../../customers/api/customer.api';
+import { CUSTOMER_SIDEBAR_SECTIONS } from '../../../../customers/config/customerPortal.config';
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
@@ -15,6 +17,9 @@ export function CustomerAuthGuard() {
   // turned it on it must be challenged on every login, not just offered at
   // setup time - mirrors StaffAuthGuard's status fetch.
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+  // Populated once profileStatus is 'ok', for the Navbar identity chip.
+  // Customers have no username/role, unlike staff - just a full name.
+  const [fullName, setFullName] = useState<string | null>(null);
   // 'loading' until the customer_profiles check resolves. Customers and
   // staff share the same Supabase Auth session, so a valid session alone
   // doesn't prove this user is actually a customer - only a matching
@@ -60,6 +65,24 @@ export function CustomerAuthGuard() {
     };
   }, [session, user?.id]);
 
+  useEffect(() => {
+    if (profileStatus !== 'ok' || !accessToken || !user?.id) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void getCustomerProfile(user.id, accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setFullName(result.data.full_name);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profileStatus, accessToken, user?.id]);
+
   const handleDenied = useCallback(() => {
     void signOut().finally(() => {
       navigate('/login', { replace: true });
@@ -100,9 +123,11 @@ export function CustomerAuthGuard() {
   }
 
   return (
-    <>
-      <Navbar role="customer" brandLabel="Golden Fur" />
-      <Outlet />
-    </>
+    <AppShell
+      role="customer"
+      brandLabel="Golden Fur"
+      identity={fullName ? { primary: fullName } : null}
+      sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+    />
   );
 }

@@ -4,9 +4,9 @@ import type { ColorMode } from '../../providers/ThemeProvider/themeContext';
 import styles from './ThemeToggle.module.css';
 
 const OPTIONS: Array<{ mode: ColorMode; label: string }> = [
+  { mode: 'system', label: 'Device default' },
   { mode: 'light', label: 'Light' },
   { mode: 'dark', label: 'Dark' },
-  { mode: 'system', label: 'System' },
 ];
 
 export function ThemeToggle() {

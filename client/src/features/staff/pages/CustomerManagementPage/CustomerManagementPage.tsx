@@ -174,7 +174,7 @@ export function CustomerManagementPage() {
   // Decided only once role resolution finishes, so an allowed viewer never
   // flashes through this redirect (mirrors StaffManagementPage).
   if (!isAllowedViewer) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   return (

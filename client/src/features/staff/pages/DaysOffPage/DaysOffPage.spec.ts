@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
@@ -12,6 +12,7 @@ import { DaysOffPage } from './DaysOffPage';
 vi.mock('../../api/staff.api', () => ({
   getStaffProfile: vi.fn(),
   createUnavailabilityBlock: vi.fn(),
+  listStaff: vi.fn(),
 }));
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
@@ -56,6 +57,10 @@ function renderPage() {
 }
 
 describe('DaysOffPage', () => {
+  beforeEach(() => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
+  });
+
   it('loads the profile and renders the availability badge plus the request form', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: PROFILE,

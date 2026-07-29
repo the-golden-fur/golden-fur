@@ -58,6 +58,52 @@
   color: var(--color-text-primary);
 }
 
+.identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
+.identityPrimary {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.identitySecondary {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.settingsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  padding: var(--space-1) var(--space-2);
+  transition: border-color 0.15s ease;
+}
+
+.settingsLink:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.settingsLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+@media (max-width: 480px) {
+  .settingsLabel {
+    display: none;
+  }
+}
+
 .signOutButton {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

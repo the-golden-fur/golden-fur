@@ -75,7 +75,7 @@ export function HotelCareLogPage() {
   }
 
   if (roleStatus === 'denied') {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   return (

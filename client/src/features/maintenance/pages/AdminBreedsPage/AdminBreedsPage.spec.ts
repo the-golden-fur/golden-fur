@@ -55,7 +55,7 @@ function renderPage() {
           element: createElement(AdminBreedsPage),
         }),
         createElement(Route, {
-          path: '/staff/profile',
+          path: '/staff/settings',
           element: createElement('div', null, 'Staff profile page'),
         })
       )

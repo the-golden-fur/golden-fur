@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { AuthContext } from '../../../../../shared/auth/providers/AuthProvider/A
 import type { AuthContextValue } from '../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as mfaApi from '../../../../../shared/api/mfa.api';
 import * as preferencesApi from '../../../../../shared/api/preferences.api';
+import * as customerApi from '../../../../customers/api/customer.api';
 import { CustomerAuthGuard } from './CustomerAuthGuard';
 
 vi.mock('../../../../../shared/api/mfa.api', () => ({
@@ -14,6 +15,10 @@ vi.mock('../../../../../shared/api/mfa.api', () => ({
 
 vi.mock('../../../../../shared/api/preferences.api', () => ({
   hasProfile: vi.fn(),
+}));
+
+vi.mock('../../../../customers/api/customer.api', () => ({
+  getCustomerProfile: vi.fn(),
 }));
 
 function createAuthValue(
@@ -71,6 +76,10 @@ describe('CustomerAuthGuard', () => {
       error: null,
     });
     vi.mocked(preferencesApi.hasProfile).mockResolvedValue(true);
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: null,
+      error: null,
+    });
   });
 
   afterEach(() => {
@@ -100,6 +109,49 @@ describe('CustomerAuthGuard', () => {
 
     await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
     expect(screen.getByText('Customer portal')).toBeInTheDocument();
+  });
+
+  it('renders the identity chip (full name, no role badge) and the portal sidebar', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        id: 'user-1',
+        full_name: 'Jane Doe',
+        contact_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        account_email: 'jane@example.com',
+        primary_auth_provider: 'email',
+        facebook_id: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'customer@example.com' },
+        },
+        user: { id: 'user-1', email: 'customer@example.com' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(await screen.findByText('Jane Doe')).toBeInTheDocument();
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(
+      within(primaryNav).getByRole('link', { name: 'Settings' })
+    ).toHaveAttribute('href', '/portal/settings');
+    expect(screen.getByRole('link', { name: 'Pet Manager' })).toHaveAttribute(
+      'href',
+      '/portal/pets'
+    );
   });
 
   it('redirects an enrolled customer needing aal2 to the challenge page', async () => {

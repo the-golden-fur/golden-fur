@@ -7,7 +7,6 @@ import {
   STAFF_DASHBOARD_CONFIG,
   type StaffDashboardSlug,
 } from '../../config/staffDashboard.config';
-import { DashboardTile } from '../../components/dashboard/DashboardTile/DashboardTile';
 import styles from './StaffDashboardPage.module.css';
 
 function isDashboardSlug(
@@ -18,11 +17,12 @@ function isDashboardSlug(
 
 /**
  * One dashboard page shared by every staff role, rather than a near-duplicate
- * page per role - the tile set (staffDashboard.config.ts) is what actually
- * differs. `/staff/dashboard` (no param) and any mismatched `:roleSlug` both
- * resolve here and redirect to the viewer's own canonical slug, so a staff
- * member can never land on - or manually navigate to - another role's
- * dashboard shape.
+ * page per role. `/staff/dashboard` (no param) and any mismatched `:roleSlug`
+ * both resolve here and redirect to the viewer's own canonical slug, so a
+ * staff member can never land on - or manually navigate to - another role's
+ * dashboard. Content is a simple welcome message - the tile grid that used
+ * to live here moved into the Sidebar (AppShell), so this landing page no
+ * longer needs to duplicate that navigation.
  */
 export function StaffDashboardPage() {
   const { user, accessToken } = useAuth();
@@ -31,6 +31,7 @@ export function StaffDashboardPage() {
   const [canonicalSlug, setCanonicalSlug] = useState<StaffDashboardSlug | null>(
     null
   );
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ok' | 'denied'>('loading');
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export function StaffDashboardPage() {
 
       if (result.data) {
         setCanonicalSlug(ROLE_TO_DASHBOARD_SLUG[result.data.role]);
+        setDisplayName(result.data.display_name);
         setStatus('ok');
       } else {
         setStatus('denied');
@@ -81,7 +83,7 @@ export function StaffDashboardPage() {
   }
 
   if (status === 'denied' || !canonicalSlug) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   if (!isDashboardSlug(roleSlug) || roleSlug !== canonicalSlug) {
@@ -93,12 +95,12 @@ export function StaffDashboardPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>{config.heading}</h1>
-        <div className={styles.grid}>
-          {config.tiles.map((tile) => (
-            <DashboardTile key={tile.title} {...tile} />
-          ))}
-        </div>
+        <h1 className={styles.title}>
+          Welcome back{displayName ? `, ${displayName}` : ''}!
+        </h1>
+        <p className={styles.copy}>
+          {config.heading} - find your tools in the sidebar.
+        </p>
       </div>
     </main>
   );

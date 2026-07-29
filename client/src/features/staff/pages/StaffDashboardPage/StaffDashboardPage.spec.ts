@@ -82,39 +82,34 @@ describe('StaffDashboardPage', () => {
   it("redirects a bare /staff/dashboard visit to the viewer's own role slug", async () => {
     renderDashboard('/staff/dashboard');
 
-    expect(await screen.findByText('Groomer dashboard')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /welcome back, test user/i })
+    ).toBeInTheDocument();
   });
 
   it("redirects away from a mismatched role slug to the viewer's own dashboard", async () => {
     renderDashboard('/staff/dashboard/admin');
 
-    expect(await screen.findByText('Groomer dashboard')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /welcome back, test user/i })
+    ).toBeInTheDocument();
     expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument();
   });
 
-  it('renders the matching dashboard tiles for the resolved role', async () => {
+  it('greets the resolved role with a welcome message instead of a navigation tile grid', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildProfile({ role: 'Admin' }),
+      data: buildProfile({ role: 'Admin', display_name: 'Ada Min' }),
       error: null,
     });
 
     renderDashboard('/staff/dashboard/admin');
 
-    expect(await screen.findByText('Admin dashboard')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /staff management/i })
-    ).toHaveAttribute('href', '/staff/admin/staff');
-  });
-
-  it('renders a placeholder tile for a role whose module is not built yet', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildProfile({ role: 'Cashier' }),
-      error: null,
-    });
-
-    renderDashboard('/staff/dashboard/cashier');
-
-    expect(await screen.findByText('Cashier dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Coming soon')).toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'Welcome back, Ada Min!' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/admin dashboard/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /staff management/i })
+    ).not.toBeInTheDocument();
   });
 });

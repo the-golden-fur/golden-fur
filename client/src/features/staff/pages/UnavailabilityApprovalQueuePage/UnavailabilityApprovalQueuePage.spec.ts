@@ -53,6 +53,7 @@ function buildPendingBlock(
     reviewed_by: null,
     reviewed_at: null,
     denial_reason: null,
+    requested_reviewer_id: null,
     reviewable: true,
     staff: {
       id: 'staff-2',
@@ -61,6 +62,7 @@ function buildPendingBlock(
       role: 'Groomer',
       branch_id: 'branch-a',
     },
+    requested_reviewer: null,
     ...overrides,
   };
 }
@@ -91,7 +93,7 @@ function renderPage() {
             element: createElement(UnavailabilityApprovalQueuePage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -101,7 +103,7 @@ function renderPage() {
 }
 
 describe('UnavailabilityApprovalQueuePage', () => {
-  it('AC-1: redirects a non-Admin/Supervisor/Superadmin viewer to /staff/profile', async () => {
+  it('AC-1: redirects a non-Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
       error: null,
@@ -150,6 +152,7 @@ describe('UnavailabilityApprovalQueuePage', () => {
         reviewed_by: 'admin-1',
         reviewed_at: '2026-07-14T00:00:00.000Z',
         denial_reason: null,
+        requested_reviewer_id: null,
       },
       error: null,
     });

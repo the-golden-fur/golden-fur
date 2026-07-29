@@ -245,3 +245,27 @@ export async function handleOAuthCallback(): Promise<
     error: null,
   };
 }
+
+/**
+ * Self-service password change (Account settings tab). Mirrors staffAuth.api.ts's
+ * updateStaffPassword - both call Supabase directly against the caller's own
+ * live session, no Express round-trip needed. For an OAuth-only customer this
+ * adds an email/password credential to the account rather than failing.
+ */
+export async function updateCustomerPassword(
+  password: string
+): Promise<AuthApiResult<null>> {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const { error } = await client.auth.updateUser({ password });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: null, error: null };
+}

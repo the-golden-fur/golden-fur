@@ -54,7 +54,7 @@ function renderAtPetRoute(petId: string) {
           element: createElement(StaffPetProfilePage),
         }),
         createElement(Route, {
-          path: '/staff/profile',
+          path: '/staff/settings',
           element: createElement('div', null, 'Staff profile page'),
         })
       )
@@ -63,7 +63,7 @@ function renderAtPetRoute(petId: string) {
 }
 
 describe('StaffPetProfilePage', () => {
-  it('redirects a non-CUSTOMER_MANAGER_ROLES viewer (e.g. Groomer) to /staff/profile', async () => {
+  it('redirects a non-CUSTOMER_MANAGER_ROLES viewer (e.g. Groomer) to /staff/settings', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },
       accessToken: 'token',

@@ -23,7 +23,7 @@
 
 .panel {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
@@ -31,38 +31,10 @@
   padding: var(--space-4);
 }
 
-.form {
+.petsGrid {
   display: grid;
   gap: var(--space-2);
-}
-
-.field {
-  display: grid;
-  gap: var(--space-0-5);
-}
-
-.label {
-  color: var(--color-text-secondary);
-  font-size: var(--text-label);
-  font-weight: var(--weight-normal);
-  text-transform: uppercase;
-}
-
-.input {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-  padding: var(--space-2);
-}
-
-.input:focus {
-  border-color: var(--color-accent-gold-primary);
-  outline: none;
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
 .button {
@@ -89,11 +61,6 @@
   box-shadow: var(--shadow-md);
 }
 
-.button:disabled {
-  cursor: wait;
-  opacity: 0.72;
-}
-
 .errorBanner,
 .successBanner {
   margin: 0;
@@ -110,24 +77,4 @@
 .successBanner {
   background: var(--color-success-bg);
   color: var(--color-success-text);
-}
-
-.petsSection {
-  display: grid;
-  gap: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-3);
-}
-
-.sectionTitle {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: var(--text-heading-md);
-  font-weight: var(--weight-semibold);
-}
-
-.petsGrid {
-  display: grid;
-  gap: var(--space-2);
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }

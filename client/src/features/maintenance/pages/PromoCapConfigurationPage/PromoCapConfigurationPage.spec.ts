@@ -90,7 +90,7 @@ function renderPage() {
             element: createElement(PromoCapConfigurationPage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -116,7 +116,7 @@ describe('PromoCapConfigurationPage', () => {
     });
   });
 
-  it('redirects a non-Admin/Superadmin role to /staff/profile', async () => {
+  it('redirects a non-Admin/Superadmin role to /staff/settings', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],
       error: null,

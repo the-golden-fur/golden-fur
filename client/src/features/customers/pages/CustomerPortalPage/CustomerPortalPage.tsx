@@ -1,50 +1,43 @@
-import { Link } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getCustomerProfile } from '../../api/customer.api';
 import styles from './CustomerPortalPage.module.css';
-
-interface PortalTileConfig {
-  title: string;
-  description: string;
-  to: string;
-}
-
-const PORTAL_TILES: PortalTileConfig[] = [
-  {
-    title: 'Book a Service',
-    description: 'Grooming, Pet Hotel, Daycare, or a Veterinary consultation.',
-    to: '/portal/book',
-  },
-  {
-    title: 'My Bookings',
-    description: 'View upcoming and past bookings, reschedule, or cancel.',
-    to: '/portal/bookings',
-  },
-  {
-    title: 'My Profile',
-    description: 'Your account details and pet profiles.',
-    to: '/portal/profile',
-  },
-];
 
 /**
  * The customer portal home (`/portal`, the Navbar brand link's destination)
- * - previously an inline placeholder `<div>Customer portal</div>` with no
- * links anywhere to the booking flow (#55-#60) once it shipped. Kept
- * deliberately simple (a static tile list, not a role-config system like
- * the staff dashboard) since every customer sees the same three
- * destinations.
+ * - previously a tile grid linking to Book a Service/My Bookings/Pet
+ * Manager/Settings, now redundant with the Sidebar (AppShell), which
+ * already links to all of those (customerPortal.config.ts). This page is
+ * just a welcome landing message now.
  */
 export function CustomerPortalPage() {
+  const { user, accessToken } = useAuth();
+  const [fullName, setFullName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id || !accessToken) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void getCustomerProfile(user.id, accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setFullName(result.data.full_name);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, accessToken]);
+
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Welcome to Golden Fur</h1>
-      <div className={styles.grid}>
-        {PORTAL_TILES.map((tile) => (
-          <Link key={tile.title} to={tile.to} className={styles.tile}>
-            <h2 className={styles.tileTitle}>{tile.title}</h2>
-            <p className={styles.tileDescription}>{tile.description}</p>
-          </Link>
-        ))}
-      </div>
+      <h1 className={styles.title}>
+        Welcome back{fullName ? `, ${fullName}` : ''}!
+      </h1>
+      <p className={styles.copy}>Find everything you need in the sidebar.</p>
     </main>
   );
 }

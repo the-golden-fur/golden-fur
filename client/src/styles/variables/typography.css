@@ -4,15 +4,22 @@
   --font-display: 'Luckiest Guy', cursive;
   --font-mono: 'Courier New', Courier, monospace;
 
+  /* User font-size preference (Settings > Appearance) - a unitless
+     multiplier applied to every --text-* size below via calc(), so the
+     slider scales the whole app instead of needing per-component wiring.
+     Set on :root by ThemeProvider; 1 = Medium (no change from the base
+     scale). */
+  --font-scale: 1;
+
   /* Font Sizes (Major Second Scale) */
-  --text-xs: 0.75rem; /* 12px */
-  --text-sm: 0.875rem; /* 14px */
-  --text-base: 1rem; /* 16px */
-  --text-lg: 1.125rem; /* 18px */
-  --text-xl: 1.25rem; /* 20px */
-  --text-2xl: 1.5rem; /* 24px */
-  --text-3xl: 1.875rem; /* 30px */
-  --text-4xl: 2.25rem; /* 36px */
+  --text-xs: calc(0.75rem * var(--font-scale)); /* 12px @ 1x */
+  --text-sm: calc(0.875rem * var(--font-scale)); /* 14px @ 1x */
+  --text-base: calc(1rem * var(--font-scale)); /* 16px @ 1x */
+  --text-lg: calc(1.125rem * var(--font-scale)); /* 18px @ 1x */
+  --text-xl: calc(1.25rem * var(--font-scale)); /* 20px @ 1x */
+  --text-2xl: calc(1.5rem * var(--font-scale)); /* 24px @ 1x */
+  --text-3xl: calc(1.875rem * var(--font-scale)); /* 30px @ 1x */
+  --text-4xl: calc(2.25rem * var(--font-scale)); /* 36px @ 1x */
 
   /* Font Weights */
   --weight-normal: 400;
@@ -26,8 +33,8 @@
   --lh-relaxed: 1.625;
 
   /* Semantic heading/button/label sizes (Sprint 1 Epic B) */
-  --text-heading-lg: 1.6875rem; /* 27px */
-  --text-heading-md: 1.5625rem; /* 25px */
-  --text-button: 1.1875rem; /* 19px */
-  --text-label: 0.75rem; /* 12px */
+  --text-heading-lg: calc(1.6875rem * var(--font-scale)); /* 27px @ 1x */
+  --text-heading-md: calc(1.5625rem * var(--font-scale)); /* 25px @ 1x */
+  --text-button: calc(1.1875rem * var(--font-scale)); /* 19px @ 1x */
+  --text-label: calc(0.75rem * var(--font-scale)); /* 12px @ 1x */
 }

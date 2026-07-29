@@ -411,7 +411,7 @@ export function AdminDiscountManagementPage() {
   }
 
   if (!isAllowedViewer) {
-    return <Navigate to="/staff/profile" replace />;
+    return <Navigate to="/staff/settings" replace />;
   }
 
   if (isLoading) {

@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { StaffLoginForm } from '../../components/forms/StaffLoginForm/StaffLoginForm';
 import styles from './StaffLoginPage.module.css';
 
@@ -38,6 +39,12 @@ export function StaffLoginPage() {
           <p className={styles.sub}>Sign in to continue to Golden Fur MIS.</p>
           <StaffLoginForm />
         </section>
+
+        <p className={styles.customerLink}>
+          Booking an appointment for your pet?{' '}
+          <Link to="/login">Customer sign in</Link> or{' '}
+          <Link to="/signup">create an account</Link>.
+        </p>
       </div>
     </main>
   );

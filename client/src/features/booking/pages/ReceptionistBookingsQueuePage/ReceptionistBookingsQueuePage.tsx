@@ -18,6 +18,8 @@ import {
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
@@ -93,8 +95,6 @@ export function ReceptionistBookingsQueuePage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'All'
   );
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('soonest');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -232,50 +232,42 @@ export function ReceptionistBookingsQueuePage() {
     [branches]
   );
 
-  // Search/sort mirror HotelBookingPicker's own filteredAndSorted pattern
+  // Search/sort mirror HotelBookingPicker's own useSearchAndSort usage
   // (client-side, over the already date/status/category-filtered `bookings`
   // fetched above) so the two queues offer a consistent search/sort
-  // vocabulary.
-  const filteredAndSorted = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    const matches = bookings.filter((booking) => {
-      if (!query) return true;
-
+  // vocabulary via the same shared hook/UI.
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: filteredAndSorted,
+  } = useSearchAndSort<Booking, SortKey>({
+    items: bookings,
+    matchesQuery: (booking, query) => {
       const petName = pets[booking.pet_id]?.name ?? '';
       const ownerName = owners[booking.customer_id]?.full_name ?? '';
-
       return (
         petName.toLowerCase().includes(query) ||
         ownerName.toLowerCase().includes(query)
       );
-    });
-
-    return [...matches].sort((a, b) => {
-      switch (sortKey) {
-        case 'soonest':
-          return (
-            new Date(a.scheduled_start).getTime() -
-            new Date(b.scheduled_start).getTime()
-          );
-        case 'latest':
-          return (
-            new Date(b.scheduled_start).getTime() -
-            new Date(a.scheduled_start).getTime()
-          );
-        case 'pet-name':
-          return (pets[a.pet_id]?.name ?? '').localeCompare(
-            pets[b.pet_id]?.name ?? ''
-          );
-        case 'owner-name':
-          return (owners[a.customer_id]?.full_name ?? '').localeCompare(
-            owners[b.customer_id]?.full_name ?? ''
-          );
-        default:
-          return 0;
-      }
-    });
-  }, [bookings, pets, owners, search, sortKey]);
+    },
+    comparators: {
+      soonest: (a, b) =>
+        new Date(a.scheduled_start).getTime() -
+        new Date(b.scheduled_start).getTime(),
+      latest: (a, b) =>
+        new Date(b.scheduled_start).getTime() -
+        new Date(a.scheduled_start).getTime(),
+      'pet-name': (a, b) =>
+        (pets[a.pet_id]?.name ?? '').localeCompare(pets[b.pet_id]?.name ?? ''),
+      'owner-name': (a, b) =>
+        (owners[a.customer_id]?.full_name ?? '').localeCompare(
+          owners[b.customer_id]?.full_name ?? ''
+        ),
+    },
+    initialSortKey: 'soonest',
+  });
 
   function replaceBooking(updated: Booking) {
     setBookings((prev) =>
@@ -464,24 +456,14 @@ export function ReceptionistBookingsQueuePage() {
           }
           statusOptions={STATUS_OPTIONS}
         >
-          <input
-            className={styles.searchInput}
-            type="search"
-            placeholder="Search by pet or owner name..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+          <SearchSortBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search by pet or owner name..."
+            sortValue={sortKey}
+            onSortChange={setSortKey}
+            sortOptions={SORT_OPTIONS}
           />
-          <select
-            className={styles.filterSelect}
-            value={sortKey}
-            onChange={(event) => setSortKey(event.target.value as SortKey)}
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
 
           <label className={styles.filterField}>
             <span className={styles.filterLabel}>Service type</span>

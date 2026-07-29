@@ -22,6 +22,7 @@ function makeBlock(
     reviewed_by: null,
     reviewed_at: null,
     denial_reason: null,
+    requested_reviewer_id: null,
     reviewable: true,
     staff: {
       id: 'staff-2',
@@ -30,6 +31,7 @@ function makeBlock(
       role: 'Groomer',
       branch_id: 'branch-a',
     },
+    requested_reviewer: null,
     ...overrides,
   };
 }
@@ -100,6 +102,32 @@ describe('UnavailabilityReviewCard', () => {
     );
 
     expect(onDeny).toHaveBeenCalledWith(undefined);
+  });
+
+  it('shows "Requested for" when the requester addressed the request to a specific reviewer', () => {
+    render(
+      createElement(UnavailabilityReviewCard, {
+        block: makeBlock({
+          requested_reviewer: { id: 'admin-1', display_name: 'Ada Min' },
+        }),
+        onApprove: vi.fn(),
+        onDeny: vi.fn(),
+      })
+    );
+
+    expect(screen.getByText('Requested for: Ada Min')).toBeInTheDocument();
+  });
+
+  it('shows no "Requested for" line when no reviewer was addressed', () => {
+    render(
+      createElement(UnavailabilityReviewCard, {
+        block: makeBlock(),
+        onApprove: vi.fn(),
+        onDeny: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByText(/requested for/i)).not.toBeInTheDocument();
   });
 
   it('#30 AC-7: renders read-only with no Approve/Deny for a non-reviewable block', () => {

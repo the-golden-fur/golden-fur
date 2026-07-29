@@ -85,6 +85,13 @@
   font-size: var(--text-xs);
 }
 
+.requestedFor {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
 .note {
   margin: 0;
   border-radius: var(--radius-md);

@@ -123,7 +123,7 @@ function renderPage() {
             element: createElement(AdminPromoConfigPage),
           }),
           createElement(Route, {
-            path: '/staff/profile',
+            path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
           })
         )
@@ -153,7 +153,7 @@ describe('AdminPromoConfigPage', () => {
     });
   });
 
-  it('AC-5: redirects a non-Admin/Superadmin role to /staff/profile', async () => {
+  it('AC-5: redirects a non-Admin/Superadmin role to /staff/settings', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],
       error: null,
