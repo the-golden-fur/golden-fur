@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-main);
   min-height: 220vh;
@@ -454,6 +458,7 @@ body {
   width: 100%;
   margin-top: 14px;
   padding: 0 8px 36px; /* small left/right spacing + bottom spacing */
+  scroll-margin-top: 120px; /* keeps section clear of the fixed navbar when anchor-scrolled to */
 }
 
 :global(.feature-strip) {

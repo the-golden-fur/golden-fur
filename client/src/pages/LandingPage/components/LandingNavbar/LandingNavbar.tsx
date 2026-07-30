@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import '../../LandingPage.module.css';
 
 /**
@@ -9,6 +9,9 @@ import '../../LandingPage.module.css';
  * by querying #navToggle/#primaryNavLinks/.brand[data-stagger] directly.
  */
 export function LandingNavbar() {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+
   return (
     <nav
       className="navbar"
@@ -22,9 +25,9 @@ export function LandingNavbar() {
           gap: 'clamp(12px, 2.4vw, 20px)',
         }}
       >
-        <a href="#" className="brand stagger" data-stagger>
+        <Link to="/" className="brand stagger" data-stagger>
           Golden Fur
-        </a>
+        </Link>
 
         <button
           className="nav-toggle"
@@ -45,16 +48,20 @@ export function LandingNavbar() {
           style={{ gap: 'clamp(10px, 2vw, 20px)', justifyContent: 'center' }}
         >
           <li>
-            <a href="#">Services</a>
+            {isHome ? (
+              <a href="#featureStripSection">Services</a>
+            ) : (
+              <Link to="/#featureStripSection">Services</Link>
+            )}
           </li>
           <li>
-            <a href="#">Branches</a>
+            <Link to="/branches">Branches</Link>
           </li>
           <li>
-            <a href="#">Packages &amp; Promos</a>
+            <Link to="/packages">Packages</Link>
           </li>
           <li>
-            <a href="#">About</a>
+            <Link to="/about">About</Link>
           </li>
         </ul>
 
