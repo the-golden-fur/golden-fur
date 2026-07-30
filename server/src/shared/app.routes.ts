@@ -16,6 +16,7 @@ import paymongoWebhookRoutes from '../features/billing/routes/paymongoWebhook.ro
 import creditsRoutes from '../features/credits/credits.routes.ts';
 import notificationsRoutes from '../features/notifications/notifications.routes.ts';
 import reportsRoutes from '../features/reports/reports.routes.ts';
+import publicRoutes from '../features/public/public.routes.ts';
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use(paymongoWebhookRoutes);
 router.use(creditsRoutes);
 router.use(notificationsRoutes);
 router.use(reportsRoutes);
+router.use(publicRoutes);
 
 export default router;
