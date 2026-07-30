@@ -10,7 +10,6 @@ import daycareRoutes from '../features/daycare/daycare.routes.ts';
 import veterinaryRoutes from '../features/veterinary/veterinary.routes.ts';
 import hotelRoutes from '../features/hotel/hotel.routes.ts';
 import branchesRoutes from '../features/branches/branches.routes.ts';
-import publicRoutes from '../features/public/public.routes.ts';
 
 const router = Router();
 
@@ -25,6 +24,5 @@ router.use(daycareRoutes);
 router.use(veterinaryRoutes);
 router.use(hotelRoutes);
 router.use(branchesRoutes);
-router.use(publicRoutes);
 
 export default router;
