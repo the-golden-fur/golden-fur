@@ -63,6 +63,11 @@ const MEDICATION_CATALOG_PLAN: Array<{ name: string; price: number }> = [
   { name: 'Antihistamine (Diphenhydramine)', price: 60 },
 ];
 
+/** Sprint 5 unification (#82): both plans insert into the shared
+ * public.product_catalog table now (migration 20260731067), tagged with
+ * category + service_scope instead of living in their own tables. */
+const HOTEL_SERVICE_SCOPE = 'hotel';
+
 function getClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -133,8 +138,9 @@ export async function seedCages(supabase: ReturnType<typeof createClient>) {
   );
 }
 
-/** Seeds public.food_catalog - global (not branch-scoped, unlike cages),
- * one row per name, guarded by a per-name existence check. */
+/** Seeds public.product_catalog with category='food' - global (not
+ * branch-scoped, unlike cages), one row per (name, category), guarded by a
+ * per-name-and-category existence check. */
 export async function seedFoodCatalog(
   supabase: ReturnType<typeof createClient>
 ) {
@@ -142,14 +148,19 @@ export async function seedFoodCatalog(
 
   for (const item of FOOD_CATALOG_PLAN) {
     const { data: existing } = await supabase
-      .from('food_catalog')
+      .from('product_catalog')
       .select('id')
       .eq('name', item.name)
+      .eq('category', 'food')
       .maybeSingle();
 
     if (existing) continue;
 
-    const { error } = await supabase.from('food_catalog').insert(item);
+    const { error } = await supabase.from('product_catalog').insert({
+      ...item,
+      category: 'food',
+      service_scope: HOTEL_SERVICE_SCOPE,
+    });
 
     if (error) {
       console.error(
@@ -166,8 +177,8 @@ export async function seedFoodCatalog(
   );
 }
 
-/** Seeds public.medication_catalog - same shape/convention as
- * seedFoodCatalog above. */
+/** Seeds public.product_catalog with category='medication' - same shape/
+ * convention as seedFoodCatalog above. */
 export async function seedMedicationCatalog(
   supabase: ReturnType<typeof createClient>
 ) {
@@ -175,14 +186,19 @@ export async function seedMedicationCatalog(
 
   for (const item of MEDICATION_CATALOG_PLAN) {
     const { data: existing } = await supabase
-      .from('medication_catalog')
+      .from('product_catalog')
       .select('id')
       .eq('name', item.name)
+      .eq('category', 'medication')
       .maybeSingle();
 
     if (existing) continue;
 
-    const { error } = await supabase.from('medication_catalog').insert(item);
+    const { error } = await supabase.from('product_catalog').insert({
+      ...item,
+      category: 'medication',
+      service_scope: HOTEL_SERVICE_SCOPE,
+    });
 
     if (error) {
       console.error(

@@ -35,19 +35,20 @@ const CONFIG_TILES: DashboardTileConfig[] = [
     to: '/staff/admin/maintenance/breeds',
   },
   {
-    title: 'Hotel Food Catalog',
-    description: 'Manage hotel-suppliable food items and their prices.',
-    to: '/staff/hotel/food-catalog',
-  },
-  {
-    title: 'Hotel Medication Catalog',
-    description: 'Manage hotel-suppliable medications and their prices.',
-    to: '/staff/hotel/medication-catalog',
+    title: 'Product Catalog',
+    description:
+      'Manage hotel-suppliable food/medication and other sellable products, by category.',
+    to: '/staff/admin/product-catalog',
   },
   {
     title: 'Discounts',
     description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
     to: '/staff/admin/discounts',
+  },
+  {
+    title: 'Miscellaneous Sales',
+    description: 'Review, edit, or remove recorded miscellaneous sales.',
+    to: '/staff/admin/misc-sales',
   },
 ];
 

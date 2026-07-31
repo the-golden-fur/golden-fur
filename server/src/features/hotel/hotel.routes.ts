@@ -9,20 +9,12 @@ import {
   checkInController,
   checkoutController,
   completeCareLogEntryController,
-  createFoodCatalogItemController,
-  createMedicationCatalogItemController,
   currentPrescriptionController,
-  deleteFoodCatalogItemController,
-  deleteMedicationCatalogItemController,
   flaggedCareLogEntriesController,
-  listFoodCatalogController,
   listHotelStaysController,
-  listMedicationCatalogController,
   suggestCageController,
   todayCareLogEntriesController,
   updateCageStatusController,
-  updateFoodCatalogItemController,
-  updateMedicationCatalogItemController,
 } from './hotel.controller.ts';
 import {
   HOTEL_ADMIN_ROLES,
@@ -142,71 +134,8 @@ router.post(
   checkoutController
 );
 
-// #79 revision: food/medication catalogs. Not branch-scoped (same rationale
-// as maintenance.routes.ts's services/packages), so requireBranch is
-// deliberately omitted here.
-router.get(
-  '/hotel/food-catalog',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole(frontDeskAndAssistants),
-  listFoodCatalogController
-);
-
-router.post(
-  '/hotel/food-catalog',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  createFoodCatalogItemController
-);
-
-router.patch(
-  '/hotel/food-catalog/:id',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  updateFoodCatalogItemController
-);
-
-router.delete(
-  '/hotel/food-catalog/:id',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  deleteFoodCatalogItemController
-);
-
-router.get(
-  '/hotel/medication-catalog',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole(frontDeskAndAssistants),
-  listMedicationCatalogController
-);
-
-router.post(
-  '/hotel/medication-catalog',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  createMedicationCatalogItemController
-);
-
-router.patch(
-  '/hotel/medication-catalog/:id',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  updateMedicationCatalogItemController
-);
-
-router.delete(
-  '/hotel/medication-catalog/:id',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADMIN_ROLES]),
-  deleteMedicationCatalogItemController
-);
+// #79's food/medication catalogs moved to features/catalog/ (Sprint 5
+// unification, #82) - see catalog.routes.ts's GET/POST/PATCH/DELETE
+// /catalog/products.
 
 export default router;

@@ -8,13 +8,11 @@ import type {
   CheckInPayload,
   CheckInResult,
   CheckoutResult,
-  CreateCatalogItemPayload,
   CurrentPrescription,
   FoodCatalogItem,
   HotelStay,
   HotelStayWithCage,
   MedicationCatalogItem,
-  UpdateCatalogItemPayload,
 } from '../hotel.types';
 
 /** A hotel_stays row only ever exists once its booking has been physically
@@ -231,12 +229,19 @@ export async function checkOutHotelStay(
   return parseBody<CheckoutResult>(response);
 }
 
+// Sprint 5 unification (#82): food_catalog/medication_catalog admin CRUD
+// moved to features/catalog/ (ProductCatalogPage) - these two read-only
+// functions remain here, now backed by the shared GET /catalog/products
+// endpoint filtered to this feature's slice, so HotelCheckInPage's
+// feeding/medication CatalogComboBox pickers don't need to change at all.
+
 export async function listFoodCatalog(
   accessToken: string
 ): Promise<HotelApiResult<FoodCatalogItem[]>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/food-catalog`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/catalog/products?category=food&service_scope=hotel`,
+    { headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -246,65 +251,13 @@ export async function listFoodCatalog(
   return { data: result.data?.items ?? null, error: result.error };
 }
 
-export async function createFoodCatalogItem(
-  payload: CreateCatalogItemPayload,
-  accessToken: string
-): Promise<HotelApiResult<FoodCatalogItem>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/food-catalog`, {
-    method: 'POST',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ item: FoodCatalogItem }>(response);
-  return { data: result.data?.item ?? null, error: result.error };
-}
-
-export async function updateFoodCatalogItem(
-  itemId: string,
-  payload: UpdateCatalogItemPayload,
-  accessToken: string
-): Promise<HotelApiResult<FoodCatalogItem>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/food-catalog/${itemId}`, {
-    method: 'PATCH',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ item: FoodCatalogItem }>(response);
-  return { data: result.data?.item ?? null, error: result.error };
-}
-
-export async function deleteFoodCatalogItem(
-  itemId: string,
-  accessToken: string
-): Promise<HotelApiResult<null>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/food-catalog/${itemId}`, {
-    method: 'DELETE',
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return { data: null, error: null };
-}
-
 export async function listMedicationCatalog(
   accessToken: string
 ): Promise<HotelApiResult<MedicationCatalogItem[]>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/medication-catalog`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/catalog/products?category=medication&service_scope=hotel`,
+    { headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -312,62 +265,6 @@ export async function listMedicationCatalog(
 
   const result = await parseBody<{ items: MedicationCatalogItem[] }>(response);
   return { data: result.data?.items ?? null, error: result.error };
-}
-
-export async function createMedicationCatalogItem(
-  payload: CreateCatalogItemPayload,
-  accessToken: string
-): Promise<HotelApiResult<MedicationCatalogItem>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/medication-catalog`, {
-    method: 'POST',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ item: MedicationCatalogItem }>(response);
-  return { data: result.data?.item ?? null, error: result.error };
-}
-
-export async function updateMedicationCatalogItem(
-  itemId: string,
-  payload: UpdateCatalogItemPayload,
-  accessToken: string
-): Promise<HotelApiResult<MedicationCatalogItem>> {
-  const response = await fetch(
-    `${API_BASE_URL}/hotel/medication-catalog/${itemId}`,
-    {
-      method: 'PATCH',
-      headers: jsonHeaders(accessToken),
-      body: JSON.stringify(payload),
-    }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ item: MedicationCatalogItem }>(response);
-  return { data: result.data?.item ?? null, error: result.error };
-}
-
-export async function deleteMedicationCatalogItem(
-  itemId: string,
-  accessToken: string
-): Promise<HotelApiResult<null>> {
-  const response = await fetch(
-    `${API_BASE_URL}/hotel/medication-catalog/${itemId}`,
-    { method: 'DELETE', headers: authHeaders(accessToken) }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return { data: null, error: null };
 }
 
 export type { HotelStay };

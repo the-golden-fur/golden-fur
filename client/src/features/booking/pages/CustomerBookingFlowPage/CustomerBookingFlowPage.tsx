@@ -29,7 +29,7 @@ import {
   type StaffPreferenceInput,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
-import { CatalogComboBox } from '../../../hotel/components/CatalogComboBox/CatalogComboBox';
+import { CatalogComboBox } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import {
   listFoodCatalog,
   listMedicationCatalog,

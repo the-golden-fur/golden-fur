@@ -54,23 +54,10 @@ export interface HotelStay {
   updated_at: string;
 }
 
-export interface FoodCatalogItem {
-  id: string;
-  name: string;
-  price: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MedicationCatalogItem {
-  id: string;
-  name: string;
-  price: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+// FoodCatalogItem/MedicationCatalogItem moved to features/catalog/
+// catalog.types.ts's ProductCatalogItem (Sprint 5 unification, #82) - the
+// food_catalog_id/medication_catalog_id fields below now reference
+// product_catalog rows.
 
 export interface CareFeedingInstruction {
   id: string;

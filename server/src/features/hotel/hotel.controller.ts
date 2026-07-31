@@ -19,22 +19,8 @@ import {
 import { suggestCage } from './services/cageAssignment.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
 import {
-  createFoodCatalogItem,
-  deleteFoodCatalogItem,
-  listFoodCatalog,
-  updateFoodCatalogItem,
-} from './services/foodCatalog.service.ts';
-import {
-  createMedicationCatalogItem,
-  deleteMedicationCatalogItem,
-  listMedicationCatalog,
-  updateMedicationCatalogItem,
-} from './services/medicationCatalog.service.ts';
-import {
   cageStatusUpdateValidator,
   checkInValidator,
-  createCatalogItemValidator,
-  updateCatalogItemValidator,
 } from './modules/validators/hotel.validator.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
@@ -249,136 +235,9 @@ export async function updateCageStatusController(
   }
 }
 
-export async function listFoodCatalogController(
-  _req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    const items = await listFoodCatalog();
-    return res.status(200).json({ items });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function createFoodCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = createCatalogItemValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const item = await createFoodCatalogItem(parsed.data);
-    return res.status(201).json({ item });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function updateFoodCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = updateCatalogItemValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const item = await updateFoodCatalogItem(paramId(req, 'id'), parsed.data);
-    return res.status(200).json({ item });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function deleteFoodCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    await deleteFoodCatalogItem(paramId(req, 'id'));
-    return res.status(204).send();
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function listMedicationCatalogController(
-  _req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    const items = await listMedicationCatalog();
-    return res.status(200).json({ items });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function createMedicationCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = createCatalogItemValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const item = await createMedicationCatalogItem(parsed.data);
-    return res.status(201).json({ item });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function updateMedicationCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = updateCatalogItemValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const item = await updateMedicationCatalogItem(
-      paramId(req, 'id'),
-      parsed.data
-    );
-    return res.status(200).json({ item });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function deleteMedicationCatalogItemController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    await deleteMedicationCatalogItem(paramId(req, 'id'));
-    return res.status(204).send();
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
+// Food/medication catalog CRUD moved to features/catalog/ (Sprint 5
+// unification, #82) - see catalog.controller.ts's listProductsController/
+// createProductController/updateProductController/deleteProductController.
 
 const VALID_STAY_STATUSES = new Set(['In Progress', 'Completed', 'Paid']);
 

@@ -67,25 +67,6 @@ export const cageStatusUpdateValidator = z
 
 export type CageStatusUpdateInput = z.infer<typeof cageStatusUpdateValidator>;
 
-/** Shared shape for both food_catalog and medication_catalog admin CRUD
- * (#79 revision) - the two tables are structurally identical (name/price/
- * is_active) even though kept as separate tables/services (distinct
- * concepts that happen to share a shape, same rationale as cage_size not
- * reusing pets.weight_class). */
-export const createCatalogItemValidator = z
-  .object({
-    name: z.string().min(1),
-    price: z.number().nonnegative(),
-  })
-  .strict();
-
-export const updateCatalogItemValidator = z
-  .object({
-    name: z.string().min(1).optional(),
-    price: z.number().nonnegative().optional(),
-    is_active: z.boolean().optional(),
-  })
-  .strict();
-
-export type CreateCatalogItemInput = z.infer<typeof createCatalogItemValidator>;
-export type UpdateCatalogItemInput = z.infer<typeof updateCatalogItemValidator>;
+// createCatalogItemValidator/updateCatalogItemValidator moved to
+// features/catalog/modules/validators/catalog.validator.ts (Sprint 5
+// unification, #82) as createProductValidator/updateProductValidator.

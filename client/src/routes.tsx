@@ -10,6 +10,8 @@ import { groomingRoutes } from './features/grooming/grooming.routes';
 import { daycareRoutes } from './features/daycare/daycare.routes';
 import { veterinaryRoutes } from './features/veterinary/veterinary.routes';
 import { hotelRoutes } from './features/hotel/hotel.routes';
+import { catalogRoutes } from './features/catalog/catalog.routes';
+import { billingRoutes } from './features/billing/billing.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 import { ServerErrorPage } from './pages/ServerErrorPage/ServerErrorPage';
 import { NotFoundPage } from './pages/NotFoundPage/NotFoundPage';
@@ -26,6 +28,8 @@ export function AppRoutes() {
       {daycareRoutes}
       {veterinaryRoutes}
       {hotelRoutes}
+      {catalogRoutes}
+      {billingRoutes}
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />
