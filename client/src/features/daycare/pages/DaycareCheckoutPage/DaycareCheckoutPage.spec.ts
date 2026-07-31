@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as staffApi from '../../../staff/api/staff.api';
@@ -15,6 +15,10 @@ vi.mock('../../../staff/api/staff.api', () => ({
 }));
 vi.mock('../../api/daycare.api', () => ({
   checkOutDaycareSession: vi.fn(),
+  listDaycareSessions: vi.fn(),
+}));
+vi.mock('../../../customers/api/customer.api', () => ({
+  getPet: vi.fn(),
 }));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
@@ -72,6 +76,13 @@ function renderPage(initialPath = '/staff/daycare/checkout/session-1') {
 }
 
 describe('DaycareCheckoutPage (#69)', () => {
+  beforeEach(() => {
+    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+  });
+
   it('AC-1: redirects a non-Receptionist/Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
@@ -107,7 +118,9 @@ describe('DaycareCheckoutPage (#69)', () => {
 
     renderPage();
 
-    expect(await screen.findByDisplayValue('session-1')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Ready to check out this session?')
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /check out/i }));
 
     await waitFor(() =>

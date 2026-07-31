@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
+import { DaycareSessionPicker } from '../../components/DaycareSessionPicker/DaycareSessionPicker';
 import { checkOutDaycareSession } from '../../api/daycare.api';
 import type { DaycareSession } from '../../daycare.types';
 import styles from './DaycareCheckoutPage.module.css';
@@ -33,13 +34,12 @@ function succeedingHoursFor(checkInAt: string, checkOutAt: string): number {
  * (base ₱100 first hour, plus each succeeding ₱50 hour itemized), not just a
  * single total.
  *
- * Reviewer scope note: #65's backend has no "list active sessions" endpoint
- * (only POST /daycare/check-in and POST /daycare/sessions/:id/checkout), so
- * this screen is reached with a known session id - either passed via the
- * route (DaycareCheckInPage's "Go to checkout" link, right after check-in)
- * or entered/pasted manually. A dedicated "browse active sessions at my
- * branch" endpoint would need a new GET route, which is outside this issue's
- * (client-only) Affected Files.
+ * GET /daycare/sessions backs a search/filter/sort picker
+ * (DaycareSessionPicker), mirroring HotelStayPicker's role on the Hotel
+ * Checkout screen - selecting a card goes straight to a confirm step, same
+ * as HotelCheckoutPage (no more raw "paste the session id" text field).
+ * Arriving with a :sessionId route param (DaycareCheckInPage's "Go to
+ * checkout" link) skips the picker entirely and goes straight to confirm.
  */
 export function DaycareCheckoutPage() {
   const { user, accessToken } = useAuth();
@@ -48,7 +48,8 @@ export function DaycareCheckoutPage() {
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
-  const [sessionId, setSessionId] = useState(routeSessionId ?? '');
+  const [selectedSession, setSelectedSession] =
+    useState<DaycareSession | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkedOut, setCheckedOut] = useState<DaycareSession | null>(null);
@@ -75,13 +76,13 @@ export function DaycareCheckoutPage() {
     };
   }, [accessToken, user?.id]);
 
-  async function submitCheckout() {
-    if (!accessToken || !sessionId.trim()) return;
+  async function submitCheckout(sessionId: string) {
+    if (!accessToken) return;
 
     setIsSubmitting(true);
     setError(null);
 
-    const result = await checkOutDaycareSession(sessionId.trim(), accessToken);
+    const result = await checkOutDaycareSession(sessionId, accessToken);
 
     setIsSubmitting(false);
 
@@ -150,18 +151,75 @@ export function DaycareCheckoutPage() {
     );
   }
 
+  // Reached via a direct link (DaycareCheckInPage) with a known session id -
+  // skip the picker and go straight to confirm.
+  if (routeSessionId && !selectedSession) {
+    return (
+      <main className={styles.page}>
+        <h1 className={styles.title}>Daycare Checkout</h1>
+
+        {error ? (
+          <p className={styles.errorBanner} role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <p className={styles.copy}>Ready to check out this session?</p>
+
+        <button
+          type="button"
+          className={styles.primaryButton}
+          disabled={isSubmitting}
+          onClick={() => void submitCheckout(routeSessionId)}
+        >
+          {isSubmitting ? 'Checking out...' : 'Check out now'}
+        </button>
+      </main>
+    );
+  }
+
+  if (selectedSession) {
+    return (
+      <main className={styles.page}>
+        <h1 className={styles.title}>Daycare Checkout</h1>
+
+        <dl className={styles.breakdown}>
+          <div className={styles.breakdownRow}>
+            <dt>Checked in</dt>
+            <dd>{new Date(selectedSession.check_in_at).toLocaleString()}</dd>
+          </div>
+        </dl>
+
+        {error ? (
+          <p className={styles.errorBanner} role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className={styles.controls}>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={isSubmitting}
+            onClick={() => void submitCheckout(selectedSession.id)}
+          >
+            {isSubmitting ? 'Checking out...' : 'Check out now'}
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setSelectedSession(null)}
+          >
+            Choose a different session
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Daycare Checkout</h1>
-
-      <label className={styles.field}>
-        <span className={styles.fieldLabel}>Session ID</span>
-        <input
-          className={styles.input}
-          value={sessionId}
-          onChange={(event) => setSessionId(event.target.value)}
-        />
-      </label>
 
       {error ? (
         <p className={styles.errorBanner} role="alert">
@@ -169,14 +227,10 @@ export function DaycareCheckoutPage() {
         </p>
       ) : null}
 
-      <button
-        type="button"
-        className={styles.primaryButton}
-        disabled={!sessionId.trim() || isSubmitting}
-        onClick={() => void submitCheckout()}
-      >
-        {isSubmitting ? 'Checking out...' : 'Check out'}
-      </button>
+      <DaycareSessionPicker
+        accessToken={accessToken}
+        onSelect={setSelectedSession}
+      />
     </main>
   );
 }

@@ -7,9 +7,9 @@ import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/Auth
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as customerApi from '../../../customers/api/customer.api';
-import * as bookingApi from '../../../booking/api/booking.api';
 import * as daycareApi from '../../api/daycare.api';
 import type { StaffProfile } from '../../../staff/staff.types';
+import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
 import { DaycareCheckInPage } from './DaycareCheckInPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -21,8 +21,8 @@ vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   createPet: vi.fn(),
 }));
-vi.mock('../../../booking/api/booking.api', () => ({
-  listBookings: vi.fn(),
+vi.mock('../../components/DaycareBookingPicker/DaycareBookingPicker', () => ({
+  DaycareBookingPicker: vi.fn(() => null),
 }));
 vi.mock('../../api/daycare.api', () => ({
   checkInDaycareSession: vi.fn(),
@@ -103,52 +103,37 @@ describe('DaycareCheckInPage (#69)', () => {
       data: buildViewerProfile('Receptionist'),
       error: null,
     });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        {
-          id: 'booking-1',
-          customer_id: 'customer-1',
-          pet_id: 'pet-1',
-          branch_id: 'branch-makati',
-          created_by_staff_id: null,
-          service_category: 'Daycare',
-          service_id: 'service-1',
-          package_id: null,
-          scheduled_start: '2026-07-19T02:00:00.000Z',
-          scheduled_end: '2026-07-19T03:00:00.000Z',
-          assigned_staff_id: null,
-          status: 'Pending',
-          total_price: 300,
-          downpayment_amount: null,
-          payment_method: null,
-          payment_confirmed: true,
-          special_instructions: null,
-          cancelled_at: null,
-          cancellation_reason: null,
-          reschedule_count: 0,
-          created_at: '2026-07-18T00:00:00.000Z',
-          updated_at: '2026-07-18T00:00:00.000Z',
-        },
-      ],
-      error: null,
-    });
-    vi.mocked(customerApi.getPet).mockResolvedValue({
-      data: {
-        id: 'pet-1',
-        customer_id: 'customer-1',
-        name: 'Rex',
-        pet_type: 'Dog',
-        breed_id: null,
-        photo_url: null,
-        gender: null,
-        date_of_birth: null,
-        weight_class: 'M',
-        coat_type: 'SC',
-        created_at: '2026-01-01T00:00:00.000Z',
-        updated_at: '2026-01-01T00:00:00.000Z',
-      },
-      error: null,
-    });
+    const booking = {
+      id: 'booking-1',
+      customer_id: 'customer-1',
+      pet_id: 'pet-1',
+      branch_id: 'branch-makati',
+      created_by_staff_id: null,
+      service_category: 'Daycare',
+      service_id: 'service-1',
+      package_id: null,
+      scheduled_start: '2026-07-19T02:00:00.000Z',
+      scheduled_end: '2026-07-19T03:00:00.000Z',
+      assigned_staff_id: null,
+      status: 'Pending',
+      total_price: 300,
+      downpayment_amount: null,
+      payment_method: null,
+      payment_confirmed: true,
+      special_instructions: null,
+      cancelled_at: null,
+      cancellation_reason: null,
+      reschedule_count: 0,
+      created_at: '2026-07-18T00:00:00.000Z',
+      updated_at: '2026-07-18T00:00:00.000Z',
+    };
+    vi.mocked(DaycareBookingPicker).mockImplementation(({ onSelect }) =>
+      createElement(
+        'button',
+        { type: 'button', onClick: () => onSelect(booking as never) },
+        'Pick booking'
+      )
+    );
     vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
       data: {
         id: 'session-1',
@@ -168,7 +153,7 @@ describe('DaycareCheckInPage (#69)', () => {
 
     renderPage();
 
-    await userEvent.click(await screen.findByLabelText(/Rex/));
+    await userEvent.click(await screen.findByText('Pick booking'));
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
     await waitFor(() =>
@@ -184,10 +169,6 @@ describe('DaycareCheckInPage (#69)', () => {
   it('AC-3: a cutoff-blocked check-in shows a clear terminal message and does not clear on its own', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Receptionist'),
-      error: null,
-    });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [],
       error: null,
     });
     vi.mocked(customerApi.listCustomers).mockResolvedValue({
