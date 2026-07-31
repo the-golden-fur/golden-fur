@@ -13,6 +13,13 @@ interface TimeInputProps {
    * this once check-in makes feeding/walking/medication instructions
    * read-only for every staff role. */
   disabled?: boolean;
+  /** "HH:MM" bounds, e.g. a single-night Hotel booking's check-in/check-out
+   * time-of-day - passed straight to the native input, and used to filter
+   * which quick-pick presets are offered. Omit for no bound (e.g. a
+   * multi-night stay, where a single day's bound doesn't hold for every
+   * day of the trip - see CustomerBookingFlowPage's hotelDetails step). */
+  min?: string;
+  max?: string;
 }
 
 /**
@@ -27,7 +34,13 @@ export function TimeInput({
   presets = DEFAULT_PRESETS,
   'aria-label': ariaLabel,
   disabled = false,
+  min,
+  max,
 }: TimeInputProps) {
+  const boundedPresets = presets.filter(
+    (preset) => (!min || preset >= min) && (!max || preset <= max)
+  );
+
   return (
     <div className={styles.wrapper}>
       <input
@@ -37,6 +50,8 @@ export function TimeInput({
         onChange={(event) => onChange(event.target.value)}
         aria-label={ariaLabel}
         disabled={disabled}
+        min={min}
+        max={max}
       />
       <select
         className={styles.presetSelect}
@@ -50,7 +65,7 @@ export function TimeInput({
         }}
       >
         <option value="">Quick pick...</option>
-        {presets.map((preset) => (
+        {boundedPresets.map((preset) => (
           <option key={preset} value={preset}>
             {formatTimeValue(preset)}
           </option>
