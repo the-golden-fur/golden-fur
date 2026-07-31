@@ -1,0 +1,13 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  min-height: 100vh;
+}
+
+.content {
+  display: grid;
+  max-width: 40rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}

@@ -1,0 +1,8 @@
+.notice {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
