@@ -39,6 +39,7 @@ export interface Discount {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 /** is_mandated is deliberately absent - never settable via the API. */

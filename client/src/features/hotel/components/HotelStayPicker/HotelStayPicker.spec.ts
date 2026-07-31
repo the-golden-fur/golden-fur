@@ -138,7 +138,7 @@ describe('HotelStayPicker', () => {
     );
 
     expect(
-      await screen.findByText(/No active Hotel stays match your search/)
+      await screen.findByText(/No active stays match your search/)
     ).toBeInTheDocument();
   });
 });

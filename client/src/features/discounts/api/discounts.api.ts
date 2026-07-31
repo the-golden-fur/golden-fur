@@ -114,3 +114,69 @@ export async function updateDiscount(
   const result = await parseBody<{ discount: Discount }>(response);
   return { data: result.data?.discount ?? null, error: result.error };
 }
+
+/** Soft: moves the discount to the archive. Server still requires
+ * is_active === false first (see discounts.service.ts's archiveDiscount
+ * guard). */
+export async function archiveDiscount(
+  discountId: string,
+  accessToken: string
+): Promise<DiscountsApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/discounts/${discountId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restoreDiscount(
+  discountId: string,
+  accessToken: string
+): Promise<DiscountsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/discounts/${discountId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedDiscounts(
+  accessToken: string
+): Promise<DiscountsApiResult<Discount[]>> {
+  const response = await fetch(`${API_BASE_URL}/discounts/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ discounts: Discount[] }>(response);
+  return { data: result.data?.discounts ?? null, error: result.error };
+}
+
+export async function hardDeleteDiscount(
+  discountId: string,
+  accessToken: string
+): Promise<DiscountsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/discounts/${discountId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}

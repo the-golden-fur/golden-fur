@@ -1,9 +1,13 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  archiveDiscount,
   createDiscount,
   getDiscountById,
+  hardDeleteDiscount,
+  listArchivedDiscounts,
   listDiscounts,
+  restoreDiscount,
   updateDiscount,
 } from './services/discounts.service.ts';
 import {
@@ -54,6 +58,54 @@ export async function getDiscountController(
   try {
     const discount = await getDiscountById(paramId(req, 'id'));
     return res.status(200).json({ discount });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveDiscountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await archiveDiscount(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreDiscountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restoreDiscount(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedDiscountsController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const discounts = await listArchivedDiscounts();
+    return res.status(200).json({ discounts });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteDiscountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteDiscount(paramId(req, 'id'));
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

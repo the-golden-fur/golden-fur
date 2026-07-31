@@ -102,7 +102,9 @@ export async function updateProduct(
   return { data: result.data?.item ?? null, error: result.error };
 }
 
-export async function deleteProduct(
+/** Soft: moves the item to the archive. Server still requires is_active
+ * === false first (see productCatalog.service.ts's archiveProduct guard). */
+export async function archiveProduct(
   itemId: string,
   accessToken: string
 ): Promise<CatalogApiResult<null>> {
@@ -110,6 +112,53 @@ export async function deleteProduct(
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restoreProduct(
+  itemId: string,
+  accessToken: string
+): Promise<CatalogApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/catalog/products/${itemId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedProducts(
+  accessToken: string
+): Promise<CatalogApiResult<ProductCatalogItem[]>> {
+  const response = await fetch(`${API_BASE_URL}/catalog/products/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ items: ProductCatalogItem[] }>(response);
+  return { data: result.data?.items ?? null, error: result.error };
+}
+
+export async function hardDeleteProduct(
+  itemId: string,
+  accessToken: string
+): Promise<CatalogApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/catalog/products/${itemId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

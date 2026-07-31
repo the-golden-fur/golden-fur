@@ -21,6 +21,24 @@
   font-weight: var(--weight-bold);
 }
 
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.archiveLink {
+  color: var(--color-accent-gold-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.archiveLink:hover {
+  text-decoration: underline;
+}
+
 .copy {
   margin: 0;
   color: var(--color-text-secondary);

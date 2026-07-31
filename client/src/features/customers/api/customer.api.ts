@@ -98,6 +98,184 @@ export async function listCustomers(
   return { data: result.data?.customers ?? null, error: result.error };
 }
 
+export async function deactivateCustomer(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/deactivate`,
+    { method: 'PATCH', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function activateCustomer(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/activate`,
+    { method: 'PATCH', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function archiveCustomer(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/archive`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restoreCustomer(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedCustomers(
+  accessToken: string
+): Promise<CustomerApiResult<CustomerProfile[]>> {
+  const response = await fetch(`${API_BASE_URL}/customers/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ customers: CustomerProfile[] }>(response);
+  return { data: result.data?.customers ?? null, error: result.error };
+}
+
+export async function hardDeleteCustomer(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function deactivatePet(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}/deactivate`, {
+    method: 'PATCH',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+/** Soft: moves the pet to the archive. Server requires is_active === false
+ * first (see petArchive.service.ts's archivePet guard). */
+export async function archivePet(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restorePet(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}/restore`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedPets(
+  accessToken: string,
+  customerId?: string
+): Promise<CustomerApiResult<Pet[]>> {
+  const url = customerId
+    ? `${API_BASE_URL}/customers/${customerId}/pets/archived`
+    : `${API_BASE_URL}/pets/archived`;
+  const response = await fetch(url, { headers: authHeaders(accessToken) });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ pets: Pet[] }>(response);
+  return { data: result.data?.pets ?? null, error: result.error };
+}
+
+export async function hardDeletePet(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}/permanent`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
 export async function listCustomerPets(
   customerId: string,
   accessToken: string

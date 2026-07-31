@@ -17,6 +17,8 @@ import {
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   getPetConsultationHistory,
   listConsultationQueue,
@@ -206,26 +208,34 @@ export function VeterinaryConsolePage() {
     });
   }, [consultations, pets, owners]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<BookingStatus, typeof rows>();
-    for (const status of STATUS_GROUPS) map.set(status, []);
-    for (const row of rows) {
-      const status = row.consultation.booking?.status;
-      if (!status) continue;
-      map.get(status)?.push(row);
-    }
-    for (const group of map.values()) {
-      group.sort(
-        (a, b) =>
-          new Date(a.scheduledStart).getTime() -
-          new Date(b.scheduledStart).getTime()
-      );
-    }
-    return map;
-  }, [rows]);
+  type QueueRow = (typeof rows)[number];
 
-  const visibleStatusGroups =
-    statusFilter === 'All' ? STATUS_GROUPS : [statusFilter];
+  const statusFiltered = useMemo(() => {
+    if (statusFilter === 'All') return rows;
+    return rows.filter(
+      (row) => row.consultation.booking?.status === statusFilter
+    );
+  }, [rows, statusFilter]);
+
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: visibleRows,
+  } = useSearchAndSort<QueueRow, 'time' | 'pet-name'>({
+    items: statusFiltered,
+    matchesQuery: (row, query) =>
+      row.petName.toLowerCase().includes(query) ||
+      row.ownerName.toLowerCase().includes(query),
+    comparators: {
+      time: (a, b) =>
+        new Date(a.scheduledStart).getTime() -
+        new Date(b.scheduledStart).getTime(),
+      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
+    },
+    initialSortKey: 'time',
+  });
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
 
@@ -406,7 +416,19 @@ export function VeterinaryConsolePage() {
           statusValue={statusFilter}
           onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
           statusOptions={STATUS_OPTIONS}
-        />
+        >
+          <SearchSortBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search by pet or owner..."
+            sortValue={sortKey}
+            onSortChange={setSortKey}
+            sortOptions={[
+              { value: 'time', label: 'Sort: Scheduled time (earliest)' },
+              { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
+            ]}
+          />
+        </QueueFilterBar>
 
         {isLoading ? (
           <p className={styles.copy}>Loading consultations...</p>
@@ -417,41 +439,35 @@ export function VeterinaryConsolePage() {
         ) : (
           <div className={styles.layout}>
             <div className={styles.queue}>
-              {visibleStatusGroups.map((status) => (
-                <section key={status} className={styles.statusGroup}>
-                  <h2 className={styles.statusGroupTitle}>
-                    <BookingStatusBadge status={status} />
-                  </h2>
-                  {grouped.get(status)!.length === 0 ? (
-                    <p className={styles.copy}>None</p>
-                  ) : (
-                    <ul className={styles.rowList}>
-                      {grouped.get(status)!.map((row) => (
-                        <li key={row.consultation.id}>
-                          <button
-                            type="button"
-                            className={
-                              row.consultation.id === selectedId
-                                ? styles.rowButtonActive
-                                : styles.rowButton
-                            }
-                            onClick={() =>
-                              selectConsultation(row.consultation.id)
-                            }
-                          >
-                            <span className={styles.rowPetName}>
-                              {row.petName}
-                            </span>
-                            <span className={styles.rowMeta}>
-                              {row.ownerName}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))}
+              {visibleRows.length === 0 ? (
+                <p className={styles.copy}>
+                  No consultations match these filters.
+                </p>
+              ) : (
+                <ul className={styles.rowList}>
+                  {visibleRows.map((row) => (
+                    <li key={row.consultation.id}>
+                      <button
+                        type="button"
+                        className={
+                          row.consultation.id === selectedId
+                            ? styles.rowButtonActive
+                            : styles.rowButton
+                        }
+                        onClick={() => selectConsultation(row.consultation.id)}
+                      >
+                        <span className={styles.rowPetName}>{row.petName}</span>
+                        <span className={styles.rowMeta}>{row.ownerName}</span>
+                        {row.consultation.booking?.status ? (
+                          <BookingStatusBadge
+                            status={row.consultation.booking.status}
+                          />
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className={styles.detail}>

@@ -8,15 +8,23 @@ import {
   updateService,
 } from './services/services.service.ts';
 import {
+  archivePackage,
   createPackage,
   getPackageById,
+  hardDeletePackage,
+  listArchivedPackages,
   listPackages,
+  restorePackage,
   updatePackage,
 } from './services/packages.service.ts';
 import {
+  archivePromo,
   createPromo,
   getPromoById,
+  hardDeletePromo,
+  listArchivedPromos,
   listPromos,
+  restorePromo,
   updatePromo,
 } from './services/promos.service.ts';
 import {
@@ -290,6 +298,54 @@ export async function updatePackageController(
   }
 }
 
+export async function archivePackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await archivePackage(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restorePackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restorePackage(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedPackagesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const packages = await listArchivedPackages();
+    return res.status(200).json({ packages });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeletePackageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeletePackage(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Promos (#42)
 // ---------------------------------------------------------------------------
@@ -374,6 +430,54 @@ export async function updatePromoController(
     });
 
     return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archivePromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await archivePromo(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restorePromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restorePromo(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedPromosController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const promos = await listArchivedPromos();
+    return res.status(200).json({ promos });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeletePromoController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeletePromo(paramId(req, 'id'));
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -1,4 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  assertArchivedBeforeHardDelete,
+  assertInactiveBeforeArchive,
+} from '../../../shared/archive/archiveGuard.ts';
 import type { Promo } from '../maintenance.types.ts';
 import type {
   CreatePromoInput,
@@ -6,6 +10,9 @@ import type {
 } from '../modules/validators/maintenance.validator.ts';
 
 const PROMO_SELECT = '*, promo_scope(*)';
+
+/** Postgres foreign_key_violation. */
+const FOREIGN_KEY_VIOLATION = '23503';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -43,7 +50,10 @@ export async function listPromos({
   branchScope,
   includeInactive,
 }: ListPromosParams): Promise<Promo[]> {
-  let query = supabase.from('promos').select(PROMO_SELECT);
+  let query = supabase
+    .from('promos')
+    .select(PROMO_SELECT)
+    .is('archived_at', null);
 
   if (!includeInactive) {
     query = query
@@ -223,4 +233,59 @@ export async function updatePromo({
   }
 
   return getPromoById(promoId);
+}
+
+/**
+ * Deactivate-first CRUD safety (archive workflow), mirroring
+ * productCatalog.service.ts's archiveProduct: archiving is soft - the row
+ * moves to the archive list via archived_at, it is not deleted.
+ */
+export async function archivePromo(promoId: string): Promise<void> {
+  const promo = await getPromoById(promoId);
+  assertInactiveBeforeArchive(promo.is_active, 'This promo');
+
+  const { error } = await supabase
+    .from('promos')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', promoId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function restorePromo(promoId: string): Promise<void> {
+  const { error } = await supabase
+    .from('promos')
+    .update({ archived_at: null })
+    .eq('id', promoId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function listArchivedPromos(): Promise<Promo[]> {
+  const { data, error } = await supabase
+    .from('promos')
+    .select(PROMO_SELECT)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as Promo[];
+}
+
+export async function hardDeletePromo(promoId: string): Promise<void> {
+  const promo = await getPromoById(promoId);
+  assertArchivedBeforeHardDelete(promo.archived_at, 'This promo');
+
+  const { error } = await supabase.from('promos').delete().eq('id', promoId);
+
+  if (error) {
+    if (error.code === FOREIGN_KEY_VIOLATION) {
+      throwWithStatus(
+        409,
+        'This promo is still referenced elsewhere (a sale) and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

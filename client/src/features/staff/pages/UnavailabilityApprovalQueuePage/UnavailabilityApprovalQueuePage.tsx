@@ -7,10 +7,20 @@ import {
   reviewUnavailabilityRequest,
 } from '../../api/staff.api';
 import { UnavailabilityReviewCard } from '../../components/review/UnavailabilityReviewCard/UnavailabilityReviewCard';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type { PendingUnavailabilityBlock, StaffRole } from '../../staff.types';
 import styles from './UnavailabilityApprovalQueuePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
+
+type SortKey = 'requested-earliest' | 'start-soonest' | 'staff-name';
+
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: 'requested-earliest', label: 'Sort: Requested (earliest)' },
+  { value: 'start-soonest', label: 'Sort: Day off (soonest)' },
+  { value: 'staff-name', label: 'Sort: Staff name (A-Z)' },
+];
 
 export function UnavailabilityApprovalQueuePage() {
   const { user, accessToken } = useAuth();
@@ -87,13 +97,37 @@ export function UnavailabilityApprovalQueuePage() {
     [pending]
   );
 
-  const filteredPending = useMemo(() => {
+  const branchFiltered = useMemo(() => {
     if (viewerRole !== 'Superadmin' || branchFilter === 'All') {
       return pending;
     }
 
     return pending.filter((block) => block.staff?.branch_id === branchFilter);
   }, [pending, viewerRole, branchFilter]);
+
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: filteredPending,
+  } = useSearchAndSort<PendingUnavailabilityBlock, SortKey>({
+    items: branchFiltered,
+    matchesQuery: (block, query) =>
+      (block.staff?.display_name ?? '').toLowerCase().includes(query) ||
+      (block.reason ?? '').toLowerCase().includes(query),
+    comparators: {
+      'requested-earliest': (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      'start-soonest': (a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
+      'staff-name': (a, b) =>
+        (a.staff?.display_name ?? '').localeCompare(
+          b.staff?.display_name ?? ''
+        ),
+    },
+    initialSortKey: 'requested-earliest',
+  });
 
   const handleReview = (
     block: PendingUnavailabilityBlock,
@@ -150,23 +184,34 @@ export function UnavailabilityApprovalQueuePage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Days Off Approval Queue</h1>
 
-        {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch</span>
-            <select
-              className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
-            >
-              <option value="All">All branches</option>
-              {branchOptions.map((branchId) => (
-                <option key={branchId} value={branchId}>
-                  {`Branch ${branchId.slice(0, 8)}`}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <div className={styles.toolbar}>
+          {viewerRole === 'Superadmin' && branchOptions.length > 0 ? (
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Branch</span>
+              <select
+                className={styles.filterSelect}
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+              >
+                <option value="All">All branches</option>
+                {branchOptions.map((branchId) => (
+                  <option key={branchId} value={branchId}>
+                    {`Branch ${branchId.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <SearchSortBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search by staff name or reason..."
+            sortValue={sortKey}
+            onSortChange={setSortKey}
+            sortOptions={SORT_OPTIONS}
+          />
+        </div>
 
         {actionError ? (
           <p className={styles.errorBanner} role="alert">
@@ -181,7 +226,11 @@ export function UnavailabilityApprovalQueuePage() {
             {loadError}
           </p>
         ) : filteredPending.length === 0 ? (
-          <p className={styles.copy}>No pending requests.</p>
+          <p className={styles.copy}>
+            {branchFiltered.length === 0
+              ? 'No pending requests.'
+              : 'No requests match your search - try clearing it.'}
+          </p>
         ) : (
           <div className={styles.grid}>
             {filteredPending.map((block) => (

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveProduct,
   createProduct,
-  deleteProduct,
+  hardDeleteProduct,
   listProducts,
   updateProduct,
 } from './productCatalog.service.ts';
@@ -30,6 +31,8 @@ function queueFromResults(...results: QueryResult[]) {
       'update',
       'delete',
       'order',
+      'is',
+      'not',
     ]) {
       builder[method] = vi.fn(() => builder);
     }
@@ -138,13 +141,54 @@ describe('productCatalog.service (Sprint 5 unification, #82)', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('deleteProduct rejects with 409 when still referenced (e.g. a check-in)', async () => {
+  it('archiveProduct rejects with 403 when the item is still active', async () => {
     queueFromResults({
-      data: null,
-      error: { code: '23503', message: 'still referenced' },
+      data: { id: 'item-1', is_active: true, archived_at: null },
+      error: null,
     });
 
-    await expect(deleteProduct('item-1')).rejects.toMatchObject({
+    await expect(archiveProduct('item-1')).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it('archiveProduct sets archived_at once the item is deactivated', async () => {
+    queueFromResults(
+      {
+        data: { id: 'item-1', is_active: false, archived_at: null },
+        error: null,
+      },
+      { data: null, error: null }
+    );
+
+    await expect(archiveProduct('item-1')).resolves.toBeUndefined();
+  });
+
+  it('hardDeleteProduct rejects with 403 when the item has not been archived', async () => {
+    queueFromResults({
+      data: { id: 'item-1', is_active: false, archived_at: null },
+      error: null,
+    });
+
+    await expect(hardDeleteProduct('item-1')).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it('hardDeleteProduct rejects with 409 when still referenced (e.g. a check-in)', async () => {
+    queueFromResults(
+      {
+        data: {
+          id: 'item-1',
+          is_active: false,
+          archived_at: '2026-07-31T00:00:00.000Z',
+        },
+        error: null,
+      },
+      { data: null, error: { code: '23503', message: 'still referenced' } }
+    );
+
+    await expect(hardDeleteProduct('item-1')).rejects.toMatchObject({
       statusCode: 409,
     });
   });

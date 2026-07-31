@@ -3,14 +3,13 @@ import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
-  getPet,
   listCustomerPets,
   listCustomers,
 } from '../../../customers/api/customer.api';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
-import { listBookings } from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
+import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
 import { checkInDaycareSession } from '../../api/daycare.api';
 import styles from './DaycareCheckInPage.module.css';
 
@@ -20,10 +19,6 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Superadmin',
 ]);
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type Mode = 'booking' | 'walkin';
 
@@ -44,12 +39,7 @@ export function DaycareCheckInPage() {
 
   const [mode, setMode] = useState<Mode>('booking');
 
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [petNames, setPetNames] = useState<Record<string, string>>({});
-  const [isLoadingBookings, setIsLoadingBookings] = useState(true);
-  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(
-    null
-  );
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [emailQuery, setEmailQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
@@ -89,47 +79,6 @@ export function DaycareCheckInPage() {
     };
   }, [accessToken, user?.id]);
 
-  useEffect(() => {
-    if (roleStatus !== 'ok' || !accessToken || !branchId) return;
-
-    let isMounted = true;
-
-    void listBookings(accessToken, {
-      branchId,
-      date: todayIso(),
-      serviceCategory: 'Daycare',
-      // Booking-status revision: there is no more separate Confirmed status -
-      // a booking is checkinable while still Pending (matches the server-side
-      // gate in daycareCheckIn.service.ts).
-      status: 'Pending',
-    }).then((result) => {
-      if (!isMounted) return;
-
-      setIsLoadingBookings(false);
-
-      if (!result.data) return;
-
-      setBookings(result.data);
-
-      void Promise.all(
-        result.data.map((booking) => getPet(booking.pet_id, accessToken))
-      ).then((petResults) => {
-        if (!isMounted) return;
-        setPetNames((prev) => {
-          const next = { ...prev };
-          for (const petResult of petResults) {
-            if (petResult.data) next[petResult.data.id] = petResult.data.name;
-          }
-          return next;
-        });
-      });
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [roleStatus, accessToken, branchId]);
-
   function handleSearchCustomers() {
     if (!accessToken) return;
 
@@ -167,7 +116,7 @@ export function DaycareCheckInPage() {
 
     const payload =
       mode === 'booking'
-        ? { booking_id: selectedBookingId! }
+        ? { booking_id: selectedBooking!.id }
         : { pet_id: selectedPetId!, branch_id: branchId! };
 
     const result = await checkInDaycareSession(accessToken, payload);
@@ -236,7 +185,12 @@ export function DaycareCheckInPage() {
             <button
               type="button"
               className={styles.secondaryButton}
-              onClick={() => setCheckedInSessionId(null)}
+              onClick={() => {
+                setCheckedInSessionId(null);
+                setSelectedBooking(null);
+                setSelectedPetId(null);
+                setSelectedCustomer(null);
+              }}
             >
               Check in another pet
             </button>
@@ -247,7 +201,7 @@ export function DaycareCheckInPage() {
   }
 
   const canSubmit =
-    (mode === 'booking' && Boolean(selectedBookingId)) ||
+    (mode === 'booking' && Boolean(selectedBooking)) ||
     (mode === 'walkin' && Boolean(selectedPetId));
 
   return (
@@ -285,30 +239,14 @@ export function DaycareCheckInPage() {
 
         {mode === 'booking' ? (
           <div className={styles.section}>
-            {isLoadingBookings ? (
-              <p className={styles.copy}>Loading today's Daycare bookings...</p>
-            ) : bookings.length === 0 ? (
-              <p className={styles.copy}>
-                No pending Daycare bookings for today at this branch.
-              </p>
-            ) : (
-              <ul className={styles.list}>
-                {bookings.map((booking) => (
-                  <li key={booking.id}>
-                    <label className={styles.radioRow}>
-                      <input
-                        type="radio"
-                        name="booking"
-                        checked={selectedBookingId === booking.id}
-                        onChange={() => setSelectedBookingId(booking.id)}
-                      />
-                      {petNames[booking.pet_id] ?? 'Pet'} -{' '}
-                      {new Date(booking.scheduled_start).toLocaleTimeString()}
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {branchId ? (
+              <DaycareBookingPicker
+                accessToken={accessToken!}
+                branchId={branchId}
+                onSelect={setSelectedBooking}
+                selectedBookingId={selectedBooking?.id ?? null}
+              />
+            ) : null}
           </div>
         ) : (
           <div className={styles.section}>

@@ -1,4 +1,5 @@
 import {
+  Archive,
   BarChart3,
   CalendarCheck,
   CalendarOff,
@@ -112,6 +113,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
             to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Archive',
+            description:
+              'Restore or permanently delete archived products, staff, and customers.',
+            to: '/staff/admin/archive',
           },
         ],
       },
@@ -378,6 +385,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Customer Management': UserSearch,
   'Days Off Approval Queue': ClipboardCheck,
   'Bookings Queue': CalendarCheck,
+  Archive,
   'Hotel Check-in': LogIn,
   'Hotel Checkout': LogOut,
   'Daycare Check-in': LogIn,

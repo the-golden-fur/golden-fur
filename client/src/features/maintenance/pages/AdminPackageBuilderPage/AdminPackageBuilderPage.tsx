@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archivePackage,
   createPackage,
   getPackagePricingConfiguration,
   listBranches,
@@ -235,6 +236,22 @@ export function AdminPackageBuilderPage() {
     );
   };
 
+  const handleArchive = async (pkg: Package) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await archivePackage(pkg.id, accessToken);
+
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+
+    setPackages((prev) => prev.filter((item) => item.id !== pkg.id));
+    setMessage('Package archived.');
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -349,7 +366,15 @@ export function AdminPackageBuilderPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Packages</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Packages</h1>
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=packages"
+          >
+            View archive
+          </Link>
+        </div>
 
         <div className={styles.toolbar}>
           <label className={styles.filterField}>
@@ -514,6 +539,15 @@ export function AdminPackageBuilderPage() {
                   >
                     {pkg.is_active ? 'Deactivate' : 'Reactivate'}
                   </button>
+                  {!pkg.is_active ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void handleArchive(pkg)}
+                    >
+                      Archive
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}

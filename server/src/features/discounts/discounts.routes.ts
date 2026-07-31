@@ -3,9 +3,13 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archiveDiscountController,
   createDiscountController,
   getDiscountController,
+  hardDeleteDiscountController,
+  listArchivedDiscountsController,
   listDiscountsController,
+  restoreDiscountController,
   updateDiscountController,
 } from './discounts.controller.ts';
 import {
@@ -33,8 +37,18 @@ const adminWrite = [
 ];
 
 router.get('/discounts', staffRead, listDiscountsController);
+router.get('/discounts/archived', adminWrite, listArchivedDiscountsController);
 router.post('/discounts', adminWrite, createDiscountController);
 router.get('/discounts/:id', staffRead, getDiscountController);
 router.patch('/discounts/:id', adminWrite, updateDiscountController);
+// Archive is the "delete" a normal admin performs (soft, reversible, still
+// gated behind is_active === false via archiveDiscount's own guard).
+router.delete('/discounts/:id', adminWrite, archiveDiscountController);
+router.post('/discounts/:id/restore', adminWrite, restoreDiscountController);
+router.delete(
+  '/discounts/:id/permanent',
+  adminWrite,
+  hardDeleteDiscountController
+);
 
 export default router;

@@ -20,6 +20,8 @@ import {
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listGroomingQueue,
   transitionGroomingStatus,
@@ -258,12 +260,31 @@ export function GroomerDashboardPage() {
       });
   }, [sessions, pets, owners, serviceNames]);
 
-  const visibleSessions = useMemo(() => {
+  const statusFiltered = useMemo(() => {
     if (statusFilter === 'All') return enriched;
     return enriched.filter(
       (item) => item.session.booking?.status === statusFilter
     );
   }, [enriched, statusFilter]);
+
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: visibleSessions,
+  } = useSearchAndSort<EnrichedSession, 'queue' | 'pet-name'>({
+    items: statusFiltered,
+    matchesQuery: (item, query) =>
+      item.petName.toLowerCase().includes(query) ||
+      item.ownerName.toLowerCase().includes(query),
+    comparators: {
+      queue: (a, b) =>
+        queueSortPosition(a.session) - queueSortPosition(b.session),
+      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
+    },
+    initialSortKey: 'queue',
+  });
 
   const hasSessions = visibleSessions.length > 0;
 
@@ -337,7 +358,19 @@ export function GroomerDashboardPage() {
           statusValue={statusFilter}
           onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
           statusOptions={STATUS_OPTIONS}
-        />
+        >
+          <SearchSortBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search by pet or owner..."
+            sortValue={sortKey}
+            onSortChange={setSortKey}
+            sortOptions={[
+              { value: 'queue', label: 'Sort: Queue order' },
+              { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
+            ]}
+          />
+        </QueueFilterBar>
 
         {actionError ? (
           <p className={styles.errorBanner} role="alert">

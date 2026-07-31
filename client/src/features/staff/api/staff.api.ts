@@ -306,3 +306,66 @@ export async function manageStaffAccount(
   const result = await parseBody<{ staff: StaffProfile }>(response);
   return { data: result.data?.staff ?? null, error: result.error };
 }
+
+export async function archiveStaffAccount(
+  staffId: string,
+  accessToken: string
+): Promise<StaffApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}/archive`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restoreStaffAccount(
+  staffId: string,
+  accessToken: string
+): Promise<StaffApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}/restore`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedStaff(
+  accessToken: string
+): Promise<StaffApiResult<StaffProfile[]>> {
+  const response = await fetch(`${API_BASE_URL}/staff/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ staff: StaffProfile[] }>(response);
+  return { data: result.data?.staff ?? null, error: result.error };
+}
+
+export async function hardDeleteStaffAccount(
+  staffId: string,
+  accessToken: string
+): Promise<StaffApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}

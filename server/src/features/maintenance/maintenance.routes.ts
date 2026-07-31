@@ -3,6 +3,8 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archivePackageController,
+  archivePromoController,
   createBreedController,
   createPackageController,
   createPromoController,
@@ -13,11 +15,17 @@ import {
   getPricingConfigurationController,
   getPromoController,
   getServiceController,
+  hardDeletePackageController,
+  hardDeletePromoController,
+  listArchivedPackagesController,
+  listArchivedPromosController,
   listBreedsController,
   listPackagesController,
   listPromoCapConfigurationsController,
   listPromosController,
   listServicesController,
+  restorePackageController,
+  restorePromoController,
   setServiceBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
@@ -65,15 +73,53 @@ router.patch(
 
 // Packages (#41)
 router.get('/maintenance/packages', staffRead, listPackagesController);
+router.get(
+  '/maintenance/packages/archived',
+  adminWrite,
+  listArchivedPackagesController
+);
 router.post('/maintenance/packages', adminWrite, createPackageController);
 router.get('/maintenance/packages/:id', staffRead, getPackageController);
 router.patch('/maintenance/packages/:id', adminWrite, updatePackageController);
+// Archive is the "delete" a normal admin performs (soft, reversible, still
+// gated behind is_active === false via archivePackage's own guard).
+router.delete(
+  '/maintenance/packages/:id',
+  adminWrite,
+  archivePackageController
+);
+router.post(
+  '/maintenance/packages/:id/restore',
+  adminWrite,
+  restorePackageController
+);
+router.delete(
+  '/maintenance/packages/:id/permanent',
+  adminWrite,
+  hardDeletePackageController
+);
 
 // Promos (#42)
 router.get('/maintenance/promos', staffRead, listPromosController);
+router.get(
+  '/maintenance/promos/archived',
+  adminWrite,
+  listArchivedPromosController
+);
 router.post('/maintenance/promos', adminWrite, createPromoController);
 router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
+router.delete('/maintenance/promos/:id', adminWrite, archivePromoController);
+router.post(
+  '/maintenance/promos/:id/restore',
+  adminWrite,
+  restorePromoController
+);
+router.delete(
+  '/maintenance/promos/:id/permanent',
+  adminWrite,
+  hardDeletePromoController
+);
 
 // Pricing configuration (Epic B #80/#81)
 router.get(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -13,6 +13,7 @@ import type {
   Service,
 } from '../../../maintenance/maintenance.types';
 import {
+  archiveDiscount,
   createDiscount,
   listDiscounts,
   updateDiscount,
@@ -272,6 +273,22 @@ export function AdminDiscountManagementPage() {
     setMessage(isActive ? 'Discount activated.' : 'Discount deactivated.');
   };
 
+  const handleArchive = async (discount: Discount) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await archiveDiscount(discount.id, accessToken);
+
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+
+    setDiscounts((prev) => prev.filter((item) => item.id !== discount.id));
+    setMessage('Discount archived.');
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -447,13 +464,22 @@ export function AdminDiscountManagementPage() {
       scopeDescription={describeScope(discount)}
       onToggle={(isActive) => void handleActiveToggle(discount, isActive)}
       onEdit={() => openEditForm(discount)}
+      onArchive={() => void handleArchive(discount)}
     />
   );
 
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Discounts</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Discounts</h1>
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=discounts"
+          >
+            View archive
+          </Link>
+        </div>
         <p className={styles.copy}>
           Discounts are switched off by default. Toggle a card to activate it
           for checkout.

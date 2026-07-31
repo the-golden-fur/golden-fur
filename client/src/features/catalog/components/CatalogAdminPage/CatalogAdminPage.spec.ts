@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { CatalogAdminPage } from './CatalogAdminPage';
 
@@ -22,14 +23,21 @@ function buildProps(
     listItems: vi.fn().mockResolvedValue({ data: [ITEM], error: null }),
     createItem: vi.fn(),
     updateItem: vi.fn(),
-    deleteItem: vi.fn(),
+    archiveItem: vi.fn(),
+    archiveTab: 'products',
     ...overrides,
   };
 }
 
+function renderWithRouter(props: ReturnType<typeof buildProps>) {
+  return render(
+    createElement(MemoryRouter, null, createElement(CatalogAdminPage, props))
+  );
+}
+
 describe('CatalogAdminPage', () => {
   it('lists existing items with their price and category', async () => {
-    render(createElement(CatalogAdminPage, buildProps()));
+    renderWithRouter(buildProps());
 
     expect(await screen.findByText('Dry kibble')).toBeInTheDocument();
     expect(screen.getByText('PHP 50.00')).toBeInTheDocument();
@@ -43,14 +51,11 @@ describe('CatalogAdminPage', () => {
       data: { ...ITEM, id: 'item-2', name: 'Wet food', price: 75 },
       error: null,
     });
-    render(
-      createElement(
-        CatalogAdminPage,
-        buildProps({
-          listItems: vi.fn().mockResolvedValue({ data: [], error: null }),
-          createItem,
-        })
-      )
+    renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({ data: [], error: null }),
+        createItem,
+      })
     );
 
     await screen.findByText('No product items yet.');
@@ -80,7 +85,7 @@ describe('CatalogAdminPage', () => {
     const updateItem = vi
       .fn()
       .mockResolvedValue({ data: { ...ITEM, is_active: false }, error: null });
-    render(createElement(CatalogAdminPage, buildProps({ updateItem })));
+    renderWithRouter(buildProps({ updateItem }));
 
     fireEvent.click(await screen.findByText('Deactivate'));
 
@@ -92,13 +97,28 @@ describe('CatalogAdminPage', () => {
     expect(await screen.findByText('Inactive')).toBeInTheDocument();
   });
 
-  it('Delete removes the item from the list on success', async () => {
-    const deleteItem = vi.fn().mockResolvedValue({ data: null, error: null });
-    render(createElement(CatalogAdminPage, buildProps({ deleteItem })));
+  it('Archive is hidden while the item is still active', async () => {
+    renderWithRouter(buildProps());
 
-    fireEvent.click(await screen.findByText('Delete'));
+    await screen.findByText('Dry kibble');
+    expect(screen.queryByText('Archive')).not.toBeInTheDocument();
+  });
 
-    expect(deleteItem).toHaveBeenCalledWith('item-1', 'token');
+  it('Archive removes the item from the list once deactivated', async () => {
+    const archiveItem = vi.fn().mockResolvedValue({ data: null, error: null });
+    renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({
+          data: [{ ...ITEM, is_active: false }],
+          error: null,
+        }),
+        archiveItem,
+      })
+    );
+
+    fireEvent.click(await screen.findByText('Archive'));
+
+    expect(archiveItem).toHaveBeenCalledWith('item-1', 'token');
     expect(
       await screen.findByText('No product items yet.')
     ).toBeInTheDocument();

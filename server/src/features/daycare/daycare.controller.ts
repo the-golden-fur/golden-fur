@@ -1,8 +1,14 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
-import { checkInDaycareSession } from './services/daycareCheckIn.service.ts';
+import {
+  checkInDaycareSession,
+  listDaycareSessions,
+} from './services/daycareCheckIn.service.ts';
 import { checkOutDaycareSession } from './services/daycareBilling.service.ts';
 import { checkInValidator } from './modules/validators/daycare.validator.ts';
+import type { DaycareStatus } from './daycare.types.ts';
+
+const VALID_SESSION_STATUSES = new Set<DaycareStatus>(['Active', 'Completed']);
 
 function paramId(req: AuthenticatedRequest, name: string): string {
   const value = req.params[name];
@@ -45,6 +51,31 @@ export async function checkInDaycareSessionController(
     });
 
     return res.status(201).json({ session });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listDaycareSessionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const statusParam = req.query.status;
+  const status =
+    typeof statusParam === 'string' &&
+    VALID_SESSION_STATUSES.has(statusParam as DaycareStatus)
+      ? (statusParam as DaycareStatus)
+      : undefined;
+
+  try {
+    const sessions = await listDaycareSessions({ branchId, status });
+    return res.status(200).json({ sessions });
   } catch (error) {
     return sendServiceError(res, error);
   }

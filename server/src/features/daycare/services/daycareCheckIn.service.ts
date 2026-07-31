@@ -1,6 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
-import type { DaycareSession } from '../daycare.types.ts';
+import type { DaycareSession, DaycareStatus } from '../daycare.types.ts';
 import { startBooking } from '../../booking/services/booking.service.ts';
 
 /** Fixed per Modules-Features - not read from branches.daycare_checkin_cutoff
@@ -179,4 +179,35 @@ export async function checkInDaycareSession({
   }
 
   return inserted as DaycareSession;
+}
+
+interface ListDaycareSessionsParams {
+  branchId: string;
+  status?: DaycareStatus;
+}
+
+/** Mirrors hotelStay.service.ts's listHotelStays - backs Daycare Checkout's
+ * search/filter/sort picker (Daycare had no "browse active sessions"
+ * endpoint before this; checkout could only be reached with a known session
+ * id). daycare_sessions carries branch_id directly, so unlike hotel_stays
+ * this needs no join to resolve the branch scope. */
+export async function listDaycareSessions({
+  branchId,
+  status,
+}: ListDaycareSessionsParams): Promise<DaycareSession[]> {
+  let query = supabase
+    .from('daycare_sessions')
+    .select('*')
+    .eq('branch_id', branchId)
+    .order('check_in_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as DaycareSession[];
 }

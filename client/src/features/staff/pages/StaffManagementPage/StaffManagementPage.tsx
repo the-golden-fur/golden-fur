@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
@@ -148,6 +148,10 @@ export function StaffManagementPage() {
     );
   };
 
+  const handleAccountArchived = (archivedId: string) => {
+    setStaffList((prev) => prev.filter((staff) => staff.id !== archivedId));
+  };
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -191,7 +195,15 @@ export function StaffManagementPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Staff Management</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Staff Management</h1>
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=staff"
+          >
+            View archive
+          </Link>
+        </div>
 
         <section className={styles.panel} aria-labelledby="create-staff-title">
           <h2 className={styles.sectionTitle} id="create-staff-title">
@@ -304,6 +316,7 @@ export function StaffManagementPage() {
                     branches={branches}
                     accessToken={accessToken}
                     onUpdated={handleAccountManaged}
+                    onArchived={() => handleAccountArchived(staff.id)}
                   />
                 ) : null}
               </div>

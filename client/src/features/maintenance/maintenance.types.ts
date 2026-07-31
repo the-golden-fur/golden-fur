@@ -114,6 +114,7 @@ export interface Package {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
   package_services?: Array<{ service_id: string }>;
 }
 
@@ -240,6 +241,7 @@ export interface Promo {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
   promo_scope?: PromoScopeItem[];
 }
 

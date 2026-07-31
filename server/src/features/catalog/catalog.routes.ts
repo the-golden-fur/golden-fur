@@ -3,9 +3,12 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archiveProductController,
   createProductController,
-  deleteProductController,
+  hardDeleteProductController,
+  listArchivedProductsController,
   listProductsController,
+  restoreProductController,
   updateProductController,
 } from './catalog.controller.ts';
 import { CATALOG_READ_ROLES, CATALOG_WRITE_ROLES } from './catalog.types.ts';
@@ -31,8 +34,25 @@ const adminWrite = [
 ];
 
 router.get('/catalog/products', staffRead, listProductsController);
+router.get(
+  '/catalog/products/archived',
+  adminWrite,
+  listArchivedProductsController
+);
 router.post('/catalog/products', adminWrite, createProductController);
 router.patch('/catalog/products/:id', adminWrite, updateProductController);
-router.delete('/catalog/products/:id', adminWrite, deleteProductController);
+// Archive is the "delete" a normal admin performs (soft, reversible, still
+// gated behind is_active === false via archiveProduct's own guard).
+router.delete('/catalog/products/:id', adminWrite, archiveProductController);
+router.post(
+  '/catalog/products/:id/restore',
+  adminWrite,
+  restoreProductController
+);
+router.delete(
+  '/catalog/products/:id/permanent',
+  adminWrite,
+  hardDeleteProductController
+);
 
 export default router;

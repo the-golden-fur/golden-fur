@@ -25,3 +25,17 @@
   font: inherit;
   padding: var(--space-2);
 }
+
+@media (max-width: 640px) {
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .filterField {
+    width: 100%;
+  }
+
+  .filterSelect {
+    width: 100%;
+  }
+}

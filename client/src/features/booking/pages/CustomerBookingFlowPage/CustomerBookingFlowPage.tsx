@@ -29,6 +29,12 @@ import {
   type StaffPreferenceInput,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import {
+  getDayOneMinTime,
+  getLastDayMaxTime,
+  isMealApplicableOnDayOne,
+  isMealApplicableOnLastDay,
+} from '../../../hotel/utils/careScheduleBounds';
 import { CatalogComboBox } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import {
   listFoodCatalog,
@@ -249,6 +255,11 @@ export function CustomerBookingFlowPage() {
     start: string;
     end: string;
   } | null>(null);
+  /** Hotel-only: SlotPicker's own candidate `end` is always a single
+   * ~24h/one-night preview (see availability.service.ts's getDaySlots) - the
+   * actual submitted scheduled_end is computed from this instead so a stay
+   * can span more than one night. */
+  const [hotelNights, setHotelNights] = useState(1);
   const [staffPreference, setStaffPreference] =
     useState<StaffPreferenceInput | null>(null);
   // Resolved from GET /bookings/staff-picker (customer-accessible) once the
@@ -410,6 +421,25 @@ export function CustomerBookingFlowPage() {
     selectionMode === 'service'
       ? (selectedService?.duration_minutes ?? 60)
       : 60;
+
+  /** The real scheduled_end once multi-night is applied - same computation
+   * handleSubmit uses, reused here so the care-schedule bounds below judge
+   * against the stay actually being booked, not SlotPicker's one-night
+   * preview. */
+  const hotelScheduledEnd =
+    category === 'Hotel' && selectedSlot && hotelNights > 1
+      ? new Date(
+          new Date(selectedSlot.start).getTime() +
+            hotelNights * slotDurationMinutes * 60000
+        ).toISOString()
+      : (selectedSlot?.end ?? null);
+
+  const hotelCheckInTime = selectedSlot
+    ? getDayOneMinTime(selectedSlot.start)
+    : null;
+  const hotelCheckOutTime = hotelScheduledEnd
+    ? getLastDayMaxTime(hotelScheduledEnd)
+    : null;
 
   const basePrice =
     selectionMode === 'service'
@@ -856,7 +886,7 @@ export function CustomerBookingFlowPage() {
         ? { service_id: selectedServiceId }
         : { package_id: selectedPackageId }),
       scheduled_start: selectedSlot.start,
-      scheduled_end: selectedSlot.end,
+      scheduled_end: hotelScheduledEnd ?? selectedSlot.end,
       ...(category === 'Grooming' && addonServiceIds.length > 0
         ? { addon_service_ids: addonServiceIds }
         : {}),
@@ -1133,20 +1163,36 @@ export function CustomerBookingFlowPage() {
 
       case 'slot':
         return (
-          <SlotPicker
-            accessToken={accessToken!}
-            branchId={selectedBranchId}
-            serviceCategory={category as ServiceCategory}
-            slotDurationMinutes={slotDurationMinutes}
-            petWeightClass={
-              category === 'Hotel'
-                ? pets.find((pet) => pet.id === selectedPetId)?.weight_class
-                : undefined
-            }
-            viewerMode={isReceptionistMode ? 'staff' : 'customer'}
-            selectedSlot={selectedSlot}
-            onSelect={handleSlotSelect}
-          />
+          <div className={styles.slotStep}>
+            <SlotPicker
+              accessToken={accessToken!}
+              branchId={selectedBranchId}
+              serviceCategory={category as ServiceCategory}
+              slotDurationMinutes={slotDurationMinutes}
+              petWeightClass={
+                category === 'Hotel'
+                  ? pets.find((pet) => pet.id === selectedPetId)?.weight_class
+                  : undefined
+              }
+              viewerMode={isReceptionistMode ? 'staff' : 'customer'}
+              selectedSlot={selectedSlot}
+              onSelect={handleSlotSelect}
+            />
+            {category === 'Hotel' ? (
+              <label className={styles.nightsField}>
+                <span>Number of nights</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={hotelNights}
+                  onChange={(event) =>
+                    setHotelNights(Math.max(1, Number(event.target.value) || 1))
+                  }
+                />
+              </label>
+            ) : null}
+          </div>
         );
 
       case 'staff':
@@ -1199,6 +1245,12 @@ export function CustomerBookingFlowPage() {
               <span className={styles.sectionTitle}>Feeding</span>
               {MEAL_TIMES.map((mealTime) => {
                 const row = hotelFeeding[mealTime];
+                const notOnDayOne =
+                  hotelCheckInTime !== null &&
+                  !isMealApplicableOnDayOne(mealTime, hotelCheckInTime);
+                const notOnLastDay =
+                  hotelCheckOutTime !== null &&
+                  !isMealApplicableOnLastDay(mealTime, hotelCheckOutTime);
 
                 return (
                   <div key={mealTime} className={styles.instructionRow}>
@@ -1210,6 +1262,11 @@ export function CustomerBookingFlowPage() {
                       />
                       {mealTime}
                     </label>
+                    {row && (notOnDayOne || notOnLastDay) ? (
+                      <p className={styles.copy}>
+                        {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
+                      </p>
+                    ) : null}
                     {row ? (
                       <div className={styles.instructionBlock}>
                         <div className={styles.inlineFields}>
@@ -1333,6 +1390,10 @@ export function CustomerBookingFlowPage() {
                       Remove
                     </button>
                   </div>
+                  <p className={styles.copy}>
+                    Applies daily - won&apos;t happen before check-in on arrival
+                    day or after checkout on departure day.
+                  </p>
                 </div>
               ))}
               <button
@@ -1428,6 +1489,10 @@ export function CustomerBookingFlowPage() {
                       Remove
                     </button>
                   </div>
+                  <p className={styles.copy}>
+                    Applies daily - won&apos;t happen before check-in on arrival
+                    day or after checkout on departure day.
+                  </p>
 
                   {isReceptionistMode && row.medication_catalog_id ? (
                     <SupplierChoice

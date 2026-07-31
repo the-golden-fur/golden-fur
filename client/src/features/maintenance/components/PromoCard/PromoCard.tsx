@@ -20,6 +20,7 @@ interface PromoCardProps {
   promo: Promo;
   onToggle: (isActive: boolean) => void;
   onEdit: () => void;
+  onArchive: () => void;
 }
 
 /**
@@ -27,7 +28,12 @@ interface PromoCardProps {
  * overhaul's DiscountCard - name, branch scope + timing badges, value,
  * window, and active/inactive status at a glance.
  */
-export function PromoCard({ promo, onToggle, onEdit }: PromoCardProps) {
+export function PromoCard({
+  promo,
+  onToggle,
+  onEdit,
+  onArchive,
+}: PromoCardProps) {
   const formattedValue =
     promo.discount_type === 'Percentage'
       ? `${promo.value}% off`
@@ -71,6 +77,15 @@ export function PromoCard({ promo, onToggle, onEdit }: PromoCardProps) {
         >
           Edit
         </button>
+        {!promo.is_active ? (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={onArchive}
+          >
+            Archive
+          </button>
+        ) : null}
       </div>
     </article>
   );

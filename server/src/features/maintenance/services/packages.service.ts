@@ -1,4 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  assertArchivedBeforeHardDelete,
+  assertInactiveBeforeArchive,
+} from '../../../shared/archive/archiveGuard.ts';
 import type { Package } from '../maintenance.types.ts';
 import type {
   CreatePackageInput,
@@ -6,6 +10,9 @@ import type {
 } from '../modules/validators/maintenance.validator.ts';
 import { getPackagePricingConfiguration } from './packagePricing.service.ts';
 import { deriveBundledPrice } from '../utils/deriveBundledPrice.ts';
+
+/** Postgres foreign_key_violation. */
+const FOREIGN_KEY_VIOLATION = '23503';
 
 // Epic B (#82/#83): pulls each included service's base_price in the same
 // query so bundled_price can be derived without an N+1 follow-up lookup.
@@ -101,7 +108,10 @@ export async function listPackages({
   branchId,
   includeInactive,
 }: ListPackagesParams): Promise<Package[]> {
-  let query = supabase.from('packages').select(PACKAGE_SELECT);
+  let query = supabase
+    .from('packages')
+    .select(PACKAGE_SELECT)
+    .is('archived_at', null);
 
   if (!includeInactive) {
     query = query.eq('is_active', true);
@@ -235,4 +245,66 @@ export async function updatePackage({
   }
 
   return getPackageById(packageId);
+}
+
+/**
+ * Deactivate-first CRUD safety (archive workflow), mirroring
+ * productCatalog.service.ts's archiveProduct: archiving is soft - the row
+ * moves to the archive list via archived_at, it is not deleted.
+ */
+export async function archivePackage(packageId: string): Promise<void> {
+  const pkg = await getPackageById(packageId);
+  assertInactiveBeforeArchive(pkg.is_active, 'This package');
+
+  const { error } = await supabase
+    .from('packages')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', packageId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function restorePackage(packageId: string): Promise<void> {
+  const { error } = await supabase
+    .from('packages')
+    .update({ archived_at: null })
+    .eq('id', packageId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function listArchivedPackages(): Promise<Package[]> {
+  const { data, error } = await supabase
+    .from('packages')
+    .select(PACKAGE_SELECT)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const pricingConfiguration = await getPackagePricingConfiguration();
+
+  return ((data ?? []) as RawPackage[]).map((pkg) =>
+    attachBundledPrice(pkg, pricingConfiguration)
+  );
+}
+
+export async function hardDeletePackage(packageId: string): Promise<void> {
+  const pkg = await getPackageById(packageId);
+  assertArchivedBeforeHardDelete(pkg.archived_at, 'This package');
+
+  const { error } = await supabase
+    .from('packages')
+    .delete()
+    .eq('id', packageId);
+
+  if (error) {
+    if (error.code === FOREIGN_KEY_VIOLATION) {
+      throwWithStatus(
+        409,
+        'This package is still referenced elsewhere (a booking or a sale) and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

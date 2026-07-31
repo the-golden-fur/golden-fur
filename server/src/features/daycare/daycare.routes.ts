@@ -6,6 +6,7 @@ import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBra
 import {
   checkInDaycareSessionController,
   checkOutDaycareSessionController,
+  listDaycareSessionsController,
 } from './daycare.controller.ts';
 import { DAYCARE_ROLES } from './daycare.types.ts';
 
@@ -18,6 +19,15 @@ router.post(
   requireRole([...DAYCARE_ROLES]),
   requireBranch,
   checkInDaycareSessionController
+);
+
+router.get(
+  '/daycare/sessions',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...DAYCARE_ROLES]),
+  requireBranch,
+  listDaycareSessionsController
 );
 
 router.post(

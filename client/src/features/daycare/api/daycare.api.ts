@@ -1,4 +1,8 @@
-import type { CheckInPayload, DaycareSession } from '../daycare.types';
+import type {
+  CheckInPayload,
+  DaycareSession,
+  DaycareStatus,
+} from '../daycare.types';
 
 interface DaycareApiResult<T> {
   data: T | null;
@@ -50,6 +54,23 @@ export async function checkInDaycareSession(
 
   const result = await parseBody<{ session: DaycareSession }>(response);
   return { data: result.data?.session ?? null, error: result.error };
+}
+
+export async function listDaycareSessions(
+  accessToken: string,
+  status?: DaycareStatus
+): Promise<DaycareApiResult<DaycareSession[]>> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await fetch(`${API_BASE_URL}/daycare/sessions${query}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ sessions: DaycareSession[] }>(response);
+  return { data: result.data?.sessions ?? null, error: result.error };
 }
 
 export async function checkOutDaycareSession(

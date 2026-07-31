@@ -38,6 +38,8 @@ function queueFromResults(...results: QueryResult[]) {
     builder.update = vi.fn(() => builder);
     builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
     builder.single = vi.fn(() => Promise.resolve(result));
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);

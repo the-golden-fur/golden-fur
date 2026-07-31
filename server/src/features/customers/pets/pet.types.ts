@@ -21,6 +21,8 @@ export interface Pet {
   date_of_birth: string | null;
   weight_class: PetWeightClass;
   coat_type: PetCoatType;
+  is_active: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }

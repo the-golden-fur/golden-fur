@@ -1,10 +1,19 @@
 import { useState } from 'react';
 import styles from './CustomerRowActionMenu.module.css';
 
-export type CustomerRowAction = 'checkProfile' | 'viewPets' | 'addPet';
+export type CustomerRowAction =
+  | 'checkProfile'
+  | 'viewPets'
+  | 'addPet'
+  | 'deactivate'
+  | 'archive';
 
 interface CustomerRowActionMenuProps {
   onSelect: (action: CustomerRowAction) => void;
+  /** Deactivate/Archive are Admin-tier (matches the same archive workflow
+   * gate used for Products/Staff) - hidden entirely for other roles. */
+  canArchive?: boolean;
+  isActive?: boolean;
 }
 
 /**
@@ -17,6 +26,8 @@ interface CustomerRowActionMenuProps {
  */
 export function CustomerRowActionMenu({
   onSelect,
+  canArchive = false,
+  isActive = true,
 }: CustomerRowActionMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -69,6 +80,30 @@ export function CustomerRowActionMenu({
               Add Pet
             </button>
           </li>
+          {canArchive ? (
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.item}
+                onClick={() => handleSelect('deactivate')}
+              >
+                {isActive ? 'Deactivate' : 'Reactivate'}
+              </button>
+            </li>
+          ) : null}
+          {canArchive && !isActive ? (
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.item}
+                onClick={() => handleSelect('archive')}
+              >
+                Archive
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>
