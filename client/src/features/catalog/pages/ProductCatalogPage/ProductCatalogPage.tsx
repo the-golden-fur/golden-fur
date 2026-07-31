@@ -3,8 +3,8 @@ import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archiveProduct,
   createProduct,
-  deleteProduct,
   listProducts,
   updateProduct,
 } from '../../api/catalog.api';
@@ -61,7 +61,8 @@ export function ProductCatalogPage() {
       listItems={(token) => listProducts(token)}
       createItem={createProduct}
       updateItem={updateProduct}
-      deleteItem={deleteProduct}
+      archiveItem={archiveProduct}
+      archiveTab="products"
     />
   );
 }

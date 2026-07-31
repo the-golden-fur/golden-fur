@@ -40,6 +40,7 @@ export interface StaffProfile {
   emergency_contact_number: string | null;
   preferred_communication_channel: CommunicationChannel | null;
   is_active: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }

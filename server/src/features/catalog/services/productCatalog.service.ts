@@ -1,4 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  assertArchivedBeforeHardDelete,
+  assertInactiveBeforeArchive,
+} from '../../../shared/archive/archiveGuard.ts';
 import type { ProductCatalogItem } from '../catalog.types.ts';
 import type {
   CreateProductInput,
@@ -34,7 +38,10 @@ export async function listProducts({
   serviceScope,
   activeOnly,
 }: ListProductsParams = {}): Promise<ProductCatalogItem[]> {
-  let query = supabase.from('product_catalog').select('*');
+  let query = supabase
+    .from('product_catalog')
+    .select('*')
+    .is('archived_at', null);
 
   if (category) {
     query = query.eq('category', category);
@@ -110,7 +117,61 @@ export async function updateProduct(
   return data;
 }
 
-export async function deleteProduct(itemId: string): Promise<void> {
+async function getProductOrThrow(itemId: string): Promise<ProductCatalogItem> {
+  const { data, error } = await supabase
+    .from('product_catalog')
+    .select('*')
+    .eq('id', itemId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Product catalog item not found');
+
+  return data;
+}
+
+/**
+ * Deactivate-first CRUD safety (archive workflow): archiving is soft - the
+ * row moves to the archive list via archived_at, it is not deleted. Only
+ * hardDeleteProduct below actually removes the row.
+ */
+export async function archiveProduct(itemId: string): Promise<void> {
+  const product = await getProductOrThrow(itemId);
+  assertInactiveBeforeArchive(product.is_active, 'This product');
+
+  const { error } = await supabase
+    .from('product_catalog')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', itemId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function restoreProduct(itemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('product_catalog')
+    .update({ archived_at: null })
+    .eq('id', itemId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function listArchivedProducts(): Promise<ProductCatalogItem[]> {
+  const { data, error } = await supabase
+    .from('product_catalog')
+    .select('*')
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return data ?? [];
+}
+
+export async function hardDeleteProduct(itemId: string): Promise<void> {
+  const product = await getProductOrThrow(itemId);
+  assertArchivedBeforeHardDelete(product.archived_at, 'This product');
+
   const { error } = await supabase
     .from('product_catalog')
     .delete()
@@ -120,7 +181,7 @@ export async function deleteProduct(itemId: string): Promise<void> {
     if (error.code === FOREIGN_KEY_VIOLATION) {
       throwWithStatus(
         409,
-        'This product is still referenced elsewhere (a check-in or a sale) and cannot be deleted - deactivate it instead'
+        'This product is still referenced elsewhere (a check-in or a sale) and cannot be permanently deleted'
       );
     }
     throwWithStatus(400, error.message);

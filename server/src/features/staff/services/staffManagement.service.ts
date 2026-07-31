@@ -4,6 +4,10 @@ import {
   createStaffAuthUser,
   deleteAuthUser,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import {
+  assertArchivedBeforeHardDelete,
+  assertInactiveBeforeArchive,
+} from '../../../shared/archive/archiveGuard.ts';
 import { encryptTempCredential } from '../../../shared/crypto/tempCredential.ts';
 import { sendAccountCreatedEmail } from '../../../shared/email/accountCreatedEmail.ts';
 import type { StaffProfile, StaffRole } from '../staff.types.ts';
@@ -203,6 +207,107 @@ export async function manageStaffAccount({
   }
 
   return data;
+}
+
+interface StaffActionScopeParams {
+  requesterRole: string;
+  requesterBranchId: string;
+  targetStaffId: string;
+}
+
+async function getScopedTargetOrThrow({
+  requesterRole,
+  requesterBranchId,
+  targetStaffId,
+}: StaffActionScopeParams): Promise<StaffProfile> {
+  const { data: target, error } = await supabase
+    .from('staff_profiles')
+    .select('*')
+    .eq('id', targetStaffId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!target) throwWithStatus(404, 'Staff profile not found');
+
+  if (requesterRole !== 'Superadmin' && target.branch_id !== requesterBranchId) {
+    throwWithStatus(403, 'Admins can only manage staff at their own branch');
+  }
+
+  return target;
+}
+
+/**
+ * Deactivate-first CRUD safety (archive workflow): staff never had a delete
+ * path at all before this - manageStaffAccount's isActive toggle is the
+ * deactivate step, this is the new archive step layered on top of it.
+ */
+export async function archiveStaffAccount(
+  params: StaffActionScopeParams
+): Promise<void> {
+  const target = await getScopedTargetOrThrow(params);
+  assertInactiveBeforeArchive(target.is_active, 'This staff account');
+
+  const { error } = await supabase
+    .from('staff_profiles')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', params.targetStaffId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function restoreStaffAccount(
+  params: StaffActionScopeParams
+): Promise<void> {
+  await getScopedTargetOrThrow(params);
+
+  const { error } = await supabase
+    .from('staff_profiles')
+    .update({ archived_at: null })
+    .eq('id', params.targetStaffId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function listArchivedStaff(
+  requesterRole: string,
+  requesterBranchId: string
+): Promise<StaffProfile[]> {
+  let query = supabase
+    .from('staff_profiles')
+    .select('*')
+    .not('archived_at', 'is', null);
+
+  if (requesterRole !== 'Superadmin') {
+    query = query.eq('branch_id', requesterBranchId);
+  }
+
+  const { data, error } = await query.order('archived_at', {
+    ascending: false,
+  });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return data ?? [];
+}
+
+/** Also removes the underlying Supabase auth user, since staff_profiles.id
+ * *is* auth.users.id - a staff account has no login-capable identity
+ * separate from its profile row the way a "just delete the row" model would
+ * assume. */
+export async function hardDeleteStaffAccount(
+  params: StaffActionScopeParams
+): Promise<void> {
+  const target = await getScopedTargetOrThrow(params);
+  assertArchivedBeforeHardDelete(target.archived_at, 'This staff account');
+
+  const { error } = await supabase
+    .from('staff_profiles')
+    .delete()
+    .eq('id', params.targetStaffId);
+
+  if (error) throwWithStatus(400, error.message);
+
+  await deleteAuthUser(params.targetStaffId);
 }
 
 /**

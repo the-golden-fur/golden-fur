@@ -5,16 +5,20 @@ import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  archiveStaffAccountController,
   cancelUnavailabilityBlockController,
   createStaffAccountController,
   createUnavailabilityBlockController,
   handleAvatarUploadError,
+  hardDeleteStaffAccountController,
+  listArchivedStaffController,
   listPendingUnavailabilityBlocksController,
   listStaffController,
   listUnavailabilityBlocksController,
   getStaffProfileController,
   manageStaffAccountController,
   resendAccountEmailController,
+  restoreStaffAccountController,
   reviewUnavailabilityBlockController,
   updateStaffProfileController,
   updateStaffUsernameController,
@@ -60,6 +64,15 @@ router.get(
 );
 
 router.get(
+  '/staff/archived',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ADMIN_ROLES]),
+  requireBranch,
+  listArchivedStaffController
+);
+
+router.get(
   '/staff/:id',
   jwtMiddleware,
   sessionTimeoutMiddleware,
@@ -93,6 +106,33 @@ router.patch(
   requireRole([...ADMIN_ROLES]),
   requireBranch,
   manageStaffAccountController
+);
+
+router.post(
+  '/staff/:id/archive',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ADMIN_ROLES]),
+  requireBranch,
+  archiveStaffAccountController
+);
+
+router.post(
+  '/staff/:id/restore',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ADMIN_ROLES]),
+  requireBranch,
+  restoreStaffAccountController
+);
+
+router.delete(
+  '/staff/:id',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ADMIN_ROLES]),
+  requireBranch,
+  hardDeleteStaffAccountController
 );
 
 router.post(

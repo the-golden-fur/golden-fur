@@ -1,9 +1,12 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  archiveProduct,
   createProduct,
-  deleteProduct,
+  hardDeleteProduct,
+  listArchivedProducts,
   listProducts,
+  restoreProduct,
   updateProduct,
 } from './services/productCatalog.service.ts';
 import {
@@ -88,12 +91,48 @@ export async function updateProductController(
   }
 }
 
-export async function deleteProductController(
+export async function archiveProductController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   try {
-    await deleteProduct(paramId(req, 'id'));
+    await archiveProduct(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreProductController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restoreProduct(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedProductsController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const items = await listArchivedProducts();
+    return res.status(200).json({ items });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteProductController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteProduct(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

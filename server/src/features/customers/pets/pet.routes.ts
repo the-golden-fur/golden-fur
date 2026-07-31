@@ -4,10 +4,14 @@ import { z } from 'zod';
 import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import {
+  archivePetController,
   createPetController,
-  deletePetController,
+  deactivatePetController,
   getPetController,
+  hardDeletePetController,
+  listArchivedPetsController,
   listCustomerPetsController,
+  restorePetController,
   updatePetController,
 } from './pet.controller.ts';
 import { uploadPetPhoto } from './services/petPhotoUpload.service.ts';
@@ -52,10 +56,21 @@ router.get(
   listCustomerPetsController
 );
 router.post('/customers/:customerId/pets', jwtMiddleware, createPetController);
+router.get(
+  '/customers/:customerId/pets/archived',
+  jwtMiddleware,
+  listArchivedPetsController
+);
 
+router.get('/pets/archived', jwtMiddleware, listArchivedPetsController);
 router.get('/pets/:id', jwtMiddleware, getPetController);
 router.patch('/pets/:id', jwtMiddleware, updatePetController);
-router.delete('/pets/:id', jwtMiddleware, deletePetController);
+router.patch('/pets/:id/deactivate', jwtMiddleware, deactivatePetController);
+// Archive is the "delete" an owner or staff member performs (soft,
+// reversible, still gated behind is_active === false).
+router.delete('/pets/:id', jwtMiddleware, archivePetController);
+router.post('/pets/:id/restore', jwtMiddleware, restorePetController);
+router.delete('/pets/:id/permanent', jwtMiddleware, hardDeletePetController);
 
 router.post(
   '/pets/:id/photo',

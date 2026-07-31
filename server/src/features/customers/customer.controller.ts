@@ -3,7 +3,32 @@ import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { updateCustomerProfileValidator } from './modules/validators/customer.validator.ts';
-import { CUSTOMER_MANAGER_ROLES } from './customer.types.ts';
+import { CUSTOMER_ARCHIVE_ROLES, CUSTOMER_MANAGER_ROLES } from './customer.types.ts';
+import {
+  activateCustomer,
+  archiveCustomer,
+  deactivateCustomer,
+  hardDeleteCustomer,
+  listArchivedCustomers,
+  restoreCustomer,
+} from './services/customerArchive.service.ts';
+
+function sendServiceError(res: Response, error: unknown) {
+  const statusCode =
+    error instanceof Error && 'statusCode' in error
+      ? Number((error as Error & { statusCode?: number }).statusCode)
+      : 500;
+
+  const message =
+    error instanceof Error ? error.message : 'Internal server error';
+
+  return res.status(statusCode).json({ error: message });
+}
+
+async function isAuthorizedAdmin(requesterId: string): Promise<boolean> {
+  const role = await getStaffRoleOrNull(requesterId);
+  return role !== null && CUSTOMER_ARCHIVE_ROLES.includes(role);
+}
 
 /**
  * Customer routes are reachable by both a customer (acting on their own
@@ -60,7 +85,10 @@ export async function listCustomersController(
   }
 
   try {
-    let query = supabase.from('customer_profiles').select('*');
+    let query = supabase
+      .from('customer_profiles')
+      .select('*')
+      .is('archived_at', null);
 
     const email = req.query.email;
     if (typeof email === 'string' && email.trim().length > 0) {
@@ -161,5 +189,142 @@ export async function updateCustomerProfileController(
     return res.status(200).json({ customer: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function deactivateCustomerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    await deactivateCustomer(targetId as string);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function activateCustomerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    await activateCustomer(targetId as string);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveCustomerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    await archiveCustomer(targetId as string);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreCustomerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    await restoreCustomer(targetId as string);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedCustomersController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const customers = await listArchivedCustomers();
+    return res.status(200).json({ customers });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteCustomerController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!(await isAuthorizedAdmin(requesterId))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    await hardDeleteCustomer(targetId as string);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
   }
 }

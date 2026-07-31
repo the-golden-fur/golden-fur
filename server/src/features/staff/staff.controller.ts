@@ -12,8 +12,12 @@ import {
 import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
 import { resendAccountEmail } from './services/resendAccountEmail.service.ts';
 import {
+  archiveStaffAccount,
   createStaffAccount,
+  hardDeleteStaffAccount,
+  listArchivedStaff,
   manageStaffAccount,
+  restoreStaffAccount,
   updateStaffUsername,
 } from './services/staffManagement.service.ts';
 import {
@@ -404,6 +408,106 @@ export async function manageStaffAccountController(
     });
 
     return res.status(200).json({ staff });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveStaffAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await archiveStaffAccount({
+      requesterRole,
+      requesterBranchId,
+      targetStaffId: targetId as string,
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreStaffAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await restoreStaffAccount({
+      requesterRole,
+      requesterBranchId,
+      targetStaffId: targetId as string,
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedStaffController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const staff = await listArchivedStaff(requesterRole, requesterBranchId);
+    return res.status(200).json({ staff });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteStaffAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await hardDeleteStaffAccount({
+      requesterRole,
+      requesterBranchId,
+      targetStaffId: targetId as string,
+    });
+
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type {
   CreateProductPayload,
   UpdateProductPayload,
@@ -12,6 +15,7 @@ interface CatalogItem {
   service_scope: string;
   price: number;
   is_active: boolean;
+  archived_at?: string | null;
 }
 
 interface CatalogApiResult<T> {
@@ -39,15 +43,18 @@ interface CatalogAdminPageProps {
     payload: UpdateProductPayload,
     accessToken: string
   ) => Promise<CatalogApiResult<CatalogItem>>;
-  deleteItem: (
+  /** Soft: moves the item to the archive. Server requires is_active ===
+   * false first - the Archive button below is disabled until then. */
+  archiveItem: (
     itemId: string,
     accessToken: string
   ) => Promise<CatalogApiResult<null>>;
+  /** Which tab of /staff/admin/archive the "View archive" link opens. */
+  archiveTab: string;
 }
 
 const DEFAULT_CATEGORY_OPTIONS = ['food', 'medication', 'misc_retail'];
 const DEFAULT_SERVICE_SCOPE_OPTIONS = ['hotel', 'general'];
-const ALL_CATEGORIES = '__all__';
 const CUSTOM_OPTION = '__custom__';
 
 /**
@@ -67,12 +74,12 @@ export function CatalogAdminPage({
   listItems,
   createItem,
   updateItem,
-  deleteItem,
+  archiveItem,
+  archiveTab,
 }: CatalogAdminPageProps) {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
 
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState(categoryOptions[0] ?? '');
@@ -106,15 +113,19 @@ export function CatalogAdminPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const knownCategories = useMemo(
-    () => Array.from(new Set(items.map((item) => item.category))).sort(),
-    [items]
-  );
-
-  const visibleItems =
-    categoryFilter === ALL_CATEGORIES
-      ? items
-      : items.filter((item) => item.category === categoryFilter);
+  const { search, setSearch, sortKey, setSortKey, result: visibleItems } =
+    useSearchAndSort<CatalogItem, 'name' | 'price-low' | 'price-high'>({
+      items,
+      matchesQuery: (item, query) =>
+        item.name.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query),
+      comparators: {
+        name: (a, b) => a.name.localeCompare(b.name),
+        'price-low': (a, b) => a.price - b.price,
+        'price-high': (a, b) => b.price - a.price,
+      },
+      initialSortKey: 'name',
+    });
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -226,10 +237,10 @@ export function CatalogAdminPage({
     );
   }
 
-  async function handleDelete(itemId: string) {
+  async function handleArchive(itemId: string) {
     setRowError(null);
 
-    const result = await deleteItem(itemId, accessToken);
+    const result = await archiveItem(itemId, accessToken);
 
     if (result.error) {
       setRowError(result.error);
@@ -237,13 +248,21 @@ export function CatalogAdminPage({
     }
 
     setItems((prev) => prev.filter((item) => item.id !== itemId));
-    setMessage(`${itemNoun} deleted.`);
+    setMessage(`${itemNoun} archived.`);
   }
 
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>{title}</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>{title}</h1>
+          <Link
+            className={styles.archiveLink}
+            to={`/staff/admin/archive?tab=${archiveTab}`}
+          >
+            View archive
+          </Link>
+        </div>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
@@ -337,23 +356,20 @@ export function CatalogAdminPage({
           </form>
         </section>
 
-        {knownCategories.length > 0 ? (
-          <label className={styles.field}>
-            <span className={styles.label}>Filter by category</span>
-            <select
-              className={styles.input}
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-            >
-              <option value={ALL_CATEGORIES}>All categories</option>
-              {knownCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <div className={styles.toolbar}>
+          <SearchSortBar
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={`Search ${itemNoun}s by name or category...`}
+            sortValue={sortKey}
+            onSortChange={setSortKey}
+            sortOptions={[
+              { value: 'name', label: 'Name (A-Z)' },
+              { value: 'price-low', label: 'Price (low to high)' },
+              { value: 'price-high', label: 'Price (high to low)' },
+            ]}
+          />
+        </div>
 
         {isLoading ? (
           <p className={styles.copy}>Loading {itemNoun} catalog...</p>
@@ -425,13 +441,15 @@ export function CatalogAdminPage({
                     >
                       {item.is_active ? 'Deactivate' : 'Activate'}
                     </button>
-                    <button
-                      type="button"
-                      className={styles.smallButtonSecondary}
-                      onClick={() => void handleDelete(item.id)}
-                    >
-                      Delete
-                    </button>
+                    {!item.is_active ? (
+                      <button
+                        type="button"
+                        className={styles.smallButtonSecondary}
+                        onClick={() => void handleArchive(item.id)}
+                      >
+                        Archive
+                      </button>
+                    ) : null}
                   </>
                 )}
               </li>

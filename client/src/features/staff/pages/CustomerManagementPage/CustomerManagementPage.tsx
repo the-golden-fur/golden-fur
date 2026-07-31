@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
+  activateCustomer,
+  archiveCustomer,
+  deactivateCustomer,
   listCustomerPets,
   listCustomers,
 } from '../../../customers/api/customer.api';
@@ -131,7 +134,56 @@ export function CustomerManagementPage() {
     setMessage('Pet added.');
   };
 
+  async function handleToggleCustomerActive(customer: CustomerProfile) {
+    if (!accessToken) return;
+
+    setMessage(null);
+    const result = customer.is_active
+      ? await deactivateCustomer(customer.id, accessToken)
+      : await activateCustomer(customer.id, accessToken);
+
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+
+    setCustomers((prev) =>
+      prev.map((existing) =>
+        existing.id === customer.id
+          ? { ...existing, is_active: !customer.is_active }
+          : existing
+      )
+    );
+    setMessage(customer.is_active ? 'Customer deactivated.' : 'Customer reactivated.');
+  }
+
+  async function handleArchiveCustomer(customerId: string) {
+    if (!accessToken) return;
+
+    setMessage(null);
+    const result = await archiveCustomer(customerId, accessToken);
+
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+
+    setCustomers((prev) => prev.filter((existing) => existing.id !== customerId));
+    setMessage('Customer archived.');
+  }
+
   function handleSelectAction(customerId: string, action: CustomerRowAction) {
+    if (action === 'deactivate') {
+      const customer = customers.find((existing) => existing.id === customerId);
+      if (customer) void handleToggleCustomerActive(customer);
+      return;
+    }
+
+    if (action === 'archive') {
+      void handleArchiveCustomer(customerId);
+      return;
+    }
+
     const isSameSelection =
       activePanel?.customerId === customerId && activePanel.action === action;
 
@@ -180,7 +232,17 @@ export function CustomerManagementPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Customer Management</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Customer Management</h1>
+          {viewerRole === 'Admin' || viewerRole === 'Superadmin' ? (
+            <Link
+              className={styles.archiveLink}
+              to="/staff/admin/archive?tab=customers"
+            >
+              View archive
+            </Link>
+          ) : null}
+        </div>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
@@ -219,6 +281,10 @@ export function CustomerManagementPage() {
                     onSelect={(action) =>
                       handleSelectAction(customer.id, action)
                     }
+                    canArchive={
+                      viewerRole === 'Admin' || viewerRole === 'Superadmin'
+                    }
+                    isActive={customer.is_active}
                   />
                 </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { manageStaffAccount } from '../../../api/staff.api';
+import { archiveStaffAccount, manageStaffAccount } from '../../../api/staff.api';
 import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../../staff.types';
 import styles from './ManageStaffAccountForm.module.css';
@@ -24,6 +24,9 @@ interface ManageStaffAccountFormProps {
   branches: BranchSummary[];
   accessToken: string;
   onUpdated: (updated: StaffProfile) => void;
+  /** Called once the account has been archived - the caller typically
+   * removes it from whatever list is showing it. */
+  onArchived?: () => void;
 }
 
 export function ManageStaffAccountForm({
@@ -33,12 +36,14 @@ export function ManageStaffAccountForm({
   branches,
   accessToken,
   onUpdated,
+  onArchived,
 }: ManageStaffAccountFormProps) {
   const [role, setRole] = useState<StaffRole>(profile.role);
   const [branchId, setBranchId] = useState(profile.branch_id);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const canChangeRoleOrBranch = viewerRole === 'Superadmin';
 
@@ -85,6 +90,21 @@ export function ManageStaffAccountForm({
       { is_active: !profile.is_active },
       profile.is_active ? 'Account deactivated.' : 'Account reactivated.'
     );
+  };
+
+  const handleArchive = async () => {
+    setError(null);
+    setMessage(null);
+    setIsArchiving(true);
+    const result = await archiveStaffAccount(staffId, accessToken);
+    setIsArchiving(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    onArchived?.();
   };
 
   return (
@@ -144,6 +164,17 @@ export function ManageStaffAccountForm({
             ? 'Deactivate account'
             : 'Reactivate account'}
       </button>
+
+      {!profile.is_active ? (
+        <button
+          type="button"
+          className={styles.deactivateButton}
+          disabled={isArchiving}
+          onClick={() => void handleArchive()}
+        >
+          {isArchiving ? 'Archiving...' : 'Archive account'}
+        </button>
+      ) : null}
 
       {error ? (
         <p className={styles.error} role="alert">
