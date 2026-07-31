@@ -15,7 +15,18 @@ const app = express();
 app.set('etag', false);
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(
+  express.json({
+    // PayMongo webhook signature verification (paymongo.service.ts's
+    // verifyPaymongoWebhookSignature) needs the exact raw request body the
+    // HMAC was computed over - the parsed JSON object round-trips through
+    // JSON.stringify differently (key order, whitespace) and would fail
+    // verification. Every other route ignores req.rawBody.
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: string }).rawBody = buf.toString();
+    },
+  })
+);
 app.use(appRoutes);
 
 app.get('/health', (_req, res) => {

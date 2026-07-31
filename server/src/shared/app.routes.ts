@@ -10,6 +10,9 @@ import daycareRoutes from '../features/daycare/daycare.routes.ts';
 import veterinaryRoutes from '../features/veterinary/veterinary.routes.ts';
 import hotelRoutes from '../features/hotel/hotel.routes.ts';
 import branchesRoutes from '../features/branches/branches.routes.ts';
+import catalogRoutes from '../features/catalog/catalog.routes.ts';
+import billingRoutes from '../features/billing/billing.routes.ts';
+import paymongoWebhookRoutes from '../features/billing/routes/paymongoWebhook.routes.ts';
 
 const router = Router();
 
@@ -24,5 +27,8 @@ router.use(daycareRoutes);
 router.use(veterinaryRoutes);
 router.use(hotelRoutes);
 router.use(branchesRoutes);
+router.use(catalogRoutes);
+router.use(billingRoutes);
+router.use(paymongoWebhookRoutes);
 
 export default router;
