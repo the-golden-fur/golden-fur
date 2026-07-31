@@ -51,7 +51,9 @@
       "name": "2. Products - Archive fails while still active (403)",
       "request": {
         "method": "DELETE",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/catalog/products/{{product_id}}",
           "host": ["{{base_url}}"],
@@ -92,7 +94,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('deactivate returns 200', function () { pm.response.to.have.status(200); });"]
+            "exec": [
+              "pm.test('deactivate returns 200', function () { pm.response.to.have.status(200); });"
+            ]
           }
         }
       ]
@@ -101,7 +105,9 @@
       "name": "4. Products - Archive (now succeeds)",
       "request": {
         "method": "DELETE",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/catalog/products/{{product_id}}",
           "host": ["{{base_url}}"],
@@ -113,7 +119,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('archive returns 204', function () { pm.response.to.have.status(204); });"]
+            "exec": [
+              "pm.test('archive returns 204', function () { pm.response.to.have.status(204); });"
+            ]
           }
         }
       ]
@@ -122,7 +130,9 @@
       "name": "5. Products - List archived",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/catalog/products/archived",
           "host": ["{{base_url}}"],
@@ -149,7 +159,9 @@
       "name": "6. Products - Restore",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/catalog/products/{{product_id}}/restore",
           "host": ["{{base_url}}"],
@@ -161,7 +173,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('restore returns 204', function () { pm.response.to.have.status(204); });"]
+            "exec": [
+              "pm.test('restore returns 204', function () { pm.response.to.have.status(204); });"
+            ]
           }
         }
       ]
@@ -170,7 +184,9 @@
       "name": "7. Staff - Archive fails while still active (403)",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/staff/{{staff_id}}/archive",
           "host": ["{{base_url}}"],
@@ -182,7 +198,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('archiving an active staff account is rejected with 403', function () { pm.response.to.have.status(403); });"]
+            "exec": [
+              "pm.test('archiving an active staff account is rejected with 403', function () { pm.response.to.have.status(403); });"
+            ]
           }
         }
       ]
@@ -191,7 +209,9 @@
       "name": "8. Staff - List archived",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/staff/archived",
           "host": ["{{base_url}}"],
@@ -203,7 +223,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('list archived staff returns 200', function () { pm.response.to.have.status(200); });"]
+            "exec": [
+              "pm.test('list archived staff returns 200', function () { pm.response.to.have.status(200); });"
+            ]
           }
         }
       ]
@@ -212,7 +234,9 @@
       "name": "9. Customers - Deactivate",
       "request": {
         "method": "PATCH",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/customers/{{customer_id}}/deactivate",
           "host": ["{{base_url}}"],
@@ -224,7 +248,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('deactivate returns 204', function () { pm.response.to.have.status(204); });"]
+            "exec": [
+              "pm.test('deactivate returns 204', function () { pm.response.to.have.status(204); });"
+            ]
           }
         }
       ]
@@ -233,7 +259,9 @@
       "name": "10. Customers - Archive (cascades to pets)",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/customers/{{customer_id}}/archive",
           "host": ["{{base_url}}"],
@@ -245,7 +273,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('archive returns 204', function () { pm.response.to.have.status(204); });"]
+            "exec": [
+              "pm.test('archive returns 204', function () { pm.response.to.have.status(204); });"
+            ]
           }
         }
       ]
@@ -254,7 +284,9 @@
       "name": "11. Customers - List archived",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/customers/archived",
           "host": ["{{base_url}}"],
@@ -266,7 +298,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('list archived customers returns 200', function () { pm.response.to.have.status(200); });"]
+            "exec": [
+              "pm.test('list archived customers returns 200', function () { pm.response.to.have.status(200); });"
+            ]
           }
         }
       ]
@@ -275,7 +309,9 @@
       "name": "12. Pets - Archive an individual pet (owner or Admin-tier staff)",
       "request": {
         "method": "DELETE",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/pets/{{pet_id}}",
           "host": ["{{base_url}}"],
@@ -287,7 +323,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('archiving an active pet is rejected with 403 unless deactivated first', function () { pm.expect(pm.response.code).to.be.oneOf([204, 403]); });"]
+            "exec": [
+              "pm.test('archiving an active pet is rejected with 403 unless deactivated first', function () { pm.expect(pm.response.code).to.be.oneOf([204, 403]); });"
+            ]
           }
         }
       ]
@@ -296,7 +334,9 @@
       "name": "13. Pets - List archived (global, Admin-tier only)",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/pets/archived",
           "host": ["{{base_url}}"],
@@ -308,7 +348,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('list archived pets returns 200', function () { pm.response.to.have.status(200); });"]
+            "exec": [
+              "pm.test('list archived pets returns 200', function () { pm.response.to.have.status(200); });"
+            ]
           }
         }
       ]
@@ -317,7 +359,9 @@
       "name": "14. Daycare - List active sessions (new endpoint)",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{admin_access_token}}" }],
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+        ],
         "url": {
           "raw": "{{base_url}}/daycare/sessions?status=Active",
           "host": ["{{base_url}}"],
@@ -330,7 +374,9 @@
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('list daycare sessions returns 200', function () { pm.response.to.have.status(200); });"]
+            "exec": [
+              "pm.test('list daycare sessions returns 200', function () { pm.response.to.have.status(200); });"
+            ]
           }
         }
       ]

@@ -4,7 +4,10 @@ export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
  * CustomerBookingFlowPage.tsx) - this is the fixed clock-time convention
  * used to judge whether a meal falls before check-in / after checkout on
  * the edge days of a stay. */
-export const MEAL_TIME_WINDOWS: Record<MealTime, { start: string; end: string }> = {
+export const MEAL_TIME_WINDOWS: Record<
+  MealTime,
+  { start: string; end: string }
+> = {
   Morning: { start: '06:00', end: '10:00' },
   Afternoon: { start: '11:00', end: '16:00' },
   Evening: { start: '17:00', end: '21:00' },

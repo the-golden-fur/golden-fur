@@ -473,7 +473,10 @@ export function AdminDiscountManagementPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Discounts</h1>
-          <Link className={styles.archiveLink} to="/staff/admin/archive?tab=discounts">
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=discounts"
+          >
             View archive
           </Link>
         </div>

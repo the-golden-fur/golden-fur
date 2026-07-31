@@ -12,7 +12,9 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-async function getCustomerOrThrow(customerId: string): Promise<CustomerProfile> {
+async function getCustomerOrThrow(
+  customerId: string
+): Promise<CustomerProfile> {
   const { data, error } = await supabase
     .from('customer_profiles')
     .select('*')

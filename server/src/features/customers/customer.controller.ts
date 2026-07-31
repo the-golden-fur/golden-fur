@@ -3,7 +3,10 @@ import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { updateCustomerProfileValidator } from './modules/validators/customer.validator.ts';
-import { CUSTOMER_ARCHIVE_ROLES, CUSTOMER_MANAGER_ROLES } from './customer.types.ts';
+import {
+  CUSTOMER_ARCHIVE_ROLES,
+  CUSTOMER_MANAGER_ROLES,
+} from './customer.types.ts';
 import {
   activateCustomer,
   archiveCustomer,

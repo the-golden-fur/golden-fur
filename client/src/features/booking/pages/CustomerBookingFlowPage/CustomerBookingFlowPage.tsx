@@ -1187,9 +1187,7 @@ export function CustomerBookingFlowPage() {
                   max={30}
                   value={hotelNights}
                   onChange={(event) =>
-                    setHotelNights(
-                      Math.max(1, Number(event.target.value) || 1)
-                    )
+                    setHotelNights(Math.max(1, Number(event.target.value) || 1))
                   }
                 />
               </label>
@@ -1393,8 +1391,8 @@ export function CustomerBookingFlowPage() {
                     </button>
                   </div>
                   <p className={styles.copy}>
-                    Applies daily - won&apos;t happen before check-in on
-                    arrival day or after checkout on departure day.
+                    Applies daily - won&apos;t happen before check-in on arrival
+                    day or after checkout on departure day.
                   </p>
                 </div>
               ))}
@@ -1492,8 +1490,8 @@ export function CustomerBookingFlowPage() {
                     </button>
                   </div>
                   <p className={styles.copy}>
-                    Applies daily - won&apos;t happen before check-in on
-                    arrival day or after checkout on departure day.
+                    Applies daily - won&apos;t happen before check-in on arrival
+                    day or after checkout on departure day.
                   </p>
 
                   {isReceptionistMode && row.medication_catalog_id ? (

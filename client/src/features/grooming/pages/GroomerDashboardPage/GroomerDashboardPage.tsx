@@ -279,7 +279,8 @@ export function GroomerDashboardPage() {
       item.petName.toLowerCase().includes(query) ||
       item.ownerName.toLowerCase().includes(query),
     comparators: {
-      queue: (a, b) => queueSortPosition(a.session) - queueSortPosition(b.session),
+      queue: (a, b) =>
+        queueSortPosition(a.session) - queueSortPosition(b.session),
       'pet-name': (a, b) => a.petName.localeCompare(b.petName),
     },
     initialSortKey: 'queue',

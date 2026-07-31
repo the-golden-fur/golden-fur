@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { archiveStaffAccount, manageStaffAccount } from '../../../api/staff.api';
+import {
+  archiveStaffAccount,
+  manageStaffAccount,
+} from '../../../api/staff.api';
 import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../../staff.types';
 import styles from './ManageStaffAccountForm.module.css';

@@ -176,8 +176,7 @@ export function DaycareBookingPicker({
     result: filteredAndSorted,
   } = useSearchAndSort<EnrichedBooking, SortKey>({
     items: enriched,
-    matchesQuery: (item, query) =>
-      item.petName.toLowerCase().includes(query),
+    matchesQuery: (item, query) => item.petName.toLowerCase().includes(query),
     comparators: {
       soonest: (a, b) =>
         new Date(a.booking.scheduled_start).getTime() -
@@ -227,8 +226,8 @@ export function DaycareBookingPicker({
 
       {!isLoading && !error && filteredAndSorted.length === 0 ? (
         <p className={styles.copy}>
-          No Daycare bookings match these filters. Try widening the date
-          range or status above.
+          No Daycare bookings match these filters. Try widening the date range
+          or status above.
         </p>
       ) : null}
 

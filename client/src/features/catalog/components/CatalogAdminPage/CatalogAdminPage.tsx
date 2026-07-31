@@ -113,19 +113,24 @@ export function CatalogAdminPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const { search, setSearch, sortKey, setSortKey, result: visibleItems } =
-    useSearchAndSort<CatalogItem, 'name' | 'price-low' | 'price-high'>({
-      items,
-      matchesQuery: (item, query) =>
-        item.name.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query),
-      comparators: {
-        name: (a, b) => a.name.localeCompare(b.name),
-        'price-low': (a, b) => a.price - b.price,
-        'price-high': (a, b) => b.price - a.price,
-      },
-      initialSortKey: 'name',
-    });
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: visibleItems,
+  } = useSearchAndSort<CatalogItem, 'name' | 'price-low' | 'price-high'>({
+    items,
+    matchesQuery: (item, query) =>
+      item.name.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query),
+    comparators: {
+      name: (a, b) => a.name.localeCompare(b.name),
+      'price-low': (a, b) => a.price - b.price,
+      'price-high': (a, b) => b.price - a.price,
+    },
+    initialSortKey: 'name',
+  });
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

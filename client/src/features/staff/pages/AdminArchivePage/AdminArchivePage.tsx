@@ -109,8 +109,8 @@ export function AdminArchivePage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Archive</h1>
         <p className={styles.copy}>
-          Records archived from their own admin page end up here - restore
-          them, or permanently delete them once you're sure.
+          Records archived from their own admin page end up here - restore them,
+          or permanently delete them once you're sure.
         </p>
 
         <div className={styles.tabs} role="tablist">
@@ -120,9 +120,7 @@ export function AdminArchivePage() {
               type="button"
               role="tab"
               aria-selected={activeTab === tab.key}
-              className={
-                activeTab === tab.key ? styles.tabActive : styles.tab
-              }
+              className={activeTab === tab.key ? styles.tabActive : styles.tab}
               onClick={() => setSearchParams({ tab: tab.key })}
             >
               {tab.label}
@@ -162,7 +160,9 @@ export function AdminArchivePage() {
                 fetchArchived={listArchivedCustomers}
                 restoreItem={restoreCustomer}
                 hardDeleteItem={hardDeleteCustomer}
-                renderLabel={(item) => `${item.full_name} (${item.account_email})`}
+                renderLabel={(item) =>
+                  `${item.full_name} (${item.account_email})`
+                }
               />
             </section>
             <section>
@@ -208,7 +208,9 @@ export function AdminArchivePage() {
             fetchArchived={listArchivedPackages}
             restoreItem={restorePackage}
             hardDeleteItem={hardDeletePackage}
-            renderLabel={(item) => `${item.name} (PHP ${item.bundled_price.toFixed(2)})`}
+            renderLabel={(item) =>
+              `${item.name} (PHP ${item.bundled_price.toFixed(2)})`
+            }
           />
         ) : null}
       </div>

@@ -470,7 +470,10 @@ export function AdminPromoConfigPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Promos</h1>
-          <Link className={styles.archiveLink} to="/staff/admin/archive?tab=promos">
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=promos"
+          >
             View archive
           </Link>
         </div>

@@ -122,7 +122,9 @@ export function UnavailabilityApprovalQueuePage() {
       'start-soonest': (a, b) =>
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
       'staff-name': (a, b) =>
-        (a.staff?.display_name ?? '').localeCompare(b.staff?.display_name ?? ''),
+        (a.staff?.display_name ?? '').localeCompare(
+          b.staff?.display_name ?? ''
+        ),
     },
     initialSortKey: 'requested-earliest',
   });

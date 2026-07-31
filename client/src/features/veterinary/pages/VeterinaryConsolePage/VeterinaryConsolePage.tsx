@@ -456,12 +456,8 @@ export function VeterinaryConsolePage() {
                         }
                         onClick={() => selectConsultation(row.consultation.id)}
                       >
-                        <span className={styles.rowPetName}>
-                          {row.petName}
-                        </span>
-                        <span className={styles.rowMeta}>
-                          {row.ownerName}
-                        </span>
+                        <span className={styles.rowPetName}>{row.petName}</span>
+                        <span className={styles.rowMeta}>{row.ownerName}</span>
                         {row.consultation.booking?.status ? (
                           <BookingStatusBadge
                             status={row.consultation.booking.status}

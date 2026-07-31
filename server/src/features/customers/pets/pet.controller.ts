@@ -2,7 +2,10 @@ import type { Response } from 'express';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
-import { CUSTOMER_ARCHIVE_ROLES, CUSTOMER_MANAGER_ROLES } from '../customer.types.ts';
+import {
+  CUSTOMER_ARCHIVE_ROLES,
+  CUSTOMER_MANAGER_ROLES,
+} from '../customer.types.ts';
 import {
   createPetValidator,
   updatePetValidator,
@@ -36,7 +39,9 @@ async function isAuthorizedStaff(requesterId: string): Promise<boolean> {
  * CUSTOMER_ARCHIVE_ROLES elsewhere), but the pet's own owner may still
  * archive their own pet (e.g. deceased/rehomed) the same way they could
  * previously hard-delete it. */
-async function isAuthorizedForPetArchive(requesterId: string): Promise<boolean> {
+async function isAuthorizedForPetArchive(
+  requesterId: string
+): Promise<boolean> {
   const role = await getStaffRoleOrNull(requesterId);
   return role !== null && CUSTOMER_ARCHIVE_ROLES.includes(role);
 }

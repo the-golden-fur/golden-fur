@@ -48,8 +48,9 @@ export function DaycareCheckoutPage() {
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
-  const [selectedSession, setSelectedSession] =
-    useState<DaycareSession | null>(null);
+  const [selectedSession, setSelectedSession] = useState<DaycareSession | null>(
+    null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkedOut, setCheckedOut] = useState<DaycareSession | null>(null);

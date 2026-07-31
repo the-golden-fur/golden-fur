@@ -368,7 +368,10 @@ export function AdminPackageBuilderPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Packages</h1>
-          <Link className={styles.archiveLink} to="/staff/admin/archive?tab=packages">
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=packages"
+          >
             View archive
           </Link>
         </div>

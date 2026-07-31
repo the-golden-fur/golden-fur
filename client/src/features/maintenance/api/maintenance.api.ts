@@ -299,9 +299,12 @@ export async function restorePackage(
 export async function listArchivedPackages(
   accessToken: string
 ): Promise<MaintenanceApiResult<Package[]>> {
-  const response = await fetch(`${API_BASE_URL}/maintenance/packages/archived`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/archived`,
+    {
+      headers: authHeaders(accessToken),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

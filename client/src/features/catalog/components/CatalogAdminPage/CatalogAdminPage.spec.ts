@@ -31,11 +31,7 @@ function buildProps(
 
 function renderWithRouter(props: ReturnType<typeof buildProps>) {
   return render(
-    createElement(
-      MemoryRouter,
-      null,
-      createElement(CatalogAdminPage, props)
-    )
+    createElement(MemoryRouter, null, createElement(CatalogAdminPage, props))
   );
 }
 
@@ -112,9 +108,10 @@ describe('CatalogAdminPage', () => {
     const archiveItem = vi.fn().mockResolvedValue({ data: null, error: null });
     renderWithRouter(
       buildProps({
-        listItems: vi
-          .fn()
-          .mockResolvedValue({ data: [{ ...ITEM, is_active: false }], error: null }),
+        listItems: vi.fn().mockResolvedValue({
+          data: [{ ...ITEM, is_active: false }],
+          error: null,
+        }),
         archiveItem,
       })
     );

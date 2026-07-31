@@ -39,9 +39,7 @@ export function DaycareCheckInPage() {
 
   const [mode, setMode] = useState<Mode>('booking');
 
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(
-    null
-  );
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [emailQuery, setEmailQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);

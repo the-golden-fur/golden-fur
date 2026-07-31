@@ -197,7 +197,10 @@ export function StaffManagementPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Staff Management</h1>
-          <Link className={styles.archiveLink} to="/staff/admin/archive?tab=staff">
+          <Link
+            className={styles.archiveLink}
+            to="/staff/admin/archive?tab=staff"
+          >
             View archive
           </Link>
         </div>

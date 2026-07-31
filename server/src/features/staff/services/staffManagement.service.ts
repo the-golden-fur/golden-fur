@@ -229,7 +229,10 @@ async function getScopedTargetOrThrow({
   if (error) throwWithStatus(400, error.message);
   if (!target) throwWithStatus(404, 'Staff profile not found');
 
-  if (requesterRole !== 'Superadmin' && target.branch_id !== requesterBranchId) {
+  if (
+    requesterRole !== 'Superadmin' &&
+    target.branch_id !== requesterBranchId
+  ) {
     throwWithStatus(403, 'Admins can only manage staff at their own branch');
   }
 

@@ -154,7 +154,9 @@ export function CustomerManagementPage() {
           : existing
       )
     );
-    setMessage(customer.is_active ? 'Customer deactivated.' : 'Customer reactivated.');
+    setMessage(
+      customer.is_active ? 'Customer deactivated.' : 'Customer reactivated.'
+    );
   }
 
   async function handleArchiveCustomer(customerId: string) {
@@ -168,7 +170,9 @@ export function CustomerManagementPage() {
       return;
     }
 
-    setCustomers((prev) => prev.filter((existing) => existing.id !== customerId));
+    setCustomers((prev) =>
+      prev.filter((existing) => existing.id !== customerId)
+    );
     setMessage('Customer archived.');
   }
 

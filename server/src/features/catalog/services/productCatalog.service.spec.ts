@@ -154,7 +154,10 @@ describe('productCatalog.service (Sprint 5 unification, #82)', () => {
 
   it('archiveProduct sets archived_at once the item is deactivated', async () => {
     queueFromResults(
-      { data: { id: 'item-1', is_active: false, archived_at: null }, error: null },
+      {
+        data: { id: 'item-1', is_active: false, archived_at: null },
+        error: null,
+      },
       { data: null, error: null }
     );
 
