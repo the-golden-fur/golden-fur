@@ -24,11 +24,11 @@ Records a counter sale that isn't tied to any booking — `transactions.booking_
 
 ## Acceptance Criteria Map
 
-| AC                                                                                                  | Automated                                                    | Manual  |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------- |
-| AC-1 a miscellaneous sale is recorded with `booking_id = NULL`, correct `transaction_type`, description, amount | manual — see step D2 (no dedicated `miscSale.service.spec.ts` was written given the batch's scope; test-coverage gap, same caveat as #84) | step D2 |
-| AC-2 credit can be applied using the same atomic, overdraft-safe logic as a booking checkout                | shares `creditStub.service.ts` with #84 — not meaningfully testable while credit is a stub (always 0) | N/A (stub) |
-| AC-3 miscellaneous sales are distinguishable from booking payments by `transaction_type` alone, no join required | schema-level, see #82's CHECK constraint verification          | step D2 |
+| AC                                                                                                               | Automated                                                                                                                                 | Manual     |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| AC-1 a miscellaneous sale is recorded with `booking_id = NULL`, correct `transaction_type`, description, amount  | manual — see step D2 (no dedicated `miscSale.service.spec.ts` was written given the batch's scope; test-coverage gap, same caveat as #84) | step D2    |
+| AC-2 credit can be applied using the same atomic, overdraft-safe logic as a booking checkout                     | shares `creditStub.service.ts` with #84 — not meaningfully testable while credit is a stub (always 0)                                     | N/A (stub) |
+| AC-3 miscellaneous sales are distinguishable from booking payments by `transaction_type` alone, no join required | schema-level, see #82's CHECK constraint verification                                                                                     | step D2    |
 
 ## Automated Verification
 

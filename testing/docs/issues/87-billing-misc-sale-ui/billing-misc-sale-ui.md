@@ -27,9 +27,9 @@ A quick form for a counter sale that isn't tied to a booking, reachable independ
 
 ## Acceptance Criteria Map
 
-| AC                                                                                              | Automated                                | Manual  |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------- | -------- |
-| AC-1 the form captures a freetext item description and peso amount, and submits successfully           | not covered by an automated component spec (same test-coverage gap as #86, flagged) | step D2 |
+| AC                                                                                                     | Automated                                                                                             | Manual  |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------- |
+| AC-1 the form captures a freetext item description and peso amount, and submits successfully           | not covered by an automated component spec (same test-coverage gap as #86, flagged)                   | step D2 |
 | AC-2 credit application and payment method forms behave identically to the booking checkout flow (#86) | shared components (`CreditApplicationPanel`/`PaymentMethodForm`) — no divergent logic by construction | step D3 |
 
 ## Automated Verification

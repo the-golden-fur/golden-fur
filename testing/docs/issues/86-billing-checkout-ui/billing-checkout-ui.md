@@ -27,12 +27,12 @@ Same scope note as #81 (`HotelCheckoutPage`)/#69 (`DaycareCheckoutPage`): no "li
 
 ## Acceptance Criteria Map
 
-| AC                                                                                            | Automated                                | Manual  |
-| --------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------- |
-| AC-1 checkout screen lists every line item with a correct running total                             | not covered by an automated component spec (test-coverage gap, flagged) | step D2 |
-| AC-2 available credit is shown; a partial-application control prevents overdrafting the balance      | `CreditApplicationPanel`'s `Math.min` clamp is exercised implicitly by manual testing only | step D3 |
-| AC-3 every payment method renders its correct minimal form and successfully records a transaction    | same as AC-1                                | step D4 |
-| AC-4 the PayMongo fee notice appears inline before confirmation for GCash/Maya only, doesn't alter the displayed total | same as AC-1                     | step D5 |
+| AC                                                                                                                     | Automated                                                                                  | Manual  |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------- |
+| AC-1 checkout screen lists every line item with a correct running total                                                | not covered by an automated component spec (test-coverage gap, flagged)                    | step D2 |
+| AC-2 available credit is shown; a partial-application control prevents overdrafting the balance                        | `CreditApplicationPanel`'s `Math.min` clamp is exercised implicitly by manual testing only | step D3 |
+| AC-3 every payment method renders its correct minimal form and successfully records a transaction                      | same as AC-1                                                                               | step D4 |
+| AC-4 the PayMongo fee notice appears inline before confirmation for GCash/Maya only, doesn't alter the displayed total | same as AC-1                                                                               | step D5 |
 
 **Test-coverage gap, flagged for the reviewer:** no `.spec.ts` files were written for the new billing client components/pages, given the size of this batch (server-side logic and the Unified Product Catalog's client components got the automated-test budget instead). Recommended follow-up: at minimum a `PaymentMethodForm.spec.ts` covering the conditional-field logic per method, mirroring `CatalogComboBox.spec.ts`'s existing coverage depth.
 

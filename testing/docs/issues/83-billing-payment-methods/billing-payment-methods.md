@@ -28,12 +28,12 @@ Every accepted payment method records a transaction the same way: the five manua
 
 ## Acceptance Criteria Map
 
-| AC                                                                                                      | Automated                                                    | Manual                          |
-| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------- |
-| AC-1 all five manual methods record a transaction correctly, incl. computed change for Cash                 | `paymentMethod.service.spec.ts`                                  | not independently testable without #84/#85 wired up — see those docs |
-| AC-2 a GCash/Maya portal payment is confirmed automatically on webhook receipt, no cashier action            | `webhookConfirmation.service.spec.ts`                             | Section 5, requires real sandbox credentials — see gap above |
-| AC-3 a duplicate webhook delivery does not create a duplicate transaction or double-apply a status change    | `webhookConfirmation.service.spec.ts` ("is idempotent" case)      | same as AC-2                        |
-| AC-4 the PayMongo service fee rate returned to the frontend matches PayMongo's currently published rate     | not automatable (depends on a real, current PayMongo rate) — `getPaymongoServiceFeeRate` returns the configured env var, which the operator is responsible for keeping current | step D1 |
+| AC                                                                                                        | Automated                                                                                                                                                                      | Manual                                                               |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| AC-1 all five manual methods record a transaction correctly, incl. computed change for Cash               | `paymentMethod.service.spec.ts`                                                                                                                                                | not independently testable without #84/#85 wired up — see those docs |
+| AC-2 a GCash/Maya portal payment is confirmed automatically on webhook receipt, no cashier action         | `webhookConfirmation.service.spec.ts`                                                                                                                                          | Section 5, requires real sandbox credentials — see gap above         |
+| AC-3 a duplicate webhook delivery does not create a duplicate transaction or double-apply a status change | `webhookConfirmation.service.spec.ts` ("is idempotent" case)                                                                                                                   | same as AC-2                                                         |
+| AC-4 the PayMongo service fee rate returned to the frontend matches PayMongo's currently published rate   | not automatable (depends on a real, current PayMongo rate) — `getPaymongoServiceFeeRate` returns the configured env var, which the operator is responsible for keeping current | step D1                                                              |
 
 ## Automated Verification
 
