@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archivePromo,
   createPromo,
   listPackages,
   listPromos,
@@ -313,6 +314,22 @@ export function AdminPromoConfigPage() {
     setMessage(isActive ? 'Promo reactivated.' : 'Promo deactivated.');
   };
 
+  const handleArchive = async (promo: Promo) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await archivePromo(promo.id, accessToken);
+
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+
+    setPromos((prev) => prev.filter((item) => item.id !== promo.id));
+    setMessage('Promo archived.');
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -451,7 +468,12 @@ export function AdminPromoConfigPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Promos</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Promos</h1>
+          <Link className={styles.archiveLink} to="/staff/admin/archive?tab=promos">
+            View archive
+          </Link>
+        </div>
 
         <div className={styles.toolbar}>
           <PromoFilterBar
@@ -633,6 +655,7 @@ export function AdminPromoConfigPage() {
                   void handleActiveToggle(promo, isActive)
                 }
                 onEdit={() => openEditForm(promo)}
+                onArchive={() => void handleArchive(promo)}
               />
             ))}
           </div>

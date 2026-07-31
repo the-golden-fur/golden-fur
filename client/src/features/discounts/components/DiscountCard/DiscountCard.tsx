@@ -15,6 +15,7 @@ interface DiscountCardProps {
   scopeDescription: string;
   onToggle: (isActive: boolean) => void;
   onEdit: () => void;
+  onArchive: () => void;
 }
 
 /**
@@ -27,6 +28,7 @@ export function DiscountCard({
   scopeDescription,
   onToggle,
   onEdit,
+  onArchive,
 }: DiscountCardProps) {
   const formattedValue =
     discount.discount_type === 'Percentage'
@@ -63,6 +65,15 @@ export function DiscountCard({
         >
           Edit
         </button>
+        {!discount.is_active && !discount.is_mandated ? (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={onArchive}
+          >
+            Archive
+          </button>
+        ) : null}
       </div>
     </article>
   );

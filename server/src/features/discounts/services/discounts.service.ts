@@ -1,4 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  assertArchivedBeforeHardDelete,
+  assertInactiveBeforeArchive,
+} from '../../../shared/archive/archiveGuard.ts';
 import type { Discount } from '../discounts.types.ts';
 import type {
   CreateDiscountInput,
@@ -10,6 +14,9 @@ function throwWithStatus(statusCode: number, message: string): never {
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
 }
+
+/** Postgres foreign_key_violation. */
+const FOREIGN_KEY_VIOLATION = '23503';
 
 interface ListDiscountsParams {
   branchId?: string;
@@ -37,7 +44,7 @@ export async function listDiscounts({
   branchId,
   activeOnly,
 }: ListDiscountsParams): Promise<Discount[]> {
-  let query = supabase.from('discounts').select('*');
+  let query = supabase.from('discounts').select('*').is('archived_at', null);
 
   if (branchId) {
     query = query.eq('branch_id', branchId);
@@ -147,4 +154,64 @@ export async function updateDiscount({
   if (!data) throwWithStatus(404, 'Discount not found');
 
   return data as Discount;
+}
+
+/**
+ * Deactivate-first CRUD safety (archive workflow), mirroring
+ * productCatalog.service.ts's archiveProduct: archiving is soft - the row
+ * moves to the archive list via archived_at, it is not deleted. A mandated
+ * discount can still be archived once deactivated - is_mandated only
+ * protects its name (updateDiscount above), not its lifecycle.
+ */
+export async function archiveDiscount(discountId: string): Promise<void> {
+  const discount = await getDiscountById(discountId);
+  assertInactiveBeforeArchive(discount.is_active, 'This discount');
+
+  const { error } = await supabase
+    .from('discounts')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', discountId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function restoreDiscount(discountId: string): Promise<void> {
+  const { error } = await supabase
+    .from('discounts')
+    .update({ archived_at: null })
+    .eq('id', discountId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+export async function listArchivedDiscounts(): Promise<Discount[]> {
+  const { data, error } = await supabase
+    .from('discounts')
+    .select('*')
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as Discount[];
+}
+
+export async function hardDeleteDiscount(discountId: string): Promise<void> {
+  const discount = await getDiscountById(discountId);
+  assertArchivedBeforeHardDelete(discount.archived_at, 'This discount');
+
+  const { error } = await supabase
+    .from('discounts')
+    .delete()
+    .eq('id', discountId);
+
+  if (error) {
+    if (error.code === FOREIGN_KEY_VIOLATION) {
+      throwWithStatus(
+        409,
+        'This discount is still referenced elsewhere (a booking or a sale) and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

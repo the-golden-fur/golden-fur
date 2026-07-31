@@ -261,6 +261,72 @@ export async function updatePackage(
   return { data: result.data?.package ?? null, error: result.error };
 }
 
+/** Soft: moves the package to the archive. Server still requires
+ * is_active === false first (see packages.service.ts's archivePackage
+ * guard). */
+export async function archivePackage(
+  packageId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/${packageId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restorePackage(
+  packageId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/${packageId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedPackages(
+  accessToken: string
+): Promise<MaintenanceApiResult<Package[]>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/packages/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ packages: Package[] }>(response);
+  return { data: result.data?.packages ?? null, error: result.error };
+}
+
+export async function hardDeletePackage(
+  packageId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/${packageId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
 export interface ListPromosFilters {
   branchScope?: string;
   includeInactive?: boolean;
@@ -331,6 +397,71 @@ export async function updatePromo(
 
   const result = await parseBody<{ promo: Promo }>(response);
   return { data: result.data?.promo ?? null, error: result.error };
+}
+
+/** Soft: moves the promo to the archive. Server still requires
+ * is_active === false first (see promos.service.ts's archivePromo guard). */
+export async function archivePromo(
+  promoId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restorePromo(
+  promoId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedPromos(
+  accessToken: string
+): Promise<MaintenanceApiResult<Promo[]>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/promos/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ promos: Promo[] }>(response);
+  return { data: result.data?.promos ?? null, error: result.error };
+}
+
+export async function hardDeletePromo(
+  promoId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
 }
 
 /** Epic B (#80/#81): the shared, singleton grooming size/coat calculation. */
