@@ -7,6 +7,7 @@ import { StaffManagementPage } from './pages/StaffManagementPage/StaffManagement
 import { StaffPetProfilePage } from './pages/StaffPetProfilePage/StaffPetProfilePage';
 import { DaysOffPage } from './pages/DaysOffPage/DaysOffPage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
+import { AdminArchivePage } from './pages/AdminArchivePage/AdminArchivePage';
 
 export const staffRoutes = createElement(
   Fragment,
@@ -37,6 +38,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/admin/customers',
       element: createElement(CustomerManagementPage),
+    }),
+    createElement(Route, {
+      path: '/staff/admin/archive',
+      element: createElement(AdminArchivePage),
     }),
     createElement(Route, {
       path: '/staff/pets/:petId',
