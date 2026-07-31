@@ -4,8 +4,6 @@ import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGua
 import { HotelCheckInPage } from './pages/HotelCheckInPage/HotelCheckInPage';
 import { HotelCheckoutPage } from './pages/HotelCheckoutPage/HotelCheckoutPage';
 import { HotelCareLogPage } from './pages/HotelCareLogPage/HotelCareLogPage';
-import { HotelFoodCatalogPage } from './pages/HotelFoodCatalogPage/HotelFoodCatalogPage';
-import { HotelMedicationCatalogPage } from './pages/HotelMedicationCatalogPage/HotelMedicationCatalogPage';
 
 /** Sprint 4 Epic A (#79/#80/#81): role enforcement happens inside each page
  * (ALLOWED_VIEWER_ROLES), same pattern as DaycareCheckInPage/
@@ -23,14 +21,6 @@ export const hotelRoutes = (
         element={<HotelCheckoutPage />}
       />
       <Route path="/staff/hotel/care-log" element={<HotelCareLogPage />} />
-      <Route
-        path="/staff/hotel/food-catalog"
-        element={<HotelFoodCatalogPage />}
-      />
-      <Route
-        path="/staff/hotel/medication-catalog"
-        element={<HotelMedicationCatalogPage />}
-      />
     </Route>
   </Fragment>
 );

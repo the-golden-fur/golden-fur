@@ -81,6 +81,21 @@ export default defineConfig(({ mode }) => {
         // instead of reaching Express, returning a cached/non-JSON response
         // (the repro: a 304 with no JSON body, not a 404 or 403).
         '/branches': apiProxy,
+        // catalog.routes.ts (server, Sprint 5 unification) is mounted at the
+        // server root too - its client-side page route lives under
+        // '/staff/admin/product-catalog', not bare '/catalog', so no bypass
+        // is needed here either. Without this entry, GET/POST/PATCH/DELETE
+        // /catalog/products falls through to Vite's own dev server instead
+        // of reaching Express, same failure mode '/branches' above already
+        // documents (a non-JSON response, not a 404/403 - surfaces client-side
+        // as a generic "Request failed" with nothing in the Network tab
+        // looking obviously wrong).
+        '/catalog': apiProxy,
+        // billing.routes.ts (server, Sprint 5 Epic A #82-#87) is mounted at
+        // the server root too - its client-side page routes live under
+        // '/staff/billing/...' and '/staff/admin/misc-sales', not bare
+        // '/billing', so no bypass is needed here either.
+        '/billing': apiProxy,
       },
     },
   };

@@ -1,13 +1,15 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type {
-  CreateCatalogItemPayload,
-  UpdateCatalogItemPayload,
-} from '../../hotel.types';
+  CreateProductPayload,
+  UpdateProductPayload,
+} from '../../catalog.types';
 import styles from './CatalogAdminPage.module.css';
 
 interface CatalogItem {
   id: string;
   name: string;
+  category: string;
+  service_scope: string;
   price: number;
   is_active: boolean;
 }
@@ -21,14 +23,20 @@ interface CatalogAdminPageProps {
   title: string;
   itemNoun: string;
   accessToken: string;
+  /** Suggested category/service_scope values shown as quick-pick options in
+   * the Add form (the fields stay free text - see catalog.types.ts's own
+   * "documented, not enforced" convention) - defaults cover the values this
+   * unification ships with. */
+  categoryOptions?: string[];
+  serviceScopeOptions?: string[];
   listItems: (accessToken: string) => Promise<CatalogApiResult<CatalogItem[]>>;
   createItem: (
-    payload: CreateCatalogItemPayload,
+    payload: CreateProductPayload,
     accessToken: string
   ) => Promise<CatalogApiResult<CatalogItem>>;
   updateItem: (
     itemId: string,
-    payload: UpdateCatalogItemPayload,
+    payload: UpdateProductPayload,
     accessToken: string
   ) => Promise<CatalogApiResult<CatalogItem>>;
   deleteItem: (
@@ -37,18 +45,25 @@ interface CatalogAdminPageProps {
   ) => Promise<CatalogApiResult<null>>;
 }
 
+const DEFAULT_CATEGORY_OPTIONS = ['food', 'medication', 'misc_retail'];
+const DEFAULT_SERVICE_SCOPE_OPTIONS = ['hotel', 'general'];
+const ALL_CATEGORIES = '__all__';
+const CUSTOM_OPTION = '__custom__';
+
 /**
- * Issue #79 revision: shared Admin/Superadmin CRUD surface for
- * food_catalog and medication_catalog - the two tables are structurally
- * identical (name/price/is_active), so this one component is parameterized
- * by API function rather than duplicated per catalog (mirrors
- * AdminBreedsPage's CRUD shape, minus the pet_type grouping dimension that
- * doesn't apply here).
+ * Sprint 5 unification (#82): generalized from the #79-revision food/
+ * medication-only version - now carries category/service_scope so one page
+ * (ProductCatalogPage) manages every catalog item (hotel food, hotel
+ * medication, and future retail products) instead of two near-duplicate
+ * pages. A category filter narrows the visible list; the Add form always
+ * captures category + service_scope alongside name/price.
  */
 export function CatalogAdminPage({
   title,
   itemNoun,
   accessToken,
+  categoryOptions = DEFAULT_CATEGORY_OPTIONS,
+  serviceScopeOptions = DEFAULT_SERVICE_SCOPE_OPTIONS,
   listItems,
   createItem,
   updateItem,
@@ -57,8 +72,15 @@ export function CatalogAdminPage({
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
 
   const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState(categoryOptions[0] ?? '');
+  const [customCategory, setCustomCategory] = useState('');
+  const [newServiceScope, setNewServiceScope] = useState(
+    serviceScopeOptions[0] ?? ''
+  );
+  const [customServiceScope, setCustomServiceScope] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,13 +106,37 @@ export function CatalogAdminPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
+  const knownCategories = useMemo(
+    () => Array.from(new Set(items.map((item) => item.category))).sort(),
+    [items]
+  );
+
+  const visibleItems =
+    categoryFilter === ALL_CATEGORIES
+      ? items
+      : items.filter((item) => item.category === categoryFilter);
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const price = Number(newPrice);
+    const category =
+      newCategory === CUSTOM_OPTION ? customCategory.trim() : newCategory;
+    const serviceScope =
+      newServiceScope === CUSTOM_OPTION
+        ? customServiceScope.trim()
+        : newServiceScope;
 
-    if (!newName.trim() || Number.isNaN(price) || price < 0) {
-      setFormError('Name and a non-negative price are required.');
+    if (
+      !newName.trim() ||
+      !category ||
+      !serviceScope ||
+      Number.isNaN(price) ||
+      price < 0
+    ) {
+      setFormError(
+        'Name, category, service scope, and a non-negative price are required.'
+      );
       return;
     }
 
@@ -98,7 +144,12 @@ export function CatalogAdminPage({
     setIsSubmitting(true);
 
     const result = await createItem(
-      { name: newName.trim(), price },
+      {
+        name: newName.trim(),
+        category,
+        service_scope: serviceScope,
+        price,
+      },
       accessToken
     );
 
@@ -112,6 +163,8 @@ export function CatalogAdminPage({
     setItems((prev) => [...prev, result.data as CatalogItem]);
     setNewName('');
     setNewPrice('');
+    setCustomCategory('');
+    setCustomServiceScope('');
     setMessage(`${itemNoun} added.`);
   }
 
@@ -211,6 +264,54 @@ export function CatalogAdminPage({
               />
             </label>
             <label className={styles.field}>
+              <span className={styles.label}>Category</span>
+              <select
+                className={styles.input}
+                value={newCategory}
+                onChange={(event) => setNewCategory(event.target.value)}
+              >
+                {categoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value={CUSTOM_OPTION}>Other (custom)...</option>
+              </select>
+              {newCategory === CUSTOM_OPTION ? (
+                <input
+                  className={styles.input}
+                  placeholder="Custom category"
+                  value={customCategory}
+                  onChange={(event) => setCustomCategory(event.target.value)}
+                />
+              ) : null}
+            </label>
+            <label className={styles.field}>
+              <span className={styles.label}>Service scope</span>
+              <select
+                className={styles.input}
+                value={newServiceScope}
+                onChange={(event) => setNewServiceScope(event.target.value)}
+              >
+                {serviceScopeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                <option value={CUSTOM_OPTION}>Other (custom)...</option>
+              </select>
+              {newServiceScope === CUSTOM_OPTION ? (
+                <input
+                  className={styles.input}
+                  placeholder="Custom service scope"
+                  value={customServiceScope}
+                  onChange={(event) =>
+                    setCustomServiceScope(event.target.value)
+                  }
+                />
+              ) : null}
+            </label>
+            <label className={styles.field}>
               <span className={styles.label}>Price (PHP)</span>
               <input
                 className={styles.input}
@@ -236,17 +337,35 @@ export function CatalogAdminPage({
           </form>
         </section>
 
+        {knownCategories.length > 0 ? (
+          <label className={styles.field}>
+            <span className={styles.label}>Filter by category</span>
+            <select
+              className={styles.input}
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+            >
+              <option value={ALL_CATEGORIES}>All categories</option>
+              {knownCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         {isLoading ? (
           <p className={styles.copy}>Loading {itemNoun} catalog...</p>
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}
           </p>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <p className={styles.copy}>No {itemNoun} items yet.</p>
         ) : (
           <ul className={styles.list}>
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <li className={styles.listItem} key={item.id}>
                 {editingId === item.id ? (
                   <>
@@ -282,6 +401,9 @@ export function CatalogAdminPage({
                   <>
                     <span className={styles.itemName}>
                       {item.name}
+                      <span className={styles.categoryBadge}>
+                        {item.category}
+                      </span>
                       {!item.is_active ? (
                         <span className={styles.inactiveBadge}>Inactive</span>
                       ) : null}

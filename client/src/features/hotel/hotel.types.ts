@@ -33,6 +33,11 @@ export interface HotelStay {
   updated_at: string;
 }
 
+// Sprint 5 unification (#82): both catalogs are now read-only slices of the
+// shared product_catalog table (see features/catalog/catalog.types.ts's
+// ProductCatalogItem) - kept as local, minimal types here since
+// HotelCheckInPage's pickers only ever need id/name/price/is_active.
+
 export interface FoodCatalogItem {
   id: string;
   name: string;
@@ -121,17 +126,6 @@ export interface CheckoutResult {
   extensionFee: number | null;
   suppliedItemsCharge: number | null;
   remainingBalance: number;
-}
-
-export interface CreateCatalogItemPayload {
-  name: string;
-  price: number;
-}
-
-export interface UpdateCatalogItemPayload {
-  name?: string;
-  price?: number;
-  is_active?: boolean;
 }
 
 export interface HotelStayWithCage extends HotelStay {

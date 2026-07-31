@@ -167,14 +167,17 @@ export async function checkInHotelStay({
   }
 }
 
-async function getCatalogPrices(
-  table: 'food_catalog' | 'medication_catalog',
-  ids: string[]
-): Promise<Map<string, number>> {
+/**
+ * Sprint 5 unification (#82): food_catalog/medication_catalog merged into
+ * one product_catalog table (migration 20260731067) - both feeding and
+ * medication rows now resolve their catalog price from the same table, no
+ * `table` parameter needed anymore.
+ */
+async function getCatalogPrices(ids: string[]): Promise<Map<string, number>> {
   if (ids.length === 0) return new Map();
 
   const { data, error } = await supabase
-    .from(table)
+    .from('product_catalog')
     .select('id, price')
     .in('id', ids);
 
@@ -211,7 +214,7 @@ async function insertFeedingInstructions(
         .filter((id): id is string => Boolean(id))
     )
   );
-  const pricesById = await getCatalogPrices('food_catalog', catalogIds);
+  const pricesById = await getCatalogPrices(catalogIds);
 
   const preparedRows = rows.map((row) => {
     const broughtByCustomer = row.food_catalog_id
@@ -304,7 +307,7 @@ async function insertMedicationInstructions(
         .filter((id): id is string => Boolean(id))
     )
   );
-  const pricesById = await getCatalogPrices('medication_catalog', catalogIds);
+  const pricesById = await getCatalogPrices(catalogIds);
 
   const preparedRows = rows.map((row) => {
     const broughtByCustomer = row.medication_catalog_id

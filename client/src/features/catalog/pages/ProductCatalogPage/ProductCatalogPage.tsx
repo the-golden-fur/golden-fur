@@ -3,18 +3,22 @@ import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
-  createFoodCatalogItem,
-  deleteFoodCatalogItem,
-  listFoodCatalog,
-  updateFoodCatalogItem,
-} from '../../api/hotel.api';
+  createProduct,
+  deleteProduct,
+  listProducts,
+  updateProduct,
+} from '../../api/catalog.api';
 import { CatalogAdminPage } from '../../components/CatalogAdminPage/CatalogAdminPage';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
-/** Issue #79 revision: Admin/Superadmin CRUD for the food catalog backing
- * the check-in form's food_type picker. */
-export function HotelFoodCatalogPage() {
+/**
+ * Sprint 5 unification (#82): replaces HotelFoodCatalogPage +
+ * HotelMedicationCatalogPage - one Admin/Superadmin CRUD surface for the
+ * shared product_catalog table (hotel food, hotel medication, and any
+ * future retail product), instead of two near-duplicate pages.
+ */
+export function ProductCatalogPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
@@ -51,13 +55,13 @@ export function HotelFoodCatalogPage() {
 
   return (
     <CatalogAdminPage
-      title="Food Catalog"
-      itemNoun="food item"
+      title="Product Catalog"
+      itemNoun="product"
       accessToken={accessToken}
-      listItems={listFoodCatalog}
-      createItem={createFoodCatalogItem}
-      updateItem={updateFoodCatalogItem}
-      deleteItem={deleteFoodCatalogItem}
+      listItems={(token) => listProducts(token)}
+      createItem={createProduct}
+      updateItem={updateProduct}
+      deleteItem={deleteProduct}
     />
   );
 }

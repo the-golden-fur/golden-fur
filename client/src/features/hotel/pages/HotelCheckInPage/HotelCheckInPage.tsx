@@ -15,7 +15,7 @@ import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBoo
 import {
   CatalogComboBox,
   type CatalogComboBoxValue,
-} from '../../components/CatalogComboBox/CatalogComboBox';
+} from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import { TimeInput } from '../../components/TimeInput/TimeInput';
 import { formatTimeValue } from '../../components/TimeInput/formatTimeValue';
 import type {

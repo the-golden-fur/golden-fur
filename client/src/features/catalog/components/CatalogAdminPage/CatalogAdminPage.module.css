@@ -148,6 +148,17 @@
   padding: 0 var(--space-1);
 }
 
+.categoryBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  padding: 0 var(--space-1);
+}
+
 .smallButton,
 .smallButtonSecondary {
   border-radius: var(--radius-pill);

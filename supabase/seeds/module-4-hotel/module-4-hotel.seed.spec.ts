@@ -5,6 +5,13 @@ import {
   seedMedicationCatalog,
 } from './module-4-hotel.seed.ts';
 
+interface ProductCatalogRow {
+  name: string;
+  price: number;
+  category: string;
+  service_scope: string;
+}
+
 function createMockSupabase() {
   const state = {
     branches: [
@@ -15,24 +22,11 @@ function createMockSupabase() {
       string,
       { branch_id: string; cage_label: string; size: string; status: string }
     >(),
-    foodCatalog: new Map<string, { name: string; price: number }>(),
-    medicationCatalog: new Map<string, { name: string; price: number }>(),
+    // Sprint 5 unification (#82): both catalogs now write into the same
+    // product_catalog table, keyed here by `${category}:${name}` to mirror
+    // the table's real (name, category) uniqueness.
+    productCatalog: new Map<string, ProductCatalogRow>(),
   };
-
-  function catalogTable(store: Map<string, { name: string; price: number }>) {
-    return {
-      select: () => ({
-        eq: (_c: string, name: string) => ({
-          maybeSingle: () =>
-            Promise.resolve({ data: store.get(name) ?? null, error: null }),
-        }),
-      }),
-      insert: (row: { name: string; price: number }) => {
-        store.set(row.name, row);
-        return Promise.resolve({ error: null });
-      },
-    };
-  }
 
   const supabase = {
     from: vi.fn((table: string) => {
@@ -67,9 +61,25 @@ function createMockSupabase() {
         };
       }
 
-      if (table === 'food_catalog') return catalogTable(state.foodCatalog);
-      if (table === 'medication_catalog') {
-        return catalogTable(state.medicationCatalog);
+      if (table === 'product_catalog') {
+        return {
+          select: () => ({
+            eq: (_c1: string, name: string) => ({
+              eq: (_c2: string, category: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.productCatalog.get(`${category}:${name}`) ?? null,
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
+          insert: (row: ProductCatalogRow) => {
+            state.productCatalog.set(`${row.category}:${row.name}`, row);
+            return Promise.resolve({ error: null });
+          },
+        };
       }
 
       throw new Error(`unexpected table: ${table}`);
@@ -78,6 +88,15 @@ function createMockSupabase() {
   };
 
   return supabase;
+}
+
+function catalogSize(
+  productCatalog: Map<string, ProductCatalogRow>,
+  category: string
+) {
+  return Array.from(productCatalog.values()).filter(
+    (row) => row.category === category
+  ).length;
 }
 
 describe('module-4-hotel seed', () => {
@@ -110,40 +129,55 @@ describe('module-4-hotel seed', () => {
   });
 
   describe('seedFoodCatalog', () => {
-    it('creates every planned food catalog item with a price', async () => {
+    it('creates every planned food catalog item with a price, category, and service_scope', async () => {
       await seedFoodCatalog(supabase as never);
 
-      expect(supabase.state.foodCatalog.size).toBeGreaterThan(0);
-      for (const item of supabase.state.foodCatalog.values()) {
+      const foodRows = Array.from(
+        supabase.state.productCatalog.values()
+      ).filter((row) => row.category === 'food');
+      expect(foodRows.length).toBeGreaterThan(0);
+      for (const item of foodRows) {
         expect(typeof item.price).toBe('number');
+        expect(item.service_scope).toBe('hotel');
       }
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
       await seedFoodCatalog(supabase as never);
-      const firstCount = supabase.state.foodCatalog.size;
+      const firstCount = catalogSize(supabase.state.productCatalog, 'food');
       await seedFoodCatalog(supabase as never);
 
-      expect(supabase.state.foodCatalog.size).toBe(firstCount);
+      expect(catalogSize(supabase.state.productCatalog, 'food')).toBe(
+        firstCount
+      );
     });
   });
 
   describe('seedMedicationCatalog', () => {
-    it('creates every planned medication catalog item with a price', async () => {
+    it('creates every planned medication catalog item with a price, category, and service_scope', async () => {
       await seedMedicationCatalog(supabase as never);
 
-      expect(supabase.state.medicationCatalog.size).toBeGreaterThan(0);
-      for (const item of supabase.state.medicationCatalog.values()) {
+      const medicationRows = Array.from(
+        supabase.state.productCatalog.values()
+      ).filter((row) => row.category === 'medication');
+      expect(medicationRows.length).toBeGreaterThan(0);
+      for (const item of medicationRows) {
         expect(typeof item.price).toBe('number');
+        expect(item.service_scope).toBe('hotel');
       }
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
       await seedMedicationCatalog(supabase as never);
-      const firstCount = supabase.state.medicationCatalog.size;
+      const firstCount = catalogSize(
+        supabase.state.productCatalog,
+        'medication'
+      );
       await seedMedicationCatalog(supabase as never);
 
-      expect(supabase.state.medicationCatalog.size).toBe(firstCount);
+      expect(catalogSize(supabase.state.productCatalog, 'medication')).toBe(
+        firstCount
+      );
     });
   });
 });
