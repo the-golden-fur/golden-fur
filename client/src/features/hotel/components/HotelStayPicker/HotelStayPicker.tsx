@@ -5,6 +5,8 @@ import {
   getPet,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type { HotelStayWithCage } from '../../hotel.types';
 import styles from './HotelStayPicker.module.css';
 
@@ -61,9 +63,6 @@ export function HotelStayPicker({
   onSelect,
   selectedStayId,
 }: HotelStayPickerProps) {
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('checkout-soonest');
-
   const [stays, setStays] = useState<HotelStayWithCage[]>([]);
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
@@ -142,61 +141,42 @@ export function HotelStayPicker({
     [stays, pets, owners]
   );
 
-  const filteredAndSorted = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    const matches = enriched.filter((item) => {
-      if (!query) return true;
-      return (
-        item.petName.toLowerCase().includes(query) ||
-        item.ownerName.toLowerCase().includes(query) ||
-        item.stay.cage_label.toLowerCase().includes(query)
-      );
-    });
-
-    return [...matches].sort((a, b) => {
-      switch (sortKey) {
-        case 'checkout-soonest':
-          return (
-            new Date(a.stay.scheduled_check_out_date).getTime() -
-            new Date(b.stay.scheduled_check_out_date).getTime()
-          );
-        case 'checkin-soonest':
-          return (
-            new Date(a.stay.check_in_at ?? 0).getTime() -
-            new Date(b.stay.check_in_at ?? 0).getTime()
-          );
-        case 'pet-name':
-          return a.petName.localeCompare(b.petName);
-        case 'owner-name':
-          return a.ownerName.localeCompare(b.ownerName);
-        default:
-          return 0;
-      }
-    });
-  }, [enriched, search, sortKey]);
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: filteredAndSorted,
+  } = useSearchAndSort<EnrichedStay, SortKey>({
+    items: enriched,
+    matchesQuery: (item, query) =>
+      item.petName.toLowerCase().includes(query) ||
+      item.ownerName.toLowerCase().includes(query) ||
+      item.stay.cage_label.toLowerCase().includes(query),
+    comparators: {
+      'checkout-soonest': (a, b) =>
+        new Date(a.stay.scheduled_check_out_date).getTime() -
+        new Date(b.stay.scheduled_check_out_date).getTime(),
+      'checkin-soonest': (a, b) =>
+        new Date(a.stay.check_in_at ?? 0).getTime() -
+        new Date(b.stay.check_in_at ?? 0).getTime(),
+      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
+      'owner-name': (a, b) => a.ownerName.localeCompare(b.ownerName),
+    },
+    initialSortKey: 'checkout-soonest',
+  });
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.toolbar}>
-        <input
-          className={styles.searchInput}
-          type="search"
-          placeholder="Search by pet, owner, or cage..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+        <SearchSortBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by pet, owner, or cage..."
+          sortValue={sortKey}
+          onSortChange={setSortKey}
+          sortOptions={SORT_OPTIONS}
         />
-        <select
-          className={styles.filterSelect}
-          value={sortKey}
-          onChange={(event) => setSortKey(event.target.value as SortKey)}
-        >
-          {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
       </div>
 
       <p className={styles.resultCount}>
@@ -213,8 +193,9 @@ export function HotelStayPicker({
 
       {!isLoading && !error && filteredAndSorted.length === 0 ? (
         <p className={styles.copy}>
-          No active Hotel stays match your search. A pet must be checked in
-          before it can be checked out.
+          {stays.length === 0
+            ? 'No pets are currently checked in. A pet must be checked in before it can be checked out.'
+            : 'No active stays match your search - try clearing it.'}
         </p>
       ) : null}
 

@@ -47,15 +47,6 @@
   gap: var(--space-3);
 }
 
-.statusGroup {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.statusGroupTitle {
-  margin: 0;
-}
-
 .rowList {
   display: grid;
   gap: var(--space-1);
