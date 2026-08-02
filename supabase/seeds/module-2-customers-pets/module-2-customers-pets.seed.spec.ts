@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { seedCustomers } from './module-2-customers-pets.seed.ts';
 
+const ASSESSOR_ID = 'staff-receptionist-1';
+
 function createMockSupabase() {
   const state = {
     customerProfiles: new Map<string, unknown>(),
@@ -54,6 +56,24 @@ function createMockSupabase() {
         };
       }
 
+      // resolveAssessorId's lookup for the seeded Receptionist's id
+      // (pet.controller.ts stamps assessed_by/assessed_at now, not the DB
+      // trigger - see ...075_m02_pets_assessment_trigger_fix.sql - so this
+      // seed script resolves an assessor id itself, the same way it always
+      // resolved customer ids by email).
+      if (table === 'staff_profiles') {
+        return {
+          select: () => ({
+            eq: (_col: string, _role: string) => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: { id: ASSESSOR_ID }, error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+
       throw new Error(`unexpected table: ${table}`);
     }),
     state,
@@ -69,21 +89,61 @@ describe('module-2-customers-pets seed', () => {
     supabase = createMockSupabase();
   });
 
-  it('creates 5 customers, each with 1-2 pets of varied pet_type/weight_class/coat_type', async () => {
+  it('creates 5 customers, each with 2-3 pets of varied pet_type/weight_class/coat_type', async () => {
     await seedCustomers(supabase as never);
 
     expect(supabase.state.customerProfiles.size).toBe(5);
 
     const allPets = [...supabase.state.pets.values()].flat() as {
       pet_type: string;
-      weight_class: string;
-      coat_type: string;
+      weight_class: string | null;
+      coat_type: string | null;
     }[];
 
-    expect(allPets.length).toBe(8);
+    expect(allPets.length).toBe(13);
     expect(new Set(allPets.map((p) => p.pet_type)).size).toBeGreaterThan(1);
     expect(new Set(allPets.map((p) => p.weight_class)).size).toBeGreaterThan(1);
     expect(new Set(allPets.map((p) => p.coat_type)).size).toBeGreaterThan(1);
+  });
+
+  it('each customer gets at least one assessed and one unassessed pet', async () => {
+    await seedCustomers(supabase as never);
+
+    for (const pets of supabase.state.pets.values()) {
+      const rows = pets as {
+        weight_class: string | null;
+        coat_type: string | null;
+        assessed_by: string | null;
+        assessed_at: string | null;
+      }[];
+
+      expect(
+        rows.some((pet) => pet.weight_class !== null && pet.coat_type !== null)
+      ).toBe(true);
+      expect(
+        rows.some((pet) => pet.weight_class === null && pet.coat_type === null)
+      ).toBe(true);
+    }
+  });
+
+  it('stamps assessed_by/assessed_at on assessed pets, leaves them null on unassessed ones', async () => {
+    await seedCustomers(supabase as never);
+
+    const allPets = [...supabase.state.pets.values()].flat() as {
+      weight_class: string | null;
+      assessed_by: string | null;
+      assessed_at: string | null;
+    }[];
+
+    for (const pet of allPets) {
+      if (pet.weight_class !== null) {
+        expect(pet.assessed_by).toBe(ASSESSOR_ID);
+        expect(pet.assessed_at).not.toBe(null);
+      } else {
+        expect(pet.assessed_by).toBe(null);
+        expect(pet.assessed_at).toBe(null);
+      }
+    }
   });
 
   it('sets a placeholder facebook_id on exactly one seed customer (customer1)', async () => {
@@ -108,6 +168,6 @@ describe('module-2-customers-pets seed', () => {
 
     expect(supabase.state.customerProfiles.size).toBe(5);
     const totalPets = [...supabase.state.pets.values()].flat().length;
-    expect(totalPets).toBe(8);
+    expect(totalPets).toBe(13);
   });
 });

@@ -35,27 +35,92 @@ const CUSTOMER_COUNT = 5;
 interface PetSeed {
   name: string;
   petType: 'Dog' | 'Cat';
-  weightClass: 'S' | 'M' | 'L' | 'XL';
-  coatType: 'SC' | 'LC';
+  /** Omitted (along with coatType/assessedDaysAgo) for a pet that's never
+   * been staff-assessed onsite - weight_class/coat_type/assessed_by/
+   * assessed_at all stay NULL (see ...073_m02_pets_assessment_lock.sql). */
+  weightClass?: 'S' | 'M' | 'L' | 'XL';
+  coatType?: 'SC' | 'LC';
+  /** How long ago this pet was assessed, for a varied (not all-identical)
+   * "last assessed X ago" display. */
+  assessedDaysAgo?: number;
 }
 
-// 1-2 pets per customer, deliberately varied pet_type/weight_class/coat_type.
+// 2-3 pets per customer, deliberately varied pet_type/weight_class/coat_type,
+// and a realistic mix of assessed vs. unassessed - each customer gets at
+// least one already-assessed pet and one freshly-added, never-assessed one.
 // breed_id is left unset (nullable at the DB level, per Issue #71) - none of
 // these rows need a specific seeded breed.
 export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
   1: [
-    { name: 'Max', petType: 'Dog', weightClass: 'M', coatType: 'SC' },
-    { name: 'Luna', petType: 'Cat', weightClass: 'S', coatType: 'LC' },
+    {
+      name: 'Max',
+      petType: 'Dog',
+      weightClass: 'M',
+      coatType: 'SC',
+      assessedDaysAgo: 45,
+    },
+    {
+      name: 'Luna',
+      petType: 'Cat',
+      weightClass: 'S',
+      coatType: 'LC',
+      assessedDaysAgo: 10,
+    },
+    { name: 'Cooper', petType: 'Dog' },
   ],
-  2: [{ name: 'Rex', petType: 'Dog', weightClass: 'L', coatType: 'LC' }],
+  2: [
+    {
+      name: 'Rex',
+      petType: 'Dog',
+      weightClass: 'L',
+      coatType: 'LC',
+      assessedDaysAgo: 90,
+    },
+    { name: 'Whiskers', petType: 'Cat' },
+  ],
   3: [
-    { name: 'Bruno', petType: 'Dog', weightClass: 'XL', coatType: 'SC' },
-    { name: 'Mimi', petType: 'Cat', weightClass: 'M', coatType: 'LC' },
+    {
+      name: 'Bruno',
+      petType: 'Dog',
+      weightClass: 'XL',
+      coatType: 'SC',
+      assessedDaysAgo: 200,
+    },
+    {
+      name: 'Mimi',
+      petType: 'Cat',
+      weightClass: 'M',
+      coatType: 'LC',
+      assessedDaysAgo: 5,
+    },
+    { name: 'Nala', petType: 'Cat' },
   ],
-  4: [{ name: 'Coco', petType: 'Cat', weightClass: 'L', coatType: 'SC' }],
+  4: [
+    {
+      name: 'Coco',
+      petType: 'Cat',
+      weightClass: 'L',
+      coatType: 'SC',
+      assessedDaysAgo: 400,
+    },
+    { name: 'Buddy', petType: 'Dog' },
+  ],
   5: [
-    { name: 'Bella', petType: 'Dog', weightClass: 'S', coatType: 'LC' },
-    { name: 'Simba', petType: 'Cat', weightClass: 'XL', coatType: 'SC' },
+    {
+      name: 'Bella',
+      petType: 'Dog',
+      weightClass: 'S',
+      coatType: 'LC',
+      assessedDaysAgo: 20,
+    },
+    {
+      name: 'Simba',
+      petType: 'Cat',
+      weightClass: 'XL',
+      coatType: 'SC',
+      assessedDaysAgo: 60,
+    },
+    { name: 'Milo', petType: 'Cat' },
   ],
 };
 
@@ -72,7 +137,32 @@ function getClient() {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
+/**
+ * Whoever assessed the seeded "assessed" pets - any seeded Receptionist
+ * works, this is display-only (assessed_by isn't currently shown anywhere).
+ */
+async function resolveAssessorId(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('role', 'Receptionist')
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.id) {
+    console.warn(
+      'module-2 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = null (has module-1 seeded first?)'
+    );
+  }
+
+  return (data?.id as string | undefined) ?? null;
+}
+
 export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
+  const assessorId = await resolveAssessorId(supabase);
+
   for (let n = 1; n <= CUSTOMER_COUNT; n += 1) {
     const email = `customer${n}@goldenfur.com`;
     const fullName = `Customer ${n}`;
@@ -146,8 +236,15 @@ export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
         customer_id: customerId,
         name: pet.name,
         pet_type: pet.petType,
-        weight_class: pet.weightClass,
-        coat_type: pet.coatType,
+        weight_class: pet.weightClass ?? null,
+        coat_type: pet.coatType ?? null,
+        assessed_by: pet.assessedDaysAgo !== undefined ? assessorId : null,
+        assessed_at:
+          pet.assessedDaysAgo !== undefined
+            ? new Date(
+                Date.now() - pet.assessedDaysAgo * 24 * 60 * 60 * 1000
+              ).toISOString()
+            : null,
       }))
     );
 
