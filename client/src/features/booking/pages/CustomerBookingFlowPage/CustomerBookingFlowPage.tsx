@@ -406,7 +406,11 @@ export function CustomerBookingFlowPage() {
   // loaded, pre-select it automatically instead of making the customer find
   // and click the one option in an otherwise-empty-looking Service step.
   useEffect(() => {
-    if (isSelectedPetAssessed || !selectedBranchId || allServices.length === 0) {
+    if (
+      isSelectedPetAssessed ||
+      !selectedBranchId ||
+      allServices.length === 0
+    ) {
       return;
     }
 
@@ -1152,8 +1156,8 @@ export function CustomerBookingFlowPage() {
             {selectedPet && !isSelectedPetAssessed ? (
               <p className={styles.copy}>
                 {selectedPet.name} hasn&apos;t been assessed by staff yet
-                (weight class and coat type are recorded onsite). Only
-                Initial Assessment can be booked for this pet until then.
+                (weight class and coat type are recorded onsite). Only Initial
+                Assessment can be booked for this pet until then.
               </p>
             ) : null}
 

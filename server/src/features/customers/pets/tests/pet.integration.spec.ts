@@ -282,7 +282,10 @@ describe('pet CRUD (Issue #32)', () => {
       queueFromResults(
         { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
         { data: { role: 'Admin' }, error: null },
-        { data: { id: 'pet-1', weight_class: 'M', coat_type: 'SC' }, error: null }
+        {
+          data: { id: 'pet-1', weight_class: 'M', coat_type: 'SC' },
+          error: null,
+        }
       );
 
       const res = await request(app)

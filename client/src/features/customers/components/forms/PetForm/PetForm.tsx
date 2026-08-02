@@ -239,8 +239,8 @@ export function PetForm({
         </>
       ) : (
         <p className={styles.copy}>
-          Weight class and coat type will be recorded by staff once the pet
-          is brought onsite for its initial assessment.
+          Weight class and coat type will be recorded by staff once the pet is
+          brought onsite for its initial assessment.
         </p>
       )}
       {error ? (

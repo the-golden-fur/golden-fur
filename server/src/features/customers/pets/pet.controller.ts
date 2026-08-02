@@ -289,7 +289,8 @@ export async function updatePetController(
     // isn't "assessed just now" (that would make an unrelated name/photo
     // edit look like a fresh assessment).
     const weightClassChanged =
-      'weight_class' in submitted && submitted.weight_class !== pet.weight_class;
+      'weight_class' in submitted &&
+      submitted.weight_class !== pet.weight_class;
     const coatTypeChanged =
       'coat_type' in submitted && submitted.coat_type !== pet.coat_type;
 

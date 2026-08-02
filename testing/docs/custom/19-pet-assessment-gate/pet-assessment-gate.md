@@ -24,7 +24,7 @@ should it price/cage correctly.
     and `pets.assessed_at` - stamped automatically, never client-writable.
   - New trigger `trg_enforce_pet_assessment_writes` (function
     `public.enforce_pet_assessment_writes`, `BEFORE INSERT OR UPDATE ON
-    public.pets`): any caller who isn't Receptionist/Admin/Supervisor/
+public.pets`): any caller who isn't Receptionist/Admin/Supervisor/
     Superadmin (`current_staff_role()`) is rejected outright if they try to
     set or change `weight_class`/`coat_type`. This is the DB-layer
     defense-in-depth backstop; the primary, UX-facing enforcement is the
@@ -33,15 +33,14 @@ should it price/cage correctly.
   - `services.requires_assessed_pet boolean not null default true`.
   - Seeds a new **"Initial Assessment"** Grooming service
     (`a1300000-0000-4000-a000-000000000022`), `requires_assessed_pet =
-    false`, `base_price = 0` (placeholder - an Admin should set the real fee
+false`, `base_price = 0` (placeholder - an Admin should set the real fee
     via the Services admin page before launch).
 
 ### 2. Server (`server/src/features/...`)
 
 - `customers/pets/modules/validators/pet.validator.ts`: `createPetValidator`/
   `updatePetValidator` (customer-facing) no longer accept `weight_class`/
-  `coat_type` at all - a payload containing either is rejected with a clean
-  400. New `createPetValidatorStaff`/`updatePetValidatorStaff` variants
+  `coat_type` at all - a payload containing either is rejected with a clean 400. New `createPetValidatorStaff`/`updatePetValidatorStaff` variants
   accept them (both optional - a pet can be registered before it's weighed).
 - `customers/pets/pet.controller.ts`: `createPetController`/
   `updatePetController` pick the customer vs. staff validator based on the
@@ -122,7 +121,7 @@ investigating it a **more serious bug** turned up in the DB trigger itself:
   service-role writes). `assessed_by`/`assessed_at` stamping moved into
   `pet.controller.ts` (`resolveAssessmentStamp`) since the trigger can no
   longer infer caller identity for the service-role path - it only stamps
-  when `weight_class`/`coat_type` actually *change value* (not merely
+  when `weight_class`/`coat_type` actually _change value_ (not merely
   "present in the payload" - the staff edit form resends both on every
   save), so an unrelated name/photo edit never resets "last assessed."
 - **Booking UX** (`CustomerBookingFlowPage.tsx`): an unassessed pet used to
@@ -141,7 +140,7 @@ investigating it a **more serious bug** turned up in the DB trigger itself:
   Assessment) - it's not a substitute entry point for a brand-new pet, just
   another ordinary bookable Grooming service.
 - **"Last assessed X ago"**: new `client/src/shared/utils/
-  formatRelativeTime.ts` (no relative-time helper existed anywhere in the
+formatRelativeTime.ts` (no relative-time helper existed anywhere in the
   client before this). Shown on `PetCard.tsx` (Pet Manager grid, both
   customer and staff "View Pets") and `PetDetailPanel.tsx` (pet profile,
   both customer and staff views) whenever `assessed_at` is set. Deliberately

@@ -19,7 +19,10 @@ function createMockSupabase() {
       { id: 'branch-southwoods', name: 'Southwoods' },
     ],
     availability: new Map<string, { is_available: boolean }>(),
-    packages: new Map<string, { id: string; branch_id: string; name: string }>(),
+    packages: new Map<
+      string,
+      { id: string; branch_id: string; name: string }
+    >(),
     packageServices: new Map<string, Set<string>>(),
     discounts: new Map<
       string,

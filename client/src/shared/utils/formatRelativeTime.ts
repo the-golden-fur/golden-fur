@@ -11,7 +11,10 @@ const YEAR = 365 * DAY;
  * Deliberately coarse (months/years, not weeks) - this is for "how stale is
  * this" context, not precise scheduling.
  */
-export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+export function formatRelativeTime(
+  iso: string,
+  now: Date = new Date()
+): string {
   const then = new Date(iso);
   const diffMs = now.getTime() - then.getTime();
 

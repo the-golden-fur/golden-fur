@@ -309,8 +309,8 @@ export function PetDetailPanel({
             </dl>
             {!pet.weight_class || !pet.coat_type ? (
               <p className={styles.copy}>
-                This pet needs an Initial Assessment visit before most
-                services can be booked.
+                This pet needs an Initial Assessment visit before most services
+                can be booked.
                 {isStaff
                   ? ' Use Edit above to record the weight class and coat type once the pet has been physically weighed and checked.'
                   : ''}
