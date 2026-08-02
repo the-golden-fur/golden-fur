@@ -3,6 +3,7 @@ import { createPet, uploadPetPhoto } from '../../../api/customer.api';
 import type {
   Pet,
   PetCoatType,
+  PetCreatePayloadStaff,
   PetGender,
   PetType,
   PetWeightClass,
@@ -24,9 +25,24 @@ interface PetFormProps {
   customerId: string;
   accessToken: string;
   onCreated: (pet: Pet) => void;
+  /**
+   * Client interview finding: a customer cannot set weight_class/coat_type
+   * (they'd otherwise be able to manipulate Grooming price/Hotel cage size)
+   * - the server rejects those fields outright from a non-staff caller (see
+   * pet.validator.ts). Only a staff-authorized caller (walk-in intake,
+   * Daycare check-in, Receptionist booking-on-behalf) sees those inputs
+   * here, and only they may record the physical weigh-in/coat check. A pet
+   * created without them stays "Unassessed" until staff sets them later.
+   */
+  isStaff?: boolean;
 }
 
-export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
+export function PetForm({
+  customerId,
+  accessToken,
+  onCreated,
+  isStaff = false,
+}: PetFormProps) {
   const [name, setName] = useState('');
   const [petType, setPetType] = useState<PetType | ''>('');
   const [breedId, setBreedId] = useState<string | null>(null);
@@ -41,11 +57,12 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    // AC-4: validates name/pet_type/weight_class/coat_type as required, and
-    // (Issue #77 AC-4) breed as required client-side even though breed_id is
-    // nullable at the schema level.
-    if (!name.trim() || !petType || !weightClass || !coatType) {
-      setError('Name, pet type, weight class, and coat type are required.');
+    // AC-4: validates name/pet_type as required, and (Issue #77 AC-4) breed
+    // as required client-side even though breed_id is nullable at the schema
+    // level. weight_class/coat_type are optional even for a staff-authorized
+    // caller - a pet can be registered before it's physically weighed.
+    if (!name.trim() || !petType) {
+      setError('Name and pet type are required.');
       return;
     }
 
@@ -57,15 +74,17 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
     setError(null);
     setIsSubmitting(true);
 
-    const result = await createPet(customerId, accessToken, {
+    const payload: PetCreatePayloadStaff = {
       name: name.trim(),
       pet_type: petType,
       breed_id: breedId,
-      weight_class: weightClass,
-      coat_type: coatType,
       ...(gender ? { gender } : {}),
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
-    });
+      ...(isStaff && weightClass ? { weight_class: weightClass } : {}),
+      ...(isStaff && coatType ? { coat_type: coatType } : {}),
+    };
+
+    const result = await createPet(customerId, accessToken, payload);
 
     if (result.error || !result.data) {
       setIsSubmitting(false);
@@ -177,38 +196,53 @@ export function PetForm({ customerId, accessToken, onCreated }: PetFormProps) {
           onChange={(event) => setDateOfBirth(event.target.value)}
         />
       </label>
-      <label className={styles.field}>
-        <span className={styles.label}>Weight class</span>
-        <select
-          className={styles.input}
-          value={weightClass}
-          onChange={(event) =>
-            setWeightClass(event.target.value as PetWeightClass)
-          }
-        >
-          <option value="">Select a weight class</option>
-          {WEIGHT_CLASS_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={styles.field}>
-        <span className={styles.label}>Coat type</span>
-        <select
-          className={styles.input}
-          value={coatType}
-          onChange={(event) => setCoatType(event.target.value as PetCoatType)}
-        >
-          <option value="">Select a coat type</option>
-          {COAT_TYPE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
+      {isStaff ? (
+        <>
+          <label className={styles.field}>
+            <span className={styles.label}>
+              Weight class (optional - leave blank if not yet weighed)
+            </span>
+            <select
+              className={styles.input}
+              value={weightClass}
+              onChange={(event) =>
+                setWeightClass(event.target.value as PetWeightClass)
+              }
+            >
+              <option value="">Not yet assessed</option>
+              {WEIGHT_CLASS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>
+              Coat type (optional - leave blank if not yet assessed)
+            </span>
+            <select
+              className={styles.input}
+              value={coatType}
+              onChange={(event) =>
+                setCoatType(event.target.value as PetCoatType)
+              }
+            >
+              <option value="">Not yet assessed</option>
+              {COAT_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      ) : (
+        <p className={styles.copy}>
+          Weight class and coat type will be recorded by staff once the pet is
+          brought onsite for its initial assessment.
+        </p>
+      )}
       {error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

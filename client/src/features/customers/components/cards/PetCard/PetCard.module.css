@@ -82,3 +82,8 @@
   font-weight: var(--weight-semibold);
   padding: 0 var(--space-1);
 }
+
+.assessedAt {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}

@@ -54,14 +54,14 @@ const PET_TYPE_LABEL: Record<Pet['pet_type'], string> = {
   Cat: 'Cat',
 };
 
-const WEIGHT_CLASS_LABEL: Record<Pet['weight_class'], string> = {
+const WEIGHT_CLASS_LABEL: Record<NonNullable<Pet['weight_class']>, string> = {
   S: 'Small',
   M: 'Medium',
   L: 'Large',
   XL: 'XL',
 };
 
-const COAT_TYPE_LABEL: Record<Pet['coat_type'], string> = {
+const COAT_TYPE_LABEL: Record<NonNullable<Pet['coat_type']>, string> = {
   SC: 'Short coat',
   LC: 'Long coat',
 };
@@ -74,7 +74,9 @@ const COAT_TYPE_LABEL: Record<Pet['coat_type'], string> = {
  * instead of leaving a small pet able to pick a Large/XL cage (or vice
  * versa) with no guidance at all.
  */
-function deriveHotelCageSize(serviceName: string): Pet['weight_class'] | null {
+function deriveHotelCageSize(
+  serviceName: string
+): NonNullable<Pet['weight_class']> | null {
   const lower = serviceName.toLowerCase();
   if (lower.includes('xl')) return 'XL';
   if (lower.includes('large')) return 'L';
@@ -371,23 +373,71 @@ export function CustomerBookingFlowPage() {
     [pets, selectedPetId]
   );
 
+  // Client interview finding: a pet with no recorded weight_class/coat_type
+  // has never been staff-assessed onsite, and can only book a service
+  // explicitly flagged as not requiring one (Initial Assessment) - never a
+  // package. Mirrors the server-side gate in booking.service.ts.
+  const isSelectedPetAssessed = Boolean(
+    selectedPet?.weight_class && selectedPet.coat_type
+  );
+
   const selectedBranch = useMemo(
     () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
     [branches, selectedBranchId]
   );
 
-  const availableCategories = useMemo(
-    () =>
-      SERVICE_CATEGORIES.filter(
-        (candidate) =>
-          candidate !== 'Veterinary' || (selectedBranch?.is_vet_branch ?? true)
-      ),
-    [selectedBranch]
-  );
+  const availableCategories = useMemo(() => {
+    // An unassessed pet can only ever book a Grooming service flagged
+    // requires_assessed_pet=false (Initial Assessment) - Hotel/Daycare/
+    // Veterinary are always dead ends for it, so don't even offer those
+    // tabs.
+    if (!isSelectedPetAssessed) {
+      return ['Grooming'] as ServiceCategory[];
+    }
+
+    return SERVICE_CATEGORIES.filter(
+      (candidate) =>
+        candidate !== 'Veterinary' || (selectedBranch?.is_vet_branch ?? true)
+    );
+  }, [selectedBranch, isSelectedPetAssessed]);
+
+  // For an unassessed pet, Initial Assessment is the only thing bookable at
+  // all (see availableCategories above) - once the branch's catalog has
+  // loaded, pre-select it automatically instead of making the customer find
+  // and click the one option in an otherwise-empty-looking Service step.
+  useEffect(() => {
+    if (
+      isSelectedPetAssessed ||
+      !selectedBranchId ||
+      allServices.length === 0
+    ) {
+      return;
+    }
+
+    const assessmentService = allServices.find(
+      (service) =>
+        service.category === 'Grooming' && !service.requires_assessed_pet
+    );
+
+    if (assessmentService) {
+      handleCategorySelect('Grooming');
+      handleServiceSelect(assessmentService.id);
+    }
+    // handleCategorySelect/handleServiceSelect are plain function
+    // declarations recreated every render (not memoized) - including them
+    // would re-run this effect on every render instead of only when the
+    // pet/branch/catalog actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelectedPetAssessed, selectedPetId, selectedBranchId, allServices]);
 
   const servicesForCategory = useMemo(
-    () => allServices.filter((service) => service.category === category),
-    [allServices, category]
+    () =>
+      allServices.filter(
+        (service) =>
+          service.category === category &&
+          (isSelectedPetAssessed || !service.requires_assessed_pet)
+      ),
+    [allServices, category, isSelectedPetAssessed]
   );
 
   const selectedService = useMemo(
@@ -666,6 +716,19 @@ export function CustomerBookingFlowPage() {
 
   function handlePetSelect(petId: string) {
     setSelectedPetId(petId);
+    // Clears any category/service selection carried over from a previously
+    // selected pet - important since an unassessed pet can only book
+    // Initial Assessment, so a selection valid for one pet may not be for
+    // another (mirrors handleBranchSelect's own reset below).
+    setCategory('');
+    setSelectionMode('service');
+    setSelectedServiceId('');
+    setSelectedPackageId('');
+    setAddonServiceIds([]);
+    setSelectedSlot(null);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    resetHotelPreferences();
   }
 
   function resetHotelPreferences() {
@@ -989,9 +1052,17 @@ export function CustomerBookingFlowPage() {
               >
                 <span className={styles.optionTitle}>{pet.name}</span>
                 <span className={styles.optionMeta}>
-                  {PET_TYPE_LABEL[pet.pet_type]} &middot;{' '}
-                  {WEIGHT_CLASS_LABEL[pet.weight_class]} ({pet.weight_class})
-                  &middot; {COAT_TYPE_LABEL[pet.coat_type]}
+                  {PET_TYPE_LABEL[pet.pet_type]}
+                  {pet.weight_class && pet.coat_type ? (
+                    <>
+                      {' '}
+                      &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
+                      {pet.weight_class}) &middot;{' '}
+                      {COAT_TYPE_LABEL[pet.coat_type]}
+                    </>
+                  ) : (
+                    <> &middot; Not yet assessed</>
+                  )}
                 </span>
               </button>
             ))}
@@ -1002,6 +1073,7 @@ export function CustomerBookingFlowPage() {
               <PetForm
                 customerId={effectiveCustomerId}
                 accessToken={accessToken!}
+                isStaff={isReceptionistMode}
                 onCreated={(pet) => {
                   setPets((current) => [...current, pet]);
                   setSelectedPetId(pet.id);
@@ -1067,7 +1139,7 @@ export function CustomerBookingFlowPage() {
                 >
                   Individual service
                 </button>
-                {packages.length > 0 ? (
+                {packages.length > 0 && isSelectedPetAssessed ? (
                   <button
                     type="button"
                     className={`${styles.tab} ${
@@ -1081,7 +1153,15 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
-            {category === 'Hotel' && selectedPet ? (
+            {selectedPet && !isSelectedPetAssessed ? (
+              <p className={styles.copy}>
+                {selectedPet.name} hasn&apos;t been assessed by staff yet
+                (weight class and coat type are recorded onsite). Only Initial
+                Assessment can be booked for this pet until then.
+              </p>
+            ) : null}
+
+            {category === 'Hotel' && selectedPet?.weight_class ? (
               <p className={styles.copy}>
                 {selectedPet.name} is{' '}
                 {WEIGHT_CLASS_LABEL[selectedPet.weight_class]} (
@@ -1100,7 +1180,7 @@ export function CustomerBookingFlowPage() {
                 {servicesForCategory.map((service) => {
                   const isRecommendedCage =
                     category === 'Hotel' &&
-                    selectedPet !== null &&
+                    selectedPet?.weight_class != null &&
                     deriveHotelCageSize(service.name) ===
                       selectedPet.weight_class;
 
@@ -1171,7 +1251,8 @@ export function CustomerBookingFlowPage() {
               slotDurationMinutes={slotDurationMinutes}
               petWeightClass={
                 category === 'Hotel'
-                  ? pets.find((pet) => pet.id === selectedPetId)?.weight_class
+                  ? (pets.find((pet) => pet.id === selectedPetId)
+                      ?.weight_class ?? undefined)
                   : undefined
               }
               viewerMode={isReceptionistMode ? 'staff' : 'customer'}

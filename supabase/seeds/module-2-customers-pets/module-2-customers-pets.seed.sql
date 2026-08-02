@@ -85,34 +85,57 @@ begin
 end $$;
 
 -- ============================================================
--- Pets: 1-2 per customer, varied pet_type/weight_class/coat_type
+-- Pets: 2-3 per customer, varied pet_type/weight_class/coat_type, and a
+-- realistic mix of assessed vs. unassessed (client interview finding -
+-- weight_class/coat_type are staff-only, set onsite - see
+-- ...073_m02_pets_assessment_lock.sql). Each customer gets at least one
+-- already-assessed pet (weight_class/coat_type/assessed_by/assessed_at all
+-- set, assessed_at varied per pet via assessed_days_ago so "last assessed
+-- X ago" isn't identical across the board) and one freshly-added,
+-- never-assessed pet (weight_class/coat_type/assessed_by/assessed_at all
+-- NULL - no assessed_days_ago key at all).
 -- ============================================================
 
 do $$
 declare
   v_customer record;
   v_pet jsonb;
+  v_assessor_id uuid;
   v_pets_by_email jsonb := '{
     "customer1@goldenfur.com": [
-      {"name": "Max", "pet_type": "Dog", "weight_class": "M", "coat_type": "SC"},
-      {"name": "Luna", "pet_type": "Cat", "weight_class": "S", "coat_type": "LC"}
+      {"name": "Max", "pet_type": "Dog", "weight_class": "M", "coat_type": "SC", "assessed_days_ago": 45},
+      {"name": "Luna", "pet_type": "Cat", "weight_class": "S", "coat_type": "LC", "assessed_days_ago": 10},
+      {"name": "Cooper", "pet_type": "Dog"}
     ],
     "customer2@goldenfur.com": [
-      {"name": "Rex", "pet_type": "Dog", "weight_class": "L", "coat_type": "LC"}
+      {"name": "Rex", "pet_type": "Dog", "weight_class": "L", "coat_type": "LC", "assessed_days_ago": 90},
+      {"name": "Whiskers", "pet_type": "Cat"}
     ],
     "customer3@goldenfur.com": [
-      {"name": "Bruno", "pet_type": "Dog", "weight_class": "XL", "coat_type": "SC"},
-      {"name": "Mimi", "pet_type": "Cat", "weight_class": "M", "coat_type": "LC"}
+      {"name": "Bruno", "pet_type": "Dog", "weight_class": "XL", "coat_type": "SC", "assessed_days_ago": 200},
+      {"name": "Mimi", "pet_type": "Cat", "weight_class": "M", "coat_type": "LC", "assessed_days_ago": 5},
+      {"name": "Nala", "pet_type": "Cat"}
     ],
     "customer4@goldenfur.com": [
-      {"name": "Coco", "pet_type": "Cat", "weight_class": "L", "coat_type": "SC"}
+      {"name": "Coco", "pet_type": "Cat", "weight_class": "L", "coat_type": "SC", "assessed_days_ago": 400},
+      {"name": "Buddy", "pet_type": "Dog"}
     ],
     "customer5@goldenfur.com": [
-      {"name": "Bella", "pet_type": "Dog", "weight_class": "S", "coat_type": "LC"},
-      {"name": "Simba", "pet_type": "Cat", "weight_class": "XL", "coat_type": "SC"}
+      {"name": "Bella", "pet_type": "Dog", "weight_class": "S", "coat_type": "LC", "assessed_days_ago": 20},
+      {"name": "Simba", "pet_type": "Cat", "weight_class": "XL", "coat_type": "SC", "assessed_days_ago": 60},
+      {"name": "Milo", "pet_type": "Cat"}
     ]
   }'::jsonb;
 begin
+  -- Whoever assessed these seed pets - any seeded Receptionist works, this
+  -- is display-only (assessed_by isn't currently shown anywhere - see
+  -- ...19-pet-assessment-gate's follow-up doc).
+  select id into v_assessor_id from public.staff_profiles where role = 'Receptionist' limit 1;
+
+  if v_assessor_id is null then
+    raise notice 'module-2 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = NULL (has module-1''s seed run first?)';
+  end if;
+
   for v_customer in
     select id, account_email from public.customer_profiles where account_email like 'customer%@goldenfur.com'
   loop
@@ -120,13 +143,21 @@ begin
     loop
       -- breed_id intentionally left NULL (nullable per Issue #71) - none of
       -- these seed rows need a specific seeded breed.
-      insert into public.pets (customer_id, name, pet_type, weight_class, coat_type)
+      insert into public.pets (
+        customer_id, name, pet_type, weight_class, coat_type, assessed_by, assessed_at
+      )
       values (
         v_customer.id,
         v_pet ->> 'name',
         (v_pet ->> 'pet_type')::public.pet_type,
         (v_pet ->> 'weight_class')::public.pet_weight_class,
-        (v_pet ->> 'coat_type')::public.pet_coat_type
+        (v_pet ->> 'coat_type')::public.pet_coat_type,
+        case when v_pet ? 'assessed_days_ago' then v_assessor_id else null end,
+        case
+          when v_pet ? 'assessed_days_ago'
+          then now() - ((v_pet ->> 'assessed_days_ago') || ' days')::interval
+          else null
+        end
       );
     end loop;
   end loop;

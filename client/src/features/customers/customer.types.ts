@@ -45,25 +45,35 @@ export interface Pet {
   photo_url: string | null;
   gender: PetGender | null;
   date_of_birth: string | null;
-  weight_class: PetWeightClass;
-  coat_type: PetCoatType;
+  /** NULL until staff records a physical assessment onsite - a customer can
+   * never set these (server-enforced, see pet.controller.ts). */
+  weight_class: PetWeightClass | null;
+  coat_type: PetCoatType | null;
+  assessed_by: string | null;
+  assessed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/** Customer-facing create payload - weight_class/coat_type are staff-only,
+ * see PetCreatePayloadStaff. */
 export interface PetCreatePayload {
   name: string;
   pet_type: PetType;
-  weight_class: PetWeightClass;
-  coat_type: PetCoatType;
   breed_id?: string;
   gender?: PetGender;
   date_of_birth?: string;
 }
 
+export interface PetCreatePayloadStaff extends PetCreatePayload {
+  weight_class?: PetWeightClass;
+  coat_type?: PetCoatType;
+}
+
 export type PetUpdatePayload = Partial<PetCreatePayload>;
+export type PetUpdatePayloadStaff = Partial<PetCreatePayloadStaff>;
 
 export interface PetHealthCondition {
   id: string;

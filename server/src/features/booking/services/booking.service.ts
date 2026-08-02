@@ -35,8 +35,16 @@ function throwWithStatus(statusCode: number, message: string): never {
 interface PetRow {
   id: string;
   customer_id: string;
-  weight_class: 'S' | 'M' | 'L' | 'XL';
-  coat_type: 'SC' | 'LC';
+  weight_class: 'S' | 'M' | 'L' | 'XL' | null;
+  coat_type: 'SC' | 'LC' | null;
+}
+
+/** Client interview finding: weight_class/coat_type are staff-only-set
+ * (...073_m02_pets_assessment_lock.sql) and start out NULL - a pet in that
+ * state can only book a service flagged requires_assessed_pet = false (the
+ * seeded "Initial Assessment" service), never a package. */
+function isPetAssessed(pet: PetRow): boolean {
+  return pet.weight_class !== null && pet.coat_type !== null;
 }
 
 interface CreateBookingParams {
@@ -259,6 +267,8 @@ export async function createBooking({
     throwWithStatus(403, 'Pet does not belong to this customer');
   }
 
+  const petAssessed = isPetAssessed(pet as PetRow);
+
   // #53: the actual enforcement boundary, before any capacity check.
   await assertVeterinaryBranchEligibility({
     branchId: input.branch_id,
@@ -282,8 +292,22 @@ export async function createBooking({
       );
     }
 
+    if (!petAssessed && service.requires_assessed_pet) {
+      throwWithStatus(
+        403,
+        'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking this service'
+      );
+    }
+
     basePrice = resolveServicePrice(service, pet as PetRow);
   } else {
+    if (!petAssessed) {
+      throwWithStatus(
+        403,
+        'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking a package'
+      );
+    }
+
     const pkg = await getPackageById(input.package_id!);
 
     if (!pkg.is_active) {
@@ -333,13 +357,15 @@ export async function createBooking({
     input.service_category === 'Daycare'
   ) {
     // The authoritative submission-time check - never skipped even though the
-    // Slot Picker already ran the same check read-only (Guide #51).
+    // Slot Picker already ran the same check read-only (Guide #51). Hotel/
+    // Daycare services are never assessment-exempt, so the petAssessed gate
+    // above already guarantees weight_class is non-null here.
     const capacity = await checkCapacity({
       branchId: input.branch_id,
       serviceCategory: input.service_category,
       scheduledStart: input.scheduled_start,
       scheduledEnd: input.scheduled_end,
-      petWeightClass: (pet as PetRow).weight_class,
+      petWeightClass: (pet as PetRow).weight_class!,
     });
 
     if (!capacity.available) {

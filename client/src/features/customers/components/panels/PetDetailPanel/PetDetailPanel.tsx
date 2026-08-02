@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { updatePet, uploadPetPhoto } from '../../../api/customer.api';
+import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import { PetHealthConditionBadge } from '../../badges/PetHealthConditionBadge/PetHealthConditionBadge';
 import { BreedSelect } from '../../forms/BreedSelect/BreedSelect';
 import { MedicalNoteList } from '../../lists/MedicalNoteList/MedicalNoteList';
@@ -25,6 +26,13 @@ interface PetDetailPanelProps {
    * (Receptionist/Admin/Supervisor/Superadmin) - mirrors the server's own
    * PATCH /pets/:id authorization (pet.controller.ts). */
   canEdit: boolean;
+  /** Client interview finding: only a staff-authorized editor may view the
+   * weight_class/coat_type edit inputs or submit changes to them - the
+   * server rejects those fields outright from the pet's own owner (see
+   * pet.validator.ts). Read-only display of the current values is shown to
+   * everyone. Defaults false so the customer portal's PetProfilePage (which
+   * never passes this prop) can't accidentally elevate. */
+  isStaff?: boolean;
   onUpdated: (pet: Pet) => void;
 }
 
@@ -40,6 +48,7 @@ export function PetDetailPanel({
   pet,
   accessToken,
   canEdit,
+  isStaff = false,
   onUpdated,
 }: PetDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -48,10 +57,12 @@ export function PetDetailPanel({
   const [breedId, setBreedId] = useState<string | null>(pet.breed_id);
   const [gender, setGender] = useState<PetGender | ''>(pet.gender ?? '');
   const [dateOfBirth, setDateOfBirth] = useState(pet.date_of_birth ?? '');
-  const [weightClass, setWeightClass] = useState<PetWeightClass>(
-    pet.weight_class
+  const [weightClass, setWeightClass] = useState<PetWeightClass | ''>(
+    pet.weight_class ?? ''
   );
-  const [coatType, setCoatType] = useState<PetCoatType>(pet.coat_type);
+  const [coatType, setCoatType] = useState<PetCoatType | ''>(
+    pet.coat_type ?? ''
+  );
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -62,8 +73,8 @@ export function PetDetailPanel({
     setBreedId(pet.breed_id);
     setGender(pet.gender ?? '');
     setDateOfBirth(pet.date_of_birth ?? '');
-    setWeightClass(pet.weight_class);
-    setCoatType(pet.coat_type);
+    setWeightClass(pet.weight_class ?? '');
+    setCoatType(pet.coat_type ?? '');
     setPhotoFile(null);
     setError(null);
     setIsEditing(true);
@@ -82,10 +93,10 @@ export function PetDetailPanel({
       name: name.trim(),
       pet_type: petType,
       breed_id: breedId,
-      weight_class: weightClass,
-      coat_type: coatType,
       gender: gender || undefined,
       date_of_birth: dateOfBirth || undefined,
+      ...(isStaff && weightClass ? { weight_class: weightClass } : {}),
+      ...(isStaff && coatType ? { coat_type: coatType } : {}),
     });
 
     if (result.error || !result.data) {
@@ -192,38 +203,44 @@ export function PetDetailPanel({
                 onChange={(event) => setDateOfBirth(event.target.value)}
               />
             </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Weight class</span>
-              <select
-                className={styles.input}
-                value={weightClass}
-                onChange={(event) =>
-                  setWeightClass(event.target.value as PetWeightClass)
-                }
-              >
-                {WEIGHT_CLASS_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Coat type</span>
-              <select
-                className={styles.input}
-                value={coatType}
-                onChange={(event) =>
-                  setCoatType(event.target.value as PetCoatType)
-                }
-              >
-                {COAT_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {isStaff ? (
+              <>
+                <label className={styles.field}>
+                  <span className={styles.label}>Weight class</span>
+                  <select
+                    className={styles.input}
+                    value={weightClass}
+                    onChange={(event) =>
+                      setWeightClass(event.target.value as PetWeightClass)
+                    }
+                  >
+                    <option value="">Not yet assessed</option>
+                    {WEIGHT_CLASS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.label}>Coat type</span>
+                  <select
+                    className={styles.input}
+                    value={coatType}
+                    onChange={(event) =>
+                      setCoatType(event.target.value as PetCoatType)
+                    }
+                  >
+                    <option value="">Not yet assessed</option>
+                    {COAT_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
 
             {error ? (
               <p className={styles.errorBanner} role="alert">
@@ -271,13 +288,34 @@ export function PetDetailPanel({
               ) : null}
               <div className={styles.attribute}>
                 <dt className={styles.attributeLabel}>Weight class</dt>
-                <dd className={styles.attributeValue}>{pet.weight_class}</dd>
+                <dd className={styles.attributeValue}>
+                  {pet.weight_class ?? 'Not yet assessed'}
+                </dd>
               </div>
               <div className={styles.attribute}>
                 <dt className={styles.attributeLabel}>Coat type</dt>
-                <dd className={styles.attributeValue}>{pet.coat_type}</dd>
+                <dd className={styles.attributeValue}>
+                  {pet.coat_type ?? 'Not yet assessed'}
+                </dd>
               </div>
+              {pet.assessed_at ? (
+                <div className={styles.attribute}>
+                  <dt className={styles.attributeLabel}>Last assessed</dt>
+                  <dd className={styles.attributeValue}>
+                    {formatRelativeTime(pet.assessed_at)}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
+            {!pet.weight_class || !pet.coat_type ? (
+              <p className={styles.copy}>
+                This pet needs an Initial Assessment visit before most services
+                can be booked.
+                {isStaff
+                  ? ' Use Edit above to record the weight class and coat type once the pet has been physically weighed and checked.'
+                  : ''}
+              </p>
+            ) : null}
 
             {canEdit ? (
               <button

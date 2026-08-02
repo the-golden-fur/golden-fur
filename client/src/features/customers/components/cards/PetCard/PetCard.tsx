@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import type { Pet } from '../../../customer.types';
 import styles from './PetCard.module.css';
 
@@ -32,9 +33,20 @@ export function PetCard({ pet, linkBasePath = '/portal/pets' }: PetCardProps) {
         </div>
       </div>
       <div className={styles.badges}>
-        <span className={styles.badge}>{pet.weight_class}</span>
-        <span className={styles.badge}>{pet.coat_type}</span>
+        {pet.weight_class && pet.coat_type ? (
+          <>
+            <span className={styles.badge}>{pet.weight_class}</span>
+            <span className={styles.badge}>{pet.coat_type}</span>
+          </>
+        ) : (
+          <span className={styles.badge}>Not yet assessed</span>
+        )}
       </div>
+      {pet.assessed_at ? (
+        <span className={styles.assessedAt}>
+          Last assessed {formatRelativeTime(pet.assessed_at)}
+        </span>
+      ) : null}
     </Link>
   );
 }

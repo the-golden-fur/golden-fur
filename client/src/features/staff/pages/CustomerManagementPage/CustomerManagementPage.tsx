@@ -351,6 +351,7 @@ export function CustomerManagementPage() {
                     customerId={customer.id}
                     accessToken={accessToken}
                     onCreated={(pet) => handlePetCreated(customer.id, pet)}
+                    isStaff
                   />
                 ) : null}
               </li>

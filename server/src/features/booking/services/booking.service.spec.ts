@@ -84,6 +84,14 @@ const PET = {
   weight_class: 'S',
   coat_type: 'SC',
 };
+// Client interview finding: a pet never staff-assessed onsite has no
+// weight_class/coat_type (...073_m02_pets_assessment_lock.sql).
+const UNASSESSED_PET = {
+  id: 'pet-2',
+  customer_id: CUSTOMER_ID,
+  weight_class: null,
+  coat_type: null,
+};
 
 const DEFAULT_POLICY = {
   id: 'policy-default',
@@ -101,7 +109,18 @@ const GROOMING_SERVICE = {
   name: 'Full Groom',
   base_price: 300,
   is_active: true,
+  requires_assessed_pet: true,
   service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
+} as never;
+
+const ASSESSMENT_SERVICE = {
+  id: 'service-assessment',
+  category: 'Grooming',
+  name: 'Initial Assessment',
+  base_price: 0,
+  is_active: true,
+  requires_assessed_pet: false,
+  service_pricing_tiers: [],
 } as never;
 
 const DAYCARE_SERVICE = {
@@ -308,6 +327,71 @@ describe('booking.service (#51)', () => {
     await expect(
       createBooking({ requesterId: CUSTOMER_ID, input: BASE_INPUT })
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  describe('assessment gate (client interview finding: weight_class/coat_type are staff-only, and drive Grooming price/Hotel cage size)', () => {
+    it('rejects booking a normal service against an unassessed pet', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults({ data: UNASSESSED_PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: { ...BASE_INPUT, pet_id: UNASSESSED_PET.id },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('rejects booking a package against an unassessed pet', async () => {
+      queueFromResults({ data: UNASSESSED_PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            pet_id: UNASSESSED_PET.id,
+            branch_id: 'branch-1',
+            service_category: 'Daycare',
+            package_id: 'package-1',
+            scheduled_start: BASE_INPUT.scheduled_start,
+            scheduled_end: BASE_INPUT.scheduled_end,
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(getPackageById).not.toHaveBeenCalled();
+    });
+
+    it('allows booking the Initial Assessment service (requires_assessed_pet=false) against an unassessed pet', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(ASSESSMENT_SERVICE);
+      queueFromResults(
+        { data: UNASSESSED_PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        {
+          data: { ...INSERTED_BOOKING, id: 'booking-4', total_price: 0 },
+          error: null,
+        }, // insert
+        { data: null, error: null }, // preference insert
+        { data: [{ id: 'booking-4' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      const booking = await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          pet_id: UNASSESSED_PET.id,
+          service_id: ASSESSMENT_SERVICE.id,
+        },
+      });
+
+      expect(booking.id).toBe('booking-1');
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ total_price: 0 });
+    });
   });
 
   it('AC-5: the race loser is deleted and receives the capacity-taken error', async () => {

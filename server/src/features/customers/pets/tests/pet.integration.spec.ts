@@ -16,6 +16,13 @@ interface QueryResult {
   error: unknown;
 }
 
+interface RecordedWrite {
+  method: string;
+  payload: unknown;
+}
+
+const recordedWrites: RecordedWrite[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
 
@@ -24,8 +31,14 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
-    builder.insert = vi.fn(() => builder);
-    builder.update = vi.fn(() => builder);
+    builder.insert = vi.fn((payload: unknown) => {
+      recordedWrites.push({ method: 'insert', payload });
+      return builder;
+    });
+    builder.update = vi.fn((payload: unknown) => {
+      recordedWrites.push({ method: 'update', payload });
+      return builder;
+    });
     builder.delete = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.not = vi.fn(() => builder);
@@ -46,9 +59,15 @@ function mockCaller(sub: string) {
 }
 
 const NOT_STAFF: QueryResult = { data: null, error: null };
+// Customer-facing payload - weight_class/coat_type are staff-only (client
+// interview finding: a customer could otherwise manipulate Grooming price /
+// Hotel cage size by under-reporting either field). See pet.validator.ts.
 const VALID_PET_PAYLOAD = {
   name: 'Buddy',
   pet_type: 'Dog',
+};
+const VALID_STAFF_PET_PAYLOAD = {
+  ...VALID_PET_PAYLOAD,
   weight_class: 'M',
   coat_type: 'SC',
 };
@@ -56,6 +75,7 @@ const VALID_PET_PAYLOAD = {
 describe('pet CRUD (Issue #32)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    recordedWrites.length = 0;
   });
 
   describe('POST /customers/:customerId/pets', () => {
@@ -73,6 +93,9 @@ describe('pet CRUD (Issue #32)', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.pet).toMatchObject({ id: 'pet-1' });
+      // No weight_class/coat_type submitted at all - never stamped.
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_by');
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_at');
     });
 
     it('AC-2: returns 400 with a missing required field', async () => {
@@ -81,10 +104,53 @@ describe('pet CRUD (Issue #32)', () => {
       const res = await request(app)
         .post('/customers/customer-1/pets')
         .set('Authorization', 'Bearer token')
-        .send({ name: 'Buddy', pet_type: 'Dog' });
+        .send({ name: 'Buddy' });
 
       expect(res.status).toBe(400);
       expect(res.body.details).toBeDefined();
+    });
+
+    it('rejects weight_class/coat_type from a customer self-service create (staff-only, client interview finding)', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .post('/customers/customer-1/pets')
+        .set('Authorization', 'Bearer token')
+        .send({ ...VALID_PET_PAYLOAD, weight_class: 'M', coat_type: 'SC' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts weight_class/coat_type from an authorized staff member creating on behalf of a customer', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Receptionist' }, error: null },
+        {
+          data: {
+            id: 'pet-1',
+            customer_id: 'customer-2',
+            ...VALID_STAFF_PET_PAYLOAD,
+          },
+          error: null,
+        }
+      );
+
+      const res = await request(app)
+        .post('/customers/customer-2/pets')
+        .set('Authorization', 'Bearer token')
+        .send(VALID_STAFF_PET_PAYLOAD);
+
+      expect(res.status).toBe(201);
+      // A staff-authorized create with both fields set is stamped as
+      // assessed immediately - see resolveAssessmentStamp in
+      // pet.controller.ts (the DB trigger no longer stamps this - see
+      // ...075_m02_pets_assessment_trigger_fix.sql).
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        assessed_by: 'staff-1',
+      });
+      expect(
+        (recordedWrites[0]?.payload as { assessed_at?: string }).assessed_at
+      ).toBeTruthy();
     });
 
     it('AC-5: allows an authorized staff member to create a pet on behalf of a customer', async () => {
@@ -206,6 +272,77 @@ describe('pet CRUD (Issue #32)', () => {
         .send({ name: 'New Name' });
 
       expect(res.status).toBe(200);
+      // Unrelated field change - never re-stamps.
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_by');
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_at');
+    });
+
+    it('accepts weight_class/coat_type when PATCHed by authorized staff, and stamps assessed_by/assessed_at', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Admin' }, error: null },
+        {
+          data: { id: 'pet-1', weight_class: 'M', coat_type: 'SC' },
+          error: null,
+        }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_class: 'M', coat_type: 'SC' });
+
+      expect(res.status).toBe(200);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        weight_class: 'M',
+        coat_type: 'SC',
+        assessed_by: 'staff-1',
+      });
+      expect(
+        (recordedWrites[0]?.payload as { assessed_at?: string }).assessed_at
+      ).toBeTruthy();
+    });
+
+    it('does not re-stamp when staff resends the same weight_class/coat_type the pet already has (no real change)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        {
+          data: {
+            id: 'pet-1',
+            customer_id: 'customer-1',
+            weight_class: 'M',
+            coat_type: 'SC',
+          },
+          error: null,
+        },
+        { data: { role: 'Admin' }, error: null },
+        { data: { id: 'pet-1', name: 'New Name' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ name: 'New Name', weight_class: 'M', coat_type: 'SC' });
+
+      expect(res.status).toBe(200);
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_by');
+      expect(recordedWrites[0]?.payload).not.toHaveProperty('assessed_at');
+    });
+
+    it("rejects weight_class/coat_type when the pet's own owner PATCHes it (staff-only, client interview finding)", async () => {
+      mockCaller('customer-1');
+      queueFromResults({
+        data: { id: 'pet-1', customer_id: 'customer-1' },
+        error: null,
+      });
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_class: 'M' });
+
+      expect(res.status).toBe(400);
     });
 
     it('AC-4: DELETE returns 403 for an unauthorized staff role', async () => {

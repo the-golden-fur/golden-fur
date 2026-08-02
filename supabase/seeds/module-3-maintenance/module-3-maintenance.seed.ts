@@ -29,7 +29,6 @@ import { createClient } from '@supabase/supabase-js';
 loadEnv({ path: path.resolve(process.cwd(), 'server/.env') });
 
 const GOLDEN_PACKAGE_NAME = 'Golden Package';
-const GOLDEN_PACKAGE_PRICE = 600.0;
 
 // Bath (shampoo) + Blow-dry + Brushing - the fixed ids seeded by migration
 // 20260715034.
@@ -155,7 +154,6 @@ export async function seedGoldenPackage(
         .insert({
           branch_id: branch.id,
           name: GOLDEN_PACKAGE_NAME,
-          bundled_price: GOLDEN_PACKAGE_PRICE,
         })
         .select('id')
         .maybeSingle();

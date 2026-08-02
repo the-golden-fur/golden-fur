@@ -316,6 +316,7 @@ export function DaycareCheckInPage() {
                     customerId={selectedCustomer.id}
                     accessToken={accessToken}
                     onCreated={handlePetRegistered}
+                    isStaff
                   />
                 ) : (
                   <button
