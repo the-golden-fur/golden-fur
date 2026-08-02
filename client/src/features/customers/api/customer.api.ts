@@ -4,11 +4,11 @@ import type {
   CustomerProfile,
   CustomerProfileUpdatePayload,
   Pet,
-  PetCreatePayload,
+  PetCreatePayloadStaff,
   PetHealthCondition,
   PetMedicalNote,
   PetType,
-  PetUpdatePayload,
+  PetUpdatePayloadStaff,
   PetVaccinationRecord,
 } from '../customer.types';
 
@@ -295,7 +295,7 @@ export async function listCustomerPets(
 export async function createPet(
   customerId: string,
   accessToken: string,
-  payload: PetCreatePayload
+  payload: PetCreatePayloadStaff
 ): Promise<CustomerApiResult<Pet>> {
   const response = await fetch(`${API_BASE_URL}/customers/${customerId}/pets`, {
     method: 'POST',
@@ -333,7 +333,7 @@ export async function getPet(
 export async function updatePet(
   petId: string,
   accessToken: string,
-  payload: PetUpdatePayload
+  payload: PetUpdatePayloadStaff
 ): Promise<CustomerApiResult<Pet>> {
   const response = await fetch(`${API_BASE_URL}/pets/${petId}`, {
     method: 'PATCH',

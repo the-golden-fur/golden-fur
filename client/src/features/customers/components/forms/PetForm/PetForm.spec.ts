@@ -40,9 +40,7 @@ describe('PetForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
     expect(
-      await screen.findByText(
-        'Name, pet type, weight class, and coat type are required.'
-      )
+      await screen.findByText('Name and pet type are required.')
     ).toBeInTheDocument();
     expect(createPet).not.toHaveBeenCalled();
   });
@@ -62,12 +60,6 @@ describe('PetForm', () => {
     fireEvent.change(screen.getByLabelText('Pet Type'), {
       target: { value: 'Dog' },
     });
-    fireEvent.change(screen.getByLabelText('Weight class'), {
-      target: { value: 'M' },
-    });
-    fireEvent.change(screen.getByLabelText('Coat type'), {
-      target: { value: 'SC' },
-    });
 
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
@@ -77,7 +69,20 @@ describe('PetForm', () => {
     expect(createPet).not.toHaveBeenCalled();
   });
 
-  it('AC-1/AC-4: submits with all required fields (incl. breed) and calls onCreated', async () => {
+  it("client interview finding: does not render weight class/coat type inputs for a customer's own (non-staff) create", async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByLabelText(/Weight class/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Coat type/)).not.toBeInTheDocument();
+  });
+
+  it('AC-1/AC-4: submits with all required fields (incl. breed) and calls onCreated - no weight_class/coat_type sent by a customer', async () => {
     const pet = {
       id: 'pet-1',
       customer_id: 'customer-1',
@@ -87,8 +92,10 @@ describe('PetForm', () => {
       photo_url: null,
       gender: null,
       date_of_birth: null,
-      weight_class: 'M' as const,
-      coat_type: 'SC' as const,
+      weight_class: null,
+      coat_type: null,
+      assessed_by: null,
+      assessed_at: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     };
@@ -109,10 +116,63 @@ describe('PetForm', () => {
     fireEvent.change(screen.getByLabelText('Pet Type'), {
       target: { value: 'Dog' },
     });
-    fireEvent.change(screen.getByLabelText('Weight class'), {
+
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    await vi.waitFor(() =>
+      expect(createPet).toHaveBeenCalledWith('customer-1', 'token', {
+        name: 'Buddy',
+        pet_type: 'Dog',
+        breed_id: 'breed-1',
+      })
+    );
+    expect(uploadPetPhoto).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(onCreated).toHaveBeenCalledWith(pet));
+  });
+
+  it('a staff-authorized caller sees and can submit weight class/coat type', async () => {
+    const pet = {
+      id: 'pet-1',
+      customer_id: 'customer-2',
+      name: 'Buddy',
+      pet_type: 'Dog' as const,
+      breed_id: 'breed-1',
+      photo_url: null,
+      gender: null,
+      date_of_birth: null,
+      weight_class: 'M' as const,
+      coat_type: 'SC' as const,
+      assessed_by: 'staff-1',
+      assessed_at: '2026-01-01T00:00:00.000Z',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+    vi.mocked(createPet).mockResolvedValue({ data: pet, error: null });
+
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-2',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+        isStaff: true,
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    fireEvent.change(screen.getByLabelText(/Weight class/), {
       target: { value: 'M' },
     });
-    fireEvent.change(screen.getByLabelText('Coat type'), {
+    fireEvent.change(screen.getByLabelText(/Coat type/), {
       target: { value: 'SC' },
     });
 
@@ -125,12 +185,10 @@ describe('PetForm', () => {
 
     await vi.waitFor(() =>
       expect(createPet).toHaveBeenCalledWith(
-        'customer-1',
+        'customer-2',
         'token',
-        expect.objectContaining({ breed_id: 'breed-1' })
+        expect.objectContaining({ weight_class: 'M', coat_type: 'SC' })
       )
     );
-    expect(uploadPetPhoto).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(onCreated).toHaveBeenCalledWith(pet));
   });
 });

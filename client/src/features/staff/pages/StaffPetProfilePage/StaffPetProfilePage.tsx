@@ -140,6 +140,7 @@ export function StaffPetProfilePage() {
         pet={pet}
         accessToken={accessToken}
         canEdit
+        isStaff
         onUpdated={setPet}
       />
     </main>

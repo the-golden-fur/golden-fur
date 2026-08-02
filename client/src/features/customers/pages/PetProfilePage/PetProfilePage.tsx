@@ -82,6 +82,7 @@ export function PetProfilePage() {
         pet={pet}
         accessToken={accessToken}
         canEdit
+        isStaff={false}
         onUpdated={setPet}
       />
     </main>
