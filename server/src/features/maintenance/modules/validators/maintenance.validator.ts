@@ -22,6 +22,7 @@ export const createServiceValidator = z
     category: z.enum(CATEGORIES),
     base_price: z.number().nonnegative(),
     duration_minutes: z.number().int().positive().optional(),
+    requires_assessed_pet: z.boolean().optional(),
   })
   .strict();
 
@@ -32,6 +33,7 @@ export const updateServiceValidator = z
     base_price: z.number().nonnegative().optional(),
     duration_minutes: z.number().int().positive().nullable().optional(),
     is_active: z.boolean().optional(),
+    requires_assessed_pet: z.boolean().optional(),
   })
   .strict();
 

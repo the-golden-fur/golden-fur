@@ -89,6 +89,10 @@ export interface Service {
   base_price: number;
   duration_minutes: number | null;
   is_active: boolean;
+  /** Whether a pet with no recorded weight_class/coat_type (never staff-
+   * assessed onsite) may book this service - false only for the seeded
+   * "Initial Assessment" service. See ...073_m02_pets_assessment_lock.sql. */
+  requires_assessed_pet: boolean;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
