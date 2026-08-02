@@ -96,6 +96,12 @@ export interface Service {
   base_price: number;
   duration_minutes: number | null;
   is_active: boolean;
+  /** Whether a pet with no recorded weight_class/coat_type (never staff-
+   * assessed onsite) may book this service - false only for the seeded
+   * "Initial Assessment" service. Client interview finding: customers
+   * couldn't be trusted to self-report weight/coat, so an unassessed pet
+   * is locked out of every other service until staff records this. */
+  requires_assessed_pet: boolean;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -181,6 +187,7 @@ export interface CreateServicePayload {
   category: ServiceCategory;
   base_price: number;
   duration_minutes?: number;
+  requires_assessed_pet?: boolean;
 }
 
 export interface UpdateServicePayload {
@@ -189,6 +196,7 @@ export interface UpdateServicePayload {
   base_price?: number;
   duration_minutes?: number | null;
   is_active?: boolean;
+  requires_assessed_pet?: boolean;
 }
 
 export interface BranchAvailabilityPayload {

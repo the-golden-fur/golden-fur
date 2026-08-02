@@ -48,6 +48,7 @@ function buildService(overrides: Partial<Service> = {}): Service {
     base_price: 300,
     duration_minutes: null,
     is_active: true,
+    requires_assessed_pet: true,
     created_by: null,
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
@@ -234,6 +235,7 @@ describe('AdminServicesPage', () => {
         name: 'Dematting',
         category: 'Grooming',
         base_price: 350,
+        requires_assessed_pet: true,
       });
     });
 

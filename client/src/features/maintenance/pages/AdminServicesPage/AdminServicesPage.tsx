@@ -34,6 +34,7 @@ interface ServiceFormState {
   category: ServiceCategory;
   basePrice: string;
   durationMinutes: string;
+  requiresAssessedPet: boolean;
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -41,6 +42,7 @@ const EMPTY_FORM: ServiceFormState = {
   category: 'Grooming',
   basePrice: '',
   durationMinutes: '',
+  requiresAssessedPet: true,
 };
 
 function formStateFromService(service: Service): ServiceFormState {
@@ -50,6 +52,7 @@ function formStateFromService(service: Service): ServiceFormState {
     basePrice: String(service.base_price),
     durationMinutes:
       service.duration_minutes === null ? '' : String(service.duration_minutes),
+    requiresAssessedPet: service.requires_assessed_pet,
   };
 }
 
@@ -281,6 +284,7 @@ export function AdminServicesPage() {
         name: form.name.trim(),
         category: form.category,
         base_price: basePrice,
+        requires_assessed_pet: form.requiresAssessedPet,
         ...(durationMinutes !== undefined
           ? { duration_minutes: durationMinutes }
           : {}),
@@ -304,6 +308,7 @@ export function AdminServicesPage() {
       category: form.category,
       base_price: basePrice,
       duration_minutes: durationMinutes ?? null,
+      requires_assessed_pet: form.requiresAssessedPet,
     };
 
     const result = await updateService(editingServiceId, accessToken, payload);
@@ -533,6 +538,14 @@ export function AdminServicesPage() {
                 />
               ) : null}
 
+              <ToggleSwitch
+                label="Requires an assessed pet (off for something like Initial Assessment, which a pet with no recorded weight/coat can still book)"
+                checked={form.requiresAssessedPet}
+                onChange={(checked) =>
+                  setForm((prev) => ({ ...prev, requiresAssessedPet: checked }))
+                }
+              />
+
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
                   {formError}
@@ -573,6 +586,11 @@ export function AdminServicesPage() {
                   <span className={styles.servicePrice}>
                     PHP {service.base_price.toFixed(2)}
                   </span>
+                  {!service.requires_assessed_pet ? (
+                    <span className={styles.categoryBadge}>
+                      No assessment required
+                    </span>
+                  ) : null}
                   <StatusBadge isActive={service.is_active} />
                 </div>
 
