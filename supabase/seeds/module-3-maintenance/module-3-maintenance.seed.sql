@@ -14,9 +14,12 @@
 --   1. service_branch_availability - every base service available at every
 --      branch (#40's disable-a-branch-not-opt-in recommendation).
 --   2. packages / package_services - the Golden Package (Shampoo/Bath,
---      Blow-dry, Brushing), one row per branch per Modules-Features/MA22 -
---      bundled_price 600 is deliberately below the 700 sum of the included
---      services, since a package price is independent (#41 AC-2).
+--      Blow-dry, Brushing), one row per branch per Modules-Features/MA22.
+--      No bundled_price here - Epic B (#82/#83, migration
+--      20260726048_m13_package_pricing_configuration.sql) dropped that
+--      column; the price is now derived on read from the included
+--      services' base_price and the shared package_pricing_configuration
+--      discount percentage.
 --   3. discounts - Senior Citizen + PWD, one row per branch per category
 --      (2 types x 2 branches x 4 categories = 16 rows), inactive by
 --      default. See this folder's .md doc for why 16 rows instead of the
@@ -43,8 +46,8 @@ on conflict (service_id, branch_id) do nothing;
 -- Grooming services
 -- ============================================================
 
-insert into public.packages (branch_id, name, bundled_price)
-select b.id, 'Golden Package', 600.00
+insert into public.packages (branch_id, name)
+select b.id, 'Golden Package'
 from public.branches as b
 where not exists (
   select 1 from public.packages as p

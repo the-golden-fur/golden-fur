@@ -19,10 +19,7 @@ function createMockSupabase() {
       { id: 'branch-southwoods', name: 'Southwoods' },
     ],
     availability: new Map<string, { is_available: boolean }>(),
-    packages: new Map<
-      string,
-      { id: string; branch_id: string; name: string; bundled_price: number }
-    >(),
+    packages: new Map<string, { id: string; branch_id: string; name: string }>(),
     packageServices: new Map<string, Set<string>>(),
     discounts: new Map<
       string,
@@ -97,11 +94,7 @@ function createMockSupabase() {
               }),
             }),
           }),
-          insert: (row: {
-            branch_id: string;
-            name: string;
-            bundled_price: number;
-          }) => {
+          insert: (row: { branch_id: string; name: string }) => {
             packageCounter += 1;
             const created = { id: `package-${packageCounter}`, ...row };
             state.packages.set(created.id, created);
@@ -216,8 +209,11 @@ describe('module-3-maintenance seed', () => {
 
       expect(supabase.state.packages.size).toBe(2);
 
+      // bundled_price is no longer a seeded/stored value - Epic B (#82/#83)
+      // derives it on read from the included services' base_price and the
+      // shared package_pricing_configuration discount percentage.
       for (const pkg of supabase.state.packages.values()) {
-        expect(Number(pkg.bundled_price)).toBe(600);
+        expect(pkg.name).toBe('Golden Package');
         expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
       }
     });
