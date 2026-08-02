@@ -252,7 +252,8 @@ export function CustomerBookingsPage() {
             );
             const petWeightClass =
               booking.service_category === 'Hotel'
-                ? pets.find((pet) => pet.id === booking.pet_id)?.weight_class
+                ? (pets.find((pet) => pet.id === booking.pet_id)
+                    ?.weight_class ?? undefined)
                 : undefined;
             const showStaffPicker =
               (booking.service_category === 'Grooming' ||

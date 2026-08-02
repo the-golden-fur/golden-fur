@@ -78,10 +78,47 @@ const HOTEL_SERVICE = {
   base_price: 800,
   duration_minutes: 1440,
   is_active: true,
+  requires_assessed_pet: true,
   created_by: null,
   updated_by: null,
   created_at: '',
   updated_at: '',
+};
+
+const GROOMING_SERVICE = {
+  id: 'service-1',
+  category: 'Grooming' as const,
+  name: 'Bath',
+  base_price: 300,
+  duration_minutes: 60,
+  is_active: true,
+  requires_assessed_pet: true,
+  created_by: null,
+  updated_by: null,
+  created_at: '',
+  updated_at: '',
+};
+
+const ASSESSMENT_SERVICE = {
+  id: 'service-assessment-1',
+  category: 'Grooming' as const,
+  name: 'Initial Assessment',
+  base_price: 0,
+  duration_minutes: 30,
+  is_active: true,
+  requires_assessed_pet: false,
+  created_by: null,
+  updated_by: null,
+  created_at: '',
+  updated_at: '',
+};
+
+const UNASSESSED_PET = {
+  ...PET,
+  id: 'pet-2',
+  name: 'Choot',
+  weight_class: null,
+  coat_type: null,
 };
 
 const CUSTOMER = {
@@ -223,6 +260,48 @@ describe('CustomerBookingFlowPage', () => {
       ],
       error: null,
     });
+  });
+
+  it('auto-selects Initial Assessment and hides other category tabs for an unassessed pet', async () => {
+    vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+      data: [UNASSESSED_PET],
+      error: null,
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, ASSESSMENT_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Choot')).toBeInTheDocument());
+    await user.click(screen.getByText('Choot'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    // Only the Grooming tab is offered - Hotel/Daycare/Veterinary are
+    // always dead ends for an unassessed pet.
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Hotel')).not.toBeInTheDocument();
+
+    // Initial Assessment is pre-selected without the user clicking it.
+    await waitFor(() =>
+      expect(screen.getByText('Initial Assessment')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Bath')).not.toBeInTheDocument();
+
+    const nextButton = screen.getByText('Next');
+    expect(nextButton).toBeEnabled();
   });
 
   it('never calls the staff-only GET /bookings/policy or /maintenance/* endpoints (regression: customer 403s)', async () => {
