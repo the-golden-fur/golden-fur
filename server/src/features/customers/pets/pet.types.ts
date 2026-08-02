@@ -19,8 +19,13 @@ export interface Pet {
   photo_url: string | null;
   gender: PetGender | null;
   date_of_birth: string | null;
-  weight_class: PetWeightClass;
-  coat_type: PetCoatType;
+  /** NULL until staff records a physical assessment - see
+   * ...073_m02_pets_assessment_lock.sql. Only staff (Receptionist/Admin/
+   * Supervisor/Superadmin) may set these; customers cannot. */
+  weight_class: PetWeightClass | null;
+  coat_type: PetCoatType | null;
+  assessed_by: string | null;
+  assessed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;

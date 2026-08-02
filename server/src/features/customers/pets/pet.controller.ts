@@ -8,7 +8,9 @@ import {
 } from '../customer.types.ts';
 import {
   createPetValidator,
+  createPetValidatorStaff,
   updatePetValidator,
+  updatePetValidatorStaff,
 } from './modules/validators/pet.validator.ts';
 import {
   archivePet,
@@ -74,6 +76,28 @@ async function resolvePet(petId: string) {
   return supabase.from('pets').select('*').eq('id', petId).maybeSingle();
 }
 
+/**
+ * assessed_by/assessed_at are never accepted from client input (see
+ * pet.validator.ts's header) - stamped here rather than by the DB trigger,
+ * since every write in this codebase goes through the shared service-role
+ * Supabase client with no per-request auth context for the trigger to read
+ * (see ...075_m02_pets_assessment_trigger_fix.sql). Only stamps when the
+ * pet ends up fully assessed (both fields non-null after this write) -
+ * matches the trigger's original intent, not "a field changed."
+ */
+function resolveAssessmentStamp(
+  isStaff: boolean,
+  requesterId: string,
+  finalWeightClass: string | null | undefined,
+  finalCoatType: string | null | undefined
+): { assessed_by?: string; assessed_at?: string } {
+  if (!isStaff || !finalWeightClass || !finalCoatType) {
+    return {};
+  }
+
+  return { assessed_by: requesterId, assessed_at: new Date().toISOString() };
+}
+
 export async function listCustomerPetsController(
   req: AuthenticatedRequest,
   res: Response
@@ -120,12 +144,24 @@ export async function createPetController(
   }
 
   const isSelf = requesterId === customerId;
+  // Short-circuited exactly like the original authorization check below (no
+  // role lookup at all for the common self-service path) - isSelf already
+  // unambiguously means "the logged-in customer creating their own pet" per
+  // this route's own contract, so it always gets the customer validator
+  // regardless of whether that same auth.uid happens to also hold a staff
+  // role elsewhere.
+  const isStaff = isSelf ? false : await isAuthorizedStaff(requesterId);
 
-  if (!isSelf && !(await isAuthorizedStaff(requesterId))) {
+  if (!isSelf && !isStaff) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const parsed = createPetValidator.safeParse(req.body);
+  // Only a staff-authorized caller (creating on behalf of another customer)
+  // may set weight_class/coat_type at create time (see pet.validator.ts's
+  // header) - a customer creating their own pet always gets createPetValidator,
+  // which doesn't accept those fields at all.
+  const validator = isStaff ? createPetValidatorStaff : createPetValidator;
+  const parsed = validator.safeParse(req.body);
 
   if (!parsed.success) {
     return res
@@ -134,9 +170,20 @@ export async function createPetController(
   }
 
   try {
+    const submitted = parsed.data as {
+      weight_class?: string;
+      coat_type?: string;
+    };
+    const stamp = resolveAssessmentStamp(
+      isStaff,
+      requesterId,
+      submitted.weight_class,
+      submitted.coat_type
+    );
+
     const { data, error } = await supabase
       .from('pets')
-      .insert({ ...parsed.data, customer_id: customerId })
+      .insert({ ...parsed.data, customer_id: customerId, ...stamp })
       .select('*')
       .maybeSingle();
 
@@ -195,14 +242,6 @@ export async function updatePetController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const parsed = updatePetValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
   try {
     const { data: pet, error: lookupError } = await resolvePet(petId as string);
 
@@ -215,14 +254,55 @@ export async function updatePetController(
     }
 
     const isOwner = pet.customer_id === requesterId;
+    // Short-circuited exactly like the original authorization check (no role
+    // lookup for the common self-service path) - isOwner already unambiguously
+    // means "the pet-owning customer editing their own pet" per this route's
+    // own contract (PetDetailPanel.tsx), so it always gets the customer
+    // validator regardless of whether that same auth.uid happens to also hold
+    // a staff role elsewhere.
+    const isStaff = isOwner ? false : await isAuthorizedStaff(requesterId);
 
-    if (!isOwner && !(await isAuthorizedStaff(requesterId))) {
+    if (!isOwner && !isStaff) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // Only a staff-authorized caller may set weight_class/coat_type (see
+    // pet.validator.ts's header) - the pet's own owner always gets
+    // updatePetValidator, which doesn't accept those fields at all.
+    const validator = isStaff ? updatePetValidatorStaff : updatePetValidator;
+    const parsed = validator.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ error: 'Invalid payload', details: parsed.error.issues });
+    }
+
+    const submitted = parsed.data as {
+      weight_class?: string;
+      coat_type?: string;
+    };
+
+    // Only re-stamp when weight_class/coat_type actually change value - the
+    // staff edit form re-sends both fields on every save regardless of
+    // whether the staff member touched them, so "the key is present" alone
+    // isn't "assessed just now" (that would make an unrelated name/photo
+    // edit look like a fresh assessment).
+    const weightClassChanged =
+      'weight_class' in submitted && submitted.weight_class !== pet.weight_class;
+    const coatTypeChanged =
+      'coat_type' in submitted && submitted.coat_type !== pet.coat_type;
+
+    const stamp = resolveAssessmentStamp(
+      isStaff && (weightClassChanged || coatTypeChanged),
+      requesterId,
+      'weight_class' in submitted ? submitted.weight_class : pet.weight_class,
+      'coat_type' in submitted ? submitted.coat_type : pet.coat_type
+    );
+
     const { data, error } = await supabase
       .from('pets')
-      .update(parsed.data)
+      .update({ ...parsed.data, ...stamp })
       .eq('id', petId)
       .select('*')
       .maybeSingle();
