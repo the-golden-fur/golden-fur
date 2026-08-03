@@ -78,9 +78,44 @@ export async function buildCheckoutPreview(
       .reduce((sum, line) => sum + line.line_total, 0)
   );
 
-  const discountLines = await evaluateDiscounts(booking, eligibility, subtotal);
+  // Multi-item bookings / booking-time discount+promo revision: a booking
+  // created via the wizard's payment step may already have a discount and/or
+  // promo locked in (staff-verified ID, Cash-only for the discount - see
+  // resolveDiscountAndPromo in booking.service.ts). When that's the case,
+  // render the stored snapshot as-is instead of re-scanning discounts/promos
+  // for a scope match here - two independent evaluations of the same rules
+  // could disagree, which would be confusing at the register. Bookings with
+  // nothing pre-selected (created before this feature, via a direct API
+  // call, or a Veterinary follow-up copy) fall back to the original
+  // auto-evaluate-by-scope behavior unchanged.
+  const discountLines: DraftLineItem[] = booking.selected_discount_id
+    ? [
+        {
+          line_item_type: 'discount',
+          reference_id: booking.selected_discount_id,
+          description: booking.selected_discount_name ?? 'Discount',
+          quantity: 1,
+          unit_price: -booking.discount_amount,
+          line_total: -booking.discount_amount,
+        },
+      ]
+    : await evaluateDiscounts(booking, eligibility, subtotal);
 
-  const evaluatedPromos = await evaluatePromos(booking, subtotal);
+  const evaluatedPromos: EvaluatedPromo[] = booking.selected_promo_id
+    ? [
+        {
+          promoId: booking.selected_promo_id,
+          line: {
+            line_item_type: 'promo',
+            reference_id: booking.selected_promo_id,
+            description: booking.selected_promo_name ?? 'Promo',
+            quantity: 1,
+            unit_price: -booking.promo_amount,
+            line_total: -booking.promo_amount,
+          },
+        },
+      ]
+    : await evaluatePromos(booking, subtotal);
   const promoLines = evaluatedPromos.map((evaluated) => evaluated.line);
 
   const nonServiceDiscountLines = serviceLines.filter(

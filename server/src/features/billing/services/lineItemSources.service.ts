@@ -8,16 +8,35 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
+export interface BookingLineItem {
+  id: string;
+  service_id: string | null;
+  package_id: string | null;
+  price_at_booking: number;
+  description: string;
+}
+
 export interface BookingForBilling {
   id: string;
   customer_id: string;
   branch_id: string;
   branchName: string;
   service_category: ServiceCategory;
-  service_id: string | null;
-  package_id: string | null;
+  items: BookingLineItem[];
   status: string;
   total_price: number;
+  payment_method: string | null;
+  /** Locked in at booking creation (staff-only, Cash-only discount; any-
+   * payment-method promo) - see resolveDiscountAndPromo in
+   * booking.service.ts. null/0 when nothing was selected at booking time,
+   * in which case checkout falls back to auto-evaluating scope matches
+   * itself (evaluateDiscounts/evaluatePromos). */
+  selected_discount_id: string | null;
+  selected_discount_name: string | null;
+  discount_amount: number;
+  selected_promo_id: string | null;
+  selected_promo_name: string | null;
+  promo_amount: number;
 }
 
 /**
@@ -32,7 +51,7 @@ export async function getBookingForBilling(
   const { data, error } = await supabase
     .from('bookings')
     .select(
-      'id, customer_id, branch_id, service_category, service_id, package_id, status, total_price, branches!inner(name)'
+      'id, customer_id, branch_id, service_category, status, total_price, payment_method, selected_discount_id, discount_amount, selected_promo_id, promo_amount, branches!inner(name), discounts(name), promos(name), booking_items(id, service_id, package_id, price_at_booking, services(name), packages(name))'
     )
     .eq('id', bookingId)
     .maybeSingle();
@@ -51,85 +70,91 @@ export async function getBookingForBilling(
   const branchName = (data as unknown as { branches: { name: string } })
     .branches.name;
 
+  const rawItems = (data as unknown as {
+    booking_items: Array<{
+      id: string;
+      service_id: string | null;
+      package_id: string | null;
+      price_at_booking: number;
+      services: { name: string } | { name: string }[] | null;
+      packages: { name: string } | { name: string }[] | null;
+    }>;
+  }).booking_items;
+
+  const items: BookingLineItem[] = rawItems.map((item) => {
+    const serviceName = Array.isArray(item.services)
+      ? item.services[0]?.name
+      : item.services?.name;
+    const packageName = Array.isArray(item.packages)
+      ? item.packages[0]?.name
+      : item.packages?.name;
+
+    return {
+      id: item.id,
+      service_id: item.service_id,
+      package_id: item.package_id,
+      price_at_booking: Number(item.price_at_booking),
+      description: serviceName ?? packageName ?? 'Item',
+    };
+  });
+
+  const raw = data as unknown as {
+    payment_method: string | null;
+    selected_discount_id: string | null;
+    discount_amount: number;
+    selected_promo_id: string | null;
+    promo_amount: number;
+    discounts: { name: string } | { name: string }[] | null;
+    promos: { name: string } | { name: string }[] | null;
+  };
+  const discountName = Array.isArray(raw.discounts)
+    ? raw.discounts[0]?.name
+    : raw.discounts?.name;
+  const promoName = Array.isArray(raw.promos)
+    ? raw.promos[0]?.name
+    : raw.promos?.name;
+
   return {
     id: data.id,
     customer_id: data.customer_id,
     branch_id: data.branch_id,
     branchName,
     service_category: data.service_category,
-    service_id: data.service_id,
-    package_id: data.package_id,
+    items,
     status,
     total_price: Number(data.total_price),
+    payment_method: raw.payment_method,
+    selected_discount_id: raw.selected_discount_id,
+    selected_discount_name: discountName ?? null,
+    discount_amount: Number(raw.discount_amount ?? 0),
+    selected_promo_id: raw.selected_promo_id,
+    selected_promo_name: promoName ?? null,
+    promo_amount: Number(raw.promo_amount ?? 0),
   };
 }
 
-async function resolveServiceOrPackageDescription(
-  booking: BookingForBilling
-): Promise<string> {
-  if (booking.service_id) {
-    const { data } = await supabase
-      .from('services')
-      .select('name')
-      .eq('id', booking.service_id)
-      .maybeSingle();
-    return data?.name ?? 'Service';
-  }
-
-  if (booking.package_id) {
-    const { data } = await supabase
-      .from('packages')
-      .select('name')
-      .eq('id', booking.package_id)
-      .maybeSingle();
-    return data?.name ?? 'Package';
-  }
-
-  return 'Service';
-}
-
-async function getGroomingLineItems(
+/**
+ * Multi-item bookings revision: every selected item - whether it would once
+ * have been the "base" service/package or one of the old Grooming-only
+ * add-ons - is now just a booking_items row, so this is a straight map
+ * rather than "one service line + a separate add-ons query". line_item_type
+ * stays 'service' for all of them; 'addon' remains a valid DraftLineItem
+ * value for historical rows but is no longer produced going forward.
+ *
+ * Shared by Grooming and Misc - neither category has any billing logic
+ * beyond "list what was selected", unlike Hotel/Daycare/Veterinary below.
+ */
+async function getItemBasedLineItems(
   booking: BookingForBilling
 ): Promise<DraftLineItem[]> {
-  const description = await resolveServiceOrPackageDescription(booking);
-  const serviceLine: DraftLineItem = {
+  return booking.items.map((item) => ({
     line_item_type: 'service',
-    reference_id: booking.service_id ?? booking.package_id,
-    description,
+    reference_id: item.service_id ?? item.package_id,
+    description: item.description,
     quantity: 1,
-    unit_price: booking.total_price,
-    line_total: booking.total_price,
-  };
-
-  const { data: addons, error } = await supabase
-    .from('booking_addons')
-    .select('service_id, price_at_booking, services(name)')
-    .eq('booking_id', booking.id);
-
-  if (error) throwWithStatus(400, error.message);
-
-  const addonLines: DraftLineItem[] = (
-    (addons ?? []) as unknown as Array<{
-      service_id: string;
-      price_at_booking: number;
-      services: { name: string }[] | { name: string } | null;
-    }>
-  ).map((addon) => {
-    const serviceName = Array.isArray(addon.services)
-      ? addon.services[0]?.name
-      : addon.services?.name;
-
-    return {
-      line_item_type: 'addon',
-      reference_id: addon.service_id,
-      description: serviceName ?? 'Add-on',
-      quantity: 1,
-      unit_price: Number(addon.price_at_booking),
-      line_total: Number(addon.price_at_booking),
-    };
-  });
-
-  return [serviceLine, ...addonLines];
+    unit_price: item.price_at_booking,
+    line_total: item.price_at_booking,
+  }));
 }
 
 /**
@@ -156,7 +181,12 @@ async function getHotelLineItems(
   const lines: DraftLineItem[] = [
     {
       line_item_type: 'service',
-      reference_id: booking.service_id ?? booking.package_id,
+      // Best-effort single pointer for a Hotel booking, which always bills
+      // one aggregate "Hotel stay" line off total_price regardless of how
+      // many items were selected (multi-item Hotel bookings aren't itemized
+      // on the bill - not a bug, per this billing surface's existing
+      // per-stay-not-per-item design).
+      reference_id: booking.items[0]?.service_id ?? booking.items[0]?.package_id ?? null,
       description: 'Hotel stay',
       quantity: 1,
       unit_price: booking.total_price,
@@ -272,7 +302,8 @@ export async function getServiceLineItems(
 ): Promise<DraftLineItem[]> {
   switch (booking.service_category) {
     case 'Grooming':
-      return getGroomingLineItems(booking);
+    case 'Misc':
+      return getItemBasedLineItems(booking);
     case 'Hotel':
       return getHotelLineItems(booking);
     case 'Daycare':
