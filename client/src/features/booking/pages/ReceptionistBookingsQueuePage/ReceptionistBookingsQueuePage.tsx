@@ -447,7 +447,10 @@ export function ReceptionistBookingsQueuePage() {
   // row list below) asking whether this is an advance payment or a normal
   // onsite one; from Paid in Advance there's only one possible next step, so
   // it advances straight to Paid with no modal.
-  function handleAdvancePayment(booking: Booking, choice?: 'advance' | 'onsite') {
+  function handleAdvancePayment(
+    booking: Booking,
+    choice?: 'advance' | 'onsite'
+  ) {
     return runAdvanceAction(
       booking,
       (bookingId, token) => advancePaymentStage(bookingId, token, choice),
@@ -904,7 +907,6 @@ export function ReceptionistBookingsQueuePage() {
                       </div>
                     </div>
                   ) : null}
-
                 </li>
               );
             })}
@@ -945,7 +947,9 @@ export function ReceptionistBookingsQueuePage() {
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={advancingBookingId === paymentAdvanceModalBooking.id}
+                  disabled={
+                    advancingBookingId === paymentAdvanceModalBooking.id
+                  }
                   onClick={() =>
                     void confirmAdvancePayment(
                       paymentAdvanceModalBooking,
@@ -960,7 +964,9 @@ export function ReceptionistBookingsQueuePage() {
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={advancingBookingId === paymentAdvanceModalBooking.id}
+                  disabled={
+                    advancingBookingId === paymentAdvanceModalBooking.id
+                  }
                   onClick={() =>
                     void confirmAdvancePayment(
                       paymentAdvanceModalBooking,

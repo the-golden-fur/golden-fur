@@ -70,7 +70,9 @@ export function HotelCheckoutPanel({
           <div className={styles.breakdownRow}>
             <dt>Extension fee</dt>
             <dd>
-              {result.extensionFee === null ? 'None' : `₱${result.extensionFee}`}
+              {result.extensionFee === null
+                ? 'None'
+                : `₱${result.extensionFee}`}
             </dd>
           </div>
           <div className={styles.breakdownRow}>

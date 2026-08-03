@@ -184,7 +184,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{groomer_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{groomer_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": {
@@ -240,7 +243,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{groomer_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{groomer_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": {
@@ -270,7 +276,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cashier_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": { "mode": "raw", "raw": "{}" },
@@ -302,7 +311,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cashier_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": { "mode": "raw", "raw": "{\n  \"choice\": \"advance\"\n}" },
@@ -335,7 +347,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cashier_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": { "mode": "raw", "raw": "{}" },
@@ -368,7 +383,10 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cashier_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
         "body": { "mode": "raw", "raw": "{}" },
@@ -400,10 +418,16 @@
       "request": {
         "method": "PATCH",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{groomer_access_token}}" },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{groomer_access_token}}"
+          },
           { "key": "Content-Type", "value": "application/json" }
         ],
-        "body": { "mode": "raw", "raw": "{\n  \"payment_stage\": \"Unpaid\"\n}" },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payment_stage\": \"Unpaid\"\n}"
+        },
         "url": {
           "raw": "{{base_url}}/bookings/{{payment_stage_booking_id}}/payment-stage",
           "host": ["{{base_url}}"],
@@ -430,7 +454,10 @@
           { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
           { "key": "Content-Type", "value": "application/json" }
         ],
-        "body": { "mode": "raw", "raw": "{\n  \"payment_stage\": \"Unpaid\"\n}" },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payment_stage\": \"Unpaid\"\n}"
+        },
         "url": {
           "raw": "{{base_url}}/bookings/{{payment_stage_booking_id}}/payment-stage",
           "host": ["{{base_url}}"],

@@ -33,18 +33,18 @@ Two scope calls made while implementing (both explained inline below,
 flagged here since they're judgment calls, not literal readbacks of the
 request):
 
-- **Payment-stage design**: found two *already-existing, independent*
+- **Payment-stage design**: found two _already-existing, independent_
   "payment complete" mechanisms in this codebase - the queue's own
   "Mark as Paid" (flips `bookings.status` to `Paid`, no transaction row)
   and Cashier Checkout (`/staff/billing/checkout`, writes a real
   `transactions` row, never touches `bookings.status`). The new
   `payment_stage` column is deliberately additive and touches neither -
-  it's a separate, independent field for tracking *when* money was
+  it's a separate, independent field for tracking _when_ money was
   collected relative to the service, not a replacement for either existing
   mechanism (reconciling those two would be a much larger, separate
   architectural change, out of scope here).
 - **Queue redesign scope**: Grooming Queue and Consultation Queue were
-  *not* touched. Both already share the same `QueueFilterBar`/
+  _not_ touched. Both already share the same `QueueFilterBar`/
   `SearchSortBar`/design-token components as the Bookings Queue restyle
   target, so there was no actual visual inconsistency to fix. Also,
   Grooming's queue already hard-scopes a Groomer viewer to their own
@@ -165,8 +165,8 @@ Follow-up feedback after the first pass landed, live-testing the queue:
    No-show) - payment is tracked exclusively via `payment_stage` now, with
    no overlap between the two. This retires the old status-level
    `markBookingPaid` action (Completed → Paid) and its route
-   (`POST /bookings/:id/mark-paid`) entirely - the payment_stage track's own
-   action is now the *only* "Mark as Paid" action in the app.
+   (`POST /bookings/:id/mark-paid`) entirely - the payment*stage track's own
+   action is now the \_only* "Mark as Paid" action in the app.
 2. **"Advance" button renamed to "Mark as Paid"** on the Bookings Queue, to
    match (there's no more old Mark as Paid for it to be confused with).
 3. **The Unpaid → advance/onsite choice prompt is now a modal**, not an
@@ -204,7 +204,7 @@ Follow-up feedback after the first pass landed, live-testing the queue:
 - `server/src/features/billing/services/lineItemSources.service.ts`,
   `server/src/features/hotel/services/hotelStay.service.ts` (+ client
   mirror `hotel/api/hotel.api.ts`), `server/src/features/hotel/
-  hotel.controller.ts`: every hardcoded `'Completed', 'Paid'`-style status
+hotel.controller.ts`: every hardcoded `'Completed', 'Paid'`-style status
   list/check updated to drop `'Paid'`.
 - `client/.../BookingStatusBadge/BookingStatusBadge.tsx` (+`.module.css`):
   the `Paid` status-badge mapping/class removed (payment now shows via the

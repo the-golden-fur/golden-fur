@@ -21,14 +21,8 @@ export const hotelRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
       <Route path="/staff/hotel/queue" element={<HotelQueuePage />} />
-      <Route
-        path="/staff/hotel/check-in"
-        element={<HotelCheckInRedirect />}
-      />
-      <Route
-        path="/staff/hotel/checkout"
-        element={<HotelCheckoutRedirect />}
-      />
+      <Route path="/staff/hotel/check-in" element={<HotelCheckInRedirect />} />
+      <Route path="/staff/hotel/checkout" element={<HotelCheckoutRedirect />} />
       <Route
         path="/staff/hotel/checkout/:stayId"
         element={<HotelCheckoutStayRedirect />}

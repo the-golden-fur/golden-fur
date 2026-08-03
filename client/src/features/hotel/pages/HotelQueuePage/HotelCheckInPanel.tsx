@@ -566,8 +566,8 @@ export function HotelCheckInPanel({
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>2. Cage assignment</h2>
             <p className={styles.copy}>
-              Suggested size: {suggestedSize ?? '...'} - the recommended cage
-              is highlighted below, or pick any other Available cage.
+              Suggested size: {suggestedSize ?? '...'} - the recommended cage is
+              highlighted below, or pick any other Available cage.
             </p>
             <CageStatusGrid
               accessToken={accessToken}
@@ -690,14 +690,10 @@ export function HotelCheckInPanel({
                   <button
                     type="button"
                     className={
-                      block.mode === 'duration'
-                        ? styles.tabActive
-                        : styles.tab
+                      block.mode === 'duration' ? styles.tabActive : styles.tab
                     }
                     disabled={!isEditing}
-                    onClick={() =>
-                      updateWalkBlock(index, { mode: 'duration' })
-                    }
+                    onClick={() => updateWalkBlock(index, { mode: 'duration' })}
                   >
                     Start + duration
                   </button>
@@ -870,9 +866,7 @@ export function HotelCheckInPanel({
                         <button
                           type="button"
                           className={styles.secondaryButton}
-                          onClick={() =>
-                            removeMedicationTime(index, timeIndex)
-                          }
+                          onClick={() => removeMedicationTime(index, timeIndex)}
                         >
                           &times;
                         </button>
@@ -918,8 +912,7 @@ export function HotelCheckInPanel({
 
           <p className={styles.chargesTotal}>
             Estimated additional charges (hotel-supplied items, billed at
-            checkout):{' '}
-            <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
+            checkout): <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
           </p>
 
           <button

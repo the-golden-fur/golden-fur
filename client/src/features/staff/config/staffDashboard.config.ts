@@ -126,7 +126,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         tiles: [
           {
             title: 'Hotel Queue',
-            description: 'Check pets in and out, cage assignment, and billing handoff.',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
             to: '/staff/hotel/queue',
           },
           {
@@ -249,7 +250,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           },
           {
             title: 'Hotel Queue',
-            description: 'Check pets in and out, cage assignment, and billing handoff.',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
             to: '/staff/hotel/queue',
           },
           {
@@ -279,7 +281,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           },
           {
             title: 'Hotel Queue',
-            description: 'Check pets in and out, cage assignment, and billing handoff.',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
             to: '/staff/hotel/queue',
           },
           {
@@ -354,7 +357,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           },
           {
             title: 'Hotel Queue',
-            description: 'Check pets in and out, cage assignment, and billing handoff.',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
             to: '/staff/hotel/queue',
           },
           {
