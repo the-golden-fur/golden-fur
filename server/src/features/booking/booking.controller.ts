@@ -6,6 +6,7 @@ import {
   getBookingById,
   listBookings,
   markBookingPaid,
+  overrideBookingStatus,
   startBooking,
 } from './services/booking.service.ts';
 import {
@@ -26,6 +27,7 @@ import {
   catalogQueryValidator,
   createBookingValidator,
   listBookingsQueryValidator,
+  overrideBookingStatusValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
   updatePolicyValidator,
@@ -372,6 +374,29 @@ export async function markBookingPaidController(
 ) {
   try {
     const booking = await markBookingPaid({ bookingId: paramId(req, 'id') });
+    return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function overrideBookingStatusController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = overrideBookingStatusValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const booking = await overrideBookingStatus({
+      bookingId: paramId(req, 'id'),
+      status: parsed.data.status,
+    });
     return res.status(200).json({ booking });
   } catch (error) {
     return sendServiceError(res, error);
