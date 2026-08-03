@@ -28,12 +28,15 @@ import {
   completeBooking,
   listBookings,
   markBookingPaid,
+  overrideBookingStatus,
   rescheduleBooking,
   startBooking,
 } from '../../api/booking.api';
 import {
+  BOOKING_STATUS_OVERRIDE_ROLES,
   BOOKING_STATUSES,
   CANCELLABLE_BOOKING_STATUSES,
+  OVERRIDABLE_BOOKING_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
@@ -144,6 +147,11 @@ export function ReceptionistBookingsQueuePage() {
   }, [accessToken, user?.id]);
 
   const isSuperadmin = viewerRole === 'Superadmin';
+  // Admin/Superadmin get one status dropdown (forward or backward) instead
+  // of the one-directional Start/Complete/Mark-as-Paid buttons everyone else
+  // uses - lets them undo an accidental Mark as Paid, etc.
+  const isStatusOverrideRole =
+    viewerRole !== null && BOOKING_STATUS_OVERRIDE_ROLES.includes(viewerRole);
 
   useEffect(() => {
     void listBranches().then((result) => {
@@ -342,13 +350,19 @@ export function ReceptionistBookingsQueuePage() {
   }
 
   // Manual status-advance actions (booking-status revision): any staff role
-  // may Start/Complete; Mark as Paid is server-restricted to money-handling
-  // roles (a disallowed click surfaces as an inline error rather than being
-  // hidden client-side, matching this page's existing no-role-gating-on-
-  // buttons pattern for Reschedule/Cancel). Error is kept alongside the
-  // booking id it belongs to (unlike the single shared `actionError` the
-  // reschedule/cancel panels use) so it still renders under the right row
-  // after `advancingBookingId` itself has already cleared.
+  // except Cashier may Start/Complete - Cashier sees the queue (all
+  // statuses, unchanged) but only ever advances Completed -> Paid, so its
+  // Start/Complete buttons are hidden below rather than left for a 403 to
+  // catch (unlike Reschedule/Cancel, which stay ungated client-side and rely
+  // on the server 403 alone). Mark as Paid is server-restricted to
+  // money-handling roles for everyone. Admin/Superadmin instead get a single
+  // status dropdown (canOverrideStatus below) that can also move a booking
+  // BACKWARD (e.g. undoing an accidental Mark as Paid) - Start/Complete/Mark
+  // as Paid are strictly forward-only and can't do that. Error is kept
+  // alongside the booking id it belongs to (unlike the single shared
+  // `actionError` the reschedule/cancel panels use) so it still renders
+  // under the right row after `advancingBookingId` itself has already
+  // cleared.
   const [advancingBookingId, setAdvancingBookingId] = useState<string | null>(
     null
   );
@@ -409,6 +423,14 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
+  function handleOverrideStatus(booking: Booking, status: BookingStatus) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => overrideBookingStatus(bookingId, status, token),
+      'Could not update this booking’s status.'
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -436,13 +458,15 @@ export function ReceptionistBookingsQueuePage() {
       <div className={styles.content}>
         <div className={styles.header}>
           <h1 className={styles.title}>Bookings queue</h1>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => navigate('/staff/bookings/new')}
-          >
-            New booking
-          </button>
+          {viewerRole !== 'Cashier' ? (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => navigate('/staff/bookings/new')}
+            >
+              New booking
+            </button>
+          ) : null}
         </div>
 
         <QueueFilterBar
@@ -530,6 +554,21 @@ export function ReceptionistBookingsQueuePage() {
               const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
                 booking.status
               );
+              const canOverrideStatus =
+                isStatusOverrideRole &&
+                (OVERRIDABLE_BOOKING_STATUSES as readonly string[]).includes(
+                  booking.status
+                );
+              const canAdvanceStatus =
+                !isStatusOverrideRole &&
+                viewerRole !== 'Cashier' &&
+                (booking.status === 'Pending' ||
+                  booking.status === 'In Progress');
+              const canMarkPaid =
+                !isStatusOverrideRole && booking.status === 'Completed';
+              const hasControls =
+                canOverrideStatus || canAdvanceStatus || canMarkPaid ||
+                canReschedule || canCancel;
               const isRescheduling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'reschedule';
@@ -565,11 +604,40 @@ export function ReceptionistBookingsQueuePage() {
                         'Unknown owner'}
                     </span>
                     <BookingStatusBadge status={booking.status} />
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => navigate(`/staff/bookings/${booking.id}`)}
+                    >
+                      View details
+                    </button>
                   </div>
 
-                  {!isRescheduling && !isCancelling ? (
+                  {!isRescheduling && !isCancelling && hasControls ? (
                     <div className={styles.bookingControls}>
-                      {booking.status === 'Pending' ? (
+                      {canOverrideStatus ? (
+                        <label className={styles.statusOverrideField}>
+                          <span className={styles.filterLabel}>Status</span>
+                          <select
+                            className={styles.filterSelect}
+                            value={booking.status}
+                            disabled={isAdvancing}
+                            onChange={(event) =>
+                              void handleOverrideStatus(
+                                booking,
+                                event.target.value as BookingStatus
+                              )
+                            }
+                          >
+                            {OVERRIDABLE_BOOKING_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      {canAdvanceStatus && booking.status === 'Pending' ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}
@@ -579,7 +647,7 @@ export function ReceptionistBookingsQueuePage() {
                           {isAdvancing ? 'Starting...' : 'Start'}
                         </button>
                       ) : null}
-                      {booking.status === 'In Progress' ? (
+                      {canAdvanceStatus && booking.status === 'In Progress' ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}
@@ -589,7 +657,7 @@ export function ReceptionistBookingsQueuePage() {
                           {isAdvancing ? 'Completing...' : 'Complete'}
                         </button>
                       ) : null}
-                      {booking.status === 'Completed' ? (
+                      {canMarkPaid ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}

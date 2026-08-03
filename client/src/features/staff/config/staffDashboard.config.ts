@@ -334,6 +334,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
+            title: 'Bookings Queue',
+            description:
+              'Branch-wide booking queue - view every status and mark completed bookings as paid.',
+            to: '/staff/bookings/queue',
+          },
+          {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
           },

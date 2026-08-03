@@ -80,13 +80,12 @@
 
 .bookingRow {
   display: grid;
-  gap: var(--space-2);
-  min-height: var(--booking-queue-row-min-height);
+  gap: var(--space-1);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease;
@@ -117,7 +116,18 @@
 .bookingControls {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.statusOverrideField {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+.statusOverrideField .filterSelect {
+  padding: var(--space-0-5) var(--space-1);
 }
 
 .actionPanel {
