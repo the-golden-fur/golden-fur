@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Route } from 'react-router';
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
+import { BookingDetailsPage } from './pages/BookingDetailsPage/BookingDetailsPage';
 import { CustomerBookingFlowPage } from './pages/CustomerBookingFlowPage/CustomerBookingFlowPage';
 import { CustomerBookingsPage } from './pages/CustomerBookingsPage/CustomerBookingsPage';
 import { ReceptionistBookingsQueuePage } from './pages/ReceptionistBookingsQueuePage/ReceptionistBookingsQueuePage';
@@ -24,6 +25,10 @@ export const bookingRoutes = (
       <Route
         path="/staff/bookings/queue"
         element={<ReceptionistBookingsQueuePage />}
+      />
+      <Route
+        path="/staff/bookings/:bookingId"
+        element={<BookingDetailsPage />}
       />
     </Route>
   </Fragment>

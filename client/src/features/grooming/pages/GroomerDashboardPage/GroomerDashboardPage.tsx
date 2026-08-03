@@ -64,8 +64,7 @@ interface EnrichedSession {
   breed: string | null;
   weightClass: string;
   coatType: string;
-  serviceLabel: string;
-  addonLabels: string[];
+  itemLabels: string[];
   specialInstructions: string | null;
 }
 
@@ -236,7 +235,9 @@ export function GroomerDashboardPage() {
         const booking = session.booking;
         const pet = booking ? pets[booking.pet_id] : undefined;
         const owner = booking ? owners[booking.customer_id] : undefined;
-        const serviceId = booking?.service_id ?? booking?.package_id ?? null;
+        const itemLabels = (booking?.booking_items ?? [])
+          .map((item) => serviceNames[item.service_id ?? item.package_id ?? ''])
+          .filter((name): name is string => Boolean(name));
 
         return {
           session,
@@ -249,12 +250,7 @@ export function GroomerDashboardPage() {
           breed: null,
           weightClass: pet?.weight_class ?? '—',
           coatType: pet?.coat_type ?? '—',
-          serviceLabel: serviceId
-            ? (serviceNames[serviceId] ?? 'Service')
-            : 'Service',
-          addonLabels: (booking?.booking_addons ?? [])
-            .map((addon) => serviceNames[addon.service_id])
-            .filter((name): name is string => Boolean(name)),
+          itemLabels: itemLabels.length > 0 ? itemLabels : ['Service'],
           specialInstructions: booking?.special_instructions ?? null,
         };
       });
@@ -399,8 +395,7 @@ export function GroomerDashboardPage() {
                 breed={item.breed}
                 weightClass={item.weightClass}
                 coatType={item.coatType}
-                serviceLabel={item.serviceLabel}
-                addonLabels={item.addonLabels}
+                itemLabels={item.itemLabels}
                 specialInstructions={item.specialInstructions}
                 isAdvancing={advancingId === item.session.id}
                 onAdvance={handleAdvance}

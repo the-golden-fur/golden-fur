@@ -12,6 +12,7 @@ import {
   listBookingsController,
   listPolicyConfigurationsController,
   markBookingPaidController,
+  overrideBookingStatusController,
   rescheduleBookingController,
   staffPickerOptionsController,
   startBookingController,
@@ -22,6 +23,7 @@ import {
   BOOKING_POLICY_READ_ROLES,
   BOOKING_POLICY_WRITE_ROLES,
   BOOKING_STATUS_ADVANCE_ROLES,
+  BOOKING_STATUS_OVERRIDE_ROLES,
 } from './booking.types.ts';
 
 /**
@@ -60,6 +62,12 @@ const markPaid = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...BOOKING_MARK_PAID_ROLES]),
+];
+
+const statusOverride = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_STATUS_OVERRIDE_ROLES]),
 ];
 
 // Booking creation + capacity enforcement (#51)
@@ -113,5 +121,14 @@ router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
 router.post('/bookings/:id/start', statusAdvance, startBookingController);
 router.post('/bookings/:id/complete', statusAdvance, completeBookingController);
 router.post('/bookings/:id/mark-paid', markPaid, markBookingPaidController);
+
+// Admin/Superadmin-only direct status set (forward or backward) - replaces
+// their Start/Complete/Mark-as-Paid buttons with one status dropdown in the
+// queue, so an accidental Mark as Paid can be reverted.
+router.patch(
+  '/bookings/:id/status',
+  statusOverride,
+  overrideBookingStatusController
+);
 
 export default router;

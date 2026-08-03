@@ -71,6 +71,13 @@ describe('availability.service (#56/#60 supporting infra)', () => {
   });
 
   it('generates back-to-back Grooming slots and marks a fully-booked one as level "full"', async () => {
+    // Pinned to a moment before the branch's 09:00-12:00 Asia/Manila window
+    // opens, so none of the 3 generated slots are filtered out as already
+    // past - without this, the assertion below silently depends on the real
+    // wall-clock time never reaching that window on this date while CI runs.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+
     queueFromResults(
       BRANCH_ROW, // branch lookup
       { data: null, error: null, count: 1 } // roster count (1 groomer)
@@ -109,6 +116,11 @@ describe('availability.service (#56/#60 supporting infra)', () => {
   });
 
   it('marks every Hotel arrival candidate "available" when no overlapping same-size bookings exist', async () => {
+    // Pinned before the branch's 09:00-12:00 Asia/Manila window opens - see
+    // the same note on the Grooming test above.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+
     queueFromResults(
       BRANCH_ROW, // branch lookup
       { data: [], error: null }, // overlapping bookings (none) for 09:00
@@ -153,6 +165,11 @@ describe('availability.service (#56/#60 supporting infra)', () => {
   });
 
   it('a Hotel booking steps hourly across operating hours (1440-minute duration) and each candidate still runs to the next day', async () => {
+    // Pinned before the branch's 09:00-12:00 Asia/Manila window opens - see
+    // the same note on the Grooming test above.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+
     queueFromResults(
       BRANCH_ROW, // branch lookup
       { data: [], error: null }, // overlapping bookings for the 09:00 candidate

@@ -52,6 +52,13 @@ export async function evaluateDiscounts(
   eligibility: DiscountEligibility,
   subtotal: number
 ): Promise<DraftLineItem[]> {
+  // Discounts need staff to have verified an ID in person, which only ever
+  // happens for a Cash payment - matches the same rule enforced at booking
+  // creation (resolveDiscountAndPromo in booking.service.ts) so a booking
+  // that falls through to this auto-evaluate path (nothing pre-selected)
+  // can't pick up a discount its payment method wouldn't have allowed.
+  if (booking.payment_method !== 'Cash') return [];
+
   const { data, error } = await supabase
     .from('discounts')
     .select('*')
@@ -63,11 +70,19 @@ export async function evaluateDiscounts(
   const lines: DraftLineItem[] = [];
 
   for (const discount of (data ?? []) as DiscountRow[]) {
+    // Multi-item bookings revision: a discount scoped to a specific
+    // service/package matches if ANY selected item matches - a booking with
+    // several items can carry multiple applicable discounts (Sprint 5 M08's
+    // combinability model per-item, not per-booking).
     const scopeMatches =
       (discount.scope_type === 'service' &&
-        discount.scope_service_id === booking.service_id) ||
+        booking.items.some(
+          (item) => item.service_id === discount.scope_service_id
+        )) ||
       (discount.scope_type === 'package' &&
-        discount.scope_package_id === booking.package_id) ||
+        booking.items.some(
+          (item) => item.package_id === discount.scope_package_id
+        )) ||
       (discount.scope_type === 'category' &&
         discount.scope_category === booking.service_category);
 
@@ -150,10 +165,12 @@ export async function evaluatePromos(
     if (promo.end_date && promo.end_date < today) return false;
     if (promo.scope_type === 'all_services') return true;
 
-    return promo.promo_scope.some(
-      (scopeRow) =>
-        (scopeRow.service_id && scopeRow.service_id === booking.service_id) ||
-        (scopeRow.package_id && scopeRow.package_id === booking.package_id)
+    return promo.promo_scope.some((scopeRow) =>
+      booking.items.some(
+        (item) =>
+          (scopeRow.service_id && scopeRow.service_id === item.service_id) ||
+          (scopeRow.package_id && scopeRow.package_id === item.package_id)
+      )
     );
   });
 

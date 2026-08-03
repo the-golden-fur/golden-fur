@@ -27,8 +27,7 @@ export interface AppointmentCardProps {
   breed: string | null;
   weightClass: string;
   coatType: string;
-  serviceLabel: string;
-  addonLabels: string[];
+  itemLabels: string[];
   specialInstructions: string | null;
   isAdvancing: boolean;
   onAdvance: (
@@ -49,8 +48,7 @@ export function AppointmentCard({
   breed,
   weightClass,
   coatType,
-  serviceLabel,
-  addonLabels,
+  itemLabels,
   specialInstructions,
   isAdvancing,
   onAdvance,
@@ -78,10 +76,12 @@ export function AppointmentCard({
         <span className={styles.badge}>{coatType}</span>
       </div>
 
-      <p className={styles.serviceLabel}>{serviceLabel}</p>
+      <p className={styles.serviceLabel}>{itemLabels[0] ?? 'Service'}</p>
 
-      {addonLabels.length > 0 ? (
-        <p className={styles.addons}>Add-ons: {addonLabels.join(', ')}</p>
+      {itemLabels.length > 1 ? (
+        <p className={styles.addons}>
+          Also includes: {itemLabels.slice(1).join(', ')}
+        </p>
       ) : null}
 
       {specialInstructions ? (

@@ -4,13 +4,19 @@
  * #40/#41 validators. Kept at the feature root like staff.types.ts.
  */
 
-export type ServiceCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+export type ServiceCategory =
+  | 'Grooming'
+  | 'Hotel'
+  | 'Daycare'
+  | 'Veterinary'
+  | 'Misc';
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
+  'Misc',
 ];
 
 /** Same vocabulary as M02 pets.weight_class / pets.coat_type. */
@@ -115,6 +121,10 @@ export interface Package {
   branch_id: string;
   name: string;
   bundled_price: number;
+  /** Derived server-side from included services' duration_minutes - used to
+   * estimate a package's contribution to a booking's total scheduled time
+   * (multi-item bookings revision). */
+  total_duration_minutes: number | null;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;

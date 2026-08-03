@@ -6,7 +6,7 @@ import {
 import type { GroomingSession } from '../grooming.types.ts';
 import type { TransitionGroomingStatusInput } from '../modules/validators/grooming.validator.ts';
 
-const GROOMING_SESSION_SELECT = '*, booking:bookings(*, booking_addons(*))';
+const GROOMING_SESSION_SELECT = '*, booking:bookings(*, booking_items(*))';
 
 const MANAGER_ROLES = ['Admin', 'Supervisor', 'Superadmin'];
 

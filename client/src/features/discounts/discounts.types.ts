@@ -9,13 +9,19 @@ export type DiscountValueType = 'Percentage' | 'Flat';
 
 export type DiscountScopeType = 'service' | 'package' | 'category';
 
-export type DiscountCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+export type DiscountCategory =
+  | 'Grooming'
+  | 'Hotel'
+  | 'Daycare'
+  | 'Veterinary'
+  | 'Misc';
 
 export const DISCOUNT_CATEGORIES: DiscountCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
+  'Misc',
 ];
 
 export interface Discount {

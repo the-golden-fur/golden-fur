@@ -1,5 +1,6 @@
 import type {
   Booking,
+  BookingStatus,
   CancelBookingPayload,
   CancellationResult,
   CreateBookingPayload,
@@ -305,6 +306,27 @@ export function completeBooking(bookingId: string, accessToken: string) {
 
 export function markBookingPaid(bookingId: string, accessToken: string) {
   return postBookingAction(bookingId, 'mark-paid', accessToken);
+}
+
+/** Admin/Superadmin-only direct status set (forward or backward) - see
+ * BOOKING_STATUS_OVERRIDE_ROLES server-side. */
+export async function overrideBookingStatus(
+  bookingId: string,
+  status: BookingStatus,
+  accessToken: string
+): Promise<BookingApiResult<Booking>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}/status`, {
+    method: 'PATCH',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ booking: Booking }>(response);
+  return { data: result.data?.booking ?? null, error: result.error };
 }
 
 export async function getBookingPolicy(

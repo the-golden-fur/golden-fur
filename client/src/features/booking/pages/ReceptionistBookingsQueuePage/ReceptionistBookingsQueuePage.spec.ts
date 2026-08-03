@@ -514,4 +514,21 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/new');
   });
+
+  it('"View details" navigates to the booking details page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('View details')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('View details'));
+
+    expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/booking-1');
+  });
 });
