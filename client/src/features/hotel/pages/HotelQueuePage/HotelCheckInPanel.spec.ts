@@ -1,9 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
-import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
   checkInHotelStay,
   getCageSuggestion,
@@ -12,15 +9,7 @@ import {
   listMedicationCatalog,
 } from '../../api/hotel.api';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
-import { HotelCheckInPage } from './HotelCheckInPage';
-
-vi.mock('../../../../shared/auth/providers/AuthProvider/useAuth', () => ({
-  useAuth: vi.fn(),
-}));
-
-vi.mock('../../../staff/api/staff.api', () => ({
-  getStaffProfile: vi.fn(),
-}));
+import { HotelCheckInPanel } from './HotelCheckInPanel';
 
 vi.mock('../../api/hotel.api', () => ({
   checkInHotelStay: vi.fn(),
@@ -30,9 +19,9 @@ vi.mock('../../api/hotel.api', () => ({
   listMedicationCatalog: vi.fn(),
 }));
 
-// Isolates HotelCheckInPage's own validation/pricing logic from
+// Isolates this panel's own validation/pricing logic from
 // HotelBookingPicker's/CageStatusGrid's already-tested internals - each is
-// swapped for a minimal stub that exercises this page's callback contract.
+// swapped for a minimal stub that exercises this panel's callback contract.
 vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
   HotelBookingPicker: vi.fn(),
 }));
@@ -88,16 +77,6 @@ const FOOD_ITEM = {
 };
 
 function setupMocks(booking: unknown = BOOKING) {
-  vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'staff-1' },
-    accessToken: 'token',
-  } as never);
-
-  vi.mocked(getStaffProfile).mockResolvedValue({
-    data: { role: 'Receptionist', branch_id: 'branch-1' },
-    error: null,
-  } as never);
-
   vi.mocked(getCageSuggestion).mockResolvedValue({
     data: {
       suggestedSize: 'S',
@@ -127,16 +106,21 @@ function setupMocks(booking: unknown = BOOKING) {
   );
 }
 
-function renderPage() {
+function renderPanel() {
   return render(
-    createElement(MemoryRouter, null, createElement(HotelCheckInPage))
+    createElement(HotelCheckInPanel, {
+      accessToken: 'token',
+      role: 'Receptionist',
+      branchId: 'branch-1',
+      onCheckedIn: vi.fn(),
+    })
   );
 }
 
-describe('HotelCheckInPage', () => {
+describe('HotelCheckInPanel', () => {
   it('Care Instructions load read-only - every feeding field is disabled until Edit is clicked', async () => {
     setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPage();
+    renderPanel();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
@@ -163,7 +147,7 @@ describe('HotelCheckInPage', () => {
 
   it('clicking Edit unlocks every care instruction field, in case the customer made a mistake', async () => {
     setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPage();
+    renderPanel();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
@@ -190,7 +174,7 @@ describe('HotelCheckInPage', () => {
 
   it('shows a running total of hotel-supplied charges computed from the booking-time preferences, with no staff interaction', async () => {
     setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPage();
+    renderPanel();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
@@ -212,7 +196,7 @@ describe('HotelCheckInPage', () => {
       data: { stay: { id: 'stay-1' } },
       error: null,
     } as never);
-    renderPage();
+    renderPanel();
 
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);

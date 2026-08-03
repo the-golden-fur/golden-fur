@@ -1,20 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
-import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
-import * as staffApi from '../../../staff/api/staff.api';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as daycareApi from '../../api/daycare.api';
-import type { StaffProfile } from '../../../staff/staff.types';
 import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
-import { DaycareCheckInPage } from './DaycareCheckInPage';
+import { DaycareCheckInPanel } from './DaycareCheckInPanel';
 
-vi.mock('../../../staff/api/staff.api', () => ({
-  getStaffProfile: vi.fn(),
-}));
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   listCustomers: vi.fn(),
@@ -28,81 +20,18 @@ vi.mock('../../api/daycare.api', () => ({
   checkInDaycareSession: vi.fn(),
 }));
 
-function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
-  return {
-    id: 'reception-1',
-    branch_id: 'branch-makati',
-    role,
-    username: 'reception1',
-    registered_email: 'reception1@example.com',
-    display_name: 'Reception One',
-    profile_photo_url: null,
-    phone_number: null,
-    emergency_contact_name: null,
-    emergency_contact_number: null,
-    preferred_communication_channel: null,
-    is_active: true,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
-  };
-}
-
-function renderPage() {
-  const authValue: AuthContextValue = {
-    session: null,
-    user: { id: 'reception-1', email: 'reception1@example.com' },
-    accessToken: 'token',
-    isLoading: false,
-    refreshSession: vi.fn(),
-    applySession: vi.fn(),
-    signOut: vi.fn(),
-  };
-
+function renderPanel() {
   return render(
-    createElement(
-      MemoryRouter,
-      { initialEntries: ['/staff/daycare/check-in'] },
-      createElement(
-        AuthContext.Provider,
-        { value: authValue },
-        createElement(
-          Routes,
-          null,
-          createElement(Route, {
-            path: '/staff/daycare/check-in',
-            element: createElement(DaycareCheckInPage),
-          }),
-          createElement(Route, {
-            path: '/staff/settings',
-            element: createElement('div', null, 'Staff profile page'),
-          }),
-          createElement(Route, {
-            path: '/staff/daycare/checkout/:sessionId',
-            element: createElement('div', null, 'Checkout page'),
-          })
-        )
-      )
-    )
+    createElement(DaycareCheckInPanel, {
+      accessToken: 'token',
+      branchId: 'branch-makati',
+      onCheckedIn: vi.fn(),
+    })
   );
 }
 
-describe('DaycareCheckInPage (#69)', () => {
-  it('AC-1: redirects a non-Receptionist/Admin/Supervisor/Superadmin viewer to /staff/settings', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
-      error: null,
-    });
-
-    renderPage();
-
-    expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
-  });
-
+describe('DaycareCheckInPanel (#69)', () => {
   it('AC-1: checks in via an existing Pending booking', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Receptionist'),
-      error: null,
-    });
     const booking = {
       id: 'booking-1',
       customer_id: 'customer-1',
@@ -151,26 +80,20 @@ describe('DaycareCheckInPage (#69)', () => {
       error: null,
     });
 
-    renderPage();
+    renderPanel();
 
     await userEvent.click(await screen.findByText('Pick booking'));
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
-    await waitFor(() =>
-      expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith('token', {
-        booking_id: 'booking-1',
-      })
-    );
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith('token', {
+      booking_id: 'booking-1',
+    });
     expect(
       await screen.findByText(/checked in successfully/i)
     ).toBeInTheDocument();
   });
 
   it('AC-3: a cutoff-blocked check-in shows a clear terminal message and does not clear on its own', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Receptionist'),
-      error: null,
-    });
     vi.mocked(customerApi.listCustomers).mockResolvedValue({
       data: [
         {
@@ -213,7 +136,7 @@ describe('DaycareCheckInPage (#69)', () => {
       error: 'Check-in unavailable after 4:00 PM',
     });
 
-    renderPage();
+    renderPanel();
 
     await userEvent.click(
       await screen.findByRole('button', { name: /walk-in/i })

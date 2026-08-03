@@ -1,12 +1,13 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  advancePaymentStage,
   completeBooking,
   createBooking,
   getBookingById,
   listBookings,
-  markBookingPaid,
   overrideBookingStatus,
+  overridePaymentStage,
   startBooking,
 } from './services/booking.service.ts';
 import {
@@ -22,12 +23,14 @@ import {
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
 import {
+  advancePaymentStageValidator,
   availabilityQueryValidator,
   cancelBookingValidator,
   catalogQueryValidator,
   createBookingValidator,
   listBookingsQueryValidator,
   overrideBookingStatusValidator,
+  overridePaymentStageValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
   updatePolicyValidator,
@@ -133,6 +136,7 @@ export async function listBookingsController(
         dateTo: parsed.data.date_to,
         serviceCategory: parsed.data.service_category,
         status: parsed.data.status,
+        assignedStaffId: parsed.data.assigned_staff_id,
       },
     });
 
@@ -338,11 +342,10 @@ export async function cancelBookingController(
 }
 
 /**
- * Manual status-advance actions (booking-status revision): Start/Complete
- * are staff-only, gated broadly at the route level (any staff role, not
- * customer) since whoever is physically doing the work should be able to
- * advance it regardless of category; Mark as Paid is narrower (see
- * booking.routes.ts's role list) since it's a money-handling action.
+ * Manual status-advance actions: Start/Complete are staff-only, gated
+ * broadly at the route level (any staff role except Cashier, not customer)
+ * since whoever is physically doing the work should be able to advance it
+ * regardless of category.
  */
 export async function startBookingController(
   req: AuthenticatedRequest,
@@ -368,18 +371,6 @@ export async function completeBookingController(
   }
 }
 
-export async function markBookingPaidController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    const booking = await markBookingPaid({ bookingId: paramId(req, 'id') });
-    return res.status(200).json({ booking });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
 export async function overrideBookingStatusController(
   req: AuthenticatedRequest,
   res: Response
@@ -396,6 +387,56 @@ export async function overrideBookingStatusController(
     const booking = await overrideBookingStatus({
       bookingId: paramId(req, 'id'),
       status: parsed.data.status,
+    });
+    return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Payment-stage "Advance" action - independent of the status-advance
+ * controllers above (see PaymentStage's dev note in booking.types.ts).
+ */
+export async function advancePaymentStageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = advancePaymentStageValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const booking = await advancePaymentStage({
+      bookingId: paramId(req, 'id'),
+      choice: parsed.data.choice,
+    });
+    return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function overridePaymentStageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = overridePaymentStageValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const booking = await overridePaymentStage({
+      bookingId: paramId(req, 'id'),
+      paymentStage: parsed.data.payment_stage,
     });
     return res.status(200).json({ booking });
   } catch (error) {

@@ -10,6 +10,15 @@ export const DAYCARE_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
+/** Groomer/Pet Assistant advance rights: Daycare has no dedicated assigned-
+ * staff role (unlike Grooming/Veterinary), so Groomer and Pet Assistant may
+ * also check pets in/out of Daycare - mirrors HOTEL_ADVANCE_ROLES. */
+export const DAYCARE_ADVANCE_ROLES: readonly string[] = [
+  ...DAYCARE_ROLES,
+  'Groomer',
+  'Pet Assistant',
+];
+
 export type DaycareStatus = 'Active' | 'Completed';
 
 export interface DaycareSession {

@@ -18,22 +18,24 @@ import {
 } from './hotel.controller.ts';
 import {
   HOTEL_ADMIN_ROLES,
+  HOTEL_ADVANCE_ROLES,
   HOTEL_FRONT_DESK_ROLES,
   HOTEL_PET_ASSISTANT_ROLES,
 } from './hotel.types.ts';
 
 const router = Router();
-const frontDeskAndAssistants = [
-  ...HOTEL_FRONT_DESK_ROLES,
-  ...HOTEL_PET_ASSISTANT_ROLES,
-];
+// Care-log-only browsing (today's checklist, the stays/cages lists needed to
+// find a pet) is open to Groomer/Pet Assistant alongside front desk, same as
+// HOTEL_ADVANCE_ROLES below - kept as its own name here since it's used on
+// routes that aren't part of the check-in/checkout advance flow itself.
+const frontDeskAndAssistants = [...HOTEL_ADVANCE_ROLES];
 
 // Issue #75
 router.post(
   '/hotel/check-in',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   checkInController
 );
@@ -42,7 +44,7 @@ router.get(
   '/hotel/pets/:petId/cage-suggestion',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   suggestCageController
 );
@@ -51,7 +53,7 @@ router.get(
   '/hotel/pets/:petId/current-prescription',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   currentPrescriptionController
 );
@@ -100,7 +102,7 @@ router.get(
   '/hotel/cages/available',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   availableCageCountsController
 );
@@ -129,7 +131,7 @@ router.post(
   '/hotel/stays/:id/checkout',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   checkoutController
 );

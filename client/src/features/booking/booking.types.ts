@@ -14,7 +14,8 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
 /** Mirrors the server's BOOKING_MARK_PAID_ROLES - money-handling roles only.
  * Reused client-side to gate the booking wizard's discount picker (a
  * discount needs staff to have verified an ID onsite, same trust boundary
- * as Mark as Paid), separate from promos which anyone can select. */
+ * as Mark as Paid) and the payment_stage "Mark as Paid" button, separate
+ * from promos which anyone can select. */
 export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
@@ -24,21 +25,20 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
 ];
 
 /** Mirrors the server's BOOKING_STATUS_OVERRIDE_ROLES - gates the queue's
- * status-override dropdown (replaces Start/Complete/Mark-as-Paid buttons
- * with one control that can also move a booking backward, e.g. undoing an
- * accidental Mark as Paid). */
+ * status-override dropdown (replaces Start/Complete buttons with one
+ * control that can also move a booking backward). */
 export const BOOKING_STATUS_OVERRIDE_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
 ];
 
 /** Mirrors the server's OVERRIDABLE_BOOKING_STATUSES - Cancelled/No-show
- * keep their own dedicated flows, not this dropdown. */
+ * keep their own dedicated flows, not this dropdown. 'Paid' was retired
+ * from BookingStatus entirely (see below). */
 export const OVERRIDABLE_BOOKING_STATUSES = [
   'Pending',
   'In Progress',
   'Completed',
-  'Paid',
 ] as const;
 
 /** Misc: administrative bookings (Initial Assessment/Reassessment) with no
@@ -64,17 +64,18 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  * automatically - so 'Confirmed' was retired rather than relabeled.
  * Pending (booked, appointment hasn't started) -> In Progress (a Start
  * action, or physical check-in for Hotel/Daycare) -> Completed (a Complete
- * action or checkout) -> Paid (automatic on Complete for an
- * already-confirmed online payment, otherwise a manual Mark as Paid
- * action). No-show is a lazy, read-time server transition: any Pending
- * booking whose scheduled_start has passed is flipped to No-show the next
- * time it's read. Cancelled is unchanged.
+ * action or checkout). No-show is a lazy, read-time server transition: any
+ * Pending booking whose scheduled_start has passed is flipped to No-show
+ * the next time it's read. Cancelled is unchanged.
+ *
+ * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
+ * now tracked exclusively via the independent `payment_stage` field
+ * (Unpaid -> Paid in Advance -> Paid, see PaymentStage below).
  */
 export type BookingStatus =
   | 'Pending'
   | 'In Progress'
   | 'Completed'
-  | 'Paid'
   | 'Cancelled'
   | 'No-show';
 
@@ -82,7 +83,6 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
   'In Progress',
   'Completed',
-  'Paid',
   'Cancelled',
   'No-show',
 ];
@@ -93,19 +93,43 @@ export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
   'In Progress',
   'Completed',
-  'Paid',
 ];
 
 /** The service itself already happened, payment status aside. */
 export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Completed',
-  'Paid',
 ];
 
 export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
   'In Progress',
 ];
+
+/**
+ * Mirrors the server's PaymentStage - independent of BookingStatus above, it
+ * tracks only when money changed hands, not the service lifecycle. This is
+ * the sole "payment complete" signal on a booking now that `status` can no
+ * longer reach 'Paid'. A cashier (or other money-handling staff) advances
+ * this via the queue's "Mark as Paid" button: from Unpaid, either straight
+ * to Paid (a normal onsite payment) or to Paid in Advance (money collected
+ * before the service happens); from Paid in Advance, always straight to
+ * Paid once the balance is settled. Only Admin/Superadmin can revert it,
+ * via the same BOOKING_STATUS_OVERRIDE_ROLES dropdown pattern used for
+ * BookingStatus.
+ */
+export type PaymentStage = 'Unpaid' | 'Paid in Advance' | 'Paid';
+
+export const PAYMENT_STAGES: readonly PaymentStage[] = [
+  'Unpaid',
+  'Paid in Advance',
+  'Paid',
+];
+
+export const OVERRIDABLE_PAYMENT_STAGES = [
+  'Unpaid',
+  'Paid in Advance',
+  'Paid',
+] as const;
 
 /** Only before the service has started - a booking whose scheduled_start
  * has already passed is separately blocked even while still Pending (see
@@ -190,6 +214,7 @@ export interface Booking {
   scheduled_end: string;
   assigned_staff_id: string | null;
   status: BookingStatus;
+  payment_stage: PaymentStage;
   total_price: number;
   downpayment_amount: number | null;
   payment_method: PaymentMethod | null;
@@ -355,4 +380,8 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: BookingStatus;
+  /** "Assigned to me / no preference" filter - a staff UUID (pass the
+   * viewer's own id for "assigned to me"), or the sentinel 'unassigned' for
+   * bookings with no assigned staff yet. */
+  assignedStaffId?: string;
 }

@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Navigate, useParams } from 'react-router';
-import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { getStaffProfile } from '../../../staff/api/staff.api';
+import { useState } from 'react';
 import { DaycareSessionPicker } from '../../components/DaycareSessionPicker/DaycareSessionPicker';
 import { checkOutDaycareSession } from '../../api/daycare.api';
 import type { DaycareSession } from '../../daycare.types';
-import styles from './DaycareCheckoutPage.module.css';
+import styles from './DaycareCheckoutPanel.module.css';
 
-const ALLOWED_VIEWER_ROLES = new Set([
-  'Receptionist',
-  'Admin',
-  'Supervisor',
-  'Superadmin',
-]);
+interface DaycareCheckoutPanelProps {
+  accessToken: string;
+  /** Preselects the confirm step, skipping the picker - set by
+   * DaycareQueuePage right after DaycareCheckInPanel checks a pet in, or by
+   * the legacy /staff/daycare/checkout/:sessionId redirect. Null shows the
+   * picker. */
+  initialSessionId: string | null;
+}
 
 const FIRST_HOUR_CHARGE = 100;
 const SUCCEEDING_HOUR_CHARGE = 50;
@@ -36,18 +35,18 @@ function succeedingHoursFor(checkInAt: string, checkOutAt: string): number {
  *
  * GET /daycare/sessions backs a search/filter/sort picker
  * (DaycareSessionPicker), mirroring HotelStayPicker's role on the Hotel
- * Checkout screen - selecting a card goes straight to a confirm step, same
- * as HotelCheckoutPage (no more raw "paste the session id" text field).
- * Arriving with a :sessionId route param (DaycareCheckInPage's "Go to
- * checkout" link) skips the picker entirely and goes straight to confirm.
+ * Checkout screen - selecting a card goes straight to a confirm step.
+ *
+ * Queue redesign: extracted from the former standalone DaycareCheckoutPage
+ * so it can render as a tab panel inside DaycareQueuePage (alongside
+ * DaycareCheckInPanel) instead of its own route - DaycareQueuePage renders
+ * this with `key={initialSessionId ?? 'picker'}` so a fresh preselect (or a
+ * return to the bare picker) resets this panel's internal state cleanly.
  */
-export function DaycareCheckoutPage() {
-  const { user, accessToken } = useAuth();
-  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
-
-  const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
-    'loading'
-  );
+export function DaycareCheckoutPanel({
+  accessToken,
+  initialSessionId,
+}: DaycareCheckoutPanelProps) {
   const [selectedSession, setSelectedSession] = useState<DaycareSession | null>(
     null
   );
@@ -55,31 +54,7 @@ export function DaycareCheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [checkedOut, setCheckedOut] = useState<DaycareSession | null>(null);
 
-  useEffect(() => {
-    if (!accessToken || !user?.id) return;
-
-    let isMounted = true;
-
-    void getStaffProfile(user.id, accessToken).then((result) => {
-      if (!isMounted) return;
-
-      if (result.data) {
-        setRoleStatus(
-          ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
-        );
-      } else {
-        setRoleStatus('denied');
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [accessToken, user?.id]);
-
   async function submitCheckout(sessionId: string) {
-    if (!accessToken) return;
-
     setIsSubmitting(true);
     setError(null);
 
@@ -95,28 +70,6 @@ export function DaycareCheckoutPage() {
     setCheckedOut(result.data);
   }
 
-  if (!user?.id || !accessToken) {
-    return (
-      <main className={styles.page}>
-        <p className={styles.errorBanner} role="alert">
-          Unable to load Daycare checkout.
-        </p>
-      </main>
-    );
-  }
-
-  if (roleStatus === 'loading') {
-    return (
-      <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
-      </main>
-    );
-  }
-
-  if (roleStatus === 'denied') {
-    return <Navigate to="/staff/settings" replace />;
-  }
-
   if (checkedOut) {
     const succeedingHours = checkedOut.check_out_at
       ? succeedingHoursFor(checkedOut.check_in_at, checkedOut.check_out_at)
@@ -124,8 +77,7 @@ export function DaycareCheckoutPage() {
     const succeedingCharge = succeedingHours * SUCCEEDING_HOUR_CHARGE;
 
     return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>Daycare Checkout</h1>
+      <>
         <p className={styles.successBanner} role="status">
           Session checked out.
         </p>
@@ -148,17 +100,16 @@ export function DaycareCheckoutPage() {
             <dd>₱{checkedOut.computed_charge}</dd>
           </div>
         </dl>
-      </main>
+      </>
     );
   }
 
-  // Reached via a direct link (DaycareCheckInPage) with a known session id -
+  // Arrived with a known session id (DaycareCheckInPanel's "Go to
+  // checkout", or the legacy /staff/daycare/checkout/:sessionId redirect) -
   // skip the picker and go straight to confirm.
-  if (routeSessionId && !selectedSession) {
+  if (initialSessionId && !selectedSession) {
     return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>Daycare Checkout</h1>
-
+      <>
         {error ? (
           <p className={styles.errorBanner} role="alert">
             {error}
@@ -171,19 +122,17 @@ export function DaycareCheckoutPage() {
           type="button"
           className={styles.primaryButton}
           disabled={isSubmitting}
-          onClick={() => void submitCheckout(routeSessionId)}
+          onClick={() => void submitCheckout(initialSessionId)}
         >
           {isSubmitting ? 'Checking out...' : 'Check out now'}
         </button>
-      </main>
+      </>
     );
   }
 
   if (selectedSession) {
     return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>Daycare Checkout</h1>
-
+      <>
         <dl className={styles.breakdown}>
           <div className={styles.breakdownRow}>
             <dt>Checked in</dt>
@@ -214,14 +163,12 @@ export function DaycareCheckoutPage() {
             Choose a different session
           </button>
         </div>
-      </main>
+      </>
     );
   }
 
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Daycare Checkout</h1>
-
+    <>
       {error ? (
         <p className={styles.errorBanner} role="alert">
           {error}
@@ -232,6 +179,6 @@ export function DaycareCheckoutPage() {
         accessToken={accessToken}
         onSelect={setSelectedSession}
       />
-    </main>
+    </>
   );
 }

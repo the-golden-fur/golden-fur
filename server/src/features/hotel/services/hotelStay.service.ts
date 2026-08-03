@@ -18,14 +18,14 @@ export interface HotelStayWithCage extends HotelStay {
  * revision - hotel_stays itself no longer carries a status column). */
 export type HotelStayFilterStatus = Extract<
   BookingStatus,
-  'In Progress' | 'Completed' | 'Paid'
+  'In Progress' | 'Completed'
 >;
 
 interface ListHotelStaysParams {
   branchId: string;
   /** Omitted returns every stay regardless of its booking's status - used by
    * HotelBookingPicker to flag any booking that already has a stay (In
-   * Progress, Completed, or Paid), not just ones still checked in. */
+   * Progress or Completed), not just ones still checked in. */
   status?: HotelStayFilterStatus;
 }
 

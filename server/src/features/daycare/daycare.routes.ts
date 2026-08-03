@@ -8,7 +8,7 @@ import {
   checkOutDaycareSessionController,
   listDaycareSessionsController,
 } from './daycare.controller.ts';
-import { DAYCARE_ROLES } from './daycare.types.ts';
+import { DAYCARE_ADVANCE_ROLES } from './daycare.types.ts';
 
 const router = Router();
 
@@ -16,7 +16,7 @@ router.post(
   '/daycare/check-in',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...DAYCARE_ROLES]),
+  requireRole([...DAYCARE_ADVANCE_ROLES]),
   requireBranch,
   checkInDaycareSessionController
 );
@@ -25,7 +25,7 @@ router.get(
   '/daycare/sessions',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...DAYCARE_ROLES]),
+  requireRole([...DAYCARE_ADVANCE_ROLES]),
   requireBranch,
   listDaycareSessionsController
 );
@@ -34,7 +34,7 @@ router.post(
   '/daycare/sessions/:id/checkout',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...DAYCARE_ROLES]),
+  requireRole([...DAYCARE_ADVANCE_ROLES]),
   requireBranch,
   checkOutDaycareSessionController
 );

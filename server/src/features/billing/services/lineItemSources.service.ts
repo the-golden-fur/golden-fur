@@ -42,8 +42,8 @@ export interface BookingForBilling {
 /**
  * Issue #84: checkout can only run against a booking whose underlying
  * service already completed (FINISHED_BOOKING_STATUSES in booking.types.ts
- * - 'Completed' or 'Paid'), matching Modules-Features' "cannot run without a
- * service being completed."
+ * - 'Completed'), matching Modules-Features' "cannot run without a service
+ * being completed."
  */
 export async function getBookingForBilling(
   bookingId: string
@@ -60,7 +60,7 @@ export async function getBookingForBilling(
   if (!data) throwWithStatus(404, 'Booking not found');
 
   const status = (data as unknown as { status: string }).status;
-  if (status !== 'Completed' && status !== 'Paid') {
+  if (status !== 'Completed') {
     throwWithStatus(
       409,
       `A ${status} booking's service has not completed yet - checkout is not available`

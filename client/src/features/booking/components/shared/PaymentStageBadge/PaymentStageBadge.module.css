@@ -1,8 +1,6 @@
-.pending,
-.inProgress,
-.completed,
-.cancelled,
-.noshow {
+.unpaid,
+.paidInAdvance,
+.paid {
   display: inline-flex;
   align-items: center;
   border-radius: var(--radius-pill);
@@ -15,36 +13,24 @@
     box-shadow 0.15s ease;
 }
 
-.pending:hover,
-.inProgress:hover,
-.completed:hover,
-.cancelled:hover,
-.noshow:hover {
+.unpaid:hover,
+.paidInAdvance:hover,
+.paid:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 
-.pending {
+.unpaid {
   background: var(--color-booking-pending-bg);
   color: var(--color-booking-pending-text);
 }
 
-.inProgress {
+.paidInAdvance {
   background: var(--color-booking-in-progress-bg);
   color: var(--color-booking-in-progress-text);
 }
 
-.completed {
-  background: var(--color-booking-completed-bg);
-  color: var(--color-booking-completed-text);
-}
-
-.cancelled {
-  background: var(--color-booking-cancelled-bg);
-  color: var(--color-booking-cancelled-text);
-}
-
-.noshow {
-  background: var(--color-booking-noshow-bg);
-  color: var(--color-booking-noshow-text);
+.paid {
+  background: var(--color-booking-paid-bg);
+  color: var(--color-booking-paid-text);
 }

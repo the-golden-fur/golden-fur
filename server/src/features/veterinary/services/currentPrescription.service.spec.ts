@@ -48,7 +48,10 @@ describe('currentPrescription.service (#66)', () => {
         {
           id: 'consultation-2',
           medications: [{ name: 'Amoxicillin', dose: '50mg', notes: null }],
-          booking: { status: 'Paid', completed_at: '2026-07-19T00:00:00.000Z' },
+          booking: {
+            status: 'Completed',
+            completed_at: '2026-07-19T00:00:00.000Z',
+          },
         },
       ],
       error: null,

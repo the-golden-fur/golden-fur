@@ -260,7 +260,7 @@ describe('careInstructions.service (#75)', () => {
                 { name: 'Rimadyl', dose: '75mg', notes: 'with food' },
               ],
               booking: {
-                status: 'Paid',
+                status: 'Completed',
                 completed_at: '2026-08-01T00:00:00.000Z',
               },
             },

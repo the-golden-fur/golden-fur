@@ -3,6 +3,7 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  advancePaymentStageController,
   availabilityController,
   cancelBookingController,
   catalogController,
@@ -11,19 +12,19 @@ import {
   getBookingController,
   listBookingsController,
   listPolicyConfigurationsController,
-  markBookingPaidController,
   overrideBookingStatusController,
+  overridePaymentStageController,
   rescheduleBookingController,
   staffPickerOptionsController,
   startBookingController,
   updatePolicyConfigurationController,
 } from './booking.controller.ts';
 import {
-  BOOKING_MARK_PAID_ROLES,
   BOOKING_POLICY_READ_ROLES,
   BOOKING_POLICY_WRITE_ROLES,
   BOOKING_STATUS_ADVANCE_ROLES,
   BOOKING_STATUS_OVERRIDE_ROLES,
+  PAYMENT_STAGE_ADVANCE_ROLES,
 } from './booking.types.ts';
 
 /**
@@ -58,10 +59,10 @@ const statusAdvance = [
   requireRole([...BOOKING_STATUS_ADVANCE_ROLES]),
 ];
 
-const markPaid = [
+const paymentStageAdvance = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...BOOKING_MARK_PAID_ROLES]),
+  requireRole([...PAYMENT_STAGE_ADVANCE_ROLES]),
 ];
 
 const statusOverride = [
@@ -115,20 +116,34 @@ router.post(
 router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
 
 // Manual status-advance actions (booking-status revision, replacing the
-// retired 'Confirmed' payment gate): Start/Complete open to any staff role;
-// Mark as Paid restricted to money-handling roles. No-show has no route -
-// it's a lazy transition applied on read (see booking.service.ts).
+// retired 'Confirmed' payment gate): Start/Complete open to any staff role
+// except Cashier. No-show has no route - it's a lazy transition applied on
+// read (see booking.service.ts).
 router.post('/bookings/:id/start', statusAdvance, startBookingController);
 router.post('/bookings/:id/complete', statusAdvance, completeBookingController);
-router.post('/bookings/:id/mark-paid', markPaid, markBookingPaidController);
 
 // Admin/Superadmin-only direct status set (forward or backward) - replaces
-// their Start/Complete/Mark-as-Paid buttons with one status dropdown in the
-// queue, so an accidental Mark as Paid can be reverted.
+// their Start/Complete buttons with one status dropdown in the queue.
 router.patch(
   '/bookings/:id/status',
   statusOverride,
   overrideBookingStatusController
+);
+
+// payment_stage track (Unpaid -> Paid in Advance -> Paid) - independent of
+// the status-advance/override routes above (see PaymentStage's dev note in
+// booking.types.ts) and the sole "Mark as Paid" action now that `status`
+// can no longer reach 'Paid'. Money-handling roles advance it;
+// Admin/Superadmin-only override mirrors the status dropdown.
+router.post(
+  '/bookings/:id/payment-stage/advance',
+  paymentStageAdvance,
+  advancePaymentStageController
+);
+router.patch(
+  '/bookings/:id/payment-stage',
+  statusOverride,
+  overridePaymentStageController
 );
 
 export default router;
