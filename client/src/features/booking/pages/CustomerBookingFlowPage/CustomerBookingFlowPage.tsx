@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCustomerPets } from '../../../customers/api/customer.api';
@@ -18,6 +18,7 @@ import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerLis
 import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFeeNotice';
 import { createBooking, getBookingCatalog } from '../../api/booking.api';
 import {
+  BOOKING_MARK_PAID_ROLES,
   PAYMENT_METHODS,
   SERVICE_CATEGORIES,
   type Booking,
@@ -28,6 +29,9 @@ import {
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
+import { listStaff } from '../../../staff/api/staff.api';
+import { listDiscounts } from '../../../discounts/api/discounts.api';
+import type { Discount } from '../../../discounts/discounts.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
   getDayOneMinTime,
@@ -159,7 +163,6 @@ interface StepDef {
     | 'service'
     | 'slot'
     | 'staff'
-    | 'addons'
     | 'hotelDetails'
     | 'payment';
   label: string;
@@ -234,6 +237,35 @@ export function CustomerBookingFlowPage() {
     ? (walkInCustomer?.id ?? null)
     : (user?.id ?? null);
 
+  // Only resolved in the staff walk-in flow - a discount needs staff to have
+  // verified a Senior Citizen/PWD ID onsite, so the picker below is gated on
+  // this (same recipe ReceptionistBookingsQueuePage uses: the JWT's role is
+  // just Postgres "authenticated", the app role only lives in
+  // staff_profiles). Promos have no role gate, so the customer portal never
+  // needs this lookup.
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isReceptionistMode || !accessToken || !user?.id) return;
+
+    let isMounted = true;
+
+    void listStaff(accessToken).then((result) => {
+      if (!isMounted) return;
+      const self = result.data?.find((staff) => staff.id === user.id);
+      setViewerRole(self?.role ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceptionistMode, accessToken, user?.id]);
+
+  const canApplyDiscounts =
+    isReceptionistMode &&
+    viewerRole !== null &&
+    BOOKING_MARK_PAID_ROLES.includes(viewerRole);
+
   const [pets, setPets] = useState<Pet[]>([]);
   const [isPetsLoading, setIsPetsLoading] = useState(true);
   const [showAddPet, setShowAddPet] = useState(false);
@@ -248,10 +280,43 @@ export function CustomerBookingFlowPage() {
   );
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [selectedPackageId, setSelectedPackageId] = useState('');
+  // Checkboxes over both the "Individual service" and "Package" sub-tabs -
+  // selections in either accumulate into the same booking (multi-item
+  // bookings revision, replacing the old single selectedServiceId/
+  // selectedPackageId radio pair plus the separate Add-ons step). Kept per
+  // CATEGORY (not one flat array) so browsing another category tab to
+  // compare doesn't wipe out what you'd already picked in the one you were
+  // on - only an actual branch/pet change clears everything, since the
+  // catalog itself changes then.
+  const [selectionsByCategory, setSelectionsByCategory] = useState<
+    Partial<Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>>
+  >({});
 
-  const [addonServiceIds, setAddonServiceIds] = useState<string[]>([]);
+  const selectedServiceIds = category
+    ? (selectionsByCategory[category]?.serviceIds ?? [])
+    : [];
+  const selectedPackageIds = category
+    ? (selectionsByCategory[category]?.packageIds ?? [])
+    : [];
+
+  // Only one category may ever hold picks at a time (a booking always
+  // covers exactly one category) - every mutation replaces the whole map
+  // with just targetCategory's own entry, so selecting/deselecting an item
+  // in one category always drops whatever was left checked under any other
+  // category, rather than leaving it stranded there until submit.
+  function updateCategorySelection(
+    targetCategory: ServiceCategory,
+    updater: (current: {
+      serviceIds: string[];
+      packageIds: string[];
+    }) => { serviceIds: string[]; packageIds: string[] }
+  ) {
+    setSelectionsByCategory((prev) => ({
+      [targetCategory]: updater(
+        prev[targetCategory] ?? { serviceIds: [], packageIds: [] }
+      ),
+    }));
+  }
 
   const [selectedSlot, setSelectedSlot] = useState<{
     start: string;
@@ -270,6 +335,17 @@ export function CustomerBookingFlowPage() {
   // otherwise, per StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
   const [promos, setPromos] = useState<Promo[]>([]);
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [selectedPromoId, setSelectedPromoId] = useState('');
+  const [selectedDiscountId, setSelectedDiscountId] = useState('');
+  // Staff attestation that they physically checked the customer's Senior
+  // Citizen/PWD ID before selecting a mandated discount - mirrors
+  // CashierCheckoutPage's own seniorCitizenEligible/pwdEligible checkboxes,
+  // just collapsed to one confirmation since only one discount can be picked
+  // here. Never sent to the server or persisted (same as the checkout-time
+  // checkboxes) - the act of a qualifying staff role choosing a Cash booking
+  // and checking this box IS the attestation.
+  const [discountIdVerified, setDiscountIdVerified] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [specialInstructions, setSpecialInstructions] = useState('');
 
@@ -314,8 +390,19 @@ export function CustomerBookingFlowPage() {
     };
   }, [isReceptionistMode, accessToken]);
 
-  const [rawCurrentStepIndex, setCurrentStepIndex] = useState(0);
-  const [rawMaxReachedIndex, setMaxReachedIndex] = useState(0);
+  // Tracked by stable step KEY, not array index - the `steps` array below
+  // can shrink out from under the user mid-flow (e.g. Staff Picker turns
+  // out disabled for this branch+category only after StaffPickerList
+  // mounts and fetches), and a plain numeric index would then silently
+  // resolve to whatever step slid into that same slot instead of the step
+  // the user actually meant to be on (previously caused Date & Time to
+  // jump straight to Review & Pay instead of Staff whenever this happened).
+  const [currentStepKey, setCurrentStepKey] = useState<StepDef['key']>(() =>
+    isReceptionistMode ? 'customer' : 'pet'
+  );
+  const [reachedStepKeys, setReachedStepKeys] = useState<
+    Set<StepDef['key']>
+  >(() => new Set([isReceptionistMode ? 'customer' : 'pet']));
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -366,6 +453,27 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId]);
 
+  useEffect(() => {
+    if (!accessToken || !selectedBranchId || !canApplyDiscounts) {
+      setDiscounts([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    void listDiscounts(accessToken, {
+      branchId: selectedBranchId,
+      activeOnly: true,
+    }).then((result) => {
+      if (!isMounted || !result.data) return;
+      setDiscounts(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, selectedBranchId, canApplyDiscounts]);
+
   // ---- Derived data ----
 
   const selectedPet = useMemo(
@@ -387,12 +495,12 @@ export function CustomerBookingFlowPage() {
   );
 
   const availableCategories = useMemo(() => {
-    // An unassessed pet can only ever book a Grooming service flagged
-    // requires_assessed_pet=false (Initial Assessment) - Hotel/Daycare/
-    // Veterinary are always dead ends for it, so don't even offer those
-    // tabs.
+    // An unassessed pet can only ever book a Misc service flagged
+    // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
+    // Daycare/Veterinary are always dead ends for it, so don't even offer
+    // those tabs.
     if (!isSelectedPetAssessed) {
-      return ['Grooming'] as ServiceCategory[];
+      return ['Misc'] as ServiceCategory[];
     }
 
     return SERVICE_CATEGORIES.filter(
@@ -415,15 +523,17 @@ export function CustomerBookingFlowPage() {
     }
 
     const assessmentService = allServices.find(
-      (service) =>
-        service.category === 'Grooming' && !service.requires_assessed_pet
+      (service) => service.category === 'Misc' && !service.requires_assessed_pet
     );
 
     if (assessmentService) {
-      handleCategorySelect('Grooming');
-      handleServiceSelect(assessmentService.id);
+      handleCategorySelect('Misc');
+      updateCategorySelection('Misc', () => ({
+        serviceIds: [assessmentService.id],
+        packageIds: [],
+      }));
     }
-    // handleCategorySelect/handleServiceSelect are plain function
+    // handleCategorySelect/updateCategorySelection are plain function
     // declarations recreated every render (not memoized) - including them
     // would re-run this effect on every render instead of only when the
     // pet/branch/catalog actually change.
@@ -435,20 +545,23 @@ export function CustomerBookingFlowPage() {
       allServices.filter(
         (service) =>
           service.category === category &&
-          (isSelectedPetAssessed || !service.requires_assessed_pet)
+          // requires_assessed_pet=false services (Initial Assessment) exist
+          // ONLY for an unassessed pet - once assessed, they're already
+          // done and hidden entirely, leaving only requires_assessed_pet
+          // services (everything else, including Reassessment) visible.
+          service.requires_assessed_pet === isSelectedPetAssessed
       ),
     [allServices, category, isSelectedPetAssessed]
   );
 
-  const selectedService = useMemo(
-    () =>
-      allServices.find((service) => service.id === selectedServiceId) ?? null,
-    [allServices, selectedServiceId]
+  const selectedServices = useMemo(
+    () => allServices.filter((service) => selectedServiceIds.includes(service.id)),
+    [allServices, selectedServiceIds]
   );
 
-  const selectedPackage = useMemo(
-    () => packages.find((pkg) => pkg.id === selectedPackageId) ?? null,
-    [packages, selectedPackageId]
+  const selectedPackages = useMemo(
+    () => packages.filter((pkg) => selectedPackageIds.includes(pkg.id)),
+    [packages, selectedPackageIds]
   );
 
   const serviceNameById = useMemo(
@@ -456,21 +569,54 @@ export function CustomerBookingFlowPage() {
     [allServices]
   );
 
-  const addonCandidates = useMemo(
+  // Packages have no category column of their own - filter to only those
+  // whose every member service belongs to the currently selected category,
+  // matching the server-side invariant booking.service.ts now enforces
+  // per-item (multi-item bookings revision).
+  const packagesForCategory = useMemo(
     () =>
-      allServices.filter(
-        (service) =>
-          service.category === 'Grooming' &&
-          service.is_active &&
-          service.id !== selectedServiceId
+      packages.filter((pkg) =>
+        (pkg.package_services ?? []).every(
+          (link) =>
+            allServices.find((service) => service.id === link.service_id)
+              ?.category === category
+        )
       ),
-    [allServices, selectedServiceId]
+    [packages, allServices, category]
+  );
+
+  // Hotel (one cage) and Daycare (one session) only ever hold a single item;
+  // Grooming/Veterinary stay multi-select.
+  const singleSelectCategory = category === 'Hotel' || category === 'Daycare';
+
+  // selectionsByCategory persists a tab's picks while you're just browsing
+  // (switching tabs without selecting anything), but updateCategorySelection
+  // clears every other category's picks the moment you actually select or
+  // deselect an item anywhere - a booking is always exactly one category,
+  // so this can only ever be non-empty for the brief window after switching
+  // tabs and before making a new pick, warning that the old pick is about
+  // to be dropped.
+  const categoriesWithOtherSelections = useMemo(
+    () =>
+      SERVICE_CATEGORIES.filter((candidate) => {
+        if (candidate === category) return false;
+        const picks = selectionsByCategory[candidate];
+        return Boolean(picks?.serviceIds.length || picks?.packageIds.length);
+      }),
+    [selectionsByCategory, category]
   );
 
   const slotDurationMinutes =
-    selectionMode === 'service'
-      ? (selectedService?.duration_minutes ?? 60)
-      : 60;
+    selectedServices.reduce(
+      (sum, service) => sum + (service.duration_minutes ?? 60),
+      0
+    ) +
+    selectedPackages.reduce(
+      (sum, pkg) =>
+        sum +
+        (pkg.total_duration_minutes ?? (pkg.package_services?.length ?? 1) * 60),
+      0
+    ) || 60;
 
   /** The real scheduled_end once multi-night is applied - same computation
    * handleSubmit uses, reused here so the care-schedule bounds below judge
@@ -491,31 +637,29 @@ export function CustomerBookingFlowPage() {
     ? getLastDayMaxTime(hotelScheduledEnd)
     : null;
 
-  const basePrice =
-    selectionMode === 'service'
-      ? (selectedService?.base_price ?? 0)
-      : (selectedPackage?.bundled_price ?? 0);
+  // Hotel is priced per night - base_price/bundled_price is the per-night
+  // rate, multiplied by however many nights were set on the Service step
+  // (mirrors the server's own resolveQuantity in booking.service.ts).
+  const hotelNightsMultiplier = category === 'Hotel' ? hotelNights : 1;
 
-  const addonsTotal = useMemo(
-    () =>
-      addonServiceIds.reduce(
-        (sum, id) =>
-          sum +
-          (allServices.find((service) => service.id === id)?.base_price ?? 0),
-        0
-      ),
-    [addonServiceIds, allServices]
-  );
+  const itemsTotal =
+    (selectedServices.reduce((sum, service) => sum + service.base_price, 0) +
+      selectedPackages.reduce((sum, pkg) => sum + pkg.bundled_price, 0)) *
+    hotelNightsMultiplier;
 
-  const subtotal = basePrice + addonsTotal;
+  const subtotal = itemsTotal;
 
-  const applicablePromo = useMemo(() => {
-    if (!selectedBranch) return null;
+  // Selectable at the payment step (booking-time discount/promo revision) -
+  // every promo whose scope matches the current selection, not just a single
+  // auto-picked preview. Anyone can pick a promo (self-service, like a
+  // coupon code); no role or payment-method gate.
+  const applicablePromos = useMemo(() => {
+    if (!selectedBranch) return [];
 
     const branchKey = selectedBranch.name.trim().toLowerCase();
     const now = new Date();
 
-    const candidates = promos.filter((promo) => {
+    return promos.filter((promo) => {
       if (!promo.is_active) return false;
       if (promo.branch_scope !== 'both' && promo.branch_scope !== branchKey) {
         return false;
@@ -526,34 +670,63 @@ export function CustomerBookingFlowPage() {
 
       return (promo.promo_scope ?? []).some(
         (scope) =>
-          (selectionMode === 'service' &&
-            scope.service_id === selectedServiceId) ||
-          (selectionMode === 'package' &&
-            scope.package_id === selectedPackageId)
+          selectedServiceIds.includes(scope.service_id ?? '') ||
+          selectedPackageIds.includes(scope.package_id ?? '')
       );
     });
+  }, [promos, selectedBranch, selectedServiceIds, selectedPackageIds]);
 
-    if (candidates.length === 0) return null;
+  const selectedPromo = useMemo(
+    () => applicablePromos.find((promo) => promo.id === selectedPromoId) ?? null,
+    [applicablePromos, selectedPromoId]
+  );
 
-    // Epic B (#84): is_exclusive is gone - promo combinability is now a
-    // per-branch cap (promo_cap_configuration), enforced at checkout once
-    // M08 ships (Sprint 5). Until then this pre-M08 pricing preview keeps
-    // its existing single-promo display by taking the first applicable
-    // candidate, rather than guessing at cap math this epic doesn't own.
-    return candidates[0];
+  const promoDiscount = selectedPromo
+    ? selectedPromo.discount_type === 'Percentage'
+      ? subtotal * (selectedPromo.value / 100)
+      : Math.min(selectedPromo.value, subtotal)
+    : 0;
+
+  // Discounts (Cash-only, staff-verified ID) - only shown/selectable once
+  // Cash is chosen as the payment method (canApplyDiscounts already gates
+  // whether any discounts were even fetched - see the discounts effect).
+  const applicableDiscounts = useMemo(() => {
+    if (!canApplyDiscounts || paymentMethod !== 'Cash') return [];
+
+    return discounts.filter((discount) => {
+      if (!discount.is_active) return false;
+
+      if (discount.scope_type === 'service') {
+        return selectedServiceIds.includes(discount.scope_service_id ?? '');
+      }
+      if (discount.scope_type === 'package') {
+        return selectedPackageIds.includes(discount.scope_package_id ?? '');
+      }
+      return discount.scope_category === category;
+    });
   }, [
-    promos,
-    selectedBranch,
-    selectionMode,
-    selectedServiceId,
-    selectedPackageId,
+    canApplyDiscounts,
+    paymentMethod,
+    discounts,
+    selectedServiceIds,
+    selectedPackageIds,
+    category,
   ]);
 
-  const promoDiscount = applicablePromo
-    ? applicablePromo.discount_type === 'Percentage'
-      ? subtotal * (applicablePromo.value / 100)
-      : Math.min(applicablePromo.value, subtotal)
+  const selectedDiscount = useMemo(
+    () =>
+      applicableDiscounts.find((discount) => discount.id === selectedDiscountId) ??
+      null,
+    [applicableDiscounts, selectedDiscountId]
+  );
+
+  const discountAmount = selectedDiscount
+    ? selectedDiscount.discount_type === 'Percentage'
+      ? subtotal * (selectedDiscount.value / 100)
+      : Math.min(selectedDiscount.value, subtotal)
     : 0;
+
+  const estimatedTotal = Math.max(0, subtotal - discountAmount - promoDiscount);
 
   // Hotel-supplied feeding/medication items (staff will purchase them) are
   // billed at checkout, not part of the upfront downpayment (mirrors
@@ -632,10 +805,6 @@ export function CustomerBookingFlowPage() {
       list.push({ key: 'staff', label: 'Staff' });
     }
 
-    if (category === 'Grooming') {
-      list.push({ key: 'addons', label: 'Add-ons' });
-    }
-
     if (category === 'Hotel') {
       list.push({ key: 'hotelDetails', label: 'Care Instructions' });
     }
@@ -645,14 +814,42 @@ export function CustomerBookingFlowPage() {
     return list;
   }, [isReceptionistMode, category, staffPickerUnavailable]);
 
-  // Clamped at the point of use (not via an effect+setState pair) - if the
-  // steps list shrinks because a category change removes the Staff Picker
-  // step, the raw indices simply get read back down to range on this same
-  // render, with no extra render pass needed.
-  const currentStepIndex = Math.min(rawCurrentStepIndex, steps.length - 1);
-  const maxReachedIndex = Math.min(rawMaxReachedIndex, steps.length - 1);
+  const currentStepIndex = Math.max(
+    0,
+    steps.findIndex((step) => step.key === currentStepKey)
+  );
+  const maxReachedIndex = steps.reduce(
+    (highest, step, index) =>
+      reachedStepKeys.has(step.key) ? Math.max(highest, index) : highest,
+    0
+  );
 
   const currentStep = steps[currentStepIndex] ?? steps[0];
+
+  // Repairs `currentStepKey` when the step it points at just disappeared
+  // from `steps` (e.g. the Staff step, once Staff Picker turns out to be
+  // disabled for this branch+category) - advances to whatever step
+  // logically follows it, rather than leaving `currentStepIndex` above to
+  // silently resolve to a different step that slid into the same slot.
+  const prevStepsRef = useRef(steps);
+  useEffect(() => {
+    const prevSteps = prevStepsRef.current;
+    prevStepsRef.current = steps;
+
+    if (steps.some((step) => step.key === currentStepKey)) return;
+
+    const oldIndex = prevSteps.findIndex((step) => step.key === currentStepKey);
+    const fallbackKey =
+      prevSteps
+        .slice(oldIndex + 1)
+        .find((step) => steps.some((s) => s.key === step.key))?.key ??
+      steps[steps.length - 1]?.key;
+
+    if (fallbackKey) {
+      setCurrentStepKey(fallbackKey);
+      setReachedStepKeys((prev) => new Set(prev).add(fallbackKey));
+    }
+  }, [steps, currentStepKey]);
 
   function isStepValid(key: StepDef['key']): boolean {
     switch (key) {
@@ -665,20 +862,19 @@ export function CustomerBookingFlowPage() {
       case 'service':
         return (
           category !== '' &&
-          (selectionMode === 'service'
-            ? selectedServiceId !== ''
-            : selectedPackageId !== '')
+          selectedServiceIds.length + selectedPackageIds.length > 0
         );
       case 'slot':
         return selectedSlot !== null;
       case 'staff':
         return staffPreference !== null;
-      case 'addons':
-        return true;
       case 'hotelDetails':
         return true;
       case 'payment':
-        return !requiresPayment || paymentMethod !== '';
+        return (
+          (!requiresPayment || paymentMethod !== '') &&
+          (!selectedDiscount?.is_mandated || discountIdVerified)
+        );
       default:
         return true;
     }
@@ -687,9 +883,11 @@ export function CustomerBookingFlowPage() {
   const isCurrentStepValid = isStepValid(currentStep.key);
 
   function advanceTo(nextIndex: number) {
-    const clamped = Math.min(nextIndex, steps.length - 1);
-    setCurrentStepIndex(clamped);
-    setMaxReachedIndex((prev) => Math.max(prev, clamped));
+    const clamped = Math.min(Math.max(nextIndex, 0), steps.length - 1);
+    const key = steps[clamped]?.key;
+    if (!key) return;
+    setCurrentStepKey(key);
+    setReachedStepKeys((prev) => new Set(prev).add(key));
   }
 
   function goNext() {
@@ -698,12 +896,14 @@ export function CustomerBookingFlowPage() {
   }
 
   function goBack() {
-    setCurrentStepIndex((index) => Math.max(0, index - 1));
+    const key = steps[Math.max(0, currentStepIndex - 1)]?.key;
+    if (key) setCurrentStepKey(key);
   }
 
   function handleStepperSelect(index: number) {
     if (index <= maxReachedIndex) {
-      setCurrentStepIndex(index);
+      const key = steps[index]?.key;
+      if (key) setCurrentStepKey(key);
     }
   }
 
@@ -716,18 +916,20 @@ export function CustomerBookingFlowPage() {
 
   function handlePetSelect(petId: string) {
     setSelectedPetId(petId);
-    // Clears any category/service selection carried over from a previously
-    // selected pet - important since an unassessed pet can only book
-    // Initial Assessment, so a selection valid for one pet may not be for
-    // another (mirrors handleBranchSelect's own reset below).
+    // Clears every category's selections - important since an unassessed
+    // pet can only book Misc's Initial Assessment, so a selection valid for
+    // one pet may not be for another (mirrors handleBranchSelect's own
+    // reset below).
     setCategory('');
     setSelectionMode('service');
-    setSelectedServiceId('');
-    setSelectedPackageId('');
-    setAddonServiceIds([]);
+    setSelectionsByCategory({});
+    setSelectedDiscountId('');
+    setSelectedPromoId('');
+    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
+    setHotelNights(1);
     resetHotelPreferences();
   }
 
@@ -741,37 +943,78 @@ export function CustomerBookingFlowPage() {
     setSelectedBranchId(branchId);
     setCategory('');
     setSelectionMode('service');
-    setSelectedServiceId('');
-    setSelectedPackageId('');
-    setAddonServiceIds([]);
+    setSelectionsByCategory({});
+    setSelectedDiscountId('');
+    setSelectedPromoId('');
+    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
+    setHotelNights(1);
     resetHotelPreferences();
   }
 
   function handleCategorySelect(nextCategory: ServiceCategory) {
     setCategory(nextCategory);
     setSelectionMode('service');
-    setSelectedServiceId('');
-    setSelectedPackageId('');
-    setAddonServiceIds([]);
+    // Item selections are NOT cleared here - selectionsByCategory keeps
+    // each tab's own picks, so browsing to another category to compare
+    // doesn't lose progress. hotelNights is left alone for the same reason
+    // (it's meaningless outside Hotel, so there's nothing to conflict with
+    // by leaving it set while browsing elsewhere). Date/time and staff
+    // still reset, since those depend on which category you're actually
+    // committing to.
+    setSelectedDiscountId('');
+    setSelectedPromoId('');
+    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     resetHotelPreferences();
   }
 
-  function handleServiceSelect(serviceId: string) {
-    setSelectedServiceId(serviceId);
-    setSelectedPackageId('');
+  function toggleServiceSelect(serviceId: string) {
+    if (!category) return;
+
+    if (selectedServiceIds.includes(serviceId)) {
+      updateCategorySelection(category, (current) => ({
+        ...current,
+        serviceIds: current.serviceIds.filter((id) => id !== serviceId),
+      }));
+    } else if (singleSelectCategory) {
+      updateCategorySelection(category, () => ({
+        serviceIds: [serviceId],
+        packageIds: [],
+      }));
+    } else {
+      updateCategorySelection(category, (current) => ({
+        ...current,
+        serviceIds: [...current.serviceIds, serviceId],
+      }));
+    }
     setSelectedSlot(null);
     setStaffPreference(null);
   }
 
-  function handlePackageSelect(packageId: string) {
-    setSelectedPackageId(packageId);
-    setSelectedServiceId('');
+  function togglePackageSelect(packageId: string) {
+    if (!category) return;
+
+    if (selectedPackageIds.includes(packageId)) {
+      updateCategorySelection(category, (current) => ({
+        ...current,
+        packageIds: current.packageIds.filter((id) => id !== packageId),
+      }));
+    } else if (singleSelectCategory) {
+      updateCategorySelection(category, () => ({
+        serviceIds: [],
+        packageIds: [packageId],
+      }));
+    } else {
+      updateCategorySelection(category, (current) => ({
+        ...current,
+        packageIds: [...current.packageIds, packageId],
+      }));
+    }
     setSelectedSlot(null);
     setStaffPreference(null);
   }
@@ -784,14 +1027,6 @@ export function CustomerBookingFlowPage() {
   function handleStaffSelect(preference: StaffPreferenceInput) {
     setStaffPreference(preference);
     advanceTo(currentStepIndex + 1);
-  }
-
-  function toggleAddon(serviceId: string) {
-    setAddonServiceIds((current) =>
-      current.includes(serviceId)
-        ? current.filter((id) => id !== serviceId)
-        : [...current, serviceId]
-    );
   }
 
   function toggleHotelMealTime(
@@ -926,7 +1161,8 @@ export function CustomerBookingFlowPage() {
       !selectedPetId ||
       !selectedBranchId ||
       !category ||
-      !selectedSlot
+      !selectedSlot ||
+      selectedServiceIds.length + selectedPackageIds.length === 0
     ) {
       return;
     }
@@ -945,18 +1181,18 @@ export function CustomerBookingFlowPage() {
       pet_id: selectedPetId,
       branch_id: selectedBranchId,
       service_category: category,
-      ...(selectionMode === 'service'
-        ? { service_id: selectedServiceId }
-        : { package_id: selectedPackageId }),
+      items: [
+        ...selectedServiceIds.map((service_id) => ({ service_id })),
+        ...selectedPackageIds.map((package_id) => ({ package_id })),
+      ],
       scheduled_start: selectedSlot.start,
       scheduled_end: hotelScheduledEnd ?? selectedSlot.end,
-      ...(category === 'Grooming' && addonServiceIds.length > 0
-        ? { addon_service_ids: addonServiceIds }
-        : {}),
       ...(staffPreference ? { staff_preference: staffPreference } : {}),
       ...(requiresPayment && paymentMethod
         ? { payment_method: paymentMethod, payment_confirmed: paymentConfirmed }
         : {}),
+      ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
+      ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
       ...(specialInstructions.trim()
         ? { special_instructions: specialInstructions.trim() }
         : {}),
@@ -1128,6 +1364,23 @@ export function CustomerBookingFlowPage() {
               ))}
             </div>
 
+            {categoriesWithOtherSelections.length > 0 ? (
+              <p className={styles.crossCategoryNotice} role="alert">
+                You still have items selected under{' '}
+                {categoriesWithOtherSelections.join(', ')} - a booking only
+                ever covers one category, so selecting anything under{' '}
+                <strong>{category}</strong> will clear
+                {categoriesWithOtherSelections.length > 1
+                  ? ' those selections'
+                  : ' that selection'}
+                . Book the other
+                {categoriesWithOtherSelections.length > 1
+                  ? ' categories'
+                  : ' category'}{' '}
+                separately if you need both.
+              </p>
+            ) : null}
+
             {category ? (
               <div className={styles.tabRow}>
                 <button
@@ -1139,7 +1392,7 @@ export function CustomerBookingFlowPage() {
                 >
                   Individual service
                 </button>
-                {packages.length > 0 && isSelectedPetAssessed ? (
+                {packagesForCategory.length > 0 && isSelectedPetAssessed ? (
                   <button
                     type="button"
                     className={`${styles.tab} ${
@@ -1170,6 +1423,29 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {category === 'Hotel' ? (
+              <label className={styles.nightsField}>
+                <span>Number of nights</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={hotelNights}
+                  onChange={(event) =>
+                    setHotelNights(Math.max(1, Number(event.target.value) || 1))
+                  }
+                />
+              </label>
+            ) : null}
+
+            {singleSelectCategory ? (
+              <p className={styles.copy}>
+                {category === 'Hotel'
+                  ? 'One cage per booking - selecting another will replace your current pick.'
+                  : 'One session per booking - selecting another will replace your current pick.'}
+              </p>
+            ) : null}
+
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
@@ -1184,14 +1460,17 @@ export function CustomerBookingFlowPage() {
                     deriveHotelCageSize(service.name) ===
                       selectedPet.weight_class;
 
+                  const isChecked = selectedServiceIds.includes(service.id);
+
                   return (
                     <button
                       key={service.id}
                       type="button"
+                      aria-pressed={isChecked}
                       className={`${styles.optionCard} ${
-                        selectedServiceId === service.id ? styles.selected : ''
+                        isChecked ? styles.selected : ''
                       }`}
-                      onClick={() => handleServiceSelect(service.id)}
+                      onClick={() => toggleServiceSelect(service.id)}
                     >
                       <span className={styles.optionTitleRow}>
                         <span className={styles.optionTitle}>
@@ -1204,7 +1483,10 @@ export function CustomerBookingFlowPage() {
                         ) : null}
                       </span>
                       <span className={styles.optionMeta}>
-                        PHP {service.base_price.toFixed(2)}
+                        PHP {(service.base_price * hotelNightsMultiplier).toFixed(2)}
+                        {category === 'Hotel'
+                          ? ` (PHP ${service.base_price.toFixed(2)}/night × ${hotelNights})`
+                          : ''}
                       </span>
                     </button>
                   );
@@ -1214,30 +1496,56 @@ export function CustomerBookingFlowPage() {
 
             {category && selectionMode === 'package' ? (
               <div className={styles.optionGrid}>
-                {packages.map((pkg) => (
-                  <button
-                    key={pkg.id}
-                    type="button"
-                    className={`${styles.optionCard} ${
-                      selectedPackageId === pkg.id ? styles.selected : ''
-                    }`}
-                    onClick={() => handlePackageSelect(pkg.id)}
-                  >
-                    <span className={styles.optionTitle}>{pkg.name}</span>
-                    <span className={styles.optionMeta}>
-                      PHP {pkg.bundled_price.toFixed(2)}
-                    </span>
-                    <ul className={styles.readOnlyList}>
-                      {(pkg.package_services ?? []).map((entry) => (
-                        <li key={entry.service_id}>
-                          {serviceNameById.get(entry.service_id) ?? 'Service'}
-                        </li>
-                      ))}
-                    </ul>
-                  </button>
-                ))}
+                {packagesForCategory.map((pkg) => {
+                  const isChecked = selectedPackageIds.includes(pkg.id);
+
+                  return (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      aria-pressed={isChecked}
+                      className={`${styles.optionCard} ${
+                        isChecked ? styles.selected : ''
+                      }`}
+                      onClick={() => togglePackageSelect(pkg.id)}
+                    >
+                      <span className={styles.optionTitle}>{pkg.name}</span>
+                      <span className={styles.optionMeta}>
+                        PHP {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
+                        {category === 'Hotel'
+                          ? ` (PHP ${pkg.bundled_price.toFixed(2)}/night × ${hotelNights})`
+                          : ''}
+                      </span>
+                      <ul className={styles.readOnlyList}>
+                        {(pkg.package_services ?? []).map((entry) => (
+                          <li key={entry.service_id}>
+                            {serviceNameById.get(entry.service_id) ?? 'Service'}
+                          </li>
+                        ))}
+                      </ul>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
+
+            {category ? (
+              <div className={styles.pricingRowTotal}>
+                <span>Running total (before promos/discounts)</span>
+                <span>PHP {itemsTotal.toFixed(2)}</span>
+              </div>
+            ) : null}
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Special instructions (optional)
+              </span>
+              <textarea
+                className={styles.input}
+                value={specialInstructions}
+                onChange={(event) => setSpecialInstructions(event.target.value)}
+              />
+            </label>
           </div>
         );
 
@@ -1259,20 +1567,6 @@ export function CustomerBookingFlowPage() {
               selectedSlot={selectedSlot}
               onSelect={handleSlotSelect}
             />
-            {category === 'Hotel' ? (
-              <label className={styles.nightsField}>
-                <span>Number of nights</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={hotelNights}
-                  onChange={(event) =>
-                    setHotelNights(Math.max(1, Number(event.target.value) || 1))
-                  }
-                />
-              </label>
-            ) : null}
           </div>
         );
 
@@ -1289,28 +1583,6 @@ export function CustomerBookingFlowPage() {
             onSelect={handleStaffSelect}
             onUnavailable={() => setStaffPickerUnavailable(true)}
           />
-        );
-
-      case 'addons':
-        return (
-          <div className={styles.optionGrid}>
-            {addonCandidates.length === 0 ? (
-              <p className={styles.copy}>No add-ons available.</p>
-            ) : null}
-            {addonCandidates.map((service) => (
-              <label key={service.id} className={styles.addonRow}>
-                <input
-                  type="checkbox"
-                  checked={addonServiceIds.includes(service.id)}
-                  onChange={() => toggleAddon(service.id)}
-                />
-                <span>{service.name}</span>
-                <span className={styles.optionMeta}>
-                  +PHP {service.base_price.toFixed(2)}
-                </span>
-              </label>
-            ))}
-          </div>
         );
 
       case 'hotelDetails':
@@ -1607,31 +1879,53 @@ export function CustomerBookingFlowPage() {
         return (
           <div className={styles.paymentStep}>
             <section className={styles.pricingSummary}>
-              <div className={styles.pricingRow}>
-                <span>Base price</span>
-                <span>PHP {basePrice.toFixed(2)}</span>
-              </div>
-              {category === 'Grooming' ? (
+              {selectedServices.map((service) => (
+                <div key={service.id} className={styles.pricingRow}>
+                  <span>
+                    {service.name}
+                    {hotelNightsMultiplier > 1
+                      ? ` × ${hotelNightsMultiplier} nights`
+                      : ''}
+                  </span>
+                  <span>
+                    PHP {(service.base_price * hotelNightsMultiplier).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+              {selectedPackages.map((pkg) => (
+                <div key={pkg.id} className={styles.pricingRow}>
+                  <span>
+                    {pkg.name}
+                    {hotelNightsMultiplier > 1
+                      ? ` × ${hotelNightsMultiplier} nights`
+                      : ''}
+                  </span>
+                  <span>
+                    PHP {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+              {category === 'Grooming' && selectedServices.length > 0 ? (
                 <p className={styles.copy}>
                   Grooming price may be adjusted for your pet's size and coat at
                   confirmation.
                 </p>
               ) : null}
-              {addonsTotal > 0 ? (
+              {selectedDiscount ? (
                 <div className={styles.pricingRow}>
-                  <span>Add-ons</span>
-                  <span>PHP {addonsTotal.toFixed(2)}</span>
+                  <span>{selectedDiscount.name}</span>
+                  <span>-PHP {discountAmount.toFixed(2)}</span>
                 </div>
               ) : null}
-              {applicablePromo ? (
-                <p className={styles.copy}>
-                  Promo available: {applicablePromo.name} (-PHP{' '}
-                  {promoDiscount.toFixed(2)}, applied at checkout)
-                </p>
+              {selectedPromo ? (
+                <div className={styles.pricingRow}>
+                  <span>{selectedPromo.name}</span>
+                  <span>-PHP {promoDiscount.toFixed(2)}</span>
+                </div>
               ) : null}
               <div className={styles.pricingRowTotal}>
                 <span>Estimated total</span>
-                <span>PHP {subtotal.toFixed(2)}</span>
+                <span>PHP {estimatedTotal.toFixed(2)}</span>
               </div>
               {downpaymentAmount !== null ? (
                 <p className={styles.copy}>
@@ -1671,18 +1965,98 @@ export function CustomerBookingFlowPage() {
               </p>
             )}
 
-            <PayMongoFeeNotice paymentMethod={paymentMethod} />
+            {canApplyDiscounts ? (
+              paymentMethod === 'Cash' ? (
+                <fieldset className={styles.field}>
+                  <legend className={styles.fieldLabel}>
+                    Discount (Cash only - verify ID before applying)
+                  </legend>
+                  <label className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="discount"
+                      checked={selectedDiscountId === ''}
+                      onChange={() => {
+                        setSelectedDiscountId('');
+                        setDiscountIdVerified(false);
+                      }}
+                    />
+                    None
+                  </label>
+                  {applicableDiscounts.map((discount) => (
+                    <label key={discount.id} className={styles.radioOption}>
+                      <input
+                        type="radio"
+                        name="discount"
+                        checked={selectedDiscountId === discount.id}
+                        onChange={() => {
+                          setSelectedDiscountId(discount.id);
+                          setDiscountIdVerified(false);
+                        }}
+                      />
+                      {discount.name} (
+                      {discount.discount_type === 'Percentage'
+                        ? `${discount.value}%`
+                        : `PHP ${discount.value.toFixed(2)}`}
+                      )
+                    </label>
+                  ))}
+                  {applicableDiscounts.length === 0 ? (
+                    <p className={styles.copy}>
+                      No discounts apply to the selected items.
+                    </p>
+                  ) : null}
+                  {selectedDiscount?.is_mandated ? (
+                    <label className={styles.radioOption}>
+                      <input
+                        type="checkbox"
+                        checked={discountIdVerified}
+                        onChange={(event) =>
+                          setDiscountIdVerified(event.target.checked)
+                        }
+                      />
+                      I have verified the customer&apos;s ID for this discount
+                    </label>
+                  ) : null}
+                </fieldset>
+              ) : (
+                <p className={styles.copy}>
+                  Select Cash as the payment method to apply a discount.
+                </p>
+              )
+            ) : null}
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Special instructions (optional)
-              </span>
-              <textarea
-                className={styles.input}
-                value={specialInstructions}
-                onChange={(event) => setSpecialInstructions(event.target.value)}
-              />
-            </label>
+            {applicablePromos.length > 0 ? (
+              <fieldset className={styles.field}>
+                <legend className={styles.fieldLabel}>Promo</legend>
+                <label className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="promo"
+                    checked={selectedPromoId === ''}
+                    onChange={() => setSelectedPromoId('')}
+                  />
+                  None
+                </label>
+                {applicablePromos.map((promo) => (
+                  <label key={promo.id} className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="promo"
+                      checked={selectedPromoId === promo.id}
+                      onChange={() => setSelectedPromoId(promo.id)}
+                    />
+                    {promo.name} (
+                    {promo.discount_type === 'Percentage'
+                      ? `${promo.value}%`
+                      : `PHP ${promo.value.toFixed(2)}`}
+                    )
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
+
+            <PayMongoFeeNotice paymentMethod={paymentMethod} />
 
             {submitError ? (
               <p className={styles.errorBanner} role="alert">

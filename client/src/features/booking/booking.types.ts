@@ -11,13 +11,51 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
-export type ServiceCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+/** Mirrors the server's BOOKING_MARK_PAID_ROLES - money-handling roles only.
+ * Reused client-side to gate the booking wizard's discount picker (a
+ * discount needs staff to have verified an ID onsite, same trust boundary
+ * as Mark as Paid), separate from promos which anyone can select. */
+export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
+  'Superadmin',
+  'Admin',
+  'Supervisor',
+  'Receptionist',
+  'Cashier',
+];
+
+/** Mirrors the server's BOOKING_STATUS_OVERRIDE_ROLES - gates the queue's
+ * status-override dropdown (replaces Start/Complete/Mark-as-Paid buttons
+ * with one control that can also move a booking backward, e.g. undoing an
+ * accidental Mark as Paid). */
+export const BOOKING_STATUS_OVERRIDE_ROLES: readonly string[] = [
+  'Superadmin',
+  'Admin',
+];
+
+/** Mirrors the server's OVERRIDABLE_BOOKING_STATUSES - Cancelled/No-show
+ * keep their own dedicated flows, not this dropdown. */
+export const OVERRIDABLE_BOOKING_STATUSES = [
+  'Pending',
+  'In Progress',
+  'Completed',
+  'Paid',
+] as const;
+
+/** Misc: administrative bookings (Initial Assessment/Reassessment) with no
+ * staff-assignment or capacity contention. */
+export type ServiceCategory =
+  | 'Grooming'
+  | 'Hotel'
+  | 'Daycare'
+  | 'Veterinary'
+  | 'Misc';
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
+  'Misc',
 ];
 
 /**
@@ -148,8 +186,6 @@ export interface Booking {
   branch_id: string;
   created_by_staff_id: string | null;
   service_category: ServiceCategory;
-  service_id: string | null;
-  package_id: string | null;
   scheduled_start: string;
   scheduled_end: string;
   assigned_staff_id: string | null;
@@ -158,6 +194,13 @@ export interface Booking {
   downpayment_amount: number | null;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
+  /** Selected at booking creation (staff-only, Cash-only for the discount)
+   * rather than only auto-evaluated at checkout - see the booking payment
+   * step's discount/promo picker. 0 when nothing was selected. */
+  selected_discount_id: string | null;
+  selected_promo_id: string | null;
+  discount_amount: number;
+  promo_amount: number;
   special_instructions: string | null;
   hotel_preferences: HotelBookingPreferences | null;
   started_at: string | null;
@@ -168,15 +211,17 @@ export interface Booking {
   reschedule_count: number;
   created_at: string;
   updated_at: string;
-  booking_addons?: BookingAddon[];
+  booking_items?: BookingItem[];
   staff_picker_preferences?: StaffPickerPreference[];
 }
 
-export interface BookingAddon {
+export interface BookingItem {
   id: string;
   booking_id: string;
-  service_id: string;
+  service_id: string | null;
+  package_id: string | null;
   price_at_booking: number;
+  duration_minutes_at_booking: number;
 }
 
 export interface StaffPickerPreference {
@@ -234,19 +279,24 @@ export interface StaffPreferenceInput {
   staff_id?: string;
 }
 
+export type BookingItemInput = { service_id: string } | { package_id: string };
+
 export interface CreateBookingPayload {
   customer_id?: string;
   pet_id: string;
   branch_id: string;
   service_category: ServiceCategory;
-  service_id?: string;
-  package_id?: string;
+  items: BookingItemInput[];
   scheduled_start: string;
   scheduled_end: string;
-  addon_service_ids?: string[];
   staff_preference?: StaffPreferenceInput;
   payment_method?: PaymentMethod;
   payment_confirmed?: boolean;
+  // Staff-only (money-handling roles), Cash-only - see booking.service.ts's
+  // resolveDiscountAndPromo.
+  discount_id?: string;
+  // Open to customers too - no role or payment-method restriction.
+  promo_id?: string;
   special_instructions?: string;
   hotel_preferences?: HotelBookingPreferences;
 }
