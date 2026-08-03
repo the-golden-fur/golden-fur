@@ -181,18 +181,19 @@ ReceptionistBookingsQueuePage.tsx` (+.module.css),
 `server/src/features/booking/modules/validators/booking.validator.ts`
 (+spec).
 
-### Known unrelated pre-existing issue found while re-testing
+### Known unrelated pre-existing issue found while re-testing (fixed in Round 6)
 
-`server/src/features/booking/services/availability.service.spec.ts` has 3
+`server/src/features/booking/services/availability.service.spec.ts` had 3
 tests hardcoded against `date: '2026-08-03'` with no system-time mocking
-(`vi.useFakeTimers()`/`vi.setSystemTime()`), so they compare a fixed
+(`vi.useFakeTimers()`/`vi.setSystemTime()`), so they compared a fixed
 09:00-12:00 Asia/Manila window against the _real_ wall-clock time when the
-suite runs. Once real time reaches/passes that window on that exact
-calendar date, slots inside it are (correctly) treated as already past and
-filtered out, so the tests' hardcoded "expect 3 slots" assertion fails.
-This is a pre-existing test-design gap, not touched by any change in this
-branch - flagged here rather than silently patched, since fixing it is a
-separate, unrelated task (stub the clock in those three tests).
+suite ran. Once real time reached/passed that window on that exact
+calendar date, slots inside it were (correctly) treated as already past and
+filtered out, so the tests' hardcoded "expect 3 slots" assertion failed.
+This was a pre-existing test-design gap, not originally caused by this
+branch - initially flagged here rather than silently patched, but CI
+actually failing on it in Round 6 made it in-scope; see that section for
+the fix.
 
 ## Round 3: per-category selection memory, Hotel nights pricing, Misc category
 
@@ -361,6 +362,48 @@ now gone, and switching back to Grooming shows nothing checked.
 
 New/changed files this round: `client/src/features/booking/pages/
 CustomerBookingFlowPage/CustomerBookingFlowPage.tsx` (+spec).
+
+## Round 6: CI fixes (flaky server test, client lint errors)
+
+The CI run on this branch failed on two unrelated fronts:
+
+1. **`availability.service.spec.ts`'s 3 wall-clock-dependent failures,
+   previously only flagged in this doc, are now actually fixed.** They
+   compared a fixed 09:00-12:00 Asia/Manila window against the real system
+   clock with no time mocking, so they started failing for real once CI's
+   wall-clock time caught up to that window on the hardcoded `2026-08-03`
+   fixture date. All 3 now call `vi.useFakeTimers()` +
+   `vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'))` (08:00 Asia/
+   Manila, before the branch opens) before generating slots, matching the
+   pattern the suite's other time-sensitive tests already used.
+2. **Client ESLint errors from `eslint-plugin-react-hooks` v7** (the
+   React Compiler rule set) in `CustomerBookingFlowPage.tsx`:
+   - `react-hooks/set-state-in-effect` on the discounts-fetch effect's
+     `setDiscounts([])` early-return reset - removed outright, since
+     `applicableDiscounts` already returns `[]` whenever
+     `canApplyDiscounts` is false, so the reset was dead code.
+   - The same rule on the unassessed-pet auto-select effect's
+     `handleCategorySelect`/`updateCategorySelection` calls - deferred
+     into a `Promise.resolve().then(...)` microtask (mirroring
+     `SlotPicker`/`GroomerDashboardPage`'s existing pattern for this exact
+     rule), so no state setter runs synchronously inside the effect body.
+   - `react-hooks/immutability` ("accessed before it is declared") on that
+     same effect's reference to `handleCategorySelect`, and in turn
+     `handleCategorySelect`'s own reference to `resetHotelPreferences` -
+     both function declarations were moved earlier in the component (ahead
+     of the effect that needs them), since this rule requires declaration
+     order to match usage order even for hoisted `function` declarations.
+   - The `react-hooks/exhaustive-deps` warnings on `selectedServiceIds`/
+     `selectedPackageIds` (derived with an inline ternary, so downstream
+     `useMemo`s calling them a dependency saw a new array reference every
+     render) - both are now wrapped in their own `useMemo`, falling back to
+     a shared module-level `EMPTY_ITEM_IDS` constant instead of a fresh
+     `[]` literal so the reference stays stable when there's nothing
+     selected.
+
+New/changed files this round: `server/src/features/booking/services/
+availability.service.spec.ts`, `client/src/features/booking/pages/
+CustomerBookingFlowPage/CustomerBookingFlowPage.tsx`.
 
 ## Known limitations / follow-ups
 
@@ -641,3 +684,13 @@ diff --stat` that this branch never touches that file).
    immediately.
 4. Switch back to the Grooming tab - confirm neither of the two services
    is checked anymore and the running total reads PHP 0.00.
+
+### 18. Round 6: automated tests + lint
+
+- `cd server && npx tsc --noEmit && npx vitest run` - 72 test files / 699
+  tests, **all passing** (the 3 previously-flaky
+  `availability.service.spec.ts` failures are now fixed, not just
+  documented).
+- `cd client && npx tsc -b && npx vitest run` - 116 test files / 529 tests
+  passing.
+- `cd client && npm run lint` - clean (0 errors, 0 warnings).

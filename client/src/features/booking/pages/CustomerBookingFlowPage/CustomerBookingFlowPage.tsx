@@ -52,6 +52,10 @@ import styles from './CustomerBookingFlowPage.module.css';
 
 const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
 const HOTEL_DOWNPAYMENT_RATE = 0.5;
+/** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
+ * no-picks-yet case, so those useMemo values don't return a fresh empty
+ * array (and invalidate every memo that depends on them) on every render. */
+const EMPTY_ITEM_IDS: string[] = [];
 
 const PET_TYPE_LABEL: Record<Pet['pet_type'], string> = {
   Dog: 'Dog',
@@ -294,12 +298,20 @@ export function CustomerBookingFlowPage() {
     >
   >({});
 
-  const selectedServiceIds = category
-    ? (selectionsByCategory[category]?.serviceIds ?? [])
-    : [];
-  const selectedPackageIds = category
-    ? (selectionsByCategory[category]?.packageIds ?? [])
-    : [];
+  const selectedServiceIds = useMemo(
+    () =>
+      category
+        ? (selectionsByCategory[category]?.serviceIds ?? EMPTY_ITEM_IDS)
+        : EMPTY_ITEM_IDS,
+    [category, selectionsByCategory]
+  );
+  const selectedPackageIds = useMemo(
+    () =>
+      category
+        ? (selectionsByCategory[category]?.packageIds ?? EMPTY_ITEM_IDS)
+        : EMPTY_ITEM_IDS,
+    [category, selectionsByCategory]
+  );
 
   // Only one category may ever hold picks at a time (a booking always
   // covers exactly one category) - every mutation replaces the whole map
@@ -412,6 +424,37 @@ export function CustomerBookingFlowPage() {
     null
   );
 
+  // resetHotelPreferences/handleCategorySelect are declared ahead of the
+  // auto-select-assessment effect below (rather than alongside the other
+  // selection handlers further down) so that effect can reference them -
+  // react-hooks/immutability requires every reference to a function
+  // declaration to come after its declaration point, even though plain
+  // function declarations are hoisted at runtime.
+  function resetHotelPreferences() {
+    setHotelFeeding({ Morning: null, Afternoon: null, Evening: null });
+    setHotelWalking([]);
+    setHotelMedications([]);
+  }
+
+  function handleCategorySelect(nextCategory: ServiceCategory) {
+    setCategory(nextCategory);
+    setSelectionMode('service');
+    // Item selections are NOT cleared here - selectionsByCategory keeps
+    // each tab's own picks, so browsing to another category to compare
+    // doesn't lose progress. hotelNights is left alone for the same reason
+    // (it's meaningless outside Hotel, so there's nothing to conflict with
+    // by leaving it set while browsing elsewhere). Date/time and staff
+    // still reset, since those depend on which category you're actually
+    // committing to.
+    setSelectedDiscountId('');
+    setSelectedPromoId('');
+    setDiscountIdVerified(false);
+    setSelectedSlot(null);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    resetHotelPreferences();
+  }
+
   // ---- Data loads ----
 
   useEffect(() => {
@@ -456,8 +499,11 @@ export function CustomerBookingFlowPage() {
   }, [accessToken, selectedBranchId]);
 
   useEffect(() => {
+    // No setDiscounts([]) reset here (react-hooks/set-state-in-effect) -
+    // applicableDiscounts below already returns [] whenever
+    // canApplyDiscounts is false, so a stale `discounts` list sitting
+    // unused in state is never read.
     if (!accessToken || !selectedBranchId || !canApplyDiscounts) {
-      setDiscounts([]);
       return;
     }
 
@@ -528,13 +574,18 @@ export function CustomerBookingFlowPage() {
       (service) => service.category === 'Misc' && !service.requires_assessed_pet
     );
 
-    if (assessmentService) {
+    if (!assessmentService) return;
+
+    // Deferred to a microtask (mirrors SlotPicker/GroomerDashboardPage's own
+    // set-state-in-effect pattern) so these updates never run synchronously
+    // inside the effect body itself.
+    void Promise.resolve().then(() => {
       handleCategorySelect('Misc');
       updateCategorySelection('Misc', () => ({
         serviceIds: [assessmentService.id],
         packageIds: [],
       }));
-    }
+    });
     // handleCategorySelect/updateCategorySelection are plain function
     // declarations recreated every render (not memoized) - including them
     // would re-run this effect on every render instead of only when the
@@ -939,12 +990,6 @@ export function CustomerBookingFlowPage() {
     resetHotelPreferences();
   }
 
-  function resetHotelPreferences() {
-    setHotelFeeding({ Morning: null, Afternoon: null, Evening: null });
-    setHotelWalking([]);
-    setHotelMedications([]);
-  }
-
   function handleBranchSelect(branchId: string) {
     setSelectedBranchId(branchId);
     setCategory('');
@@ -957,25 +1002,6 @@ export function CustomerBookingFlowPage() {
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     setHotelNights(1);
-    resetHotelPreferences();
-  }
-
-  function handleCategorySelect(nextCategory: ServiceCategory) {
-    setCategory(nextCategory);
-    setSelectionMode('service');
-    // Item selections are NOT cleared here - selectionsByCategory keeps
-    // each tab's own picks, so browsing to another category to compare
-    // doesn't lose progress. hotelNights is left alone for the same reason
-    // (it's meaningless outside Hotel, so there's nothing to conflict with
-    // by leaving it set while browsing elsewhere). Date/time and staff
-    // still reset, since those depend on which category you're actually
-    // committing to.
-    setSelectedDiscountId('');
-    setSelectedPromoId('');
-    setDiscountIdVerified(false);
-    setSelectedSlot(null);
-    setStaffPreference(null);
-    setStaffPickerUnavailable(false);
     resetHotelPreferences();
   }
 
