@@ -1,6 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { DaycareSession } from '../daycare.types.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
+import { countOvernightNights } from '../../booking/services/availability.service.ts';
+import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -14,7 +16,12 @@ const SUCCEEDING_HOUR_CHARGE = 50;
 /**
  * elapsed <= 1 hour -> flat ₱100. Otherwise ₱100 + ₱50 x each succeeding
  * hour, rounding any partial hour up to a full hour - e.g. 1h10m = 2 billable
- * hours = ₱150 (#65 dev notes' own worked example).
+ * hours = ₱150 (#65 dev notes' own worked example). #22 adds a flat
+ * per-night overnight/no-pickup fee on top for every branch closing time the
+ * session spanned (0 for a same-day pickup, so this is a strict superset of
+ * the original formula) - admin-configurable via pricing_configuration,
+ * default ₱850/night: total = nights * dailyOvernightFee + 100 + succeeding
+ * hours * 50.
  *
  * Note for the reviewer: the Guide's AC-4 table claims 2h15m -> ₱250 ("3
  * billable succeeding hours"), which does not follow from this same formula
@@ -22,16 +29,26 @@ const SUCCEEDING_HOUR_CHARGE = 50;
  * ₱200) or from the dev notes' own 1h10m example. ₱200 is what this
  * implementation computes; see the verification doc for the full note.
  */
-export function computeDaycareCharge(
+export async function computeDaycareCharge(
   checkInAt: Date,
-  checkOutAt: Date
-): number {
+  checkOutAt: Date,
+  branchId: string
+): Promise<number> {
   const elapsedMinutes = (checkOutAt.getTime() - checkInAt.getTime()) / 60000;
 
-  if (elapsedMinutes <= 60) return FIRST_HOUR_CHARGE;
+  const hourlyCharge =
+    elapsedMinutes <= 60
+      ? FIRST_HOUR_CHARGE
+      : FIRST_HOUR_CHARGE +
+        Math.ceil((elapsedMinutes - 60) / 60) * SUCCEEDING_HOUR_CHARGE;
 
-  const succeedingHours = Math.ceil((elapsedMinutes - 60) / 60);
-  return FIRST_HOUR_CHARGE + succeedingHours * SUCCEEDING_HOUR_CHARGE;
+  const nights = await countOvernightNights(checkInAt, checkOutAt, branchId);
+  if (nights === 0) return hourlyCharge;
+
+  const { daycare_overnight_fee: dailyOvernightFee } =
+    await getPricingConfiguration();
+
+  return nights * Number(dailyOvernightFee) + hourlyCharge;
 }
 
 interface CheckOutParams {
@@ -62,7 +79,11 @@ export async function checkOutDaycareSession({
   }
 
   const now = new Date();
-  const charge = computeDaycareCharge(new Date(session.check_in_at), now);
+  const charge = await computeDaycareCharge(
+    new Date(session.check_in_at),
+    now,
+    session.branch_id
+  );
 
   const { data: updated, error: updateError } = await supabase
     .from('daycare_sessions')

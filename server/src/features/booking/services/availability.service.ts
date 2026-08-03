@@ -348,3 +348,164 @@ export async function getDaySlots({
     })
   );
 }
+
+const DEFAULT_LOOKAHEAD_DAYS = 14;
+
+export interface FindNextAvailableSlotParams {
+  branchId: string;
+  serviceCategory: ServiceCategory;
+  /** YYYY-MM-DD, branch-local - search starts here (inclusive). */
+  fromDate: string;
+  slotDurationMinutes: number;
+  petWeightClass?: WeightClass;
+  lookaheadDays?: number;
+}
+
+export interface NextAvailableSlot {
+  date: string;
+  earliestSlot: { start: string; end: string };
+}
+
+function nextDateString(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * #22: lets the booking flow warn a customer "fully booked" before they
+ * reach the Slot Picker step, by walking getDaySlots forward day by day
+ * until it finds one with at least one available candidate (or exhausts
+ * lookaheadDays). Reuses getDaySlots as-is rather than a parallel capacity
+ * query, so this always agrees with what the Slot Picker itself would show
+ * for that date.
+ */
+export async function findNextAvailableSlot({
+  branchId,
+  serviceCategory,
+  fromDate,
+  slotDurationMinutes,
+  petWeightClass,
+  lookaheadDays = DEFAULT_LOOKAHEAD_DAYS,
+}: FindNextAvailableSlotParams): Promise<NextAvailableSlot | null> {
+  let cursor = fromDate;
+
+  for (let i = 0; i < lookaheadDays; i += 1) {
+    const slots = await getDaySlots({
+      branchId,
+      serviceCategory,
+      date: cursor,
+      slotDurationMinutes,
+      petWeightClass,
+    });
+
+    const earliest = slots.find((slot) => slot.available);
+    if (earliest) {
+      return {
+        date: cursor,
+        earliestSlot: { start: earliest.start, end: earliest.end },
+      };
+    }
+
+    cursor = nextDateString(cursor);
+  }
+
+  return null;
+}
+
+const PART_OF_DAY_BANDS: Record<
+  'Morning' | 'Afternoon' | 'Evening',
+  { startMin: number; endMin: number }
+> = {
+  Morning: { startMin: 0, endMin: 12 * 60 },
+  Afternoon: { startMin: 12 * 60, endMin: 17 * 60 },
+  Evening: { startMin: 17 * 60, endMin: 24 * 60 },
+};
+
+function minutesFromHHMM(time: string): number {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+/**
+ * #22: which Morning/Afternoon/Evening walk/play blocks actually fall
+ * inside a branch's operating hours for a given date - e.g. a branch that
+ * closes at 15:00 never offers 'Evening'. Returns all three when the branch
+ * has no operating-hours entry for that date (closed, or nothing to
+ * constrain against) so callers don't need a separate "branch closed"
+ * branch of logic - an empty set would be more confusing than an
+ * unconstrained one here, since walk/play scheduling at booking time is
+ * advisory, not a hard slot reservation the way getDaySlots' candidates are.
+ */
+export async function partsOfDayWithinOperatingHours(
+  params: ResolveOperatingWindowParams
+): Promise<Array<'Morning' | 'Afternoon' | 'Evening'>> {
+  const window = await resolveOperatingWindow(params);
+  if (!window) return ['Morning', 'Afternoon', 'Evening'];
+
+  const openMin = minutesFromHHMM(window.open);
+  const closeMin = minutesFromHHMM(window.close);
+
+  return (
+    Object.keys(PART_OF_DAY_BANDS) as Array<'Morning' | 'Afternoon' | 'Evening'>
+  ).filter((part) => {
+    const band = PART_OF_DAY_BANDS[part];
+    return band.startMin < closeMin && band.endMin > openMin;
+  });
+}
+
+/**
+ * #22: how many of the branch's daily closing times fall strictly between
+ * checkInAt and checkOutAt - i.e. how many nights a daycare pet was still
+ * there when the branch closed (0 for a same-day pickup before close,
+ * matching today's behavior exactly). Used to add a flat per-night
+ * overnight/no-pickup fee on top of the usual hourly daycare charge
+ * (daycareBilling.service.ts).
+ */
+export async function countOvernightNights(
+  checkInAt: Date,
+  checkOutAt: Date,
+  branchId: string
+): Promise<number> {
+  const { data: branch, error: branchError } = await supabase
+    .from('branches')
+    .select('operating_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (branchError) throwWithStatus(400, branchError.message);
+  if (!branch) throwWithStatus(404, 'Branch not found');
+
+  const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+
+  const branchLocalDate = (instant: Date): string =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(instant);
+
+  let nights = 0;
+  let cursor = branchLocalDate(checkInAt);
+  const lastDate = branchLocalDate(checkOutAt);
+
+  while (cursor <= lastDate) {
+    const dayName = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'long',
+    })
+      .format(zonedTimeToUtc(cursor, '12:00', timezone))
+      .toLowerCase();
+
+    const window = operatingHours?.[dayName];
+
+    if (window) {
+      const closeInstant = zonedTimeToUtc(cursor, window.close, timezone);
+      if (
+        closeInstant.getTime() > checkInAt.getTime() &&
+        closeInstant.getTime() < checkOutAt.getTime()
+      ) {
+        nights += 1;
+      }
+    }
+
+    cursor = nextDateString(cursor);
+  }
+
+  return nights;
+}

@@ -18,7 +18,9 @@ import {
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
+  findNextAvailableSlot,
   getDaySlots,
+  partsOfDayWithinOperatingHours,
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
@@ -29,8 +31,10 @@ import {
   catalogQueryValidator,
   createBookingValidator,
   listBookingsQueryValidator,
+  nextAvailableSlotQueryValidator,
   overrideBookingStatusValidator,
   overridePaymentStageValidator,
+  partsOfDayQueryValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
   updatePolicyValidator,
@@ -180,6 +184,70 @@ export async function availabilityController(
     ]);
 
     return res.status(200).json({ slots, window });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function nextAvailableSlotController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = nextAvailableSlotQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const next = await findNextAvailableSlot({
+      branchId: parsed.data.branch_id,
+      serviceCategory: parsed.data.service_category,
+      fromDate: parsed.data.from_date,
+      slotDurationMinutes: parsed.data.slot_duration_minutes,
+      petWeightClass: parsed.data.pet_weight_class,
+      lookaheadDays: parsed.data.lookahead_days,
+    });
+
+    return res.status(200).json({ next });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function partsOfDayController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = partsOfDayQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const partsOfDay = await partsOfDayWithinOperatingHours({
+      branchId: parsed.data.branch_id,
+      date: parsed.data.date,
+    });
+
+    return res.status(200).json({ parts_of_day: partsOfDay });
   } catch (error) {
     return sendServiceError(res, error);
   }

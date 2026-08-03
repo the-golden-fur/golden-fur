@@ -51,6 +51,7 @@ export const updatePricingConfigurationValidator = z
     size_l_multiplier: z.number().positive().optional(),
     size_xl_multiplier: z.number().positive().optional(),
     long_coat_addon: z.number().nonnegative().optional(),
+    daycare_overnight_fee: z.number().nonnegative().optional(),
   })
   .strict();
 
