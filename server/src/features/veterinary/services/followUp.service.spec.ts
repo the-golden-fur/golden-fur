@@ -38,6 +38,7 @@ function queueFromResults(...results: QueryResult[]) {
     }
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
     return builder;
   }) as never);
@@ -50,8 +51,6 @@ function bookingRow(overrides: Record<string, unknown> = {}) {
     pet_id: 'pet-1',
     branch_id: 'branch-makati',
     service_category: 'Veterinary',
-    service_id: 'service-1',
-    package_id: null,
     scheduled_start: '2026-07-19T02:00:00.000Z',
     scheduled_end: '2026-07-19T03:00:00.000Z',
     total_price: 800,
@@ -90,6 +89,18 @@ describe('followUp.service (#67)', () => {
         data: { id: 'booking-2', ...bookingRow({ id: 'booking-2' }) },
         error: null,
       }, // new booking insert
+      {
+        data: [
+          {
+            service_id: 'service-1',
+            package_id: null,
+            price_at_booking: 800,
+            duration_minutes_at_booking: 60,
+          },
+        ],
+        error: null,
+      }, // original booking's booking_items fetch
+      { data: null, error: null }, // booking_items insert onto the new booking
       {
         data: {
           ...consultationRow({ follow_up_date: '2026-08-01' }),

@@ -96,8 +96,6 @@ export async function scheduleFollowUp({
       branch_id: originalBooking.branch_id,
       created_by_staff_id: requesterId,
       service_category: 'Veterinary',
-      service_id: originalBooking.service_id,
-      package_id: originalBooking.package_id,
       scheduled_start: scheduledStart.toISOString(),
       scheduled_end: scheduledEnd.toISOString(),
       status: 'Pending',
@@ -113,6 +111,32 @@ export async function scheduleFollowUp({
     );
   }
 
+  // Multi-item bookings revision: mirror the original consultation's booking
+  // items onto the new follow-up booking (was a straight service_id/
+  // package_id column copy before booking_items existed).
+  const { data: originalItems, error: itemsFetchError } = await supabase
+    .from('booking_items')
+    .select('service_id, package_id, price_at_booking, duration_minutes_at_booking')
+    .eq('booking_id', consultation.booking_id);
+
+  if (itemsFetchError) throwWithStatus(400, itemsFetchError.message);
+
+  if (originalItems && originalItems.length > 0) {
+    const { error: itemsInsertError } = await supabase
+      .from('booking_items')
+      .insert(
+        originalItems.map((item) => ({
+          booking_id: newBooking.id,
+          ...item,
+        }))
+      );
+
+    if (itemsInsertError) {
+      await supabase.from('bookings').delete().eq('id', newBooking.id);
+      throwWithStatus(400, itemsInsertError.message);
+    }
+  }
+
   const { data: updatedConsultation, error: updateError } = await supabase
     .from('consultations')
     .update({
@@ -121,7 +145,9 @@ export async function scheduleFollowUp({
       updated_at: new Date().toISOString(),
     })
     .eq('id', consultationId)
-    .select('*, booking:bookings(*)')
+    // Disambiguates against consultations.follow_up_booking_id, the second
+    // FK to bookings - see consultation.service.ts's CONSULTATION_SELECT.
+    .select('*, booking:bookings!booking_id(*)')
     .maybeSingle();
 
   if (updateError || !updatedConsultation) {

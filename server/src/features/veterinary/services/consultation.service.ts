@@ -12,7 +12,12 @@ import { createVaccinationRecord } from '../../customers/pets/services/vaccinati
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
 import type { Consultation } from '../veterinary.types.ts';
 
-const CONSULTATION_SELECT = '*, booking:bookings(*)';
+// consultations has TWO foreign keys to bookings (booking_id and
+// follow_up_booking_id - see ...040_m07_create_veterinary_schema.sql), so
+// the embed must name which one via `!booking_id` - an unqualified
+// `bookings(*)` is ambiguous to PostgREST and 400s ("more than one
+// relationship was found for 'consultations' and 'bookings'").
+const CONSULTATION_SELECT = '*, booking:bookings!booking_id(*)';
 
 /** Booking-status revision: Veterinary never had a payment gate on initial
  * status (#51 dev notes), so the old "Confirmed queue" vs "Pending awaiting
