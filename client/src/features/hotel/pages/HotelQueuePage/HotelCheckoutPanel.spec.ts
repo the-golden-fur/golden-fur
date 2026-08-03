@@ -1,20 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { getStaffProfile } from '../../../staff/api/staff.api';
 import { checkOutHotelStay } from '../../api/hotel.api';
 import { HotelStayPicker } from '../../components/HotelStayPicker/HotelStayPicker';
-import { HotelCheckoutPage } from './HotelCheckoutPage';
-
-vi.mock('../../../../shared/auth/providers/AuthProvider/useAuth', () => ({
-  useAuth: vi.fn(),
-}));
-
-vi.mock('../../../staff/api/staff.api', () => ({
-  getStaffProfile: vi.fn(),
-}));
+import { HotelCheckoutPanel } from './HotelCheckoutPanel';
 
 vi.mock('../../api/hotel.api', () => ({
   checkOutHotelStay: vi.fn(),
@@ -32,16 +21,6 @@ const STAY = {
 } as never;
 
 function setupMocks() {
-  vi.mocked(useAuth).mockReturnValue({
-    user: { id: 'staff-1' },
-    accessToken: 'token',
-  } as never);
-
-  vi.mocked(getStaffProfile).mockResolvedValue({
-    data: { role: 'Receptionist', branch_id: 'branch-1' },
-    error: null,
-  } as never);
-
   vi.mocked(HotelStayPicker).mockImplementation(({ onSelect }) =>
     createElement(
       'button',
@@ -51,32 +30,20 @@ function setupMocks() {
   );
 }
 
-function renderAt(path: string) {
+function renderPanel(initialStayId: string | null) {
   return render(
-    createElement(
-      MemoryRouter,
-      { initialEntries: [path] },
-      createElement(
-        Routes,
-        null,
-        createElement(Route, {
-          path: '/staff/hotel/checkout/:stayId',
-          element: createElement(HotelCheckoutPage),
-        }),
-        createElement(Route, {
-          path: '/staff/hotel/checkout',
-          element: createElement(HotelCheckoutPage),
-        })
-      )
-    )
+    createElement(HotelCheckoutPanel, {
+      accessToken: 'token',
+      initialStayId,
+    })
   );
 }
 
-describe('HotelCheckoutPage', () => {
-  it('with a :stayId route param, skips the picker and goes straight to confirm', async () => {
+describe('HotelCheckoutPanel', () => {
+  it('with an initialStayId, skips the picker and goes straight to confirm', async () => {
     setupMocks();
 
-    renderAt('/staff/hotel/checkout/stay-1');
+    renderPanel('stay-1');
 
     expect(
       await screen.findByText('Ready to check out this stay?')
@@ -84,10 +51,10 @@ describe('HotelCheckoutPage', () => {
     expect(screen.queryByText('Pick stay')).not.toBeInTheDocument();
   });
 
-  it('without a :stayId, shows the HotelStayPicker instead of a raw id field', async () => {
+  it('without an initialStayId, shows the HotelStayPicker instead of a raw id field', async () => {
     setupMocks();
 
-    renderAt('/staff/hotel/checkout');
+    renderPanel(null);
 
     expect(await screen.findByText('Pick stay')).toBeInTheDocument();
     expect(screen.queryByText('Hotel Stay ID')).not.toBeInTheDocument();
@@ -96,7 +63,7 @@ describe('HotelCheckoutPage', () => {
   it('selecting a stay from the picker shows its details before confirming checkout', async () => {
     setupMocks();
 
-    renderAt('/staff/hotel/checkout');
+    renderPanel(null);
 
     fireEvent.click(await screen.findByText('Pick stay'));
 
@@ -117,7 +84,7 @@ describe('HotelCheckoutPage', () => {
       error: null,
     } as never);
 
-    renderAt('/staff/hotel/checkout/stay-1');
+    renderPanel('stay-1');
 
     fireEvent.click(await screen.findByText('Check out now'));
 

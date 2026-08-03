@@ -1,24 +1,36 @@
 import { Fragment } from 'react';
 import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
-import { DaycareCheckInPage } from './pages/DaycareCheckInPage/DaycareCheckInPage';
-import { DaycareCheckoutPage } from './pages/DaycareCheckoutPage/DaycareCheckoutPage';
+import { DaycareQueuePage } from './pages/DaycareQueuePage/DaycareQueuePage';
+import {
+  DaycareCheckInRedirect,
+  DaycareCheckoutRedirect,
+  DaycareCheckoutSessionRedirect,
+} from './pages/DaycareQueuePage/DaycareLegacyRedirects';
 
-/** Issue #69: Daycare check-in/checkout - Receptionist/Admin/Supervisor/
- * Superadmin only, enforced inside each page (ALLOWED_VIEWER_ROLES), same
- * pattern as GroomerDashboardPage/VeterinaryConsolePage. The checkout route's
- * :sessionId param is optional - DaycareCheckInPage's "Go to checkout" link
- * supplies it right after check-in; otherwise it's entered manually (see
- * DaycareCheckoutPage's own scope note on why no "browse active sessions"
- * list exists). */
+/**
+ * Queue redesign: the former separate Daycare Check-in and Daycare Checkout
+ * pages/routes are replaced by one Daycare Queue page with Check In/Check
+ * Out tabs (role enforcement happens once inside DaycareQueuePage, instead
+ * of once per page - and now also includes Groomer/Pet Assistant, mirrors
+ * hotel.routes.tsx). The three old paths redirect into it rather than
+ * disappearing outright, so old bookmarks/links keep working.
+ */
 export const daycareRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
-      <Route path="/staff/daycare/check-in" element={<DaycareCheckInPage />} />
-      <Route path="/staff/daycare/checkout" element={<DaycareCheckoutPage />} />
+      <Route path="/staff/daycare/queue" element={<DaycareQueuePage />} />
+      <Route
+        path="/staff/daycare/check-in"
+        element={<DaycareCheckInRedirect />}
+      />
+      <Route
+        path="/staff/daycare/checkout"
+        element={<DaycareCheckoutRedirect />}
+      />
       <Route
         path="/staff/daycare/checkout/:sessionId"
-        element={<DaycareCheckoutPage />}
+        element={<DaycareCheckoutSessionRedirect />}
       />
     </Route>
   </Fragment>

@@ -1,0 +1,149 @@
+import { useEffect, useState } from 'react';
+import { Navigate, useSearchParams } from 'react-router';
+import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { getStaffProfile } from '../../../staff/api/staff.api';
+import { HotelCheckInPanel } from './HotelCheckInPanel';
+import { HotelCheckoutPanel } from './HotelCheckoutPanel';
+import styles from './HotelQueuePage.module.css';
+
+const ALLOWED_VIEWER_ROLES = new Set([
+  'Receptionist',
+  'Admin',
+  'Supervisor',
+  'Superadmin',
+  'Groomer',
+  'Pet Assistant',
+]);
+
+type Tab = 'check-in' | 'check-out';
+
+/**
+ * Queue redesign: replaces the former separate Hotel Check-in and Hotel
+ * Checkout pages/routes with one screen, matching the "Hotel Queue, not
+ * Hotel Check-in + Hotel Checkout" request - the two flows are now tabs
+ * sharing a single role check, instead of two standalone routes each doing
+ * their own. Groomer and Pet Assistant can act here too (Hotel has no
+ * dedicated assigned-staff role, unlike Grooming/Veterinary - see
+ * HOTEL_ADVANCE_ROLES server-side). The legacy /staff/hotel/check-in and
+ * /staff/hotel/checkout(/:stayId) routes now redirect here (see
+ * HotelLegacyRedirects.tsx), preserving HotelBookingPicker's own
+ * "already checked in -> go to checkout" cross-link and any old bookmarks.
+ */
+export function HotelQueuePage() {
+  const { user, accessToken } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
+    'loading'
+  );
+  const [role, setRole] = useState<string | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
+
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get('tab') === 'check-out' ? 'check-out' : 'check-in'
+  );
+  const [checkoutStayId, setCheckoutStayId] = useState<string | null>(
+    searchParams.get('stayId')
+  );
+
+  useEffect(() => {
+    if (!accessToken || !user?.id) return;
+
+    let isMounted = true;
+
+    void getStaffProfile(user.id, accessToken).then((result) => {
+      if (!isMounted) return;
+
+      if (result.data) {
+        setRoleStatus(
+          ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
+        );
+        setRole(result.data.role);
+        setBranchId(result.data.branch_id);
+      } else {
+        setRoleStatus('denied');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, user?.id]);
+
+  function handleCheckedIn(stayId: string) {
+    setCheckoutStayId(stayId);
+    setTab('check-out');
+  }
+
+  if (!user?.id || !accessToken) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load the Hotel queue.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (roleStatus === 'loading') {
+    return (
+      <main className={styles.page}>
+        <div className={styles.content}>
+          <p className={styles.copy}>Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (roleStatus === 'denied') {
+    return <Navigate to="/staff/settings" replace />;
+  }
+
+  return (
+    <main className={styles.page}>
+      <div className={styles.content}>
+        <h1 className={styles.title}>Hotel Queue</h1>
+
+        <div className={styles.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'check-in'}
+            className={tab === 'check-in' ? styles.tabActive : styles.tab}
+            onClick={() => setTab('check-in')}
+          >
+            Check In
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'check-out'}
+            className={tab === 'check-out' ? styles.tabActive : styles.tab}
+            onClick={() => setTab('check-out')}
+          >
+            Check Out
+          </button>
+        </div>
+
+        {tab === 'check-in' && role && branchId ? (
+          <HotelCheckInPanel
+            accessToken={accessToken}
+            role={role}
+            branchId={branchId}
+            onCheckedIn={handleCheckedIn}
+          />
+        ) : null}
+
+        {tab === 'check-out' ? (
+          <HotelCheckoutPanel
+            key={checkoutStayId ?? 'picker'}
+            accessToken={accessToken}
+            initialStayId={checkoutStayId}
+          />
+        ) : null}
+      </div>
+    </main>
+  );
+}
