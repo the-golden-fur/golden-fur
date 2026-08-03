@@ -10,7 +10,16 @@ import {
   updateProduct,
 } from './services/productCatalog.service.ts';
 import {
+  archiveCustomerCatalogItem,
+  createCustomerCatalogItem,
+  listCustomerCatalog,
+  updateCustomerCatalogItem,
+  type CustomerCatalogCategory,
+} from './services/customerProductCatalog.service.ts';
+import {
+  createCustomerCatalogItemValidator,
   createProductValidator,
+  updateCustomerCatalogItemValidator,
   updateProductValidator,
 } from './modules/validators/catalog.validator.ts';
 
@@ -133,6 +142,99 @@ export async function hardDeleteProductController(
 ) {
   try {
     await hardDeleteProduct(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** #22: customer-facing counterparts, scoped to the requesting customer's
+ * own food/medication types (plus the global staff catalog for reference). */
+
+export async function listCustomerCatalogController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = req.user?.sub;
+  if (!customerId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const items = await listCustomerCatalog({
+      customerId,
+      category: queryString(req.query.category) as
+        | CustomerCatalogCategory
+        | undefined,
+    });
+    return res.status(200).json({ items });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createCustomerCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = req.user?.sub;
+  if (!customerId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = createCustomerCatalogItemValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const item = await createCustomerCatalogItem({
+      customerId,
+      name: parsed.data.name,
+      category: parsed.data.category,
+    });
+    return res.status(201).json({ item });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updateCustomerCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = req.user?.sub;
+  if (!customerId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = updateCustomerCatalogItemValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const item = await updateCustomerCatalogItem({
+      customerId,
+      itemId: paramId(req, 'id'),
+      name: parsed.data.name,
+    });
+    return res.status(200).json({ item });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveCustomerCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = req.user?.sub;
+  if (!customerId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    await archiveCustomerCatalogItem({
+      customerId,
+      itemId: paramId(req, 'id'),
+    });
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

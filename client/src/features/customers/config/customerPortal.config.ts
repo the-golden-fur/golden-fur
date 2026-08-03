@@ -3,6 +3,7 @@ import {
   ClipboardList,
   Home,
   PawPrint,
+  Salad,
   Settings,
 } from 'lucide-react';
 import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar';
@@ -21,6 +22,11 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
       { title: 'Book a Service', to: '/portal/book', icon: CalendarPlus },
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },
       { title: 'Pet Manager', to: '/portal/pets', icon: PawPrint },
+      {
+        title: 'Food & Medication',
+        to: '/portal/food-medication',
+        icon: Salad,
+      },
       { title: 'Settings', to: '/portal/settings', icon: Settings },
     ],
   },

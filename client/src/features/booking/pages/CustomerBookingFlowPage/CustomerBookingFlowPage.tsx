@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import {
+  BedDouble,
+  ClipboardList,
+  Scissors,
+  Stethoscope,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
@@ -15,8 +23,14 @@ import type {
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
+import { CagePicker } from '../../components/CagePicker/CagePicker';
 import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFeeNotice';
-import { createBooking, getBookingCatalog } from '../../api/booking.api';
+import {
+  createBooking,
+  getBookingCatalog,
+  getNextAvailableSlot,
+  type NextAvailableSlot,
+} from '../../api/booking.api';
 import {
   BOOKING_MARK_PAID_ROLES,
   PAYMENT_METHODS,
@@ -24,6 +38,7 @@ import {
   type Booking,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
+  type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
   type PaymentMethod,
   type ServiceCategory,
@@ -93,84 +108,39 @@ function deriveHotelCageSize(
   return null;
 }
 
-interface SupplierChoiceProps {
-  /** Unique per feeding/medication row so each row's two radios form their
-   * own group instead of fighting over a single page-wide selection. */
-  radioGroup: string;
-  broughtByCustomer: boolean;
-  /** Purely client-side for medications (a units-to-purchase count, distinct
-   * from dose) - never sent in the submitted payload, so it only drives this
-   * on-screen estimate. */
-  quantity?: string;
-  catalogItem: { price: number } | undefined;
-  onChange: (broughtByCustomer: boolean) => void;
-}
-
-/**
- * Staff-view-only supplier choice for a catalog-matched feeding/medication
- * row - the user's ask was specifically for a radio button (HotelCheckInPage
- * uses a single checkbox for the same boolean; a two-option radio group reads
- * more clearly here). Shows a price x quantity estimate only when the staff
- * will purchase it - HotelCheckInPage itself doesn't compute this today, so
- * this is a new estimate, not a copy of existing behavior.
- */
-function SupplierChoice({
-  radioGroup,
-  broughtByCustomer,
-  quantity,
-  catalogItem,
-  onChange,
-}: SupplierChoiceProps) {
-  const parsedQuantity = Number(quantity);
-  const estimate =
-    catalogItem &&
-    quantity &&
-    Number.isFinite(parsedQuantity) &&
-    parsedQuantity > 0
-      ? catalogItem.price * parsedQuantity
-      : catalogItem?.price;
-
-  return (
-    <div className={styles.supplierChoice}>
-      <label className={styles.radioOption}>
-        <input
-          type="radio"
-          name={radioGroup}
-          checked={broughtByCustomer}
-          onChange={() => onChange(true)}
-        />
-        Owner will bring it
-      </label>
-      <label className={styles.radioOption}>
-        <input
-          type="radio"
-          name={radioGroup}
-          checked={!broughtByCustomer}
-          onChange={() => onChange(false)}
-        />
-        Staff will purchase it
-        {!broughtByCustomer && catalogItem ? (
-          <span className={styles.priceEstimate}>
-            PHP {estimate!.toFixed(2)}
-          </span>
-        ) : null}
-      </label>
-    </div>
-  );
-}
-
 interface StepDef {
   key:
     | 'customer'
     | 'pet'
     | 'branch'
-    | 'service'
-    | 'slot'
-    | 'staff'
+    | 'category'
+    | 'availability'
+    | 'items'
     | 'hotelDetails'
     | 'payment';
   label: string;
 }
+
+/** #22 follow-up: fixed stand-in duration for the availability step's
+ * capacity/staff check, run before any specific service/package is chosen
+ * (so the real item-derived duration isn't known yet). Hotel's 1440 isn't
+ * an approximation - it's always a full night regardless of item, matching
+ * availability.service.ts's existing day-level Hotel convention. */
+const DEFAULT_DURATION_MINUTES: Record<ServiceCategory, number> = {
+  Grooming: 60,
+  Veterinary: 60,
+  Daycare: 60,
+  Hotel: 1440,
+  Misc: 60,
+};
+
+const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
+  Grooming: Scissors,
+  Hotel: BedDouble,
+  Daycare: Sun,
+  Veterinary: Stethoscope,
+  Misc: ClipboardList,
+};
 
 const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
   'Morning',
@@ -178,20 +148,36 @@ const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
   'Evening',
 ];
 
+const PARTS_OF_DAY: HotelBookingPreferenceWalking['time_block'][] = [
+  'Morning',
+  'Afternoon',
+  'Evening',
+];
+
+/** #22: walk/play scheduling is minutes-based, not clock-time - these are
+ * just the quick-select buttons; the underlying field accepts any positive
+ * integer via the number input next to them. */
+const DURATION_PRESETS_MINUTES = [10, 15, 20, 30];
+
+const NIGHT_COUNT_PRESETS = [3, 5];
+
 interface HotelFeedingRowState {
   food_type: string;
   quantity: string;
   special_instructions: string;
   /** Set only when food_type matched a catalog item - staff view only, since
-   * the catalog dropdown (CatalogComboBox) is only shown there (the hotel
-   * catalog endpoints are staff-only). */
+   * the catalog dropdown (CatalogComboBox) is only shown there. */
   food_catalog_id: string | null;
-  /** true (default) = owner brings it; false = staff purchases it. */
-  brought_by_customer: boolean;
 }
 
 const EMPTY_HOTEL_WALKING_ROW = {
-  time_block: '07:00',
+  time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
+  duration_minutes: 15,
+  notes: '',
+};
+
+const EMPTY_HOTEL_PLAYING_ROW = {
+  time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
   duration_minutes: 15,
   notes: '',
 };
@@ -202,12 +188,6 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   scheduled_time: '08:00',
   administration_notes: '',
   medication_catalog_id: null as string | null,
-  brought_by_customer: true,
-  // Client-only (never sent in hotel_preferences.medications - dose already
-  // encodes amount per administration, and hotel.types.ts's
-  // MedicationInstructionPayload has no quantity field to round-trip through
-  // to check-in) - purely drives the price x quantity estimate below.
-  quantity: '1',
 };
 
 /**
@@ -375,9 +355,18 @@ export function CustomerBookingFlowPage() {
   const [hotelWalking, setHotelWalking] = useState<
     Array<typeof EMPTY_HOTEL_WALKING_ROW>
   >([]);
+  const [hotelPlaying, setHotelPlaying] = useState<
+    Array<typeof EMPTY_HOTEL_PLAYING_ROW>
+  >([]);
   const [hotelMedications, setHotelMedications] = useState<
     Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
   >([]);
+  // #22: "same instructions every night" (default) vs per-night editing.
+  // Full per-night date-tab editing UI is a follow-up - for now this flag
+  // is always sent as true (every row applies to the whole stay, matching
+  // pre-#22 behavior) while the server/schema already support per-row
+  // stay_date for when that UI lands.
+  const [hotelUniformInstructions] = useState(true);
 
   // Staff view only - GET /hotel/food-catalog and /hotel/medication-catalog
   // are staff-gated (requireRole(frontDeskAndAssistants)), so the customer
@@ -424,6 +413,18 @@ export function CustomerBookingFlowPage() {
     null
   );
 
+  // #22: "fully booked" warning, checked live as the customer browses dates
+  // inside the availability step - only for a day that actually has real
+  // candidate slots (time/staff/cage) that are ALL taken, never for a day
+  // with no candidates at all (branch closed that weekday, or today's
+  // hours have already passed) - see handleSlotAvailabilityChange. undefined
+  // = not showing, null = nothing available in the lookahead window,
+  // otherwise the earliest open day/slot found.
+  const [fullyBookedNotice, setFullyBookedNotice] = useState<
+    NextAvailableSlot | null | undefined
+  >(undefined);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+
   // resetHotelPreferences/handleCategorySelect are declared ahead of the
   // auto-select-assessment effect below (rather than alongside the other
   // selection handlers further down) so that effect can reference them -
@@ -433,6 +434,7 @@ export function CustomerBookingFlowPage() {
   function resetHotelPreferences() {
     setHotelFeeding({ Morning: null, Afternoon: null, Evening: null });
     setHotelWalking([]);
+    setHotelPlaying([]);
     setHotelMedications([]);
   }
 
@@ -643,6 +645,21 @@ export function CustomerBookingFlowPage() {
   // Grooming/Veterinary stay multi-select.
   const singleSelectCategory = category === 'Hotel' || category === 'Daycare';
 
+  /** Union of every service already covered by a currently-selected
+   * package's bundled price - those services are shown read-only in the
+   * Individual service list (#22 follow-up), so a customer/receptionist
+   * can't also separately select (and pay for) the same service. */
+  const servicesCoveredByPackages = useMemo(() => {
+    const covered = new Map<string, string>();
+    for (const packageId of selectedPackageIds) {
+      const pkg = packages.find((candidate) => candidate.id === packageId);
+      for (const link of pkg?.package_services ?? []) {
+        covered.set(link.service_id, pkg!.name);
+      }
+    }
+    return covered;
+  }, [selectedPackageIds, packages]);
+
   // selectionsByCategory persists a tab's picks while you're just browsing
   // (switching tabs without selecting anything), but updateCategorySelection
   // clears every other category's picks the moment you actually select or
@@ -673,23 +690,25 @@ export function CustomerBookingFlowPage() {
         0
       ) || 60;
 
-  /** The real scheduled_end once multi-night is applied - same computation
-   * handleSubmit uses, reused here so the care-schedule bounds below judge
-   * against the stay actually being booked, not SlotPicker's one-night
-   * preview. */
-  const hotelScheduledEnd =
-    category === 'Hotel' && selectedSlot && hotelNights > 1
-      ? new Date(
-          new Date(selectedSlot.start).getTime() +
-            hotelNights * slotDurationMinutes * 60000
-        ).toISOString()
-      : (selectedSlot?.end ?? null);
+  /** #22 follow-up: the real scheduled_end, computed from the item-derived
+   * slotDurationMinutes rather than SlotPicker's own selectedSlot.end -
+   * SlotPicker now runs at the 'availability' step, before any service/
+   * package is picked, so its own end time only reflects the fixed
+   * DEFAULT_DURATION_MINUTES stand-in and is never accurate enough to
+   * submit. Reused here (not just in handleSubmit) so the Hotel care-
+   * schedule bounds below judge against the stay actually being booked. */
+  const finalScheduledEnd = selectedSlot
+    ? new Date(
+        new Date(selectedSlot.start).getTime() +
+          (category === 'Hotel' ? hotelNights : 1) * slotDurationMinutes * 60000
+      ).toISOString()
+    : null;
 
   const hotelCheckInTime = selectedSlot
     ? getDayOneMinTime(selectedSlot.start)
     : null;
-  const hotelCheckOutTime = hotelScheduledEnd
-    ? getLastDayMaxTime(hotelScheduledEnd)
+  const hotelCheckOutTime = finalScheduledEnd
+    ? getLastDayMaxTime(finalScheduledEnd)
     : null;
 
   // Hotel is priced per night - base_price/bundled_price is the per-night
@@ -785,50 +804,6 @@ export function CustomerBookingFlowPage() {
 
   const estimatedTotal = Math.max(0, subtotal - discountAmount - promoDiscount);
 
-  // Hotel-supplied feeding/medication items (staff will purchase them) are
-  // billed at checkout, not part of the upfront downpayment (mirrors
-  // HotelCheckInPage's own separate "estimated additional charges" line,
-  // computed there from the same brought_by_customer flag) - shown here so
-  // Review & Pay doesn't silently omit money the customer will owe.
-  const suppliesEstimateTotal = useMemo(() => {
-    if (category !== 'Hotel') return 0;
-
-    let total = 0;
-
-    for (const mealTime of MEAL_TIMES) {
-      const row = hotelFeeding[mealTime];
-      if (!row?.food_catalog_id || row.brought_by_customer) continue;
-
-      const item = foodCatalog.find(
-        (entry) => entry.id === row.food_catalog_id
-      );
-      const quantity = Number(row.quantity);
-      total +=
-        (item?.price ?? 0) *
-        (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
-    }
-
-    for (const row of hotelMedications) {
-      if (!row.medication_catalog_id || row.brought_by_customer) continue;
-
-      const item = medicationCatalog.find(
-        (entry) => entry.id === row.medication_catalog_id
-      );
-      const quantity = Number(row.quantity);
-      total +=
-        (item?.price ?? 0) *
-        (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
-    }
-
-    return total;
-  }, [
-    category,
-    hotelFeeding,
-    hotelMedications,
-    foodCatalog,
-    medicationCatalog,
-  ]);
-
   const requiresPayment = category !== 'Veterinary';
   const downpaymentAmount =
     category === 'Hotel'
@@ -837,12 +812,14 @@ export function CustomerBookingFlowPage() {
 
   // ---- Steps ----
 
-  // Grooming/Veterinary bookings get a staff choice folded into the Date &
-  // Time step itself (merged step - see 'slot' case in isStepValid/render
-  // below) rather than a separate stepper entry, so a step disappearing
-  // when the branch+service-type combo has Staff Picker disabled (M09
-  // policy) or is a category with no staff concept (Hotel/Daycare) never
-  // leaves an orphaned nav entry to clean up.
+  // #22 follow-up: staff/cage availability is checked BEFORE specific
+  // services/packages are picked (category alone is enough to know whether
+  // Grooming/Veterinary needs a Staff Picker or Hotel needs a Cage Picker),
+  // so the customer learns early if nothing is available rather than after
+  // investing effort picking exact items. Grooming/Veterinary's staff
+  // choice and Hotel's cage-capacity display both live inside the single
+  // 'availability' step alongside Date & Time (merged, not a separate
+  // stepper entry) - Daycare gets Date & Time alone there, same as today.
   const steps: StepDef[] = useMemo(() => {
     const list: StepDef[] = [];
 
@@ -852,15 +829,18 @@ export function CustomerBookingFlowPage() {
 
     list.push({ key: 'pet', label: 'Pet' });
     list.push({ key: 'branch', label: 'Branch' });
-    list.push({ key: 'service', label: 'Service' });
-    list.push({ key: 'slot', label: 'Date & Time' });
+    list.push({ key: 'category', label: 'Service Type' });
 
-    if (
-      (category === 'Grooming' || category === 'Veterinary') &&
-      !staffPickerUnavailable
-    ) {
-      list.push({ key: 'staff', label: 'Staff' });
-    }
+    const availabilityLabel =
+      category === 'Hotel'
+        ? 'Cage & Date'
+        : (category === 'Grooming' || category === 'Veterinary') &&
+            !staffPickerUnavailable
+          ? 'Staff & Date'
+          : 'Date & Time';
+    list.push({ key: 'availability', label: availabilityLabel });
+
+    list.push({ key: 'items', label: 'Services' });
 
     if (category === 'Hotel') {
       list.push({ key: 'hotelDetails', label: 'Care Instructions' });
@@ -916,15 +896,17 @@ export function CustomerBookingFlowPage() {
         return selectedPetId !== '';
       case 'branch':
         return selectedBranchId !== '';
-      case 'service':
+      case 'category':
+        return category !== '';
+      case 'availability':
         return (
-          category !== '' &&
-          selectedServiceIds.length + selectedPackageIds.length > 0
+          selectedSlot !== null &&
+          ((category !== 'Grooming' && category !== 'Veterinary') ||
+            staffPickerUnavailable ||
+            staffPreference !== null)
         );
-      case 'slot':
-        return selectedSlot !== null;
-      case 'staff':
-        return staffPreference !== null;
+      case 'items':
+        return selectedServiceIds.length + selectedPackageIds.length > 0;
       case 'hotelDetails':
         return true;
       case 'payment':
@@ -950,6 +932,65 @@ export function CustomerBookingFlowPage() {
   function goNext() {
     if (!isCurrentStepValid) return;
     advanceTo(currentStepIndex + 1);
+  }
+
+  /** #22 follow-up: fired by SlotPicker (inside the 'availability' step)
+   * every time the currently-viewed date's availability resolves. Only
+   * warns when that day actually had real candidate slots (time/staff/
+   * cage) and every one of them is taken - hasAnySlots is false both when
+   * the branch has no hours that weekday and when today's hours have
+   * already passed (getDaySlots drops any candidate whose start is already
+   * in the past), neither of which is a meaningful "fully booked" signal,
+   * so both are silently skipped rather than shown as a warning. */
+  function handleSlotAvailabilityChange({
+    date,
+    hasAnyAvailable,
+    hasAnySlots,
+  }: {
+    date: string;
+    hasAnyAvailable: boolean;
+    hasAnySlots: boolean;
+  }) {
+    if (
+      !hasAnySlots ||
+      hasAnyAvailable ||
+      !accessToken ||
+      !selectedBranchId ||
+      !category
+    ) {
+      return;
+    }
+
+    setIsCheckingAvailability(true);
+
+    // date itself is already confirmed full - start the lookahead the day
+    // after it instead of redundantly re-checking the same day.
+    const [year, month, day] = date.split('-').map(Number);
+    const searchFromDate = new Date(Date.UTC(year, month - 1, day + 1))
+      .toISOString()
+      .slice(0, 10);
+
+    void getNextAvailableSlot(accessToken, {
+      branchId: selectedBranchId,
+      serviceCategory: category as ServiceCategory,
+      fromDate: searchFromDate,
+      slotDurationMinutes:
+        DEFAULT_DURATION_MINUTES[category as ServiceCategory],
+      petWeightClass:
+        category === 'Hotel'
+          ? (selectedPet?.weight_class ?? undefined)
+          : undefined,
+    }).then((result) => {
+      setIsCheckingAvailability(false);
+      // Fails open: a lookup error never shows a false "fully booked" claim.
+      if (!result.error) {
+        setFullyBookedNotice(result.data);
+      }
+    });
+  }
+
+  function dismissFullyBookedNotice() {
+    setFullyBookedNotice(undefined);
   }
 
   function goBack() {
@@ -1005,9 +1046,31 @@ export function CustomerBookingFlowPage() {
     resetHotelPreferences();
   }
 
+  /** A package's bundled price already covers its member services - keeping
+   * one of them separately selectable would let a customer pay for (and a
+   * receptionist book) the same service twice. */
+  function packageMemberServiceIds(packageId: string): Set<string> {
+    const pkg = packages.find((candidate) => candidate.id === packageId);
+    return new Set(
+      (pkg?.package_services ?? []).map((link) => link.service_id)
+    );
+  }
+
   function toggleServiceSelect(serviceId: string) {
     if (!category) return;
+    // Already covered by a selected package's bundled price - read-only
+    // (the option card's own onClick shouldn't even be reachable, but this
+    // guards against it directly too).
+    if (servicesCoveredByPackages.has(serviceId)) return;
 
+    // #22 follow-up: no longer resets selectedSlot/staffPreference here -
+    // that made sense when items were picked BEFORE availability (the real
+    // item-derived duration used to drive the slot/staff check directly),
+    // but items are now picked AFTER availability, which already ran
+    // against a fixed placeholder duration independent of which items get
+    // chosen. Resetting here silently wiped out an already-confirmed slot,
+    // which then made handleSubmit's `!selectedSlot` guard fail silently -
+    // Confirm booking looked like it did nothing at all.
     if (selectedServiceIds.includes(serviceId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -1024,13 +1087,13 @@ export function CustomerBookingFlowPage() {
         serviceIds: [...current.serviceIds, serviceId],
       }));
     }
-    setSelectedSlot(null);
-    setStaffPreference(null);
   }
 
   function togglePackageSelect(packageId: string) {
     if (!category) return;
 
+    // #22 follow-up: see toggleServiceSelect's comment above - the
+    // selectedSlot/staffPreference reset was removed for the same reason.
     if (selectedPackageIds.includes(packageId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -1044,21 +1107,12 @@ export function CustomerBookingFlowPage() {
     } else {
       updateCategorySelection(category, (current) => ({
         ...current,
+        serviceIds: current.serviceIds.filter(
+          (id) => !packageMemberServiceIds(packageId).has(id)
+        ),
         packageIds: [...current.packageIds, packageId],
       }));
     }
-    setSelectedSlot(null);
-    setStaffPreference(null);
-  }
-
-  function handleSlotSelect(slot: { start: string; end: string }) {
-    setSelectedSlot(slot);
-    advanceTo(currentStepIndex + 1);
-  }
-
-  function handleStaffSelect(preference: StaffPreferenceInput) {
-    setStaffPreference(preference);
-    advanceTo(currentStepIndex + 1);
   }
 
   function toggleHotelMealTime(
@@ -1073,7 +1127,6 @@ export function CustomerBookingFlowPage() {
             quantity: '1',
             special_instructions: '',
             food_catalog_id: null,
-            brought_by_customer: true,
           },
     }));
   }
@@ -1104,6 +1157,23 @@ export function CustomerBookingFlowPage() {
 
   function removeHotelWalkBlock(index: number) {
     setHotelWalking((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addHotelPlayBlock() {
+    setHotelPlaying((prev) => [...prev, { ...EMPTY_HOTEL_PLAYING_ROW }]);
+  }
+
+  function updateHotelPlayBlock(
+    index: number,
+    updates: Partial<typeof EMPTY_HOTEL_PLAYING_ROW>
+  ) {
+    setHotelPlaying((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...updates } : row))
+    );
+  }
+
+  function removeHotelPlayBlock(index: number) {
+    setHotelPlaying((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addHotelMedication() {
@@ -1141,18 +1211,20 @@ export function CustomerBookingFlowPage() {
           ? { special_instructions: row.special_instructions.trim() }
           : {}),
         ...(row.food_catalog_id
-          ? {
-              food_catalog_id: row.food_catalog_id,
-              brought_by_customer: row.brought_by_customer,
-            }
+          ? { food_catalog_id: row.food_catalog_id }
           : {}),
       };
     });
 
-    // Kept as raw "HH:MM" (not formatTimeValue()'d to "7:00 AM") so
-    // HotelCheckInPage can drop these straight into its own "HH:MM" TimeInput
-    // state at check-in without a lossy round-trip re-parse.
     const walking: HotelBookingPreferenceWalking[] = hotelWalking.map(
+      (row) => ({
+        time_block: row.time_block,
+        duration_minutes: row.duration_minutes,
+        ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
+      })
+    );
+
+    const playing: HotelBookingPreferencePlaying[] = hotelPlaying.map(
       (row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
@@ -1169,23 +1241,34 @@ export function CustomerBookingFlowPage() {
           ? { administration_notes: row.administration_notes.trim() }
           : {}),
         ...(row.medication_catalog_id
-          ? {
-              medication_catalog_id: row.medication_catalog_id,
-              brought_by_customer: row.brought_by_customer,
-            }
+          ? { medication_catalog_id: row.medication_catalog_id }
           : {}),
       }));
 
     if (
       feeding.length === 0 &&
       walking.length === 0 &&
+      playing.length === 0 &&
       medications.length === 0
     ) {
       return undefined;
     }
 
-    return { feeding, walking, medications };
-  }, [category, hotelFeeding, hotelWalking, hotelMedications]);
+    return {
+      uniform_instructions: hotelUniformInstructions,
+      feeding,
+      walking,
+      playing,
+      medications,
+    };
+  }, [
+    category,
+    hotelFeeding,
+    hotelWalking,
+    hotelPlaying,
+    hotelMedications,
+    hotelUniformInstructions,
+  ]);
 
   async function handleSubmit() {
     if (
@@ -1206,41 +1289,63 @@ export function CustomerBookingFlowPage() {
       ? ONLINE_METHODS.has(paymentMethod as PaymentMethod)
       : false;
 
-    const result = await createBooking(accessToken, {
-      ...(isReceptionistMode && walkInCustomer
-        ? { customer_id: walkInCustomer.id }
-        : {}),
-      pet_id: selectedPetId,
-      branch_id: selectedBranchId,
-      service_category: category,
-      items: [
-        ...selectedServiceIds.map((service_id) => ({ service_id })),
-        ...selectedPackageIds.map((package_id) => ({ package_id })),
-      ],
-      scheduled_start: selectedSlot.start,
-      scheduled_end: hotelScheduledEnd ?? selectedSlot.end,
-      ...(staffPreference ? { staff_preference: staffPreference } : {}),
-      ...(requiresPayment && paymentMethod
-        ? { payment_method: paymentMethod, payment_confirmed: paymentConfirmed }
-        : {}),
-      ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
-      ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
-      ...(specialInstructions.trim()
-        ? { special_instructions: specialInstructions.trim() }
-        : {}),
-      ...(hotelPreferencesPayload
-        ? { hotel_preferences: hotelPreferencesPayload }
-        : {}),
-    });
+    // #22 follow-up: try/catch is load-bearing, not defensive boilerplate -
+    // without it, a thrown exception here (a network failure, a bad JSON
+    // response) would skip setIsSubmitting(false) entirely, leaving the
+    // button silently stuck disabled with no visible error - exactly the
+    // "clicking Confirm booking doesn't advance or error" symptom.
+    try {
+      const result = await createBooking(accessToken, {
+        ...(isReceptionistMode && walkInCustomer
+          ? { customer_id: walkInCustomer.id }
+          : {}),
+        pet_id: selectedPetId,
+        branch_id: selectedBranchId,
+        service_category: category,
+        items: [
+          ...selectedServiceIds.map((service_id) => ({ service_id })),
+          ...selectedPackageIds.map((package_id) => ({ package_id })),
+        ],
+        scheduled_start: selectedSlot.start,
+        scheduled_end: finalScheduledEnd!,
+        ...(staffPreference ? { staff_preference: staffPreference } : {}),
+        ...(requiresPayment && paymentMethod
+          ? {
+              payment_method: paymentMethod,
+              payment_confirmed: paymentConfirmed,
+            }
+          : {}),
+        ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
+        ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
+        ...(specialInstructions.trim()
+          ? { special_instructions: specialInstructions.trim() }
+          : {}),
+        ...(hotelPreferencesPayload
+          ? { hotel_preferences: hotelPreferencesPayload }
+          : {}),
+      });
 
-    setIsSubmitting(false);
+      if (result.error || !result.data) {
+        // #22 follow-up: the availability step checks capacity/staff against
+        // a placeholder duration (real service/package duration isn't known
+        // until the later Services step) - a longer real duration than that
+        // placeholder is the most likely reason a submission gets rejected
+        // here despite the slot having looked open earlier, so say so
+        // instead of leaving a bare server error message.
+        setSubmitError(
+          `${result.error ?? 'Could not create the booking.'} This can happen when the actual service/package duration no longer fits the time you picked - try choosing a different time.`
+        );
+        return;
+      }
 
-    if (result.error || !result.data) {
-      setSubmitError(result.error ?? 'Could not create the booking.');
-      return;
+      setConfirmedBooking(result.data);
+    } catch {
+      setSubmitError(
+        'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setConfirmedBooking(result.data);
   }
 
   // ---- Guards ----
@@ -1378,22 +1483,27 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'service':
+      case 'category':
         return (
           <div className={styles.serviceStep}>
-            <div className={styles.tabRow}>
-              {availableCategories.map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  className={`${styles.tab} ${
-                    category === candidate ? styles.tabActive : ''
-                  }`}
-                  onClick={() => handleCategorySelect(candidate)}
-                >
-                  {candidate}
-                </button>
-              ))}
+            <div className={styles.categoryGrid}>
+              {availableCategories.map((candidate) => {
+                const Icon = CATEGORY_ICONS[candidate];
+                return (
+                  <button
+                    key={candidate}
+                    type="button"
+                    aria-pressed={category === candidate}
+                    className={`${styles.categoryCard} ${
+                      category === candidate ? styles.selected : ''
+                    }`}
+                    onClick={() => handleCategorySelect(candidate)}
+                  >
+                    <Icon className={styles.categoryIcon} aria-hidden="true" />
+                    <span className={styles.categoryLabel}>{candidate}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {categoriesWithOtherSelections.length > 0 ? (
@@ -1413,6 +1523,104 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {selectedPet && !isSelectedPetAssessed ? (
+              <p className={styles.copy}>
+                {selectedPet.name} hasn&apos;t been assessed by staff yet
+                (weight class and coat type are recorded onsite). Only Initial
+                Assessment can be booked for this pet until then.
+              </p>
+            ) : null}
+          </div>
+        );
+
+      case 'availability':
+        return (
+          <div className={styles.slotStep}>
+            {category === 'Hotel' && selectedPet?.weight_class ? (
+              <p className={styles.copy}>
+                {selectedPet.name} is{' '}
+                {WEIGHT_CLASS_LABEL[selectedPet.weight_class]} (
+                {selectedPet.weight_class}) - the matching cage size is marked
+                Recommended below.
+              </p>
+            ) : null}
+
+            {category === 'Hotel' ? (
+              <div className={styles.nightsField}>
+                <label>
+                  <span>Number of nights</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={hotelNights}
+                    onChange={(event) =>
+                      setHotelNights(
+                        Math.max(1, Number(event.target.value) || 1)
+                      )
+                    }
+                  />
+                </label>
+                {NIGHT_COUNT_PRESETS.map((nights) => (
+                  <button
+                    key={nights}
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setHotelNights(nights)}
+                  >
+                    {nights} nights
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <SlotPicker
+              accessToken={accessToken!}
+              branchId={selectedBranchId}
+              serviceCategory={category as ServiceCategory}
+              slotDurationMinutes={
+                DEFAULT_DURATION_MINUTES[category as ServiceCategory]
+              }
+              petWeightClass={
+                category === 'Hotel'
+                  ? (selectedPet?.weight_class ?? undefined)
+                  : undefined
+              }
+              viewerMode={isReceptionistMode ? 'staff' : 'customer'}
+              selectedSlot={selectedSlot}
+              onSelect={(slot) => setSelectedSlot(slot)}
+              onAvailabilityChange={handleSlotAvailabilityChange}
+            />
+
+            {selectedSlot &&
+            (category === 'Grooming' || category === 'Veterinary') &&
+            !staffPickerUnavailable ? (
+              <StaffPickerList
+                accessToken={accessToken!}
+                branchId={selectedBranchId}
+                serviceCategory={category as 'Grooming' | 'Veterinary'}
+                scheduledStart={selectedSlot.start}
+                scheduledEnd={selectedSlot.end}
+                selected={staffPreference}
+                onSelect={setStaffPreference}
+                onUnavailable={() => setStaffPickerUnavailable(true)}
+              />
+            ) : null}
+
+            {selectedSlot && category === 'Hotel' ? (
+              <CagePicker
+                accessToken={accessToken!}
+                branchId={selectedBranchId}
+                date={selectedSlot.start.slice(0, 10)}
+                recommendedSize={selectedPet?.weight_class ?? null}
+              />
+            ) : null}
+          </div>
+        );
+
+      case 'items':
+        return (
+          <div className={styles.serviceStep}>
             {category ? (
               <div className={styles.tabRow}>
                 <button
@@ -1438,38 +1646,6 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
-            {selectedPet && !isSelectedPetAssessed ? (
-              <p className={styles.copy}>
-                {selectedPet.name} hasn&apos;t been assessed by staff yet
-                (weight class and coat type are recorded onsite). Only Initial
-                Assessment can be booked for this pet until then.
-              </p>
-            ) : null}
-
-            {category === 'Hotel' && selectedPet?.weight_class ? (
-              <p className={styles.copy}>
-                {selectedPet.name} is{' '}
-                {WEIGHT_CLASS_LABEL[selectedPet.weight_class]} (
-                {selectedPet.weight_class}) - the matching cage size is marked
-                Recommended below.
-              </p>
-            ) : null}
-
-            {category === 'Hotel' ? (
-              <label className={styles.nightsField}>
-                <span>Number of nights</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={hotelNights}
-                  onChange={(event) =>
-                    setHotelNights(Math.max(1, Number(event.target.value) || 1))
-                  }
-                />
-              </label>
-            ) : null}
-
             {singleSelectCategory ? (
               <p className={styles.copy}>
                 {category === 'Hotel'
@@ -1493,15 +1669,20 @@ export function CustomerBookingFlowPage() {
                       selectedPet.weight_class;
 
                   const isChecked = selectedServiceIds.includes(service.id);
+                  const coveredByPackageName = servicesCoveredByPackages.get(
+                    service.id
+                  );
 
                   return (
                     <button
                       key={service.id}
                       type="button"
                       aria-pressed={isChecked}
+                      aria-disabled={coveredByPackageName !== undefined}
+                      disabled={coveredByPackageName !== undefined}
                       className={`${styles.optionCard} ${
                         isChecked ? styles.selected : ''
-                      }`}
+                      } ${coveredByPackageName !== undefined ? styles.readOnly : ''}`}
                       onClick={() => toggleServiceSelect(service.id)}
                     >
                       <span className={styles.optionTitleRow}>
@@ -1523,6 +1704,11 @@ export function CustomerBookingFlowPage() {
                           ? ` (PHP ${service.base_price.toFixed(2)}/night × ${hotelNights})`
                           : ''}
                       </span>
+                      {coveredByPackageName !== undefined ? (
+                        <span className={styles.optionMeta}>
+                          Included in {coveredByPackageName}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -1585,42 +1771,6 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'slot':
-        return (
-          <div className={styles.slotStep}>
-            <SlotPicker
-              accessToken={accessToken!}
-              branchId={selectedBranchId}
-              serviceCategory={category as ServiceCategory}
-              slotDurationMinutes={slotDurationMinutes}
-              petWeightClass={
-                category === 'Hotel'
-                  ? (pets.find((pet) => pet.id === selectedPetId)
-                      ?.weight_class ?? undefined)
-                  : undefined
-              }
-              viewerMode={isReceptionistMode ? 'staff' : 'customer'}
-              selectedSlot={selectedSlot}
-              onSelect={handleSlotSelect}
-            />
-          </div>
-        );
-
-      case 'staff':
-        if (!selectedSlot) return null;
-        return (
-          <StaffPickerList
-            accessToken={accessToken!}
-            branchId={selectedBranchId}
-            serviceCategory={category as 'Grooming' | 'Veterinary'}
-            scheduledStart={selectedSlot.start}
-            scheduledEnd={selectedSlot.end}
-            selected={staffPreference}
-            onSelect={handleStaffSelect}
-            onUnavailable={() => setStaffPickerUnavailable(true)}
-          />
-        );
-
       case 'hotelDetails':
         return (
           <div className={styles.hotelDetailsStep}>
@@ -1671,11 +1821,6 @@ export function CustomerBookingFlowPage() {
                                 updateHotelFeeding(mealTime, {
                                   food_type: next.text,
                                   food_catalog_id: next.catalogId,
-                                  // Fresh catalog match defaults to owner-
-                                  // brought, matching HotelCheckInPage.
-                                  ...(next.catalogId
-                                    ? { brought_by_customer: true }
-                                    : {}),
                                 })
                               }
                             />
@@ -1714,22 +1859,6 @@ export function CustomerBookingFlowPage() {
                             }
                           />
                         </div>
-
-                        {isReceptionistMode && row.food_catalog_id ? (
-                          <SupplierChoice
-                            radioGroup={`feeding-${mealTime}`}
-                            broughtByCustomer={row.brought_by_customer}
-                            quantity={row.quantity}
-                            catalogItem={foodCatalog.find(
-                              (item) => item.id === row.food_catalog_id
-                            )}
-                            onChange={(broughtByCustomer) =>
-                              updateHotelFeeding(mealTime, {
-                                brought_by_customer: broughtByCustomer,
-                              })
-                            }
-                          />
-                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1742,13 +1871,23 @@ export function CustomerBookingFlowPage() {
               {hotelWalking.map((row, index) => (
                 <div key={index} className={styles.instructionBlock}>
                   <div className={styles.inlineFields}>
-                    <TimeInput
-                      aria-label="Walk time"
+                    <select
+                      className={styles.input}
+                      aria-label="Walk time of day"
                       value={row.time_block}
-                      onChange={(value) =>
-                        updateHotelWalkBlock(index, { time_block: value })
+                      onChange={(event) =>
+                        updateHotelWalkBlock(index, {
+                          time_block: event.target
+                            .value as HotelBookingPreferenceWalking['time_block'],
+                        })
                       }
-                    />
+                    >
+                      {PARTS_OF_DAY.map((part) => (
+                        <option key={part} value={part}>
+                          {part}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       className={styles.input}
                       type="number"
@@ -1761,6 +1900,20 @@ export function CustomerBookingFlowPage() {
                         })
                       }
                     />
+                    {DURATION_PRESETS_MINUTES.map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          updateHotelWalkBlock(index, {
+                            duration_minutes: minutes,
+                          })
+                        }
+                      >
+                        {minutes}m
+                      </button>
+                    ))}
                     <input
                       className={styles.input}
                       placeholder="Notes (optional)"
@@ -1795,6 +1948,87 @@ export function CustomerBookingFlowPage() {
             </section>
 
             <section className={styles.hotelDetailsSection}>
+              <span className={styles.sectionTitle}>Playtime</span>
+              {hotelPlaying.map((row, index) => (
+                <div key={index} className={styles.instructionBlock}>
+                  <div className={styles.inlineFields}>
+                    <select
+                      className={styles.input}
+                      aria-label="Playtime time of day"
+                      value={row.time_block}
+                      onChange={(event) =>
+                        updateHotelPlayBlock(index, {
+                          time_block: event.target
+                            .value as HotelBookingPreferenceWalking['time_block'],
+                        })
+                      }
+                    >
+                      {PARTS_OF_DAY.map((part) => (
+                        <option key={part} value={part}>
+                          {part}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min={1}
+                      placeholder="Duration (min)"
+                      value={row.duration_minutes}
+                      onChange={(event) =>
+                        updateHotelPlayBlock(index, {
+                          duration_minutes: Number(event.target.value),
+                        })
+                      }
+                    />
+                    {DURATION_PRESETS_MINUTES.map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          updateHotelPlayBlock(index, {
+                            duration_minutes: minutes,
+                          })
+                        }
+                      >
+                        {minutes}m
+                      </button>
+                    ))}
+                    <input
+                      className={styles.input}
+                      placeholder="Notes (optional)"
+                      value={row.notes}
+                      onChange={(event) =>
+                        updateHotelPlayBlock(index, {
+                          notes: event.target.value,
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeHotelPlayBlock(index)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <p className={styles.copy}>
+                    Applies daily - won&apos;t happen before check-in on arrival
+                    day or after checkout on departure day.
+                  </p>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addHotelPlayBlock}
+              >
+                Add playtime
+              </button>
+            </section>
+
+            <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Medications</span>
               {hotelMedications.map((row, index) => (
                 <div key={index} className={styles.instructionBlock}>
@@ -1811,9 +2045,6 @@ export function CustomerBookingFlowPage() {
                           updateHotelMedication(index, {
                             medication_name: next.text,
                             medication_catalog_id: next.catalogId,
-                            ...(next.catalogId
-                              ? { brought_by_customer: true }
-                              : {}),
                           })
                         }
                       />
@@ -1839,20 +2070,6 @@ export function CustomerBookingFlowPage() {
                         })
                       }
                     />
-                    {isReceptionistMode ? (
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Quantity"
-                        value={row.quantity}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            quantity: event.target.value,
-                          })
-                        }
-                      />
-                    ) : null}
                     <TimeInput
                       aria-label="Medication time"
                       value={row.scheduled_time}
@@ -1882,22 +2099,6 @@ export function CustomerBookingFlowPage() {
                     Applies daily - won&apos;t happen before check-in on arrival
                     day or after checkout on departure day.
                   </p>
-
-                  {isReceptionistMode && row.medication_catalog_id ? (
-                    <SupplierChoice
-                      radioGroup={`medication-${index}`}
-                      broughtByCustomer={row.brought_by_customer}
-                      quantity={row.quantity}
-                      catalogItem={medicationCatalog.find(
-                        (item) => item.id === row.medication_catalog_id
-                      )}
-                      onChange={(broughtByCustomer) =>
-                        updateHotelMedication(index, {
-                          brought_by_customer: broughtByCustomer,
-                        })
-                      }
-                    />
-                  ) : null}
                 </div>
               ))}
               <button
@@ -1968,12 +2169,6 @@ export function CustomerBookingFlowPage() {
                 <p className={styles.copy}>
                   50% downpayment required now: PHP{' '}
                   {downpaymentAmount.toFixed(2)}
-                </p>
-              ) : null}
-              {suppliesEstimateTotal > 0 ? (
-                <p className={styles.copy}>
-                  Estimated additional charges (hotel-supplied food/ medication,
-                  billed at checkout): PHP {suppliesEstimateTotal.toFixed(2)}
                 </p>
               ) : null}
             </section>
@@ -2132,10 +2327,7 @@ export function CustomerBookingFlowPage() {
 
       <div className={styles.stepContent}>{renderStepContent()}</div>
 
-      {currentStep.key !== 'customer' &&
-      currentStep.key !== 'slot' &&
-      currentStep.key !== 'staff' &&
-      currentStep.key !== 'payment' ? (
+      {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
         <div className={styles.navRow}>
           <button
             type="button"
@@ -2148,10 +2340,12 @@ export function CustomerBookingFlowPage() {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!isCurrentStepValid || isLastStep}
+            disabled={
+              !isCurrentStepValid || isLastStep || isCheckingAvailability
+            }
             onClick={goNext}
           >
-            Next
+            {isCheckingAvailability ? 'Checking availability...' : 'Next'}
           </button>
         </div>
       ) : (
@@ -2166,6 +2360,64 @@ export function CustomerBookingFlowPage() {
           </button>
         </div>
       )}
+
+      {fullyBookedNotice !== undefined ? (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modal}>
+            {fullyBookedNotice === null ? (
+              <>
+                <h2 className={styles.modalTitle}>No availability found</h2>
+                <p className={styles.copy}>
+                  This branch has no open slots for this service in the next
+                  couple of weeks. Try a different branch or service.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className={styles.modalTitle}>This looks fully booked</h2>
+                <p className={styles.copy}>
+                  The earliest opening we found is{' '}
+                  {new Date(fullyBookedNotice.date).toLocaleDateString()}, from{' '}
+                  {new Date(
+                    fullyBookedNotice.earliestSlot.start
+                  ).toLocaleTimeString([], {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}{' '}
+                  to{' '}
+                  {new Date(
+                    fullyBookedNotice.earliestSlot.end
+                  ).toLocaleTimeString([], {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                  .
+                </p>
+              </>
+            )}
+            <div className={styles.navRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  dismissFullyBookedNotice();
+                  setCurrentStepKey('category');
+                  setReachedStepKeys((prev) => new Set(prev).add('category'));
+                }}
+              >
+                Change branch/service
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={dismissFullyBookedNotice}
+              >
+                Keep browsing
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

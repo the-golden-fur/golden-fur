@@ -5,6 +5,7 @@ export type CageStatus =
   | 'Reserved'
   | 'Under Maintenance';
 export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
+export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 
 export interface Cage {
   id: string;
@@ -26,7 +27,6 @@ export interface HotelStay {
   actual_check_out_at: string | null;
   downpayment_amount: number;
   extension_fee: number | null;
-  supplied_items_charge: number | null;
   notify_opt_in: boolean;
   created_by_staff_id: string;
   created_at: string;
@@ -56,19 +56,29 @@ export interface MedicationCatalogItem {
   updated_at: string;
 }
 
+/** stay_date omitted = applies to every night of the stay; a specific date
+ * scopes the row to that single night only (#22). */
 export interface FeedingInstructionPayload {
   meal_time: MealTime;
   food_type: string;
   quantity: string;
   special_instructions?: string;
   food_catalog_id?: string;
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface WalkingInstructionPayload {
-  time_block: string;
+  time_block: PartOfDay;
   duration_minutes: number;
   notes?: string;
+  stay_date?: string;
+}
+
+export interface PlayingInstructionPayload {
+  time_block: PartOfDay;
+  duration_minutes: number;
+  notes?: string;
+  stay_date?: string;
 }
 
 export interface MedicationInstructionPayload {
@@ -77,13 +87,13 @@ export interface MedicationInstructionPayload {
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface CareLogEntry {
   id: string;
   hotel_stay_id: string;
-  care_type: 'Feeding' | 'Walking' | 'Medication';
+  care_type: 'Feeding' | 'Walking' | 'Medication' | 'Playing';
   scheduled_date: string;
   description: string;
   completed_at: string | null;
@@ -97,6 +107,7 @@ export interface CheckInPayload {
   cage_id?: string;
   feeding: FeedingInstructionPayload[];
   walking: WalkingInstructionPayload[];
+  playing: PlayingInstructionPayload[];
   medications?: MedicationInstructionPayload[];
   notify_opt_in: boolean;
 }
@@ -105,6 +116,7 @@ export interface CheckInResult {
   stay: HotelStay;
   feeding: FeedingInstructionPayload[];
   walking: WalkingInstructionPayload[];
+  playing: PlayingInstructionPayload[];
   medications: MedicationInstructionPayload[];
   careLogEntries: CareLogEntry[];
 }
@@ -124,7 +136,6 @@ export interface CheckoutResult {
   stay: HotelStay;
   downpaymentAmount: number;
   extensionFee: number | null;
-  suppliedItemsCharge: number | null;
   remainingBalance: number;
 }
 

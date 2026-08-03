@@ -75,14 +75,6 @@ export function HotelCheckoutPanel({
                 : `₱${result.extensionFee}`}
             </dd>
           </div>
-          <div className={styles.breakdownRow}>
-            <dt>Hotel-supplied items</dt>
-            <dd>
-              {result.suppliedItemsCharge === null
-                ? 'None'
-                : `₱${result.suppliedItemsCharge}`}
-            </dd>
-          </div>
           <div className={styles.breakdownTotal}>
             <dt>Remaining balance</dt>
             <dd>₱{result.remainingBalance}</dd>

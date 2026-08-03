@@ -88,28 +88,32 @@ function requireEndAfterStart(
   }
 }
 
+const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
+
 /**
  * Booking-time preferences for a Hotel booking - a preview the check-in form
  * pre-fills from, never the authoritative record (the receptionist still
  * confirms/edits everything at physical check-in). food_catalog_id/
- * medication_catalog_id/brought_by_customer are optional and only populated
- * by the staff booking flow's catalog-aware Care Instructions step (the
- * customer portal still submits plain freetext, since the hotel catalog
- * endpoints are staff-only) - without them, HotelCheckInPage falls back to
- * its older freetext-only prefill behavior.
+ * medication_catalog_id are optional and only populated by a booking flow's
+ * catalog-aware Care Instructions step - without them, HotelCheckInPage
+ * falls back to its older freetext-only prefill behavior. stay_date is
+ * optional/omittable on every row: omitted means the row applies to every
+ * night of the stay (uniform_instructions = true), a date scopes it to that
+ * single night (#22 per-night care instructions).
  */
 const hotelPreferencesValidator = z
   .object({
+    uniform_instructions: z.boolean().default(true),
     feeding: z
       .array(
         z
           .object({
-            meal_time: z.enum(['Morning', 'Afternoon', 'Evening']),
+            meal_time: hotelPartOfDay,
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
             special_instructions: z.string().trim().optional(),
             food_catalog_id: z.uuid().optional(),
-            brought_by_customer: z.boolean().optional(),
+            stay_date: z.iso.date().optional(),
           })
           .strict()
       )
@@ -118,9 +122,22 @@ const hotelPreferencesValidator = z
       .array(
         z
           .object({
-            time_block: z.string().trim().min(1),
+            time_block: hotelPartOfDay,
             duration_minutes: z.number().int().positive(),
             notes: z.string().trim().optional(),
+            stay_date: z.iso.date().optional(),
+          })
+          .strict()
+      )
+      .default([]),
+    playing: z
+      .array(
+        z
+          .object({
+            time_block: hotelPartOfDay,
+            duration_minutes: z.number().int().positive(),
+            notes: z.string().trim().optional(),
+            stay_date: z.iso.date().optional(),
           })
           .strict()
       )
@@ -134,7 +151,7 @@ const hotelPreferencesValidator = z
             scheduled_times: z.array(z.string().min(1)).default([]),
             administration_notes: z.string().trim().optional(),
             medication_catalog_id: z.uuid().optional(),
-            brought_by_customer: z.boolean().optional(),
+            stay_date: z.iso.date().optional(),
           })
           .strict()
       )
@@ -249,6 +266,43 @@ export const availabilityQueryValidator = z
     // appointment lengths.
     slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
     pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pet_weight_class'],
+        message: 'pet_weight_class is required for Hotel availability',
+      });
+    }
+  });
+
+/**
+ * #22: which Morning/Afternoon/Evening walk/play blocks the hotel Care
+ * Instructions step should offer for a given branch/date.
+ */
+export const partsOfDayQueryValidator = z
+  .object({
+    branch_id: z.uuid(),
+    date: z.iso.date(),
+  })
+  .strict();
+
+/**
+ * #22: powers the "fully booked" warning shown right after the customer
+ * picks a service, before they ever reach the Slot Picker - same shape as
+ * availabilityQueryValidator, just `date` -> `from_date` (the search start,
+ * not a single day to inspect) plus an optional lookahead window.
+ */
+export const nextAvailableSlotQueryValidator = z
+  .object({
+    branch_id: z.uuid(),
+    service_category: z.enum(CATEGORIES),
+    from_date: z.iso.date(),
+    slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
+    pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
+    lookahead_days: z.coerce.number().int().min(1).max(60).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

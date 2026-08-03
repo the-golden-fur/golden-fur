@@ -26,3 +26,28 @@ export const updateProductValidator = z
 
 export type CreateProductInput = z.infer<typeof createProductValidator>;
 export type UpdateProductInput = z.infer<typeof updateProductValidator>;
+
+/**
+ * #22: a customer's own food/medication "type" entry - only a name and
+ * which of the two it is. No price (customer-owned rows are never billed,
+ * see 20260803084) and no service_scope (always 'hotel' server-side).
+ */
+export const createCustomerCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required'),
+    category: z.enum(['food', 'medication']),
+  })
+  .strict();
+
+export const updateCustomerCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required'),
+  })
+  .strict();
+
+export type CreateCustomerCatalogItemInput = z.infer<
+  typeof createCustomerCatalogItemValidator
+>;
+export type UpdateCustomerCatalogItemInput = z.infer<
+  typeof updateCustomerCatalogItemValidator
+>;

@@ -199,19 +199,30 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
  * authoritative care record - the receptionist still confirms/edits
  * everything at physical check-in.
  */
+/** null/undefined stay_date = applies to every night of the stay (the "same
+ * instructions every night" default); a specific date scopes the row to
+ * that single night only (#22 per-night care instructions). */
 export interface HotelBookingPreferenceFeeding {
   meal_time: 'Morning' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
   special_instructions?: string;
   food_catalog_id?: string;
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferenceWalking {
-  time_block: string;
+  time_block: 'Morning' | 'Afternoon' | 'Evening';
   duration_minutes: number;
   notes?: string;
+  stay_date?: string;
+}
+
+export interface HotelBookingPreferencePlaying {
+  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  duration_minutes: number;
+  notes?: string;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferenceMedication {
@@ -220,12 +231,17 @@ export interface HotelBookingPreferenceMedication {
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferences {
+  /** Whether the customer/receptionist opted into per-night editing.
+   * Purely informational for reconstructing the booking-flow UI - the
+   * authoritative per-row scoping is each row's own stay_date. */
+  uniform_instructions: boolean;
   feeding: HotelBookingPreferenceFeeding[];
   walking: HotelBookingPreferenceWalking[];
+  playing: HotelBookingPreferencePlaying[];
   medications: HotelBookingPreferenceMedication[];
 }
 

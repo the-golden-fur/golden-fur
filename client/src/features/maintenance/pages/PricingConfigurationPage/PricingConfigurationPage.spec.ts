@@ -27,6 +27,7 @@ const CONFIGURATION: PricingConfiguration = {
   size_l_multiplier: 1.25,
   size_xl_multiplier: 1.5,
   long_coat_addon: 0,
+  daycare_overnight_fee: 850,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -146,6 +147,7 @@ describe('PricingConfigurationPage', () => {
           size_l_multiplier: 1.25,
           size_xl_multiplier: 1.5,
           long_coat_addon: 50,
+          daycare_overnight_fee: 850,
         }
       );
     });

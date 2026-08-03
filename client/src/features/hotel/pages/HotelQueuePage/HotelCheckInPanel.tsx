@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Booking } from '../../../booking/booking.types';
 import {
   checkInHotelStay,
@@ -22,12 +22,31 @@ import type {
   MealTime,
   MedicationCatalogItem,
   MedicationInstructionPayload,
+  PartOfDay,
+  PlayingInstructionPayload,
   WalkingInstructionPayload,
 } from '../../hotel.types';
 import styles from './HotelCheckInPanel.module.css';
 
 const MEAL_TIMES: MealTime[] = ['Morning', 'Afternoon', 'Evening'];
 const EMPTY_COMBO: CatalogComboBoxValue = { catalogId: null, text: '' };
+
+/** #22: care_walking_instructions/care_playing_instructions now store a
+ * coarse Morning/Afternoon/Evening block, not a literal clock time - this
+ * form still lets staff pick a precise start time for their own operational
+ * scheduling, and buckets it into the stored part-of-day on submit. */
+function partOfDayFromTime(time: string): PartOfDay {
+  const [hour] = time.split(':').map(Number);
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+const PART_OF_DAY_DEFAULT_TIME: Record<PartOfDay, string> = {
+  Morning: '07:00',
+  Afternoon: '13:00',
+  Evening: '18:00',
+};
 
 interface HotelCheckInPanelProps {
   accessToken: string;
@@ -42,7 +61,6 @@ interface FeedingUiState {
   foodType: CatalogComboBoxValue;
   quantity: string;
   specialInstructions: string;
-  broughtByCustomer: boolean;
 }
 
 type WalkMode = 'range' | 'duration';
@@ -60,7 +78,6 @@ interface MedicationUiState {
   dose: string;
   scheduledTimes: string[]; // "HH:MM", 24h, one per chip
   administrationNotes: string;
-  broughtByCustomer: boolean;
 }
 
 /** Minutes between two "HH:MM" 24h times, wrapping past midnight if end <
@@ -85,17 +102,18 @@ function minutesBetween(start: string, end: string): number {
  * mistake doesn't first have to know they need to click something.
  *
  * Food type and medication name use CatalogComboBox - a hybrid dropdown
- * (admin-managed food_catalog/medication_catalog, #79 revision) or freetext
- * fallback that is never written back to the catalog. A "Hotel supplies
- * this (bill customer)" checkbox only appears once a catalog item is
- * actually selected, since a freetext value has no known price to charge -
- * checking it bills the catalog item's price to the stay at checkout
- * (checkout.service.ts's supplied_items_charge).
+ * (admin-managed product_catalog) or freetext fallback that is never
+ * written back to the catalog. Staff no longer buy food/medication on a
+ * customer's behalf (#22) - there is no "hotel supplies this" billing path
+ * anymore.
  *
- * Walking accepts either a time range (start + end) or a start + duration,
- * toggled per block; medication scheduled times are a list of time chips.
- * Both use TimeInput - a native <input type="time"> plus a quick-pick
- * preset dropdown.
+ * Walking/playtime accept either a time range (start + end) or a start +
+ * duration, toggled per block; medication scheduled times are a list of
+ * time chips. All three use TimeInput - a native <input type="time"> plus
+ * a quick-pick preset dropdown - for the staff's own operational
+ * scheduling, then bucket the chosen time into the stored Morning/
+ * Afternoon/Evening block on submit (#22 - care_walking_instructions/
+ * care_playing_instructions no longer store a literal clock time).
  *
  * Queue redesign: extracted from the former standalone HotelCheckInPage so
  * it can render as a tab panel inside HotelQueuePage (alongside
@@ -128,6 +146,7 @@ export function HotelCheckInPanel({
     Evening: null,
   });
   const [walking, setWalking] = useState<WalkBlockUi[]>([]);
+  const [playing, setPlaying] = useState<WalkBlockUi[]>([]);
   const [medications, setMedications] = useState<MedicationUiState[]>([]);
   const [notifyOptIn, setNotifyOptIn] = useState(false);
 
@@ -159,6 +178,7 @@ export function HotelCheckInPanel({
     setSelectedCageId(null);
     setFeeding({ Morning: null, Afternoon: null, Evening: null });
     setWalking([]);
+    setPlaying([]);
     setMedications([]);
     setIsEditing(false);
 
@@ -185,7 +205,6 @@ export function HotelCheckInPanel({
               },
               quantity: item.quantity,
               specialInstructions: item.special_instructions ?? '',
-              broughtByCustomer: item.brought_by_customer ?? true,
             };
           }
           return next;
@@ -196,7 +215,19 @@ export function HotelCheckInPanel({
         setWalking(
           preferences.walking.map((item) => ({
             mode: 'duration',
-            startTime: item.time_block,
+            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+            endTime: '',
+            durationMinutes: item.duration_minutes,
+            notes: item.notes ?? '',
+          }))
+        );
+      }
+
+      if (preferences.playing.length > 0) {
+        setPlaying(
+          preferences.playing.map((item) => ({
+            mode: 'duration',
+            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
             endTime: '',
             durationMinutes: item.duration_minutes,
             notes: item.notes ?? '',
@@ -214,7 +245,6 @@ export function HotelCheckInPanel({
             dose: item.dose,
             scheduledTimes: item.scheduled_times,
             administrationNotes: item.administration_notes ?? '',
-            broughtByCustomer: item.brought_by_customer ?? true,
           }))
         );
       }
@@ -240,7 +270,6 @@ export function HotelCheckInPanel({
               dose: medication.dose,
               scheduledTimes: [],
               administrationNotes: medication.notes ?? '',
-              broughtByCustomer: true,
             })
           );
 
@@ -261,7 +290,6 @@ export function HotelCheckInPanel({
             foodType: EMPTY_COMBO,
             quantity: '',
             specialInstructions: '',
-            broughtByCustomer: true,
           },
     }));
   }
@@ -297,6 +325,29 @@ export function HotelCheckInPanel({
     setWalking((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function addPlayBlock() {
+    setPlaying((prev) => [
+      ...prev,
+      {
+        mode: 'range',
+        startTime: '07:00',
+        endTime: '07:15',
+        durationMinutes: 15,
+        notes: '',
+      },
+    ]);
+  }
+
+  function updatePlayBlock(index: number, updates: Partial<WalkBlockUi>) {
+    setPlaying((prev) =>
+      prev.map((block, i) => (i === index ? { ...block, ...updates } : block))
+    );
+  }
+
+  function removePlayBlock(index: number) {
+    setPlaying((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function addMedication() {
     setMedications((prev) => [
       ...prev,
@@ -305,7 +356,6 @@ export function HotelCheckInPanel({
         dose: '',
         scheduledTimes: [],
         administrationNotes: '',
-        broughtByCustomer: true,
       },
     ]);
   }
@@ -372,30 +422,6 @@ export function HotelCheckInPanel({
     );
   }
 
-  // #79 revision: additional-charges live total, so "hotel supplies this"
-  // checkboxes have a visible aggregate instead of only a per-item note
-  // easy to miss - fixes "price not being calculated" (it was calculated,
-  // just never summed/surfaced anywhere).
-  const additionalChargesTotal = useMemo(() => {
-    let total = 0;
-
-    for (const state of Object.values(feeding)) {
-      if (!state?.foodType.catalogId || state.broughtByCustomer) continue;
-      total +=
-        foodCatalog.find((item) => item.id === state.foodType.catalogId)
-          ?.price ?? 0;
-    }
-
-    for (const medication of medications) {
-      if (!medication.name.catalogId || medication.broughtByCustomer) continue;
-      total +=
-        medicationCatalog.find((item) => item.id === medication.name.catalogId)
-          ?.price ?? 0;
-    }
-
-    return total;
-  }, [feeding, medications, foodCatalog, medicationCatalog]);
-
   /**
    * #79 revision: catches incomplete rows before they ever reach the
    * server, so a checked meal time with no food type/quantity (etc.)
@@ -427,6 +453,22 @@ export function HotelCheckInPanel({
         }
       } else if (!block.durationMinutes || block.durationMinutes < 1) {
         return `Walk time #${index + 1} needs a duration of at least 1 minute.`;
+      }
+    }
+
+    for (const [index, block] of playing.entries()) {
+      if (!block.startTime) {
+        return `Playtime #${index + 1} is missing a start time.`;
+      }
+      if (block.mode === 'range') {
+        if (!block.endTime) {
+          return `Playtime #${index + 1} is missing an end time.`;
+        }
+        if (minutesBetween(block.startTime, block.endTime) <= 0) {
+          return `Playtime #${index + 1}'s end time must be after its start time.`;
+        }
+      } else if (!block.durationMinutes || block.durationMinutes < 1) {
+        return `Playtime #${index + 1} needs a duration of at least 1 minute.`;
       }
     }
 
@@ -462,14 +504,22 @@ export function HotelCheckInPanel({
         quantity: state.quantity,
         special_instructions: state.specialInstructions || undefined,
         food_catalog_id: state.foodType.catalogId ?? undefined,
-        brought_by_customer: state.foodType.catalogId
-          ? state.broughtByCustomer
-          : true,
       }));
 
     const walkingPayload: WalkingInstructionPayload[] = walking.map(
       (block) => ({
-        time_block: formatTimeValue(block.startTime),
+        time_block: partOfDayFromTime(block.startTime),
+        duration_minutes:
+          block.mode === 'range'
+            ? minutesBetween(block.startTime, block.endTime)
+            : block.durationMinutes,
+        notes: block.notes || undefined,
+      })
+    );
+
+    const playingPayload: PlayingInstructionPayload[] = playing.map(
+      (block) => ({
+        time_block: partOfDayFromTime(block.startTime),
         duration_minutes:
           block.mode === 'range'
             ? minutesBetween(block.startTime, block.endTime)
@@ -485,9 +535,6 @@ export function HotelCheckInPanel({
         scheduled_times: medication.scheduledTimes.map(formatTimeValue),
         administration_notes: medication.administrationNotes || undefined,
         medication_catalog_id: medication.name.catalogId ?? undefined,
-        brought_by_customer: medication.name.catalogId
-          ? medication.broughtByCustomer
-          : true,
       })
     );
 
@@ -496,6 +543,7 @@ export function HotelCheckInPanel({
       cage_id: selectedCageId,
       feeding: feedingPayload,
       walking: walkingPayload,
+      playing: playingPayload,
       medications: medicationsPayload,
       notify_opt_in: notifyOptIn,
     });
@@ -532,6 +580,7 @@ export function HotelCheckInPanel({
               setSelectedBooking(null);
               setFeeding({ Morning: null, Afternoon: null, Evening: null });
               setWalking([]);
+              setPlaying([]);
               setMedications([]);
               setNotifyOptIn(false);
             }}
@@ -611,14 +660,7 @@ export function HotelCheckInPanel({
                           placeholder="Food type - search or type a custom value..."
                           disabled={!isEditing}
                           onChange={(next) =>
-                            updateFeeding(mealTime, {
-                              foodType: next,
-                              // A fresh catalog match defaults to "customer
-                              // brought it" until explicitly unchecked.
-                              broughtByCustomer: next.catalogId
-                                ? true
-                                : state.broughtByCustomer,
-                            })
+                            updateFeeding(mealTime, { foodType: next })
                           }
                         />
                         <input
@@ -644,27 +686,6 @@ export function HotelCheckInPanel({
                           }
                         />
                       </div>
-                      {state.foodType.catalogId ? (
-                        <label className={styles.checkboxRow}>
-                          <input
-                            type="checkbox"
-                            checked={!state.broughtByCustomer}
-                            disabled={!isEditing}
-                            onChange={(event) =>
-                              updateFeeding(mealTime, {
-                                broughtByCustomer: !event.target.checked,
-                              })
-                            }
-                          />
-                          Hotel supplies this (bill customer PHP{' '}
-                          {foodCatalog
-                            .find(
-                              (item) => item.id === state.foodType.catalogId
-                            )
-                            ?.price.toFixed(2)}
-                          )
-                        </label>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -781,7 +802,115 @@ export function HotelCheckInPanel({
           </section>
 
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>5. Medications</h2>
+            <h2 className={styles.sectionTitle}>5. Playtime</h2>
+            {playing.map((block, index) => (
+              <div key={index} className={styles.instructionBlock}>
+                <div className={styles.tabRow}>
+                  <button
+                    type="button"
+                    className={
+                      block.mode === 'range' ? styles.tabActive : styles.tab
+                    }
+                    disabled={!isEditing}
+                    onClick={() => updatePlayBlock(index, { mode: 'range' })}
+                  >
+                    Time range
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      block.mode === 'duration' ? styles.tabActive : styles.tab
+                    }
+                    disabled={!isEditing}
+                    onClick={() => updatePlayBlock(index, { mode: 'duration' })}
+                  >
+                    Start + duration
+                  </button>
+                </div>
+                <div className={styles.walkFieldsGrid}>
+                  <label className={styles.fieldGroup}>
+                    <span className={styles.fieldGroupLabel}>Start</span>
+                    <TimeInput
+                      aria-label="Playtime start"
+                      value={block.startTime}
+                      disabled={!isEditing}
+                      onChange={(value) =>
+                        updatePlayBlock(index, { startTime: value })
+                      }
+                    />
+                  </label>
+                  {block.mode === 'range' ? (
+                    <label className={styles.fieldGroup}>
+                      <span className={styles.fieldGroupLabel}>End</span>
+                      <TimeInput
+                        aria-label="Playtime end"
+                        value={block.endTime}
+                        disabled={!isEditing}
+                        onChange={(value) =>
+                          updatePlayBlock(index, { endTime: value })
+                        }
+                      />
+                    </label>
+                  ) : (
+                    <label className={styles.fieldGroup}>
+                      <span className={styles.fieldGroupLabel}>
+                        Duration (min)
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min={1}
+                        value={block.durationMinutes}
+                        disabled={!isEditing}
+                        onChange={(event) =>
+                          updatePlayBlock(index, {
+                            durationMinutes: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+                  <label className={styles.fieldGroupWide}>
+                    <span className={styles.fieldGroupLabel}>
+                      Notes (optional)
+                    </span>
+                    <input
+                      className={styles.input}
+                      value={block.notes}
+                      disabled={!isEditing}
+                      onChange={(event) =>
+                        updatePlayBlock(index, { notes: event.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+                {isEditing ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => removePlayBlock(index)}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            {playing.length === 0 ? (
+              <p className={styles.copy}>No playtimes were requested.</p>
+            ) : null}
+            {isEditing ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addPlayBlock}
+              >
+                Add playtime
+              </button>
+            ) : null}
+          </section>
+
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>6. Medications</h2>
             {medications.map((medication, index) => (
               <div key={index} className={styles.instructionBlock}>
                 <div className={styles.inlineFields}>
@@ -790,14 +919,7 @@ export function HotelCheckInPanel({
                     value={medication.name}
                     placeholder="Medication name - search or type a custom value..."
                     disabled={!isEditing}
-                    onChange={(next) =>
-                      updateMedication(index, {
-                        name: next,
-                        broughtByCustomer: next.catalogId
-                          ? true
-                          : medication.broughtByCustomer,
-                      })
-                    }
+                    onChange={(next) => updateMedication(index, { name: next })}
                   />
                   <input
                     className={styles.input}
@@ -829,26 +951,6 @@ export function HotelCheckInPanel({
                     </button>
                   ) : null}
                 </div>
-
-                {medication.name.catalogId ? (
-                  <label className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={!medication.broughtByCustomer}
-                      disabled={!isEditing}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          broughtByCustomer: !event.target.checked,
-                        })
-                      }
-                    />
-                    Hotel supplies this (bill customer PHP{' '}
-                    {medicationCatalog
-                      .find((item) => item.id === medication.name.catalogId)
-                      ?.price.toFixed(2)}
-                    )
-                  </label>
-                ) : null}
 
                 <div className={styles.inlineFields}>
                   <span className={styles.copy}>Scheduled times:</span>
@@ -909,11 +1011,6 @@ export function HotelCheckInPanel({
               Owner opted in to pet status notifications for this stay
             </label>
           </section>
-
-          <p className={styles.chargesTotal}>
-            Estimated additional charges (hotel-supplied items, billed at
-            checkout): <strong>PHP {additionalChargesTotal.toFixed(2)}</strong>
-          </p>
 
           <button
             type="button"

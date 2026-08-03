@@ -29,9 +29,9 @@ function queueFromResults(...results: QueryResult[]) {
   }) as never);
 }
 
-/** completeBooking's own internal load-then-update, queued right after
- * getSuppliedItemsCharge's two parallel queries and before the hotel_stays
- * update - see checkout.service.ts's call order. */
+/** completeBooking's own internal load-then-update, queued right after the
+ * hotel_stays lookup and before the hotel_stays update - see checkout.
+ * service.ts's call order. */
 function completeBookingQueue(bookingId = 'booking-1') {
   return [
     { data: { id: bookingId, status: 'In Progress' }, error: null }, // completeBooking: load
@@ -82,8 +82,6 @@ describe('checkout.service (#78)', () => {
 
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
-        { data: [], error: null }, // supplied feeding items (none)
-        { data: [], error: null }, // supplied medication items (none)
         ...completeBookingQueue(),
         {
           data: { ...ACTIVE_STAY, extension_fee: null },
@@ -98,7 +96,6 @@ describe('checkout.service (#78)', () => {
       });
 
       expect(result.extensionFee).toBeNull();
-      expect(result.suppliedItemsCharge).toBeNull();
       expect(result.remainingBalance).toBe(1000);
     });
 
@@ -108,8 +105,6 @@ describe('checkout.service (#78)', () => {
 
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
-        { data: [], error: null }, // supplied feeding items (none)
-        { data: [], error: null }, // supplied medication items (none)
         ...completeBookingQueue(),
         {
           data: { ...ACTIVE_STAY, extension_fee: 1000 },
@@ -127,40 +122,9 @@ describe('checkout.service (#78)', () => {
       expect(result.remainingBalance).toBe(2000);
     });
 
-    it('#79 revision: hotel-supplied feeding/medication items are summed and added to the reconciled balance', async () => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
-
-      queueFromResults(
-        { data: ACTIVE_STAY, error: null },
-        { data: [{ charged_price: 150 }], error: null }, // supplied feeding item
-        { data: [{ charged_price: 80 }, { charged_price: 40 }], error: null }, // supplied medication items
-        ...completeBookingQueue(),
-        {
-          data: {
-            ...ACTIVE_STAY,
-            extension_fee: null,
-            supplied_items_charge: 270,
-          },
-          error: null,
-        },
-        { data: {}, error: null }
-      );
-
-      const result = await checkOutHotelStay({
-        stayId: 'stay-1',
-        branchId: 'branch-1',
-      });
-
-      expect(result.suppliedItemsCharge).toBe(270);
-      expect(result.remainingBalance).toBe(1000 + 270);
-    });
-
     it('AC-4: releases the cage back to Available in the same call', async () => {
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
-        { data: [], error: null },
-        { data: [], error: null },
         ...completeBookingQueue(),
         { data: { ...ACTIVE_STAY }, error: null },
         { data: {}, error: null }
@@ -202,8 +166,6 @@ describe('checkout.service (#78)', () => {
     it('rejects checkout when the race-safe conditional update loses (actual_check_out_at was already set by a concurrent call)', async () => {
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
-        { data: [], error: null },
-        { data: [], error: null },
         ...completeBookingQueue(),
         { data: null, error: null } // conditional update matched 0 rows - lost the race
       );

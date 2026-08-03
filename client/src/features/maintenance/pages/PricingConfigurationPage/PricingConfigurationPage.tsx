@@ -19,6 +19,7 @@ interface FormState {
   sizeL: string;
   sizeXl: string;
   longCoatAddon: string;
+  daycareOvernightFee: string;
 }
 
 function formStateFromConfiguration(config: PricingConfiguration): FormState {
@@ -28,6 +29,7 @@ function formStateFromConfiguration(config: PricingConfiguration): FormState {
     sizeL: String(config.size_l_multiplier),
     sizeXl: String(config.size_xl_multiplier),
     longCoatAddon: String(config.long_coat_addon),
+    daycareOvernightFee: String(config.daycare_overnight_fee),
   };
 }
 
@@ -119,13 +121,15 @@ export function PricingConfigurationPage() {
     const sizeL = Number(form.sizeL);
     const sizeXl = Number(form.sizeXl);
     const longCoatAddon = Number(form.longCoatAddon);
+    const daycareOvernightFee = Number(form.daycareOvernightFee);
 
     if (
       [sizeS, sizeM, sizeL, sizeXl].some((value) => !(value > 0)) ||
-      !(longCoatAddon >= 0)
+      !(longCoatAddon >= 0) ||
+      !(daycareOvernightFee >= 0)
     ) {
       setFormError(
-        'Every size multiplier must be a positive number, and the long coat add-on must be zero or more.'
+        'Every size multiplier must be a positive number, and the long coat add-on and daycare overnight fee must be zero or more.'
       );
       return;
     }
@@ -139,6 +143,7 @@ export function PricingConfigurationPage() {
       size_l_multiplier: sizeL,
       size_xl_multiplier: sizeXl,
       long_coat_addon: longCoatAddon,
+      daycare_overnight_fee: daycareOvernightFee,
     });
 
     setIsSubmitting(false);
@@ -206,11 +211,14 @@ export function PricingConfigurationPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Grooming Pricing Configuration</h1>
+        <h1 className={styles.title}>Pricing Configuration</h1>
         <p className={styles.copy}>
           One shared calculation drives every Grooming service&apos;s size/coat
           matrix. Changing a multiplier or the long coat add-on here updates the
-          derived matrix everywhere it is shown, not just one service.
+          derived matrix everywhere it is shown, not just one service. The
+          daycare overnight fee below is unrelated to grooming - it&apos;s the
+          flat per-night charge applied when a daycare pet isn&apos;t picked up
+          before closing.
         </p>
 
         {message ? (
@@ -305,6 +313,30 @@ export function PricingConfigurationPage() {
                 setForm(
                   (prev) =>
                     prev && { ...prev, longCoatAddon: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Daycare overnight fee (PHP/night)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={form.daycareOvernightFee}
+              onChange={(event) =>
+                setForm(
+                  (prev) =>
+                    prev && {
+                      ...prev,
+                      daycareOvernightFee: event.target.value,
+                    }
                 )
               }
               required

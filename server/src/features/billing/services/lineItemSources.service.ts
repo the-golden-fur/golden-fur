@@ -161,17 +161,17 @@ async function getItemBasedLineItems(
 
 /**
  * Mirrors checkout.service.ts's checkOutHotelStay() reconciliation
- * (total_price - downpayment_amount + extension_fee + supplied_items_charge)
- * as separate signed lines rather than one pre-netted figure, so the
- * cashier checkout screen (#86) can show each component individually -
- * SUM(line_total) still reproduces the same remaining-balance figure.
+ * (total_price - downpayment_amount + extension_fee) as separate signed
+ * lines rather than one pre-netted figure, so the cashier checkout screen
+ * (#86) can show each component individually - SUM(line_total) still
+ * reproduces the same remaining-balance figure.
  */
 async function getHotelLineItems(
   booking: BookingForBilling
 ): Promise<DraftLineItem[]> {
   const { data: stay, error } = await supabase
     .from('hotel_stays')
-    .select('downpayment_amount, extension_fee, supplied_items_charge')
+    .select('downpayment_amount, extension_fee')
     .eq('booking_id', booking.id)
     .maybeSingle();
 
@@ -214,18 +214,6 @@ async function getHotelLineItems(
       quantity: 1,
       unit_price: fee,
       line_total: fee,
-    });
-  }
-
-  if (stay.supplied_items_charge !== null) {
-    const charge = Number(stay.supplied_items_charge);
-    lines.push({
-      line_item_type: 'addon',
-      reference_id: null,
-      description: 'Hotel-supplied food/medication',
-      quantity: 1,
-      unit_price: charge,
-      line_total: charge,
     });
   }
 

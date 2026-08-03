@@ -138,6 +138,16 @@
   box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
 }
 
+.optionCard.readOnly {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.optionCard.readOnly:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
 .optionTitle {
   color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
@@ -195,6 +205,50 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.categoryCard {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-2);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.categoryCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.categoryCard.selected {
+  border-color: var(--color-accent-gold-primary);
+  box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
+}
+
+.categoryIcon {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--color-accent-gold-primary);
+}
+
+.categoryLabel {
+  color: var(--color-text-primary);
+  font-size: var(--text-heading-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .tab {
@@ -334,11 +388,18 @@
 }
 
 .nightsField {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.nightsField label {
   display: grid;
   gap: var(--space-0-5);
   width: fit-content;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
 }
 
 .nightsField input {
@@ -349,6 +410,36 @@
   font: inherit;
   padding: var(--space-1) var(--space-2);
   width: 6rem;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 50%);
+  z-index: var(--z-modal, 1000);
+  padding: var(--space-3);
+}
+
+.modal {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 28rem;
+  width: 100%;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+
+.modalTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-heading-sm);
+  font-weight: var(--weight-semibold);
 }
 
 .fieldLabel {

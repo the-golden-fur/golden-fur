@@ -30,6 +30,7 @@ vi.mock('../../../hotel/api/hotel.api', () => ({
 vi.mock('../../api/booking.api', () => ({
   getBookingCatalog: vi.fn(),
   createBooking: vi.fn(),
+  getNextAvailableSlot: vi.fn(),
 }));
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -43,27 +44,74 @@ vi.mock('../../../discounts/api/discounts.api', () => ({
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
   SlotPicker: ({
     onSelect,
+    onAvailabilityChange,
   }: {
     onSelect: (slot: { start: string; end: string }) => void;
+    onAvailabilityChange?: (info: {
+      date: string;
+      hasAnyAvailable: boolean;
+      hasAnySlots: boolean;
+    }) => void;
   }) =>
     createElement(
-      'button',
-      {
-        type: 'button',
-        onClick: () =>
-          onSelect({
-            start: '2026-08-03T01:00:00.000Z',
-            end: '2026-08-04T01:00:00.000Z',
-          }),
-      },
-      'Select slot'
+      'div',
+      null,
+      createElement(
+        'button',
+        {
+          type: 'button',
+          onClick: () =>
+            onSelect({
+              start: '2026-08-03T01:00:00.000Z',
+              end: '2026-08-04T01:00:00.000Z',
+            }),
+        },
+        'Select slot'
+      ),
+      createElement(
+        'button',
+        {
+          type: 'button',
+          onClick: () =>
+            onAvailabilityChange?.({
+              date: '2026-08-03',
+              hasAnyAvailable: false,
+              hasAnySlots: true,
+            }),
+        },
+        'Simulate day fully booked'
+      ),
+      createElement(
+        'button',
+        {
+          type: 'button',
+          onClick: () =>
+            onAvailabilityChange?.({
+              date: '2026-08-03',
+              hasAnyAvailable: false,
+              hasAnySlots: false,
+            }),
+        },
+        'Simulate empty day (closed/past hours)'
+      )
     ),
 }));
 vi.mock('../../components/StaffPickerList/StaffPickerList', () => ({
-  StaffPickerList: ({ onUnavailable }: { onUnavailable?: () => void }) =>
+  StaffPickerList: ({
+    onSelect,
+    onUnavailable,
+  }: {
+    onSelect: (preference: { type: 'no_preference' }) => void;
+    onUnavailable?: () => void;
+  }) =>
     createElement(
       'div',
       { 'data-testid': 'staff-picker' },
+      createElement(
+        'button',
+        { type: 'button', onClick: () => onSelect({ type: 'no_preference' }) },
+        'Pick no preference'
+      ),
       onUnavailable
         ? createElement(
             'button',
@@ -75,6 +123,9 @@ vi.mock('../../components/StaffPickerList/StaffPickerList', () => ({
           )
         : null
     ),
+}));
+vi.mock('../../components/CagePicker/CagePicker', () => ({
+  CagePicker: () => createElement('div', { 'data-testid': 'cage-picker' }),
 }));
 
 const PET = {
@@ -93,6 +144,21 @@ const PET = {
 };
 
 const BRANCH = { id: 'branch-1', name: 'Makati', is_vet_branch: true };
+
+const GOLDEN_PACKAGE = {
+  id: 'package-golden-1',
+  branch_id: 'branch-1',
+  name: 'Golden Package',
+  bundled_price: 630,
+  total_duration_minutes: 90,
+  is_active: true,
+  created_by: null,
+  updated_by: null,
+  created_at: '',
+  updated_at: '',
+  archived_at: null,
+  package_services: [{ service_id: 'service-1' }],
+};
 
 const HOTEL_SERVICE = {
   id: 'service-hotel-1',
@@ -243,6 +309,13 @@ describe('CustomerBookingFlowPage', () => {
       },
       error: null,
     });
+    // #22: fails open by default (error, not a real "fully booked" result)
+    // so the fully-booked modal doesn't interfere with tests that aren't
+    // exercising that feature - goNext() advances straight through on error.
+    vi.mocked(bookingApi.getNextAvailableSlot).mockResolvedValue({
+      data: null,
+      error: 'not mocked in this test',
+    });
     vi.mocked(hotelApi.listFoodCatalog).mockResolvedValue({
       data: [
         {
@@ -307,6 +380,13 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
     expect(screen.queryByText('Hotel')).not.toBeInTheDocument();
 
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(screen.getByText('Select slot')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Select slot'));
+    await user.click(screen.getByText('Next'));
+
     // Initial Assessment is pre-selected without the user clicking it.
     await waitFor(() =>
       expect(screen.getByText('Initial Assessment')).toBeInTheDocument()
@@ -333,6 +413,15 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Select slot')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Select slot'));
+    await screen.findByTestId('staff-picker');
+    await user.click(screen.getByText('Pick no preference'));
+    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
 
@@ -342,7 +431,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(hotelApi.listFoodCatalog).not.toHaveBeenCalled();
   });
 
-  it('Grooming/Veterinary: committing a time advances to its own separate Staff step', async () => {
+  it('#22: Grooming/Veterinary: Staff Picker is merged into the availability step, appearing only once a slot is picked', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -358,26 +447,34 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Grooming'));
-
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    await user.click(screen.getByText('Bath'));
+    // #22: category selection is its own step now - items aren't shown here.
+    expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Select slot')).toBeInTheDocument()
     );
-    // Staff isn't shown yet - it's its own separate step, not merged into
-    // Date & Time.
+    // Staff isn't shown yet - only once a slot is picked, same step.
     expect(screen.queryByTestId('staff-picker')).not.toBeInTheDocument();
 
     await user.click(screen.getByText('Select slot'));
 
-    // Committing a time advances straight to the separate Staff step.
+    // Staff Picker appears in the same 'availability' step, not a separate
+    // one - "Select slot" stays on screen alongside it.
     expect(await screen.findByTestId('staff-picker')).toBeInTheDocument();
-    expect(screen.queryByText('Select slot')).not.toBeInTheDocument();
+    expect(screen.getByText('Select slot')).toBeInTheDocument();
+
+    // Items only appear after explicitly advancing past the availability step,
+    // which requires a staff preference too (Grooming/Veterinary).
+    expect(screen.queryByText('Bath')).not.toBeInTheDocument();
+    expect(screen.getByText('Next')).toBeDisabled();
+
+    await user.click(screen.getByText('Pick no preference'));
+    await user.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
   });
 
-  it('staff flow: Care Instructions offers a catalog dropdown, supplier radio, and a price x quantity estimate', async () => {
+  it('#22: staff flow: Care Instructions offers a catalog dropdown with no staff-buy option', async () => {
     const user = userEvent.setup();
     renderStaffPage();
 
@@ -397,6 +494,16 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Select slot')).toBeInTheDocument()
+    );
+    // Hotel gets no Staff Picker in the availability step - no
+    // staff-picker testid should ever appear for this category.
+    expect(screen.queryByTestId('staff-picker')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Select slot'));
+    await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Hotel Stay - Medium Cage')).toBeInTheDocument()
@@ -404,13 +511,6 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Hotel Stay - Medium Cage'));
     await user.click(screen.getByText('Next'));
 
-    await waitFor(() =>
-      expect(screen.getByText('Select slot')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Select slot'));
-
-    // Hotel has no Staff step, so selecting a slot auto-advances straight to
-    // Care Instructions (handleSlotSelect's own immediate-advance path).
     await waitFor(() =>
       expect(hotelApi.listFoodCatalog).toHaveBeenCalledWith('token')
     );
@@ -426,24 +526,13 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
 
-    expect(await screen.findByText('Owner will bring it')).toBeInTheDocument();
-    const feedingStaffSuppliesRadio = screen.getByRole('radio', {
-      name: /staff will purchase it/i,
-    });
-    await user.click(feedingStaffSuppliesRadio);
+    // No staff-buy option anywhere (#22) - it placed liability risk on
+    // staff that the business no longer wants.
+    expect(screen.queryByText('Owner will bring it')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('radio', { name: /staff will purchase it/i })
+    ).not.toBeInTheDocument();
 
-    // Default quantity is 1, so the estimate starts at the flat catalog price.
-    expect(await screen.findByText('PHP 50.00')).toBeInTheDocument();
-
-    const foodQuantityInput = screen.getByPlaceholderText('Quantity');
-    await user.clear(foodQuantityInput);
-    await user.type(foodQuantityInput, '3');
-
-    expect(await screen.findByText('PHP 150.00')).toBeInTheDocument();
-
-    // Medications get the same catalog dropdown/radio/price x quantity
-    // estimate, with their own client-only quantity field (not part of the
-    // submitted payload - dose already encodes amount per administration).
     await user.click(screen.getByText('Add medication'));
 
     const medicationInput =
@@ -451,20 +540,14 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(medicationInput);
     await user.click(await screen.findByText('Amoxicillin'));
 
-    const medicationRadios = screen.getAllByRole('radio', {
-      name: /staff will purchase it/i,
-    });
-    await user.click(medicationRadios[medicationRadios.length - 1]);
+    expect(
+      screen.queryAllByRole('radio', { name: /staff will purchase it/i })
+    ).toHaveLength(0);
 
-    // Default quantity is 1, so the estimate starts at the flat catalog price.
-    expect(await screen.findByText('PHP 40.00')).toBeInTheDocument();
-
-    const medicationQuantityInput =
-      screen.getAllByPlaceholderText('Quantity')[1];
-    await user.clear(medicationQuantityInput);
-    await user.type(medicationQuantityInput, '2');
-
-    expect(await screen.findByText('PHP 80.00')).toBeInTheDocument();
+    // Playtime, added alongside walking (#22).
+    expect(
+      screen.getByRole('button', { name: 'Add playtime' })
+    ).toBeInTheDocument();
   }, 15000); // vitest's 5s default. // busy full-suite run (vs. this file in isolation) doesn't flake on // Long, many-step walk through the whole flow - generous timeout so a
 
   it('Hotel: selecting a second cage replaces the first (one cage per booking)', async () => {
@@ -503,6 +586,13 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Select slot')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Select slot'));
+    await user.click(screen.getByText('Next'));
 
     const mediumCage = await screen.findByText('Hotel Stay - Medium Cage');
     await user.click(mediumCage);
@@ -519,7 +609,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(mediumCage.closest('button')?.className).not.toMatch(/selected/);
   });
 
-  it('regression: Staff Picker turning out unavailable after being mounted advances past it, not straight to Review & Pay skipping content', async () => {
+  it('#22: Staff Picker turning out unavailable mid-availability-step lets the wizard still advance normally (no staff preference required)', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -535,9 +625,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Grooming'));
-
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    await user.click(screen.getByText('Bath'));
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
@@ -545,27 +632,33 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Select slot'));
 
-    // Lands on the Staff step first, same as the existing "own separate
-    // Staff step" test.
     expect(await screen.findByTestId('staff-picker')).toBeInTheDocument();
+    // Next is disabled - a staff preference is still required while the
+    // picker looks available.
+    expect(screen.getByText('Next')).toBeDisabled();
 
-    // Staff Picker resolves disabled for this branch+category only after
-    // mounting - this used to leave the wizard's numeric step index
-    // pointing at whatever step slid into the Staff step's old slot
-    // (Review & Pay), silently skipping it instead of landing on it
-    // properly.
     await user.click(screen.getByText('Simulate staff picker unavailable'));
 
+    // Once unavailable, the picker disappears and Next no longer requires
+    // a staff preference (there's nothing to prefer among).
     await waitFor(() =>
       expect(screen.queryByTestId('staff-picker')).not.toBeInTheDocument()
     );
+    expect(screen.getByText('Next')).toBeEnabled();
+
+    await user.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Next'));
+
     expect(screen.getByText('Confirm booking')).toBeInTheDocument();
   });
 
-  it("switching category tabs to browse preserves each tab's own selections", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
+  /** #22: category selection and item selection are now separate steps, so
+   * "browsing categories" only happens at the category step - this helper
+   * walks pet/branch, lands on the category step, and (optionally) drives
+   * a category all the way through to the items step. */
+  async function goToCategoryStep(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
     await user.click(screen.getByText('Next'));
@@ -577,24 +670,56 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
+  }
+
+  async function advanceThroughAvailability(
+    user: ReturnType<typeof userEvent.setup>,
+    { staff }: { staff: boolean }
+  ) {
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(screen.getByText('Select slot')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Select slot'));
+    if (staff) {
+      await screen.findByTestId('staff-picker');
+      await user.click(screen.getByText('Pick no preference'));
+    }
+    await user.click(screen.getByText('Next'));
+  }
+
+  it("switching category tabs preserves each tab's own selections", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
     await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
     // Both the option card and the running total show "PHP 300.00".
     expect(screen.getAllByText('PHP 300.00')).toHaveLength(2);
 
-    // Browse to Hotel - Grooming's total is gone from view (a different
-    // category's running total), but Bath itself hasn't been deselected.
+    // Back to category step, browse to Hotel - Bath itself hasn't been
+    // deselected, just not the active tab's items anymore.
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Back'));
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('Hotel'));
+    await advanceThroughAvailability(user, { staff: false });
     await waitFor(() =>
       expect(screen.getByText('Hotel Stay - Medium Cage')).toBeInTheDocument()
     );
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
 
-    // Switching back to Grooming restores the selection - it was never
-    // cleared, just not the active tab.
+    // Switching back to Grooming restores the selection.
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Back'));
     await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     expect(screen.getByText('Bath').closest('button')?.className).toMatch(
       /selected/
@@ -602,33 +727,27 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.getAllByText('PHP 300.00')).toHaveLength(2);
   });
 
-  it('warns when browsing to a different category tab while another tab still has picks', async () => {
+  it('warns at the category step when another category still has picks', async () => {
     const user = userEvent.setup();
     renderPage();
+    await goToCategoryStep(user);
 
-    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
-    await user.click(screen.getByText('Max'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
-    await user.click(screen.getByText('Makati'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
-    );
     await user.click(screen.getByText('Grooming'));
+
+    // No warning yet - Grooming is both the only category with picks and
+    // the active tab, so there's nothing "elsewhere" to warn about.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await advanceThroughAvailability(user, { staff: true });
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
 
-    // No warning yet - Grooming is both the only category with picks and the
-    // active tab, so there's nothing "elsewhere" to warn about.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Back'));
     await waitFor(() =>
-      expect(screen.getByText('Hotel Stay - Medium Cage')).toBeInTheDocument()
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
+    await user.click(screen.getByText('Hotel'));
 
     const notice = screen.getByRole('alert');
     expect(notice.textContent).toContain('Grooming');
@@ -637,39 +756,44 @@ describe('CustomerBookingFlowPage', () => {
     // Switching back to the tab that actually holds the picks clears the
     // warning again.
     await user.click(screen.getByText('Grooming'));
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it("selecting an item in a different category clears the previous category's selection", async () => {
     const user = userEvent.setup();
     renderPage();
+    await goToCategoryStep(user);
 
-    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
-    await user.click(screen.getByText('Max'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
-    await user.click(screen.getByText('Makati'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
-    );
     await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
 
-    // Just browsing to Hotel doesn't clear Grooming's pick yet.
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Back'));
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
+
+    // Just browsing to Hotel's category tab doesn't clear Grooming's pick.
     await user.click(screen.getByText('Hotel'));
-    const cage = await screen.findByText('Hotel Stay - Medium Cage');
     expect(screen.getByRole('alert').textContent).toContain('Grooming');
+
+    await advanceThroughAvailability(user, { staff: false });
+    const cage = await screen.findByText('Hotel Stay - Medium Cage');
 
     // Actually selecting something here clears Grooming's pick.
     await user.click(cage);
+
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Back'));
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
     await waitFor(() => expect(screen.queryByText('Bath')).toBeInTheDocument());
     expect(screen.getByText('Bath').closest('button')?.className).not.toMatch(
       /selected/
@@ -690,6 +814,19 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
+    // #22: number of nights now lives on the availability step, alongside
+    // Cage & Date - not on the items step where the running total shows.
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Number of nights')).toBeInTheDocument()
+    );
+    const nightsInput = screen.getByLabelText('Number of nights');
+    fireEvent.change(nightsInput, { target: { value: '3' } });
+    expect(nightsInput).toHaveValue(3);
+
+    await user.click(screen.getByText('Select slot'));
+    await user.click(screen.getByText('Next'));
 
     const cage = await screen.findByText('Hotel Stay - Medium Cage');
     await user.click(cage);
@@ -697,13 +834,8 @@ describe('CustomerBookingFlowPage', () => {
     expect(
       screen.getByText('Running total (before promos/discounts)')
     ).toBeInTheDocument();
-    expect(screen.getByText('PHP 800.00')).toBeInTheDocument();
-
-    const nightsInput = screen.getByLabelText('Number of nights');
-    fireEvent.change(nightsInput, { target: { value: '3' } });
-
-    // 800/night x 3 nights.
-    expect(await screen.findByText('PHP 2400.00')).toBeInTheDocument();
+    // 800/night x 3 nights, set back on the availability step.
+    expect(screen.getByText('PHP 2400.00')).toBeInTheDocument();
   });
 
   it('Hotel: number of nights survives browsing away to another category and back', async () => {
@@ -720,20 +852,158 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Next'));
 
+    await waitFor(() =>
+      expect(screen.getByLabelText('Number of nights')).toBeInTheDocument()
+    );
     const nightsInput = screen.getByLabelText('Number of nights');
     fireEvent.change(nightsInput, { target: { value: '5' } });
     expect(nightsInput).toHaveValue(5);
 
-    // Browse to Grooming and back - nights is not category-scoped state, so
-    // it should still read 5 rather than snapping back to the 1 default.
-    await user.click(screen.getByText('Grooming'));
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-
-    await user.click(screen.getByText('Hotel'));
+    // Browse back to category step, over to Grooming and back to Hotel -
+    // nights is not category-scoped state, so it should still read 5
+    // rather than snapping back to the 1 default.
+    await user.click(screen.getByText('Back'));
     await waitFor(() =>
-      expect(screen.getByText('Hotel Stay - Medium Cage')).toBeInTheDocument()
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
-    expect(screen.getByLabelText('Number of nights')).toHaveValue(5);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Number of nights')).toHaveValue(5)
+    );
+  });
+
+  it('#22 follow-up: an empty day (branch closed or past hours) never shows the fully-booked modal', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Simulate empty day (closed/past hours)')
+      ).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByText('Simulate empty day (closed/past hours)')
+    );
+
+    expect(bookingApi.getNextAvailableSlot).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('This looks fully booked')
+    ).not.toBeInTheDocument();
+  });
+
+  it('#22 follow-up: a day with real slots all taken shows the fully-booked modal and searches from the next day', async () => {
+    vi.mocked(bookingApi.getNextAvailableSlot).mockResolvedValue({
+      data: {
+        date: '2026-08-05',
+        earliestSlot: {
+          start: '2026-08-05T00:00:00.000Z',
+          end: '2026-08-05T01:00:00.000Z',
+        },
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Simulate day fully booked')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Simulate day fully booked'));
+
+    expect(
+      await screen.findByText('This looks fully booked')
+    ).toBeInTheDocument();
+    expect(bookingApi.getNextAvailableSlot).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ fromDate: '2026-08-04' })
+    );
+  });
+
+  it('#22 follow-up regression: toggling a service/package on the Services step no longer wipes the already-picked slot (submit actually fires)', async () => {
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+    // Toggling it off and back on again must not disturb the slot/staff
+    // preference already committed on the previous step.
+    await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'Cash' } });
+
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() => expect(bookingApi.createBooking).toHaveBeenCalled());
+    const payload = vi.mocked(bookingApi.createBooking).mock.calls[0][1];
+    expect(payload.scheduled_start).toBe('2026-08-03T01:00:00.000Z');
+    expect(payload.scheduled_end).toBeTruthy();
+  });
+
+  it('#22 follow-up: selecting a package deselects and disables its member services', async () => {
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [GOLDEN_PACKAGE],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+    expect(screen.getByText('Bath').closest('button')?.className).toMatch(
+      /selected/
+    );
+
+    await user.click(screen.getByText('Package'));
+    await user.click(screen.getByText('Golden Package'));
+
+    // Selecting the package deselects Bath and switching back to the
+    // Individual service tab shows it disabled, tagged as included.
+    await user.click(screen.getByText('Individual service'));
+    const bathCard = screen.getByText('Bath').closest('button');
+    expect(bathCard?.className).not.toMatch(/selected/);
+    expect(bathCard).toBeDisabled();
+    expect(screen.getByText('Included in Golden Package')).toBeInTheDocument();
+
+    // Clicking the disabled card does nothing.
+    await user.click(bathCard!);
+    expect(bathCard?.className).not.toMatch(/selected/);
   });
 });

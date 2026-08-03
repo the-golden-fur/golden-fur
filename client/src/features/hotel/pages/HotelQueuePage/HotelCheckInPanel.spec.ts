@@ -46,10 +46,10 @@ const BOOKING_WITH_CATALOG_FEEDING = {
         food_type: 'Dry kibble',
         quantity: '1',
         food_catalog_id: 'food-1',
-        brought_by_customer: false,
       },
     ],
     walking: [],
+    playing: [],
     medications: [],
   },
 } as never;
@@ -65,6 +65,7 @@ const BOOKING_WITH_FREETEXT_FEEDING = {
       },
     ],
     walking: [],
+    playing: [],
     medications: [],
   },
 } as never;
@@ -135,14 +136,7 @@ describe('HotelCheckInPanel', () => {
     expect(
       screen.getByPlaceholderText('Special instructions (optional)')
     ).toBeDisabled();
-    expect(
-      screen.getByText(/Hotel supplies this/).closest('label')
-    ).toHaveTextContent('Hotel supplies this');
-    expect(
-      (
-        screen.getByText(/Hotel supplies this/).closest('label') as HTMLElement
-      ).querySelector('input')
-    ).toBeDisabled();
+    expect(screen.queryByText(/Hotel supplies this/)).not.toBeInTheDocument();
   });
 
   it('clicking Edit unlocks every care instruction field, in case the customer made a mistake', async () => {
@@ -172,25 +166,7 @@ describe('HotelCheckInPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a running total of hotel-supplied charges computed from the booking-time preferences, with no staff interaction', async () => {
-    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPanel();
-
-    fireEvent.click(await screen.findByText('Pick booking'));
-    await screen.findByText(/Suggested size: S/);
-
-    expect(
-      screen.getByText(
-        'Estimated additional charges (hotel-supplied items, billed at checkout):'
-      )
-    ).toBeInTheDocument();
-    // The booking's own preference already set brought_by_customer: false
-    // and matched the Dry kibble catalog item (PHP 50) - no staff toggling
-    // needed or possible now that this section is read-only.
-    expect(screen.getByText('PHP 50.00')).toBeInTheDocument();
-  });
-
-  it('a freetext food type from the booking (no catalog match) submits as customer-brought with no catalog id', async () => {
+  it('#22: a freetext food type from the booking (no catalog match) submits with no catalog id and no billing fields', async () => {
     setupMocks(BOOKING_WITH_FREETEXT_FEEDING);
     vi.mocked(checkInHotelStay).mockResolvedValue({
       data: { stay: { id: 'stay-1' } },
@@ -212,10 +188,13 @@ describe('HotelCheckInPanel', () => {
           expect.objectContaining({
             food_type: "Owner's own mix",
             food_catalog_id: undefined,
-            brought_by_customer: true,
           }),
         ],
       })
     );
+
+    const feedingPayload = vi.mocked(checkInHotelStay).mock.calls[0][1]
+      .feeding[0] as Record<string, unknown>;
+    expect(feedingPayload).not.toHaveProperty('brought_by_customer');
   });
 });

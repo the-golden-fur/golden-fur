@@ -3,12 +3,16 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archiveCustomerCatalogItemController,
   archiveProductController,
+  createCustomerCatalogItemController,
   createProductController,
   hardDeleteProductController,
   listArchivedProductsController,
+  listCustomerCatalogController,
   listProductsController,
   restoreProductController,
+  updateCustomerCatalogItemController,
   updateProductController,
 } from './catalog.controller.ts';
 import { CATALOG_READ_ROLES, CATALOG_WRITE_ROLES } from './catalog.types.ts';
@@ -53,6 +57,34 @@ router.delete(
   '/catalog/products/:id/permanent',
   adminWrite,
   hardDeleteProductController
+);
+
+// #22: a customer's own food/medication types for future hotel bookings -
+// no role gate (any authenticated customer), scoped server-side to their
+// own owner_customer_id (see customerProductCatalog.service.ts). Reachable
+// both from the hotel booking wizard and standalone, outside the booking
+// queue, per the feature request.
+const customerAuth = [jwtMiddleware, sessionTimeoutMiddleware];
+
+router.get(
+  '/customers/me/food-medication-catalog',
+  customerAuth,
+  listCustomerCatalogController
+);
+router.post(
+  '/customers/me/food-medication-catalog',
+  customerAuth,
+  createCustomerCatalogItemController
+);
+router.patch(
+  '/customers/me/food-medication-catalog/:id',
+  customerAuth,
+  updateCustomerCatalogItemController
+);
+router.delete(
+  '/customers/me/food-medication-catalog/:id',
+  customerAuth,
+  archiveCustomerCatalogItemController
 );
 
 export default router;
