@@ -116,7 +116,9 @@ export async function scheduleFollowUp({
   // package_id column copy before booking_items existed).
   const { data: originalItems, error: itemsFetchError } = await supabase
     .from('booking_items')
-    .select('service_id, package_id, price_at_booking, duration_minutes_at_booking')
+    .select(
+      'service_id, package_id, price_at_booking, duration_minutes_at_booking'
+    )
     .eq('booking_id', consultation.booking_id);
 
   if (itemsFetchError) throwWithStatus(400, itemsFetchError.message);

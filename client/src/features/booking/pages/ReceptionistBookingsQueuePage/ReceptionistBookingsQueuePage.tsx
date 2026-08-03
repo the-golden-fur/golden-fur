@@ -567,8 +567,11 @@ export function ReceptionistBookingsQueuePage() {
               const canMarkPaid =
                 !isStatusOverrideRole && booking.status === 'Completed';
               const hasControls =
-                canOverrideStatus || canAdvanceStatus || canMarkPaid ||
-                canReschedule || canCancel;
+                canOverrideStatus ||
+                canAdvanceStatus ||
+                canMarkPaid ||
+                canReschedule ||
+                canCancel;
               const isRescheduling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'reschedule';

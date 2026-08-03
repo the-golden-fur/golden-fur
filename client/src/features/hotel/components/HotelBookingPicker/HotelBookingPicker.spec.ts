@@ -63,7 +63,14 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     created_at: '2026-07-27T00:00:00.000Z',
     updated_at: '2026-07-27T00:00:00.000Z',
     booking_items: [
-      { id: 'item-1', booking_id: 'booking-1', service_id: 'svc-1', package_id: null, price_at_booking: 500, duration_minutes_at_booking: 1440 },
+      {
+        id: 'item-1',
+        booking_id: 'booking-1',
+        service_id: 'svc-1',
+        package_id: null,
+        price_at_booking: 500,
+        duration_minutes_at_booking: 1440,
+      },
     ],
     ...overrides,
   };

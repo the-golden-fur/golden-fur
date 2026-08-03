@@ -70,16 +70,18 @@ export async function getBookingForBilling(
   const branchName = (data as unknown as { branches: { name: string } })
     .branches.name;
 
-  const rawItems = (data as unknown as {
-    booking_items: Array<{
-      id: string;
-      service_id: string | null;
-      package_id: string | null;
-      price_at_booking: number;
-      services: { name: string } | { name: string }[] | null;
-      packages: { name: string } | { name: string }[] | null;
-    }>;
-  }).booking_items;
+  const rawItems = (
+    data as unknown as {
+      booking_items: Array<{
+        id: string;
+        service_id: string | null;
+        package_id: string | null;
+        price_at_booking: number;
+        services: { name: string } | { name: string }[] | null;
+        packages: { name: string } | { name: string }[] | null;
+      }>;
+    }
+  ).booking_items;
 
   const items: BookingLineItem[] = rawItems.map((item) => {
     const serviceName = Array.isArray(item.services)
@@ -186,7 +188,8 @@ async function getHotelLineItems(
       // many items were selected (multi-item Hotel bookings aren't itemized
       // on the bill - not a bug, per this billing surface's existing
       // per-stay-not-per-item design).
-      reference_id: booking.items[0]?.service_id ?? booking.items[0]?.package_id ?? null,
+      reference_id:
+        booking.items[0]?.service_id ?? booking.items[0]?.package_id ?? null,
       description: 'Hotel stay',
       quantity: 1,
       unit_price: booking.total_price,

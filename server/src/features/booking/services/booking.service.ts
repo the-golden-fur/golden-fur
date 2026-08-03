@@ -326,7 +326,8 @@ async function getPromoCapAmount(
         .maybeSingle()
     ).data;
 
-  if (!capRow) throwWithStatus(500, 'No default promo cap configuration row exists');
+  if (!capRow)
+    throwWithStatus(500, 'No default promo cap configuration row exists');
 
   return capRow.cap_type === 'percentage'
     ? (subtotal * Number(capRow.cap_value)) / 100
@@ -381,7 +382,10 @@ async function resolveDiscountAndPromo(
     }
 
     if (discount.branch_id !== input.branch_id) {
-      throwWithStatus(400, `Discount "${discount.name}" belongs to another branch`);
+      throwWithStatus(
+        400,
+        `Discount "${discount.name}" belongs to another branch`
+      );
     }
 
     const scopeMatches =
@@ -1052,8 +1056,7 @@ export async function overrideBookingStatus({
   const booking = await getRawBookingById(bookingId);
   const now = new Date().toISOString();
 
-  const startedAt =
-    status === 'Pending' ? null : (booking.started_at ?? now);
+  const startedAt = status === 'Pending' ? null : (booking.started_at ?? now);
   const completedAt =
     status === 'Completed' || status === 'Paid'
       ? (booking.completed_at ?? now)

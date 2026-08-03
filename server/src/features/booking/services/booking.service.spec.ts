@@ -879,7 +879,10 @@ describe('booking.service (#51)', () => {
         { data: { ...INSERTED_BOOKING, status: 'Pending' }, error: null } // update
       );
 
-      await overrideBookingStatus({ bookingId: 'booking-1', status: 'Pending' });
+      await overrideBookingStatus({
+        bookingId: 'booking-1',
+        status: 'Pending',
+      });
 
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({
@@ -1038,7 +1041,12 @@ describe('booking.service (#51)', () => {
         ...ALL_SERVICES_PROMO,
         scope_type: 'specific',
         promo_scope: [
-          { id: 'scope-1', promo_id: 'promo-1', service_id: 'other-service', package_id: null },
+          {
+            id: 'scope-1',
+            promo_id: 'promo-1',
+            service_id: 'other-service',
+            package_id: null,
+          },
         ],
       } as never);
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);

@@ -554,9 +554,7 @@ describe('CustomerBookingFlowPage', () => {
     // pointing at whatever step slid into the Staff step's old slot
     // (Review & Pay), silently skipping it instead of landing on it
     // properly.
-    await user.click(
-      screen.getByText('Simulate staff picker unavailable')
-    );
+    await user.click(screen.getByText('Simulate staff picker unavailable'));
 
     await waitFor(() =>
       expect(screen.queryByTestId('staff-picker')).not.toBeInTheDocument()
@@ -564,7 +562,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.getByText('Confirm booking')).toBeInTheDocument();
   });
 
-  it('switching category tabs to browse preserves each tab\'s own selections', async () => {
+  it("switching category tabs to browse preserves each tab's own selections", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -598,9 +596,9 @@ describe('CustomerBookingFlowPage', () => {
     // cleared, just not the active tab.
     await user.click(screen.getByText('Grooming'));
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    expect(
-      screen.getByText('Bath').closest('button')?.className
-    ).toMatch(/selected/);
+    expect(screen.getByText('Bath').closest('button')?.className).toMatch(
+      /selected/
+    );
     expect(screen.getAllByText('PHP 300.00')).toHaveLength(2);
   });
 
@@ -643,7 +641,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('selecting an item in a different category clears the previous category\'s selection', async () => {
+  it("selecting an item in a different category clears the previous category's selection", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -672,12 +670,10 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     await user.click(screen.getByText('Grooming'));
-    await waitFor(() =>
-      expect(screen.queryByText('Bath')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Bath')).toBeInTheDocument());
+    expect(screen.getByText('Bath').closest('button')?.className).not.toMatch(
+      /selected/
     );
-    expect(
-      screen.getByText('Bath').closest('button')?.className
-    ).not.toMatch(/selected/);
   });
 
   it('Hotel: the running total scales with the number of nights', async () => {
@@ -698,8 +694,9 @@ describe('CustomerBookingFlowPage', () => {
     const cage = await screen.findByText('Hotel Stay - Medium Cage');
     await user.click(cage);
 
-    expect(screen.getByText('Running total (before promos/discounts)'))
-      .toBeInTheDocument();
+    expect(
+      screen.getByText('Running total (before promos/discounts)')
+    ).toBeInTheDocument();
     expect(screen.getByText('PHP 800.00')).toBeInTheDocument();
 
     const nightsInput = screen.getByLabelText('Number of nights');

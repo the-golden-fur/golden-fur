@@ -39,10 +39,7 @@ describe('createBookingValidator', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
-        items: [
-          { service_id: SERVICE_ID },
-          { package_id: PACKAGE_ID },
-        ],
+        items: [{ service_id: SERVICE_ID }, { package_id: PACKAGE_ID }],
       }).success
     ).toBe(true);
   });
@@ -292,9 +289,9 @@ describe('updatePolicyValidator', () => {
 describe('overrideBookingStatusValidator', () => {
   it('accepts each overridable status', () => {
     for (const status of ['Pending', 'In Progress', 'Completed', 'Paid']) {
-      expect(
-        overrideBookingStatusValidator.safeParse({ status }).success
-      ).toBe(true);
+      expect(overrideBookingStatusValidator.safeParse({ status }).success).toBe(
+        true
+      );
     }
   });
 

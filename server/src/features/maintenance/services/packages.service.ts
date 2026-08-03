@@ -59,7 +59,9 @@ function attachBundledPrice(
   const basePrices = links.map((link) =>
     Number(link.services?.base_price ?? 0)
   );
-  const durations = links.map((link) => link.services?.duration_minutes ?? null);
+  const durations = links.map(
+    (link) => link.services?.duration_minutes ?? null
+  );
 
   return {
     ...pkg,

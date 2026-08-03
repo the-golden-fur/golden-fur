@@ -289,7 +289,9 @@ export function CustomerBookingFlowPage() {
   // on - only an actual branch/pet change clears everything, since the
   // catalog itself changes then.
   const [selectionsByCategory, setSelectionsByCategory] = useState<
-    Partial<Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>>
+    Partial<
+      Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>
+    >
   >({});
 
   const selectedServiceIds = category
@@ -306,10 +308,10 @@ export function CustomerBookingFlowPage() {
   // category, rather than leaving it stranded there until submit.
   function updateCategorySelection(
     targetCategory: ServiceCategory,
-    updater: (current: {
+    updater: (current: { serviceIds: string[]; packageIds: string[] }) => {
       serviceIds: string[];
       packageIds: string[];
-    }) => { serviceIds: string[]; packageIds: string[] }
+    }
   ) {
     setSelectionsByCategory((prev) => ({
       [targetCategory]: updater(
@@ -400,9 +402,9 @@ export function CustomerBookingFlowPage() {
   const [currentStepKey, setCurrentStepKey] = useState<StepDef['key']>(() =>
     isReceptionistMode ? 'customer' : 'pet'
   );
-  const [reachedStepKeys, setReachedStepKeys] = useState<
-    Set<StepDef['key']>
-  >(() => new Set([isReceptionistMode ? 'customer' : 'pet']));
+  const [reachedStepKeys, setReachedStepKeys] = useState<Set<StepDef['key']>>(
+    () => new Set([isReceptionistMode ? 'customer' : 'pet'])
+  );
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -555,7 +557,8 @@ export function CustomerBookingFlowPage() {
   );
 
   const selectedServices = useMemo(
-    () => allServices.filter((service) => selectedServiceIds.includes(service.id)),
+    () =>
+      allServices.filter((service) => selectedServiceIds.includes(service.id)),
     [allServices, selectedServiceIds]
   );
 
@@ -611,12 +614,13 @@ export function CustomerBookingFlowPage() {
       (sum, service) => sum + (service.duration_minutes ?? 60),
       0
     ) +
-    selectedPackages.reduce(
-      (sum, pkg) =>
-        sum +
-        (pkg.total_duration_minutes ?? (pkg.package_services?.length ?? 1) * 60),
-      0
-    ) || 60;
+      selectedPackages.reduce(
+        (sum, pkg) =>
+          sum +
+          (pkg.total_duration_minutes ??
+            (pkg.package_services?.length ?? 1) * 60),
+        0
+      ) || 60;
 
   /** The real scheduled_end once multi-night is applied - same computation
    * handleSubmit uses, reused here so the care-schedule bounds below judge
@@ -677,7 +681,8 @@ export function CustomerBookingFlowPage() {
   }, [promos, selectedBranch, selectedServiceIds, selectedPackageIds]);
 
   const selectedPromo = useMemo(
-    () => applicablePromos.find((promo) => promo.id === selectedPromoId) ?? null,
+    () =>
+      applicablePromos.find((promo) => promo.id === selectedPromoId) ?? null,
     [applicablePromos, selectedPromoId]
   );
 
@@ -715,8 +720,9 @@ export function CustomerBookingFlowPage() {
 
   const selectedDiscount = useMemo(
     () =>
-      applicableDiscounts.find((discount) => discount.id === selectedDiscountId) ??
-      null,
+      applicableDiscounts.find(
+        (discount) => discount.id === selectedDiscountId
+      ) ?? null,
     [applicableDiscounts, selectedDiscountId]
   );
 
@@ -1367,8 +1373,8 @@ export function CustomerBookingFlowPage() {
             {categoriesWithOtherSelections.length > 0 ? (
               <p className={styles.crossCategoryNotice} role="alert">
                 You still have items selected under{' '}
-                {categoriesWithOtherSelections.join(', ')} - a booking only
-                ever covers one category, so selecting anything under{' '}
+                {categoriesWithOtherSelections.join(', ')} - a booking only ever
+                covers one category, so selecting anything under{' '}
                 <strong>{category}</strong> will clear
                 {categoriesWithOtherSelections.length > 1
                   ? ' those selections'
@@ -1483,7 +1489,10 @@ export function CustomerBookingFlowPage() {
                         ) : null}
                       </span>
                       <span className={styles.optionMeta}>
-                        PHP {(service.base_price * hotelNightsMultiplier).toFixed(2)}
+                        PHP{' '}
+                        {(service.base_price * hotelNightsMultiplier).toFixed(
+                          2
+                        )}
                         {category === 'Hotel'
                           ? ` (PHP ${service.base_price.toFixed(2)}/night × ${hotelNights})`
                           : ''}
@@ -1511,7 +1520,8 @@ export function CustomerBookingFlowPage() {
                     >
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
-                        PHP {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
+                        PHP{' '}
+                        {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
                         {category === 'Hotel'
                           ? ` (PHP ${pkg.bundled_price.toFixed(2)}/night × ${hotelNights})`
                           : ''}
@@ -1888,7 +1898,8 @@ export function CustomerBookingFlowPage() {
                       : ''}
                   </span>
                   <span>
-                    PHP {(service.base_price * hotelNightsMultiplier).toFixed(2)}
+                    PHP{' '}
+                    {(service.base_price * hotelNightsMultiplier).toFixed(2)}
                   </span>
                 </div>
               ))}

@@ -31,7 +31,7 @@ Four related requests came in for the booking flow and staff queue:
 - `20260803077_m03_multi_item_bookings.sql`: new `booking_items` table (one
   row per selected service **or** package per booking, `price_at_booking` +
   `duration_minutes_at_booking` snapshots, `check (num_nonnulls(service_id,
-  package_id) = 1)`), replacing the old `bookings.service_id`/`package_id`
+package_id) = 1)`), replacing the old `bookings.service_id`/`package_id`
   columns (dropped) and the Grooming-only `booking_addons` table (dropped).
   Backfills existing rows into `booking_items` before dropping anything.
 - `20260803078_m03_m08_booking_discount_promo.sql`: adds
@@ -50,7 +50,7 @@ Four related requests came in for the booking flow and staff queue:
   `BOOKING_POLICY_READ_ROLES`, i.e. all staff).
 - `booking/modules/validators/booking.validator.ts`: `service_id`/
   `package_id`/`addon_service_ids` replaced by `items: Array<{service_id} |
-  {package_id}>` (min 1, no duplicates); new optional `discount_id`/
+{package_id}>` (min 1, no duplicates); new optional `discount_id`/
   `promo_id`.
 - `booking/services/booking.service.ts`: `resolveBookingItem(s)` replaces
   the old single-service/single-package branch + `resolveAddons` - prices
@@ -117,7 +117,7 @@ requests, all in the same booking flow / queue surfaces:
    Grooming/Veterinary stay multi-select. `CustomerBookingFlowPage.tsx`'s
    `toggleServiceSelect`/`togglePackageSelect` now check a new
    `singleSelectCategory` flag (`category === 'Hotel' || category ===
-   'Daycare'`) and replace rather than add to the selection when set.
+'Daycare'`) and replace rather than add to the selection when set.
 2. **Checkbox removed**: the service/package option cards went back to
    plain clickable `<button>`s (matching the pre-multiselect visual design)
    instead of a `<label>` wrapping a visible `<input type="checkbox">` -
@@ -186,7 +186,7 @@ ReceptionistBookingsQueuePage.tsx` (+.module.css),
 `server/src/features/booking/services/availability.service.spec.ts` has 3
 tests hardcoded against `date: '2026-08-03'` with no system-time mocking
 (`vi.useFakeTimers()`/`vi.setSystemTime()`), so they compare a fixed
-09:00-12:00 Asia/Manila window against the *real* wall-clock time when the
+09:00-12:00 Asia/Manila window against the _real_ wall-clock time when the
 suite runs. Once real time reaches/passes that window on that exact
 calendar date, slots inside it are (correctly) treated as already past and
 filtered out, so the tests' hardcoded "expect 3 slots" assertion fails.
@@ -203,14 +203,14 @@ A third round of feedback on the booking flow:
    `CustomerBookingFlowPage.tsx` now keeps selections in a
    `selectionsByCategory` record (keyed by category) instead of one flat
    pair of arrays - `selectedServiceIds`/`selectedPackageIds` are now
-   *derived* from `selectionsByCategory[category]`. Only a branch or pet
+   _derived_ from `selectionsByCategory[category]`. Only a branch or pet
    change clears everything (the catalog itself changes then); switching
    category tabs does not. Date/time, staff, and Hotel nights still reset
    on category change, per explicit confirmation - those depend on which
    category you're actually committing to, unlike item picks.
 2. **Number of nights moved**: from the Date & Time step to the Service
    step (right under the recommended-cage note), so nights are set
-   *before* picking a cage/date, and the running total reflects them
+   _before_ picking a cage/date, and the running total reflects them
    immediately rather than only appearing on a later step.
 3. **Hotel price = rate × nights**: previously Hotel items priced at a flat
    one-time `base_price`/`bundled_price` regardless of night count, both
@@ -226,7 +226,7 @@ A third round of feedback on the booking flow:
 4. **New "Misc" category**: Initial Assessment and Reassessment moved out
    of Grooming into a new top-level `service_category` value, `'Misc'`.
    Schema: `20260803079_m13_add_misc_service_category.sql` (`ALTER TYPE
-   ... ADD VALUE` - must be its own migration, Postgres won't let a new
+... ADD VALUE` - must be its own migration, Postgres won't let a new
    enum value be used in the same transaction that added it) and
    `20260803080_m13_move_assessment_services_to_misc.sql` (moves the two
    existing seeded rows). Misc bookings get no staff-assignment or
@@ -275,7 +275,7 @@ genuinely unrelated bug:
 1. **Not a regression - the single-category-per-booking invariant never
    changed.** `bookings.service_category` has always been one scalar value;
    Round 3's per-category selection memory (`selectionsByCategory`) only
-   changed what stays *visible* while browsing between tabs - it never made
+   changed what stays _visible_ while browsing between tabs - it never made
    more than one category submittable. Submitting a booking has only ever
    sent the currently-active tab's category + that tab's own items,
    regardless of what's sitting selected under other tabs. So "the booking
@@ -283,7 +283,7 @@ genuinely unrelated bug:
    services", "same for Daycare Check-in", "same for Grooming Queue", and
    "multi-service category doesn't apply to the final price" were all the
    same misunderstanding: whichever tab was active at submit time is the
-   *only* category that was ever created - the picks left behind on other
+   _only_ category that was ever created - the picks left behind on other
    tabs were never a pending cross-category cart, they just looked like one
    because Round 3 stopped clearing them on browse-away. No rollback was
    needed (multi-item-within-one-category was already the shipped
@@ -304,7 +304,7 @@ genuinely unrelated bug:
    bug, unrelated to any multi-item/category change): the queue showed
    "Could not embed because more than one relationship was found for
    'consultations' and 'bookings'". Root cause:
-   `consultations` has *two* foreign keys to `bookings`
+   `consultations` has _two_ foreign keys to `bookings`
    (`booking_id` and `follow_up_booking_id`, both added in
    `20260719040_m07_create_veterinary_schema.sql`), so an unqualified
    `booking:bookings(*)` embed is genuinely ambiguous to PostgREST - it
@@ -345,7 +345,7 @@ followUp.service.ts`.
 Feedback on Round 4's warning: a warning alone still left stale picks sitting
 under the tab you left, and the user wanted committing to a different
 category to actually drop them, not just flag them. `updateCategorySelection`
-in `CustomerBookingFlowPage.tsx` now replaces the *entire*
+in `CustomerBookingFlowPage.tsx` now replaces the _entire_
 `selectionsByCategory` map with just the category being changed, instead of
 merging into it - so every `toggleServiceSelect`/`togglePackageSelect` call
 (add or remove) drops any other category's picks as a side effect. Browsing
@@ -455,7 +455,7 @@ Expected highlights:
    updates; if it's a Senior/PWD discount, confirm Next is disabled until
    you check the ID-verification box. Switch payment method away from Cash
    - confirm the Discount section replaces itself with the "select Cash"
-   note and the discount amount drops out of the total.
+     note and the discount amount drops out of the total.
 5. If any promo matches your branch/selected items, a Promo section should
    appear regardless of role or payment method - pick one, confirm the
    total updates independently of the discount.
@@ -580,7 +580,7 @@ confirm `Misc` is a valid enum value and both services moved.
 - `cd server && npx tsc --noEmit && npx vitest run` - 72 test files / 699
   tests, 696 passing (same 3 pre-existing unrelated
   `availability.service.spec.ts` failures as before - confirmed via `git
-  diff --stat` that this branch never touches that file).
+diff --stat` that this branch never touches that file).
 - `cd client && npx tsc -b && npx vitest run` - 116 test files / 528 tests
   passing.
 

@@ -95,11 +95,9 @@ export function BookingDetailsPage() {
       if (isMounted && result.data) setPet(result.data);
     });
 
-    void getCustomerProfile(booking.customer_id, accessToken).then(
-      (result) => {
-        if (isMounted && result.data) setOwner(result.data);
-      }
-    );
+    void getCustomerProfile(booking.customer_id, accessToken).then((result) => {
+      if (isMounted && result.data) setOwner(result.data);
+    });
 
     void listBranches().then((result) => {
       if (isMounted && result.data) setBranches(result.data);
@@ -128,11 +126,9 @@ export function BookingDetailsPage() {
     }
 
     if (booking.selected_promo_id) {
-      void listPromos(accessToken, { includeInactive: true }).then(
-        (result) => {
-          if (isMounted && result.data) setPromos(result.data);
-        }
-      );
+      void listPromos(accessToken, { includeInactive: true }).then((result) => {
+        if (isMounted && result.data) setPromos(result.data);
+      });
     }
 
     return () => {
@@ -154,8 +150,9 @@ export function BookingDetailsPage() {
   );
   const discountName = useMemo(
     () =>
-      discounts.find((discount) => discount.id === booking?.selected_discount_id)
-        ?.name ?? null,
+      discounts.find(
+        (discount) => discount.id === booking?.selected_discount_id
+      )?.name ?? null,
     [discounts, booking?.selected_discount_id]
   );
   const promoName = useMemo(

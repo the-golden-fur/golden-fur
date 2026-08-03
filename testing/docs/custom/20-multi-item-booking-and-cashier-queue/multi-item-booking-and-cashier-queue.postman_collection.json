@@ -15,7 +15,11 @@
     { "key": "receptionist_identifier", "value": "" },
     { "key": "receptionist_password", "value": "" },
     { "key": "receptionist_access_token", "value": "" },
-    { "key": "admin_identifier", "value": "", "description": "An Admin or Superadmin login - for the status-override dropdown endpoint" },
+    {
+      "key": "admin_identifier",
+      "value": "",
+      "description": "An Admin or Superadmin login - for the status-override dropdown endpoint"
+    },
     { "key": "admin_password", "value": "" },
     { "key": "admin_access_token", "value": "" },
     { "key": "branch_id", "value": "" },
@@ -30,8 +34,16 @@
       "value": "a1300000-0000-4000-a000-000000000002",
       "description": "Seeded 'Blow-dry' Grooming service"
     },
-    { "key": "discount_id", "value": "", "description": "An active discount scoped to grooming_service_id or the Grooming category" },
-    { "key": "promo_id", "value": "", "description": "An active promo scoped to grooming_service_id, all_services, or matching branch_scope" },
+    {
+      "key": "discount_id",
+      "value": "",
+      "description": "An active discount scoped to grooming_service_id or the Grooming category"
+    },
+    {
+      "key": "promo_id",
+      "value": "",
+      "description": "An active promo scoped to grooming_service_id, all_services, or matching branch_scope"
+    },
     { "key": "created_booking_id", "value": "" },
     { "key": "scheduled_start", "value": "" },
     { "key": "scheduled_end", "value": "" }
@@ -56,7 +68,11 @@
       ],
       "request": {
         "method": "GET",
-        "url": { "raw": "{{base_url}}/bookings/policy", "host": ["{{base_url}}"], "path": ["bookings", "policy"] },
+        "url": {
+          "raw": "{{base_url}}/bookings/policy",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "policy"]
+        },
         "header": []
       }
     },
@@ -69,7 +85,11 @@
           "mode": "raw",
           "raw": "{\n  \"account_email\": \"{{customer_identifier}}\",\n  \"password\": \"{{customer_password}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/auth/customers/login", "host": ["{{base_url}}"], "path": ["auth", "customers", "login"] }
+        "url": {
+          "raw": "{{base_url}}/auth/customers/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "customers", "login"]
+        }
       },
       "event": [
         {
@@ -93,7 +113,11 @@
           "mode": "raw",
           "raw": "{\n  \"identifier\": \"{{cashier_identifier}}\",\n  \"password\": \"{{cashier_password}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/auth/staff/login", "host": ["{{base_url}}"], "path": ["auth", "staff", "login"] }
+        "url": {
+          "raw": "{{base_url}}/auth/staff/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "login"]
+        }
       },
       "event": [
         {
@@ -117,7 +141,11 @@
           "mode": "raw",
           "raw": "{\n  \"identifier\": \"{{receptionist_identifier}}\",\n  \"password\": \"{{receptionist_password}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/auth/staff/login", "host": ["{{base_url}}"], "path": ["auth", "staff", "login"] }
+        "url": {
+          "raw": "{{base_url}}/auth/staff/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "login"]
+        }
       },
       "event": [
         {
@@ -138,13 +166,20 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [\n    { \"service_id\": \"{{grooming_service_id}}\" },\n    { \"service_id\": \"{{grooming_service_id_2}}\" }\n  ],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
@@ -169,20 +204,29 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [\n    { \"service_id\": \"{{grooming_service_id}}\" },\n    { \"service_id\": \"{{grooming_service_id}}\" }\n  ],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"]
+            "exec": [
+              "pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"
+            ]
           }
         }
       ]
@@ -193,20 +237,29 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"]
+            "exec": [
+              "pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"
+            ]
           }
         }
       ]
@@ -215,15 +268,23 @@
       "name": "7. Cashier: Start the Pending booking (rejected)",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{cashier_access_token}}" }],
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/start", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "start"] }
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/start",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "start"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"]
+            "exec": [
+              "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+            ]
           }
         }
       ]
@@ -232,8 +293,17 @@
       "name": "8. Receptionist: Start then Complete the booking",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{receptionist_access_token}}" }],
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/start", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "start"] }
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{receptionist_access_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/start",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "start"]
+        }
       },
       "event": [
         {
@@ -258,8 +328,14 @@
       "name": "9. Cashier: Mark the Completed booking Paid",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{cashier_access_token}}" }],
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/mark-paid", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "mark-paid"] }
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{cashier_access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/mark-paid",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "mark-paid"]
+        }
       },
       "event": [
         {
@@ -280,13 +356,20 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{receptionist_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{receptionist_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"customer_id\": \"CUSTOMER_ID_HERE\",\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [ { \"service_id\": \"{{grooming_service_id}}\" } ],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\",\n  \"payment_method\": \"Cash\",\n  \"discount_id\": \"{{discount_id}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
@@ -314,20 +397,29 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{receptionist_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{receptionist_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"customer_id\": \"CUSTOMER_ID_HERE\",\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [ { \"service_id\": \"{{grooming_service_id}}\" } ],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\",\n  \"payment_method\": \"GCash\",\n  \"discount_id\": \"{{discount_id}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('400 - Cash only', function () { pm.response.to.have.status(400); });"]
+            "exec": [
+              "pm.test('400 - Cash only', function () { pm.response.to.have.status(400); });"
+            ]
           }
         }
       ],
@@ -339,13 +431,20 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"pet_id\": \"{{pet_id}}\",\n  \"branch_id\": \"{{branch_id}}\",\n  \"service_category\": \"Grooming\",\n  \"items\": [ { \"service_id\": \"{{grooming_service_id}}\" } ],\n  \"scheduled_start\": \"{{scheduled_start}}\",\n  \"scheduled_end\": \"{{scheduled_end}}\",\n  \"promo_id\": \"{{promo_id}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings", "host": ["{{base_url}}"], "path": ["bookings"] }
+        "url": {
+          "raw": "{{base_url}}/bookings",
+          "host": ["{{base_url}}"],
+          "path": ["bookings"]
+        }
       },
       "event": [
         {
@@ -375,7 +474,11 @@
           "mode": "raw",
           "raw": "{\n  \"identifier\": \"{{admin_identifier}}\",\n  \"password\": \"{{admin_password}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/auth/staff/login", "host": ["{{base_url}}"], "path": ["auth", "staff", "login"] }
+        "url": {
+          "raw": "{{base_url}}/auth/staff/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "staff", "login"]
+        }
       },
       "event": [
         {
@@ -396,20 +499,29 @@
         "method": "PATCH",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{receptionist_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{receptionist_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"status\": \"Completed\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/status", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "status"] }
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "status"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"]
+            "exec": [
+              "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });"
+            ]
           }
         }
       ]
@@ -426,7 +538,11 @@
           "mode": "raw",
           "raw": "{\n  \"status\": \"Completed\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/status", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "status"] }
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "status"]
+        }
       },
       "event": [
         {
@@ -459,7 +575,11 @@
           "mode": "raw",
           "raw": "{\n  \"status\": \"Pending\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/status", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "status"] }
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "status"]
+        }
       },
       "event": [
         {
@@ -492,14 +612,20 @@
           "mode": "raw",
           "raw": "{\n  \"status\": \"Cancelled\"\n}"
         },
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}/status", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}", "status"] }
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}", "status"]
+        }
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
-            "exec": ["pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"]
+            "exec": [
+              "pm.test('400 Invalid payload', function () { pm.response.to.have.status(400); });"
+            ]
           }
         }
       ]
@@ -508,8 +634,17 @@
       "name": "18. Round 4: Get booking by id (backs the new Booking Details page)",
       "request": {
         "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{receptionist_access_token}}" }],
-        "url": { "raw": "{{base_url}}/bookings/{{created_booking_id}}", "host": ["{{base_url}}"], "path": ["bookings", "{{created_booking_id}}"] }
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{receptionist_access_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/bookings/{{created_booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["bookings", "{{created_booking_id}}"]
+        }
       },
       "event": [
         {
