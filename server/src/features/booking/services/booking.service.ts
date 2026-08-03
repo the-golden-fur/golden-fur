@@ -2,8 +2,12 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
+import { getPromoById } from '../../maintenance/services/promos.service.ts';
+import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import {
+  BOOKING_MARK_PAID_ROLES,
   ONLINE_PAYMENT_METHODS,
+  OVERRIDABLE_BOOKING_STATUSES,
   type Booking,
   type ServiceCategory,
 } from '../booking.types.ts';
@@ -24,7 +28,7 @@ import {
  * out of this epic's stub scope (Sprint 5, M09). */
 const HOTEL_DOWNPAYMENT_RATE = 0.5;
 
-const BOOKING_SELECT = '*, booking_addons(*), staff_picker_preferences(*)';
+const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -89,51 +93,381 @@ function resolveServicePrice(
   return Number(service.base_price);
 }
 
-interface PricedAddon {
-  service_id: string;
+interface ResolvedBookingItem {
+  service_id: string | null;
+  package_id: string | null;
   price_at_booking: number;
+  duration_minutes_at_booking: number;
 }
 
-async function resolveAddons(
-  addonServiceIds: string[] | undefined,
-  serviceCategory: ServiceCategory
-): Promise<PricedAddon[]> {
-  if (!addonServiceIds?.length) return [];
+/**
+ * Multi-item bookings revision: a booking now holds N services/packages
+ * (checkbox multiselect on the client, replacing the old exactly-one
+ * service_id/package_id column pair plus the Grooming-only booking_addons
+ * side table). Every item must belong to the booking's own service_category -
+ * services carry that directly; packages have no category column of their
+ * own, so it's enforced by checking every member service's category instead
+ * (the DB's old num_nonnulls check constraint used to give this for free by
+ * only ever allowing one service OR one package on the booking itself).
+ */
+/**
+ * Hotel is priced per night, not a flat one-time fee - "how many nights" is
+ * never sent as its own field (only scheduled_start/scheduled_end, which
+ * the client already computes as start + nights * duration), so it's
+ * derived here the same way, per item: how many of THIS item's own
+ * duration_minutes fit in the actual scheduled window. Every other
+ * category prices a booking_items row at exactly 1x its catalog price.
+ */
+function resolveQuantity(
+  serviceCategory: ServiceCategory,
+  scheduledStart: string,
+  scheduledEnd: string,
+  itemDurationMinutes: number
+): number {
+  if (serviceCategory !== 'Hotel' || itemDurationMinutes <= 0) return 1;
 
-  // Add-ons are a Grooming concept per Modules-Features ("applicable to
-  // Grooming services").
-  if (serviceCategory !== 'Grooming') {
-    throwWithStatus(400, 'Add-ons only apply to Grooming bookings');
+  const totalMinutes =
+    (new Date(scheduledEnd).getTime() - new Date(scheduledStart).getTime()) /
+    60000;
+
+  return Math.max(1, Math.round(totalMinutes / itemDurationMinutes));
+}
+
+async function resolveBookingItem(
+  itemInput: CreateBookingInput['items'][number],
+  pet: PetRow,
+  petAssessed: boolean,
+  serviceCategory: ServiceCategory,
+  branchId: string,
+  scheduledStart: string,
+  scheduledEnd: string
+): Promise<ResolvedBookingItem> {
+  if ('service_id' in itemInput) {
+    const service = await getServiceById(itemInput.service_id);
+
+    if (!service.is_active) {
+      throwWithStatus(400, `Service "${service.name}" is inactive`);
+    }
+
+    if (service.category !== serviceCategory) {
+      throwWithStatus(
+        400,
+        `Service "${service.name}" does not match service_category`
+      );
+    }
+
+    if (!petAssessed && service.requires_assessed_pet) {
+      throwWithStatus(
+        403,
+        `This pet must be assessed by staff (weight class and coat type recorded onsite) before booking "${service.name}"`
+      );
+    }
+
+    const durationMinutes = service.duration_minutes ?? 60;
+    const quantity = resolveQuantity(
+      serviceCategory,
+      scheduledStart,
+      scheduledEnd,
+      durationMinutes
+    );
+
+    return {
+      service_id: service.id,
+      package_id: null,
+      price_at_booking: round2(resolveServicePrice(service, pet) * quantity),
+      duration_minutes_at_booking: durationMinutes,
+    };
   }
 
+  if (!petAssessed) {
+    throwWithStatus(
+      403,
+      'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking a package'
+    );
+  }
+
+  const pkg = await getPackageById(itemInput.package_id);
+
+  if (!pkg.is_active) {
+    throwWithStatus(400, `Package "${pkg.name}" is inactive`);
+  }
+
+  if (pkg.branch_id !== branchId) {
+    throwWithStatus(400, `Package "${pkg.name}" belongs to another branch`);
+  }
+
+  const memberServiceIds = (pkg.package_services ?? []).map(
+    (link) => link.service_id
+  );
+
+  let memberDurationMinutes = 0;
+
+  if (memberServiceIds.length > 0) {
+    const { data: memberServices, error } = await supabase
+      .from('services')
+      .select('id, category, duration_minutes')
+      .in('id', memberServiceIds);
+
+    if (error) throwWithStatus(400, error.message);
+
+    const rows = (memberServices ?? []) as Array<{
+      id: string;
+      category: ServiceCategory;
+      duration_minutes: number | null;
+    }>;
+
+    const offCategory = rows.find((row) => row.category !== serviceCategory);
+    if (offCategory) {
+      throwWithStatus(
+        400,
+        `Package "${pkg.name}" includes services outside ${serviceCategory}`
+      );
+    }
+
+    memberDurationMinutes = rows.reduce(
+      (sum, row) => sum + (row.duration_minutes ?? 0),
+      0
+    );
+  }
+
+  const packageDurationMinutes = memberDurationMinutes || 60;
+  const packageQuantity = resolveQuantity(
+    serviceCategory,
+    scheduledStart,
+    scheduledEnd,
+    packageDurationMinutes
+  );
+
+  return {
+    service_id: null,
+    package_id: pkg.id,
+    price_at_booking: round2(Number(pkg.bundled_price) * packageQuantity),
+    duration_minutes_at_booking: packageDurationMinutes,
+  };
+}
+
+async function resolveBookingItems(
+  items: CreateBookingInput['items'],
+  pet: PetRow,
+  petAssessed: boolean,
+  serviceCategory: ServiceCategory,
+  branchId: string,
+  scheduledStart: string,
+  scheduledEnd: string
+): Promise<ResolvedBookingItem[]> {
+  const resolved: ResolvedBookingItem[] = [];
+
+  // Sequential, not Promise.all: each item may 400/403 with a message naming
+  // that specific service/package, which reads clearer than an
+  // out-of-order Promise.all rejection would.
+  for (const item of items) {
+    resolved.push(
+      await resolveBookingItem(
+        item,
+        pet,
+        petAssessed,
+        serviceCategory,
+        branchId,
+        scheduledStart,
+        scheduledEnd
+      )
+    );
+  }
+
+  return resolved;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+async function resolveBranchScope(
+  branchId: string
+): Promise<'makati' | 'southwoods'> {
   const { data, error } = await supabase
-    .from('services')
-    .select('id, base_price, is_active')
-    .in('id', addonServiceIds);
+    .from('branches')
+    .select('name')
+    .eq('id', branchId)
+    .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Branch not found');
 
-  const rows = (data ?? []) as Array<{
-    id: string;
-    base_price: number;
-    is_active: boolean;
-  }>;
+  return data.name.toLowerCase() === 'makati' ? 'makati' : 'southwoods';
+}
 
-  for (const addonId of addonServiceIds) {
-    const row = rows.find((candidate) => candidate.id === addonId);
+interface PromoCapRow {
+  cap_type: 'percentage' | 'flat';
+  cap_value: number;
+}
 
-    if (!row) throwWithStatus(404, `Add-on service ${addonId} not found`);
-    if (!row.is_active) {
-      throwWithStatus(400, `Add-on service ${addonId} is inactive`);
+/** Mirrors billing/discountPromoEvaluation.service.ts's identical helper -
+ * duplicated rather than imported so the booking feature doesn't depend on
+ * billing (billing already depends on booking, not the other way around). */
+async function getPromoCapAmount(
+  branchId: string,
+  subtotal: number
+): Promise<number> {
+  const { data: branchRow, error: branchError } = await supabase
+    .from('promo_cap_configuration')
+    .select('cap_type, cap_value')
+    .eq('branch_id', branchId)
+    .maybeSingle();
+
+  if (branchError) throwWithStatus(400, branchError.message);
+
+  const capRow: PromoCapRow | null =
+    branchRow ??
+    (
+      await supabase
+        .from('promo_cap_configuration')
+        .select('cap_type, cap_value')
+        .is('branch_id', null)
+        .maybeSingle()
+    ).data;
+
+  if (!capRow) throwWithStatus(500, 'No default promo cap configuration row exists');
+
+  return capRow.cap_type === 'percentage'
+    ? (subtotal * Number(capRow.cap_value)) / 100
+    : Number(capRow.cap_value);
+}
+
+interface DiscountPromoResolution {
+  selectedDiscountId: string | null;
+  discountAmount: number;
+  selectedPromoId: string | null;
+  promoAmount: number;
+}
+
+/**
+ * Applying a discount/promo at booking creation (rather than only at cashier
+ * checkout) so the customer sees the real price upfront. A discount needs
+ * staff physically present to verify a Senior Citizen/PWD ID, so it's
+ * restricted to money-handling roles (BOOKING_MARK_PAID_ROLES, same set that
+ * can Mark as Paid) and, since ID verification implies in-person payment, to
+ * Cash bookings only. A promo has neither restriction - it's self-service,
+ * like a coupon code. Locked in here, checkout later renders these stored
+ * amounts as-is instead of re-evaluating scope matches itself (see
+ * buildCheckoutPreview in checkoutAggregation.service.ts) - two independent
+ * evaluations of the same rules could disagree and would be confusing to
+ * reconcile at the register.
+ */
+async function resolveDiscountAndPromo(
+  input: CreateBookingInput,
+  staffRole: string | null,
+  resolvedItems: ResolvedBookingItem[],
+  totalPrice: number
+): Promise<DiscountPromoResolution> {
+  let selectedDiscountId: string | null = null;
+  let discountAmount = 0;
+
+  if (input.discount_id) {
+    if (!staffRole || !BOOKING_MARK_PAID_ROLES.includes(staffRole)) {
+      throwWithStatus(
+        403,
+        'Only money-handling staff may apply a discount (ID must be verified onsite)'
+      );
     }
+
+    if (input.payment_method !== 'Cash') {
+      throwWithStatus(400, 'Discounts can only be applied to Cash bookings');
+    }
+
+    const discount = await getDiscountById(input.discount_id);
+
+    if (!discount.is_active) {
+      throwWithStatus(400, `Discount "${discount.name}" is inactive`);
+    }
+
+    if (discount.branch_id !== input.branch_id) {
+      throwWithStatus(400, `Discount "${discount.name}" belongs to another branch`);
+    }
+
+    const scopeMatches =
+      (discount.scope_type === 'service' &&
+        resolvedItems.some(
+          (item) => item.service_id === discount.scope_service_id
+        )) ||
+      (discount.scope_type === 'package' &&
+        resolvedItems.some(
+          (item) => item.package_id === discount.scope_package_id
+        )) ||
+      (discount.scope_type === 'category' &&
+        discount.scope_category === input.service_category);
+
+    if (!scopeMatches) {
+      throwWithStatus(
+        400,
+        `Discount "${discount.name}" does not apply to the selected items`
+      );
+    }
+
+    discountAmount = round2(
+      discount.discount_type === 'Percentage'
+        ? (totalPrice * Number(discount.value)) / 100
+        : Math.min(Number(discount.value), totalPrice)
+    );
+    selectedDiscountId = discount.id;
   }
 
-  // price_at_booking snapshots the current price so later catalog changes
-  // never retroactively alter historical bookings (#50 schema note).
-  return addonServiceIds.map((addonId) => {
-    const row = rows.find((candidate) => candidate.id === addonId)!;
-    return { service_id: addonId, price_at_booking: Number(row.base_price) };
-  });
+  let selectedPromoId: string | null = null;
+  let promoAmount = 0;
+
+  if (input.promo_id) {
+    const promo = await getPromoById(input.promo_id);
+
+    if (!promo.is_active) {
+      throwWithStatus(400, `Promo "${promo.name}" is inactive`);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (promo.start_date && promo.start_date > today) {
+      throwWithStatus(400, `Promo "${promo.name}" has not started yet`);
+    }
+    if (promo.end_date && promo.end_date < today) {
+      throwWithStatus(400, `Promo "${promo.name}" has ended`);
+    }
+
+    if (promo.branch_scope !== 'both') {
+      const branchScope = await resolveBranchScope(input.branch_id);
+      if (promo.branch_scope !== branchScope) {
+        throwWithStatus(
+          400,
+          `Promo "${promo.name}" is not available at this branch`
+        );
+      }
+    }
+
+    const scopeMatches =
+      promo.scope_type === 'all_services' ||
+      (promo.promo_scope ?? []).some((scopeRow) =>
+        resolvedItems.some(
+          (item) =>
+            (scopeRow.service_id && scopeRow.service_id === item.service_id) ||
+            (scopeRow.package_id && scopeRow.package_id === item.package_id)
+        )
+      );
+
+    if (!scopeMatches) {
+      throwWithStatus(
+        400,
+        `Promo "${promo.name}" does not apply to the selected items`
+      );
+    }
+
+    const rawAmount = round2(
+      promo.discount_type === 'Percentage'
+        ? (totalPrice * Number(promo.value)) / 100
+        : Math.min(Number(promo.value), totalPrice)
+    );
+    const capAmount = await getPromoCapAmount(input.branch_id, totalPrice);
+
+    promoAmount = Math.min(rawAmount, round2(capAmount));
+    selectedPromoId = promo.id;
+  }
+
+  return { selectedDiscountId, discountAmount, selectedPromoId, promoAmount };
 }
 
 interface StaffResolution {
@@ -275,64 +609,30 @@ export async function createBooking({
     serviceCategory: input.service_category,
   });
 
-  // Pricing snapshot from Epic A's catalog (services/packages lookups #40/#41).
-  let basePrice: number;
-
-  if (input.service_id) {
-    const service = await getServiceById(input.service_id);
-
-    if (!service.is_active) {
-      throwWithStatus(400, 'The selected service is inactive');
-    }
-
-    if (service.category !== input.service_category) {
-      throwWithStatus(
-        400,
-        'service_category does not match the selected service'
-      );
-    }
-
-    if (!petAssessed && service.requires_assessed_pet) {
-      throwWithStatus(
-        403,
-        'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking this service'
-      );
-    }
-
-    basePrice = resolveServicePrice(service, pet as PetRow);
-  } else {
-    if (!petAssessed) {
-      throwWithStatus(
-        403,
-        'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking a package'
-      );
-    }
-
-    const pkg = await getPackageById(input.package_id!);
-
-    if (!pkg.is_active) {
-      throwWithStatus(400, 'The selected package is inactive');
-    }
-
-    if (pkg.branch_id !== input.branch_id) {
-      throwWithStatus(400, 'The selected package belongs to another branch');
-    }
-
-    basePrice = Number(pkg.bundled_price);
-  }
-
-  const addons = await resolveAddons(
-    input.addon_service_ids,
-    input.service_category
+  // Pricing snapshot from Epic A's catalog (services/packages lookups #40/#41),
+  // one row per selected item (multi-item bookings revision).
+  const resolvedItems = await resolveBookingItems(
+    input.items,
+    pet as PetRow,
+    petAssessed,
+    input.service_category,
+    input.branch_id,
+    input.scheduled_start,
+    input.scheduled_end
   );
 
-  const totalPrice =
-    basePrice + addons.reduce((sum, addon) => sum + addon.price_at_booking, 0);
+  const totalPrice = resolvedItems.reduce(
+    (sum, item) => sum + item.price_at_booking,
+    0
+  );
 
   const downpaymentAmount =
     input.service_category === 'Hotel'
       ? Math.round(totalPrice * HOTEL_DOWNPAYMENT_RATE * 100) / 100
       : null;
+
+  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
+    await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
 
   // Booking-status revision: there is no more payment gate on the initial
   // status - every booking starts 'Pending' and holds its capacity/staff-
@@ -381,8 +681,6 @@ export async function createBooking({
       branch_id: input.branch_id,
       created_by_staff_id: createdByStaffId,
       service_category: input.service_category,
-      service_id: input.service_id ?? null,
-      package_id: input.package_id ?? null,
       scheduled_start: input.scheduled_start,
       scheduled_end: input.scheduled_end,
       assigned_staff_id: staffResolution.assignedStaffId,
@@ -391,6 +689,10 @@ export async function createBooking({
       downpayment_amount: downpaymentAmount,
       payment_method: input.payment_method ?? null,
       payment_confirmed: paymentConfirmed,
+      selected_discount_id: selectedDiscountId,
+      selected_promo_id: selectedPromoId,
+      discount_amount: discountAmount,
+      promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
       hotel_preferences: input.hotel_preferences ?? null,
     })
@@ -403,18 +705,16 @@ export async function createBooking({
 
   const booking = inserted as Booking;
 
-  if (addons.length > 0) {
-    const { error: addonError } = await supabase.from('booking_addons').insert(
-      addons.map((addon) => ({
-        booking_id: booking.id,
-        ...addon,
-      }))
-    );
+  const { error: itemsError } = await supabase.from('booking_items').insert(
+    resolvedItems.map((item) => ({
+      booking_id: booking.id,
+      ...item,
+    }))
+  );
 
-    if (addonError) {
-      await supabase.from('bookings').delete().eq('id', booking.id);
-      throwWithStatus(400, addonError.message);
-    }
+  if (itemsError) {
+    await supabase.from('bookings').delete().eq('id', booking.id);
+    throwWithStatus(400, itemsError.message);
   }
 
   if (staffResolution.preferenceType) {
@@ -722,6 +1022,49 @@ export async function markBookingPaid({
   return updateBookingRow(bookingId, {
     status: 'Paid',
     paid_at: now,
+    updated_at: now,
+  });
+}
+
+interface OverrideStatusParams {
+  bookingId: string;
+  status: (typeof OVERRIDABLE_BOOKING_STATUSES)[number];
+}
+
+/**
+ * Admin/Superadmin-only direct status set, forward OR backward - e.g.
+ * undoing an accidental Mark as Paid back to Completed. Route-gated to
+ * BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this function trusts
+ * that gate and only reshapes the row itself. Unlike start/complete/
+ * markBookingPaid, this never rejects based on the booking's current
+ * status - any of the four overridable statuses can move to any other.
+ *
+ * Timestamps are filled the first time a status is reached and preserved on
+ * a later revisit (so reverting Paid -> Completed -> Paid again doesn't
+ * fabricate a new completed_at), but cleared once no longer applicable (so
+ * reverting to In Progress drops a stale completed_at/paid_at that would
+ * otherwise misrepresent "already completed").
+ */
+export async function overrideBookingStatus({
+  bookingId,
+  status,
+}: OverrideStatusParams): Promise<Booking> {
+  const booking = await getRawBookingById(bookingId);
+  const now = new Date().toISOString();
+
+  const startedAt =
+    status === 'Pending' ? null : (booking.started_at ?? now);
+  const completedAt =
+    status === 'Completed' || status === 'Paid'
+      ? (booking.completed_at ?? now)
+      : null;
+  const paidAt = status === 'Paid' ? (booking.paid_at ?? now) : null;
+
+  return updateBookingRow(bookingId, {
+    status,
+    started_at: startedAt,
+    completed_at: completedAt,
+    paid_at: paidAt,
     updated_at: now,
   });
 }

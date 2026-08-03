@@ -2,22 +2,24 @@ import { describe, expect, it } from 'vitest';
 import {
   cancelBookingValidator,
   createBookingValidator,
+  overrideBookingStatusValidator,
   rescheduleBookingValidator,
   staffPreferenceValidator,
   updatePolicyValidator,
 } from './booking.validator.ts';
 
+const SERVICE_ID = '33333333-3333-4333-a333-333333333333';
+const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
+const STAFF_ID = '55555555-5555-4555-a555-555555555555';
+
 const BASE_BOOKING = {
   pet_id: '11111111-1111-4111-a111-111111111111',
   branch_id: '22222222-2222-4222-a222-222222222222',
   service_category: 'Grooming' as const,
-  service_id: '33333333-3333-4333-a333-333333333333',
+  items: [{ service_id: SERVICE_ID }],
   scheduled_start: '2026-08-03T01:00:00+00:00',
   scheduled_end: '2026-08-03T02:00:00+00:00',
 };
-
-const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
-const STAFF_ID = '55555555-5555-4555-a555-555555555555';
 
 describe('createBookingValidator', () => {
   it('accepts a service-only booking payload', () => {
@@ -25,27 +27,59 @@ describe('createBookingValidator', () => {
   });
 
   it('accepts a package-only booking payload', () => {
-    const { service_id: _serviceId, ...rest } = BASE_BOOKING;
-
-    expect(
-      createBookingValidator.safeParse({ ...rest, package_id: PACKAGE_ID })
-        .success
-    ).toBe(true);
-  });
-
-  it('rejects a payload with BOTH service_id and package_id (exactly-one rule)', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
-        package_id: PACKAGE_ID,
+        items: [{ package_id: PACKAGE_ID }],
+      }).success
+    ).toBe(true);
+  });
+
+  it('accepts multiple services and packages in one booking', () => {
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        items: [
+          { service_id: SERVICE_ID },
+          { package_id: PACKAGE_ID },
+        ],
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a payload where one item has BOTH service_id and package_id', () => {
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        items: [{ service_id: SERVICE_ID, package_id: PACKAGE_ID }],
       }).success
     ).toBe(false);
   });
 
-  it('rejects a payload with NEITHER service_id nor package_id', () => {
-    const { service_id: _serviceId, ...rest } = BASE_BOOKING;
+  it('rejects a payload with an empty items array', () => {
+    expect(
+      createBookingValidator.safeParse({ ...BASE_BOOKING, items: [] }).success
+    ).toBe(false);
+  });
 
-    expect(createBookingValidator.safeParse(rest).success).toBe(false);
+  it('rejects duplicate items (the same service twice)', () => {
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        items: [{ service_id: SERVICE_ID }, { service_id: SERVICE_ID }],
+      }).success
+    ).toBe(false);
+  });
+
+  it('accepts an optional discount_id and promo_id', () => {
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        payment_method: 'Cash',
+        discount_id: '66666666-6666-4666-a666-666666666666',
+        promo_id: '77777777-7777-4777-a777-777777777777',
+      }).success
+    ).toBe(true);
   });
 
   it('rejects scheduled_end at or before scheduled_start', () => {
@@ -252,5 +286,33 @@ describe('updatePolicyValidator', () => {
         notice_enforcement_mode: 'Soft',
       }).success
     ).toBe(true);
+  });
+});
+
+describe('overrideBookingStatusValidator', () => {
+  it('accepts each overridable status', () => {
+    for (const status of ['Pending', 'In Progress', 'Completed', 'Paid']) {
+      expect(
+        overrideBookingStatusValidator.safeParse({ status }).success
+      ).toBe(true);
+    }
+  });
+
+  it('rejects Cancelled/No-show - those keep their own dedicated flows', () => {
+    expect(
+      overrideBookingStatusValidator.safeParse({ status: 'Cancelled' }).success
+    ).toBe(false);
+    expect(
+      overrideBookingStatusValidator.safeParse({ status: 'No-show' }).success
+    ).toBe(false);
+  });
+
+  it('rejects unknown fields (.strict)', () => {
+    expect(
+      overrideBookingStatusValidator.safeParse({
+        status: 'Paid',
+        paid_at: '2026-01-01T00:00:00Z',
+      }).success
+    ).toBe(false);
   });
 });

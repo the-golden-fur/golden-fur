@@ -1,15 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   completeBooking,
   createBooking,
   listBookings,
   markBookingPaid,
+  overrideBookingStatus,
   startBooking,
 } from './booking.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
+import { getPromoById } from '../../maintenance/services/promos.service.ts';
+import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -25,6 +28,14 @@ vi.mock('../../maintenance/services/services.service.ts', () => ({
 
 vi.mock('../../maintenance/services/packages.service.ts', () => ({
   getPackageById: vi.fn(),
+}));
+
+vi.mock('../../maintenance/services/promos.service.ts', () => ({
+  getPromoById: vi.fn(),
+}));
+
+vi.mock('../../discounts/services/discounts.service.ts', () => ({
+  getDiscountById: vi.fn(),
 }));
 
 interface QueryResult {
@@ -132,6 +143,16 @@ const DAYCARE_SERVICE = {
   service_pricing_tiers: [],
 } as never;
 
+const HOTEL_SERVICE = {
+  id: 'service-hotel',
+  category: 'Hotel',
+  name: 'Hotel Stay - Small Cage',
+  base_price: 800,
+  duration_minutes: 1440,
+  is_active: true,
+  service_pricing_tiers: [],
+} as never;
+
 const VET_SERVICE = {
   id: 'service-vet',
   category: 'Veterinary',
@@ -151,7 +172,7 @@ const BASE_INPUT = {
   pet_id: PET.id,
   branch_id: 'branch-1',
   service_category: 'Grooming' as const,
-  service_id: 'service-groom',
+  items: [{ service_id: 'service-groom' }],
   scheduled_start: '2026-08-03T01:00:00+00:00',
   scheduled_end: '2026-08-03T02:00:00+00:00',
 };
@@ -187,6 +208,7 @@ describe('booking.service (#51)', () => {
       { data: PET, error: null }, // pet ownership
       { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // bookings insert
+      { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
       { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
       { data: INSERTED_BOOKING, error: null } // final fetch
@@ -220,6 +242,7 @@ describe('booking.service (#51)', () => {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
         error: null,
       }, // insert
+      { data: null, error: null }, // booking_items insert
       {
         data: [
           {
@@ -241,7 +264,7 @@ describe('booking.service (#51)', () => {
       input: {
         ...BASE_INPUT,
         service_category: 'Daycare',
-        service_id: 'service-daycare',
+        items: [{ service_id: 'service-daycare' }],
         payment_confirmed: false,
         payment_method: 'Cash',
       },
@@ -267,6 +290,7 @@ describe('booking.service (#51)', () => {
         data: { ...INSERTED_BOOKING, service_category: 'Veterinary' },
         error: null,
       }, // insert
+      { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // preference insert
       { data: [{ id: 'booking-1' }], error: null }, // re-count winner
       { data: INSERTED_BOOKING, error: null } // final fetch
@@ -277,7 +301,7 @@ describe('booking.service (#51)', () => {
       input: {
         ...BASE_INPUT,
         service_category: 'Veterinary',
-        service_id: 'service-vet',
+        items: [{ service_id: 'service-vet' }],
         branch_id: 'branch-makati',
         // no payment_confirmed at all
       },
@@ -309,7 +333,7 @@ describe('booking.service (#51)', () => {
         input: {
           ...BASE_INPUT,
           service_category: 'Veterinary',
-          service_id: 'service-vet',
+          items: [{ service_id: 'service-vet' }],
           branch_id: 'branch-south',
         },
       })
@@ -352,7 +376,7 @@ describe('booking.service (#51)', () => {
             pet_id: UNASSESSED_PET.id,
             branch_id: 'branch-1',
             service_category: 'Daycare',
-            package_id: 'package-1',
+            items: [{ package_id: 'package-1' }],
             scheduled_start: BASE_INPUT.scheduled_start,
             scheduled_end: BASE_INPUT.scheduled_end,
           },
@@ -371,6 +395,7 @@ describe('booking.service (#51)', () => {
           data: { ...INSERTED_BOOKING, id: 'booking-4', total_price: 0 },
           error: null,
         }, // insert
+        { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // preference insert
         { data: [{ id: 'booking-4' }], error: null }, // re-count winner
         { data: INSERTED_BOOKING, error: null } // final fetch
@@ -381,7 +406,7 @@ describe('booking.service (#51)', () => {
         input: {
           ...BASE_INPUT,
           pet_id: UNASSESSED_PET.id,
-          service_id: ASSESSMENT_SERVICE.id,
+          items: [{ service_id: ASSESSMENT_SERVICE.id }],
         },
       });
 
@@ -400,6 +425,7 @@ describe('booking.service (#51)', () => {
       { data: PET, error: null }, // pet ownership
       { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // insert
+      { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // preference insert
       {
         data: [{ id: 'booking-racer' }, { id: 'booking-1' }],
@@ -475,6 +501,7 @@ describe('booking.service (#51)', () => {
         },
         error: null,
       }, // insert
+      { data: null, error: null }, // booking_items insert
       { data: [{ id: 'booking-3' }], error: null }, // re-count winner
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
@@ -485,7 +512,7 @@ describe('booking.service (#51)', () => {
         pet_id: PET.id,
         branch_id: 'branch-1',
         service_category: 'Daycare',
-        package_id: 'package-1',
+        items: [{ package_id: 'package-1' }],
         scheduled_start: BASE_INPUT.scheduled_start,
         scheduled_end: BASE_INPUT.scheduled_end,
         payment_confirmed: true,
@@ -496,11 +523,15 @@ describe('booking.service (#51)', () => {
       (write) => write.table === 'bookings' && write.method === 'insert'
     );
 
-    expect(insert?.payload).toMatchObject({
-      package_id: 'package-1',
-      service_id: null,
-      total_price: 999,
-    });
+    expect(insert?.payload).toMatchObject({ total_price: 999 });
+
+    const itemsInsert = recordedWrites.find(
+      (write) => write.table === 'booking_items' && write.method === 'insert'
+    );
+
+    expect(itemsInsert?.payload).toMatchObject([
+      { package_id: 'package-1', service_id: null, price_at_booking: 999 },
+    ]);
   });
 
   describe('listBookings (#59/#60 supporting infra)', () => {
@@ -769,6 +800,340 @@ describe('booking.service (#51)', () => {
       await expect(
         markBookingPaid({ bookingId: 'booking-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+  });
+
+  describe('overrideBookingStatus (Admin/Superadmin revert-capable dropdown)', () => {
+    it('reverts Paid -> Completed and clears paid_at', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Paid',
+            started_at: '2026-08-01T00:00:00Z',
+            completed_at: '2026-08-01T01:00:00Z',
+            paid_at: '2026-08-01T01:05:00Z',
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
+      );
+
+      const booking = await overrideBookingStatus({
+        bookingId: 'booking-1',
+        status: 'Completed',
+      });
+
+      expect(booking.status).toBe('Completed');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({
+        status: 'Completed',
+        // The original completed_at is preserved, not overwritten.
+        completed_at: '2026-08-01T01:00:00Z',
+        paid_at: null,
+      });
+    });
+
+    it('advances Pending directly to Paid, filling every timestamp at once', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Pending',
+            started_at: null,
+            completed_at: null,
+            paid_at: null,
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
+      );
+
+      await overrideBookingStatus({ bookingId: 'booking-1', status: 'Paid' });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+      const payload = update?.payload as {
+        status: string;
+        started_at: string | null;
+        completed_at: string | null;
+        paid_at: string | null;
+      };
+      expect(payload.status).toBe('Paid');
+      expect(payload.started_at).toBeTruthy();
+      expect(payload.completed_at).toBeTruthy();
+      expect(payload.paid_at).toBeTruthy();
+    });
+
+    it('reverts all the way back to Pending, clearing every downstream timestamp', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Paid',
+            started_at: '2026-08-01T00:00:00Z',
+            completed_at: '2026-08-01T01:00:00Z',
+            paid_at: '2026-08-01T01:05:00Z',
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Pending' }, error: null } // update
+      );
+
+      await overrideBookingStatus({ bookingId: 'booking-1', status: 'Pending' });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({
+        status: 'Pending',
+        started_at: null,
+        completed_at: null,
+        paid_at: null,
+      });
+    });
+  });
+
+  describe('discount/promo application at booking creation', () => {
+    const DAYCARE_DISCOUNT = {
+      id: 'discount-1',
+      branch_id: 'branch-1',
+      name: 'Custom Daycare Discount',
+      is_mandated: false,
+      discount_type: 'Flat',
+      value: 50,
+      scope_type: 'service',
+      scope_service_id: 'service-daycare',
+      scope_package_id: null,
+      scope_category: null,
+      is_active: true,
+    } as never;
+
+    const ALL_SERVICES_PROMO = {
+      id: 'promo-1',
+      name: 'Everything 10% off',
+      start_date: null,
+      end_date: null,
+      discount_type: 'Percentage',
+      value: 10,
+      scope_type: 'all_services',
+      branch_scope: 'both',
+      is_active: true,
+      promo_scope: [],
+    } as never;
+
+    it('applies a Cash discount for a money-handling staff role', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getDiscountById).mockResolvedValue(DAYCARE_DISCOUNT);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [], error: null }, // daycare overlap - empty
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: 'cashier-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Daycare',
+          items: [{ service_id: 'service-daycare' }],
+          payment_method: 'Cash',
+          discount_id: 'discount-1',
+        },
+      });
+
+      expect(getDiscountById).toHaveBeenCalledWith('discount-1');
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        selected_discount_id: 'discount-1',
+        discount_amount: 50,
+      });
+    });
+
+    it('rejects a discount when the payment method is not Cash', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: 'cashier-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            payment_method: 'GCash',
+            discount_id: 'discount-1',
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('Cash'),
+      });
+
+      expect(getDiscountById).not.toHaveBeenCalled();
+    });
+
+    it('rejects a discount when the requester is not a money-handling staff role', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Groomer');
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: 'groomer-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            payment_method: 'Cash',
+            discount_id: 'discount-1',
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(getDiscountById).not.toHaveBeenCalled();
+    });
+
+    it('applies a promo regardless of role or payment method, capped by promo_cap_configuration', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getPromoById).mockResolvedValue(ALL_SERVICES_PROMO);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null); // a customer, not staff
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo_cap_configuration (branch row)
+        { data: [], error: null }, // daycare overlap - empty
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          service_category: 'Daycare',
+          items: [{ service_id: 'service-daycare' }],
+          promo_id: 'promo-1',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        selected_promo_id: 'promo-1',
+        promo_amount: 10, // 10% of the 100 daycare service price
+      });
+    });
+
+    it('rejects a promo whose scope does not match the selected items', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getPromoById).mockResolvedValue({
+        ...ALL_SERVICES_PROMO,
+        scope_type: 'specific',
+        promo_scope: [
+          { id: 'scope-1', promo_id: 'promo-1', service_id: 'other-service', package_id: null },
+        ],
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            promo_id: 'promo-1',
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  describe('Hotel nights pricing', () => {
+    const ORIGINAL_ENV = process.env.HOTEL_CAGE_CAPACITY;
+
+    beforeEach(() => {
+      // Bypasses the real cages-table count query (Sprint 4/M05 scope) -
+      // capacity.service.ts's own documented override.
+      process.env.HOTEL_CAGE_CAPACITY = '{"S":10,"M":8,"L":6,"XL":4}';
+    });
+
+    afterEach(() => {
+      if (ORIGINAL_ENV === undefined) delete process.env.HOTEL_CAGE_CAPACITY;
+      else process.env.HOTEL_CAGE_CAPACITY = ORIGINAL_ENV;
+    });
+
+    it('prices a 3-night stay at base_price x 3, not a flat one-time fee', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [], error: null }, // Hotel overlap - empty (filterSameSizeRows then short-circuits, no query)
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: '2026-08-03T01:00:00+00:00',
+          // 3 nights (3 x 1440 minutes) after scheduled_start.
+          scheduled_end: '2026-08-06T01:00:00+00:00',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ total_price: 2400 });
+
+      const itemsInsert = recordedWrites.find(
+        (write) => write.table === 'booking_items' && write.method === 'insert'
+      );
+      expect(itemsInsert?.payload).toMatchObject([
+        { service_id: 'service-hotel', price_at_booking: 2400 },
+      ]);
+    });
+
+    it('prices a 1-night stay at the flat base_price (quantity of 1)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: '2026-08-03T01:00:00+00:00',
+          scheduled_end: '2026-08-04T01:00:00+00:00',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ total_price: 800 });
     });
   });
 });

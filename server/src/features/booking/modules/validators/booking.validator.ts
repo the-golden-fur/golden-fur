@@ -1,7 +1,17 @@
 import { z } from 'zod';
-import { BOOKING_STATUSES, PAYMENT_METHODS } from '../../booking.types.ts';
+import {
+  BOOKING_STATUSES,
+  OVERRIDABLE_BOOKING_STATUSES,
+  PAYMENT_METHODS,
+} from '../../booking.types.ts';
 
-const CATEGORIES = ['Grooming', 'Hotel', 'Daycare', 'Veterinary'] as const;
+const CATEGORIES = [
+  'Grooming',
+  'Hotel',
+  'Daycare',
+  'Veterinary',
+  'Misc',
+] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 
@@ -32,17 +42,34 @@ export const staffPreferenceValidator = z
     }
   });
 
-function requireExactlyOneTarget(
-  input: { service_id?: string; package_id?: string },
+/** Each selected item is exactly one of a service or a package (mirrors
+ * booking_items' own CHECK constraint), and a booking must select at least
+ * one item overall - multi-item bookings revision, replacing the old
+ * exactly-one-of-service_id/package_id-on-the-booking-itself rule. */
+const bookingItemValidator = z.union([
+  z.object({ service_id: z.uuid() }).strict(),
+  z.object({ package_id: z.uuid() }).strict(),
+]);
+
+function requireNoDuplicateItems(
+  input: { items: Array<{ service_id: string } | { package_id: string }> },
   ctx: z.RefinementCtx
 ) {
-  // Exactly one of service_id/package_id (#50 AC-4) - same rule the bookings
-  // CHECK constraint enforces in SQL; rejected here first for a clear 400.
-  if (Boolean(input.service_id) === Boolean(input.package_id)) {
+  const serviceIds = input.items
+    .filter((item): item is { service_id: string } => 'service_id' in item)
+    .map((item) => item.service_id);
+  const packageIds = input.items
+    .filter((item): item is { package_id: string } => 'package_id' in item)
+    .map((item) => item.package_id);
+
+  if (
+    new Set(serviceIds).size !== serviceIds.length ||
+    new Set(packageIds).size !== packageIds.length
+  ) {
     ctx.addIssue({
       code: 'custom',
-      path: ['service_id'],
-      message: 'Exactly one of service_id or package_id must be provided',
+      path: ['items'],
+      message: 'Duplicate services or packages are not allowed in one booking',
     });
   }
 }
@@ -123,20 +150,27 @@ export const createBookingValidator = z
     pet_id: z.uuid(),
     branch_id: z.uuid(),
     service_category: z.enum(CATEGORIES),
-    service_id: z.uuid().optional(),
-    package_id: z.uuid().optional(),
+    items: z
+      .array(bookingItemValidator)
+      .min(1, 'At least one service or package must be selected'),
     scheduled_start: isoDatetime,
     scheduled_end: isoDatetime,
-    addon_service_ids: z.array(z.uuid()).optional(),
     staff_preference: staffPreferenceValidator.optional(),
     payment_method: z.enum(PAYMENT_METHODS).optional(),
     payment_confirmed: z.boolean().optional(),
     special_instructions: z.string().trim().min(1).optional(),
     hotel_preferences: hotelPreferencesValidator.optional(),
+    // Role (money-handling staff only) and Cash-only enforcement happen in
+    // booking.service.ts, where the requester's staff role is known - the
+    // validator only shapes the field.
+    discount_id: z.uuid().optional(),
+    // Open to customers too (no role gate) - a promo is a self-service
+    // discount, unlike a discount row which needs staff to verify an ID.
+    promo_id: z.uuid().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
-    requireExactlyOneTarget(input, ctx);
+    requireNoDuplicateItems(input, ctx);
     requireEndAfterStart(input, ctx);
 
     if (input.hotel_preferences && input.service_category !== 'Hotel') {
@@ -242,6 +276,14 @@ export const listBookingsQueryValidator = z.object({
   status: z.enum(BOOKING_STATUSES).optional(),
 });
 
+/** Admin/Superadmin-only direct status set (forward or backward) - see
+ * BOOKING_STATUS_OVERRIDE_ROLES/overrideBookingStatus in booking.service.ts. */
+export const overrideBookingStatusValidator = z
+  .object({
+    status: z.enum(OVERRIDABLE_BOOKING_STATUSES),
+  })
+  .strict();
+
 export type CreateBookingInput = z.infer<typeof createBookingValidator>;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
@@ -250,3 +292,6 @@ export type StaffPickerQueryInput = z.infer<typeof staffPickerQueryValidator>;
 export type AvailabilityQueryInput = z.infer<typeof availabilityQueryValidator>;
 export type CatalogQueryInput = z.infer<typeof catalogQueryValidator>;
 export type ListBookingsQueryInput = z.infer<typeof listBookingsQueryValidator>;
+export type OverrideBookingStatusInput = z.infer<
+  typeof overrideBookingStatusValidator
+>;

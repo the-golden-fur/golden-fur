@@ -20,12 +20,14 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
-/** Start/Complete: any staff role - whoever is physically doing the work
- * (Groomer, Veterinarian, Receptionist checking a pet in, etc.) should be
- * able to advance a booking regardless of category, mirroring
- * BOOKING_POLICY_READ_ROLES' "all staff" set. */
+/** Start/Complete: any staff role EXCEPT Cashier - whoever is physically
+ * doing the work (Groomer, Veterinarian, Receptionist checking a pet in,
+ * etc.) should be able to advance a booking regardless of category, mirroring
+ * BOOKING_POLICY_READ_ROLES' "all staff" set. Cashier is carved out: they
+ * only ever handle payment collection (Mark as Paid below), never the
+ * service lifecycle itself. */
 export const BOOKING_STATUS_ADVANCE_ROLES: readonly string[] =
-  BOOKING_POLICY_READ_ROLES;
+  BOOKING_POLICY_READ_ROLES.filter((role) => role !== 'Cashier');
 
 /** Mark as Paid: money-handling roles only - excludes Groomer/Veterinarian/
  * Pet Assistant, who advance Start/Complete but never touch payment. */
@@ -37,7 +39,35 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Cashier',
 ];
 
-export type ServiceCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+/** Direct status override (forward OR backward - e.g. undoing an accidental
+ * Mark as Paid) - Admin/Superadmin only, replacing their Start/Complete/Mark
+ * as Paid buttons with a single status dropdown in the queue. Everyone else
+ * keeps the one-directional Start/Complete/Mark-as-Paid actions above. */
+export const BOOKING_STATUS_OVERRIDE_ROLES: readonly string[] = [
+  'Superadmin',
+  'Admin',
+];
+
+/** The statuses reachable from the override dropdown - excludes
+ * Cancelled/No-show, which keep their own dedicated flows (a cancellation
+ * reason, the lazy no-show transition) rather than becoming a bare status
+ * flip. */
+export const OVERRIDABLE_BOOKING_STATUSES = [
+  'Pending',
+  'In Progress',
+  'Completed',
+  'Paid',
+] as const;
+
+/** Misc: administrative bookings (Initial Assessment/Reassessment) with no
+ * staff-assignment or capacity contention - falls through both checks in
+ * booking.service.ts automatically since neither is keyed on this value. */
+export type ServiceCategory =
+  | 'Grooming'
+  | 'Hotel'
+  | 'Daycare'
+  | 'Veterinary'
+  | 'Misc';
 
 /**
  * Unified booking lifecycle (booking-status revision): no manual "staff
@@ -169,8 +199,6 @@ export interface Booking {
   branch_id: string;
   created_by_staff_id: string | null;
   service_category: ServiceCategory;
-  service_id: string | null;
-  package_id: string | null;
   scheduled_start: string;
   scheduled_end: string;
   assigned_staff_id: string | null;
@@ -179,6 +207,13 @@ export interface Booking {
   downpayment_amount: number | null;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
+  /** Selected at booking creation (staff-only, Cash-only) rather than
+   * auto-evaluated at checkout - see resolveDiscountAndPromo in
+   * booking.service.ts. discount_amount/promo_amount are 0 when unset. */
+  selected_discount_id: string | null;
+  selected_promo_id: string | null;
+  discount_amount: number;
+  promo_amount: number;
   special_instructions: string | null;
   hotel_preferences: HotelBookingPreferences | null;
   started_at: string | null;
@@ -189,15 +224,17 @@ export interface Booking {
   reschedule_count: number;
   created_at: string;
   updated_at: string;
-  booking_addons?: BookingAddon[];
+  booking_items?: BookingItem[];
   staff_picker_preferences?: StaffPickerPreference[];
 }
 
-export interface BookingAddon {
+export interface BookingItem {
   id: string;
   booking_id: string;
-  service_id: string;
+  service_id: string | null;
+  package_id: string | null;
   price_at_booking: number;
+  duration_minutes_at_booking: number;
 }
 
 export interface StaffPickerPreference {

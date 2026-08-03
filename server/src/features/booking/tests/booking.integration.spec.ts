@@ -95,7 +95,7 @@ const CREATE_PAYLOAD = {
   pet_id: '11111111-1111-4111-a111-111111111111',
   branch_id: '22222222-2222-4222-a222-222222222222',
   service_category: 'Daycare',
-  service_id: DAYCARE_SERVICE.id,
+  items: [{ service_id: DAYCARE_SERVICE.id }],
   scheduled_start: '2026-08-03T01:00:00+00:00',
   scheduled_end: '2026-08-03T02:00:00+00:00',
   payment_method: 'Cash',
@@ -164,6 +164,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
       { data: [], error: null }, // pre-insert daycare capacity overlap - empty
       { data: PENDING_BOOKING, error: null }, // insert
+      { data: null, error: null }, // booking_items insert
       {
         data: [
           {
@@ -209,7 +210,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('#51: rejects a payload with both service_id and package_id at the validator', async () => {
+  it('#51: rejects a payload with both service_id and package_id on the same item', async () => {
     mockCaller(CUSTOMER_ID);
 
     const res = await request(app)
@@ -217,8 +218,25 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       .set('Authorization', 'Bearer token')
       .send({
         ...CREATE_PAYLOAD,
-        package_id: '44444444-4444-4444-a444-444444444444',
+        items: [
+          {
+            service_id: DAYCARE_SERVICE.id,
+            package_id: '44444444-4444-4444-a444-444444444444',
+          },
+        ],
       });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid payload');
+  });
+
+  it('#51: rejects a payload with no items at all', async () => {
+    mockCaller(CUSTOMER_ID);
+
+    const res = await request(app)
+      .post('/bookings')
+      .set('Authorization', 'Bearer token')
+      .send({ ...CREATE_PAYLOAD, items: [] });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Invalid payload');
