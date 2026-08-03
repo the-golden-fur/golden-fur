@@ -38,4 +38,7 @@ export interface ProductCatalogItem {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Null = staff/global catalog entry; set = one customer's own private
+   * food/medication type (#22). */
+  owner_customer_id: string | null;
 }
