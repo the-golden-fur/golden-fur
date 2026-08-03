@@ -48,8 +48,6 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     branch_id: 'branch-1',
     created_by_staff_id: null,
     service_category: 'Hotel',
-    service_id: 'svc-1',
-    package_id: null,
     scheduled_start: '2026-07-27T01:00:00.000Z',
     scheduled_end: '2026-07-28T01:00:00.000Z',
     assigned_staff_id: null,
@@ -64,6 +62,9 @@ function booking(overrides: Partial<Booking> = {}): Booking {
     reschedule_count: 0,
     created_at: '2026-07-27T00:00:00.000Z',
     updated_at: '2026-07-27T00:00:00.000Z',
+    booking_items: [
+      { id: 'item-1', booking_id: 'booking-1', service_id: 'svc-1', package_id: null, price_at_booking: 500, duration_minutes_at_booking: 1440 },
+    ],
     ...overrides,
   };
 }

@@ -226,7 +226,9 @@ export function HotelBookingPicker({
       bookings.map((booking) => {
         const pet = pets[booking.pet_id];
         const owner = owners[booking.customer_id];
-        const serviceId = booking.service_id ?? booking.package_id ?? null;
+        const itemNames = (booking.booking_items ?? [])
+          .map((item) => serviceNames[item.service_id ?? item.package_id ?? ''])
+          .filter((name): name is string => Boolean(name));
 
         return {
           booking,
@@ -234,9 +236,8 @@ export function HotelBookingPicker({
           weightClass: pet?.weight_class ?? '—',
           ownerName: owner?.full_name ?? 'Unknown owner',
           ownerContact: owner?.contact_number ?? owner?.account_email ?? '—',
-          serviceLabel: serviceId
-            ? (serviceNames[serviceId] ?? 'Hotel stay')
-            : 'Hotel stay',
+          serviceLabel:
+            itemNames.length > 0 ? itemNames.join(', ') : 'Hotel stay',
           existingStayId: stayByBookingId[booking.id] ?? null,
         };
       }),

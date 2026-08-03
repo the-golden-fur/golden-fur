@@ -14,8 +14,6 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     branch_id: 'branch-a',
     created_by_staff_id: null,
     service_category: 'Grooming',
-    service_id: 'service-1',
-    package_id: null,
     scheduled_start: '2026-07-19T02:00:00.000Z',
     scheduled_end: '2026-07-19T03:00:00.000Z',
     assigned_staff_id: 'groomer-1',
@@ -34,7 +32,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     reschedule_count: 0,
     created_at: '2026-07-18T00:00:00.000Z',
     updated_at: '2026-07-18T00:00:00.000Z',
-    booking_addons: [],
+    booking_items: [],
     ...overrides,
   };
 }
@@ -64,8 +62,7 @@ const baseProps = {
   breed: 'Golden Retriever',
   weightClass: 'M',
   coatType: 'LC',
-  serviceLabel: 'Full Groom Package',
-  addonLabels: ['Nail Trim'],
+  itemLabels: ['Full Groom Package', 'Nail Trim'],
   specialInstructions: 'Puppy cut',
   isAdvancing: false,
 };

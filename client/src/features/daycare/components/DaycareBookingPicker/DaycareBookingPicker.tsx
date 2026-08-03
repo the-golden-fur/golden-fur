@@ -155,14 +155,14 @@ export function DaycareBookingPicker({
     () =>
       bookings.map((booking) => {
         const pet = pets[booking.pet_id];
-        const serviceId = booking.service_id ?? booking.package_id ?? null;
+        const itemNames = (booking.booking_items ?? [])
+          .map((item) => serviceNames[item.service_id ?? item.package_id ?? ''])
+          .filter((name): name is string => Boolean(name));
 
         return {
           booking,
           petName: pet?.name ?? 'Unknown pet',
-          serviceLabel: serviceId
-            ? (serviceNames[serviceId] ?? 'Daycare')
-            : 'Daycare',
+          serviceLabel: itemNames.length > 0 ? itemNames.join(', ') : 'Daycare',
         };
       }),
     [bookings, pets, serviceNames]
