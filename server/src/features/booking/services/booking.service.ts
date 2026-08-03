@@ -8,7 +8,9 @@ import {
   BOOKING_MARK_PAID_ROLES,
   ONLINE_PAYMENT_METHODS,
   OVERRIDABLE_BOOKING_STATUSES,
+  OVERRIDABLE_PAYMENT_STAGES,
   type Booking,
+  type PaymentStage,
   type ServiceCategory,
 } from '../booking.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
@@ -799,6 +801,12 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: Booking['status'];
+  /** A staff UUID (exact match), or the sentinel 'unassigned' for
+   * assigned_staff_id IS NULL ("No preference" bookings that haven't been
+   * auto-assigned yet). Bookings Queue's own "assigned to me / no
+   * preference" filter - the client resolves "me" to the viewer's own id
+   * before sending it, this layer only ever sees a concrete value. */
+  assignedStaffId?: string;
 }
 
 interface ListBookingsParams {
@@ -835,6 +843,12 @@ export async function listBookings({
 
   if (filters.status) {
     query = query.eq('status', filters.status);
+  }
+
+  if (filters.assignedStaffId === 'unassigned') {
+    query = query.is('assigned_staff_id', null);
+  } else if (filters.assignedStaffId) {
+    query = query.eq('assigned_staff_id', filters.assignedStaffId);
   }
 
   if (filters.date) {
@@ -974,11 +988,12 @@ export async function startBooking({
 /**
  * Manual Complete action: In Progress -> Completed. When the booking was
  * already paid online (payment_method is GCash/Maya and payment_confirmed
- * is true), this skips straight to Paid instead of requiring a separate
- * Mark as Paid click - the money was already collected before the service
- * even started. Every pay-at-counter booking (Cash/Card/Bank Transfer/
- * Grabmart/Pickaroo, or an online booking that was never actually
- * confirmed) lands on Completed and waits for markBookingPaid.
+ * is true), payment_stage is also auto-advanced straight to 'Paid' here -
+ * the money was already collected before the service even started, so
+ * there's no separate "Mark as Paid" click to wait for. Every pay-at-counter
+ * booking (Cash/Card/Bank Transfer/Grabmart/Pickaroo, or an online booking
+ * that was never actually confirmed) lands on Completed with payment_stage
+ * left as-is, for a cashier to advance later via advancePaymentStage.
  */
 export async function completeBooking({
   bookingId,
@@ -990,42 +1005,15 @@ export async function completeBooking({
   }
 
   const now = new Date().toISOString();
-  const autoPaid =
+  const onlinePrepaid =
     booking.payment_method !== null &&
     booking.payment_confirmed &&
     ONLINE_PAYMENT_METHODS.includes(booking.payment_method);
 
   return updateBookingRow(bookingId, {
-    status: autoPaid ? 'Paid' : 'Completed',
+    status: 'Completed',
     completed_at: now,
-    paid_at: autoPaid ? now : null,
-    updated_at: now,
-  });
-}
-
-/**
- * Manual Mark as Paid action, for a pay-at-counter booking (Cash/Card/Bank
- * Transfer/Grabmart/Pickaroo, or Veterinary, which never has an upfront
- * payment gate at all) - completeBooking already promoted an
- * already-confirmed online payment straight to Paid, so this is only
- * reachable from Completed.
- */
-export async function markBookingPaid({
-  bookingId,
-}: AdvanceStatusParams): Promise<Booking> {
-  const booking = await getRawBookingById(bookingId);
-
-  if (booking.status !== 'Completed') {
-    throwWithStatus(
-      409,
-      `A ${booking.status} booking cannot be marked paid - it must be Completed first`
-    );
-  }
-
-  const now = new Date().toISOString();
-  return updateBookingRow(bookingId, {
-    status: 'Paid',
-    paid_at: now,
+    ...(onlinePrepaid ? { payment_stage: 'Paid', paid_at: now } : {}),
     updated_at: now,
   });
 }
@@ -1037,17 +1025,19 @@ interface OverrideStatusParams {
 
 /**
  * Admin/Superadmin-only direct status set, forward OR backward - e.g.
- * undoing an accidental Mark as Paid back to Completed. Route-gated to
+ * undoing an accidental Complete back to In Progress. Route-gated to
  * BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this function trusts
- * that gate and only reshapes the row itself. Unlike start/complete/
- * markBookingPaid, this never rejects based on the booking's current
- * status - any of the four overridable statuses can move to any other.
+ * that gate and only reshapes the row itself. Unlike start/complete, this
+ * never rejects based on the booking's current status - any of the three
+ * overridable statuses can move to any other. Doesn't touch payment_stage
+ * or paid_at at all - those move independently via
+ * advancePaymentStage/overridePaymentStage now.
  *
- * Timestamps are filled the first time a status is reached and preserved on
- * a later revisit (so reverting Paid -> Completed -> Paid again doesn't
- * fabricate a new completed_at), but cleared once no longer applicable (so
- * reverting to In Progress drops a stale completed_at/paid_at that would
- * otherwise misrepresent "already completed").
+ * started_at/completed_at are filled the first time a status is reached and
+ * preserved on a later revisit (so reverting Completed -> In Progress ->
+ * Completed again doesn't fabricate a new completed_at), but cleared once no
+ * longer applicable (so reverting to In Progress drops a stale completed_at
+ * that would otherwise misrepresent "already completed").
  */
 export async function overrideBookingStatus({
   bookingId,
@@ -1058,16 +1048,77 @@ export async function overrideBookingStatus({
 
   const startedAt = status === 'Pending' ? null : (booking.started_at ?? now);
   const completedAt =
-    status === 'Completed' || status === 'Paid'
-      ? (booking.completed_at ?? now)
-      : null;
-  const paidAt = status === 'Paid' ? (booking.paid_at ?? now) : null;
+    status === 'Completed' ? (booking.completed_at ?? now) : null;
 
   return updateBookingRow(bookingId, {
     status,
     started_at: startedAt,
     completed_at: completedAt,
-    paid_at: paidAt,
     updated_at: now,
+  });
+}
+
+interface AdvancePaymentStageParams {
+  bookingId: string;
+  choice?: 'advance' | 'onsite';
+}
+
+/**
+ * Manual "Advance" action for the payment_stage track - independent of
+ * `status`'s own Pending -> In Progress -> Completed -> Paid lifecycle (see
+ * PaymentStage's dev note in booking.types.ts). From Unpaid, the caller must
+ * say whether this is an advance payment (money collected before the
+ * service happens - moves to 'Paid in Advance') or a normal onsite payment
+ * (collected once, in full - moves straight to 'Paid'). From 'Paid in
+ * Advance', the only next step is settling the remaining balance, so no
+ * choice is needed - it always advances straight to 'Paid'.
+ */
+export async function advancePaymentStage({
+  bookingId,
+  choice,
+}: AdvancePaymentStageParams): Promise<Booking> {
+  const booking = await getRawBookingById(bookingId);
+
+  if (booking.payment_stage === 'Paid') {
+    throwWithStatus(409, 'This booking is already fully paid');
+  }
+
+  let nextStage: PaymentStage;
+
+  if (booking.payment_stage === 'Paid in Advance') {
+    nextStage = 'Paid';
+  } else if (choice === 'advance') {
+    nextStage = 'Paid in Advance';
+  } else if (choice === 'onsite') {
+    nextStage = 'Paid';
+  } else {
+    throwWithStatus(
+      400,
+      'Specify whether this is an advance payment or a normal onsite payment'
+    );
+  }
+
+  return updateBookingRow(bookingId, {
+    payment_stage: nextStage,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+interface OverridePaymentStageParams {
+  bookingId: string;
+  paymentStage: (typeof OVERRIDABLE_PAYMENT_STAGES)[number];
+}
+
+/** Admin/Superadmin-only direct set (forward or backward) - mirrors
+ * overrideBookingStatus above, e.g. undoing an accidental Advance click.
+ * Route-gated to BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this
+ * function trusts that gate. */
+export async function overridePaymentStage({
+  bookingId,
+  paymentStage,
+}: OverridePaymentStageParams): Promise<Booking> {
+  return updateBookingRow(bookingId, {
+    payment_stage: paymentStage,
+    updated_at: new Date().toISOString(),
   });
 }

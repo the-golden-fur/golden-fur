@@ -22,7 +22,7 @@ import type {
  * HotelStayFilterStatus). */
 export type HotelStayFilterStatus = Extract<
   BookingStatus,
-  'In Progress' | 'Completed' | 'Paid'
+  'In Progress' | 'Completed'
 >;
 
 interface HotelApiResult<T> {

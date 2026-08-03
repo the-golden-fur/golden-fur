@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
+  OVERRIDABLE_PAYMENT_STAGES,
   PAYMENT_METHODS,
 } from '../../booking.types.ts';
 
@@ -274,6 +275,9 @@ export const listBookingsQueryValidator = z.object({
   date_to: z.iso.date().optional(),
   service_category: z.enum(CATEGORIES).optional(),
   status: z.enum(BOOKING_STATUSES).optional(),
+  // Bookings Queue's "assigned to me / no preference" filter - a staff
+  // UUID, or the sentinel 'unassigned' for assigned_staff_id IS NULL.
+  assigned_staff_id: z.union([z.uuid(), z.literal('unassigned')]).optional(),
 });
 
 /** Admin/Superadmin-only direct status set (forward or backward) - see
@@ -281,6 +285,25 @@ export const listBookingsQueryValidator = z.object({
 export const overrideBookingStatusValidator = z
   .object({
     status: z.enum(OVERRIDABLE_BOOKING_STATUSES),
+  })
+  .strict();
+
+/** "Advance" action for payment_stage - `choice` is required only when the
+ * booking is currently Unpaid (advancePaymentStage in booking.service.ts
+ * enforces that, since it depends on the booking's current stage, not
+ * something this shape-only validator can express). */
+export const advancePaymentStageValidator = z
+  .object({
+    choice: z.enum(['advance', 'onsite']).optional(),
+  })
+  .strict();
+
+/** Admin/Superadmin-only direct payment_stage set (forward or backward) -
+ * see BOOKING_STATUS_OVERRIDE_ROLES/overridePaymentStage in
+ * booking.service.ts. */
+export const overridePaymentStageValidator = z
+  .object({
+    payment_stage: z.enum(OVERRIDABLE_PAYMENT_STAGES),
   })
   .strict();
 
@@ -294,4 +317,10 @@ export type CatalogQueryInput = z.infer<typeof catalogQueryValidator>;
 export type ListBookingsQueryInput = z.infer<typeof listBookingsQueryValidator>;
 export type OverrideBookingStatusInput = z.infer<
   typeof overrideBookingStatusValidator
+>;
+export type AdvancePaymentStageInput = z.infer<
+  typeof advancePaymentStageValidator
+>;
+export type OverridePaymentStageInput = z.infer<
+  typeof overridePaymentStageValidator
 >;

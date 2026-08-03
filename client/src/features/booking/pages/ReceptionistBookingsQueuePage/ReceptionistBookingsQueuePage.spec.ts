@@ -32,7 +32,9 @@ vi.mock('../../api/booking.api', () => ({
   cancelBooking: vi.fn(),
   startBooking: vi.fn(),
   completeBooking: vi.fn(),
-  markBookingPaid: vi.fn(),
+  advancePaymentStage: vi.fn(),
+  overridePaymentStage: vi.fn(),
+  overrideBookingStatus: vi.fn(),
 }));
 
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
@@ -87,6 +89,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_end: '2026-08-03T02:00:00.000Z',
     assigned_staff_id: 'staff-2',
     status: 'Pending',
+    payment_stage: 'Unpaid',
     started_at: null,
     completed_at: null,
     paid_at: null,
@@ -316,18 +319,18 @@ describe('ReceptionistBookingsQueuePage', () => {
     expect(screen.queryByText('Start')).not.toBeInTheDocument();
   });
 
-  it('booking-status revision: shows Mark as Paid for a Completed booking', async () => {
+  it('payment_stage: shows Mark as Paid for an Unpaid booking, prompts via modal, and advances via "Normal onsite payment"', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Completed' })],
+      data: [buildBooking({ status: 'Completed', payment_stage: 'Unpaid' })],
       error: null,
     });
-    vi.mocked(bookingApi.markBookingPaid).mockResolvedValue({
-      data: buildBooking({ status: 'Paid' }),
+    vi.mocked(bookingApi.advancePaymentStage).mockResolvedValue({
+      data: buildBooking({ status: 'Completed', payment_stage: 'Paid' }),
       error: null,
     });
 
@@ -338,14 +341,53 @@ describe('ReceptionistBookingsQueuePage', () => {
     );
     await user.click(screen.getByText('Mark as Paid'));
 
+    // Unpaid -> the advance/onsite choice shows as a modal, not inline.
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByText('Normal onsite payment'));
+
     await waitFor(() =>
-      expect(bookingApi.markBookingPaid).toHaveBeenCalledWith(
+      expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
         'booking-1',
-        'token'
+        'token',
+        'onsite'
       )
     );
     const row = screen.getByRole('listitem');
-    expect(await within(row).findByText('Paid')).toBeInTheDocument();
+    expect(await within(row).findByText('Payment: Paid')).toBeInTheDocument();
+  });
+
+  it('payment_stage: a Paid in Advance booking advances straight to Paid with one click, no modal', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({ status: 'Completed', payment_stage: 'Paid in Advance' }),
+      ],
+      error: null,
+    });
+    vi.mocked(bookingApi.advancePaymentStage).mockResolvedValue({
+      data: buildBooking({ status: 'Completed', payment_stage: 'Paid' }),
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Mark as Paid')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Mark as Paid'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
+        'booking-1',
+        'token',
+        undefined
+      )
+    );
   });
 
   it("shouldn't offer Reschedule once a Pending booking's own scheduled time has already passed", async () => {

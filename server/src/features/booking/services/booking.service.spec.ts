@@ -3,7 +3,6 @@ import {
   completeBooking,
   createBooking,
   listBookings,
-  markBookingPaid,
   overrideBookingStatus,
   startBooking,
 } from './booking.service.ts';
@@ -674,7 +673,7 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  describe('startBooking/completeBooking/markBookingPaid (booking-status revision manual actions)', () => {
+  describe('startBooking/completeBooking (booking-status revision manual actions)', () => {
     it('startBooking: Pending -> In Progress, sets started_at', async () => {
       queueFromResults(
         { data: { ...INSERTED_BOOKING, status: 'Pending' }, error: null }, // load
@@ -702,7 +701,7 @@ describe('booking.service (#51)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
-    it('completeBooking: In Progress -> Completed for a pay-at-counter booking (no auto-Paid)', async () => {
+    it('completeBooking: In Progress -> Completed for a pay-at-counter booking (payment_stage untouched)', async () => {
       queueFromResults(
         {
           data: {
@@ -720,13 +719,12 @@ describe('booking.service (#51)', () => {
 
       expect(booking.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({
-        status: 'Completed',
-        paid_at: null,
-      });
+      expect(update?.payload).toMatchObject({ status: 'Completed' });
+      expect(update?.payload).not.toHaveProperty('payment_stage');
+      expect(update?.payload).not.toHaveProperty('paid_at');
     });
 
-    it('completeBooking: skips straight to Paid when payment_method is an already-confirmed online method', async () => {
+    it('completeBooking: auto-advances payment_stage to Paid when payment_method is an already-confirmed online method', async () => {
       queueFromResults(
         {
           data: {
@@ -737,18 +735,28 @@ describe('booking.service (#51)', () => {
           },
           error: null,
         }, // load
-        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Completed',
+            payment_stage: 'Paid',
+          },
+          error: null,
+        } // update
       );
 
       const booking = await completeBooking({ bookingId: 'booking-1' });
 
-      expect(booking.status).toBe('Paid');
+      expect(booking.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({ status: 'Paid' });
+      expect(update?.payload).toMatchObject({
+        status: 'Completed',
+        payment_stage: 'Paid',
+      });
       expect((update?.payload as { paid_at?: string }).paid_at).toBeTruthy();
     });
 
-    it('completeBooking: an online method that was never actually confirmed still lands on Completed, not Paid', async () => {
+    it('completeBooking: an online method that was never actually confirmed leaves payment_stage untouched', async () => {
       queueFromResults(
         {
           data: {
@@ -765,6 +773,8 @@ describe('booking.service (#51)', () => {
       const booking = await completeBooking({ bookingId: 'booking-1' });
 
       expect(booking.status).toBe('Completed');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).not.toHaveProperty('payment_stage');
     });
 
     it('completeBooking: rejects a booking that is not In Progress', async () => {
@@ -777,64 +787,38 @@ describe('booking.service (#51)', () => {
         completeBooking({ bookingId: 'booking-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
     });
-
-    it('markBookingPaid: Completed -> Paid', async () => {
-      queueFromResults(
-        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null }, // load
-        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
-      );
-
-      const booking = await markBookingPaid({ bookingId: 'booking-1' });
-
-      expect(booking.status).toBe('Paid');
-      const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({ status: 'Paid' });
-    });
-
-    it('markBookingPaid: rejects a booking that is not Completed (e.g. still In Progress)', async () => {
-      queueFromResults({
-        data: { ...INSERTED_BOOKING, status: 'In Progress' },
-        error: null,
-      });
-
-      await expect(
-        markBookingPaid({ bookingId: 'booking-1' })
-      ).rejects.toMatchObject({ statusCode: 409 });
-    });
   });
 
   describe('overrideBookingStatus (Admin/Superadmin revert-capable dropdown)', () => {
-    it('reverts Paid -> Completed and clears paid_at', async () => {
+    it('reverts Completed -> In Progress and clears completed_at', async () => {
       queueFromResults(
         {
           data: {
             ...INSERTED_BOOKING,
-            status: 'Paid',
+            status: 'Completed',
             started_at: '2026-08-01T00:00:00Z',
             completed_at: '2026-08-01T01:00:00Z',
-            paid_at: '2026-08-01T01:05:00Z',
           },
           error: null,
         }, // load
-        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
+        { data: { ...INSERTED_BOOKING, status: 'In Progress' }, error: null } // update
       );
 
       const booking = await overrideBookingStatus({
         bookingId: 'booking-1',
-        status: 'Completed',
+        status: 'In Progress',
       });
 
-      expect(booking.status).toBe('Completed');
+      expect(booking.status).toBe('In Progress');
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({
-        status: 'Completed',
-        // The original completed_at is preserved, not overwritten.
-        completed_at: '2026-08-01T01:00:00Z',
-        paid_at: null,
+        status: 'In Progress',
+        completed_at: null,
       });
+      expect(update?.payload).not.toHaveProperty('paid_at');
     });
 
-    it('advances Pending directly to Paid, filling every timestamp at once', async () => {
+    it('advances Pending directly to Completed, filling started_at and completed_at at once', async () => {
       queueFromResults(
         {
           data: {
@@ -842,26 +826,26 @@ describe('booking.service (#51)', () => {
             status: 'Pending',
             started_at: null,
             completed_at: null,
-            paid_at: null,
           },
           error: null,
         }, // load
-        { data: { ...INSERTED_BOOKING, status: 'Paid' }, error: null } // update
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
       );
 
-      await overrideBookingStatus({ bookingId: 'booking-1', status: 'Paid' });
+      await overrideBookingStatus({
+        bookingId: 'booking-1',
+        status: 'Completed',
+      });
 
       const update = recordedWrites.find((write) => write.method === 'update');
       const payload = update?.payload as {
         status: string;
         started_at: string | null;
         completed_at: string | null;
-        paid_at: string | null;
       };
-      expect(payload.status).toBe('Paid');
+      expect(payload.status).toBe('Completed');
       expect(payload.started_at).toBeTruthy();
       expect(payload.completed_at).toBeTruthy();
-      expect(payload.paid_at).toBeTruthy();
     });
 
     it('reverts all the way back to Pending, clearing every downstream timestamp', async () => {
@@ -869,10 +853,9 @@ describe('booking.service (#51)', () => {
         {
           data: {
             ...INSERTED_BOOKING,
-            status: 'Paid',
+            status: 'Completed',
             started_at: '2026-08-01T00:00:00Z',
             completed_at: '2026-08-01T01:00:00Z',
-            paid_at: '2026-08-01T01:05:00Z',
           },
           error: null,
         }, // load
@@ -889,7 +872,6 @@ describe('booking.service (#51)', () => {
         status: 'Pending',
         started_at: null,
         completed_at: null,
-        paid_at: null,
       });
     });
   });

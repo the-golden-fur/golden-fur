@@ -288,11 +288,17 @@ describe('updatePolicyValidator', () => {
 
 describe('overrideBookingStatusValidator', () => {
   it('accepts each overridable status', () => {
-    for (const status of ['Pending', 'In Progress', 'Completed', 'Paid']) {
+    for (const status of ['Pending', 'In Progress', 'Completed']) {
       expect(overrideBookingStatusValidator.safeParse({ status }).success).toBe(
         true
       );
     }
+  });
+
+  it('rejects Paid - retired from BookingStatus, tracked via payment_stage now', () => {
+    expect(
+      overrideBookingStatusValidator.safeParse({ status: 'Paid' }).success
+    ).toBe(false);
   });
 
   it('rejects Cancelled/No-show - those keep their own dedicated flows', () => {

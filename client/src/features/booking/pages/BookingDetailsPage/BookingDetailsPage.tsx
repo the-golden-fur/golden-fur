@@ -23,6 +23,7 @@ import type {
 import { getBooking } from '../../api/booking.api';
 import type { Booking } from '../../booking.types';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
+import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
 import styles from './BookingDetailsPage.module.css';
 
 function formatDateTime(iso: string | null): string {
@@ -220,7 +221,10 @@ export function BookingDetailsPage() {
               {owner?.full_name ?? 'Unknown owner'}
             </p>
           </div>
-          <BookingStatusBadge status={booking.status} />
+          <div className={styles.badgeGroup}>
+            <BookingStatusBadge status={booking.status} />
+            <PaymentStageBadge stage={booking.payment_stage} />
+          </div>
         </div>
 
         <section className={styles.section}>

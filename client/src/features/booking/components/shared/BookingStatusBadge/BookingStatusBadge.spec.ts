@@ -9,7 +9,6 @@ describe('BookingStatusBadge', () => {
     'Pending',
     'In Progress',
     'Completed',
-    'Paid',
     'Cancelled',
     'No-show',
   ];

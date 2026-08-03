@@ -239,7 +239,7 @@ export async function updateCageStatusController(
 // unification, #82) - see catalog.controller.ts's listProductsController/
 // createProductController/updateProductController/deleteProductController.
 
-const VALID_STAY_STATUSES = new Set(['In Progress', 'Completed', 'Paid']);
+const VALID_STAY_STATUSES = new Set(['In Progress', 'Completed']);
 
 export async function listHotelStaysController(
   req: AuthenticatedRequest,

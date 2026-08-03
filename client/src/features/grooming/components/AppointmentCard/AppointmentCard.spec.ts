@@ -18,6 +18,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_end: '2026-07-19T03:00:00.000Z',
     assigned_staff_id: 'groomer-1',
     status: 'Pending',
+    payment_stage: 'Unpaid',
     total_price: 500,
     downpayment_amount: null,
     payment_method: null,
@@ -122,18 +123,6 @@ describe('AppointmentCard (#68, booking-status revision)', () => {
       createElement(AppointmentCard, {
         ...baseProps,
         session: buildSession('Completed'),
-        onAdvance: vi.fn(),
-      })
-    );
-
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('AC-3: a Paid booking shows no status-advance button', () => {
-    render(
-      createElement(AppointmentCard, {
-        ...baseProps,
-        session: buildSession('Paid'),
         onAdvance: vi.fn(),
       })
     );

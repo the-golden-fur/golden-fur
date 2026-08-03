@@ -6,6 +6,7 @@ import type {
   CreateBookingPayload,
   ListBookingsFilters,
   OperatingWindow,
+  PaymentStage,
   PolicyConfiguration,
   RescheduleBookingPayload,
   RescheduleResult,
@@ -101,6 +102,9 @@ export async function listBookings(
     params.set('service_category', filters.serviceCategory);
   }
   if (filters.status) params.set('status', filters.status);
+  if (filters.assignedStaffId) {
+    params.set('assigned_staff_id', filters.assignedStaffId);
+  }
 
   const query = params.size > 0 ? `?${params.toString()}` : '';
   const response = await fetch(`${API_BASE_URL}/bookings${query}`, {
@@ -272,15 +276,17 @@ export async function cancelBooking(
 }
 
 /**
- * Manual status-advance actions (booking-status revision): Start (Pending
- * -> In Progress), Complete (In Progress -> Completed, or straight to Paid
- * when an online payment was already confirmed), Mark as Paid (Completed ->
- * Paid, for a pay-at-counter booking). No-show has no endpoint - it's a
- * lazy transition the server applies whenever a booking is read.
+ * Manual status-advance actions: Start (Pending -> In Progress), Complete
+ * (In Progress -> Completed; also auto-advances payment_stage to Paid when
+ * an online payment was already confirmed - see completeBooking in
+ * booking.service.ts). No-show has no endpoint - it's a lazy transition the
+ * server applies whenever a booking is read. Payment ("Mark as Paid") is a
+ * separate action on the payment_stage track - see advancePaymentStage
+ * below.
  */
 async function postBookingAction(
   bookingId: string,
-  action: 'start' | 'complete' | 'mark-paid',
+  action: 'start' | 'complete',
   accessToken: string
 ): Promise<BookingApiResult<Booking>> {
   const response = await fetch(
@@ -304,10 +310,6 @@ export function completeBooking(bookingId: string, accessToken: string) {
   return postBookingAction(bookingId, 'complete', accessToken);
 }
 
-export function markBookingPaid(bookingId: string, accessToken: string) {
-  return postBookingAction(bookingId, 'mark-paid', accessToken);
-}
-
 /** Admin/Superadmin-only direct status set (forward or backward) - see
  * BOOKING_STATUS_OVERRIDE_ROLES server-side. */
 export async function overrideBookingStatus(
@@ -320,6 +322,55 @@ export async function overrideBookingStatus(
     headers: jsonHeaders(accessToken),
     body: JSON.stringify({ status }),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ booking: Booking }>(response);
+  return { data: result.data?.booking ?? null, error: result.error };
+}
+
+/** payment_stage "Advance" action - independent of status (see PaymentStage
+ * in booking.types.ts). `choice` is required only when the booking is
+ * currently Unpaid; omit it once it's already Paid in Advance. */
+export async function advancePaymentStage(
+  bookingId: string,
+  accessToken: string,
+  choice?: 'advance' | 'onsite'
+): Promise<BookingApiResult<Booking>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/payment-stage/advance`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ choice }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ booking: Booking }>(response);
+  return { data: result.data?.booking ?? null, error: result.error };
+}
+
+/** Admin/Superadmin-only direct payment_stage set (forward or backward) -
+ * see BOOKING_STATUS_OVERRIDE_ROLES server-side. */
+export async function overridePaymentStage(
+  bookingId: string,
+  paymentStage: PaymentStage,
+  accessToken: string
+): Promise<BookingApiResult<Booking>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/payment-stage`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ payment_stage: paymentStage }),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

@@ -21,14 +21,16 @@ import {
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
+import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
+  advancePaymentStage,
   cancelBooking,
   completeBooking,
   listBookings,
-  markBookingPaid,
   overrideBookingStatus,
+  overridePaymentStage,
   rescheduleBooking,
   startBooking,
 } from '../../api/booking.api';
@@ -37,10 +39,12 @@ import {
   BOOKING_STATUSES,
   CANCELLABLE_BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
+  OVERRIDABLE_PAYMENT_STAGES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingStatus,
+  type PaymentStage,
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
@@ -67,7 +71,10 @@ function formatDateTime(iso: string): string {
   });
 }
 
-type ActiveAction = { bookingId: string; type: 'reschedule' | 'cancel' };
+type ActiveAction = {
+  bookingId: string;
+  type: 'reschedule' | 'cancel' | 'advance-payment';
+};
 
 /**
  * Issue #60: branch-wide daily/filtered booking queue for Receptionist/
@@ -98,6 +105,9 @@ export function ReceptionistBookingsQueuePage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'All'
   );
+  const [assignedFilter, setAssignedFilter] = useState<
+    'All' | 'Me' | 'Unassigned'
+  >('All');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -148,8 +158,8 @@ export function ReceptionistBookingsQueuePage() {
 
   const isSuperadmin = viewerRole === 'Superadmin';
   // Admin/Superadmin get one status dropdown (forward or backward) instead
-  // of the one-directional Start/Complete/Mark-as-Paid buttons everyone else
-  // uses - lets them undo an accidental Mark as Paid, etc.
+  // of the one-directional Start/Complete buttons everyone else uses - lets
+  // them undo an accidental status change.
   const isStatusOverrideRole =
     viewerRole !== null && BOOKING_STATUS_OVERRIDE_ROLES.includes(viewerRole);
 
@@ -165,6 +175,13 @@ export function ReceptionistBookingsQueuePage() {
       : branchFilter
     : (viewerBranchId ?? undefined);
 
+  const effectiveAssignedStaffId =
+    assignedFilter === 'Me'
+      ? (user?.id ?? undefined)
+      : assignedFilter === 'Unassigned'
+        ? 'unassigned'
+        : undefined;
+
   useEffect(() => {
     if (!accessToken || isRoleLoading) return;
 
@@ -177,6 +194,7 @@ export function ReceptionistBookingsQueuePage() {
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: statusFilter === 'All' ? undefined : statusFilter,
+      assignedStaffId: effectiveAssignedStaffId,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -233,6 +251,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRange.to,
     categoryFilter,
     statusFilter,
+    effectiveAssignedStaffId,
   ]);
 
   const branchNameById = useMemo(
@@ -349,17 +368,15 @@ export function ReceptionistBookingsQueuePage() {
     setActiveAction(null);
   }
 
-  // Manual status-advance actions (booking-status revision): any staff role
-  // except Cashier may Start/Complete - Cashier sees the queue (all
-  // statuses, unchanged) but only ever advances Completed -> Paid, so its
+  // Manual status-advance actions: any staff role except Cashier may
+  // Start/Complete - Cashier sees the queue (all statuses, unchanged) but
+  // only ever advances payment_stage (Mark as Paid, below), so its
   // Start/Complete buttons are hidden below rather than left for a 403 to
   // catch (unlike Reschedule/Cancel, which stay ungated client-side and rely
-  // on the server 403 alone). Mark as Paid is server-restricted to
-  // money-handling roles for everyone. Admin/Superadmin instead get a single
-  // status dropdown (canOverrideStatus below) that can also move a booking
-  // BACKWARD (e.g. undoing an accidental Mark as Paid) - Start/Complete/Mark
-  // as Paid are strictly forward-only and can't do that. Error is kept
-  // alongside the booking id it belongs to (unlike the single shared
+  // on the server 403 alone). Admin/Superadmin instead get a single status
+  // dropdown (canOverrideStatus below) that can also move a booking BACKWARD
+  // - Start/Complete are strictly forward-only and can't do that. Error is
+  // kept alongside the booking id it belongs to (unlike the single shared
   // `actionError` the reschedule/cancel panels use) so it still renders
   // under the right row after `advancingBookingId` itself has already
   // cleared.
@@ -378,8 +395,8 @@ export function ReceptionistBookingsQueuePage() {
       accessToken: string
     ) => ReturnType<typeof startBooking>,
     failureMessage: string
-  ) {
-    if (!accessToken) return;
+  ): Promise<boolean> {
+    if (!accessToken) return false;
 
     setAdvancingBookingId(booking.id);
     setAdvanceError(null);
@@ -393,10 +410,11 @@ export function ReceptionistBookingsQueuePage() {
         bookingId: booking.id,
         message: result.error ?? failureMessage,
       });
-      return;
+      return false;
     }
 
     replaceBooking(result.data);
+    return true;
   }
 
   function handleStart(booking: Booking) {
@@ -415,19 +433,50 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
-  function handleMarkPaid(booking: Booking) {
-    return runAdvanceAction(
-      booking,
-      markBookingPaid,
-      'Could not mark this booking paid.'
-    );
-  }
-
   function handleOverrideStatus(booking: Booking, status: BookingStatus) {
     return runAdvanceAction(
       booking,
       (bookingId, token) => overrideBookingStatus(bookingId, status, token),
       'Could not update this booking’s status.'
+    );
+  }
+
+  // payment_stage "Mark as Paid" action - independent of the status actions
+  // above (see PaymentStage's dev note in booking.types.ts). From Unpaid,
+  // clicking it opens a modal (via `activeAction`, rendered once outside the
+  // row list below) asking whether this is an advance payment or a normal
+  // onsite one; from Paid in Advance there's only one possible next step, so
+  // it advances straight to Paid with no modal.
+  function handleAdvancePayment(booking: Booking, choice?: 'advance' | 'onsite') {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => advancePaymentStage(bookingId, token, choice),
+      'Could not advance this booking’s payment stage.'
+    );
+  }
+
+  function openAdvancePayment(booking: Booking) {
+    if (booking.payment_stage === 'Paid in Advance') {
+      void handleAdvancePayment(booking);
+      return;
+    }
+    setActiveAction({ bookingId: booking.id, type: 'advance-payment' });
+    setActionError(null);
+  }
+
+  async function confirmAdvancePayment(
+    booking: Booking,
+    choice: 'advance' | 'onsite'
+  ) {
+    const succeeded = await handleAdvancePayment(booking, choice);
+    if (succeeded) setActiveAction(null);
+  }
+
+  function handleOverridePaymentStage(booking: Booking, stage: PaymentStage) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => overridePaymentStage(bookingId, stage, token),
+      'Could not update this booking’s payment stage.'
     );
   }
 
@@ -452,6 +501,15 @@ export function ReceptionistBookingsQueuePage() {
       </main>
     );
   }
+
+  // Rendered once, outside the row list, as a modal - not per-row - since
+  // only one booking can ever be mid-prompt at a time (activeAction is
+  // single-valued).
+  const paymentAdvanceModalBooking =
+    activeAction?.type === 'advance-payment'
+      ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
+        null)
+      : null;
 
   return (
     <main className={styles.page}>
@@ -504,6 +562,23 @@ export function ReceptionistBookingsQueuePage() {
                   {category}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Assigned</span>
+            <select
+              className={styles.filterSelect}
+              value={assignedFilter}
+              onChange={(event) =>
+                setAssignedFilter(
+                  event.target.value as 'All' | 'Me' | 'Unassigned'
+                )
+              }
+            >
+              <option value="All">All</option>
+              <option value="Me">Assigned to me</option>
+              <option value="Unassigned">No preference</option>
             </select>
           </label>
 
@@ -564,12 +639,18 @@ export function ReceptionistBookingsQueuePage() {
                 viewerRole !== 'Cashier' &&
                 (booking.status === 'Pending' ||
                   booking.status === 'In Progress');
-              const canMarkPaid =
-                !isStatusOverrideRole && booking.status === 'Completed';
+              const canOverridePaymentStage =
+                isStatusOverrideRole &&
+                (OVERRIDABLE_PAYMENT_STAGES as readonly string[]).includes(
+                  booking.payment_stage
+                );
+              const canAdvancePayment =
+                !isStatusOverrideRole && booking.payment_stage !== 'Paid';
               const hasControls =
                 canOverrideStatus ||
                 canAdvanceStatus ||
-                canMarkPaid ||
+                canOverridePaymentStage ||
+                canAdvancePayment ||
                 canReschedule ||
                 canCancel;
               const isRescheduling =
@@ -607,6 +688,7 @@ export function ReceptionistBookingsQueuePage() {
                         'Unknown owner'}
                     </span>
                     <BookingStatusBadge status={booking.status} />
+                    <PaymentStageBadge stage={booking.payment_stage} />
                     <button
                       type="button"
                       className={styles.secondaryButton}
@@ -660,12 +742,34 @@ export function ReceptionistBookingsQueuePage() {
                           {isAdvancing ? 'Completing...' : 'Complete'}
                         </button>
                       ) : null}
-                      {canMarkPaid ? (
+                      {canOverridePaymentStage ? (
+                        <label className={styles.statusOverrideField}>
+                          <span className={styles.filterLabel}>Payment</span>
+                          <select
+                            className={styles.filterSelect}
+                            value={booking.payment_stage}
+                            disabled={isAdvancing}
+                            onChange={(event) =>
+                              void handleOverridePaymentStage(
+                                booking,
+                                event.target.value as PaymentStage
+                              )
+                            }
+                          >
+                            {OVERRIDABLE_PAYMENT_STAGES.map((stage) => (
+                              <option key={stage} value={stage}>
+                                {stage}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      {canAdvancePayment ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}
                           disabled={isAdvancing}
-                          onClick={() => void handleMarkPaid(booking)}
+                          onClick={() => openAdvancePayment(booking)}
                         >
                           {isAdvancing ? 'Marking paid...' : 'Mark as Paid'}
                         </button>
@@ -800,10 +904,77 @@ export function ReceptionistBookingsQueuePage() {
                       </div>
                     </div>
                   ) : null}
+
                 </li>
               );
             })}
           </ul>
+        ) : null}
+
+        {paymentAdvanceModalBooking ? (
+          <div className={styles.modalBackdrop} role="presentation">
+            <section
+              className={styles.modalDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mark-as-paid-title"
+            >
+              <h2 id="mark-as-paid-title" className={styles.modalTitle}>
+                Mark as Paid
+              </h2>
+              <p className={styles.modalBody}>
+                Was this payment collected in advance (before the service
+                happens), or is this a normal onsite payment?
+              </p>
+
+              {advanceError &&
+              advanceError.bookingId === paymentAdvanceModalBooking.id ? (
+                <p className={styles.errorBanner} role="alert">
+                  {advanceError.message}
+                </p>
+              ) : null}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeAction}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={advancingBookingId === paymentAdvanceModalBooking.id}
+                  onClick={() =>
+                    void confirmAdvancePayment(
+                      paymentAdvanceModalBooking,
+                      'onsite'
+                    )
+                  }
+                >
+                  {advancingBookingId === paymentAdvanceModalBooking.id
+                    ? 'Marking paid...'
+                    : 'Normal onsite payment'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={advancingBookingId === paymentAdvanceModalBooking.id}
+                  onClick={() =>
+                    void confirmAdvancePayment(
+                      paymentAdvanceModalBooking,
+                      'advance'
+                    )
+                  }
+                >
+                  {advancingBookingId === paymentAdvanceModalBooking.id
+                    ? 'Marking paid...'
+                    : 'Advance payment'}
+                </button>
+              </div>
+            </section>
+          </div>
         ) : null}
       </div>
     </main>
