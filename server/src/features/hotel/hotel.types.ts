@@ -15,6 +15,17 @@ export const HOTEL_PET_ASSISTANT_ROLES: readonly string[] = ['Pet Assistant'];
 
 export const HOTEL_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
+/** Groomer/Pet Assistant advance rights: Hotel has no dedicated assigned-
+ * staff role (unlike Grooming/Veterinary), so Groomer and Pet Assistant may
+ * also check pets in/out and browse the stay/cage lists needed to do that -
+ * everything else (cage maintenance status, the flagged Care Log view) stays
+ * front-desk/admin only. */
+export const HOTEL_ADVANCE_ROLES: readonly string[] = [
+  ...HOTEL_FRONT_DESK_ROLES,
+  'Groomer',
+  'Pet Assistant',
+];
+
 export type CageSize = 'S' | 'M' | 'L' | 'XL';
 export type CageStatus =
   | 'Available'
