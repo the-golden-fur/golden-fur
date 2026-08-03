@@ -166,6 +166,58 @@ export async function getDayAvailability(
   };
 }
 
+export interface NextAvailableSlotQuery {
+  branchId: string;
+  serviceCategory: string;
+  /** YYYY-MM-DD - search starts here (inclusive). */
+  fromDate: string;
+  slotDurationMinutes: number;
+  petWeightClass?: string;
+  lookaheadDays?: number;
+}
+
+export interface NextAvailableSlot {
+  date: string;
+  earliestSlot: { start: string; end: string };
+}
+
+/** #22: "fully booked" warning support - the earliest available day/slot
+ * looking forward from fromDate, so the booking flow can warn right after
+ * service selection instead of only once the customer reaches the Slot
+ * Picker. null = nothing available within the lookahead window. */
+export async function getNextAvailableSlot(
+  accessToken: string,
+  query: NextAvailableSlotQuery
+): Promise<BookingApiResult<NextAvailableSlot | null>> {
+  const params = new URLSearchParams({
+    branch_id: query.branchId,
+    service_category: query.serviceCategory,
+    from_date: query.fromDate,
+    slot_duration_minutes: String(query.slotDurationMinutes),
+  });
+
+  if (query.petWeightClass) {
+    params.set('pet_weight_class', query.petWeightClass);
+  }
+  if (query.lookaheadDays) {
+    params.set('lookahead_days', String(query.lookaheadDays));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/availability/next-slot?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ next: NextAvailableSlot | null }>(
+    response
+  );
+  return { data: result.data ? result.data.next : null, error: result.error };
+}
+
 export interface BookingCatalog {
   services: Service[];
   packages: Package[];

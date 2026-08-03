@@ -169,23 +169,33 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
  * authoritative care record - the receptionist still confirms/edits
  * everything at physical check-in.
  */
+/** stay_date omitted = applies to every night of the stay (the "same
+ * instructions every night" default); a specific date scopes the row to
+ * that single night only (#22 per-night care instructions). */
 export interface HotelBookingPreferenceFeeding {
   meal_time: 'Morning' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
   special_instructions?: string;
-  /** Set only when food_type matched a hotel food-catalog item - mirrors
+  /** Set only when food_type matched a food/medication catalog item - mirrors
    * hotel.types.ts's FeedingInstructionPayload naming so HotelCheckInPage's
    * prefill can pass these straight through at check-in. */
   food_catalog_id?: string;
-  /** true (default) = owner brings it; false = staff purchases it. */
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferenceWalking {
-  time_block: string;
+  time_block: 'Morning' | 'Afternoon' | 'Evening';
   duration_minutes: number;
   notes?: string;
+  stay_date?: string;
+}
+
+export interface HotelBookingPreferencePlaying {
+  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  duration_minutes: number;
+  notes?: string;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferenceMedication {
@@ -194,12 +204,16 @@ export interface HotelBookingPreferenceMedication {
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;
-  brought_by_customer?: boolean;
+  stay_date?: string;
 }
 
 export interface HotelBookingPreferences {
+  /** Whether the customer/receptionist opted into per-night editing -
+   * informational only, the authoritative scoping is each row's stay_date. */
+  uniform_instructions: boolean;
   feeding: HotelBookingPreferenceFeeding[];
   walking: HotelBookingPreferenceWalking[];
+  playing: HotelBookingPreferencePlaying[];
   medications: HotelBookingPreferenceMedication[];
 }
 

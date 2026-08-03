@@ -39,7 +39,9 @@ export interface ServicePricingTier {
   price: number;
 }
 
-/** Epic B (#80): the shared, singleton grooming size/coat calculation. */
+/** Epic B (#80): the shared, singleton grooming size/coat calculation.
+ * daycare_overnight_fee (#22) reuses this same singleton row rather than a
+ * new table, even though it's unrelated to grooming. */
 export interface PricingConfiguration {
   id: string;
   size_s_multiplier: number;
@@ -47,6 +49,7 @@ export interface PricingConfiguration {
   size_l_multiplier: number;
   size_xl_multiplier: number;
   long_coat_addon: number;
+  daycare_overnight_fee: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -57,6 +60,7 @@ export interface UpdatePricingConfigurationPayload {
   size_l_multiplier?: number;
   size_xl_multiplier?: number;
   long_coat_addon?: number;
+  daycare_overnight_fee?: number;
 }
 
 /** Epic B (#82): the shared, singleton package bundled-price calculation. */

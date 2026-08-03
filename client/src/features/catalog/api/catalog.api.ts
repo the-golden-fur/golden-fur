@@ -1,5 +1,6 @@
 import type {
   CreateProductPayload,
+  CustomerCatalogCategory,
   ListProductsFilter,
   ProductCatalogItem,
   UpdateProductPayload,
@@ -157,6 +158,89 @@ export async function hardDeleteProduct(
 ): Promise<CatalogApiResult<null>> {
   const response = await fetch(
     `${API_BASE_URL}/catalog/products/${itemId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+/**
+ * #22: a customer's own food/medication types for future hotel bookings -
+ * scoped server-side to the requesting customer (plus the global staff
+ * catalog, read-only, for reference). Reachable both from the hotel
+ * booking wizard and standalone via CustomerFoodMedicationPage.
+ */
+export async function listCustomerCatalog(
+  accessToken: string,
+  category?: CustomerCatalogCategory
+): Promise<CatalogApiResult<ProductCatalogItem[]>> {
+  const query = category ? `?category=${category}` : '';
+  const response = await fetch(
+    `${API_BASE_URL}/customers/me/food-medication-catalog${query}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ items: ProductCatalogItem[] }>(response);
+  return { data: result.data?.items ?? null, error: result.error };
+}
+
+export async function createCustomerCatalogItem(
+  payload: { name: string; category: CustomerCatalogCategory },
+  accessToken: string
+): Promise<CatalogApiResult<ProductCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/me/food-medication-catalog`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ item: ProductCatalogItem }>(response);
+  return { data: result.data?.item ?? null, error: result.error };
+}
+
+export async function updateCustomerCatalogItem(
+  itemId: string,
+  name: string,
+  accessToken: string
+): Promise<CatalogApiResult<ProductCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/me/food-medication-catalog/${itemId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ name }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ item: ProductCatalogItem }>(response);
+  return { data: result.data?.item ?? null, error: result.error };
+}
+
+export async function archiveCustomerCatalogItem(
+  itemId: string,
+  accessToken: string
+): Promise<CatalogApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/me/food-medication-catalog/${itemId}`,
     { method: 'DELETE', headers: authHeaders(accessToken) }
   );
 
