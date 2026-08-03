@@ -319,4 +319,90 @@ describe('SlotPicker', () => {
       await screen.findByText(/Cage availability for this size: 3 of 8 free/)
     ).toBeInTheDocument();
   });
+
+  describe('onAvailabilityChange', () => {
+    it('#22 follow-up: reports hasAnySlots=false for an empty day (branch closed, or today already past hours)', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: { slots: [], window: null },
+        error: null,
+      });
+      const onAvailabilityChange = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'customer',
+          selectedSlot: null,
+          onSelect: vi.fn(),
+          onAvailabilityChange,
+        })
+      );
+
+      await waitFor(() =>
+        expect(onAvailabilityChange).toHaveBeenCalledWith(
+          expect.objectContaining({ hasAnySlots: false, hasAnyAvailable: false })
+        )
+      );
+    });
+
+    it('#22 follow-up: reports hasAnySlots=true, hasAnyAvailable=false when real candidates exist but are all taken', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: {
+          slots: SLOTS.map((slot) => ({ ...slot, available: false })),
+          window: WINDOW,
+        },
+        error: null,
+      });
+      const onAvailabilityChange = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'customer',
+          selectedSlot: null,
+          onSelect: vi.fn(),
+          onAvailabilityChange,
+        })
+      );
+
+      await waitFor(() =>
+        expect(onAvailabilityChange).toHaveBeenCalledWith(
+          expect.objectContaining({ hasAnySlots: true, hasAnyAvailable: false })
+        )
+      );
+    });
+
+    it('#22 follow-up: reports hasAnyAvailable=true when at least one candidate is open', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: { slots: SLOTS, window: WINDOW },
+        error: null,
+      });
+      const onAvailabilityChange = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'customer',
+          selectedSlot: null,
+          onSelect: vi.fn(),
+          onAvailabilityChange,
+        })
+      );
+
+      await waitFor(() =>
+        expect(onAvailabilityChange).toHaveBeenCalledWith(
+          expect.objectContaining({ hasAnySlots: true, hasAnyAvailable: true })
+        )
+      );
+    });
+  });
 });
