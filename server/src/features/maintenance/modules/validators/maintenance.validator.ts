@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-const CATEGORIES = ['Grooming', 'Hotel', 'Daycare', 'Veterinary'] as const;
+const CATEGORIES = [
+  'Grooming',
+  'Hotel',
+  'Daycare',
+  'Veterinary',
+  'Misc',
+] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
 const BRANCH_SCOPES = ['makati', 'southwoods', 'both'] as const;

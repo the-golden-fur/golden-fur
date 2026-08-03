@@ -20,7 +20,12 @@ export const MAINTENANCE_WRITE_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
-export type ServiceCategory = 'Grooming' | 'Hotel' | 'Daycare' | 'Veterinary';
+export type ServiceCategory =
+  | 'Grooming'
+  | 'Hotel'
+  | 'Daycare'
+  | 'Veterinary'
+  | 'Misc';
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 
@@ -117,6 +122,15 @@ export interface Package {
    * (booking.service.ts) need no changes.
    */
   bundled_price: number;
+  /**
+   * Multi-item bookings revision: derived on read from included services'
+   * duration_minutes via derivePackageDuration, mirroring bundled_price's own
+   * derivation - packages have no stored duration column either. Used to
+   * estimate a package's contribution to a booking's total scheduled time
+   * before submission (the server recomputes its own authoritative value at
+   * booking-creation time in booking.service.ts).
+   */
+  total_duration_minutes: number | null;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;

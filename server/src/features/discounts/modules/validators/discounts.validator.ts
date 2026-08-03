@@ -2,7 +2,13 @@ import { z } from 'zod';
 
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const SCOPE_TYPES = ['service', 'package', 'category'] as const;
-const CATEGORIES = ['Grooming', 'Hotel', 'Daycare', 'Veterinary'] as const;
+const CATEGORIES = [
+  'Grooming',
+  'Hotel',
+  'Daycare',
+  'Veterinary',
+  'Misc',
+] as const;
 
 /**
  * Exactly one of scope_service_id / scope_package_id / scope_category is

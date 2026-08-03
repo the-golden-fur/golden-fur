@@ -10,23 +10,30 @@ import type {
 } from '../modules/validators/maintenance.validator.ts';
 import { getPackagePricingConfiguration } from './packagePricing.service.ts';
 import { deriveBundledPrice } from '../utils/deriveBundledPrice.ts';
+import { derivePackageDuration } from '../utils/derivePackageDuration.ts';
 
 /** Postgres foreign_key_violation. */
 const FOREIGN_KEY_VIOLATION = '23503';
 
 // Epic B (#82/#83): pulls each included service's base_price in the same
 // query so bundled_price can be derived without an N+1 follow-up lookup.
-const PACKAGE_SELECT = '*, package_services(service_id, services(base_price))';
+// duration_minutes rides along the same join for total_duration_minutes
+// (multi-item bookings revision).
+const PACKAGE_SELECT =
+  '*, package_services(service_id, services(base_price, duration_minutes))';
 
 interface RawPackageServiceLink {
   service_id: string;
-  services: { base_price: number } | null;
+  services: { base_price: number; duration_minutes: number | null } | null;
 }
 
 /** The shape PACKAGE_SELECT actually returns - packages no longer has a
  * bundled_price column, and package_services carries the nested service join
  * used to derive it. */
-type RawPackage = Omit<Package, 'bundled_price' | 'package_services'> & {
+type RawPackage = Omit<
+  Package,
+  'bundled_price' | 'total_duration_minutes' | 'package_services'
+> & {
   package_services?: RawPackageServiceLink[];
 };
 
@@ -52,10 +59,12 @@ function attachBundledPrice(
   const basePrices = links.map((link) =>
     Number(link.services?.base_price ?? 0)
   );
+  const durations = links.map((link) => link.services?.duration_minutes ?? null);
 
   return {
     ...pkg,
     bundled_price: deriveBundledPrice(basePrices, pricingConfiguration),
+    total_duration_minutes: derivePackageDuration(durations),
     package_services: links.map((link) => ({ service_id: link.service_id })),
   };
 }
