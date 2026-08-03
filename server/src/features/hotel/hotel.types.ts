@@ -33,7 +33,8 @@ export type CageStatus =
   | 'Reserved'
   | 'Under Maintenance';
 export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
-export type CareType = 'Feeding' | 'Walking' | 'Medication';
+export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
+export type CareType = 'Feeding' | 'Walking' | 'Medication' | 'Playing';
 
 export interface Cage {
   id: string;
@@ -55,10 +56,6 @@ export interface HotelStay {
   actual_check_out_at: string | null;
   downpayment_amount: number;
   extension_fee: number | null;
-  /** Sum of hotel-supplied (brought_by_customer = false) care-instruction
-   * charges, computed at checkout - NULL means nothing was hotel-supplied,
-   * never zero (mirrors extension_fee's NULL-vs-value convention). */
-  supplied_items_charge: number | null;
   notify_opt_in: boolean;
   created_by_staff_id: string;
   created_at: string;
@@ -78,16 +75,27 @@ export interface CareFeedingInstruction {
   quantity: string;
   special_instructions: string | null;
   food_catalog_id: string | null;
-  brought_by_customer: boolean;
-  charged_price: number | null;
+  /** Null = applies to every night of the stay; a date scopes this row to
+   * that single calendar night (#22 per-night care instructions). */
+  stay_date: string | null;
 }
 
 export interface CareWalkingInstruction {
   id: string;
   hotel_stay_id: string;
-  time_block: string;
+  time_block: PartOfDay;
   duration_minutes: number;
   notes: string | null;
+  stay_date: string | null;
+}
+
+export interface CarePlayingInstruction {
+  id: string;
+  hotel_stay_id: string;
+  time_block: PartOfDay;
+  duration_minutes: number;
+  notes: string | null;
+  stay_date: string | null;
 }
 
 export interface CareMedicationInstruction {
@@ -99,8 +107,7 @@ export interface CareMedicationInstruction {
   administration_notes: string | null;
   source_prescription_note: string | null;
   medication_catalog_id: string | null;
-  brought_by_customer: boolean;
-  charged_price: number | null;
+  stay_date: string | null;
 }
 
 export interface CareLogEntry {
@@ -121,6 +128,7 @@ export interface CheckInResult {
   stay: HotelStay;
   feeding: CareFeedingInstruction[];
   walking: CareWalkingInstruction[];
+  playing: CarePlayingInstruction[];
   medications: CareMedicationInstruction[];
   careLogEntries: CareLogEntry[];
 }
@@ -129,6 +137,5 @@ export interface CheckoutResult {
   stay: HotelStay;
   downpaymentAmount: number;
   extensionFee: number | null;
-  suppliedItemsCharge: number | null;
   remainingBalance: number;
 }

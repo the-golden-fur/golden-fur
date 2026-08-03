@@ -11,6 +11,7 @@ import type {
   CareFeedingInstruction,
   CareLogEntry,
   CareMedicationInstruction,
+  CarePlayingInstruction,
   CareWalkingInstruction,
   CheckInResult,
   HotelStay,
@@ -140,6 +141,7 @@ export async function checkInHotelStay({
 
     const feeding = await insertFeedingInstructions(stay.id, input.feeding);
     const walking = await insertWalkingInstructions(stay.id, input.walking);
+    const playing = await insertPlayingInstructions(stay.id, input.playing);
     const medications = await insertMedicationInstructions(
       stay.id,
       booking.pet_id,
@@ -151,6 +153,7 @@ export async function checkInHotelStay({
       days,
       feeding,
       walking,
+      playing,
       medications
     );
 
@@ -158,6 +161,7 @@ export async function checkInHotelStay({
       stay: stay as HotelStay,
       feeding,
       walking,
+      playing,
       medications,
       careLogEntries,
     };
@@ -167,75 +171,21 @@ export async function checkInHotelStay({
   }
 }
 
-/**
- * Sprint 5 unification (#82): food_catalog/medication_catalog merged into
- * one product_catalog table (migration 20260731067) - both feeding and
- * medication rows now resolve their catalog price from the same table, no
- * `table` parameter needed anymore.
- */
-async function getCatalogPrices(ids: string[]): Promise<Map<string, number>> {
-  if (ids.length === 0) return new Map();
-
-  const { data, error } = await supabase
-    .from('product_catalog')
-    .select('id, price')
-    .in('id', ids);
-
-  if (error) throwWithStatus(400, error.message);
-
-  return new Map(
-    ((data ?? []) as Array<{ id: string; price: number }>).map((row) => [
-      row.id,
-      row.price,
-    ])
-  );
-}
-
-/**
- * #79 revision: charged_price is always computed server-side from the
- * catalog's current price, never accepted from the request - the client
- * only ever sends food_catalog_id + brought_by_customer, matching the
- * "never trust a client-supplied price" pattern used throughout checkout.
- * A row with no food_catalog_id (freetext, not matched to a catalog entry)
- * has no known price to charge, so brought_by_customer is forced true and
- * charged_price stays null regardless of what the client sent - freetext
- * items are never billable.
- */
 async function insertFeedingInstructions(
   hotelStayId: string,
   rows: CheckInInput['feeding']
 ): Promise<CareFeedingInstruction[]> {
   if (rows.length === 0) return [];
 
-  const catalogIds = Array.from(
-    new Set(
-      rows
-        .map((row) => row.food_catalog_id)
-        .filter((id): id is string => Boolean(id))
-    )
-  );
-  const pricesById = await getCatalogPrices(catalogIds);
-
-  const preparedRows = rows.map((row) => {
-    const broughtByCustomer = row.food_catalog_id
-      ? row.brought_by_customer
-      : true;
-    const chargedPrice =
-      !broughtByCustomer && row.food_catalog_id
-        ? (pricesById.get(row.food_catalog_id) ?? null)
-        : null;
-
-    return {
-      meal_time: row.meal_time,
-      food_type: row.food_type,
-      quantity: row.quantity,
-      special_instructions: row.special_instructions,
-      food_catalog_id: row.food_catalog_id ?? null,
-      brought_by_customer: broughtByCustomer,
-      charged_price: chargedPrice,
-      hotel_stay_id: hotelStayId,
-    };
-  });
+  const preparedRows = rows.map((row) => ({
+    meal_time: row.meal_time,
+    food_type: row.food_type,
+    quantity: row.quantity,
+    special_instructions: row.special_instructions,
+    food_catalog_id: row.food_catalog_id ?? null,
+    stay_date: row.stay_date ?? null,
+    hotel_stay_id: hotelStayId,
+  }));
 
   const { data, error } = await supabase
     .from('care_feeding_instructions')
@@ -261,6 +211,21 @@ async function insertWalkingInstructions(
   return (data ?? []) as CareWalkingInstruction[];
 }
 
+async function insertPlayingInstructions(
+  hotelStayId: string,
+  rows: CheckInInput['playing']
+): Promise<CarePlayingInstruction[]> {
+  if (rows.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('care_playing_instructions')
+    .insert(rows.map((row) => ({ ...row, hotel_stay_id: hotelStayId })))
+    .select('*');
+
+  if (error) throwWithStatus(400, error.message);
+  return (data ?? []) as CarePlayingInstruction[];
+}
+
 /**
  * #75 AC-3: when the request omits `medications` entirely, auto-fills from
  * M07's current-prescription derivation (empty when no current prescription
@@ -280,7 +245,7 @@ async function insertMedicationInstructions(
     administration_notes?: string;
     source_prescription_note?: string;
     medication_catalog_id?: string;
-    brought_by_customer?: boolean;
+    stay_date?: string;
   }>;
 
   if (requested !== undefined) {
@@ -298,38 +263,16 @@ async function insertMedicationInstructions(
 
   if (rows.length === 0) return [];
 
-  // #79 revision: same server-computed charged_price + freetext-forces-
-  // brought_by_customer=true rule as insertFeedingInstructions above.
-  const catalogIds = Array.from(
-    new Set(
-      rows
-        .map((row) => row.medication_catalog_id)
-        .filter((id): id is string => Boolean(id))
-    )
-  );
-  const pricesById = await getCatalogPrices(catalogIds);
-
-  const preparedRows = rows.map((row) => {
-    const broughtByCustomer = row.medication_catalog_id
-      ? (row.brought_by_customer ?? true)
-      : true;
-    const chargedPrice =
-      !broughtByCustomer && row.medication_catalog_id
-        ? (pricesById.get(row.medication_catalog_id) ?? null)
-        : null;
-
-    return {
-      medication_name: row.medication_name,
-      dose: row.dose,
-      scheduled_times: row.scheduled_times,
-      administration_notes: row.administration_notes,
-      source_prescription_note: row.source_prescription_note,
-      medication_catalog_id: row.medication_catalog_id ?? null,
-      brought_by_customer: broughtByCustomer,
-      charged_price: chargedPrice,
-      hotel_stay_id: hotelStayId,
-    };
-  });
+  const preparedRows = rows.map((row) => ({
+    medication_name: row.medication_name,
+    dose: row.dose,
+    scheduled_times: row.scheduled_times,
+    administration_notes: row.administration_notes,
+    source_prescription_note: row.source_prescription_note,
+    medication_catalog_id: row.medication_catalog_id ?? null,
+    stay_date: row.stay_date ?? null,
+    hotel_stay_id: hotelStayId,
+  }));
 
   const { data, error } = await supabase
     .from('care_medication_instructions')
@@ -340,22 +283,36 @@ async function insertMedicationInstructions(
   return (data ?? []) as CareMedicationInstruction[];
 }
 
+/** A row with stay_date === null applies to every night; a dated row applies
+ * only to that night. When both a dated row and a null-dated row would
+ * otherwise both fire for the same date, the dated one wins (matches "same
+ * instructions every night, except this one day I overrode" intent). #22 */
+function rowsForDate<T extends { stay_date: string | null }>(
+  rows: T[],
+  date: string
+): T[] {
+  const dated = rows.filter((row) => row.stay_date === date);
+  if (dated.length > 0) return dated;
+  return rows.filter((row) => row.stay_date == null);
+}
+
 async function generateCareLogEntries(
   hotelStayId: string,
   days: string[],
   feeding: CareFeedingInstruction[],
   walking: CareWalkingInstruction[],
+  playing: CarePlayingInstruction[],
   medications: CareMedicationInstruction[]
 ): Promise<CareLogEntry[]> {
   const rows: Array<{
     hotel_stay_id: string;
-    care_type: 'Feeding' | 'Walking' | 'Medication';
+    care_type: 'Feeding' | 'Walking' | 'Playing' | 'Medication';
     scheduled_date: string;
     description: string;
   }> = [];
 
   for (const date of days) {
-    for (const meal of feeding) {
+    for (const meal of rowsForDate(feeding, date)) {
       rows.push({
         hotel_stay_id: hotelStayId,
         care_type: 'Feeding',
@@ -364,7 +321,7 @@ async function generateCareLogEntries(
       });
     }
 
-    for (const walk of walking) {
+    for (const walk of rowsForDate(walking, date)) {
       rows.push({
         hotel_stay_id: hotelStayId,
         care_type: 'Walking',
@@ -373,7 +330,16 @@ async function generateCareLogEntries(
       });
     }
 
-    for (const medication of medications) {
+    for (const play of rowsForDate(playing, date)) {
+      rows.push({
+        hotel_stay_id: hotelStayId,
+        care_type: 'Playing',
+        scheduled_date: date,
+        description: `${play.time_block} playtime — ${play.duration_minutes} min`,
+      });
+    }
+
+    for (const medication of rowsForDate(medications, date)) {
       const times =
         medication.scheduled_times.length > 0
           ? medication.scheduled_times

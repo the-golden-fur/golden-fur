@@ -41,45 +41,6 @@ interface CheckoutParams {
 }
 
 /**
- * #79 revision: sum of every hotel-supplied (brought_by_customer = false)
- * care instruction's charged_price for this stay - NULL when nothing was
- * hotel-supplied, never zero, mirroring extension_fee's own NULL-vs-value
- * convention (dev notes above).
- */
-async function getSuppliedItemsCharge(
-  hotelStayId: string
-): Promise<number | null> {
-  const [feedingResult, medicationResult] = await Promise.all([
-    supabase
-      .from('care_feeding_instructions')
-      .select('charged_price')
-      .eq('hotel_stay_id', hotelStayId)
-      .eq('brought_by_customer', false),
-    supabase
-      .from('care_medication_instructions')
-      .select('charged_price')
-      .eq('hotel_stay_id', hotelStayId)
-      .eq('brought_by_customer', false),
-  ]);
-
-  if (feedingResult.error) throwWithStatus(400, feedingResult.error.message);
-  if (medicationResult.error) {
-    throwWithStatus(400, medicationResult.error.message);
-  }
-
-  const rows = [
-    ...((feedingResult.data ?? []) as Array<{ charged_price: number | null }>),
-    ...((medicationResult.data ?? []) as Array<{
-      charged_price: number | null;
-    }>),
-  ];
-
-  const total = rows.reduce((sum, row) => sum + (row.charged_price ?? 0), 0);
-
-  return rows.length > 0 && total > 0 ? total : null;
-}
-
-/**
  * Issue #78: on-time checkout leaves extension_fee NULL (never zero, so
  * billing can distinguish "no fee applied" from "a ₱0 fee was calculated" -
  * #78 dev notes). Reconciliation is stay total (booking.total_price,
@@ -136,15 +97,11 @@ export async function checkOutHotelStay({
   const now = new Date();
   const days = extensionDays(stay.scheduled_check_out_date, now);
   const extensionFee = days > 0 ? days * EXTENSION_FEE_PER_DAY : null;
-  const suppliedItemsCharge = await getSuppliedItemsCharge(stayId);
 
   const totalPrice = (stay as unknown as { bookings: { total_price: number } })
     .bookings.total_price;
   const remainingBalance =
-    totalPrice -
-    Number(stay.downpayment_amount) +
-    (extensionFee ?? 0) +
-    (suppliedItemsCharge ?? 0);
+    totalPrice - Number(stay.downpayment_amount) + (extensionFee ?? 0);
 
   await completeBooking({ bookingId: stay.booking_id });
 
@@ -153,7 +110,6 @@ export async function checkOutHotelStay({
     .update({
       actual_check_out_at: now.toISOString(),
       extension_fee: extensionFee,
-      supplied_items_charge: suppliedItemsCharge,
       updated_at: now.toISOString(),
     })
     .eq('id', stayId)
@@ -175,7 +131,6 @@ export async function checkOutHotelStay({
     stay: updated as HotelStay,
     downpaymentAmount: Number(updated.downpayment_amount),
     extensionFee,
-    suppliedItemsCharge,
     remainingBalance,
   };
 }

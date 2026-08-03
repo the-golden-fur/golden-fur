@@ -1,29 +1,41 @@
 import { z } from 'zod';
 
+const partOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
+
 /**
- * #79 revision: food_catalog_id/medication_catalog_id are set only when the
- * receptionist picked a catalog entry from CatalogComboBox (#79) rather than
- * typing a freetext value - a freetext entry is never billable (no known
- * catalog price), so brought_by_customer is forced true and no price is
- * ever charged for it (careInstructions.service.ts enforces this
- * server-side too, not just client-side).
+ * stay_date (#22): omitted/undefined means the row applies to every night of
+ * the stay (the "same instructions every night" default); a specific date
+ * scopes the row to that single calendar night only. Booking flow &
+ * pricing revamp (#22) also drops brought_by_customer/charged_price - staff
+ * no longer buy food/medication on a customer's behalf, so every row is
+ * implicitly customer-supplied now.
  */
 const feedingInstructionSchema = z
   .object({
-    meal_time: z.enum(['Morning', 'Afternoon', 'Evening']),
+    meal_time: partOfDay,
     food_type: z.string().min(1),
     quantity: z.string().min(1),
     special_instructions: z.string().optional(),
     food_catalog_id: z.uuid().optional(),
-    brought_by_customer: z.boolean().default(true),
+    stay_date: z.iso.date().optional(),
   })
   .strict();
 
 const walkingInstructionSchema = z
   .object({
-    time_block: z.string().min(1),
+    time_block: partOfDay,
     duration_minutes: z.number().int().positive(),
     notes: z.string().optional(),
+    stay_date: z.iso.date().optional(),
+  })
+  .strict();
+
+const playingInstructionSchema = z
+  .object({
+    time_block: partOfDay,
+    duration_minutes: z.number().int().positive(),
+    notes: z.string().optional(),
+    stay_date: z.iso.date().optional(),
   })
   .strict();
 
@@ -34,7 +46,7 @@ const medicationInstructionSchema = z
     scheduled_times: z.array(z.string().min(1)).default([]),
     administration_notes: z.string().optional(),
     medication_catalog_id: z.uuid().optional(),
-    brought_by_customer: z.boolean().default(true),
+    stay_date: z.iso.date().optional(),
   })
   .strict();
 
@@ -52,6 +64,7 @@ export const checkInValidator = z
     cage_id: z.uuid().optional(),
     feeding: z.array(feedingInstructionSchema).default([]),
     walking: z.array(walkingInstructionSchema).default([]),
+    playing: z.array(playingInstructionSchema).default([]),
     medications: z.array(medicationInstructionSchema).optional(),
     notify_opt_in: z.boolean().default(false),
   })

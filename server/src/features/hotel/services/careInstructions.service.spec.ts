@@ -109,6 +109,7 @@ describe('careInstructions.service (#75)', () => {
           cage_id: 'cage-1',
           feeding: [],
           walking: [],
+          playing: [],
           medications: [
             {
               medication_name: 'Amoxicillin',
@@ -125,15 +126,14 @@ describe('careInstructions.service (#75)', () => {
       expect(result.careLogEntries).toHaveLength(1);
     });
 
-    it('#79 revision: a catalog-matched, hotel-supplied feeding row gets a server-computed charged_price', async () => {
+    it('#22: a catalog-matched feeding row passes its food_catalog_id straight through, with no billing fields', async () => {
       queueFromResults(
         { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
         { data: { id: 'stay-1', status: 'Active' }, error: null },
         { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
-        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update // hotel_stays insert
-        { data: [{ id: 'food-1', price: 150 }], error: null }, // food_catalog price lookup
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update
         {
           data: [
             {
@@ -141,8 +141,6 @@ describe('careInstructions.service (#75)', () => {
               meal_time: 'Morning',
               food_type: 'Premium kibble',
               food_catalog_id: 'food-1',
-              brought_by_customer: false,
-              charged_price: 150,
             },
           ],
           error: null,
@@ -162,10 +160,10 @@ describe('careInstructions.service (#75)', () => {
               food_type: 'Premium kibble',
               quantity: '1 cup',
               food_catalog_id: 'food-1',
-              brought_by_customer: false,
             },
           ],
           walking: [],
+          playing: [],
           medications: [],
           notify_opt_in: false,
         },
@@ -177,13 +175,15 @@ describe('careInstructions.service (#75)', () => {
       expect(feedingInsert?.payload).toMatchObject([
         expect.objectContaining({
           food_catalog_id: 'food-1',
-          brought_by_customer: false,
-          charged_price: 150,
+          stay_date: null,
         }),
+      ]);
+      expect(feedingInsert?.payload).toMatchObject([
+        expect.not.objectContaining({ brought_by_customer: expect.anything() }),
       ]);
     });
 
-    it('#79 revision: a freetext (no catalog match) feeding row is never billable, even if the client tries to mark it hotel-supplied', async () => {
+    it('#22: a per-night row carries its stay_date straight through to the insert', async () => {
       queueFromResults(
         { data: CONFIRMED_HOTEL_BOOKING, error: null },
         { data: null, error: null },
@@ -191,9 +191,6 @@ describe('careInstructions.service (#75)', () => {
         { data: { id: 'stay-1', status: 'Active' }, error: null },
         { data: { id: 'booking-1', status: 'Pending' }, error: null }, // startBooking: load
         { data: { id: 'booking-1', status: 'In Progress' }, error: null }, // startBooking: update
-        // No catalog-price-lookup call expected here - no food_catalog_id
-        // was provided, so getCatalogPrices short-circuits before touching
-        // supabase at all.
         {
           data: [
             {
@@ -201,8 +198,7 @@ describe('careInstructions.service (#75)', () => {
               meal_time: 'Morning',
               food_type: "Owner's own custom mix",
               food_catalog_id: null,
-              brought_by_customer: true,
-              charged_price: null,
+              stay_date: '2026-08-06',
             },
           ],
           error: null,
@@ -221,12 +217,11 @@ describe('careInstructions.service (#75)', () => {
               meal_time: 'Morning',
               food_type: "Owner's own custom mix",
               quantity: '1 cup',
-              // No food_catalog_id - freetext. brought_by_customer is sent
-              // as false here to prove the server ignores it (forces true).
-              brought_by_customer: false,
+              stay_date: '2026-08-06',
             },
           ],
           walking: [],
+          playing: [],
           medications: [],
           notify_opt_in: false,
         },
@@ -238,8 +233,7 @@ describe('careInstructions.service (#75)', () => {
       expect(feedingInsert?.payload).toMatchObject([
         expect.objectContaining({
           food_catalog_id: null,
-          brought_by_customer: true,
-          charged_price: null,
+          stay_date: '2026-08-06',
         }),
       ]);
     });
@@ -289,6 +283,7 @@ describe('careInstructions.service (#75)', () => {
           cage_id: 'cage-1',
           feeding: [],
           walking: [],
+          playing: [],
           medications: undefined,
           notify_opt_in: false,
         },
@@ -316,6 +311,7 @@ describe('careInstructions.service (#75)', () => {
           cage_id: 'cage-1',
           feeding: [],
           walking: [],
+          playing: [],
           medications: undefined,
           notify_opt_in: false,
         },
@@ -338,6 +334,7 @@ describe('careInstructions.service (#75)', () => {
             booking_id: 'booking-1',
             feeding: [],
             walking: [],
+            playing: [],
             notify_opt_in: false,
           },
         })
@@ -358,6 +355,7 @@ describe('careInstructions.service (#75)', () => {
             booking_id: 'booking-1',
             feeding: [],
             walking: [],
+            playing: [],
             notify_opt_in: false,
           },
         })
@@ -379,6 +377,7 @@ describe('careInstructions.service (#75)', () => {
             cage_id: 'cage-1',
             feeding: [],
             walking: [],
+            playing: [],
             notify_opt_in: false,
           },
         })
@@ -402,6 +401,7 @@ describe('careInstructions.service (#75)', () => {
             cage_id: 'cage-1',
             feeding: [],
             walking: [],
+            playing: [],
             notify_opt_in: false,
           },
         })

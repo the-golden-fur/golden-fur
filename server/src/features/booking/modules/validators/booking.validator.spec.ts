@@ -127,7 +127,8 @@ describe('createBookingValidator', () => {
           feeding: [
             { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
           ],
-          walking: [{ time_block: '07:00', duration_minutes: 15 }],
+          walking: [{ time_block: 'Morning', duration_minutes: 15 }],
+          playing: [{ time_block: 'Afternoon', duration_minutes: 10 }],
           medications: [],
         },
       }).success
@@ -138,7 +139,12 @@ describe('createBookingValidator', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
-        hotel_preferences: { feeding: [], walking: [], medications: [] },
+        hotel_preferences: {
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
       }).success
     ).toBe(false);
   });
@@ -157,17 +163,16 @@ describe('createBookingValidator', () => {
               food_type: 'Kibble',
               quantity: '1',
               food_catalog_id: '11111111-1111-4111-a111-111111111111',
-              brought_by_customer: false,
             },
           ],
           walking: [],
+          playing: [],
           medications: [
             {
               medication_name: 'Amoxicillin',
               dose: '250mg',
               scheduled_times: ['08:00'],
               medication_catalog_id: '22222222-2222-4222-a222-222222222222',
-              brought_by_customer: false,
             },
           ],
         },
