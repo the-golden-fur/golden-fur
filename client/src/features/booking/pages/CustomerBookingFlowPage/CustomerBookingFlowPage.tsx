@@ -974,9 +974,12 @@ export function CustomerBookingFlowPage() {
       branchId: selectedBranchId,
       serviceCategory: category as ServiceCategory,
       fromDate: searchFromDate,
-      slotDurationMinutes: DEFAULT_DURATION_MINUTES[category as ServiceCategory],
+      slotDurationMinutes:
+        DEFAULT_DURATION_MINUTES[category as ServiceCategory],
       petWeightClass:
-        category === 'Hotel' ? (selectedPet?.weight_class ?? undefined) : undefined,
+        category === 'Hotel'
+          ? (selectedPet?.weight_class ?? undefined)
+          : undefined,
     }).then((result) => {
       setIsCheckingAvailability(false);
       // Fails open: a lookup error never shows a false "fully booked" claim.
@@ -1048,7 +1051,9 @@ export function CustomerBookingFlowPage() {
    * receptionist book) the same service twice. */
   function packageMemberServiceIds(packageId: string): Set<string> {
     const pkg = packages.find((candidate) => candidate.id === packageId);
-    return new Set((pkg?.package_services ?? []).map((link) => link.service_id));
+    return new Set(
+      (pkg?.package_services ?? []).map((link) => link.service_id)
+    );
   }
 
   function toggleServiceSelect(serviceId: string) {
@@ -1573,7 +1578,9 @@ export function CustomerBookingFlowPage() {
               accessToken={accessToken!}
               branchId={selectedBranchId}
               serviceCategory={category as ServiceCategory}
-              slotDurationMinutes={DEFAULT_DURATION_MINUTES[category as ServiceCategory]}
+              slotDurationMinutes={
+                DEFAULT_DURATION_MINUTES[category as ServiceCategory]
+              }
               petWeightClass={
                 category === 'Hotel'
                   ? (selectedPet?.weight_class ?? undefined)
@@ -2333,7 +2340,9 @@ export function CustomerBookingFlowPage() {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!isCurrentStepValid || isLastStep || isCheckingAvailability}
+            disabled={
+              !isCurrentStepValid || isLastStep || isCheckingAvailability
+            }
             onClick={goNext}
           >
             {isCheckingAvailability ? 'Checking availability...' : 'Next'}
@@ -2368,8 +2377,7 @@ export function CustomerBookingFlowPage() {
                 <h2 className={styles.modalTitle}>This looks fully booked</h2>
                 <p className={styles.copy}>
                   The earliest opening we found is{' '}
-                  {new Date(fullyBookedNotice.date).toLocaleDateString()},
-                  from{' '}
+                  {new Date(fullyBookedNotice.date).toLocaleDateString()}, from{' '}
                   {new Date(
                     fullyBookedNotice.earliestSlot.start
                   ).toLocaleTimeString([], {

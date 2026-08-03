@@ -6,7 +6,7 @@ Branch: `22-booking-flow-and-pricing-revamp`
 
 Seven related requests came in against the booking system:
 
-1. Warn a customer that a branch/service looks fully booked *before* they
+1. Warn a customer that a branch/service looks fully booked _before_ they
    reach the Slot Picker step, showing the earliest opening instead.
 2. Staff should never buy food/medication on a customer's behalf (liability
    risk) - remove that option, and let customers maintain their own
@@ -203,9 +203,9 @@ inside the `availability` step, not as a one-time check on advancing.
 
 - **Fully-booked popup precision**: seed data has every branch open every
   day of the week (just shorter hours on weekends), so a "branch has no
-  operating_hours entry" message is unreachable through the UI and was
+  operating*hours entry" message is unreachable through the UI and was
   removed. The real bug was that `getDaySlots` returns an **empty** slots
-  array both when the branch is closed that weekday *and* when every
+  array both when the branch is closed that weekday \_and* when every
   candidate for the currently-viewed day has already passed (it's simply
   past closing time right now) - neither is a real "fully booked" (every
   time/staff/cage slot taken) situation, so the popup should never fire for
@@ -214,7 +214,7 @@ inside the `availability` step, not as a one-time check on advancing.
   `handleSlotAvailabilityChange` in `CustomerBookingFlowPage.tsx` only
   triggers the popup when `hasAnySlots && !hasAnyAvailable` - real
   candidates existed and every one is taken. When it does trigger, the
-  "next available slot" lookahead starts the day *after* the one just
+  "next available slot" lookahead starts the day _after_ the one just
   confirmed full, instead of redundantly re-checking the same day.
   Verify: browsing to today after the branch has already closed for the
   day shows no popup at all (and `GET /bookings/availability/next-slot` is
@@ -232,7 +232,7 @@ inside the `availability` step, not as a one-time check on advancing.
 
 **Root cause**: `toggleServiceSelect`/`togglePackageSelect` reset
 `selectedSlot`/`staffPreference` to `null` on every item toggle - correct
-under the *old* step order (items picked before availability, so a duration
+under the _old_ step order (items picked before availability, so a duration
 change genuinely invalidated the picked slot), but actively wrong under the
 new order, where availability is picked first and items are picked
 afterward against a fixed placeholder duration. Toggling any service or
@@ -241,7 +241,7 @@ package on the Services step silently wiped the already-confirmed slot;
 error, on a step whose own validity check never re-verified `selectedSlot`.
 Fixed by dropping that reset (no longer needed - availability no longer
 depends on which items get picked) and wrapping the whole submission in
-try/catch/finally so any *other* thrown exception (network failure, bad
+try/catch/finally so any _other_ thrown exception (network failure, bad
 JSON) can no longer leave `isSubmitting` stuck true with the button
 disabled and no visible error either.
 
@@ -272,7 +272,7 @@ should do nothing while the covering package stays selected.
    the staff Check-In panel, confirm there is no "staff will buy"/"hotel
    supplies this" option anywhere.
 2. `GET /customers/me/food-medication-catalog` (as a customer) - create a
-   food type, confirm it appears; confirm a *different* customer's token
+   food type, confirm it appears; confirm a _different_ customer's token
    cannot see or edit it (only global/staff entries + their own).
 3. Complete a hotel check-in/checkout and confirm the billing breakdown no
    longer shows a "Hotel-supplied" line.

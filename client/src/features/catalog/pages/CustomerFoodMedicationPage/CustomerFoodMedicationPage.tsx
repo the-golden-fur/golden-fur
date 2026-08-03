@@ -90,7 +90,9 @@ export function CustomerFoodMedicationPage() {
     }
 
     setItems((prev) =>
-      prev.map((item) => (item.id === itemId ? (result.data as ProductCatalogItem) : item))
+      prev.map((item) =>
+        item.id === itemId ? (result.data as ProductCatalogItem) : item
+      )
     );
     setEditingId(null);
   };
@@ -183,8 +185,8 @@ export function CustomerFoodMedicationPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>My Food &amp; Medication Types</h1>
       <p className={styles.copy}>
-        Save your pet&apos;s usual food and medication here so you can pick
-        them quickly on future hotel bookings.
+        Save your pet&apos;s usual food and medication here so you can pick them
+        quickly on future hotel bookings.
       </p>
 
       {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -205,7 +207,10 @@ export function CustomerFoodMedicationPage() {
 
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>Add a new type</h2>
-        <form className={styles.form} onSubmit={(event) => void handleCreate(event)}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
           <input
             className={styles.input}
             placeholder="e.g. Chicken kibble, Amoxicillin"

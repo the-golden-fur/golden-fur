@@ -368,7 +368,9 @@ export interface NextAvailableSlot {
 
 function nextDateString(date: string): string {
   const [year, month, day] = date.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month - 1, day + 1))
+    .toISOString()
+    .slice(0, 10);
 }
 
 /**

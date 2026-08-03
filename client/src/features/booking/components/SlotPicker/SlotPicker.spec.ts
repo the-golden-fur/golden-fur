@@ -343,7 +343,10 @@ describe('SlotPicker', () => {
 
       await waitFor(() =>
         expect(onAvailabilityChange).toHaveBeenCalledWith(
-          expect.objectContaining({ hasAnySlots: false, hasAnyAvailable: false })
+          expect.objectContaining({
+            hasAnySlots: false,
+            hasAnyAvailable: false,
+          })
         )
       );
     });

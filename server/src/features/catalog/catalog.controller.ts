@@ -231,7 +231,10 @@ export async function archiveCustomerCatalogItemController(
   if (!customerId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    await archiveCustomerCatalogItem({ customerId, itemId: paramId(req, 'id') });
+    await archiveCustomerCatalogItem({
+      customerId,
+      itemId: paramId(req, 'id'),
+    });
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

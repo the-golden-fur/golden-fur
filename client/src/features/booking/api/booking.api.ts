@@ -212,9 +212,7 @@ export async function getNextAvailableSlot(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ next: NextAvailableSlot | null }>(
-    response
-  );
+  const result = await parseBody<{ next: NextAvailableSlot | null }>(response);
   return { data: result.data ? result.data.next : null, error: result.error };
 }
 

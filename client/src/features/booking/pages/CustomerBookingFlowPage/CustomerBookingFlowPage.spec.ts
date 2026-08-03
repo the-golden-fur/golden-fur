@@ -889,17 +889,24 @@ describe('CustomerBookingFlowPage', () => {
         screen.getByText('Simulate empty day (closed/past hours)')
       ).toBeInTheDocument()
     );
-    await user.click(screen.getByText('Simulate empty day (closed/past hours)'));
+    await user.click(
+      screen.getByText('Simulate empty day (closed/past hours)')
+    );
 
     expect(bookingApi.getNextAvailableSlot).not.toHaveBeenCalled();
-    expect(screen.queryByText('This looks fully booked')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('This looks fully booked')
+    ).not.toBeInTheDocument();
   });
 
   it('#22 follow-up: a day with real slots all taken shows the fully-booked modal and searches from the next day', async () => {
     vi.mocked(bookingApi.getNextAvailableSlot).mockResolvedValue({
       data: {
         date: '2026-08-05',
-        earliestSlot: { start: '2026-08-05T00:00:00.000Z', end: '2026-08-05T01:00:00.000Z' },
+        earliestSlot: {
+          start: '2026-08-05T00:00:00.000Z',
+          end: '2026-08-05T01:00:00.000Z',
+        },
       },
       error: null,
     });
@@ -915,7 +922,9 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Simulate day fully booked'));
 
-    expect(await screen.findByText('This looks fully booked')).toBeInTheDocument();
+    expect(
+      await screen.findByText('This looks fully booked')
+    ).toBeInTheDocument();
     expect(bookingApi.getNextAvailableSlot).toHaveBeenCalledWith(
       'token',
       expect.objectContaining({ fromDate: '2026-08-04' })
@@ -924,7 +933,11 @@ describe('CustomerBookingFlowPage', () => {
 
   it('#22 follow-up regression: toggling a service/package on the Services step no longer wipes the already-picked slot (submit actually fires)', async () => {
     vi.mocked(bookingApi.createBooking).mockResolvedValue({
-      data: { id: 'booking-1', status: 'Confirmed', scheduled_start: '2026-08-03T01:00:00.000Z' } as never,
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
       error: null,
     });
 

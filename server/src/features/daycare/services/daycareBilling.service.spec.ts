@@ -56,7 +56,10 @@ function minutesLater(start: Date, minutes: number): Date {
 /** No operating_hours entries at all - every date's window lookup misses,
  * so countOvernightNights never finds a closing boundary to cross (nights
  * stays 0), matching the pre-#22 same-day-only behavior these tests exercise. */
-const BRANCH_NO_HOURS = { data: { operating_hours: {}, timezone: 'Asia/Manila' }, error: null };
+const BRANCH_NO_HOURS = {
+  data: { operating_hours: {}, timezone: 'Asia/Manila' },
+  error: null,
+};
 
 describe('daycareBilling.service (#65)', () => {
   beforeEach(() => {
