@@ -25,6 +25,11 @@ interface CatalogComboBoxProps {
    * this once check-in makes feeding/walking/medication instructions
    * read-only for every staff role. */
   disabled?: boolean;
+  /** Hotel's food/medication catalog items are customer-owned (or global
+   * hotel-scope reference entries) with a forced price of 0 - showing "PHP
+   * 0.00" next to them is meaningless, unlike Misc Sale's real-priced
+   * product picker which still needs it. */
+  hidePrice?: boolean;
 }
 
 /**
@@ -41,6 +46,7 @@ export function CatalogComboBox({
   onChange,
   placeholder = 'Search or type a custom value...',
   disabled = false,
+  hidePrice = false,
 }: CatalogComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -101,9 +107,11 @@ export function CatalogComboBox({
                   }}
                 >
                   <span>{item.name}</span>
-                  <span className={styles.optionPrice}>
-                    PHP {item.price.toFixed(2)}
-                  </span>
+                  {hidePrice ? null : (
+                    <span className={styles.optionPrice}>
+                      PHP {item.price.toFixed(2)}
+                    </span>
+                  )}
                 </button>
               </li>
             ))

@@ -36,11 +36,6 @@
   padding-top: var(--space-2);
 }
 
-.instructionRow {
-  display: grid;
-  gap: var(--space-1);
-}
-
 .list {
   display: grid;
   gap: var(--space-1);

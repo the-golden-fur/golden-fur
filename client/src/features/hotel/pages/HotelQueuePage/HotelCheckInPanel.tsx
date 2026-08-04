@@ -4,8 +4,6 @@ import {
   checkInHotelStay,
   getCageSuggestion,
   getCurrentPrescriptionForPet,
-  listFoodCatalog,
-  listMedicationCatalog,
 } from '../../api/hotel.api';
 import { CageStatusGrid } from '../../components/CageStatusGrid/CageStatusGrid';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
@@ -13,14 +11,14 @@ import {
   CatalogComboBox,
   type CatalogComboBoxValue,
 } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
+import { listCustomerCatalogForStaff } from '../../../catalog/api/catalog.api';
+import type { ProductCatalogItem } from '../../../catalog/catalog.types';
 import { TimeInput } from '../../components/TimeInput/TimeInput';
 import { formatTimeValue } from '../../components/TimeInput/formatTimeValue';
 import type {
   Cage,
   FeedingInstructionPayload,
-  FoodCatalogItem,
   MealTime,
-  MedicationCatalogItem,
   MedicationInstructionPayload,
   PartOfDay,
   PlayingInstructionPayload,
@@ -28,7 +26,7 @@ import type {
 } from '../../hotel.types';
 import styles from './HotelCheckInPanel.module.css';
 
-const MEAL_TIMES: MealTime[] = ['Morning', 'Afternoon', 'Evening'];
+const MEAL_TIMES: MealTime[] = ['Morning', 'Noon', 'Afternoon', 'Evening'];
 const EMPTY_COMBO: CatalogComboBoxValue = { catalogId: null, text: '' };
 
 /** #22: care_walking_instructions/care_playing_instructions now store a
@@ -58,6 +56,7 @@ interface HotelCheckInPanelProps {
 }
 
 interface FeedingUiState {
+  mealTime: MealTime;
   foodType: CatalogComboBoxValue;
   quantity: string;
   specialInstructions: string;
@@ -133,18 +132,12 @@ export function HotelCheckInPanel({
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
   const [selectedCageId, setSelectedCageId] = useState<string | null>(null);
 
-  const [foodCatalog, setFoodCatalog] = useState<FoodCatalogItem[]>([]);
+  const [foodCatalog, setFoodCatalog] = useState<ProductCatalogItem[]>([]);
   const [medicationCatalog, setMedicationCatalog] = useState<
-    MedicationCatalogItem[]
+    ProductCatalogItem[]
   >([]);
 
-  const [feeding, setFeeding] = useState<
-    Record<MealTime, FeedingUiState | null>
-  >({
-    Morning: null,
-    Afternoon: null,
-    Evening: null,
-  });
+  const [feeding, setFeeding] = useState<FeedingUiState[]>([]);
   const [walking, setWalking] = useState<WalkBlockUi[]>([]);
   const [playing, setPlaying] = useState<WalkBlockUi[]>([]);
   const [medications, setMedications] = useState<MedicationUiState[]>([]);
@@ -160,23 +153,47 @@ export function HotelCheckInPanel({
   // without every check-in requiring a click first.
   const [isEditing, setIsEditing] = useState(false);
 
+  // A customer's own saved food/medication types (#22) - the booking being
+  // checked in already identifies the customer, so this is keyed off it
+  // (not fetched once on mount) and refetches whenever a different booking
+  // is selected. Never the old global staff Product Catalog. No selected
+  // booking means nothing to fetch - the catalogs are reset explicitly by
+  // whichever handler clears selectedBooking (see "Check in another pet"
+  // below), not synchronously here, per this codebase's own set-state-in-
+  // effect convention (state should be reset from an event handler or a
+  // fetch's resolution, not the effect body itself).
   useEffect(() => {
-    void listFoodCatalog(accessToken).then((result) => {
-      if (result.data)
-        setFoodCatalog(result.data.filter((item) => item.is_active));
-    });
+    const customerId = selectedBooking?.customer_id;
+    if (!customerId) return;
 
-    void listMedicationCatalog(accessToken).then((result) => {
-      if (result.data) {
+    let isMounted = true;
+
+    void listCustomerCatalogForStaff(customerId, accessToken, 'food').then(
+      (result) => {
+        if (isMounted && result.data)
+          setFoodCatalog(result.data.filter((item) => item.is_active));
+      }
+    );
+
+    void listCustomerCatalogForStaff(
+      customerId,
+      accessToken,
+      'medication'
+    ).then((result) => {
+      if (isMounted && result.data) {
         setMedicationCatalog(result.data.filter((item) => item.is_active));
       }
     });
-  }, [accessToken]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, selectedBooking?.customer_id]);
 
   function handleSelectBooking(booking: Booking) {
     setSelectedBooking(booking);
     setSelectedCageId(null);
-    setFeeding({ Morning: null, Afternoon: null, Evening: null });
+    setFeeding([]);
     setWalking([]);
     setPlaying([]);
     setMedications([]);
@@ -190,25 +207,20 @@ export function HotelCheckInPanel({
 
     if (preferences) {
       if (preferences.feeding.length > 0) {
-        setFeeding((prev) => {
-          const next = { ...prev };
-          for (const item of preferences.feeding) {
-            next[item.meal_time] = {
-              // Carries the staff booking flow's catalog match through when
-              // present (its Care Instructions step now uses the same
-              // catalog), instead of always discarding it as freetext - the
-              // customer portal never captures catalog_id, so this still
-              // falls back to freetext exactly as before for those bookings.
-              foodType: {
-                catalogId: item.food_catalog_id ?? null,
-                text: item.food_type,
-              },
-              quantity: item.quantity,
-              specialInstructions: item.special_instructions ?? '',
-            };
-          }
-          return next;
-        });
+        setFeeding(
+          preferences.feeding.map((item) => ({
+            mealTime: item.meal_time,
+            // Carries the booking flow's catalog match through when present
+            // (its Care Instructions step now uses the same catalog),
+            // instead of always discarding it as freetext.
+            foodType: {
+              catalogId: item.food_catalog_id ?? null,
+              text: item.food_type,
+            },
+            quantity: item.quantity,
+            specialInstructions: item.special_instructions ?? '',
+          }))
+        );
       }
 
       if (preferences.walking.length > 0) {
@@ -281,25 +293,26 @@ export function HotelCheckInPanel({
     );
   }
 
-  function toggleMealTime(mealTime: MealTime) {
-    setFeeding((prev) => ({
+  function addFeeding() {
+    setFeeding((prev) => [
       ...prev,
-      [mealTime]: prev[mealTime]
-        ? null
-        : {
-            foodType: EMPTY_COMBO,
-            quantity: '',
-            specialInstructions: '',
-          },
-    }));
+      {
+        mealTime: 'Morning',
+        foodType: EMPTY_COMBO,
+        quantity: '',
+        specialInstructions: '',
+      },
+    ]);
   }
 
-  function updateFeeding(mealTime: MealTime, updates: Partial<FeedingUiState>) {
-    setFeeding((prev) => {
-      const current = prev[mealTime];
-      if (!current) return prev;
-      return { ...prev, [mealTime]: { ...current, ...updates } };
-    });
+  function updateFeeding(index: number, updates: Partial<FeedingUiState>) {
+    setFeeding((prev) =>
+      prev.map((state, i) => (i === index ? { ...state, ...updates } : state))
+    );
+  }
+
+  function removeFeeding(index: number) {
+    setFeeding((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addWalkBlock() {
@@ -429,14 +442,12 @@ export function HotelCheckInPanel({
    * "Invalid payload" 400.
    */
   function validateForm(): string | null {
-    for (const mealTime of MEAL_TIMES) {
-      const state = feeding[mealTime];
-      if (!state) continue;
+    for (const [index, state] of feeding.entries()) {
       if (!state.foodType.text.trim()) {
-        return `${mealTime} feeding is missing a food type.`;
+        return `Feeding time #${index + 1} is missing a food type.`;
       }
       if (!state.quantity.trim()) {
-        return `${mealTime} feeding is missing a quantity.`;
+        return `Feeding time #${index + 1} is missing a quantity.`;
       }
     }
 
@@ -496,15 +507,15 @@ export function HotelCheckInPanel({
     setSubmitError(null);
     setIsSubmitting(true);
 
-    const feedingPayload: FeedingInstructionPayload[] = Object.entries(feeding)
-      .filter((entry): entry is [MealTime, FeedingUiState] => entry[1] !== null)
-      .map(([mealTime, state]) => ({
-        meal_time: mealTime,
+    const feedingPayload: FeedingInstructionPayload[] = feeding.map(
+      (state) => ({
+        meal_time: state.mealTime,
         food_type: state.foodType.text,
         quantity: state.quantity,
         special_instructions: state.specialInstructions || undefined,
         food_catalog_id: state.foodType.catalogId ?? undefined,
-      }));
+      })
+    );
 
     const walkingPayload: WalkingInstructionPayload[] = walking.map(
       (block) => ({
@@ -578,7 +589,9 @@ export function HotelCheckInPanel({
             onClick={() => {
               setCheckedInStayId(null);
               setSelectedBooking(null);
-              setFeeding({ Morning: null, Afternoon: null, Evening: null });
+              setFoodCatalog([]);
+              setMedicationCatalog([]);
+              setFeeding([]);
               setWalking([]);
               setPlaying([]);
               setMedications([]);
@@ -637,60 +650,82 @@ export function HotelCheckInPanel({
                 below to correct a mistake.
               </p>
             ) : null}
-            {MEAL_TIMES.map((mealTime) => {
-              const state = feeding[mealTime];
-
-              return (
-                <div key={mealTime} className={styles.instructionRow}>
-                  <label className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={state !== null}
-                      disabled={!isEditing}
-                      onChange={() => toggleMealTime(mealTime)}
-                    />
-                    {mealTime}
-                  </label>
-                  {state ? (
-                    <div className={styles.instructionBlock}>
-                      <div className={styles.inlineFields}>
-                        <CatalogComboBox
-                          items={foodCatalog}
-                          value={state.foodType}
-                          placeholder="Food type - search or type a custom value..."
-                          disabled={!isEditing}
-                          onChange={(next) =>
-                            updateFeeding(mealTime, { foodType: next })
-                          }
-                        />
-                        <input
-                          className={styles.input}
-                          placeholder="Quantity"
-                          value={state.quantity}
-                          disabled={!isEditing}
-                          onChange={(event) =>
-                            updateFeeding(mealTime, {
-                              quantity: event.target.value,
-                            })
-                          }
-                        />
-                        <input
-                          className={styles.input}
-                          placeholder="Special instructions (optional)"
-                          value={state.specialInstructions}
-                          disabled={!isEditing}
-                          onChange={(event) =>
-                            updateFeeding(mealTime, {
-                              specialInstructions: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
+            {feeding.map((state, index) => (
+              <div key={index} className={styles.instructionBlock}>
+                <div className={styles.inlineFields}>
+                  <select
+                    className={styles.input}
+                    aria-label="Meal time"
+                    value={state.mealTime}
+                    disabled={!isEditing}
+                    onChange={(event) =>
+                      updateFeeding(index, {
+                        mealTime: event.target.value as MealTime,
+                      })
+                    }
+                  >
+                    {MEAL_TIMES.map((mealTime) => (
+                      <option key={mealTime} value={mealTime}>
+                        {mealTime}
+                      </option>
+                    ))}
+                  </select>
+                  <CatalogComboBox
+                    items={foodCatalog}
+                    hidePrice
+                    value={state.foodType}
+                    placeholder="Food type - search or type a custom value..."
+                    disabled={!isEditing}
+                    onChange={(next) =>
+                      updateFeeding(index, { foodType: next })
+                    }
+                  />
+                  <input
+                    className={styles.input}
+                    placeholder="Quantity"
+                    value={state.quantity}
+                    disabled={!isEditing}
+                    onChange={(event) =>
+                      updateFeeding(index, {
+                        quantity: event.target.value,
+                      })
+                    }
+                  />
+                  <input
+                    className={styles.input}
+                    placeholder="Special instructions (optional)"
+                    value={state.specialInstructions}
+                    disabled={!isEditing}
+                    onChange={(event) =>
+                      updateFeeding(index, {
+                        specialInstructions: event.target.value,
+                      })
+                    }
+                  />
+                  {isEditing ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeFeeding(index)}
+                    >
+                      Remove
+                    </button>
                   ) : null}
                 </div>
-              );
-            })}
+              </div>
+            ))}
+            {feeding.length === 0 ? (
+              <p className={styles.copy}>No feeding times were requested.</p>
+            ) : null}
+            {isEditing ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addFeeding}
+              >
+                Add feeding time
+              </button>
+            ) : null}
           </section>
 
           <section className={styles.section}>
@@ -916,6 +951,7 @@ export function HotelCheckInPanel({
                 <div className={styles.inlineFields}>
                   <CatalogComboBox
                     items={medicationCatalog}
+                    hidePrice
                     value={medication.name}
                     placeholder="Medication name - search or type a custom value..."
                     disabled={!isEditing}

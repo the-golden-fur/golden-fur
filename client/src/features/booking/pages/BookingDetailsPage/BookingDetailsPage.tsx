@@ -24,6 +24,8 @@ import { getBooking } from '../../api/booking.api';
 import type { Booking } from '../../booking.types';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
+import { NightTabs } from '../../components/NightTabs/NightTabs';
+import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './BookingDetailsPage.module.css';
 
 function formatDateTime(iso: string | null): string {
@@ -36,6 +38,21 @@ function formatDateTime(iso: string | null): string {
 
 function formatCurrency(amount: number): string {
   return `PHP ${amount.toFixed(2)}`;
+}
+
+/** A row with stay_date unset applies to every night; a dated row applies
+ * only to that night, and wins over the dateless fallback when both would
+ * otherwise apply - mirrors the server's own rowsForDate resolution
+ * (hotel/services/careInstructions.service.ts) used to generate each day's
+ * real Care Log entries, so this read-only view matches what check-in/Care
+ * Log will actually show once the stay exists. */
+function rowsForNight<T extends { stay_date?: string }>(
+  rows: T[],
+  date: string | null
+): T[] {
+  if (date === null) return rows.filter((row) => !row.stay_date);
+  const dated = rows.filter((row) => row.stay_date === date);
+  return dated.length > 0 ? dated : rows.filter((row) => !row.stay_date);
 }
 
 /**
@@ -59,6 +76,7 @@ export function BookingDetailsPage() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
+  const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bookingId || !accessToken) return;
@@ -206,6 +224,25 @@ export function BookingDetailsPage() {
     0
   );
 
+  // Hotel duration is always whole nights (HOTEL_ARRIVAL_STEP_MS in
+  // availability.service.ts) - derived from the booking's own scheduled
+  // range rather than stored separately.
+  const hotelNightDates =
+    booking.service_category === 'Hotel'
+      ? getHotelNightDates(
+          booking.scheduled_start,
+          Math.max(
+            1,
+            Math.round(
+              (new Date(booking.scheduled_end).getTime() -
+                new Date(booking.scheduled_start).getTime()) /
+                (24 * 60 * 60 * 1000)
+            )
+          )
+        )
+      : [];
+  const preferences = booking.hotel_preferences;
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
@@ -268,6 +305,115 @@ export function BookingDetailsPage() {
             </ul>
           )}
         </section>
+
+        {booking.service_category === 'Hotel' && preferences ? (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Care instructions</h2>
+            <p className={styles.copy}>
+              Read-only - captured from the booking. The receptionist still
+              confirms/edits everything at physical check-in.
+            </p>
+
+            {hotelNightDates.length > 0 ? (
+              <NightTabs
+                nights={hotelNightDates}
+                activeDate={activeNightDate}
+                onSelect={setActiveNightDate}
+              />
+            ) : null}
+
+            <div>
+              <p className={styles.copy}>
+                <strong>Feeding</strong>
+              </p>
+              {rowsForNight(preferences.feeding, activeNightDate).length ===
+              0 ? (
+                <p className={styles.copy}>Not specified.</p>
+              ) : (
+                <ul className={styles.itemList}>
+                  {rowsForNight(preferences.feeding, activeNightDate).map(
+                    (row, index) => (
+                      <li key={index} className={styles.itemRow}>
+                        <span>
+                          {row.meal_time} - {row.food_type} ({row.quantity})
+                        </span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <p className={styles.copy}>
+                <strong>Walking</strong>
+              </p>
+              {rowsForNight(preferences.walking, activeNightDate).length ===
+              0 ? (
+                <p className={styles.copy}>Not specified.</p>
+              ) : (
+                <ul className={styles.itemList}>
+                  {rowsForNight(preferences.walking, activeNightDate).map(
+                    (row, index) => (
+                      <li key={index} className={styles.itemRow}>
+                        <span>
+                          {row.time_block} - {row.duration_minutes} min
+                        </span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <p className={styles.copy}>
+                <strong>Playtime</strong>
+              </p>
+              {rowsForNight(preferences.playing, activeNightDate).length ===
+              0 ? (
+                <p className={styles.copy}>Not specified.</p>
+              ) : (
+                <ul className={styles.itemList}>
+                  {rowsForNight(preferences.playing, activeNightDate).map(
+                    (row, index) => (
+                      <li key={index} className={styles.itemRow}>
+                        <span>
+                          {row.time_block} - {row.duration_minutes} min
+                        </span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <p className={styles.copy}>
+                <strong>Medications</strong>
+              </p>
+              {rowsForNight(preferences.medications, activeNightDate).length ===
+              0 ? (
+                <p className={styles.copy}>Not specified.</p>
+              ) : (
+                <ul className={styles.itemList}>
+                  {rowsForNight(preferences.medications, activeNightDate).map(
+                    (row, index) => (
+                      <li key={index} className={styles.itemRow}>
+                        <span>
+                          {row.medication_name} - {row.dose}
+                          {row.scheduled_times.length > 0
+                            ? ` (${row.scheduled_times.join(', ')})`
+                            : ''}
+                        </span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Pricing</h2>

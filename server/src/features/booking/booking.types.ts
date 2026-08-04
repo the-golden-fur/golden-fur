@@ -203,7 +203,7 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
  * instructions every night" default); a specific date scopes the row to
  * that single night only (#22 per-night care instructions). */
 export interface HotelBookingPreferenceFeeding {
-  meal_time: 'Morning' | 'Afternoon' | 'Evening';
+  meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
   special_instructions?: string;

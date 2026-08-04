@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const partOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
+// Feeding's meal_time gets a "Noon" option that walk/play's time_block does
+// not (only asked for on the food-type dropdown) - kept as its own enum
+// rather than widening partOfDay so walking/playing stay unaffected.
+const mealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
 
 /**
  * stay_date (#22): omitted/undefined means the row applies to every night of
@@ -12,7 +16,7 @@ const partOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
  */
 const feedingInstructionSchema = z
   .object({
-    meal_time: partOfDay,
+    meal_time: mealTime,
     food_type: z.string().min(1),
     quantity: z.string().min(1),
     special_instructions: z.string().optional(),

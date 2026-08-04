@@ -171,6 +171,30 @@ export async function listCustomerCatalogController(
   }
 }
 
+/** Staff-facing counterpart to listCustomerCatalogController - a
+ * receptionist booking/checking in a customer's pet needs to see THAT
+ * customer's own saved food/medication types, not their own ("me" is always
+ * the caller's own id, never useful for staff). Read-only; staff still
+ * cannot write to a customer's catalog. */
+export async function listCustomerCatalogForStaffController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = paramId(req, 'customerId');
+
+  try {
+    const items = await listCustomerCatalog({
+      customerId,
+      category: queryString(req.query.category) as
+        | CustomerCatalogCategory
+        | undefined,
+    });
+    return res.status(200).json({ items });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function createCustomerCatalogItemController(
   req: AuthenticatedRequest,
   res: Response

@@ -5,9 +5,8 @@ import {
   checkInHotelStay,
   getCageSuggestion,
   getCurrentPrescriptionForPet,
-  listFoodCatalog,
-  listMedicationCatalog,
 } from '../../api/hotel.api';
+import { listCustomerCatalogForStaff } from '../../../catalog/api/catalog.api';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import { HotelCheckInPanel } from './HotelCheckInPanel';
 
@@ -15,8 +14,10 @@ vi.mock('../../api/hotel.api', () => ({
   checkInHotelStay: vi.fn(),
   getCageSuggestion: vi.fn(),
   getCurrentPrescriptionForPet: vi.fn(),
-  listFoodCatalog: vi.fn(),
-  listMedicationCatalog: vi.fn(),
+}));
+
+vi.mock('../../../catalog/api/catalog.api', () => ({
+  listCustomerCatalogForStaff: vi.fn(),
 }));
 
 // Isolates this panel's own validation/pricing logic from
@@ -91,12 +92,14 @@ function setupMocks(booking: unknown = BOOKING) {
     error: null,
   });
 
-  vi.mocked(listFoodCatalog).mockResolvedValue({
-    data: [FOOD_ITEM],
-    error: null,
-  });
-
-  vi.mocked(listMedicationCatalog).mockResolvedValue({ data: [], error: null });
+  vi.mocked(listCustomerCatalogForStaff).mockImplementation(
+    (_customerId, _accessToken, category) =>
+      Promise.resolve(
+        category === 'food'
+          ? { data: [FOOD_ITEM], error: null }
+          : { data: [], error: null }
+      )
+  );
 
   vi.mocked(HotelBookingPicker).mockImplementation(({ onSelect }) =>
     createElement(
@@ -126,7 +129,8 @@ describe('HotelCheckInPanel', () => {
     fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
-    expect(screen.getByLabelText('Morning')).toBeDisabled();
+    expect(screen.getByLabelText('Meal time')).toBeDisabled();
+    expect(screen.getByLabelText('Meal time')).toHaveValue('Morning');
     expect(
       screen.getByPlaceholderText(
         'Food type - search or type a custom value...'
@@ -148,7 +152,7 @@ describe('HotelCheckInPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    expect(screen.getByLabelText('Morning')).not.toBeDisabled();
+    expect(screen.getByLabelText('Meal time')).not.toBeDisabled();
     expect(
       screen.getByPlaceholderText(
         'Food type - search or type a custom value...'
@@ -157,6 +161,9 @@ describe('HotelCheckInPanel', () => {
     expect(screen.getByPlaceholderText('Quantity')).not.toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Done editing' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add feeding time' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Add walk time' })

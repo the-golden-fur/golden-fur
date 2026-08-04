@@ -192,6 +192,32 @@ export async function listCustomerCatalog(
   return { data: result.data?.items ?? null, error: result.error };
 }
 
+/**
+ * Staff-facing counterpart to listCustomerCatalog - a receptionist booking
+ * or checking in a customer's pet needs THAT customer's own saved food/
+ * medication types, not "me" (which always resolves to the caller's own
+ * id). Read-only from here; staff still cannot write to a customer's
+ * catalog.
+ */
+export async function listCustomerCatalogForStaff(
+  customerId: string,
+  accessToken: string,
+  category?: CustomerCatalogCategory
+): Promise<CatalogApiResult<ProductCatalogItem[]>> {
+  const query = category ? `?category=${category}` : '';
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/food-medication-catalog${query}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ items: ProductCatalogItem[] }>(response);
+  return { data: result.data?.items ?? null, error: result.error };
+}
+
 export async function createCustomerCatalogItem(
   payload: { name: string; category: CustomerCatalogCategory },
   accessToken: string

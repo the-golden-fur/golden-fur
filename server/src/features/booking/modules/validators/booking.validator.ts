@@ -89,6 +89,10 @@ function requireEndAfterStart(
 }
 
 const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
+// Feeding's meal_time gets a "Noon" option that walking/playing's time_block
+// does not - a separate enum, not a widened hotelPartOfDay, keeps those two
+// unaffected.
+const hotelMealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
 
 /**
  * Booking-time preferences for a Hotel booking - a preview the check-in form
@@ -108,7 +112,7 @@ const hotelPreferencesValidator = z
       .array(
         z
           .object({
-            meal_time: hotelPartOfDay,
+            meal_time: hotelMealTime,
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
             special_instructions: z.string().trim().optional(),

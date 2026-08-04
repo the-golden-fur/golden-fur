@@ -7,7 +7,7 @@ import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/Auth
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
-import * as hotelApi from '../../../hotel/api/hotel.api';
+import * as catalogApi from '../../../catalog/api/catalog.api';
 import * as bookingApi from '../../api/booking.api';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
@@ -22,9 +22,9 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
 }));
 
-vi.mock('../../../hotel/api/hotel.api', () => ({
-  listFoodCatalog: vi.fn(),
-  listMedicationCatalog: vi.fn(),
+vi.mock('../../../catalog/api/catalog.api', () => ({
+  listCustomerCatalog: vi.fn(),
+  listCustomerCatalogForStaff: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -316,32 +316,42 @@ describe('CustomerBookingFlowPage', () => {
       data: null,
       error: 'not mocked in this test',
     });
-    vi.mocked(hotelApi.listFoodCatalog).mockResolvedValue({
-      data: [
-        {
-          id: 'food-1',
-          name: 'Premium Kibble',
-          price: 50,
-          is_active: true,
-          created_at: '',
-          updated_at: '',
-        },
-      ],
-      error: null,
-    });
-    vi.mocked(hotelApi.listMedicationCatalog).mockResolvedValue({
-      data: [
-        {
-          id: 'med-1',
-          name: 'Amoxicillin',
-          price: 40,
-          is_active: true,
-          created_at: '',
-          updated_at: '',
-        },
-      ],
-      error: null,
-    });
+    const FOOD_ITEM = {
+      id: 'food-1',
+      name: 'Premium Kibble',
+      category: 'food',
+      service_scope: 'hotel',
+      price: 0,
+      is_active: true,
+      archived_at: null,
+      created_at: '',
+      updated_at: '',
+      owner_customer_id: null,
+    };
+    const MEDICATION_ITEM = {
+      id: 'med-1',
+      name: 'Amoxicillin',
+      category: 'medication',
+      service_scope: 'hotel',
+      price: 0,
+      is_active: true,
+      archived_at: null,
+      created_at: '',
+      updated_at: '',
+      owner_customer_id: null,
+    };
+    const catalogByCategory = (category?: string) =>
+      Promise.resolve(
+        category === 'medication'
+          ? { data: [MEDICATION_ITEM], error: null }
+          : { data: [FOOD_ITEM], error: null }
+      );
+    vi.mocked(catalogApi.listCustomerCatalog).mockImplementation(
+      (_accessToken, category) => catalogByCategory(category)
+    );
+    vi.mocked(catalogApi.listCustomerCatalogForStaff).mockImplementation(
+      (_customerId, _accessToken, category) => catalogByCategory(category)
+    );
     vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
       data: [],
@@ -428,7 +438,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(bookingApi.getBookingCatalog).toHaveBeenCalledWith('token', {
       branchId: 'branch-1',
     });
-    expect(hotelApi.listFoodCatalog).not.toHaveBeenCalled();
+    expect(catalogApi.listCustomerCatalog).not.toHaveBeenCalled();
   });
 
   it('#22: Grooming/Veterinary: Staff Picker is merged into the availability step, appearing only once a slot is picked', async () => {
@@ -512,15 +522,19 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
-      expect(hotelApi.listFoodCatalog).toHaveBeenCalledWith('token')
+      expect(catalogApi.listCustomerCatalogForStaff).toHaveBeenCalledWith(
+        'cust-1',
+        'token',
+        'food'
+      )
     );
 
     await waitFor(() =>
       expect(
-        screen.getByRole('checkbox', { name: /morning/i })
+        screen.getByRole('button', { name: 'Add feeding time' })
       ).toBeInTheDocument()
     );
-    await user.click(screen.getByRole('checkbox', { name: /morning/i }));
+    await user.click(screen.getByRole('button', { name: 'Add feeding time' }));
 
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
@@ -831,8 +845,10 @@ describe('CustomerBookingFlowPage', () => {
     const cage = await screen.findByText('Hotel Stay - Medium Cage');
     await user.click(cage);
 
+    // Now shows "... × 3 nights" alongside the label - regex to match
+    // regardless of the multiplier suffix.
     expect(
-      screen.getByText('Running total (before promos/discounts)')
+      screen.getByText(/Running total \(before promos\/discounts\)/)
     ).toBeInTheDocument();
     // 800/night x 3 nights, set back on the availability step.
     expect(screen.getByText('PHP 2400.00')).toBeInTheDocument();
