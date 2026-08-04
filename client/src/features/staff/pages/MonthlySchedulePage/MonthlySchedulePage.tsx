@@ -253,7 +253,6 @@ export function MonthlySchedulePage() {
   const loadSchedule = () => {
     if (!accessToken || !selectedBranchId) return;
 
-    setIsLoading(true);
     const from = new Date(year, month, 1).toISOString();
     const to = new Date(year, month + 1, 1).toISOString();
 
