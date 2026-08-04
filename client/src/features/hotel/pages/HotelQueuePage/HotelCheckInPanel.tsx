@@ -156,14 +156,15 @@ export function HotelCheckInPanel({
   // A customer's own saved food/medication types (#22) - the booking being
   // checked in already identifies the customer, so this is keyed off it
   // (not fetched once on mount) and refetches whenever a different booking
-  // is selected. Never the old global staff Product Catalog.
+  // is selected. Never the old global staff Product Catalog. No selected
+  // booking means nothing to fetch - the catalogs are reset explicitly by
+  // whichever handler clears selectedBooking (see "Check in another pet"
+  // below), not synchronously here, per this codebase's own set-state-in-
+  // effect convention (state should be reset from an event handler or a
+  // fetch's resolution, not the effect body itself).
   useEffect(() => {
     const customerId = selectedBooking?.customer_id;
-    if (!customerId) {
-      setFoodCatalog([]);
-      setMedicationCatalog([]);
-      return;
-    }
+    if (!customerId) return;
 
     let isMounted = true;
 
@@ -588,6 +589,8 @@ export function HotelCheckInPanel({
             onClick={() => {
               setCheckedInStayId(null);
               setSelectedBooking(null);
+              setFoodCatalog([]);
+              setMedicationCatalog([]);
               setFeeding([]);
               setWalking([]);
               setPlaying([]);
