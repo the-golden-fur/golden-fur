@@ -25,6 +25,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   notice_enforcement_enabled: true,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
+  lunch_break_enabled: true,
+  lunch_break_start: '12:00',
+  lunch_break_end: '13:00',
 };
 
 /** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
@@ -223,7 +226,7 @@ export async function updatePolicyConfiguration({
   }
 
   const resolved = await resolveEffectivePolicy(branchId);
-  // Only the five policy fields - resolveEffectivePolicy may hand back a full
+  // Only the policy fields - resolveEffectivePolicy may hand back a full
   // row (id/created_at included), which must not leak into the new row.
   const baseline: EffectivePolicy = {
     notice_period_days: resolved.notice_period_days,
@@ -231,6 +234,9 @@ export async function updatePolicyConfiguration({
     notice_enforcement_enabled: resolved.notice_enforcement_enabled,
     staff_picker_enabled_grooming: resolved.staff_picker_enabled_grooming,
     staff_picker_enabled_veterinary: resolved.staff_picker_enabled_veterinary,
+    lunch_break_enabled: resolved.lunch_break_enabled,
+    lunch_break_start: resolved.lunch_break_start,
+    lunch_break_end: resolved.lunch_break_end,
   };
 
   const { data, error } = await supabase

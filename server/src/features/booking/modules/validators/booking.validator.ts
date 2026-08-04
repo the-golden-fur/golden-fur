@@ -15,6 +15,8 @@ const CATEGORIES = [
 ] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
+/** Matches branches.validator.ts's TIME_PATTERN - "HH:MM" 24h. */
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /** ISO-8601 with offset, matching the timestamptz columns. */
 const isoDatetime = z.iso.datetime({ offset: true });
@@ -232,6 +234,15 @@ export const updatePolicyValidator = z
     notice_enforcement_enabled: z.boolean().optional(),
     staff_picker_enabled_grooming: z.boolean().optional(),
     staff_picker_enabled_veterinary: z.boolean().optional(),
+    lunch_break_enabled: z.boolean().optional(),
+    lunch_break_start: z
+      .string()
+      .regex(TIME_PATTERN, 'Use HH:MM (24h)')
+      .optional(),
+    lunch_break_end: z
+      .string()
+      .regex(TIME_PATTERN, 'Use HH:MM (24h)')
+      .optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -241,6 +252,18 @@ export const updatePolicyValidator = z
       ctx.addIssue({
         code: 'custom',
         message: 'At least one policy setting must be provided',
+      });
+    }
+
+    if (
+      input.lunch_break_start &&
+      input.lunch_break_end &&
+      input.lunch_break_start >= input.lunch_break_end
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'lunch_break_end must be after lunch_break_start',
+        path: ['lunch_break_end'],
       });
     }
   });

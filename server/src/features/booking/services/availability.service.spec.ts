@@ -19,7 +19,17 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'neq', 'in', 'lt', 'gt', 'order']) {
+    for (const method of [
+      'select',
+      'eq',
+      'neq',
+      'in',
+      'or',
+      'is',
+      'lt',
+      'gt',
+      'order',
+    ]) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -39,6 +49,42 @@ const BRANCH_ROW = {
   },
   error: null,
 };
+
+/** Queued for getDaySlots' resolveEffectivePolicy() lunch-break lookup -
+ * disabled so it never interferes with these tests' own slot-count/level
+ * assertions (see the dedicated lunch-break describe block below for the
+ * enabled case). */
+const POLICY_ROW_LUNCH_DISABLED = {
+  data: [
+    {
+      id: 'policy-default',
+      branch_id: null,
+      notice_period_days: 3,
+      notice_enforcement_mode: 'Strict',
+      notice_enforcement_enabled: true,
+      staff_picker_enabled_grooming: true,
+      staff_picker_enabled_veterinary: true,
+      lunch_break_enabled: false,
+      lunch_break_start: '12:00:00',
+      lunch_break_end: '13:00:00',
+      created_at: '2026-07-18T00:00:00Z',
+      updated_at: '2026-07-18T00:00:00Z',
+    },
+  ],
+  error: null,
+};
+
+function policyRow(overrides: { lunch_break_enabled?: boolean } = {}) {
+  return {
+    data: [
+      {
+        ...POLICY_ROW_LUNCH_DISABLED.data[0],
+        ...overrides,
+      },
+    ],
+    error: null,
+  };
+}
 
 describe('availability.service (#56/#60 supporting infra)', () => {
   beforeEach(() => {
@@ -80,6 +126,7 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
     queueFromResults(
       BRANCH_ROW, // branch lookup
+      POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
       { data: null, error: null, count: 1 } // roster count (1 groomer)
     );
 
@@ -123,6 +170,7 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
     queueFromResults(
       BRANCH_ROW, // branch lookup
+      POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
       { data: [], error: null }, // overlapping bookings (none) for 09:00
       { data: [], error: null }, // 10:00
       { data: [], error: null } // 11:00
@@ -172,6 +220,7 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
     queueFromResults(
       BRANCH_ROW, // branch lookup
+      POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
       { data: [], error: null }, // overlapping bookings for the 09:00 candidate
       { data: [], error: null }, // 10:00
       { data: [], error: null } // 11:00
@@ -210,6 +259,7 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
     queueFromResults(
       BRANCH_ROW, // branch lookup
+      POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
       { data: null, error: null, count: 1 } // roster count (1 groomer)
     );
     vi.mocked(supabase.rpc).mockResolvedValue({
@@ -238,6 +288,7 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
     queueFromResults(
       BRANCH_ROW, // branch lookup
+      POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
       { data: [], error: null } // overlapping bookings for the surviving 11:00 candidate
     );
 
@@ -252,6 +303,70 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     expect(slots).toHaveLength(1);
     expect(slots[0].start).toBe('2026-08-03T03:00:00.000Z'); // 11:00 Asia/Manila
     expect(slots[0]).toMatchObject({ available: true, level: 'available' });
+  });
+
+  describe('lunch break', () => {
+    const WIDE_BRANCH_ROW = {
+      data: {
+        timezone: 'Asia/Manila',
+        operating_hours: {
+          monday: { open: '09:00', close: '15:00' },
+        },
+      },
+      error: null,
+    };
+
+    it('drops the candidate overlapping the effective lunch break window', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+
+      queueFromResults(
+        WIDE_BRANCH_ROW, // branch lookup
+        policyRow({ lunch_break_enabled: true }), // lunch break 12:00-13:00
+        { data: null, error: null, count: 1 } // roster count (1 groomer)
+      );
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03', // a Monday, 09:00-15:00 per WIDE_BRANCH_ROW
+        slotDurationMinutes: 60,
+      });
+
+      // 09,10,11,12,13,14 candidates minus the 12:00-13:00 lunch slot => 5.
+      expect(slots).toHaveLength(5);
+      expect(slots.map((slot) => slot.start)).not.toContain(
+        '2026-08-03T04:00:00.000Z' // 12:00 Asia/Manila
+      );
+    });
+
+    it('keeps every candidate when the lunch break is disabled', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({ lunch_break_enabled: false }),
+        { data: null, error: null, count: 1 }
+      );
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(6);
+    });
   });
 
   describe('resolveOperatingWindow', () => {

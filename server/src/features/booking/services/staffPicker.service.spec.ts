@@ -70,6 +70,9 @@ const DEFAULT_POLICY = {
   notice_enforcement_enabled: true,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
+  lunch_break_enabled: true,
+  lunch_break_start: '12:00:00',
+  lunch_break_end: '13:00:00',
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
 };
