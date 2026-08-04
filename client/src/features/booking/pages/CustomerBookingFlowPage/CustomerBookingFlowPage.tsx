@@ -1954,74 +1954,74 @@ export function CustomerBookingFlowPage() {
                 }
 
                 return (
-                <div key={index} className={styles.instructionBlock}>
-                  <div className={styles.inlineFields}>
-                    <select
-                      className={styles.input}
-                      aria-label="Walk time of day"
-                      value={row.time_block}
-                      onChange={(event) =>
-                        updateHotelWalkBlock(index, {
-                          time_block: event.target
-                            .value as HotelBookingPreferenceWalking['time_block'],
-                        })
-                      }
-                    >
-                      {PARTS_OF_DAY.map((part) => (
-                        <option key={part} value={part}>
-                          {part}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min={1}
-                      placeholder="Duration (min)"
-                      value={row.duration_minutes}
-                      onChange={(event) =>
-                        updateHotelWalkBlock(index, {
-                          duration_minutes: Number(event.target.value),
-                        })
-                      }
-                    />
-                    {DURATION_PRESETS_MINUTES.map((minutes) => (
-                      <button
-                        key={minutes}
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() =>
+                  <div key={index} className={styles.instructionBlock}>
+                    <div className={styles.inlineFields}>
+                      <select
+                        className={styles.input}
+                        aria-label="Walk time of day"
+                        value={row.time_block}
+                        onChange={(event) =>
                           updateHotelWalkBlock(index, {
-                            duration_minutes: minutes,
+                            time_block: event.target
+                              .value as HotelBookingPreferenceWalking['time_block'],
                           })
                         }
                       >
-                        {minutes}m
+                        {PARTS_OF_DAY.map((part) => (
+                          <option key={part} value={part}>
+                            {part}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min={1}
+                        placeholder="Duration (min)"
+                        value={row.duration_minutes}
+                        onChange={(event) =>
+                          updateHotelWalkBlock(index, {
+                            duration_minutes: Number(event.target.value),
+                          })
+                        }
+                      />
+                      {DURATION_PRESETS_MINUTES.map((minutes) => (
+                        <button
+                          key={minutes}
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() =>
+                            updateHotelWalkBlock(index, {
+                              duration_minutes: minutes,
+                            })
+                          }
+                        >
+                          {minutes}m
+                        </button>
+                      ))}
+                      <input
+                        className={styles.input}
+                        placeholder="Notes (optional)"
+                        value={row.notes}
+                        onChange={(event) =>
+                          updateHotelWalkBlock(index, {
+                            notes: event.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeHotelWalkBlock(index)}
+                      >
+                        Remove
                       </button>
-                    ))}
-                    <input
-                      className={styles.input}
-                      placeholder="Notes (optional)"
-                      value={row.notes}
-                      onChange={(event) =>
-                        updateHotelWalkBlock(index, {
-                          notes: event.target.value,
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeHotelWalkBlock(index)}
-                    >
-                      Remove
-                    </button>
+                    </div>
+                    <p className={styles.copy}>
+                      Applies daily - won&apos;t happen before check-in on
+                      arrival day or after checkout on departure day.
+                    </p>
                   </div>
-                  <p className={styles.copy}>
-                    Applies daily - won&apos;t happen before check-in on arrival
-                    day or after checkout on departure day.
-                  </p>
-                </div>
                 );
               })}
               <button
@@ -2044,74 +2044,74 @@ export function CustomerBookingFlowPage() {
                 }
 
                 return (
-                <div key={index} className={styles.instructionBlock}>
-                  <div className={styles.inlineFields}>
-                    <select
-                      className={styles.input}
-                      aria-label="Playtime time of day"
-                      value={row.time_block}
-                      onChange={(event) =>
-                        updateHotelPlayBlock(index, {
-                          time_block: event.target
-                            .value as HotelBookingPreferenceWalking['time_block'],
-                        })
-                      }
-                    >
-                      {PARTS_OF_DAY.map((part) => (
-                        <option key={part} value={part}>
-                          {part}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min={1}
-                      placeholder="Duration (min)"
-                      value={row.duration_minutes}
-                      onChange={(event) =>
-                        updateHotelPlayBlock(index, {
-                          duration_minutes: Number(event.target.value),
-                        })
-                      }
-                    />
-                    {DURATION_PRESETS_MINUTES.map((minutes) => (
-                      <button
-                        key={minutes}
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() =>
+                  <div key={index} className={styles.instructionBlock}>
+                    <div className={styles.inlineFields}>
+                      <select
+                        className={styles.input}
+                        aria-label="Playtime time of day"
+                        value={row.time_block}
+                        onChange={(event) =>
                           updateHotelPlayBlock(index, {
-                            duration_minutes: minutes,
+                            time_block: event.target
+                              .value as HotelBookingPreferenceWalking['time_block'],
                           })
                         }
                       >
-                        {minutes}m
+                        {PARTS_OF_DAY.map((part) => (
+                          <option key={part} value={part}>
+                            {part}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min={1}
+                        placeholder="Duration (min)"
+                        value={row.duration_minutes}
+                        onChange={(event) =>
+                          updateHotelPlayBlock(index, {
+                            duration_minutes: Number(event.target.value),
+                          })
+                        }
+                      />
+                      {DURATION_PRESETS_MINUTES.map((minutes) => (
+                        <button
+                          key={minutes}
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() =>
+                            updateHotelPlayBlock(index, {
+                              duration_minutes: minutes,
+                            })
+                          }
+                        >
+                          {minutes}m
+                        </button>
+                      ))}
+                      <input
+                        className={styles.input}
+                        placeholder="Notes (optional)"
+                        value={row.notes}
+                        onChange={(event) =>
+                          updateHotelPlayBlock(index, {
+                            notes: event.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeHotelPlayBlock(index)}
+                      >
+                        Remove
                       </button>
-                    ))}
-                    <input
-                      className={styles.input}
-                      placeholder="Notes (optional)"
-                      value={row.notes}
-                      onChange={(event) =>
-                        updateHotelPlayBlock(index, {
-                          notes: event.target.value,
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeHotelPlayBlock(index)}
-                    >
-                      Remove
-                    </button>
+                    </div>
+                    <p className={styles.copy}>
+                      Applies daily - won&apos;t happen before check-in on
+                      arrival day or after checkout on departure day.
+                    </p>
                   </div>
-                  <p className={styles.copy}>
-                    Applies daily - won&apos;t happen before check-in on arrival
-                    day or after checkout on departure day.
-                  </p>
-                </div>
                 );
               })}
               <button
@@ -2134,63 +2134,65 @@ export function CustomerBookingFlowPage() {
                 }
 
                 return (
-                <div key={index} className={styles.instructionBlock}>
-                  <div className={styles.inlineFields}>
-                    <CatalogComboBox
-                      placeholder="Medication name"
-                      items={medicationCatalog}
-                      hidePrice
-                      value={{
-                        catalogId: row.medication_catalog_id,
-                        text: row.medication_name,
-                      }}
-                      onChange={(next) =>
-                        updateHotelMedication(index, {
-                          medication_name: next.text,
-                          medication_catalog_id: next.catalogId,
-                        })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      placeholder="Dose"
-                      value={row.dose}
-                      onChange={(event) =>
-                        updateHotelMedication(index, {
-                          dose: event.target.value,
-                        })
-                      }
-                    />
-                    <TimeInput
-                      aria-label="Medication time"
-                      value={row.scheduled_time}
-                      onChange={(value) =>
-                        updateHotelMedication(index, { scheduled_time: value })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      placeholder="Notes (optional)"
-                      value={row.administration_notes}
-                      onChange={(event) =>
-                        updateHotelMedication(index, {
-                          administration_notes: event.target.value,
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeHotelMedication(index)}
-                    >
-                      Remove
-                    </button>
+                  <div key={index} className={styles.instructionBlock}>
+                    <div className={styles.inlineFields}>
+                      <CatalogComboBox
+                        placeholder="Medication name"
+                        items={medicationCatalog}
+                        hidePrice
+                        value={{
+                          catalogId: row.medication_catalog_id,
+                          text: row.medication_name,
+                        }}
+                        onChange={(next) =>
+                          updateHotelMedication(index, {
+                            medication_name: next.text,
+                            medication_catalog_id: next.catalogId,
+                          })
+                        }
+                      />
+                      <input
+                        className={styles.input}
+                        placeholder="Dose"
+                        value={row.dose}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            dose: event.target.value,
+                          })
+                        }
+                      />
+                      <TimeInput
+                        aria-label="Medication time"
+                        value={row.scheduled_time}
+                        onChange={(value) =>
+                          updateHotelMedication(index, {
+                            scheduled_time: value,
+                          })
+                        }
+                      />
+                      <input
+                        className={styles.input}
+                        placeholder="Notes (optional)"
+                        value={row.administration_notes}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            administration_notes: event.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeHotelMedication(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <p className={styles.copy}>
+                      Applies daily - won&apos;t happen before check-in on
+                      arrival day or after checkout on departure day.
+                    </p>
                   </div>
-                  <p className={styles.copy}>
-                    Applies daily - won&apos;t happen before check-in on arrival
-                    day or after checkout on departure day.
-                  </p>
-                </div>
                 );
               })}
               <button

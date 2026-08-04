@@ -392,8 +392,8 @@ export function BookingDetailsPage() {
               <p className={styles.copy}>
                 <strong>Medications</strong>
               </p>
-              {rowsForNight(preferences.medications, activeNightDate)
-                .length === 0 ? (
+              {rowsForNight(preferences.medications, activeNightDate).length ===
+              0 ? (
                 <p className={styles.copy}>Not specified.</p>
               ) : (
                 <ul className={styles.itemList}>
