@@ -10,6 +10,7 @@ import {
   hardDeleteProductController,
   listArchivedProductsController,
   listCustomerCatalogController,
+  listCustomerCatalogForStaffController,
   listProductsController,
   restoreProductController,
   updateCustomerCatalogItemController,
@@ -70,6 +71,15 @@ router.get(
   '/customers/me/food-medication-catalog',
   customerAuth,
   listCustomerCatalogController
+);
+// Staff-facing: a receptionist booking/checking in on behalf of a customer
+// needs that customer's own saved types, not their own - same read audience
+// as /catalog/products (staffRead), just scoped to one customer instead of
+// the global catalog.
+router.get(
+  '/customers/:customerId/food-medication-catalog',
+  staffRead,
+  listCustomerCatalogForStaffController
 );
 router.post(
   '/customers/me/food-medication-catalog',
