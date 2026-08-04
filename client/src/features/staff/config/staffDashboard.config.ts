@@ -108,6 +108,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/admin/unavailability',
           },
           {
+            title: 'Monthly Schedule',
+            description:
+              'Plot rest days and vacation/sick leave on a branch-wide calendar.',
+            to: '/staff/admin/monthly-schedule',
+          },
+          {
             title: 'Bookings Queue',
             description:
               'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
@@ -207,6 +213,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Days Off Approval Queue',
             description: 'Review pending staff day-off requests.',
             to: '/staff/admin/unavailability',
+          },
+          {
+            title: 'Monthly Schedule',
+            description:
+              'Plot rest days and vacation/sick leave on a branch-wide calendar.',
+            to: '/staff/admin/monthly-schedule',
           },
           {
             title: 'Bookings Queue',

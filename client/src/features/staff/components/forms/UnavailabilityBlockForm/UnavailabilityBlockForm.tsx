@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createUnavailabilityBlock, listStaff } from '../../../api/staff.api';
 import { createUnavailabilityBlockValidator } from '../../../modules/validators/staff.validator';
-import type {
-  StaffProfile,
-  StaffRole,
-  UnavailabilityBlock,
+import {
+  SELF_SERVICE_LEAVE_TYPES,
+  type StaffProfile,
+  type StaffRole,
+  type UnavailabilityBlock,
+  type UnavailabilityLeaveType,
 } from '../../../staff.types';
 import styles from './UnavailabilityBlockForm.module.css';
 
@@ -59,6 +61,8 @@ export function UnavailabilityBlockForm({
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
+  const [leaveType, setLeaveType] =
+    useState<UnavailabilityLeaveType>('Vacation Leave');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -107,6 +111,7 @@ export function UnavailabilityBlockForm({
     end_time?: string;
     reason?: string;
     requested_reviewer_id?: string;
+    leave_type?: UnavailabilityLeaveType;
   }) => {
     setError(null);
     setIsSubmitting(true);
@@ -155,6 +160,7 @@ export function UnavailabilityBlockForm({
         is_full_day: true,
         date: parsed.data.date,
         reason: parsed.data.reason,
+        leave_type: leaveType,
       });
       return;
     }
@@ -174,6 +180,7 @@ export function UnavailabilityBlockForm({
       start_time: new Date(startTime).toISOString(),
       end_time: new Date(endTime).toISOString(),
       reason: parsed.data.reason,
+      leave_type: leaveType,
     });
   };
 
@@ -211,6 +218,23 @@ export function UnavailabilityBlockForm({
         className={styles.form}
         onSubmit={(event) => void handleCustomRange(event)}
       >
+        <label className={styles.field}>
+          <span className={styles.label}>Type</span>
+          <select
+            className={styles.input}
+            value={leaveType}
+            onChange={(event) =>
+              setLeaveType(event.target.value as UnavailabilityLeaveType)
+            }
+          >
+            {SELF_SERVICE_LEAVE_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className={styles.checkboxField}>
           <input
             type="checkbox"

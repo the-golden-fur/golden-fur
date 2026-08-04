@@ -1,4 +1,5 @@
 import type {
+  BranchScheduleEntry,
   CreateStaffAccountPayload,
   CreateStaffAccountResult,
   ManageStaffAccountPayload,
@@ -225,6 +226,25 @@ export async function reviewUnavailabilityRequest(
 
   const result = await parseBody<{ block: UnavailabilityBlock }>(response);
   return { data: result.data?.block ?? null, error: result.error };
+}
+
+export async function listBranchSchedule(
+  branchId: string,
+  range: { from: string; to: string },
+  accessToken: string
+): Promise<StaffApiResult<BranchScheduleEntry[]>> {
+  const params = new URLSearchParams({ from: range.from, to: range.to });
+  const response = await fetch(
+    `${API_BASE_URL}/staff/branches/${branchId}/schedule?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ entries: BranchScheduleEntry[] }>(response);
+  return { data: result.data?.entries ?? null, error: result.error };
 }
 
 export async function listStaff(

@@ -23,11 +23,12 @@ import {
 import {
   cancelUnavailabilityBlock,
   createUnavailabilityBlock,
+  listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
   reviewUnavailabilityBlock,
 } from './services/unavailabilityBlock.service.ts';
-import { ADMIN_ROLES } from './staff.types.ts';
+import { ADMIN_ROLES, UNAVAILABILITY_LEAVE_TYPES } from './staff.types.ts';
 
 const createUnavailabilityBlockValidator = z
   .object({
@@ -40,6 +41,9 @@ const createUnavailabilityBlockValidator = z
     reason: z.string().trim().min(1).optional(),
     /** Optional, non-binding "send to" hint - see staff.types.ts. */
     requested_reviewer_id: z.string().uuid().optional(),
+    /** Defaults to 'Other' in the service when omitted - matches every
+     * pre-existing ad-hoc/quick-action entry. */
+    leave_type: z.enum(UNAVAILABILITY_LEAVE_TYPES).optional(),
   })
   .strict();
 
@@ -49,6 +53,11 @@ const reviewUnavailabilityBlockValidator = z
     denial_reason: z.string().trim().min(1).optional(),
   })
   .strict();
+
+const listBranchScheduleQueryValidator = z.object({
+  from: z.iso.datetime({ offset: true }),
+  to: z.iso.datetime({ offset: true }),
+});
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -545,6 +554,7 @@ export async function createUnavailabilityBlockController(
 ) {
   const requesterId = req.user?.sub;
   const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
   const targetId = Array.isArray(req.params.id)
     ? req.params.id[0]
     : req.params.id;
@@ -565,6 +575,7 @@ export async function createUnavailabilityBlockController(
     const block = await createUnavailabilityBlock({
       requesterId,
       requesterRole,
+      requesterBranchId,
       targetStaffId: targetId as string,
       quickAction: parsed.data.quick_action,
       isFullDay: parsed.data.is_full_day,
@@ -573,6 +584,7 @@ export async function createUnavailabilityBlockController(
       endTime: parsed.data.end_time,
       reason: parsed.data.reason,
       requestedReviewerId: parsed.data.requested_reviewer_id,
+      leaveType: parsed.data.leave_type,
     });
 
     return res.status(201).json({ block });
@@ -587,6 +599,7 @@ export async function cancelUnavailabilityBlockController(
 ) {
   const requesterId = req.user?.sub;
   const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
   const targetId = Array.isArray(req.params.id)
     ? req.params.id[0]
     : req.params.id;
@@ -602,6 +615,7 @@ export async function cancelUnavailabilityBlockController(
     await cancelUnavailabilityBlock({
       requesterId,
       requesterRole,
+      requesterBranchId,
       targetStaffId: targetId as string,
       blockId: blockId as string,
     });
@@ -700,6 +714,43 @@ export async function listPendingUnavailabilityBlocksController(
     });
 
     return res.status(200).json({ blocks });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listBranchScheduleController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const branchId = Array.isArray(req.params.branchId)
+    ? req.params.branchId[0]
+    : req.params.branchId;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = listBranchScheduleQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const entries = await listBranchSchedule({
+      requesterRole,
+      requesterBranchId,
+      branchId: branchId as string,
+      rangeStart: parsed.data.from,
+      rangeEnd: parsed.data.to,
+    });
+
+    return res.status(200).json({ entries });
   } catch (error) {
     return sendServiceError(res, error);
   }

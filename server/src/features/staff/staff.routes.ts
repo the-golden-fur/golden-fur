@@ -12,6 +12,7 @@ import {
   handleAvatarUploadError,
   hardDeleteStaffAccountController,
   listArchivedStaffController,
+  listBranchScheduleController,
   listPendingUnavailabilityBlocksController,
   listStaffController,
   listUnavailabilityBlocksController,
@@ -61,6 +62,15 @@ router.get(
   requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
   requireBranch,
   listPendingUnavailabilityBlocksController
+);
+
+router.get(
+  '/staff/branches/:branchId/schedule',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  listBranchScheduleController
 );
 
 router.get(
