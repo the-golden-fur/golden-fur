@@ -1,4 +1,4 @@
-export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
+export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 
 /** Meal times are an enum, not a clock time (see MEAL_TIMES in
  * CustomerBookingFlowPage.tsx) - this is the fixed clock-time convention
@@ -9,6 +9,7 @@ export const MEAL_TIME_WINDOWS: Record<
   { start: string; end: string }
 > = {
   Morning: { start: '06:00', end: '10:00' },
+  Noon: { start: '10:00', end: '13:00' },
   Afternoon: { start: '11:00', end: '16:00' },
   Evening: { start: '17:00', end: '21:00' },
 };

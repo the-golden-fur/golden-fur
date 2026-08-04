@@ -4,7 +4,7 @@ export type CageStatus =
   | 'Occupied'
   | 'Reserved'
   | 'Under Maintenance';
-export type MealTime = 'Morning' | 'Afternoon' | 'Evening';
+export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 
 export interface Cage {
