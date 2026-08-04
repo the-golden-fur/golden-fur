@@ -301,11 +301,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.instructionRow {
-  display: grid;
-  gap: var(--space-1);
-}
-
 .checkboxRow {
   display: flex;
   align-items: center;

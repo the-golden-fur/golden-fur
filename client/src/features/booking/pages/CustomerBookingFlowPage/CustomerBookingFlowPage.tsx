@@ -56,13 +56,12 @@ import {
 } from '../../../hotel/utils/careScheduleBounds';
 import { CatalogComboBox } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import {
-  listFoodCatalog,
-  listMedicationCatalog,
-} from '../../../hotel/api/hotel.api';
-import type {
-  FoodCatalogItem,
-  MedicationCatalogItem,
-} from '../../../hotel/hotel.types';
+  listCustomerCatalog,
+  listCustomerCatalogForStaff,
+} from '../../../catalog/api/catalog.api';
+import type { ProductCatalogItem } from '../../../catalog/catalog.types';
+import { NightTabs } from '../../components/NightTabs/NightTabs';
+import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './CustomerBookingFlowPage.module.css';
 
 const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
@@ -144,6 +143,7 @@ const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
 
 const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
   'Morning',
+  'Noon',
   'Afternoon',
   'Evening',
 ];
@@ -162,24 +162,38 @@ const DURATION_PRESETS_MINUTES = [10, 15, 20, 30];
 const NIGHT_COUNT_PRESETS = [3, 5];
 
 interface HotelFeedingRowState {
+  meal_time: HotelBookingPreferenceFeeding['meal_time'];
   food_type: string;
   quantity: string;
   special_instructions: string;
-  /** Set only when food_type matched a catalog item - staff view only, since
-   * the catalog dropdown (CatalogComboBox) is only shown there. */
+  /** Set only when food_type matched a catalog item. */
   food_catalog_id: string | null;
+  /** null = applies to every night of the stay; a specific date scopes the
+   * row to that single night (per-night Care Instructions editing). */
+  stay_date: string | null;
 }
+
+const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
+  meal_time: 'Morning',
+  food_type: '',
+  quantity: '1',
+  special_instructions: '',
+  food_catalog_id: null,
+  stay_date: null,
+};
 
 const EMPTY_HOTEL_WALKING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
   duration_minutes: 15,
   notes: '',
+  stay_date: null as string | null,
 };
 
 const EMPTY_HOTEL_PLAYING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
   duration_minutes: 15,
   notes: '',
+  stay_date: null as string | null,
 };
 
 const EMPTY_HOTEL_MEDICATION_ROW = {
@@ -188,6 +202,7 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   scheduled_time: '08:00',
   administration_notes: '',
   medication_catalog_id: null as string | null,
+  stay_date: null as string | null,
 };
 
 /**
@@ -345,13 +360,10 @@ export function CustomerBookingFlowPage() {
 
   // Hotel-only: freetext feeding/walking/medication preferences captured at
   // booking time so the receptionist's check-in form isn't starting blank
-  // (see booking.types.ts's HotelBookingPreferences doc comment).
-  const [hotelFeeding, setHotelFeeding] = useState<
-    Record<
-      HotelBookingPreferenceFeeding['meal_time'],
-      HotelFeedingRowState | null
-    >
-  >({ Morning: null, Afternoon: null, Evening: null });
+  // (see booking.types.ts's HotelBookingPreferences doc comment). All four
+  // start empty - same free add/remove list shape now that feeding matches
+  // walking/playing/medications instead of three fixed checkboxes.
+  const [hotelFeeding, setHotelFeeding] = useState<HotelFeedingRowState[]>([]);
   const [hotelWalking, setHotelWalking] = useState<
     Array<typeof EMPTY_HOTEL_WALKING_ROW>
   >([]);
@@ -361,37 +373,53 @@ export function CustomerBookingFlowPage() {
   const [hotelMedications, setHotelMedications] = useState<
     Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
   >([]);
-  // #22: "same instructions every night" (default) vs per-night editing.
-  // Full per-night date-tab editing UI is a follow-up - for now this flag
-  // is always sent as true (every row applies to the whole stay, matching
-  // pre-#22 behavior) while the server/schema already support per-row
-  // stay_date for when that UI lands.
-  const [hotelUniformInstructions] = useState(true);
+  // "Same instructions every night" (default) vs per-night editing - when
+  // false, NightTabs (rendered below) picks which night newly-added rows are
+  // scoped to and which existing rows are shown; when true, every row is
+  // dateless and NightTabs stays hidden (pre-per-night behavior, unchanged).
+  const [hotelUniformInstructions, setHotelUniformInstructions] =
+    useState(true);
+  const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
 
-  // Staff view only - GET /hotel/food-catalog and /hotel/medication-catalog
-  // are staff-gated (requireRole(frontDeskAndAssistants)), so the customer
-  // portal never fetches these and keeps its plain freetext fields.
-  const [foodCatalog, setFoodCatalog] = useState<FoodCatalogItem[]>([]);
+  // A customer's own saved food/medication types (#22), fetched only once
+  // Hotel is the selected category (the only category with a Care
+  // Instructions step) - receptionist mode reads the walk-in customer's
+  // catalog via the staff-facing endpoint, self-service mode reads the
+  // logged-in customer's own via the "me" endpoint. Neither is the old
+  // global staff Product Catalog - hotel Care Instructions never shows
+  // that list (or its prices) anymore.
+  const [foodCatalog, setFoodCatalog] = useState<ProductCatalogItem[]>([]);
   const [medicationCatalog, setMedicationCatalog] = useState<
-    MedicationCatalogItem[]
+    ProductCatalogItem[]
   >([]);
 
   useEffect(() => {
-    if (!isReceptionistMode || !accessToken) return;
+    if (!accessToken || !effectiveCustomerId || category !== 'Hotel') return;
 
     let isMounted = true;
 
-    void listFoodCatalog(accessToken).then((result) => {
+    const fetchFood = isReceptionistMode
+      ? listCustomerCatalogForStaff(effectiveCustomerId, accessToken, 'food')
+      : listCustomerCatalog(accessToken, 'food');
+    const fetchMedication = isReceptionistMode
+      ? listCustomerCatalogForStaff(
+          effectiveCustomerId,
+          accessToken,
+          'medication'
+        )
+      : listCustomerCatalog(accessToken, 'medication');
+
+    void fetchFood.then((result) => {
       if (isMounted && result.data) setFoodCatalog(result.data);
     });
-    void listMedicationCatalog(accessToken).then((result) => {
+    void fetchMedication.then((result) => {
       if (isMounted && result.data) setMedicationCatalog(result.data);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [isReceptionistMode, accessToken]);
+  }, [isReceptionistMode, accessToken, effectiveCustomerId, category]);
 
   // Tracked by stable step KEY, not array index - the `steps` array below
   // can shrink out from under the user mid-flow (e.g. Staff Picker turns
@@ -432,10 +460,12 @@ export function CustomerBookingFlowPage() {
   // declaration to come after its declaration point, even though plain
   // function declarations are hoisted at runtime.
   function resetHotelPreferences() {
-    setHotelFeeding({ Morning: null, Afternoon: null, Evening: null });
+    setHotelFeeding([]);
     setHotelWalking([]);
     setHotelPlaying([]);
     setHotelMedications([]);
+    setHotelUniformInstructions(true);
+    setActiveNightDate(null);
   }
 
   function handleCategorySelect(nextCategory: ServiceCategory) {
@@ -1115,35 +1145,37 @@ export function CustomerBookingFlowPage() {
     }
   }
 
-  function toggleHotelMealTime(
-    mealTime: HotelBookingPreferenceFeeding['meal_time']
-  ) {
-    setHotelFeeding((prev) => ({
+  function addHotelFeeding() {
+    setHotelFeeding((prev) => [
       ...prev,
-      [mealTime]: prev[mealTime]
-        ? null
-        : {
-            food_type: '',
-            quantity: '1',
-            special_instructions: '',
-            food_catalog_id: null,
-          },
-    }));
+      {
+        ...EMPTY_HOTEL_FEEDING_ROW,
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+      },
+    ]);
   }
 
   function updateHotelFeeding(
-    mealTime: HotelBookingPreferenceFeeding['meal_time'],
+    index: number,
     updates: Partial<HotelFeedingRowState>
   ) {
-    setHotelFeeding((prev) => {
-      const current = prev[mealTime];
-      if (!current) return prev;
-      return { ...prev, [mealTime]: { ...current, ...updates } };
-    });
+    setHotelFeeding((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...updates } : row))
+    );
+  }
+
+  function removeHotelFeeding(index: number) {
+    setHotelFeeding((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addHotelWalkBlock() {
-    setHotelWalking((prev) => [...prev, { ...EMPTY_HOTEL_WALKING_ROW }]);
+    setHotelWalking((prev) => [
+      ...prev,
+      {
+        ...EMPTY_HOTEL_WALKING_ROW,
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+      },
+    ]);
   }
 
   function updateHotelWalkBlock(
@@ -1160,7 +1192,13 @@ export function CustomerBookingFlowPage() {
   }
 
   function addHotelPlayBlock() {
-    setHotelPlaying((prev) => [...prev, { ...EMPTY_HOTEL_PLAYING_ROW }]);
+    setHotelPlaying((prev) => [
+      ...prev,
+      {
+        ...EMPTY_HOTEL_PLAYING_ROW,
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+      },
+    ]);
   }
 
   function updateHotelPlayBlock(
@@ -1177,7 +1215,13 @@ export function CustomerBookingFlowPage() {
   }
 
   function addHotelMedication() {
-    setHotelMedications((prev) => [...prev, { ...EMPTY_HOTEL_MEDICATION_ROW }]);
+    setHotelMedications((prev) => [
+      ...prev,
+      {
+        ...EMPTY_HOTEL_MEDICATION_ROW,
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+      },
+    ]);
   }
 
   function updateHotelMedication(
@@ -1199,12 +1243,9 @@ export function CustomerBookingFlowPage() {
   const hotelPreferencesPayload = useMemo(() => {
     if (category !== 'Hotel') return undefined;
 
-    const feeding: HotelBookingPreferenceFeeding[] = MEAL_TIMES.filter(
-      (mealTime) => hotelFeeding[mealTime] !== null
-    ).map((mealTime) => {
-      const row = hotelFeeding[mealTime]!;
-      return {
-        meal_time: mealTime,
+    const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding.map(
+      (row) => ({
+        meal_time: row.meal_time,
         food_type: row.food_type,
         quantity: row.quantity,
         ...(row.special_instructions.trim()
@@ -1213,14 +1254,16 @@ export function CustomerBookingFlowPage() {
         ...(row.food_catalog_id
           ? { food_catalog_id: row.food_catalog_id }
           : {}),
-      };
-    });
+        ...(row.stay_date ? { stay_date: row.stay_date } : {}),
+      })
+    );
 
     const walking: HotelBookingPreferenceWalking[] = hotelWalking.map(
       (row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
+        ...(row.stay_date ? { stay_date: row.stay_date } : {}),
       })
     );
 
@@ -1229,6 +1272,7 @@ export function CustomerBookingFlowPage() {
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
+        ...(row.stay_date ? { stay_date: row.stay_date } : {}),
       })
     );
 
@@ -1243,6 +1287,7 @@ export function CustomerBookingFlowPage() {
         ...(row.medication_catalog_id
           ? { medication_catalog_id: row.medication_catalog_id }
           : {}),
+        ...(row.stay_date ? { stay_date: row.stay_date } : {}),
       }));
 
     if (
@@ -1696,13 +1741,9 @@ export function CustomerBookingFlowPage() {
                         ) : null}
                       </span>
                       <span className={styles.optionMeta}>
-                        PHP{' '}
-                        {(service.base_price * hotelNightsMultiplier).toFixed(
-                          2
-                        )}
                         {category === 'Hotel'
-                          ? ` (PHP ${service.base_price.toFixed(2)}/night × ${hotelNights})`
-                          : ''}
+                          ? `PHP ${service.base_price.toFixed(2)}/night`
+                          : `PHP ${service.base_price.toFixed(2)}`}
                       </span>
                       {coveredByPackageName !== undefined ? (
                         <span className={styles.optionMeta}>
@@ -1732,11 +1773,9 @@ export function CustomerBookingFlowPage() {
                     >
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
-                        PHP{' '}
-                        {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
                         {category === 'Hotel'
-                          ? ` (PHP ${pkg.bundled_price.toFixed(2)}/night × ${hotelNights})`
-                          : ''}
+                          ? `PHP ${pkg.bundled_price.toFixed(2)}/night`
+                          : `PHP ${pkg.bundled_price.toFixed(2)}`}
                       </span>
                       <ul className={styles.readOnlyList}>
                         {(pkg.package_services ?? []).map((entry) => (
@@ -1753,7 +1792,12 @@ export function CustomerBookingFlowPage() {
 
             {category ? (
               <div className={styles.pricingRowTotal}>
-                <span>Running total (before promos/discounts)</span>
+                <span>
+                  Running total (before promos/discounts)
+                  {category === 'Hotel' && hotelNightsMultiplier > 1
+                    ? ` × ${hotelNightsMultiplier} nights`
+                    : ''}
+                </span>
                 <span>PHP {itemsTotal.toFixed(2)}</span>
               </div>
             ) : null}
@@ -1780,95 +1824,136 @@ export function CustomerBookingFlowPage() {
               these details when your pet checks in.
             </p>
 
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={hotelUniformInstructions}
+                onChange={(event) => {
+                  setHotelUniformInstructions(event.target.checked);
+                  setActiveNightDate(null);
+                }}
+              />
+              Same instructions every night
+            </label>
+
+            {!hotelUniformInstructions && selectedSlot ? (
+              <NightTabs
+                nights={getHotelNightDates(selectedSlot.start, hotelNights)}
+                activeDate={activeNightDate}
+                onSelect={setActiveNightDate}
+              />
+            ) : null}
+
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Feeding</span>
-              {MEAL_TIMES.map((mealTime) => {
-                const row = hotelFeeding[mealTime];
+              {hotelFeeding.map((row, index) => {
+                if (
+                  !hotelUniformInstructions &&
+                  row.stay_date !== activeNightDate
+                ) {
+                  return null;
+                }
+
                 const notOnDayOne =
                   hotelCheckInTime !== null &&
-                  !isMealApplicableOnDayOne(mealTime, hotelCheckInTime);
+                  !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
                 const notOnLastDay =
                   hotelCheckOutTime !== null &&
-                  !isMealApplicableOnLastDay(mealTime, hotelCheckOutTime);
+                  !isMealApplicableOnLastDay(row.meal_time, hotelCheckOutTime);
 
                 return (
-                  <div key={mealTime} className={styles.instructionRow}>
-                    <label className={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={row !== null}
-                        onChange={() => toggleHotelMealTime(mealTime)}
+                  <div key={index} className={styles.instructionBlock}>
+                    <div className={styles.inlineFields}>
+                      <select
+                        className={styles.input}
+                        aria-label="Meal time"
+                        value={row.meal_time}
+                        onChange={(event) =>
+                          updateHotelFeeding(index, {
+                            meal_time: event.target
+                              .value as HotelBookingPreferenceFeeding['meal_time'],
+                          })
+                        }
+                      >
+                        {MEAL_TIMES.map((mealTime) => (
+                          <option key={mealTime} value={mealTime}>
+                            {mealTime}
+                          </option>
+                        ))}
+                      </select>
+                      <CatalogComboBox
+                        placeholder="Food type"
+                        items={foodCatalog}
+                        hidePrice
+                        value={{
+                          catalogId: row.food_catalog_id,
+                          text: row.food_type,
+                        }}
+                        onChange={(next) =>
+                          updateHotelFeeding(index, {
+                            food_type: next.text,
+                            food_catalog_id: next.catalogId,
+                          })
+                        }
                       />
-                      {mealTime}
-                    </label>
-                    {row && (notOnDayOne || notOnLastDay) ? (
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min={1}
+                        placeholder="Quantity"
+                        value={row.quantity}
+                        onChange={(event) =>
+                          updateHotelFeeding(index, {
+                            quantity: event.target.value,
+                          })
+                        }
+                      />
+                      <input
+                        className={styles.input}
+                        placeholder="Special instructions (optional)"
+                        value={row.special_instructions}
+                        onChange={(event) =>
+                          updateHotelFeeding(index, {
+                            special_instructions: event.target.value,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeHotelFeeding(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {notOnDayOne || notOnLastDay ? (
                       <p className={styles.copy}>
                         {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
                       </p>
                     ) : null}
-                    {row ? (
-                      <div className={styles.instructionBlock}>
-                        <div className={styles.inlineFields}>
-                          {isReceptionistMode ? (
-                            <CatalogComboBox
-                              placeholder="Food type"
-                              items={foodCatalog}
-                              value={{
-                                catalogId: row.food_catalog_id,
-                                text: row.food_type,
-                              }}
-                              onChange={(next) =>
-                                updateHotelFeeding(mealTime, {
-                                  food_type: next.text,
-                                  food_catalog_id: next.catalogId,
-                                })
-                              }
-                            />
-                          ) : (
-                            <input
-                              className={styles.input}
-                              placeholder="Food type"
-                              value={row.food_type}
-                              onChange={(event) =>
-                                updateHotelFeeding(mealTime, {
-                                  food_type: event.target.value,
-                                })
-                              }
-                            />
-                          )}
-                          <input
-                            className={styles.input}
-                            type="number"
-                            min={1}
-                            placeholder="Quantity"
-                            value={row.quantity}
-                            onChange={(event) =>
-                              updateHotelFeeding(mealTime, {
-                                quantity: event.target.value,
-                              })
-                            }
-                          />
-                          <input
-                            className={styles.input}
-                            placeholder="Special instructions (optional)"
-                            value={row.special_instructions}
-                            onChange={(event) =>
-                              updateHotelFeeding(mealTime, {
-                                special_instructions: event.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 );
               })}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={addHotelFeeding}
+              >
+                Add feeding time
+              </button>
             </section>
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Walking</span>
-              {hotelWalking.map((row, index) => (
+              {hotelWalking.map((row, index) => {
+                if (
+                  !hotelUniformInstructions &&
+                  row.stay_date !== activeNightDate
+                ) {
+                  return null;
+                }
+
+                return (
                 <div key={index} className={styles.instructionBlock}>
                   <div className={styles.inlineFields}>
                     <select
@@ -1937,7 +2022,8 @@ export function CustomerBookingFlowPage() {
                     day or after checkout on departure day.
                   </p>
                 </div>
-              ))}
+                );
+              })}
               <button
                 type="button"
                 className={styles.secondaryButton}
@@ -1949,7 +2035,15 @@ export function CustomerBookingFlowPage() {
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Playtime</span>
-              {hotelPlaying.map((row, index) => (
+              {hotelPlaying.map((row, index) => {
+                if (
+                  !hotelUniformInstructions &&
+                  row.stay_date !== activeNightDate
+                ) {
+                  return null;
+                }
+
+                return (
                 <div key={index} className={styles.instructionBlock}>
                   <div className={styles.inlineFields}>
                     <select
@@ -2018,7 +2112,8 @@ export function CustomerBookingFlowPage() {
                     day or after checkout on departure day.
                   </p>
                 </div>
-              ))}
+                );
+              })}
               <button
                 type="button"
                 className={styles.secondaryButton}
@@ -2030,36 +2125,32 @@ export function CustomerBookingFlowPage() {
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Medications</span>
-              {hotelMedications.map((row, index) => (
+              {hotelMedications.map((row, index) => {
+                if (
+                  !hotelUniformInstructions &&
+                  row.stay_date !== activeNightDate
+                ) {
+                  return null;
+                }
+
+                return (
                 <div key={index} className={styles.instructionBlock}>
                   <div className={styles.inlineFields}>
-                    {isReceptionistMode ? (
-                      <CatalogComboBox
-                        placeholder="Medication name"
-                        items={medicationCatalog}
-                        value={{
-                          catalogId: row.medication_catalog_id,
-                          text: row.medication_name,
-                        }}
-                        onChange={(next) =>
-                          updateHotelMedication(index, {
-                            medication_name: next.text,
-                            medication_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                    ) : (
-                      <input
-                        className={styles.input}
-                        placeholder="Medication name"
-                        value={row.medication_name}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            medication_name: event.target.value,
-                          })
-                        }
-                      />
-                    )}
+                    <CatalogComboBox
+                      placeholder="Medication name"
+                      items={medicationCatalog}
+                      hidePrice
+                      value={{
+                        catalogId: row.medication_catalog_id,
+                        text: row.medication_name,
+                      }}
+                      onChange={(next) =>
+                        updateHotelMedication(index, {
+                          medication_name: next.text,
+                          medication_catalog_id: next.catalogId,
+                        })
+                      }
+                    />
                     <input
                       className={styles.input}
                       placeholder="Dose"
@@ -2100,7 +2191,8 @@ export function CustomerBookingFlowPage() {
                     day or after checkout on departure day.
                   </p>
                 </div>
-              ))}
+                );
+              })}
               <button
                 type="button"
                 className={styles.secondaryButton}
