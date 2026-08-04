@@ -21,9 +21,12 @@ interface TimeSlotInputProps {
 /** A real count instead of the coarse Available/Partial/Fully-booked label -
  * "1 slot available" is more useful at a glance than "Partially available"
  * when deciding which time to pick. Grooming/Veterinary counts eligible
- * staff; Hotel counts remaining same-size cages (identical across every
- * candidate on a given date, since cage capacity isn't time-of-day-specific). */
-function availabilityText(slot: SlotAvailability): string {
+ * staff; Hotel's cage capacity is deliberately NOT repeated here - it's
+ * identical across every candidate on a given date (cage capacity isn't
+ * time-of-day-specific), and already shown once by SlotPicker's own summary
+ * line and again per-size by CagePicker, so repeating it per time-block
+ * would just be the same number three times over. */
+function availabilityText(slot: SlotAvailability): string | null {
   if (slot.eligible_staff_count !== undefined) {
     const count = slot.eligible_staff_count;
     if (count === 0) return 'No slots available';
@@ -34,7 +37,7 @@ function availabilityText(slot: SlotAvailability): string {
     slot.cage_capacity_remaining !== undefined &&
     slot.cage_capacity_total !== undefined
   ) {
-    return `${slot.cage_capacity_remaining} of ${slot.cage_capacity_total} available`;
+    return null;
   }
 
   return slot.available ? 'Available' : 'Unavailable';
@@ -149,38 +152,41 @@ export function TimeSlotInput({
           {slots.length === 0 ? (
             <li className={styles.empty}>No available times on this date.</li>
           ) : (
-            slots.map((slot) => (
-              <li
-                key={slot.start}
-                role="option"
-                aria-selected={slot.start === selectedStart}
-                aria-disabled={!slot.available}
-              >
-                <button
-                  type="button"
-                  className={`${styles.option} ${
-                    slot.start === selectedStart ? styles.optionSelected : ''
-                  }`}
-                  disabled={!slot.available}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    setTouched(false);
-                    setTypedValue(timeKey(slot.start));
-                    onSelect(slot);
-                    setIsOpen(false);
-                  }}
+            slots.map((slot) => {
+              const staffText =
+                viewerMode === 'staff' ? availabilityText(slot) : null;
+
+              return (
+                <li
+                  key={slot.start}
+                  role="option"
+                  aria-selected={slot.start === selectedStart}
+                  aria-disabled={!slot.available}
                 >
-                  <span>{formatTime(slot.start)}</span>
-                  {viewerMode === 'staff' ? (
-                    <span className={styles.optionLevel}>
-                      {availabilityText(slot)}
-                    </span>
-                  ) : !slot.available ? (
-                    <span className={styles.optionLevel}>Unavailable</span>
-                  ) : null}
-                </button>
-              </li>
-            ))
+                  <button
+                    type="button"
+                    className={`${styles.option} ${
+                      slot.start === selectedStart ? styles.optionSelected : ''
+                    }`}
+                    disabled={!slot.available}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setTouched(false);
+                      setTypedValue(timeKey(slot.start));
+                      onSelect(slot);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <span>{formatTime(slot.start)}</span>
+                    {staffText ? (
+                      <span className={styles.optionLevel}>{staffText}</span>
+                    ) : !slot.available ? (
+                      <span className={styles.optionLevel}>Unavailable</span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>
       ) : null}
