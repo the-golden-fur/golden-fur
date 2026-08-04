@@ -50,6 +50,12 @@ const CONFIG_TILES: DashboardTileConfig[] = [
     description: 'Review, edit, or remove recorded miscellaneous sales.',
     to: '/staff/admin/misc-sales',
   },
+  {
+    title: 'Policies',
+    description:
+      'Reschedule notice period, Staff Picker visibility, and the fixed lunch break.',
+    to: '/staff/admin/maintenance/policies',
+  },
 ];
 
 const SYSTEM_CONFIG_TILE: DashboardTileConfig = {
