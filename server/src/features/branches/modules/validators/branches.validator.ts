@@ -34,3 +34,16 @@ export const updateBranchValidator = z
   .strict();
 
 export type UpdateBranchInput = z.infer<typeof updateBranchValidator>;
+
+export const createBranchValidator = z
+  .object({
+    name: z.string().trim().min(1),
+    address: z.string().trim().min(1),
+    contact_number: z.string().trim().min(1).nullable().optional(),
+    is_vet_branch: z.boolean().optional().default(false),
+    timezone: z.string().trim().min(1),
+    operating_hours: operatingHoursValidator.optional().default({}),
+  })
+  .strict();
+
+export type CreateBranchInput = z.infer<typeof createBranchValidator>;

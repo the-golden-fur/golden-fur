@@ -1,4 +1,8 @@
-import type { Branch, UpdateBranchPayload } from '../maintenance.types';
+import type {
+  Branch,
+  CreateBranchPayload,
+  UpdateBranchPayload,
+} from '../maintenance.types';
 
 interface BranchesApiResult<T> {
   data: T | null;
@@ -53,6 +57,24 @@ export async function listBranchesFull(
 
   const result = await parseBody<{ branches: Branch[] }>(response);
   return { data: result.data?.branches ?? null, error: result.error };
+}
+
+export async function createBranch(
+  accessToken: string,
+  payload: CreateBranchPayload
+): Promise<BranchesApiResult<Branch>> {
+  const response = await fetch(`${API_BASE_URL}/branches`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ branch: Branch }>(response);
+  return { data: result.data?.branch ?? null, error: result.error };
 }
 
 export async function updateBranch(
