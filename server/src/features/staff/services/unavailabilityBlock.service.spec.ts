@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelUnavailabilityBlock,
   createUnavailabilityBlock,
+  listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
   reviewUnavailabilityBlock,
@@ -25,6 +26,7 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.in = vi.fn(() => builder);
     builder.lt = vi.fn(() => builder);
     builder.gt = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
@@ -204,6 +206,7 @@ describe('unavailabilityBlock.service', () => {
       const result = await createUnavailabilityBlock({
         requesterId: 'admin-1',
         requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
         targetStaffId: 'staff-2',
         startTime: '2026-07-14T01:00:00.000Z',
         endTime: '2026-07-14T03:00:00.000Z',
@@ -235,6 +238,7 @@ describe('unavailabilityBlock.service', () => {
       const result = await createUnavailabilityBlock({
         requesterId: 'supervisor-1',
         requesterRole: 'Supervisor',
+        requesterBranchId: 'branch-a',
         targetStaffId: 'staff-2',
         startTime: '2026-07-14T01:00:00.000Z',
         endTime: '2026-07-14T03:00:00.000Z',
@@ -243,6 +247,129 @@ describe('unavailabilityBlock.service', () => {
 
       expect(result.created_by).toBe('supervisor-1');
       expect(result.staff_id).toBe('staff-2');
+    });
+
+    it('rejects a Supervisor creating a block for a staff member at a different branch', async () => {
+      queueFromResults({
+        data: { id: 'staff-2', branch_id: 'branch-a' },
+        error: null,
+      });
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'supervisor-1',
+          requesterRole: 'Supervisor',
+          requesterBranchId: 'branch-b',
+          targetStaffId: 'staff-2',
+          startTime: '2026-07-14T01:00:00.000Z',
+          endTime: '2026-07-14T03:00:00.000Z',
+          now: new Date('2026-07-01T00:00:00.000Z'),
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows a Superadmin to create a block on behalf of staff at any branch', async () => {
+      queueFromResults(
+        { data: { id: 'staff-2', branch_id: 'branch-b' }, error: null },
+        { data: [], error: null },
+        {
+          data: {
+            id: 'block-7',
+            staff_id: 'staff-2',
+            start_time: '2026-07-14T01:00:00.000Z',
+            end_time: '2026-07-14T03:00:00.000Z',
+            reason: null,
+            created_by: 'super-1',
+            created_at: '2026-07-13T00:00:00.000Z',
+          },
+          error: null,
+        }
+      );
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'super-1',
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-a',
+        targetStaffId: 'staff-2',
+        startTime: '2026-07-14T01:00:00.000Z',
+        endTime: '2026-07-14T03:00:00.000Z',
+        now: new Date('2026-07-01T00:00:00.000Z'),
+      });
+
+      expect(result.staff_id).toBe('staff-2');
+    });
+
+    it('Rest Day: rejects a self-service request with 403 before touching supabase', async () => {
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          isFullDay: true,
+          date: '2026-07-20',
+          leaveType: 'Rest Day',
+          now: new Date('2026-07-01T00:00:00.000Z'),
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it('Rest Day: allows a manager to set it on behalf of a staff member, tagged with leave_type', async () => {
+      const insertSpy = vi.fn((payload: Record<string, unknown>) => payload);
+
+      queueFromResults(
+        { data: { id: 'staff-2', branch_id: 'branch-a' }, error: null },
+        {
+          data: {
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        },
+        { data: [], error: null },
+        {
+          data: {
+            id: 'block-8',
+            staff_id: 'staff-2',
+            leave_type: 'Rest Day',
+            created_by: 'supervisor-1',
+          },
+          error: null,
+        }
+      );
+
+      const originalFrom = vi.mocked(supabase.from).getMockImplementation()!;
+      vi.mocked(supabase.from).mockImplementation((table) => {
+        const builder = originalFrom(table) as unknown as Record<
+          string,
+          unknown
+        >;
+        const originalInsert = builder.insert as (
+          _payload: Record<string, unknown>
+        ) => unknown;
+        builder.insert = vi.fn((payload: Record<string, unknown>) => {
+          insertSpy(payload);
+          return originalInsert(payload);
+        });
+        return builder as never;
+      });
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'supervisor-1',
+        requesterRole: 'Supervisor',
+        requesterBranchId: 'branch-a',
+        targetStaffId: 'staff-2',
+        isFullDay: true,
+        date: '2026-07-13', // a Monday
+        leaveType: 'Rest Day',
+        now: new Date('2026-07-01T00:00:00.000Z'),
+      });
+
+      expect(insertSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ leave_type: 'Rest Day' })
+      );
+      expect(result.leave_type).toBe('Rest Day');
     });
 
     it('rejects a non-admin creating a block for another staff member with 403', async () => {
@@ -453,6 +580,7 @@ describe('unavailabilityBlock.service', () => {
     it("AC-4: allows an Admin to cancel another staff member's block", async () => {
       queueFromResults(
         { data: { id: 'block-1' }, error: null },
+        { data: { branch_id: 'branch-a' }, error: null },
         { data: null, error: null }
       );
 
@@ -460,6 +588,7 @@ describe('unavailabilityBlock.service', () => {
         cancelUnavailabilityBlock({
           requesterId: 'admin-1',
           requesterRole: 'Admin',
+          requesterBranchId: 'branch-a',
           targetStaffId: 'staff-2',
           blockId: 'block-1',
         })
@@ -469,6 +598,7 @@ describe('unavailabilityBlock.service', () => {
     it("#28 AC-2: allows a Supervisor to cancel another staff member's block", async () => {
       queueFromResults(
         { data: { id: 'block-1' }, error: null },
+        { data: { branch_id: 'branch-a' }, error: null },
         { data: null, error: null }
       );
 
@@ -476,6 +606,42 @@ describe('unavailabilityBlock.service', () => {
         cancelUnavailabilityBlock({
           requesterId: 'supervisor-1',
           requesterRole: 'Supervisor',
+          requesterBranchId: 'branch-a',
+          targetStaffId: 'staff-2',
+          blockId: 'block-1',
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects a Supervisor cancelling a block for a staff member at a different branch', async () => {
+      queueFromResults(
+        { data: { id: 'block-1' }, error: null },
+        { data: { branch_id: 'branch-a' }, error: null }
+      );
+
+      await expect(
+        cancelUnavailabilityBlock({
+          requesterId: 'supervisor-1',
+          requesterRole: 'Supervisor',
+          requesterBranchId: 'branch-b',
+          targetStaffId: 'staff-2',
+          blockId: 'block-1',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows a Superadmin to cancel a block for staff at any branch', async () => {
+      queueFromResults(
+        { data: { id: 'block-1' }, error: null },
+        { data: { branch_id: 'branch-b' }, error: null },
+        { data: null, error: null }
+      );
+
+      await expect(
+        cancelUnavailabilityBlock({
+          requesterId: 'super-1',
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-a',
           targetStaffId: 'staff-2',
           blockId: 'block-1',
         })
@@ -769,6 +935,94 @@ describe('unavailabilityBlock.service', () => {
           requesterId: 'staff-1',
           requesterRole: 'Groomer',
           requesterBranchId: 'branch-a',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listBranchSchedule', () => {
+    const scheduleRow = {
+      id: 'block-1',
+      staff_id: 'staff-2',
+      is_full_day: true,
+      leave_type: 'Rest Day',
+      created_by: 'supervisor-1',
+      created_at: '2026-08-01T00:00:00.000Z',
+      staff: {
+        id: 'staff-2',
+        display_name: 'Staff Two',
+        profile_photo_url: null,
+        role: 'Groomer',
+        branch_id: 'branch-a',
+      },
+    };
+
+    it('returns branch-scoped entries with the creator display name resolved (the requested "who added this, when" log)', async () => {
+      queueFromResults(
+        { data: [scheduleRow], error: null },
+        {
+          data: [{ id: 'supervisor-1', display_name: 'Supervisor One' }],
+          error: null,
+        }
+      );
+
+      const result = await listBranchSchedule({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        rangeStart: '2026-08-01T00:00:00.000Z',
+        rangeEnd: '2026-09-01T00:00:00.000Z',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].created_by_name).toBe('Supervisor One');
+      expect(result[0].created_at).toBe('2026-08-01T00:00:00.000Z');
+    });
+
+    it("rejects an Admin/Supervisor requesting a different branch's schedule", async () => {
+      await expect(
+        listBranchSchedule({
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-b',
+          branchId: 'branch-a',
+          rangeStart: '2026-08-01T00:00:00.000Z',
+          rangeEnd: '2026-09-01T00:00:00.000Z',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it('allows a Superadmin to view any branch schedule regardless of their own branch', async () => {
+      queueFromResults(
+        { data: [scheduleRow], error: null },
+        {
+          data: [{ id: 'supervisor-1', display_name: 'Supervisor One' }],
+          error: null,
+        }
+      );
+
+      const result = await listBranchSchedule({
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-b',
+        branchId: 'branch-a',
+        rangeStart: '2026-08-01T00:00:00.000Z',
+        rangeEnd: '2026-09-01T00:00:00.000Z',
+      });
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('rejects a non-manager role with 403 before touching supabase', async () => {
+      await expect(
+        listBranchSchedule({
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-a',
+          branchId: 'branch-a',
+          rangeStart: '2026-08-01T00:00:00.000Z',
+          rangeEnd: '2026-09-01T00:00:00.000Z',
         })
       ).rejects.toMatchObject({ statusCode: 403 });
 

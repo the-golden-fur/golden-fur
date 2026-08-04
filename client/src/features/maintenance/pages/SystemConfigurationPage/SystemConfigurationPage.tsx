@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
-import { listBranchesFull, updateBranch } from '../../api/branches.api';
+import {
+  createBranch,
+  listBranchesFull,
+  updateBranch,
+} from '../../api/branches.api';
 import {
   WEEKDAYS,
   type Branch,
@@ -68,6 +72,17 @@ export function SystemConfigurationPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [showAddBranch, setShowAddBranch] = useState(false);
+  const [newBranch, setNewBranch] = useState({
+    name: '',
+    address: '',
+    contact_number: '',
+    timezone: 'Asia/Manila',
+    is_vet_branch: false,
+  });
+  const [addBranchError, setAddBranchError] = useState<string | null>(null);
+  const [isAddingBranch, setIsAddingBranch] = useState(false);
 
   useEffect(() => {
     if (!accessToken || !user?.id) {
@@ -181,6 +196,58 @@ export function SystemConfigurationPage() {
     });
   }
 
+  const handleCreateBranch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!accessToken) {
+      return;
+    }
+
+    if (
+      !newBranch.name.trim() ||
+      !newBranch.address.trim() ||
+      !newBranch.timezone.trim()
+    ) {
+      setAddBranchError('Name, address, and timezone are required.');
+      return;
+    }
+
+    setAddBranchError(null);
+    setIsAddingBranch(true);
+
+    const result = await createBranch(accessToken, {
+      name: newBranch.name.trim(),
+      address: newBranch.address.trim(),
+      contact_number: newBranch.contact_number.trim()
+        ? newBranch.contact_number.trim()
+        : null,
+      timezone: newBranch.timezone.trim(),
+      is_vet_branch: newBranch.is_vet_branch,
+    });
+
+    setIsAddingBranch(false);
+
+    if (result.error || !result.data) {
+      setAddBranchError(result.error ?? 'Could not add branch.');
+      return;
+    }
+
+    const created = result.data;
+    setBranches((prev) =>
+      [...prev, created].sort((a, b) => a.name.localeCompare(b.name))
+    );
+    setSelectedBranchId(created.id);
+    setNewBranch({
+      name: '',
+      address: '',
+      contact_number: '',
+      timezone: 'Asia/Manila',
+      is_vet_branch: false,
+    });
+    setShowAddBranch(false);
+    setMessage('Branch added. Set its operating hours below.');
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -273,6 +340,123 @@ export function SystemConfigurationPage() {
           drives Date &amp; Time slot generation and staff day-off shift-end
           resolution everywhere else in the app.
         </p>
+
+        <div className={styles.formActions}>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => setShowAddBranch((current) => !current)}
+          >
+            {showAddBranch ? 'Cancel' : '+ Add branch'}
+          </button>
+        </div>
+
+        {showAddBranch ? (
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleCreateBranch(event)}
+          >
+            <h2 className={styles.sectionTitle}>Add branch</h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Branch name</span>
+              <input
+                className={styles.input}
+                type="text"
+                value={newBranch.name}
+                onChange={(event) =>
+                  setNewBranch((prev) => ({
+                    ...prev,
+                    name: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Address</span>
+              <input
+                className={styles.input}
+                type="text"
+                value={newBranch.address}
+                onChange={(event) =>
+                  setNewBranch((prev) => ({
+                    ...prev,
+                    address: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Contact number</span>
+              <input
+                className={styles.input}
+                type="text"
+                value={newBranch.contact_number}
+                onChange={(event) =>
+                  setNewBranch((prev) => ({
+                    ...prev,
+                    contact_number: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Timezone</span>
+              <input
+                className={styles.input}
+                type="text"
+                value={newBranch.timezone}
+                onChange={(event) =>
+                  setNewBranch((prev) => ({
+                    ...prev,
+                    timezone: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={newBranch.is_vet_branch}
+                onChange={(event) =>
+                  setNewBranch((prev) => ({
+                    ...prev,
+                    is_vet_branch: event.target.checked,
+                  }))
+                }
+              />
+              <span>Veterinary services offered at this branch</span>
+            </label>
+
+            <p className={styles.copy}>
+              Operating hours default to closed every day - set them below after
+              the branch is created.
+            </p>
+
+            {addBranchError ? (
+              <p className={styles.errorBanner} role="alert">
+                {addBranchError}
+              </p>
+            ) : null}
+
+            <div className={styles.formActions}>
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={isAddingBranch}
+              >
+                {isAddingBranch ? 'Adding...' : 'Add branch'}
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Branch</span>

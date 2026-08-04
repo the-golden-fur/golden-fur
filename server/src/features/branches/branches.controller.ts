@@ -1,11 +1,15 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  createBranch,
   getBranch,
   listBranchesFull,
   updateBranch,
 } from './services/branches.service.ts';
-import { updateBranchValidator } from './modules/validators/branches.validator.ts';
+import {
+  createBranchValidator,
+  updateBranchValidator,
+} from './modules/validators/branches.validator.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
   const value = req.params[name];
@@ -42,6 +46,26 @@ export async function getBranchController(
   try {
     const branch = await getBranch(paramId(req, 'id'));
     return res.status(200).json({ branch });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createBranchController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = createBranchValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const branch = await createBranch(parsed.data);
+    return res.status(201).json({ branch });
   } catch (error) {
     return sendServiceError(res, error);
   }

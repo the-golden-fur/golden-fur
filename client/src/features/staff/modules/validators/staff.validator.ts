@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UNAVAILABILITY_LEAVE_TYPES } from '../../staff.types';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
 
@@ -67,6 +68,7 @@ export const createUnavailabilityBlockValidator = z
     end_time: z.string().min(1, 'End time is required').optional(),
     reason: z.string().trim().min(1).optional(),
     requested_reviewer_id: z.string().uuid().optional(),
+    leave_type: z.enum(UNAVAILABILITY_LEAVE_TYPES).optional(),
   })
   .refine(
     (data) =>

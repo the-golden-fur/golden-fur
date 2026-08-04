@@ -38,6 +38,25 @@ export interface StaffProfileUpdatePayload {
 
 export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
 
+/** 'Rest Day' is fixed/manager-set only - never self-service (server-
+ * enforced). The rest are self-requestable or manager-added. */
+export const UNAVAILABILITY_LEAVE_TYPES = [
+  'Rest Day',
+  'Vacation Leave',
+  'Sick Leave',
+  'Other',
+] as const;
+
+export type UnavailabilityLeaveType =
+  (typeof UNAVAILABILITY_LEAVE_TYPES)[number];
+
+/** Self-service-eligible subset - excludes 'Rest Day'. */
+export const SELF_SERVICE_LEAVE_TYPES: UnavailabilityLeaveType[] = [
+  'Vacation Leave',
+  'Sick Leave',
+  'Other',
+];
+
 export interface UnavailabilityBlock {
   id: string;
   staff_id: string;
@@ -58,6 +77,7 @@ export interface UnavailabilityBlock {
    * addressed this to. Does not restrict who may actually approve/deny -
    * any manager at the branch still can. */
   requested_reviewer_id: string | null;
+  leave_type: UnavailabilityLeaveType;
 }
 
 export interface UnavailabilityBlockPayload {
@@ -69,6 +89,7 @@ export interface UnavailabilityBlockPayload {
   end_time?: string;
   reason?: string;
   requested_reviewer_id?: string;
+  leave_type?: UnavailabilityLeaveType;
 }
 
 export interface PendingUnavailabilityBlockStaffSummary {
@@ -89,6 +110,14 @@ export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
   reviewable: boolean;
   staff: PendingUnavailabilityBlockStaffSummary | null;
   requested_reviewer: RequestedReviewerSummary | null;
+}
+
+/** Monthly Schedule calendar row - branch-shared, equal CRUD for
+ * Admin/Supervisor/Superadmin. `created_by_name` + `created_at` together are
+ * the "who added this and when" log. */
+export interface BranchScheduleEntry extends UnavailabilityBlock {
+  staff: PendingUnavailabilityBlockStaffSummary | null;
+  created_by_name: string | null;
 }
 
 export interface ReviewUnavailabilityBlockPayload {

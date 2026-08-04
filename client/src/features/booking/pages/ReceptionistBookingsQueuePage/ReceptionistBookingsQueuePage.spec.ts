@@ -10,6 +10,7 @@ import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../api/booking.api';
+import * as policyApi from '../../api/policy.api';
 import type { Booking } from '../../booking.types';
 import { ReceptionistBookingsQueuePage } from './ReceptionistBookingsQueuePage';
 
@@ -36,6 +37,19 @@ vi.mock('../../api/booking.api', () => ({
   overridePaymentStage: vi.fn(),
   overrideBookingStatus: vi.fn(),
 }));
+
+// Reschedule button gating (#24) reads policy_configurations - only the
+// fetch is mocked; resolveEffectivePolicy stays the real pure function so
+// its default-vs-branch-override precedence is still exercised as written.
+vi.mock('../../api/policy.api', async () => {
+  const actual = await vi.importActual<typeof import('../../api/policy.api')>(
+    '../../api/policy.api'
+  );
+  return {
+    ...actual,
+    listPolicyConfigurations: vi.fn(),
+  };
+});
 
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
   SlotPicker: () => createElement('div', { 'data-testid': 'slot-picker' }),
@@ -151,6 +165,29 @@ describe('ReceptionistBookingsQueuePage', () => {
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking()],
+      error: null,
+    });
+    // Notice-period-disabled default keeps the Reschedule button gate a
+    // no-op for every existing test below - the gate's own behavior is
+    // exercised separately (see the "Reschedule button gate" describe
+    // block further down).
+    vi.mocked(policyApi.listPolicyConfigurations).mockResolvedValue({
+      data: [
+        {
+          id: 'policy-default',
+          branch_id: null,
+          notice_period_days: 3,
+          notice_enforcement_mode: 'Strict',
+          notice_enforcement_enabled: false,
+          staff_picker_enabled_grooming: true,
+          staff_picker_enabled_veterinary: true,
+          lunch_break_enabled: false,
+          lunch_break_start: '12:00:00',
+          lunch_break_end: '13:00:00',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
       error: null,
     });
     vi.mocked(customerApi.getPet).mockResolvedValue({
@@ -411,6 +448,94 @@ describe('ReceptionistBookingsQueuePage', () => {
     expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
     // Still cancellable even though it's overdue - only Reschedule is time-gated.
     expect(screen.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  it('hides Reschedule when Strict-mode notice period is not met (#24)', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    const soonStart = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          scheduled_start: soonStart,
+          scheduled_end: new Date(
+            Date.parse(soonStart) + 60 * 60 * 1000
+          ).toISOString(),
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(policyApi.listPolicyConfigurations).mockResolvedValue({
+      data: [
+        {
+          id: 'policy-default',
+          branch_id: null,
+          notice_period_days: 3,
+          notice_enforcement_mode: 'Strict',
+          notice_enforcement_enabled: true,
+          staff_picker_enabled_grooming: true,
+          staff_picker_enabled_veterinary: true,
+          lunch_break_enabled: false,
+          lunch_break_start: '12:00:00',
+          lunch_break_end: '13:00:00',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
+    // Notice-period gating is Reschedule-only, same as the past-due case above.
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  it('still shows Reschedule under Soft-mode enforcement even when notice is unmet, since the server lets it through flagged (#24)', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    const soonStart = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          scheduled_start: soonStart,
+          scheduled_end: new Date(
+            Date.parse(soonStart) + 60 * 60 * 1000
+          ).toISOString(),
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(policyApi.listPolicyConfigurations).mockResolvedValue({
+      data: [
+        {
+          id: 'policy-default',
+          branch_id: null,
+          notice_period_days: 3,
+          notice_enforcement_mode: 'Soft',
+          notice_enforcement_enabled: true,
+          staff_picker_enabled_grooming: true,
+          staff_picker_enabled_veterinary: true,
+          lunch_break_enabled: false,
+          lunch_break_start: '12:00:00',
+          lunch_break_end: '13:00:00',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    expect(screen.getByText('Reschedule')).toBeInTheDocument();
   });
 
   it('a Cancelled booking offers neither Reschedule nor Cancel', async () => {

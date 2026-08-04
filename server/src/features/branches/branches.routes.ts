@@ -3,6 +3,7 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  createBranchController,
   getBranchController,
   listBranchesController,
   updateBranchController,
@@ -26,6 +27,7 @@ const superadminOnly = [
 ];
 
 router.get('/branches', superadminOnly, listBranchesController);
+router.post('/branches', superadminOnly, createBranchController);
 router.get('/branches/:id', superadminOnly, getBranchController);
 router.patch('/branches/:id', superadminOnly, updateBranchController);
 

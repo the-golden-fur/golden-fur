@@ -191,6 +191,15 @@ export interface UpdateBranchPayload {
   operating_hours?: OperatingHours;
 }
 
+export interface CreateBranchPayload {
+  name: string;
+  address: string;
+  contact_number?: string | null;
+  is_vet_branch?: boolean;
+  timezone: string;
+  operating_hours?: OperatingHours;
+}
+
 /**
  * Epic B (#81): the Grooming size/coat matrix is derived server-side from
  * base_price + pricing_configuration - services no longer accept a

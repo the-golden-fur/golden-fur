@@ -7,7 +7,10 @@ import {
   listOverlappingActiveBookings,
   type WeightClass,
 } from './capacity.service.ts';
-import { listAvailableStaff } from './staffPicker.service.ts';
+import {
+  listAvailableStaff,
+  resolveEffectivePolicy,
+} from './staffPicker.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -275,12 +278,40 @@ export async function getDaySlots({
     }
   }
 
+  // Fixed lunch break: drops any candidate whose [start, end) overlaps the
+  // branch's effective policy window (default 12:00-13:00), the same
+  // resolveEffectivePolicy() staffPicker.service.ts already uses elsewhere -
+  // single source of truth for default-vs-branch-override precedence.
+  // Applies to every category uniformly since Hotel/Daycare route through
+  // this same candidate list ("cannot book at this time" is a blanket rule).
+  const policy = await resolveEffectivePolicy(branchId);
+  let lunchCandidates = candidates;
+
+  if (policy.lunch_break_enabled) {
+    const lunchStartUtc = zonedTimeToUtc(
+      date,
+      policy.lunch_break_start.slice(0, 5),
+      timezone
+    );
+    const lunchEndUtc = zonedTimeToUtc(
+      date,
+      policy.lunch_break_end.slice(0, 5),
+      timezone
+    );
+
+    lunchCandidates = candidates.filter(
+      (candidate) =>
+        candidate.start.getTime() >= lunchEndUtc.getTime() ||
+        candidate.end.getTime() <= lunchStartUtc.getTime()
+    );
+  }
+
   // Same-day bookings are allowed, but a slot whose start time is already in
   // the past is never a real option (e.g. 8:00 AM showing as bookable at
   // 3:00 PM) - applies to every category, Hotel included now that Hotel
   // offers real arrival-time candidates rather than a single day-level flag.
   const now = new Date();
-  const futureCandidates = candidates.filter(
+  const futureCandidates = lunchCandidates.filter(
     (candidate) => candidate.start.getTime() > now.getTime()
   );
 

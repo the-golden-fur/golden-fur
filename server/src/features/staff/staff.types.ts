@@ -47,6 +47,26 @@ export interface StaffProfile {
 
 export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
 
+/** 'Rest Day' is fixed/manager-set only (never self-service, enforced in
+ * unavailabilityBlock.service.ts); the rest can be self-requested or
+ * manager-added. 'Other' is the default for pre-existing/ad-hoc entries. */
+export const UNAVAILABILITY_LEAVE_TYPES = [
+  'Rest Day',
+  'Vacation Leave',
+  'Sick Leave',
+  'Other',
+] as const;
+
+export type UnavailabilityLeaveType =
+  (typeof UNAVAILABILITY_LEAVE_TYPES)[number];
+
+/** Self-service-eligible subset - excludes 'Rest Day'. */
+export const SELF_SERVICE_LEAVE_TYPES: readonly UnavailabilityLeaveType[] = [
+  'Vacation Leave',
+  'Sick Leave',
+  'Other',
+];
+
 export interface UnavailabilityBlock {
   id: string;
   staff_id: string;
@@ -67,6 +87,7 @@ export interface UnavailabilityBlock {
    * addressed this to. Does not restrict who may actually approve/deny -
    * any UNAVAILABILITY_MANAGER_ROLES member at the branch still can. */
   requested_reviewer_id: string | null;
+  leave_type: UnavailabilityLeaveType;
 }
 
 export interface PendingUnavailabilityBlockStaffSummary {
@@ -87,4 +108,17 @@ export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
   reviewable: boolean;
   staff: PendingUnavailabilityBlockStaffSummary | null;
   requested_reviewer: RequestedReviewerSummary | null;
+}
+
+/**
+ * Monthly Schedule calendar row - the branch-shared view Supervisor/Admin/
+ * Superadmin all read and write equally. `created_by_name` is the log this
+ * feature asked for ("which user added this, and when") - `created_at` is
+ * already on UnavailabilityBlock; this just resolves the display name for
+ * `created_by`, which is an auth.users id, not directly embeddable via
+ * staff_profiles FK.
+ */
+export interface BranchScheduleEntry extends UnavailabilityBlock {
+  staff: PendingUnavailabilityBlockStaffSummary | null;
+  created_by_name: string | null;
 }

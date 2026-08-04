@@ -314,6 +314,11 @@ export interface PolicyConfiguration {
   notice_enforcement_enabled: boolean;
   staff_picker_enabled_grooming: boolean;
   staff_picker_enabled_veterinary: boolean;
+  /** Fixed daily lunch break - no bookings/staff availability during this
+   * window, "HH:MM:SS" (Postgres `time`). Default 12:00-13:00. */
+  lunch_break_enabled: boolean;
+  lunch_break_start: string;
+  lunch_break_end: string;
   created_at: string;
   updated_at: string;
 }
@@ -329,6 +334,9 @@ export type EffectivePolicy = Pick<
   | 'notice_enforcement_enabled'
   | 'staff_picker_enabled_grooming'
   | 'staff_picker_enabled_veterinary'
+  | 'lunch_break_enabled'
+  | 'lunch_break_start'
+  | 'lunch_break_end'
 >;
 
 export type StaffPickerOption =

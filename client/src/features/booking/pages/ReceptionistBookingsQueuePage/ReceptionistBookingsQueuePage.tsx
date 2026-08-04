@@ -35,6 +35,10 @@ import {
   startBooking,
 } from '../../api/booking.api';
 import {
+  listPolicyConfigurations,
+  resolveEffectivePolicy,
+} from '../../api/policy.api';
+import {
   BOOKING_STATUS_OVERRIDE_ROLES,
   BOOKING_STATUSES,
   CANCELLABLE_BOOKING_STATUSES,
@@ -45,6 +49,7 @@ import {
   type Booking,
   type BookingStatus,
   type PaymentStage,
+  type PolicyConfiguration,
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
@@ -93,6 +98,7 @@ export function ReceptionistBookingsQueuePage() {
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [policies, setPolicies] = useState<PolicyConfiguration[]>([]);
   const [branchFilter, setBranchFilter] = useState('All');
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
@@ -168,6 +174,16 @@ export function ReceptionistBookingsQueuePage() {
       if (result.data) setBranches(result.data);
     });
   }, []);
+
+  // Reschedule button gate (below) needs the same policy_configurations rows
+  // the Policies admin page reads - all-staff read, no role gate needed here.
+  useEffect(() => {
+    if (!accessToken) return;
+
+    void listPolicyConfigurations(accessToken).then((result) => {
+      if (result.data) setPolicies(result.data);
+    });
+  }, [accessToken]);
 
   const effectiveBranchId = isSuperadmin
     ? branchFilter === 'All'
@@ -626,9 +642,25 @@ export function ReceptionistBookingsQueuePage() {
               // slot (matches reschedule.service.ts's own past-due guard).
               const isPastDue =
                 new Date(booking.scheduled_start).getTime() <= nowMs;
+              // Mirrors reschedule.service.ts's evaluateNoticePeriod/Strict
+              // block exactly, so the button never promises something the
+              // server would then reject: enforcement off, Soft mode (the
+              // server lets it through with a policy_violation flag, so
+              // hiding the button here would contradict that deliberate
+              // escape hatch), or the notice window is still satisfied.
+              const bookingPolicy = resolveEffectivePolicy(
+                policies,
+                booking.branch_id
+              );
+              const noticeMet =
+                !bookingPolicy?.notice_enforcement_enabled ||
+                bookingPolicy.notice_enforcement_mode === 'Soft' ||
+                new Date(booking.scheduled_start).getTime() - nowMs >=
+                  bookingPolicy.notice_period_days * 24 * 60 * 60 * 1000;
               const canReschedule =
                 RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
-                !isPastDue;
+                !isPastDue &&
+                noticeMet;
               const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
                 booking.status
               );

@@ -1,10 +1,12 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { UNAVAILABILITY_MANAGER_ROLES } from '../staff.types.ts';
 import type {
+  BranchScheduleEntry,
   PendingUnavailabilityBlock,
   PendingUnavailabilityBlockStaffSummary,
   RequestedReviewerSummary,
   UnavailabilityBlock,
+  UnavailabilityLeaveType,
 } from '../staff.types.ts';
 
 interface OperatingHoursEntry {
@@ -17,6 +19,9 @@ type OperatingHours = Record<string, OperatingHoursEntry>;
 interface CreateUnavailabilityBlockParams {
   requesterId: string;
   requesterRole: string;
+  /** Required when acting on behalf of another staff member (branch-scoped
+   * manager access) - unused for self-service. */
+  requesterBranchId?: string;
   targetStaffId: string;
   quickAction?: boolean;
   /** Entire Day option - blocks the target's branch operating-hours window
@@ -32,12 +37,14 @@ interface CreateUnavailabilityBlockParams {
   reason?: string;
   /** Optional, non-binding "send to" hint - see staff.types.ts. */
   requestedReviewerId?: string;
+  leaveType?: UnavailabilityLeaveType;
   now?: Date;
 }
 
 interface CancelUnavailabilityBlockParams {
   requesterId: string;
   requesterRole: string;
+  requesterBranchId?: string;
   targetStaffId: string;
   blockId: string;
 }
@@ -63,6 +70,17 @@ interface ListPendingUnavailabilityBlocksParams {
   requesterBranchId: string;
 }
 
+interface ListBranchScheduleParams {
+  requesterRole: string;
+  requesterBranchId: string;
+  branchId: string;
+  /** ISO datetimes bounding the requested month - overlap-tested against
+   * each block's [start_time, end_time), same as every other range query
+   * in this file. */
+  rangeStart: string;
+  rangeEnd: string;
+}
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -78,6 +96,29 @@ function assertCanActOnTarget(
 
   if (!isSelf && !UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
     throwWithStatus(403, 'Forbidden');
+  }
+}
+
+/**
+ * Monthly schedule addendum: on-behalf-of management (rest days, vacation
+ * leave, and every other unavailability action a manager takes for someone
+ * else) is branch-scoped - Admin/Supervisor may only act on staff at their
+ * own branch; Superadmin is exempt (system-wide, matching every other
+ * Superadmin-vs-branch-scoped split in this feature, e.g.
+ * listPendingUnavailabilityBlocks). Never called for self-service (isSelf
+ * always trivially same-branch).
+ */
+function assertSameBranch(
+  requesterRole: string,
+  requesterBranchId: string | undefined,
+  targetBranchId: string
+) {
+  if (requesterRole === 'Superadmin') {
+    return;
+  }
+
+  if (!requesterBranchId || requesterBranchId !== targetBranchId) {
+    throwWithStatus(403, 'Can only manage staff at your own branch');
   }
 }
 
@@ -205,6 +246,7 @@ function resolveDateWindow(
 export async function createUnavailabilityBlock({
   requesterId,
   requesterRole,
+  requesterBranchId,
   targetStaffId,
   quickAction,
   isFullDay,
@@ -213,9 +255,19 @@ export async function createUnavailabilityBlock({
   endTime,
   reason,
   requestedReviewerId,
+  leaveType,
   now = new Date(),
 }: CreateUnavailabilityBlockParams): Promise<UnavailabilityBlock> {
   assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
+
+  // Rest days are fixed and decided by a Supervisor/Admin/Superadmin -
+  // never self-service, unlike every other leave_type.
+  if (leaveType === 'Rest Day' && requesterId === targetStaffId) {
+    throwWithStatus(
+      403,
+      'Rest days can only be set by a Supervisor, Admin, or Superadmin'
+    );
+  }
 
   const { data: targetProfile, error: profileError } = await supabase
     .from('staff_profiles')
@@ -225,6 +277,10 @@ export async function createUnavailabilityBlock({
 
   if (profileError) throwWithStatus(400, profileError.message);
   if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+
+  if (requesterId !== targetStaffId) {
+    assertSameBranch(requesterRole, requesterBranchId, targetProfile.branch_id);
+  }
 
   if (requestedReviewerId) {
     const { data: reviewer, error: reviewerError } = await supabase
@@ -329,6 +385,7 @@ export async function createUnavailabilityBlock({
       is_quick_action: Boolean(quickAction),
       is_full_day: Boolean(isFullDay),
       requested_reviewer_id: requestedReviewerId ?? null,
+      leave_type: leaveType ?? 'Other',
     })
     .select('*')
     .maybeSingle();
@@ -346,6 +403,7 @@ export async function createUnavailabilityBlock({
 export async function cancelUnavailabilityBlock({
   requesterId,
   requesterRole,
+  requesterBranchId,
   targetStaffId,
   blockId,
 }: CancelUnavailabilityBlockParams): Promise<void> {
@@ -360,6 +418,19 @@ export async function cancelUnavailabilityBlock({
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Unavailability block not found');
+
+  if (requesterId !== targetStaffId) {
+    const { data: targetProfile, error: profileError } = await supabase
+      .from('staff_profiles')
+      .select('branch_id')
+      .eq('id', targetStaffId)
+      .maybeSingle();
+
+    if (profileError) throwWithStatus(400, profileError.message);
+    if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+
+    assertSameBranch(requesterRole, requesterBranchId, targetProfile.branch_id);
+  }
 
   const { error } = await supabase
     .from('staff_unavailability_blocks')
@@ -488,5 +559,70 @@ export async function listPendingUnavailabilityBlocks({
   return scoped.map((row) => ({
     ...row,
     reviewable: row.staff_id !== requesterId,
+  }));
+}
+
+/**
+ * Monthly Schedule calendar (branch-shared, equal CRUD for Admin/Supervisor/
+ * Superadmin - #3 addendum). Only full-day entries belong on a day-
+ * granularity month grid; partial-day quick actions/custom ranges stay out
+ * of this specific view (they still show on the self-service Days Off page
+ * and the pending-approval queue). Every status is included (not just
+ * approved) so managers can see what's still pending review, unlike
+ * get_staff_availability()'s Check 3 which only ever excludes approved rows.
+ */
+export async function listBranchSchedule({
+  requesterRole,
+  requesterBranchId,
+  branchId,
+  rangeStart,
+  rangeEnd,
+}: ListBranchScheduleParams): Promise<BranchScheduleEntry[]> {
+  if (!UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
+    throwWithStatus(403, 'Forbidden');
+  }
+
+  if (requesterRole !== 'Superadmin' && requesterBranchId !== branchId) {
+    throwWithStatus(403, 'Can only view schedules for your own branch');
+  }
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .select(
+      '*, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(id, display_name, profile_photo_url, role, branch_id)'
+    )
+    .eq('is_full_day', true)
+    .lt('start_time', rangeEnd)
+    .gt('end_time', rangeStart)
+    .order('start_time', { ascending: true });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Array<
+    UnavailabilityBlock & {
+      staff: PendingUnavailabilityBlockStaffSummary | null;
+    }
+  >;
+
+  const scoped = rows.filter((row) => row.staff?.branch_id === branchId);
+
+  const creatorIds = [...new Set(scoped.map((row) => row.created_by))];
+
+  const { data: creators, error: creatorsError } = creatorIds.length
+    ? await supabase
+        .from('staff_profiles')
+        .select('id, display_name')
+        .in('id', creatorIds)
+    : { data: [] as Array<{ id: string; display_name: string }>, error: null };
+
+  if (creatorsError) throwWithStatus(400, creatorsError.message);
+
+  const creatorNameById = new Map(
+    (creators ?? []).map((creator) => [creator.id, creator.display_name])
+  );
+
+  return scoped.map((row) => ({
+    ...row,
+    created_by_name: creatorNameById.get(row.created_by) ?? null,
   }));
 }
