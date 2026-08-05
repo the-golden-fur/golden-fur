@@ -22,6 +22,7 @@ import {
   findTotpFactorForVerify,
   getStaffRole,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import { createNotification } from '../../notifications/services/notification.service.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -261,6 +262,36 @@ export async function forgotPasswordController(req: Request, res: Response) {
     if (error) {
       return res.status(400).json({ error: error.message });
     }
+
+    // Issue #97: password_reset has no Resend template (Supabase Auth just
+    // sent the email itself, above) - only the in-app row is written here,
+    // so the staff member sees "Password reset requested" in their inbox
+    // even though the actual email came from Supabase, not us. Best-effort
+    // and silent either way - a lookup miss (unregistered email) must not
+    // change this endpoint's response, matching resetPasswordForEmail's own
+    // generic response regardless of whether the address exists.
+    try {
+      const { data: staffProfile } = await supabase
+        .from('staff_profiles')
+        .select('id')
+        .eq('registered_email', email)
+        .maybeSingle();
+
+      if (staffProfile) {
+        await createNotification({
+          recipientStaffId: staffProfile.id,
+          eventType: 'password_reset',
+          title: 'Password reset requested',
+          message: 'A password reset was requested for your account.',
+        });
+      }
+    } catch (notificationError) {
+      console.error(
+        'Failed to write password_reset notification:',
+        notificationError
+      );
+    }
+
     return res.status(200).json({ message: 'Password reset email sent' });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });

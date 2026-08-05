@@ -10,6 +10,7 @@ import {
 } from '../../../shared/archive/archiveGuard.ts';
 import { encryptTempCredential } from '../../../shared/crypto/tempCredential.ts';
 import { sendAccountCreatedEmail } from '../../../shared/email/accountCreatedEmail.ts';
+import { createNotification } from '../../notifications/services/notification.service.ts';
 import type { StaffProfile, StaffRole } from '../staff.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -142,6 +143,21 @@ export async function createStaffAccount({
     });
   } catch (error) {
     console.error('Failed to send account_created email:', error);
+  }
+
+  // Issue #97: the in-app mirror of the email above - reuses the existing
+  // accountCreatedEmail.ts template unchanged (it's already sent above),
+  // this only adds the notifications row so the new staff member sees the
+  // event in their inbox once they log in. Best-effort, same as the email.
+  try {
+    await createNotification({
+      recipientStaffId: profile.id,
+      eventType: 'account_created',
+      title: 'Account created',
+      message: `Your Golden Fur staff account has been created. Username: ${username}.`,
+    });
+  } catch (error) {
+    console.error('Failed to write account_created notification:', error);
   }
 
   return { staff: profile, temporaryPassword };
