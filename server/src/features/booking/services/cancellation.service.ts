@@ -13,6 +13,7 @@ import {
   writeCancellationLog,
 } from './cancellationLog.service.ts';
 import { issueCredit } from '../../credits/services/creditIssuance.service.ts';
+import { sendBookingCancelledNotification } from './bookingNotifications.service.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -127,6 +128,17 @@ export async function cancelBooking({
       await markCreditIssuedOnLog(log.id, downpayment);
     }
   }
+
+  // Issue #98: positioned immediately after the credit issuance block above
+  // (not before it), so the message can report whether credit was actually
+  // issued and the amount - no stub existed for this event before this
+  // issue wired it.
+  await sendBookingCancelledNotification({
+    booking: updated as Booking,
+    noticePeriodMet: notice.met,
+    policyViolation,
+    creditAmount: creditIssued ? downpayment : null,
+  });
 
   return {
     booking: updated as Booking,

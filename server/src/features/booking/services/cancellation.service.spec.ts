@@ -11,6 +11,14 @@ vi.mock('../../../shared/auth/api/supabaseAuth.api.ts', () => ({
   getStaffRoleOrNull: vi.fn(),
 }));
 
+// Issue #98: booking_cancelled dispatch is covered by its own unit tests
+// (bookingNotifications.service.spec.ts) - mocked wholesale here so these
+// pre-existing cancellation tests don't need to account for its extra
+// Supabase lookup in their sequential mock queues below.
+vi.mock('./bookingNotifications.service.ts', () => ({
+  sendBookingCancelledNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

@@ -14,6 +14,7 @@ import {
 } from './staffPicker.service.ts';
 import { writeCancellationLog } from './cancellationLog.service.ts';
 import { calculateRescheduleFee } from './rescheduleFee.service.ts';
+import { sendBookingRescheduledNotification } from './bookingNotifications.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -263,6 +264,11 @@ export async function rescheduleBooking({
     policyViolation,
     rescheduleFeeCharged: feeAmount,
   });
+
+  // Issue #98: no stub existed for this event - net-new call, reading the
+  // booking row before (`booking`) and after (`updated`) the update so the
+  // message/email can report both the old and new schedule.
+  await sendBookingRescheduledNotification(booking, updated as Booking);
 
   return {
     booking: updated as Booking,

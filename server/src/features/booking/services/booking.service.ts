@@ -1,5 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import { sendBookingConfirmedNotification } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
@@ -56,22 +57,6 @@ function isPetAssessed(pet: PetRow): boolean {
 interface CreateBookingParams {
   requesterId: string;
   input: CreateBookingInput;
-}
-
-/**
- * M11's notifications table is Sprint 6 scope, so the booking_confirmed
- * notification (email + in-app) is a stub/log call - it must never block
- * booking creation waiting on a real send (Guide #51 dev notes). Fires on
- * every successful creation now (booking-status revision retired the
- * 'Confirmed' status value, but M11's booking_confirmed event still refers
- * to "a booking was successfully made", not that specific status name).
- * TODO(Sprint 6, M11): replace with the real notification dispatch.
- */
-function sendBookingCreatedNotificationStub(booking: Booking): void {
-  // eslint-disable-next-line no-console
-  console.info(
-    `[M11 stub] booking_confirmed notification for booking ${booking.id} (customer ${booking.customer_id})`
-  );
 }
 
 /**
@@ -754,7 +739,7 @@ export async function createBooking({
     );
   }
 
-  sendBookingCreatedNotificationStub(booking);
+  await sendBookingConfirmedNotification(booking);
 
   return getBookingById({ requesterId, bookingId: booking.id });
 }
