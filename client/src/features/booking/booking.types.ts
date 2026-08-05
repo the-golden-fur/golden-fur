@@ -160,6 +160,10 @@ export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
 
 export type EnforcementMode = 'Strict' | 'Soft';
 
+/** The one genuinely new enum this epic introduces (#88) - enforcement_mode
+ * already existed and is reused as-is. */
+export type RescheduleFeeType = 'Flat' | 'Percentage';
+
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
@@ -248,6 +252,7 @@ export interface Booking {
   cancelled_at: string | null;
   cancellation_reason: string | null;
   reschedule_count: number;
+  pending_reschedule_fee_amount: number | null;
   created_at: string;
   updated_at: string;
   booking_items?: BookingItem[];
@@ -305,6 +310,16 @@ export interface PolicyConfiguration {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
+  /** % of total booking cost required as Hotel downpayment (#88). */
+  downpayment_percentage: number;
+  reschedule_fee_enabled: boolean;
+  /** Populated only when reschedule_fee_enabled is true. */
+  reschedule_fee_type: RescheduleFeeType | null;
+  reschedule_fee_value: number | null;
+  /** NULL = unlimited free reschedules (documented default). */
+  reschedule_free_allowance: number | null;
+  credit_expiry_enabled: boolean;
+  credit_expiry_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -319,6 +334,13 @@ export type EffectivePolicy = Pick<
   | 'lunch_break_enabled'
   | 'lunch_break_start'
   | 'lunch_break_end'
+  | 'downpayment_percentage'
+  | 'reschedule_fee_enabled'
+  | 'reschedule_fee_type'
+  | 'reschedule_fee_value'
+  | 'reschedule_free_allowance'
+  | 'credit_expiry_enabled'
+  | 'credit_expiry_days'
 >;
 
 export interface UpdatePolicyPayload {
@@ -331,6 +353,13 @@ export interface UpdatePolicyPayload {
   lunch_break_enabled?: boolean;
   lunch_break_start?: string;
   lunch_break_end?: string;
+  downpayment_percentage?: number;
+  reschedule_fee_enabled?: boolean;
+  reschedule_fee_type?: RescheduleFeeType | null;
+  reschedule_fee_value?: number | null;
+  reschedule_free_allowance?: number | null;
+  credit_expiry_enabled?: boolean;
+  credit_expiry_days?: number;
 }
 
 export interface StaffPreferenceInput {
