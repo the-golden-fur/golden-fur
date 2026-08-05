@@ -40,7 +40,8 @@ export async function issueCredit(
   });
 
   if (error || !data) {
-    console.error( // eslint-disable-line no-console
+    console.error(
+      // eslint-disable-line no-console
       'issueCredit failed:',
       error?.message ?? 'no row returned'
     );

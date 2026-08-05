@@ -15,8 +15,16 @@
     { "key": "customer_identifier", "value": "" },
     { "key": "customer_password", "value": "" },
     { "key": "customer_access_token", "value": "" },
-    { "key": "customer_id", "value": "", "description": "customer_profiles.id of the customer login above" },
-    { "key": "branch_id", "value": "", "description": "A real branches.id to scope the policy/credit requests to" },
+    {
+      "key": "customer_id",
+      "value": "",
+      "description": "customer_profiles.id of the customer login above"
+    },
+    {
+      "key": "branch_id",
+      "value": "",
+      "description": "A real branches.id to scope the policy/credit requests to"
+    },
     {
       "key": "reschedulable_booking_id",
       "value": "",
@@ -334,7 +342,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "url": {
           "raw": "{{base_url}}/credits/balances",

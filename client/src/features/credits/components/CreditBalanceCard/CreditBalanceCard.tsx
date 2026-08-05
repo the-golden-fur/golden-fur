@@ -37,7 +37,9 @@ function soonestActiveExpiry(history: CreditTransaction[]): string | null {
 function expiryBadgeText(soonest: string | null): string | null {
   if (!soonest) return null;
 
-  const daysUntil = Math.ceil((new Date(soonest).getTime() - Date.now()) / DAY_MS);
+  const daysUntil = Math.ceil(
+    (new Date(soonest).getTime() - Date.now()) / DAY_MS
+  );
 
   if (daysUntil > EXPIRY_LOOKAHEAD_DAYS) return null;
 
@@ -80,7 +82,9 @@ export function CreditBalanceCard({
     <div className={styles.card}>
       <div className={styles.header}>
         <h3 className={styles.branchName}>{branchName}</h3>
-        <span className={styles.balance}>{formatCurrency(balance.balance)}</span>
+        <span className={styles.balance}>
+          {formatCurrency(balance.balance)}
+        </span>
       </div>
       {expiryBadge ? (
         <span className={styles.expiryBadge} role="status">

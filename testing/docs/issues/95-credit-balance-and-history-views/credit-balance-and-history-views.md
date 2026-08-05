@@ -34,11 +34,11 @@ Cashier/Admin/Superadmin view of a customer's credit balance, history, and expir
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 `CreditManagementPage` shows a customer's balance, history, expiry, scoped to branch | `creditBalance.service.spec.ts` (server-side data shape); no client spec for the page itself (matches this codebase's existing client-page-testing convention) | Section D, step 2 |
-| AC-2 customer portal shows own balance with an expiry-approaching badge within the lookahead window | `CustomerPortalPage.spec.ts`'s new "#95" tests (2 tests) | step 3 |
-| AC-3 a customer sees only their own balance/history; Cashier/Admin/Superadmin see any, branch-scoped | `creditBalance.service.spec.ts`'s AC-3 tests (5 tests) | step 4 |
+| AC                                                                                                   | Automated                                                                                                                                                      | Manual            |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| AC-1 `CreditManagementPage` shows a customer's balance, history, expiry, scoped to branch            | `creditBalance.service.spec.ts` (server-side data shape); no client spec for the page itself (matches this codebase's existing client-page-testing convention) | Section D, step 2 |
+| AC-2 customer portal shows own balance with an expiry-approaching badge within the lookahead window  | `CustomerPortalPage.spec.ts`'s new "#95" tests (2 tests)                                                                                                       | step 3            |
+| AC-3 a customer sees only their own balance/history; Cashier/Admin/Superadmin see any, branch-scoped | `creditBalance.service.spec.ts`'s AC-3 tests (5 tests)                                                                                                         | step 4            |
 
 ## Automated Verification
 
@@ -75,7 +75,7 @@ Both confirmed clean as of this revision.
 1. As Cashier/Admin/Superadmin, open the dashboard — confirm a **Credit Management** tile appears under Cashier (Admin dashboard's Cashier section, or the Cashier dashboard directly), linking to `/staff/credits`.
 2. On `/staff/credits`, search for and select the test customer (reuses the booking flow's own `CustomerPicker`). Confirm a card appears for each branch with a balance, showing the correct amount. Click **View history** on the test branch's card — confirm the issuance row from #91's test appears with the correct date/amount/expiry.
 3. Log in as the test customer, navigate to `/portal`. Confirm a credit balance card appears for the test branch with the correct amount. If its `expires_at` is within 7 days (see #93's doc, step 1's short-expiry setup), confirm an "Expires in N day(s)" badge renders.
-4. As a *different* customer (no credit balance), confirm `/portal` shows no credit card at all. As a non-Cashier/Admin/Superadmin staff role, confirm `/staff/credits`'s dashboard tile is absent and the route itself redirects to `/staff/dashboard`.
+4. As a _different_ customer (no credit balance), confirm `/portal` shows no credit card at all. As a non-Cashier/Admin/Superadmin staff role, confirm `/staff/credits`'s dashboard tile is absent and the route itself redirects to `/staff/dashboard`.
 
 ### E. Cleanup
 

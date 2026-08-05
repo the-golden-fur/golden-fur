@@ -22,11 +22,11 @@ Schema-only issue: a genuinely new table logging every cancellation/reschedule e
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 table exists with every Design-sheet column, referencing the pre-existing `enforcement_mode` enum | schema exists at migration-apply time; exercised indirectly by #91's `cancellationLog.service.spec.ts` inserting rows shaped exactly this way | Section D, step 2 |
-| AC-2 RLS restricts write to the server-role client only; Admin/Supervisor/Superadmin can read | not exercised by vitest (RLS is a DB-layer concern) | step 3 |
-| AC-3 FKs to `bookings`/`customer_profiles`/`branches` are valid | `cancellation.service.spec.ts`/`reschedule.service.spec.ts` insert with real-shaped IDs (mocked, not FK-checked); the DB-level FK itself needs the SQL Editor | step 4 |
+| AC                                                                                                     | Automated                                                                                                                                                     | Manual            |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| AC-1 table exists with every Design-sheet column, referencing the pre-existing `enforcement_mode` enum | schema exists at migration-apply time; exercised indirectly by #91's `cancellationLog.service.spec.ts` inserting rows shaped exactly this way                 | Section D, step 2 |
+| AC-2 RLS restricts write to the server-role client only; Admin/Supervisor/Superadmin can read          | not exercised by vitest (RLS is a DB-layer concern)                                                                                                           | step 3            |
+| AC-3 FKs to `bookings`/`customer_profiles`/`branches` are valid                                        | `cancellation.service.spec.ts`/`reschedule.service.spec.ts` insert with real-shaped IDs (mocked, not FK-checked); the DB-level FK itself needs the SQL Editor | step 4            |
 
 ## Automated Verification
 

@@ -26,7 +26,10 @@ function policy(overrides: Partial<EffectivePolicy> = {}): EffectivePolicy {
 describe('rescheduleFee.service (#92)', () => {
   it('AC-2: reschedule_fee_enabled = false results in no fee regardless of allowance', () => {
     const fee = calculateRescheduleFee({
-      policy: policy({ reschedule_fee_enabled: false, reschedule_free_allowance: 0 }),
+      policy: policy({
+        reschedule_fee_enabled: false,
+        reschedule_free_allowance: 0,
+      }),
       booking: { reschedule_count: 5, total_price: 1000 },
     });
 

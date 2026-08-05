@@ -27,12 +27,12 @@ ALTER (not CREATE) onto the existing `policy_configurations` table: 7 new column
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 `policy_configurations` gains exactly the 7 new columns via ALTER; every pre-existing column/index/RLS policy untouched | schema exists at migration-apply time (no app-level test) | Section D, step 2 (information_schema diff) |
-| AC-2 `reschedule_fee_type` enum exists (`Flat`, `Percentage`); `enforcement_mode` not redeclared | migration re-apply would fail on `create type` if redeclared — implicit | step 2 |
-| AC-3 the pre-existing unique indexes still hold | `staffPicker.service.spec.ts`'s existing AC-2 test (branch-override row creation) exercises this unchanged | step 3 |
-| AC-4 RLS still restricts write to Admin/Superadmin, read to all staff | `booking.validator.spec.ts` (validator only); RLS itself isn't exercised by vitest — needs the Supabase SQL Editor | step 4 |
+| AC                                                                                                                           | Automated                                                                                                          | Manual                                      |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| AC-1 `policy_configurations` gains exactly the 7 new columns via ALTER; every pre-existing column/index/RLS policy untouched | schema exists at migration-apply time (no app-level test)                                                          | Section D, step 2 (information_schema diff) |
+| AC-2 `reschedule_fee_type` enum exists (`Flat`, `Percentage`); `enforcement_mode` not redeclared                             | migration re-apply would fail on `create type` if redeclared — implicit                                            | step 2                                      |
+| AC-3 the pre-existing unique indexes still hold                                                                              | `staffPicker.service.spec.ts`'s existing AC-2 test (branch-override row creation) exercises this unchanged         | step 3                                      |
+| AC-4 RLS still restricts write to Admin/Superadmin, read to all staff                                                        | `booking.validator.spec.ts` (validator only); RLS itself isn't exercised by vitest — needs the Supabase SQL Editor | step 4                                      |
 
 ## Automated Verification
 

@@ -33,7 +33,9 @@ interface CreditHistoryTableProps {
  * redemption/expiry), so no extra sign logic is needed beyond styling. */
 export function CreditHistoryTable({ history }: CreditHistoryTableProps) {
   if (history.length === 0) {
-    return <p className={styles.empty}>No credit history for this branch yet.</p>;
+    return (
+      <p className={styles.empty}>No credit history for this branch yet.</p>
+    );
   }
 
   return (
@@ -52,7 +54,9 @@ export function CreditHistoryTable({ history }: CreditHistoryTableProps) {
             <tr key={txn.id}>
               <td>{formatDate(txn.created_at)}</td>
               <td>{TYPE_LABELS[txn.transaction_type]}</td>
-              <td className={txn.amount >= 0 ? styles.positive : styles.negative}>
+              <td
+                className={txn.amount >= 0 ? styles.positive : styles.negative}
+              >
                 {formatCurrency(txn.amount)}
               </td>
               <td>{formatDate(txn.expires_at)}</td>

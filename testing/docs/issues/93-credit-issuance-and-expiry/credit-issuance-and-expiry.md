@@ -26,11 +26,11 @@ On a qualifying cancellation, converts the non-refundable Hotel downpayment into
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
+| AC                                                                                                        | Automated                                                                                                                           | Manual            |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | AC-1 a qualifying cancellation increments `credit_balances.balance` and writes an issuance row atomically | `creditIssuance.service.spec.ts` (RPC call shape); the atomicity guarantee itself lives in `issue_credit()` — see #90's doc, step 3 | #90's doc, step 3 |
-| AC-2 `expire_credits()` zeroes an expired issuance via a negative `'expiry'` row, not a hard delete | not unit-testable (pure SQL function) — see Manual step 2 below | step 2 |
-| AC-3 the manual-trigger endpoint produces the same result as the scheduled run | `creditExpiry.job.spec.ts` (2 tests) | step 3 |
+| AC-2 `expire_credits()` zeroes an expired issuance via a negative `'expiry'` row, not a hard delete       | not unit-testable (pure SQL function) — see Manual step 2 below                                                                     | step 2            |
+| AC-3 the manual-trigger endpoint produces the same result as the scheduled run                            | `creditExpiry.job.spec.ts` (2 tests)                                                                                                | step 3            |
 
 ## Automated Verification
 

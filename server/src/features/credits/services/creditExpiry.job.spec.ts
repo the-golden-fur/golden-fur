@@ -25,6 +25,8 @@ describe('creditExpiry.job (#93)', () => {
       error: { message: 'boom' },
     } as never);
 
-    await expect(runCreditExpiryJob()).rejects.toThrow('Credit expiry job failed');
+    await expect(runCreditExpiryJob()).rejects.toThrow(
+      'Credit expiry job failed'
+    );
   });
 });

@@ -185,7 +185,8 @@ describe('cancellation.service (#54/#91)', () => {
     expect(result.credit_issued).toBe(true);
 
     const logInsert = recordedWrites.find(
-      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'insert'
     );
 
     expect(logInsert?.payload).toMatchObject({
@@ -206,7 +207,8 @@ describe('cancellation.service (#54/#91)', () => {
     );
 
     const logPatch = recordedWrites.find(
-      (write) => write.table === 'cancellation_logs' && write.method === 'update'
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'update'
     );
 
     expect(logPatch?.payload).toEqual({
@@ -217,7 +219,10 @@ describe('cancellation.service (#54/#91)', () => {
 
   it('AC-3 (#91): Strict + notice unmet forfeits the downpayment - cancellation proceeds, no credit path', async () => {
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      {
+        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) },
+        error: null,
+      },
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null }
@@ -237,7 +242,8 @@ describe('cancellation.service (#54/#91)', () => {
     expect(supabase.rpc).not.toHaveBeenCalled();
 
     const logInsert = recordedWrites.find(
-      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'insert'
     );
 
     expect(logInsert?.payload).toMatchObject({ credit_issued: false });
@@ -245,7 +251,10 @@ describe('cancellation.service (#54/#91)', () => {
 
   it('AC-4 (#91): Soft + notice unmet flags policy_violation and withholds credit', async () => {
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      {
+        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) },
+        error: null,
+      },
       { data: [policyRow({ notice_enforcement_mode: 'Soft' })], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null }
@@ -262,7 +271,8 @@ describe('cancellation.service (#54/#91)', () => {
     expect(supabase.rpc).not.toHaveBeenCalled();
 
     const logInsert = recordedWrites.find(
-      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'insert'
     );
 
     expect(logInsert?.payload).toMatchObject({
@@ -273,7 +283,10 @@ describe('cancellation.service (#54/#91)', () => {
 
   it('AC-5 (#91): every cancellation writes exactly one cancellation_logs row with the correct fields', async () => {
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      {
+        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) },
+        error: null,
+      },
       { data: [policyRow({ notice_enforcement_mode: 'Soft' })], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null }
@@ -286,7 +299,8 @@ describe('cancellation.service (#54/#91)', () => {
     });
 
     const logInserts = recordedWrites.filter(
-      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'insert'
     );
 
     expect(logInserts).toHaveLength(1);
@@ -321,7 +335,10 @@ describe('cancellation.service (#54/#91)', () => {
       error: null,
     } as never);
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(0.5) }, error: null },
+      {
+        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(0.5) },
+        error: null,
+      },
       { data: [policyRow({ notice_enforcement_enabled: false })], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },

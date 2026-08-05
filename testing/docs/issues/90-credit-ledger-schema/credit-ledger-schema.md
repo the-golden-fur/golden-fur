@@ -28,12 +28,12 @@ The credit ledger schema: `credit_balances` (per-customer, per-branch, branch-lo
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 both tables exist with every Design-sheet column | schema exists at migration-apply time; `creditBalance.service.spec.ts` / `creditIssuance.service.spec.ts` exercise the shape | Section D, step 2 |
-| AC-2 `UNIQUE(customer_id, branch_id)` and `CHECK (balance >= 0)` present and enforced | `issue_credit()`'s `on conflict` clause depends on the unique constraint existing — implicit | step 3 |
-| AC-3 `credit_transactions.transaction_id` FKs successfully to `transactions.id` (Epic A, #82) | not exercised by vitest | step 4 |
-| AC-4 RLS: customer reads own, Cashier/Admin/Superadmin read any, only server-role writes | `creditBalance.service.spec.ts`'s AC-3 tests exercise the *application-layer* mirror of this; DB-level RLS needs the SQL Editor | step 5 |
+| AC                                                                                            | Automated                                                                                                                       | Manual            |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| AC-1 both tables exist with every Design-sheet column                                         | schema exists at migration-apply time; `creditBalance.service.spec.ts` / `creditIssuance.service.spec.ts` exercise the shape    | Section D, step 2 |
+| AC-2 `UNIQUE(customer_id, branch_id)` and `CHECK (balance >= 0)` present and enforced         | `issue_credit()`'s `on conflict` clause depends on the unique constraint existing — implicit                                    | step 3            |
+| AC-3 `credit_transactions.transaction_id` FKs successfully to `transactions.id` (Epic A, #82) | not exercised by vitest                                                                                                         | step 4            |
+| AC-4 RLS: customer reads own, Cashier/Admin/Superadmin read any, only server-role writes      | `creditBalance.service.spec.ts`'s AC-3 tests exercise the _application-layer_ mirror of this; DB-level RLS needs the SQL Editor | step 5            |
 
 ## Automated Verification
 

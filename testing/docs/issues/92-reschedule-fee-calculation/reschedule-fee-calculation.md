@@ -26,12 +26,12 @@ Flat/percentage reschedule fee, applied only once the configured free-reschedule
 
 ## Acceptance Criteria Map
 
-| AC | Automated | Manual |
-| --- | --- | --- |
-| AC-1 fee calculated correctly (flat/%) and written only once `reschedule_count` exceeds the allowance | `rescheduleFee.service.spec.ts` (6 tests, incl. "earlier reschedules within the free allowance incur no fee" / "charged once reschedule_count reaches the allowance") | Postman: reschedule sequence |
-| AC-2 `reschedule_fee_enabled = false` → no fee regardless of allowance | `rescheduleFee.service.spec.ts` "AC-2" test | — |
-| AC-3 a multi-item booking's fee is calculated against its full `total_price` | `rescheduleFee.service.spec.ts` "AC-3" test (2500 total, 10% → 250) | SQL: verify a real multi-item booking's `total_price` |
-| AC-4 the existing GET/PATCH `/bookings/policy` correctly read/update the 3 new fee fields | covered by #88's `booking.validator.spec.ts` extension + #94's manual Postman steps | see #94's doc |
+| AC                                                                                                    | Automated                                                                                                                                                             | Manual                                                |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| AC-1 fee calculated correctly (flat/%) and written only once `reschedule_count` exceeds the allowance | `rescheduleFee.service.spec.ts` (6 tests, incl. "earlier reschedules within the free allowance incur no fee" / "charged once reschedule_count reaches the allowance") | Postman: reschedule sequence                          |
+| AC-2 `reschedule_fee_enabled = false` → no fee regardless of allowance                                | `rescheduleFee.service.spec.ts` "AC-2" test                                                                                                                           | —                                                     |
+| AC-3 a multi-item booking's fee is calculated against its full `total_price`                          | `rescheduleFee.service.spec.ts` "AC-3" test (2500 total, 10% → 250)                                                                                                   | SQL: verify a real multi-item booking's `total_price` |
+| AC-4 the existing GET/PATCH `/bookings/policy` correctly read/update the 3 new fee fields             | covered by #88's `booking.validator.spec.ts` extension + #94's manual Postman steps                                                                                   | see #94's doc                                         |
 
 ## Automated Verification
 

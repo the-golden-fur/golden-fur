@@ -36,9 +36,7 @@ export function CreditManagementPage() {
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(
-    null
-  );
+  const [expandedBranchId, setExpandedBranchId] = useState<string | null>(null);
   const [history, setHistory] = useState<CreditTransaction[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -122,10 +120,12 @@ export function CreditManagementPage() {
     if (!accessToken || !customer) return;
 
     setIsLoadingHistory(true);
-    void listCreditHistory(accessToken, branchId, customer.id).then((result) => {
-      setIsLoadingHistory(false);
-      if (result.data) setHistory(result.data);
-    });
+    void listCreditHistory(accessToken, branchId, customer.id).then(
+      (result) => {
+        setIsLoadingHistory(false);
+        if (result.data) setHistory(result.data);
+      }
+    );
   };
 
   if (!user?.id || !accessToken) {
@@ -164,7 +164,10 @@ export function CreditManagementPage() {
         </p>
 
         {!customer ? (
-          <CustomerPicker accessToken={accessToken} onSelect={handleSelectCustomer} />
+          <CustomerPicker
+            accessToken={accessToken}
+            onSelect={handleSelectCustomer}
+          />
         ) : (
           <>
             <div className={styles.selectedCustomer}>

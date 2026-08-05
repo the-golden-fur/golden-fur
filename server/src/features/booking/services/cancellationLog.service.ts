@@ -54,7 +54,8 @@ export async function writeCancellationLog(
     .maybeSingle();
 
   if (error || !data) {
-    console.error( // eslint-disable-line no-console
+    console.error(
+      // eslint-disable-line no-console
       'writeCancellationLog failed:',
       error?.message ?? 'no row returned'
     );
@@ -82,7 +83,8 @@ export async function markCreditIssuedOnLog(
     .eq('id', logId);
 
   if (error) {
-    console.error( // eslint-disable-line no-console
+    console.error(
+      // eslint-disable-line no-console
       'markCreditIssuedOnLog failed:',
       error.message
     );

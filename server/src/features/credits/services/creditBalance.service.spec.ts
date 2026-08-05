@@ -48,7 +48,14 @@ describe('creditBalance.service (#90/#95)', () => {
     it('AC-3: a customer with no customer_id resolves to their own balances', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
       queueFromResults({
-        data: [{ id: 'bal-1', customer_id: CUSTOMER_ID, branch_id: 'branch-1', balance: 500 }],
+        data: [
+          {
+            id: 'bal-1',
+            customer_id: CUSTOMER_ID,
+            branch_id: 'branch-1',
+            balance: 500,
+          },
+        ],
         error: null,
       });
 
@@ -61,7 +68,10 @@ describe('creditBalance.service (#90/#95)', () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
 
       await expect(
-        listCreditBalances({ requesterId: CUSTOMER_ID, customerId: 'someone-else' })
+        listCreditBalances({
+          requesterId: CUSTOMER_ID,
+          customerId: 'someone-else',
+        })
       ).rejects.toMatchObject({ statusCode: 403 });
     });
 

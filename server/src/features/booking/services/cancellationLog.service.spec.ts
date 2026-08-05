@@ -100,7 +100,9 @@ describe('cancellationLog.service (#91)', () => {
     it('is best-effort: swallows an update error without throwing', async () => {
       mockFrom({ data: null, error: { message: 'boom' } });
 
-      await expect(markCreditIssuedOnLog('log-1', 500)).resolves.toBeUndefined();
+      await expect(
+        markCreditIssuedOnLog('log-1', 500)
+      ).resolves.toBeUndefined();
     });
   });
 });

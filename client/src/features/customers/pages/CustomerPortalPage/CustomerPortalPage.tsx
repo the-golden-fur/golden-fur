@@ -3,7 +3,10 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { getCustomerProfile } from '../../api/customer.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
-import { listCreditBalances, listCreditHistory } from '../../../credits/api/credits.api';
+import {
+  listCreditBalances,
+  listCreditHistory,
+} from '../../../credits/api/credits.api';
 import type {
   CreditBalance,
   CreditTransaction,

@@ -41,7 +41,10 @@ export function calculateRescheduleFee({
     return null;
   }
 
-  if (policy.reschedule_fee_type === null || policy.reschedule_fee_value === null) {
+  if (
+    policy.reschedule_fee_type === null ||
+    policy.reschedule_fee_value === null
+  ) {
     return null;
   }
 

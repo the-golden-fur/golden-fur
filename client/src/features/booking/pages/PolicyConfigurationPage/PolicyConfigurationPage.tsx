@@ -60,7 +60,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     reschedule_fee_enabled: policy.reschedule_fee_enabled,
     reschedule_fee_type: policy.reschedule_fee_type ?? 'Flat',
     reschedule_fee_value: policy.reschedule_fee_value ?? 0,
-    reschedule_free_allowance_unlimited: policy.reschedule_free_allowance === null,
+    reschedule_free_allowance_unlimited:
+      policy.reschedule_free_allowance === null,
     reschedule_free_allowance: policy.reschedule_free_allowance ?? 1,
     credit_expiry_enabled: policy.credit_expiry_enabled,
     credit_expiry_days: policy.credit_expiry_days,
@@ -528,7 +529,9 @@ export function PolicyConfigurationPage() {
                 className={styles.input}
                 type="number"
                 min={0}
-                max={form.reschedule_fee_type === 'Percentage' ? 100 : undefined}
+                max={
+                  form.reschedule_fee_type === 'Percentage' ? 100 : undefined
+                }
                 value={form.reschedule_fee_value}
                 disabled={!form.reschedule_fee_enabled}
                 onChange={(event) =>
@@ -556,7 +559,9 @@ export function PolicyConfigurationPage() {
 
             {!form.reschedule_free_allowance_unlimited ? (
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Free reschedules allowed</span>
+                <span className={styles.fieldLabel}>
+                  Free reschedules allowed
+                </span>
                 <input
                   className={styles.input}
                   type="number"
