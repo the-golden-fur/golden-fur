@@ -79,6 +79,12 @@ const HOTEL_BOOKING = {
   reschedule_count: 0,
 };
 
+const DAYCARE_BOOKING = {
+  ...HOTEL_BOOKING,
+  service_category: 'Daycare',
+  downpayment_amount: null,
+};
+
 function policyRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'policy-default',
@@ -88,6 +94,8 @@ function policyRow(overrides: Record<string, unknown> = {}) {
     notice_enforcement_enabled: true,
     staff_picker_enabled_grooming: true,
     staff_picker_enabled_veterinary: true,
+    credit_expiry_enabled: true,
+    credit_expiry_days: 30,
     ...overrides,
   };
 }
@@ -99,18 +107,38 @@ const CANCELLED_ROW = {
   cancellation_reason: 'change of plans',
 };
 
-describe('cancellation.service (#54)', () => {
+const LOG_ROW = { id: 'log-1', credit_issued: false, credit_amount: null };
+
+const ISSUED_TRANSACTION = {
+  id: 'txn-1',
+  credit_balance_id: 'balance-1',
+  transaction_type: 'issuance',
+  amount: 500,
+  cancellation_log_id: 'log-1',
+  transaction_id: null,
+  expires_at: '2026-09-04T00:00:00.000Z',
+  expired_at: null,
+  created_at: '2026-08-05T00:00:00.000Z',
+};
+
+describe('cancellation.service (#54/#91)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recordedWrites.length = 0;
     vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
   });
 
-  it('AC-5: a qualifying cancellation sets Cancelled with cancelled_at + cancellation_reason', async () => {
+  it('AC-5 (#54): a qualifying cancellation sets Cancelled with cancelled_at + cancellation_reason', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
     queueFromResults(
       { data: HOTEL_BOOKING, error: null }, // booking fetch
       { data: [policyRow()], error: null }, // policy
-      { data: CANCELLED_ROW, error: null } // update
+      { data: CANCELLED_ROW, error: null }, // booking update
+      { data: LOG_ROW, error: null }, // cancellation_logs insert
+      { data: null, error: null } // markCreditIssuedOnLog update
     );
 
     const result = await cancelBooking({
@@ -122,7 +150,9 @@ describe('cancellation.service (#54)', () => {
     expect(result.notice_period_met).toBe(true);
     expect(result.policy_violation).toBe(false);
 
-    const update = recordedWrites.find((write) => write.method === 'update');
+    const update = recordedWrites.find(
+      (write) => write.table === 'bookings' && write.method === 'update'
+    );
 
     expect(update?.payload).toMatchObject({
       status: 'Cancelled',
@@ -133,14 +163,64 @@ describe('cancellation.service (#54)', () => {
     ).toBeTruthy();
   });
 
-  it('a non-qualifying cancellation (notice unmet) still cancels - notice decides the future credit outcome, never blocks (M03 Process 5)', async () => {
+  it('AC-2 (#91): notice met + a real downpayment issues credit and writes a matching cancellation_logs row', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
     queueFromResults(
-      {
-        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) },
-        error: null,
-      },
+      { data: HOTEL_BOOKING, error: null },
       { data: [policyRow()], error: null },
-      { data: CANCELLED_ROW, error: null }
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      { data: null, error: null }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.credit_issued).toBe(true);
+
+    const logInsert = recordedWrites.find(
+      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+    );
+
+    expect(logInsert?.payload).toMatchObject({
+      event_type: 'cancellation',
+      notice_period_met: true,
+      credit_issued: false, // always inserted false; patched after issuance
+      credit_amount: null,
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({
+        p_customer_id: CUSTOMER_ID,
+        p_branch_id: 'branch-1',
+        p_amount: 500,
+        p_cancellation_log_id: 'log-1',
+      })
+    );
+
+    const logPatch = recordedWrites.find(
+      (write) => write.table === 'cancellation_logs' && write.method === 'update'
+    );
+
+    expect(logPatch?.payload).toEqual({
+      credit_issued: true,
+      credit_amount: 500,
+    });
+  });
+
+  it('AC-3 (#91): Strict + notice unmet forfeits the downpayment - cancellation proceeds, no credit path', async () => {
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      { data: [policyRow()], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null }
     );
 
     const result = await cancelBooking({
@@ -150,23 +230,102 @@ describe('cancellation.service (#54)', () => {
     });
 
     expect(result.notice_period_met).toBe(false);
+    // policy_violation is enforced && !met regardless of Strict/Soft (#54) -
+    // what Strict/Soft actually differ on is the financial consequence.
     expect(result.policy_violation).toBe(true);
-    expect(recordedWrites.some((write) => write.method === 'update')).toBe(
-      true
+    expect(result.credit_issued).toBe(false);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+
+    const logInsert = recordedWrites.find(
+      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
     );
+
+    expect(logInsert?.payload).toMatchObject({ credit_issued: false });
   });
 
-  it('AC-4: disabling enforcement system-wide clears the violation flag regardless of timing', async () => {
+  it('AC-4 (#91): Soft + notice unmet flags policy_violation and withholds credit', async () => {
     queueFromResults(
-      {
-        data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(0.5) },
-        error: null,
-      },
-      {
-        data: [policyRow({ notice_enforcement_enabled: false })],
-        error: null,
-      },
-      { data: CANCELLED_ROW, error: null }
+      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      { data: [policyRow({ notice_enforcement_mode: 'Soft' })], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.policy_violation).toBe(true);
+    expect(result.credit_issued).toBe(false);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+
+    const logInsert = recordedWrites.find(
+      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+    );
+
+    expect(logInsert?.payload).toMatchObject({
+      policy_violation: true,
+      credit_issued: false,
+    });
+  });
+
+  it('AC-5 (#91): every cancellation writes exactly one cancellation_logs row with the correct fields', async () => {
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) }, error: null },
+      { data: [policyRow({ notice_enforcement_mode: 'Soft' })], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null }
+    );
+
+    await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    const logInserts = recordedWrites.filter(
+      (write) => write.table === 'cancellation_logs' && write.method === 'insert'
+    );
+
+    expect(logInserts).toHaveLength(1);
+    expect(logInserts[0]?.payload).toMatchObject({
+      event_type: 'cancellation',
+      enforcement_mode_applied: 'Soft',
+    });
+  });
+
+  it('a qualifying notice with no downpayment (e.g. Daycare) never issues credit', async () => {
+    queueFromResults(
+      { data: DAYCARE_BOOKING, error: null },
+      { data: [policyRow()], error: null },
+      { data: { ...DAYCARE_BOOKING, status: 'Cancelled' }, error: null },
+      { data: LOG_ROW, error: null }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.notice_period_met).toBe(true);
+    expect(result.credit_issued).toBe(false);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('AC-4 (#54): disabling enforcement system-wide clears the violation flag regardless of timing', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(0.5) }, error: null },
+      { data: [policyRow({ notice_enforcement_enabled: false })], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      { data: null, error: null }
     );
 
     const result = await cancelBooking({
@@ -178,32 +337,7 @@ describe('cancellation.service (#54)', () => {
     expect(result.policy_violation).toBe(false);
   });
 
-  it('AC-5: no credit-balance write is attempted anywhere in the code path', async () => {
-    queueFromResults(
-      { data: HOTEL_BOOKING, error: null },
-      { data: [policyRow()], error: null },
-      { data: CANCELLED_ROW, error: null }
-    );
-
-    await cancelBooking({
-      requesterId: CUSTOMER_ID,
-      bookingId: 'booking-1',
-      input: {},
-    });
-
-    const touchedTables = vi
-      .mocked(supabase.from)
-      .mock.calls.map(([table]) => table);
-
-    expect(touchedTables).not.toContain('credit_balances');
-    expect(touchedTables).not.toContain('credit_transactions');
-    // The only write is the bookings status update.
-    expect(recordedWrites.every((write) => write.table === 'bookings')).toBe(
-      true
-    );
-  });
-
-  it('AC-6: a non-owning customer gets 403', async () => {
+  it('AC-6 (#54): a non-owning customer gets 403', async () => {
     queueFromResults({ data: HOTEL_BOOKING, error: null });
 
     await expect(

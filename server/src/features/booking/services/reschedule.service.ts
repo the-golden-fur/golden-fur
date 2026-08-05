@@ -12,6 +12,8 @@ import {
   listAvailableStaff,
   resolveEffectivePolicy,
 } from './staffPicker.service.ts';
+import { writeCancellationLog } from './cancellationLog.service.ts';
+import { calculateRescheduleFee } from './rescheduleFee.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -223,6 +225,12 @@ export async function rescheduleBooking({
     }
   }
 
+  // #92: calculated against the PRE-reschedule reschedule_count/total_price
+  // - a pure read of state already in hand, no extra query. NULL (no fee)
+  // overwrites any earlier pending amount, matching a fresh reschedule
+  // superseding whatever was pending from a previous one.
+  const feeAmount = calculateRescheduleFee({ policy: notice.policy, booking });
+
   const { data: updated, error: updateError } = await supabase
     .from('bookings')
     .update({
@@ -231,6 +239,7 @@ export async function rescheduleBooking({
       branch_id: targetBranchId,
       assigned_staff_id: assignedStaffId,
       reschedule_count: booking.reschedule_count + 1,
+      pending_reschedule_fee_amount: feeAmount,
       updated_at: new Date().toISOString(),
     })
     .eq('id', booking.id)
@@ -240,6 +249,20 @@ export async function rescheduleBooking({
   if (updateError || !updated) {
     throwWithStatus(400, updateError?.message ?? 'Failed to reschedule');
   }
+
+  // #91: every completed reschedule writes a log row too, not just
+  // cancellations - a Strict-blocked attempt above never reaches this line,
+  // since it never actually happened.
+  await writeCancellationLog({
+    bookingId: booking.id,
+    customerId: booking.customer_id,
+    branchId: targetBranchId,
+    eventType: 'reschedule',
+    noticePeriodMet: notice.met,
+    enforcementModeApplied: notice.policy.notice_enforcement_mode,
+    policyViolation,
+    rescheduleFeeCharged: feeAmount,
+  });
 
   return {
     booking: updated as Booking,
