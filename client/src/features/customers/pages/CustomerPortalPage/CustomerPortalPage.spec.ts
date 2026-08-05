@@ -10,6 +10,7 @@ import {
   listCreditBalances,
   listCreditHistory,
 } from '../../../credits/api/credits.api';
+import { listNotifications } from '../../../notifications/api/notifications.api';
 import { CustomerPortalPage } from './CustomerPortalPage';
 
 vi.mock('../../api/customer.api', () => ({
@@ -23,6 +24,12 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
 vi.mock('../../../credits/api/credits.api', () => ({
   listCreditBalances: vi.fn(),
   listCreditHistory: vi.fn(),
+}));
+
+vi.mock('../../../notifications/api/notifications.api', () => ({
+  listNotifications: vi.fn(),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
 }));
 
 function renderPage() {
@@ -54,6 +61,7 @@ describe('CustomerPortalPage', () => {
     vi.mocked(listBranches).mockResolvedValue({ data: [], error: null });
     vi.mocked(listCreditBalances).mockResolvedValue({ data: [], error: null });
     vi.mocked(listCreditHistory).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listNotifications).mockResolvedValue({ data: [], error: null });
   });
 
   it('greets the customer by name once their profile loads, instead of a navigation tile grid', async () => {

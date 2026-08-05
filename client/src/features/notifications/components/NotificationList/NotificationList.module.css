@@ -1,0 +1,61 @@
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item,
+.itemUnread {
+  display: grid;
+  gap: var(--space-0-5);
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  padding: var(--space-2);
+}
+
+.itemUnread {
+  background: var(--color-notification-unread-bg);
+}
+
+.title {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.itemUnread .title {
+  color: var(--color-notification-unread-text);
+}
+
+.message {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.timestamp {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}

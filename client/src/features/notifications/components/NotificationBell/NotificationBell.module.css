@@ -1,0 +1,41 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+.badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--color-notification-unread-bg);
+  color: var(--color-notification-unread-text);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  padding: 0 4px;
+}
+
+.dropdownAnchor {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  margin-top: var(--space-1);
+}

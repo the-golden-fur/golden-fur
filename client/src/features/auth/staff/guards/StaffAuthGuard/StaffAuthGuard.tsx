@@ -5,6 +5,7 @@ import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
 import type { SidebarSection } from '../../../../../shared/components/Sidebar/Sidebar';
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
+import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
 import { getStaffProfile } from '../../../../staff/api/staff.api';
 import {
@@ -188,6 +189,9 @@ export function StaffAuthGuard() {
           username && role ? { primary: username, secondary: role } : null
         }
         sidebarSections={buildSidebarSections(role)}
+        notificationBell={
+          accessToken ? <NotificationBell accessToken={accessToken} /> : null
+        }
       />
       <SessionExpiryModal
         isOpen={isWarningVisible}
