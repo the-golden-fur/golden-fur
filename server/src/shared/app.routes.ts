@@ -13,6 +13,7 @@ import branchesRoutes from '../features/branches/branches.routes.ts';
 import catalogRoutes from '../features/catalog/catalog.routes.ts';
 import billingRoutes from '../features/billing/billing.routes.ts';
 import paymongoWebhookRoutes from '../features/billing/routes/paymongoWebhook.routes.ts';
+import creditsRoutes from '../features/credits/credits.routes.ts';
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use(branchesRoutes);
 router.use(catalogRoutes);
 router.use(billingRoutes);
 router.use(paymongoWebhookRoutes);
+router.use(creditsRoutes);
 
 export default router;
