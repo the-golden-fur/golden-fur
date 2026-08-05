@@ -23,6 +23,16 @@ vi.mock('../../../../staff/api/staff.api', () => ({
   getStaffProfile: vi.fn(),
 }));
 
+// AppShell renders the staff-only NotificationBell (Issue #100), which
+// fetches on mount - mocked here so these guard tests don't hit a real
+// (relative, base-URL-less) fetch('/notifications') call in the test
+// environment.
+vi.mock('../../../../notifications/api/notifications.api', () => ({
+  listNotifications: vi.fn().mockResolvedValue({ data: [], error: null }),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+}));
+
 function buildProfile(overrides: Partial<StaffProfile> = {}): StaffProfile {
   return {
     id: 'user-1',
