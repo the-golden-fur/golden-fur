@@ -190,6 +190,10 @@ export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
 
 export type EnforcementMode = 'Strict' | 'Soft';
 
+/** The one genuinely new enum this epic introduces (#88) - enforcement_mode
+ * already existed (Sprint 2 #52) and is reused as-is. */
+export type RescheduleFeeType = 'Flat' | 'Percentage';
+
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
@@ -276,6 +280,11 @@ export interface Booking {
   cancelled_at: string | null;
   cancellation_reason: string | null;
   reschedule_count: number;
+  /** Written by rescheduleFee.service.ts (#92) at reschedule confirmation;
+   * read and cleared to NULL by Epic A's checkoutAggregation.service.ts once
+   * posted as a transaction_line_items row (that read side is Epic A
+   * follow-up work, not built by this epic). */
+  pending_reschedule_fee_amount: number | null;
   created_at: string;
   updated_at: string;
   booking_items?: BookingItem[];
@@ -319,6 +328,16 @@ export interface PolicyConfiguration {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
+  /** % of total booking cost required as Hotel downpayment (#88). */
+  downpayment_percentage: number;
+  reschedule_fee_enabled: boolean;
+  /** Populated only when reschedule_fee_enabled is true. */
+  reschedule_fee_type: RescheduleFeeType | null;
+  reschedule_fee_value: number | null;
+  /** NULL = unlimited free reschedules (documented default). */
+  reschedule_free_allowance: number | null;
+  credit_expiry_enabled: boolean;
+  credit_expiry_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -337,7 +356,35 @@ export type EffectivePolicy = Pick<
   | 'lunch_break_enabled'
   | 'lunch_break_start'
   | 'lunch_break_end'
+  | 'downpayment_percentage'
+  | 'reschedule_fee_enabled'
+  | 'reschedule_fee_type'
+  | 'reschedule_fee_value'
+  | 'reschedule_free_allowance'
+  | 'credit_expiry_enabled'
+  | 'credit_expiry_days'
 >;
+
+/** event_type is plain text, not an enum, matching transaction_line_items'
+ * line_item_type convention (#89). Documented values: 'cancellation',
+ * 'reschedule'. */
+export type CancellationLogEventType = 'cancellation' | 'reschedule';
+
+export interface CancellationLog {
+  id: string;
+  booking_id: string;
+  customer_id: string;
+  branch_id: string;
+  event_type: CancellationLogEventType;
+  notice_period_met: boolean;
+  enforcement_mode_applied: EnforcementMode;
+  policy_violation: boolean;
+  credit_issued: boolean;
+  credit_amount: number | null;
+  reschedule_fee_charged: number | null;
+  notes: string | null;
+  created_at: string;
+}
 
 export type StaffPickerOption =
   | { type: 'no_preference' }

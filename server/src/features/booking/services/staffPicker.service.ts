@@ -28,6 +28,13 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   lunch_break_enabled: true,
   lunch_break_start: '12:00',
   lunch_break_end: '13:00',
+  downpayment_percentage: 50.0,
+  reschedule_fee_enabled: false,
+  reschedule_fee_type: null,
+  reschedule_fee_value: null,
+  reschedule_free_allowance: null,
+  credit_expiry_enabled: true,
+  credit_expiry_days: 30,
 };
 
 /** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
@@ -237,6 +244,13 @@ export async function updatePolicyConfiguration({
     lunch_break_enabled: resolved.lunch_break_enabled,
     lunch_break_start: resolved.lunch_break_start,
     lunch_break_end: resolved.lunch_break_end,
+    downpayment_percentage: resolved.downpayment_percentage,
+    reschedule_fee_enabled: resolved.reschedule_fee_enabled,
+    reschedule_fee_type: resolved.reschedule_fee_type,
+    reschedule_fee_value: resolved.reschedule_fee_value,
+    reschedule_free_allowance: resolved.reschedule_free_allowance,
+    credit_expiry_enabled: resolved.credit_expiry_enabled,
+    credit_expiry_days: resolved.credit_expiry_days,
   };
 
   const { data, error } = await supabase
