@@ -14,6 +14,7 @@ const CATEGORIES = [
   'Misc',
 ] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
+const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 /** Matches branches.validator.ts's TIME_PATTERN - "HH:MM" 24h. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -243,6 +244,14 @@ export const updatePolicyValidator = z
       .string()
       .regex(TIME_PATTERN, 'Use HH:MM (24h)')
       .optional(),
+    downpayment_percentage: z.number().min(0).max(100).optional(),
+    reschedule_fee_enabled: z.boolean().optional(),
+    reschedule_fee_type: z.enum(RESCHEDULE_FEE_TYPES).nullable().optional(),
+    reschedule_fee_value: z.number().min(0).nullable().optional(),
+    // NULL = unlimited free reschedules (documented default).
+    reschedule_free_allowance: z.number().int().min(0).nullable().optional(),
+    credit_expiry_enabled: z.boolean().optional(),
+    credit_expiry_days: z.number().int().min(1).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -264,6 +273,30 @@ export const updatePolicyValidator = z
         code: 'custom',
         message: 'lunch_break_end must be after lunch_break_start',
         path: ['lunch_break_end'],
+      });
+    }
+
+    if (
+      (input.reschedule_fee_type !== undefined) !==
+      (input.reschedule_fee_value !== undefined)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'reschedule_fee_type and reschedule_fee_value must be provided together',
+        path: ['reschedule_fee_value'],
+      });
+    }
+
+    if (
+      input.reschedule_fee_type === 'Percentage' &&
+      input.reschedule_fee_value != null &&
+      input.reschedule_fee_value > 100
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A percentage reschedule fee cannot exceed 100',
+        path: ['reschedule_fee_value'],
       });
     }
   });

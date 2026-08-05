@@ -5,6 +5,7 @@ import {
   CalendarOff,
   ClipboardCheck,
   ClipboardList,
+  Coins,
   Heart,
   LogIn,
   Scissors,
@@ -169,6 +170,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
+          },
+          {
+            title: 'Credit Management',
+            description:
+              "Look up a customer's branch credit balance, history, and expiry.",
+            to: '/staff/credits',
           },
         ],
       },
@@ -347,6 +354,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
           },
+          {
+            title: 'Credit Management',
+            description:
+              "Look up a customer's branch credit balance, history, and expiry.",
+            to: '/staff/credits',
+          },
         ],
       },
     ],
@@ -412,6 +425,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Grooming Queue': Scissors,
   'Consultation Queue': Stethoscope,
   'Checkout & Billing': Wallet,
+  'Credit Management': Coins,
   'Hotel Care Log': Heart,
   'Care Log': Heart,
   'Branch Reports': BarChart3,

@@ -9,7 +9,11 @@ import {
   resolveEffectivePolicy,
   updatePolicyConfiguration,
 } from '../../api/policy.api';
-import type { EnforcementMode, PolicyConfiguration } from '../../booking.types';
+import type {
+  EnforcementMode,
+  PolicyConfiguration,
+  RescheduleFeeType,
+} from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import styles from './PolicyConfigurationPage.module.css';
 
@@ -28,6 +32,18 @@ interface FormState {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
+  downpayment_percentage: number;
+  reschedule_fee_enabled: boolean;
+  reschedule_fee_type: RescheduleFeeType;
+  reschedule_fee_value: number;
+  /** UI-only split of the nullable reschedule_free_allowance column - NULL
+   * (unlimited, the documented default) round-trips as this checkbox plus
+   * whatever number was last shown, rather than forcing the number input to
+   * represent "no value" itself. */
+  reschedule_free_allowance_unlimited: boolean;
+  reschedule_free_allowance: number;
+  credit_expiry_enabled: boolean;
+  credit_expiry_days: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -40,6 +56,15 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     lunch_break_enabled: policy.lunch_break_enabled,
     lunch_break_start: policy.lunch_break_start.slice(0, 5),
     lunch_break_end: policy.lunch_break_end.slice(0, 5),
+    downpayment_percentage: policy.downpayment_percentage,
+    reschedule_fee_enabled: policy.reschedule_fee_enabled,
+    reschedule_fee_type: policy.reschedule_fee_type ?? 'Flat',
+    reschedule_fee_value: policy.reschedule_fee_value ?? 0,
+    reschedule_free_allowance_unlimited:
+      policy.reschedule_free_allowance === null,
+    reschedule_free_allowance: policy.reschedule_free_allowance ?? 1,
+    credit_expiry_enabled: policy.credit_expiry_enabled,
+    credit_expiry_days: policy.credit_expiry_days,
   };
 }
 
@@ -52,6 +77,14 @@ const DOCUMENTED_DEFAULTS: FormState = {
   lunch_break_enabled: true,
   lunch_break_start: '12:00',
   lunch_break_end: '13:00',
+  downpayment_percentage: 50,
+  reschedule_fee_enabled: false,
+  reschedule_fee_type: 'Flat',
+  reschedule_fee_value: 0,
+  reschedule_free_allowance_unlimited: true,
+  reschedule_free_allowance: 1,
+  credit_expiry_enabled: true,
+  credit_expiry_days: 30,
 };
 
 /**
@@ -178,7 +211,23 @@ export function PolicyConfigurationPage() {
 
     const result = await updatePolicyConfiguration(accessToken, {
       branch_id: selectedBranchId || null,
-      ...form,
+      notice_period_days: form.notice_period_days,
+      notice_enforcement_mode: form.notice_enforcement_mode,
+      notice_enforcement_enabled: form.notice_enforcement_enabled,
+      staff_picker_enabled_grooming: form.staff_picker_enabled_grooming,
+      staff_picker_enabled_veterinary: form.staff_picker_enabled_veterinary,
+      lunch_break_enabled: form.lunch_break_enabled,
+      lunch_break_start: form.lunch_break_start,
+      lunch_break_end: form.lunch_break_end,
+      downpayment_percentage: form.downpayment_percentage,
+      reschedule_fee_enabled: form.reschedule_fee_enabled,
+      reschedule_fee_type: form.reschedule_fee_type,
+      reschedule_fee_value: form.reschedule_fee_value,
+      reschedule_free_allowance: form.reschedule_free_allowance_unlimited
+        ? null
+        : form.reschedule_free_allowance,
+      credit_expiry_enabled: form.credit_expiry_enabled,
+      credit_expiry_days: form.credit_expiry_days,
     });
 
     setIsSubmitting(false);
@@ -405,6 +454,165 @@ export function PolicyConfigurationPage() {
                 aria-label="Lunch break end"
               />
             </div>
+          </section>
+
+          <section aria-labelledby="downpayment-heading">
+            <h2 className={styles.sectionTitle} id="downpayment-heading">
+              Downpayment
+            </h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Hotel downpayment (% of total)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                max={100}
+                value={form.downpayment_percentage}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    downpayment_percentage: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          </section>
+
+          <section aria-labelledby="reschedule-fee-heading">
+            <h2 className={styles.sectionTitle} id="reschedule-fee-heading">
+              Reschedule fee
+            </h2>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.reschedule_fee_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reschedule_fee_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Charge a fee once the free allowance is used up</span>
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Fee type</span>
+              <select
+                className={styles.input}
+                value={form.reschedule_fee_type}
+                disabled={!form.reschedule_fee_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reschedule_fee_type: event.target
+                      .value as RescheduleFeeType,
+                  }))
+                }
+              >
+                <option value="Flat">Flat (pesos)</option>
+                <option value="Percentage">Percentage of booking total</option>
+              </select>
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                {form.reschedule_fee_type === 'Flat'
+                  ? 'Fee amount (PHP)'
+                  : 'Fee (%)'}
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                max={
+                  form.reschedule_fee_type === 'Percentage' ? 100 : undefined
+                }
+                value={form.reschedule_fee_value}
+                disabled={!form.reschedule_fee_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reschedule_fee_value: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.reschedule_free_allowance_unlimited}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reschedule_free_allowance_unlimited: event.target.checked,
+                  }))
+                }
+              />
+              <span>Unlimited free reschedules</span>
+            </label>
+
+            {!form.reschedule_free_allowance_unlimited ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Free reschedules allowed
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min={0}
+                  value={form.reschedule_free_allowance}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      reschedule_free_allowance: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+          </section>
+
+          <section aria-labelledby="credit-expiry-heading">
+            <h2 className={styles.sectionTitle} id="credit-expiry-heading">
+              Credit expiry
+            </h2>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.credit_expiry_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    credit_expiry_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Unused credit expires</span>
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Expires after (days)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                value={form.credit_expiry_days}
+                disabled={!form.credit_expiry_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    credit_expiry_days: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
           </section>
 
           {formError ? (

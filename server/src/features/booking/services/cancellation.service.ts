@@ -8,6 +8,13 @@ import {
   evaluateNoticePeriod,
   loadBookingForChange,
 } from './reschedule.service.ts';
+import {
+  markCreditIssuedOnLog,
+  writeCancellationLog,
+} from './cancellationLog.service.ts';
+import { issueCredit } from '../../credits/services/creditIssuance.service.ts';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -17,13 +24,15 @@ function throwWithStatus(statusCode: number, message: string): never {
 
 export interface CancellationResult {
   booking: Booking;
-  /** Whether the configured notice period was met - the future M10 credit
-   * qualification hook (a qualifying Hotel cancellation converts the
-   * downpayment to credit; an unmet one forfeits it). */
+  /** Whether the configured notice period was met - decides the financial
+   * consequence below (#91). */
   notice_period_met: boolean;
   /** True when enforcement is on and notice wasn't met, mirroring the
    * reschedule response so #59's UI surfaces both the same way. */
   policy_violation: boolean;
+  /** #91/#93: whether a qualifying Hotel downpayment was actually converted
+   * to a credit_balances increment for this event. */
+  credit_issued: boolean;
 }
 
 interface CancelParams {
@@ -33,13 +42,21 @@ interface CancelParams {
 }
 
 /**
- * Issue #54: cancellation with the same notice-period stub check as
- * reschedule. Unlike reschedule, an unmet notice never BLOCKS a cancellation
- * - per the M03 Process 5 flow diagram, the booking is set to Cancelled on
- * both notice branches; what the notice outcome decides is the financial
- * consequence (downpayment -> credit vs forfeited), which is Sprint 5
- * M09/M10 scope. The outcome is recorded on the booking row itself
- * (cancelled_at, cancellation_reason) and reported in the response.
+ * Issue #54/#91: cancellation with the notice-period check from #54.
+ * Unlike reschedule, an unmet notice never BLOCKS a cancellation - per the
+ * M03 Process 5 flow diagram, the booking is set to Cancelled on both notice
+ * branches; what the notice outcome decides is the financial consequence
+ * (downpayment -> credit vs forfeited).
+ *
+ * evaluateNoticePeriod() itself is unchanged (Sprint 2 #54) - this issue
+ * only fills the TODO(Sprint 5, M09/M10) marker that used to sit here: every
+ * event writes a cancellation_logs row (AC-5), and a qualifying cancellation
+ * (notice met AND a non-refundable downpayment actually exists to convert -
+ * Grooming/Daycare/Veterinary bookings have no downpayment concept at all)
+ * additionally calls into #93's creditIssuance.service.ts. Strict-mode
+ * cancellations are never blocked by notice - Strict only withholds credit,
+ * exactly as Sprint 2 already distinguished from a Strict reschedule
+ * (reschedule.service.ts), which IS blocked outright.
  */
 export async function cancelBooking({
   requesterId,
@@ -57,13 +74,6 @@ export async function cancelBooking({
     booking.scheduled_start
   );
 
-  // TODO(Sprint 5, M09/M10): credit issuance goes here - on a qualifying
-  // Hotel cancellation (notice met), convert the downpayment into a
-  // branch-locked credit_balances entry with the configured expiry; on an
-  // unmet notice, record the forfeiture in cancellation_logs. Neither table
-  // exists yet, so this epic deliberately writes no credit balance anywhere
-  // in this code path (#54 AC-5).
-
   const { data: updated, error } = await supabase
     .from('bookings')
     .update({
@@ -80,9 +90,48 @@ export async function cancelBooking({
     throwWithStatus(400, error?.message ?? 'Failed to cancel booking');
   }
 
+  const policyViolation = notice.enforced && !notice.met;
+
+  const log = await writeCancellationLog({
+    bookingId: booking.id,
+    customerId: booking.customer_id,
+    branchId: booking.branch_id,
+    eventType: 'cancellation',
+    noticePeriodMet: notice.met,
+    enforcementModeApplied: notice.policy.notice_enforcement_mode,
+    policyViolation,
+  });
+
+  const downpayment = booking.downpayment_amount ?? 0;
+  const qualifies = notice.met && downpayment > 0;
+
+  let creditIssued = false;
+
+  if (qualifies && log) {
+    const expiresAt = notice.policy.credit_expiry_enabled
+      ? new Date(
+          Date.now() + notice.policy.credit_expiry_days * DAY_MS
+        ).toISOString()
+      : null;
+
+    const transaction = await issueCredit({
+      customerId: booking.customer_id,
+      branchId: booking.branch_id,
+      amount: downpayment,
+      cancellationLogId: log.id,
+      expiresAt,
+    });
+
+    if (transaction) {
+      creditIssued = true;
+      await markCreditIssuedOnLog(log.id, downpayment);
+    }
+  }
+
   return {
     booking: updated as Booking,
     notice_period_met: notice.met,
-    policy_violation: notice.enforced && !notice.met,
+    policy_violation: policyViolation,
+    credit_issued: creditIssued,
   };
 }

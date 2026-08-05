@@ -12,6 +12,7 @@ import { veterinaryRoutes } from './features/veterinary/veterinary.routes';
 import { hotelRoutes } from './features/hotel/hotel.routes';
 import { catalogRoutes } from './features/catalog/catalog.routes';
 import { billingRoutes } from './features/billing/billing.routes';
+import { creditsRoutes } from './features/credits/credits.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 import { ServerErrorPage } from './pages/ServerErrorPage/ServerErrorPage';
 import { NotFoundPage } from './pages/NotFoundPage/NotFoundPage';
@@ -30,6 +31,7 @@ export function AppRoutes() {
       {hotelRoutes}
       {catalogRoutes}
       {billingRoutes}
+      {creditsRoutes}
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />
