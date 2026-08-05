@@ -13,6 +13,7 @@ import { hotelRoutes } from './features/hotel/hotel.routes';
 import { catalogRoutes } from './features/catalog/catalog.routes';
 import { billingRoutes } from './features/billing/billing.routes';
 import { creditsRoutes } from './features/credits/credits.routes';
+import { reportsRoutes } from './features/reports/reports.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 import { ServerErrorPage } from './pages/ServerErrorPage/ServerErrorPage';
 import { NotFoundPage } from './pages/NotFoundPage/NotFoundPage';
@@ -32,6 +33,7 @@ export function AppRoutes() {
       {catalogRoutes}
       {billingRoutes}
       {creditsRoutes}
+      {reportsRoutes}
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />
