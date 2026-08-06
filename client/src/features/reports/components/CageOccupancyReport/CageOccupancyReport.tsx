@@ -12,6 +12,13 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
 const SIZE_ORDER: CageOccupancyRow['size'][] = ['S', 'M', 'L', 'XL'];
 
+const SIZE_LABEL: Record<CageOccupancyRow['size'], string> = {
+  S: 'Small',
+  M: 'Medium',
+  L: 'Large',
+  XL: 'Extra Large',
+};
+
 const STATUS_TOKEN: Record<CageOccupancyRow['status'], string> = {
   Available: styles.statusAvailable,
   Occupied: styles.statusOccupied,
@@ -119,6 +126,7 @@ export function CageOccupancyReport() {
           <label className={styles.field}>
             Branch
             <select
+              className={styles.control}
               value={selectedBranchId}
               onChange={(event) => setSelectedBranchId(event.target.value)}
             >
@@ -143,7 +151,7 @@ export function CageOccupancyReport() {
         <div className={styles.grid}>
           {bySize.map(({ size, rows: sizeRows }) => (
             <div key={size} className={styles.sizeGroup}>
-              <h2 className={styles.sizeTitle}>{size}</h2>
+              <h2 className={styles.sizeTitle}>{SIZE_LABEL[size]}</h2>
               <div className={styles.badges}>
                 {sizeRows.length === 0 ? (
                   <span className={styles.copy}>No cages</span>

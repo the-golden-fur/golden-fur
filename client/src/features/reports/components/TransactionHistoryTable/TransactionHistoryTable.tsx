@@ -154,6 +154,7 @@ export function TransactionHistoryTable() {
         <label className={styles.field}>
           Customer
           <select
+            className={styles.control}
             value={selectedCustomerId}
             onChange={(event) => handleCustomerChange(event.target.value)}
           >
@@ -169,6 +170,7 @@ export function TransactionHistoryTable() {
         <label className={styles.field}>
           Pet
           <select
+            className={styles.control}
             value={selectedPetId}
             onChange={(event) => setSelectedPetId(event.target.value)}
             disabled={!selectedCustomerId}
@@ -185,6 +187,7 @@ export function TransactionHistoryTable() {
         <label className={styles.field}>
           From
           <input
+            className={styles.control}
             type="date"
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
@@ -194,6 +197,7 @@ export function TransactionHistoryTable() {
         <label className={styles.field}>
           To
           <input
+            className={styles.control}
             type="date"
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
@@ -203,6 +207,7 @@ export function TransactionHistoryTable() {
         <label className={styles.field}>
           Service type
           <select
+            className={styles.control}
             value={serviceCategory}
             onChange={(event) => setServiceCategory(event.target.value)}
           >

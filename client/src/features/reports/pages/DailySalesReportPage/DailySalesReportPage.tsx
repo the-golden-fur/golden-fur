@@ -119,6 +119,7 @@ export function DailySalesReportPage() {
         <label className={styles.field}>
           Date
           <input
+            className={styles.control}
             type="date"
             value={reportDate}
             onChange={(event) => setReportDate(event.target.value)}
@@ -129,6 +130,7 @@ export function DailySalesReportPage() {
           <label className={styles.field}>
             Branch
             <select
+              className={styles.control}
               value={selectedBranchId}
               onChange={(event) => setSelectedBranchId(event.target.value)}
             >
