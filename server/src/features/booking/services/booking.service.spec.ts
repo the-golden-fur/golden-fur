@@ -37,6 +37,15 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
   getDiscountById: vi.fn(),
 }));
 
+// Issue #98: booking_confirmed dispatch is covered by its own unit tests
+// (bookingNotifications.service.spec.ts) - mocked wholesale here so these
+// pre-existing booking-creation tests don't need to account for its extra
+// Supabase lookups (customer_profiles/branches/staff_profiles/notifications)
+// in their sequential mock queues below.
+vi.mock('./bookingNotifications.service.ts', () => ({
+  sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

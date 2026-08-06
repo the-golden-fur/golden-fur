@@ -17,6 +17,8 @@ interface AppShellProps {
   brandLabel: string;
   identity: AppShellIdentity | null;
   sidebarSections: SidebarSection[];
+  /** Issue #100: staff-only NotificationBell, passed through to Navbar. */
+  notificationBell?: ReactNode;
   /** Rendered above the routed page content, below the navbar - e.g. the
    * staff-only UnavailabilityBlockBadge. */
   children?: ReactNode;
@@ -41,6 +43,7 @@ export function AppShell({
   brandLabel,
   identity,
   sidebarSections,
+  notificationBell,
   children,
 }: AppShellProps) {
   const storageKey = `sidebar-collapsed-${role}`;
@@ -64,7 +67,12 @@ export function AppShell({
   return (
     <div className={styles.shell}>
       <div className={styles.navbarWrapper}>
-        <Navbar role={role} brandLabel={brandLabel} identity={identity} />
+        <Navbar
+          role={role}
+          brandLabel={brandLabel}
+          identity={identity}
+          notificationBell={notificationBell}
+        />
       </div>
       <div className={styles.body}>
         <Sidebar

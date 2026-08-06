@@ -11,6 +11,14 @@ vi.mock('../../../shared/auth/api/supabaseAuth.api.ts', () => ({
   getStaffRoleOrNull: vi.fn(),
 }));
 
+// Issue #98: booking_rescheduled dispatch is covered by its own unit tests
+// (bookingNotifications.service.spec.ts) - mocked wholesale here so these
+// pre-existing reschedule tests don't need to account for its extra
+// Supabase lookup in their sequential mock queues below.
+vi.mock('./bookingNotifications.service.ts', () => ({
+  sendBookingRescheduledNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

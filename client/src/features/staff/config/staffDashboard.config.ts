@@ -6,8 +6,10 @@ import {
   ClipboardCheck,
   ClipboardList,
   Coins,
+  DoorOpen,
   Heart,
   LogIn,
+  Receipt,
   Scissors,
   Stethoscope,
   UserCog,
@@ -194,7 +196,20 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         tiles: [
           {
             title: 'Branch Reports',
-            description: 'Branch-wide performance reporting.',
+            description:
+              'Daily Sales Report - branch-wide performance reporting.',
+            to: '/staff/reports/dsr',
+          },
+          {
+            title: 'Cage Occupancy',
+            description: 'Real-time cage availability by size category.',
+            to: '/staff/reports/cage-occupancy',
+          },
+          {
+            title: 'Transaction History',
+            description:
+              'Search past transactions by customer, pet, date, or service.',
+            to: '/staff/reports/transaction-history',
           },
         ],
       },
@@ -240,7 +255,20 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           },
           {
             title: 'Branch Reports',
-            description: 'Branch-wide performance reporting.',
+            description:
+              'Daily Sales Report - branch-wide performance reporting.',
+            to: '/staff/reports/dsr',
+          },
+          {
+            title: 'Cage Occupancy',
+            description: 'Real-time cage availability by size category.',
+            to: '/staff/reports/cage-occupancy',
+          },
+          {
+            title: 'Transaction History',
+            description:
+              'Search past transactions by customer, pet, date, or service.',
+            to: '/staff/reports/transaction-history',
           },
         ],
       },
@@ -429,6 +457,8 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Hotel Care Log': Heart,
   'Care Log': Heart,
   'Branch Reports': BarChart3,
+  'Cage Occupancy': DoorOpen,
+  'Transaction History': Receipt,
 };
 
 export interface SidebarReadySection {

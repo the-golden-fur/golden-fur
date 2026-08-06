@@ -5,6 +5,7 @@ import appRoutes from './shared/app.routes.ts';
 import { corsOptions } from './shared/config/cors/cors.config.ts';
 import { errorHandler } from './shared/errors/errorHandler.middleware.ts';
 import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpiry.job.ts';
+import { startAppointmentReminderScheduler } from './features/notifications/services/appointmentReminder.job.ts';
 
 const app = express();
 
@@ -46,6 +47,10 @@ if (process.env.NODE_ENV !== 'test') {
   // schedule (migration ...032) is the preferred mechanism when the
   // extension is available; this covers projects where it isn't.
   startPromoExpiryScheduler();
+
+  // Issue #99: daily 8:00 AM appointment_reminder CRON - no scheduler
+  // infrastructure existed anywhere in the app before this issue.
+  startAppointmentReminderScheduler();
 }
 
 export default app;

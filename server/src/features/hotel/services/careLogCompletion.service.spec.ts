@@ -4,9 +4,18 @@ import {
   getTodayCareLogEntries,
 } from './careLogCompletion.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendCareLogCompletedNotification } from './careLogNotifications.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+
+// Issue #99: care_log_completed dispatch is covered by its own unit tests
+// (careLogNotifications.service.spec.ts) - mocked wholesale here so these
+// pre-existing completion tests don't need to account for its extra
+// Supabase lookups in their sequential mock queue below.
+vi.mock('./careLogNotifications.service.ts', () => ({
+  sendCareLogCompletedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -36,15 +45,12 @@ const PENDING_ENTRY = {
   id: 'entry-1',
   hotel_stay_id: 'stay-1',
   completed_at: null,
-  hotel_stays: { notify_opt_in: true },
+  hotel_stays: { notify_opt_in: true, pet_id: 'pet-1' },
 };
 
 describe('careLogCompletion.service (#76)', () => {
-  let infoSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
   });
 
   it('AC-1: sets completed_at/completed_by server-side, not from the request', async () => {
@@ -83,7 +89,7 @@ describe('careLogCompletion.service (#76)', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it('AC-3: fires the stub event when notify_opt_in is true', async () => {
+  it('AC-3/Issue #99: fires the real notification dispatch when notify_opt_in is true', async () => {
     queueFromResults(
       { data: PENDING_ENTRY, error: null },
       {
@@ -97,13 +103,19 @@ describe('careLogCompletion.service (#76)', () => {
       completedByStaffId: 'staff-9',
     });
 
-    expect(infoSpy).toHaveBeenCalled();
+    expect(sendCareLogCompletedNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'entry-1' }),
+      'pet-1'
+    );
   });
 
   it('AC-3: does not fire the event when notify_opt_in is false, but still records completion', async () => {
     queueFromResults(
       {
-        data: { ...PENDING_ENTRY, hotel_stays: { notify_opt_in: false } },
+        data: {
+          ...PENDING_ENTRY,
+          hotel_stays: { notify_opt_in: false, pet_id: 'pet-1' },
+        },
         error: null,
       },
       {
@@ -117,7 +129,7 @@ describe('careLogCompletion.service (#76)', () => {
       completedByStaffId: 'staff-9',
     });
 
-    expect(infoSpy).not.toHaveBeenCalled();
+    expect(sendCareLogCompletedNotification).not.toHaveBeenCalled();
     expect(entry.completed_at).toBe('now');
   });
 

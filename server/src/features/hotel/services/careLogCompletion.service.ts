@@ -1,22 +1,11 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { CareLogEntry } from '../hotel.types.ts';
+import { sendCareLogCompletedNotification } from './careLogNotifications.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
-}
-
-/**
- * M11's notifications table is Sprint 6 scope, so care_log_completed is a
- * stub/log call, mirroring booking.service.ts's sendBookingConfirmedNotificationStub.
- * TODO(Sprint 6, M11): replace with the real notification dispatch.
- */
-function fireCareLogCompletedEvent(entry: CareLogEntry): void {
-  // eslint-disable-next-line no-console
-  console.info(
-    `[M11 stub] care_log_completed notification for hotel stay ${entry.hotel_stay_id}: ${entry.description}`
-  );
 }
 
 interface CompleteParams {
@@ -66,7 +55,7 @@ export async function completeCareLogEntry({
 }: CompleteParams): Promise<CareLogEntry> {
   const { data: entry, error: fetchError } = await supabase
     .from('care_log_entries')
-    .select('*, hotel_stays!inner(notify_opt_in)')
+    .select('*, hotel_stays!inner(notify_opt_in, pet_id)')
     .eq('id', entryId)
     .maybeSingle();
 
@@ -95,12 +84,17 @@ export async function completeCareLogEntry({
     throwWithStatus(409, 'This care log entry is already completed');
   }
 
-  const notifyOptIn = (
-    entry as unknown as { hotel_stays: { notify_opt_in: boolean } }
-  ).hotel_stays.notify_opt_in;
+  const hotelStay = (
+    entry as unknown as {
+      hotel_stays: { notify_opt_in: boolean; pet_id: string };
+    }
+  ).hotel_stays;
 
-  if (notifyOptIn) {
-    fireCareLogCompletedEvent(updated as CareLogEntry);
+  if (hotelStay.notify_opt_in) {
+    await sendCareLogCompletedNotification(
+      updated as CareLogEntry,
+      hotelStay.pet_id
+    );
   }
 
   return updated as CareLogEntry;

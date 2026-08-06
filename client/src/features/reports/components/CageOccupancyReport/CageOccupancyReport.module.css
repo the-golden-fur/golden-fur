@@ -1,0 +1,109 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.control {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+
+.sizeGroup {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.sizeTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.badge {
+  display: inline-flex;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+}
+
+.statusAvailable {
+  background: var(--color-cage-status-available-bg);
+  color: var(--color-cage-status-available-text);
+}
+
+.statusOccupied {
+  background: var(--color-cage-status-occupied-bg);
+  color: var(--color-cage-status-occupied-text);
+}
+
+.statusReserved {
+  background: var(--color-cage-status-reserved-bg);
+  color: var(--color-cage-status-reserved-text);
+}
+
+.statusMaintenance {
+  background: var(--color-cage-status-maintenance-bg);
+  color: var(--color-cage-status-maintenance-text);
+}

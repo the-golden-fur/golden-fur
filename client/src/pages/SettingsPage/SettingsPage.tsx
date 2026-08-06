@@ -5,7 +5,7 @@ import { getMfaStatus } from '../../shared/api/mfa.api';
 import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import type { MfaStatusResponse } from '../../shared/auth/mfa.types';
 import { ProfileTab } from './tabs/ProfileTab';
-import { AppearanceTab } from './tabs/AppearanceTab';
+import { PreferencesTab } from './tabs/PreferencesTab';
 import { AccountTab } from './tabs/AccountTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { ConfigTab } from './tabs/ConfigTab';
@@ -15,11 +15,16 @@ interface SettingsPageProps {
   role: ThemeRole;
 }
 
-type SettingsTab = 'profile' | 'appearance' | 'account' | 'security' | 'config';
+type SettingsTab =
+  | 'profile'
+  | 'preferences'
+  | 'account'
+  | 'security'
+  | 'config';
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   profile: 'Profile',
-  appearance: 'Appearance',
+  preferences: 'Preferences',
   account: 'Account',
   security: 'Security',
   config: 'Config',
@@ -69,8 +74,8 @@ export function SettingsPage({ role }: SettingsPageProps) {
     (status?.role === 'Admin' || status?.role === 'Superadmin');
 
   const tabs: SettingsTab[] = isAdmin
-    ? ['profile', 'appearance', 'account', 'security', 'config']
-    : ['profile', 'appearance', 'account', 'security'];
+    ? ['profile', 'preferences', 'account', 'security', 'config']
+    : ['profile', 'preferences', 'account', 'security'];
 
   const activeTab = isSettingsTab(searchParams.get('tab'), tabs)
     ? (searchParams.get('tab') as SettingsTab)
@@ -119,7 +124,13 @@ export function SettingsPage({ role }: SettingsPageProps) {
       {activeTab === 'profile' ? (
         <ProfileTab role={role} userId={user.id} accessToken={accessToken} />
       ) : null}
-      {activeTab === 'appearance' ? <AppearanceTab /> : null}
+      {activeTab === 'preferences' ? (
+        <PreferencesTab
+          role={role}
+          userId={user.id}
+          accessToken={accessToken}
+        />
+      ) : null}
       {activeTab === 'account' ? (
         <AccountTab role={role} userId={user.id} accessToken={accessToken} />
       ) : null}

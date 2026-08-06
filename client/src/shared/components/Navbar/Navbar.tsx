@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
@@ -17,6 +17,9 @@ interface NavbarProps {
   brandLabel: string;
   /** null while the profile fetch that supplies it is still in flight. */
   identity?: NavbarIdentity | null;
+  /** Issue #100: staff-only NotificationBell, rendered by StaffAuthGuard -
+   * the customer portal gets a sidebar tab instead (#101), not a bell. */
+  notificationBell?: ReactNode;
 }
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -43,7 +46,12 @@ const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
  * clicking the username. Sign out stays a dedicated button (not folded into
  * Settings) since it's an account-wide action, not a setting.
  */
-export function Navbar({ role, brandLabel, identity }: NavbarProps) {
+export function Navbar({
+  role,
+  brandLabel,
+  identity,
+  notificationBell,
+}: NavbarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -87,6 +95,7 @@ export function Navbar({ role, brandLabel, identity }: NavbarProps) {
             ) : null}
           </div>
         ) : null}
+        {notificationBell}
         <Link
           to={SETTINGS_PATH_BY_ROLE[role]}
           className={styles.settingsLink}

@@ -141,6 +141,13 @@
   --color-cage-status-reserved-text: #2a4a6b;
   --color-cage-status-maintenance-bg: #ece7de;
   --color-cage-status-maintenance-text: #7a7263;
+  /* Sprint 6 Epic A (#96/#100): notification unread indicator - aliases the
+     existing amber/in-progress hue family (matches
+     --color-grooming-status-inprogress-*, --color-consult-status-ongoing-*)
+     rather than introducing a new hue - "unread" reads as "needs attention",
+     the same semantic the amber tier already carries system-wide. */
+  --color-notification-unread-bg: #fbefd2;
+  --color-notification-unread-text: #8a6a1a;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
   /* LandingPage "glass card" panels (translucent cards floating over the
      hero photo/gradient) - RGB-only so each card can keep its own
@@ -257,6 +264,10 @@
   --color-cage-status-reserved-text: #b7d2ea;
   --color-cage-status-maintenance-bg: #43392a;
   --color-cage-status-maintenance-text: #cfc3a9;
+  /* Sprint 6 Epic A (#96/#100) - dark-theme values, same aliasing rationale
+     as the customer-theme block above. */
+  --color-notification-unread-bg: #4d3413;
+  --color-notification-unread-text: #ffd27a;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
   /* LandingPage glass cards - dark mode swaps the translucent white panel
      for a translucent dark one (matches --color-surface/--color-border)

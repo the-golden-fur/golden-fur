@@ -12,6 +12,16 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   },
 }));
 
+// Issue #98: booking_confirmed dispatch is covered by its own unit tests
+// (bookingNotifications.service.spec.ts) - mocked wholesale here so this
+// integration test's HTTP surface doesn't need to account for its extra
+// Supabase lookups in the sequential mock queue below.
+vi.mock('../services/bookingNotifications.service.ts', () => ({
+  sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
+  sendBookingRescheduledNotification: vi.fn().mockResolvedValue(undefined),
+  sendBookingCancelledNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

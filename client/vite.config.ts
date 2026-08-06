@@ -96,6 +96,28 @@ export default defineConfig(({ mode }) => {
         // '/staff/billing/...' and '/staff/admin/misc-sales', not bare
         // '/billing', so no bypass is needed here either.
         '/billing': apiProxy,
+        // reports.routes.ts (server, Sprint 6 Epic A #DSR/analytics/occupancy)
+        // is mounted at the server root too - its client-side page routes
+        // live under '/staff/reports/...', not bare '/reports', so no
+        // bypass is needed here either. Without this entry, GET
+        // /reports/dsr, /reports/cage-occupancy, /reports/transaction-history,
+        // and /reports/analytics fall through to Vite's own dev server
+        // instead of reaching Express, same failure mode '/branches' and
+        // '/catalog' above already document (a non-JSON response, not a
+        // 404/403 - surfaces client-side as a generic "Request failed" with
+        // nothing in the Network tab looking obviously wrong).
+        '/reports': apiProxy,
+        // notifications.routes.ts (server, Sprint 6 Epic A #97-#101) is
+        // mounted at the server root too - its client-side surfaces are the
+        // navbar bell dropdown and the '/portal' notifications tab, not bare
+        // '/notifications', so no bypass is needed here either. Without this
+        // entry, GET /notifications, PATCH /notifications/read-all, and
+        // PATCH /notifications/:id/read fall through to Vite's own dev
+        // server instead of reaching Express, same failure mode '/reports'
+        // above already documents (a non-JSON response, not a 404/403 -
+        // surfaces client-side as a generic "Request failed" with nothing in
+        // the Network tab looking obviously wrong).
+        '/notifications': apiProxy,
       },
     },
   };
