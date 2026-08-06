@@ -4,6 +4,7 @@ import type {
   FontSizePreference,
   ThemeRole,
 } from '../providers/ThemeProvider/themeContext';
+import type { NotificationEventType } from '../../features/notifications/notifications.types';
 
 interface PreferencesApiResult<T> {
   data: T | null;
@@ -47,6 +48,45 @@ export async function getThemePreference(
   }
 
   return data.theme_preference as ColorMode;
+}
+
+export type NotificationChannel = 'email' | 'in_browser';
+
+export interface NotificationChannelPreference {
+  email: boolean;
+  in_browser: boolean;
+}
+
+export type NotificationPreferences = Record<
+  NotificationEventType,
+  NotificationChannelPreference
+>;
+
+const NOTIFICATION_PREFERENCES_PATH_BY_ROLE: Record<ThemeRole, string> = {
+  staff: '/staff/notification-preferences',
+  customer: '/customers/notification-preferences',
+};
+
+export async function getNotificationPreferences(
+  role: ThemeRole,
+  userId: string
+): Promise<NotificationPreferences | null> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from(PROFILE_TABLE_BY_ROLE[role])
+    .select('notification_preferences')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data?.notification_preferences) {
+    return null;
+  }
+
+  return data.notification_preferences as NotificationPreferences;
 }
 
 export async function getFontSizePreference(
@@ -163,4 +203,38 @@ export async function updateFontSizePreference(
     },
     error: null,
   };
+}
+
+export async function updateNotificationPreference(
+  role: ThemeRole,
+  accessToken: string,
+  eventType: NotificationEventType,
+  channel: NotificationChannel,
+  enabled: boolean
+): Promise<PreferencesApiResult<NotificationPreferences>> {
+  const response = await fetch(
+    `${API_BASE_URL}${AUTH_PREFIX}${NOTIFICATION_PREFERENCES_PATH_BY_ROLE[role]}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ event_type: eventType, channel, enabled }),
+    }
+  );
+
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+    notification_preferences?: NotificationPreferences;
+  } | null;
+
+  if (!response.ok || !body?.notification_preferences) {
+    return {
+      data: null,
+      error: body?.error ?? 'Request failed. Please try again.',
+    };
+  }
+
+  return { data: body.notification_preferences, error: null };
 }

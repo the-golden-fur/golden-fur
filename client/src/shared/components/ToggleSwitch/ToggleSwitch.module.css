@@ -52,3 +52,7 @@
 .label {
   color: var(--color-text-secondary);
 }
+
+.srOnlyLabel {
+  composes: sr-only from global;
+}

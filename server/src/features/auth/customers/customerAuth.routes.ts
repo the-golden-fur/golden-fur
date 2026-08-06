@@ -11,6 +11,13 @@ import {
 } from './customerAuth.controller.ts';
 import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
+import {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_EVENT_TYPES,
+  type NotificationChannel,
+  type NotificationEventType,
+  type NotificationPreferences,
+} from '../../notifications/notifications.types.ts';
 
 const THEME_PREFERENCES = ['light', 'dark', 'system'] as const;
 type ThemePreference = (typeof THEME_PREFERENCES)[number];
@@ -96,6 +103,97 @@ export async function customerPreferencesController(
   }
 }
 
+function isNotificationEventType(
+  value: unknown
+): value is NotificationEventType {
+  return (
+    typeof value === 'string' &&
+    (NOTIFICATION_EVENT_TYPES as readonly string[]).includes(value)
+  );
+}
+
+function isNotificationChannel(value: unknown): value is NotificationChannel {
+  return (
+    typeof value === 'string' &&
+    (NOTIFICATION_CHANNELS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * One event type + one channel per call, merged into the existing jsonb map
+ * rather than replacing it wholesale - a client only ever has the subset of
+ * event types relevant to its own role loaded (Settings > Preferences
+ * filters by role), so a full-object PATCH would silently wipe out the
+ * other role-irrelevant keys' stored values.
+ */
+export async function customerNotificationPreferencesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const { event_type: eventType, channel, enabled } = req.body ?? {};
+
+  if (!isNotificationEventType(eventType)) {
+    return res.status(400).json({ error: 'Invalid event type' });
+  }
+  if (!isNotificationChannel(channel)) {
+    return res.status(400).json({ error: 'Invalid channel' });
+  }
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'Invalid enabled value' });
+  }
+
+  try {
+    const client = getUserClient(req);
+    const { data: existing, error: fetchError } = await client
+      .from('customer_profiles')
+      .select('notification_preferences')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !existing) {
+      return res.status(400).json({
+        error: fetchError?.message || 'Failed to load preferences',
+      });
+    }
+
+    const current = existing.notification_preferences as
+      | NotificationPreferences
+      | undefined;
+
+    const updated: NotificationPreferences = {
+      ...current,
+      [eventType]: {
+        ...current?.[eventType],
+        [channel]: enabled,
+      },
+    } as NotificationPreferences;
+
+    const { data, error } = await client
+      .from('customer_profiles')
+      .update({ notification_preferences: updated })
+      .eq('id', userId)
+      .select('notification_preferences')
+      .single();
+
+    if (error || !data) {
+      return res.status(400).json({
+        error: error?.message || 'Failed to update preferences',
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ notification_preferences: data.notification_preferences });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 const router = Router();
 
 router.post('/customers/signup', customerSignupController);
@@ -121,6 +219,11 @@ router.patch(
   '/customers/preferences',
   jwtMiddleware,
   customerPreferencesController
+);
+router.patch(
+  '/customers/notification-preferences',
+  jwtMiddleware,
+  customerNotificationPreferencesController
 );
 
 export default router;

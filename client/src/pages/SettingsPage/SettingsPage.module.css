@@ -106,6 +106,47 @@
   padding: var(--space-2);
 }
 
+.notificationGrid {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
+}
+
+.notificationGridHeader {
+  display: contents;
+}
+
+.notificationGridHeader span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.notificationGridHeader span:first-child {
+  text-align: left;
+}
+
+.notificationGridRow {
+  display: contents;
+}
+
+.notificationGridRow > .notificationGridLabel {
+  justify-self: start;
+}
+
+.notificationGridRow > button {
+  justify-self: center;
+}
+
+.notificationGridLabel {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
 .input:focus {
   border-color: var(--color-accent-gold-primary);
   outline: none;

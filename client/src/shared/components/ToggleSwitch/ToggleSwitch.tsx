@@ -3,9 +3,14 @@ import styles from './ToggleSwitch.module.css';
 interface ToggleSwitchProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
-  /** Accessible name; also rendered next to the track. */
+  /** Accessible name; also rendered next to the track unless hideLabel. */
   label: string;
   disabled?: boolean;
+  /** Keeps label as the accessible name but visually hides it - for grid
+   * layouts (e.g. a notification preferences table) where a column header
+   * already states what the switch means, so repeating it per-row/cell
+   * would be redundant. */
+  hideLabel?: boolean;
 }
 
 /**
@@ -18,6 +23,7 @@ export function ToggleSwitch({
   onChange,
   label,
   disabled = false,
+  hideLabel = false,
 }: ToggleSwitchProps) {
   return (
     <button
@@ -35,7 +41,9 @@ export function ToggleSwitch({
       >
         <span className={styles.thumb} />
       </span>
-      <span className={styles.label}>{label}</span>
+      <span className={hideLabel ? styles.srOnlyLabel : styles.label}>
+        {label}
+      </span>
     </button>
   );
 }

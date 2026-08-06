@@ -2,12 +2,49 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type {
   CreateNotificationParams,
   Notification,
+  NotificationPreferences,
 } from '../notifications.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
+}
+
+interface RecipientPreferences {
+  email: boolean;
+  inBrowser: boolean;
+}
+
+// Preferences live on staff_profiles/customer_profiles (Settings >
+// Preferences) as a jsonb map keyed by event type, not on the notifications
+// table itself. A recipient with no matching row, or no entry for this
+// specific event_type (shouldn't happen in practice - every event type has a
+// default in the column's migration default), defaults to both channels on
+// rather than silently going dark.
+async function getRecipientPreferences(
+  params: CreateNotificationParams
+): Promise<RecipientPreferences> {
+  const table = params.recipientStaffId
+    ? 'staff_profiles'
+    : 'customer_profiles';
+  const recipientId = params.recipientStaffId ?? params.recipientCustomerId;
+
+  const { data } = await supabase
+    .from(table)
+    .select('notification_preferences')
+    .eq('id', recipientId)
+    .maybeSingle();
+
+  const preferences = data?.notification_preferences as
+    | NotificationPreferences
+    | undefined;
+  const eventPreference = preferences?.[params.eventType];
+
+  return {
+    email: eventPreference?.email ?? true,
+    inBrowser: eventPreference?.in_browser ?? true,
+  };
 }
 
 /**
@@ -20,28 +57,42 @@ function throwWithStatus(statusCode: number, message: string): never {
  * admin review but does not roll back any system state" requirement and the
  * non-blocking pattern already established for account_created's email
  * (staffManagement.service.ts).
+ *
+ * Both legs are now gated independently on the recipient's own Settings >
+ * Preferences toggles: the row is only inserted (and thus only ever shows up
+ * in the bell/portal inbox) if in_browser_notifications_enabled is true, and
+ * the email thunk is only invoked if email_notifications_enabled is true -
+ * a recipient can opt out of either channel without affecting the other.
  */
 export async function createNotification(
   params: CreateNotificationParams
-): Promise<Notification> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .insert({
-      recipient_staff_id: params.recipientStaffId ?? null,
-      recipient_customer_id: params.recipientCustomerId ?? null,
-      event_type: params.eventType,
-      title: params.title,
-      message: params.message,
-      related_booking_id: params.relatedBookingId ?? null,
-    })
-    .select('*')
-    .maybeSingle();
+): Promise<Notification | null> {
+  const preferences = await getRecipientPreferences(params);
 
-  if (error || !data) {
-    throwWithStatus(400, error?.message ?? 'Failed to create notification');
+  let notification: Notification | null = null;
+
+  if (preferences.inBrowser) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert({
+        recipient_staff_id: params.recipientStaffId ?? null,
+        recipient_customer_id: params.recipientCustomerId ?? null,
+        event_type: params.eventType,
+        title: params.title,
+        message: params.message,
+        related_booking_id: params.relatedBookingId ?? null,
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      throwWithStatus(400, error?.message ?? 'Failed to create notification');
+    }
+
+    notification = data as Notification;
   }
 
-  if (params.sendEmail) {
+  if (preferences.email && params.sendEmail) {
     try {
       await params.sendEmail();
     } catch (emailError) {
@@ -49,7 +100,7 @@ export async function createNotification(
     }
   }
 
-  return data as Notification;
+  return notification;
 }
 
 interface InboxParams {

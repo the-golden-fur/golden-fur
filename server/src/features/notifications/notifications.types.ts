@@ -2,15 +2,31 @@
  * Mirrors the notification_event_type enum (migration 20260805094, Issue
  * #96) - exact 8 values per Modules-Features.
  */
-export type NotificationEventType =
-  | 'account_created'
-  | 'password_reset'
-  | 'booking_confirmed'
-  | 'booking_rescheduled'
-  | 'payment_confirmed'
-  | 'appointment_reminder'
-  | 'booking_cancelled'
-  | 'care_log_completed';
+export const NOTIFICATION_EVENT_TYPES = [
+  'account_created',
+  'password_reset',
+  'booking_confirmed',
+  'booking_rescheduled',
+  'payment_confirmed',
+  'appointment_reminder',
+  'booking_cancelled',
+  'care_log_completed',
+] as const;
+
+export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
+
+export const NOTIFICATION_CHANNELS = ['email', 'in_browser'] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+export type NotificationChannelPreference = Record<
+  NotificationChannel,
+  boolean
+>;
+
+export type NotificationPreferences = Record<
+  NotificationEventType,
+  NotificationChannelPreference
+>;
 
 export interface Notification {
   id: string;
