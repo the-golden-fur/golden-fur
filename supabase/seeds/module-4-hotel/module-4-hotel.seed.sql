@@ -9,6 +9,20 @@
 -- Runs automatically on `supabase db reset` (see supabase/config.toml
 -- [db.seed] sql_paths, ordered after module-1's seed so branches.id values
 -- exist). Idempotent - guarded by NOT EXISTS / ON CONFLICT, safe to re-run.
+--
+-- Bug fix: the two product_catalog ON CONFLICT (name, category) clauses
+-- below used to infer against a plain unique(name, category) constraint,
+-- but migration 20260803085 (customer-owned catalog rows) replaced that
+-- with two PARTIAL unique indexes (one scoped to owner_customer_id IS NULL,
+-- one to IS NOT NULL) so two different customers - or a customer and the
+-- global catalog - can reuse the same food/medication name. Postgres can
+-- only infer a partial index for ON CONFLICT if the same WHERE predicate is
+-- repeated in the ON CONFLICT clause itself; without it, every full
+-- `supabase db reset` fails this seed with "there is no unique or
+-- exclusion constraint matching the ON CONFLICT specification"
+-- (SQLSTATE 42P10). These are global (staff-managed) rows -
+-- owner_customer_id is NULL by omission - so the WHERE clause below matches
+-- product_catalog_global_name_category_uniq exactly.
 
 insert into public.cages (branch_id, cage_label, size, status)
 select
@@ -39,7 +53,7 @@ values
   ('Senior Formula', 'food', 'hotel', 65.00),
   ('Grain-Free Kibble', 'food', 'hotel', 90.00),
   ('Prescription Diet', 'food', 'hotel', 120.00)
-on conflict (name, category) do nothing;
+on conflict (name, category) where owner_customer_id is null do nothing;
 
 insert into public.product_catalog (name, category, service_scope, price)
 values
@@ -49,4 +63,4 @@ values
   ('Ear Drops', 'medication', 'hotel', 80.00),
   ('Probiotic Supplement', 'medication', 'hotel', 100.00),
   ('Antihistamine (Diphenhydramine)', 'medication', 'hotel', 60.00)
-on conflict (name, category) do nothing;
+on conflict (name, category) where owner_customer_id is null do nothing;
