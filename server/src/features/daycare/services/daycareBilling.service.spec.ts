@@ -104,7 +104,22 @@ describe('daycareBilling.service (#65)', () => {
       ).toBe(200);
     });
 
-    it('#22: a session held past closing accrues the admin-configured overnight fee per night crossed, on top of the hourly charge', async () => {
+    it('Custom change (Daycare fee configuration): a custom first-hour/succeeding-hour fee overrides the ₱100/₱50 defaults', async () => {
+      const start = new Date('2026-07-19T08:00:00Z');
+      queueFromResults(BRANCH_NO_HOURS);
+      // 1h10m = 2 billable hours: first hour (₱200) + 1 succeeding hour (₱75).
+      expect(
+        await computeDaycareCharge(
+          start,
+          minutesLater(start, 70),
+          'branch-1',
+          200,
+          75
+        )
+      ).toBe(275);
+    });
+
+    it('#22: a session held past closing accrues the (default ₱850) overnight fee per night crossed, on top of the hourly charge', async () => {
       // Branch closes 18:00 Asia/Manila (10:00 UTC) every day; the session
       // spans 2026-07-19 08:00 UTC -> 2026-07-21 09:05 UTC, crossing two
       // closing boundaries (07-19 and 07-20), so 2 nights.
@@ -122,10 +137,7 @@ describe('daycareBilling.service (#65)', () => {
         error: null,
       };
 
-      queueFromResults(branchWithHours, {
-        data: { daycare_overnight_fee: 850 },
-        error: null,
-      });
+      queueFromResults(branchWithHours);
 
       const elapsedMinutes = (end.getTime() - start.getTime()) / 60000;
       const succeedingHours = Math.ceil((elapsedMinutes - 60) / 60);
@@ -134,6 +146,39 @@ describe('daycareBilling.service (#65)', () => {
       expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
         2 * 850 + expectedHourly
       );
+    });
+
+    it('Custom change (Daycare fee configuration follow-up): a custom per-service overnight fee overrides the ₱850 default', async () => {
+      const start = new Date('2026-07-19T08:00:00Z');
+      const end = new Date('2026-07-21T09:05:00Z');
+      const branchWithHours = {
+        data: {
+          operating_hours: {
+            sunday: { open: '08:00', close: '18:00' },
+            monday: { open: '08:00', close: '18:00' },
+            tuesday: { open: '08:00', close: '18:00' },
+          },
+          timezone: 'Asia/Manila',
+        },
+        error: null,
+      };
+
+      queueFromResults(branchWithHours);
+
+      const elapsedMinutes = (end.getTime() - start.getTime()) / 60000;
+      const succeedingHours = Math.ceil((elapsedMinutes - 60) / 60);
+      const expectedHourly = 100 + succeedingHours * 50;
+
+      expect(
+        await computeDaycareCharge(
+          start,
+          end,
+          'branch-1',
+          undefined,
+          undefined,
+          900
+        )
+      ).toBe(2 * 900 + expectedHourly);
     });
   });
 
@@ -172,6 +217,54 @@ describe('daycareBilling.service (#65)', () => {
       ).not.toBeNull();
       // Walk-ins have no booking_id, so there's nothing to sync.
       expect(completeBooking).not.toHaveBeenCalled();
+    });
+
+    it("Custom change (Daycare fee configuration): resolves the fee schedule from the session's own service_id", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-19T08:30:00.000Z')); // 30 min after check-in
+
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: null,
+            branch_id: 'branch-1',
+            service_id: 'service-premium-daycare',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        {
+          data: {
+            first_hour_fee: 200,
+            succeeding_hour_fee: 75,
+            daycare_overnight_fee: 900,
+          },
+          error: null,
+        },
+        BRANCH_NO_HOURS,
+        {
+          data: {
+            id: 'session-1',
+            booking_id: null,
+            status: 'Completed',
+            computed_charge: 200,
+          },
+          error: null,
+        }
+      );
+
+      await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+      // 30 minutes elapsed - within the custom ₱200 first-hour fee, not the
+      // documented ₱100 default.
+      expect(
+        (update?.payload as { computed_charge?: number }).computed_charge
+      ).toBe(200);
+
+      vi.useRealTimers();
     });
 
     it('a booking-linked session completes the linked booking on checkout', async () => {

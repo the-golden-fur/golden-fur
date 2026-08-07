@@ -17,10 +17,18 @@ interface QueryResult {
   error: unknown;
 }
 
+interface RecordedWrite {
+  table: string;
+  method: string;
+  payload?: unknown;
+}
+
+const recordedWrites: RecordedWrite[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
 
-  vi.mocked(supabase.from).mockImplementation(() => {
+  vi.mocked(supabase.from).mockImplementation(((table: string) => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
@@ -28,25 +36,36 @@ function queueFromResults(...results: QueryResult[]) {
     builder.in = vi.fn(() => builder);
     builder.or = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
-    builder.insert = vi.fn(() => builder);
-    builder.update = vi.fn(() => builder);
+    builder.insert = vi.fn((payload?: unknown) => {
+      recordedWrites.push({ table, method: 'insert', payload });
+      return builder;
+    });
+    builder.update = vi.fn((payload?: unknown) => {
+      recordedWrites.push({ table, method: 'update', payload });
+      return builder;
+    });
     builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.single = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
-    return builder as never;
-  });
+    return builder;
+  }) as never);
 }
 
 const PRICING_CONFIGURATION = {
   id: 'pricing-config-1',
-  size_s_multiplier: 1,
-  size_m_multiplier: 1.1,
-  size_l_multiplier: 1.25,
-  size_xl_multiplier: 1.5,
-  long_coat_addon: 50,
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.1,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.25,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 1.5,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 50,
 };
 
 const GROOMING_SERVICE = {
@@ -64,6 +83,7 @@ const GROOMING_SERVICE = {
 describe('services.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    recordedWrites.length = 0;
   });
 
   describe('createService', () => {
@@ -97,6 +117,34 @@ describe('services.service', () => {
           input: { name: 'Bath', category: 'Grooming', base_price: 300 },
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('Custom change (Daycare fee configuration follow-up): mirrors first_hour_fee into base_price for a Daycare service', async () => {
+      queueFromResults(
+        { data: { id: 'service-2' }, error: null }, // insert service
+        { data: [{ id: 'branch-makati' }], error: null }, // branches
+        { data: null, error: null }, // insert availability
+        {
+          data: { id: 'service-2', category: 'Daycare', base_price: 100 },
+          error: null,
+        }, // final fetch (getServiceById)
+        { data: PRICING_CONFIGURATION, error: null } // pricing configuration
+      );
+
+      await createService({
+        requesterId: 'admin-1',
+        input: {
+          name: 'Daycare (per hour)',
+          category: 'Daycare',
+          first_hour_fee: 100,
+          succeeding_hour_fee: 50,
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'services' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ base_price: 100 });
     });
   });
 
@@ -145,6 +193,35 @@ describe('services.service', () => {
           updates: { name: 'X' },
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('Custom change (Daycare fee configuration follow-up): keeps base_price mirroring an updated first_hour_fee on an existing Daycare service', async () => {
+      queueFromResults(
+        {
+          data: { id: 'service-2', category: 'Daycare', first_hour_fee: 100 },
+          error: null,
+        }, // lookup
+        { data: null, error: null }, // update
+        {
+          data: { id: 'service-2', category: 'Daycare', base_price: 150 },
+          error: null,
+        }, // final fetch
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await updateService({
+        requesterId: 'admin-1',
+        serviceId: 'service-2',
+        updates: { first_hour_fee: 150 },
+      });
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'services' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({
+        first_hour_fee: 150,
+        base_price: 150,
+      });
     });
   });
 

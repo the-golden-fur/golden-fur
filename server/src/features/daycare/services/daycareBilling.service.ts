@@ -2,7 +2,6 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { DaycareSession } from '../daycare.types.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { countOvernightNights } from '../../booking/services/availability.service.ts';
-import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -10,18 +9,29 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-const FIRST_HOUR_CHARGE = 100;
-const SUCCEEDING_HOUR_CHARGE = 50;
+/** Documented fallback figures - used when a session has no resolvable
+ * Daycare service (service_id is null, or that service's own fee columns
+ * are null). Custom change (Daycare fee configuration): these used to be
+ * the ONLY figures, hardcoded for every Daycare service; each service can
+ * now set its own via services.first_hour_fee/succeeding_hour_fee/
+ * daycare_overnight_fee. */
+const DEFAULT_FIRST_HOUR_CHARGE = 100;
+const DEFAULT_SUCCEEDING_HOUR_CHARGE = 50;
+const DEFAULT_OVERNIGHT_CHARGE = 850;
 
 /**
- * elapsed <= 1 hour -> flat ₱100. Otherwise ₱100 + ₱50 x each succeeding
- * hour, rounding any partial hour up to a full hour - e.g. 1h10m = 2 billable
- * hours = ₱150 (#65 dev notes' own worked example). #22 adds a flat
- * per-night overnight/no-pickup fee on top for every branch closing time the
- * session spanned (0 for a same-day pickup, so this is a strict superset of
- * the original formula) - admin-configurable via pricing_configuration,
- * default ₱850/night: total = nights * dailyOvernightFee + 100 + succeeding
- * hours * 50.
+ * elapsed <= 1 hour -> flat firstHourFee. Otherwise firstHourFee +
+ * succeedingHourFee x each succeeding hour, rounding any partial hour up to
+ * a full hour - e.g. 1h10m = 2 billable hours (#65 dev notes' own worked
+ * example, ₱100/₱50 defaults -> ₱150). #22 adds a flat per-night overnight/
+ * no-pickup fee on top for every branch closing time the session spanned (0
+ * for a same-day pickup, so this is a strict superset of the original
+ * formula) - default ₱850/night, admin-configurable per Daycare service
+ * (Custom change: Daycare fee configuration follow-up - "each Daycare-type
+ * service can have its own overnight fee," moved off a shared
+ * policy_configurations column and onto services.daycare_overnight_fee,
+ * same as the hourly fees): total = nights * dailyOvernightFee +
+ * firstHourFee + succeeding hours * succeedingHourFee.
  *
  * Note for the reviewer: the Guide's AC-4 table claims 2h15m -> ₱250 ("3
  * billable succeeding hours"), which does not follow from this same formula
@@ -32,23 +42,61 @@ const SUCCEEDING_HOUR_CHARGE = 50;
 export async function computeDaycareCharge(
   checkInAt: Date,
   checkOutAt: Date,
-  branchId: string
+  branchId: string,
+  firstHourFee: number = DEFAULT_FIRST_HOUR_CHARGE,
+  succeedingHourFee: number = DEFAULT_SUCCEEDING_HOUR_CHARGE,
+  dailyOvernightFee: number = DEFAULT_OVERNIGHT_CHARGE
 ): Promise<number> {
   const elapsedMinutes = (checkOutAt.getTime() - checkInAt.getTime()) / 60000;
 
   const hourlyCharge =
     elapsedMinutes <= 60
-      ? FIRST_HOUR_CHARGE
-      : FIRST_HOUR_CHARGE +
-        Math.ceil((elapsedMinutes - 60) / 60) * SUCCEEDING_HOUR_CHARGE;
+      ? firstHourFee
+      : firstHourFee +
+        Math.ceil((elapsedMinutes - 60) / 60) * succeedingHourFee;
 
   const nights = await countOvernightNights(checkInAt, checkOutAt, branchId);
   if (nights === 0) return hourlyCharge;
 
-  const { daycare_overnight_fee: dailyOvernightFee } =
-    await getPricingConfiguration();
+  return nights * dailyOvernightFee + hourlyCharge;
+}
 
-  return nights * Number(dailyOvernightFee) + hourlyCharge;
+/** Resolves a session's own Daycare service fee schedule, falling back to
+ * the documented defaults when the session has no service_id (a stay from
+ * before this column existed) or that service left a fee column unset. */
+async function resolveDaycareFeeSchedule(serviceId: string | null): Promise<{
+  firstHourFee: number;
+  succeedingHourFee: number;
+  dailyOvernightFee: number;
+}> {
+  if (!serviceId) {
+    return {
+      firstHourFee: DEFAULT_FIRST_HOUR_CHARGE,
+      succeedingHourFee: DEFAULT_SUCCEEDING_HOUR_CHARGE,
+      dailyOvernightFee: DEFAULT_OVERNIGHT_CHARGE,
+    };
+  }
+
+  const { data } = await supabase
+    .from('services')
+    .select('first_hour_fee, succeeding_hour_fee, daycare_overnight_fee')
+    .eq('id', serviceId)
+    .maybeSingle();
+
+  return {
+    firstHourFee:
+      data?.first_hour_fee != null
+        ? Number(data.first_hour_fee)
+        : DEFAULT_FIRST_HOUR_CHARGE,
+    succeedingHourFee:
+      data?.succeeding_hour_fee != null
+        ? Number(data.succeeding_hour_fee)
+        : DEFAULT_SUCCEEDING_HOUR_CHARGE,
+    dailyOvernightFee:
+      data?.daycare_overnight_fee != null
+        ? Number(data.daycare_overnight_fee)
+        : DEFAULT_OVERNIGHT_CHARGE,
+  };
 }
 
 interface CheckOutParams {
@@ -67,9 +115,10 @@ export async function checkOutDaycareSession({
   sessionId,
 }: CheckOutParams): Promise<DaycareSession> {
   const { data: session, error } = await supabase
-    .from('daycare_sessions')
+    .from('stays')
     .select('*')
     .eq('id', sessionId)
+    .eq('stay_type', 'Daycare')
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
@@ -79,17 +128,22 @@ export async function checkOutDaycareSession({
   }
 
   const now = new Date();
+  const { firstHourFee, succeedingHourFee, dailyOvernightFee } =
+    await resolveDaycareFeeSchedule(session.service_id);
   const charge = await computeDaycareCharge(
     new Date(session.check_in_at),
     now,
-    session.branch_id
+    session.branch_id,
+    firstHourFee,
+    succeedingHourFee,
+    dailyOvernightFee
   );
 
   const { data: updated, error: updateError } = await supabase
-    .from('daycare_sessions')
+    .from('stays')
     .update({
       status: 'Completed',
-      check_out_at: now.toISOString(),
+      actual_check_out_at: now.toISOString(),
       computed_charge: charge,
       updated_at: now.toISOString(),
     })
@@ -104,6 +158,14 @@ export async function checkOutDaycareSession({
     );
   }
 
+  // Custom change (Daycare/Hotel parity): Daycare now holds a real cage
+  // (claimed at check-in via resolveAndClaimCage), so checkout must release
+  // it back to Available - mirrors checkOutHotelStay's identical step.
+  await supabase
+    .from('cages')
+    .update({ status: 'Available', updated_at: now.toISOString() })
+    .eq('id', session.cage_id);
+
   // Booking-status revision: sync the linked booking to Completed/Paid now
   // that checkout happened. Walk-ins (booking_id is null) have no booking
   // row to sync at all.
@@ -116,7 +178,7 @@ export async function checkOutDaycareSession({
   // cancellation action (outside daycare's control) could flip it to
   // Cancelled between check-in and checkout. completeBooking would then
   // throw a 409 ("A Cancelled booking cannot be completed"). By this point
-  // the daycare_sessions row is already durably Completed - that's the
+  // the stays row is already durably Completed - that's the
   // authoritative record that the physical checkout happened - so we don't
   // let a stale/cancelled booking's 409 block this response; we just skip
   // the sync for that one status-mismatch case and let any other error
