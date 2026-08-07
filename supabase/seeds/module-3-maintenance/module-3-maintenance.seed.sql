@@ -46,8 +46,8 @@ on conflict (service_id, branch_id) do nothing;
 -- Grooming services
 -- ============================================================
 
-insert into public.packages (branch_id, name)
-select b.id, 'Golden Package'
+insert into public.packages (branch_id, name, use_pricing_matrix)
+select b.id, 'Golden Package', true
 from public.branches as b
 where not exists (
   select 1 from public.packages as p

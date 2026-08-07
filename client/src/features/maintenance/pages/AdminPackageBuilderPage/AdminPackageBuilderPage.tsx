@@ -18,6 +18,7 @@ import {
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
+import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import type {
   BranchSummary,
   Package,
@@ -50,6 +51,7 @@ export function AdminPackageBuilderPage() {
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [formBranchId, setFormBranchId] = useState('');
   const [formName, setFormName] = useState('');
+  const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,6 +174,7 @@ export function AdminPackageBuilderPage() {
     setEditingPackageId(null);
     setFormBranchId('');
     setFormName('');
+    setFormUsePricingMatrix(false);
     setSelectedServiceIds([]);
     setFormError(null);
     setIsFormOpen(true);
@@ -181,6 +184,7 @@ export function AdminPackageBuilderPage() {
     setEditingPackageId(pkg.id);
     setFormBranchId(pkg.branch_id);
     setFormName(pkg.name);
+    setFormUsePricingMatrix(pkg.use_pricing_matrix);
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
@@ -283,6 +287,7 @@ export function AdminPackageBuilderPage() {
         branch_id: formBranchId,
         name: formName.trim(),
         service_ids: selectedServiceIds,
+        use_pricing_matrix: formUsePricingMatrix,
       });
 
       setIsSubmitting(false);
@@ -301,6 +306,7 @@ export function AdminPackageBuilderPage() {
     const result = await updatePackage(editingPackageId, accessToken, {
       name: formName.trim(),
       service_ids: selectedServiceIds,
+      use_pricing_matrix: formUsePricingMatrix,
     });
 
     setIsSubmitting(false);
@@ -477,6 +483,12 @@ export function AdminPackageBuilderPage() {
                 />
               ) : null}
 
+              <ToggleSwitch
+                label="Derive price from weight/coat matrix (sum of included services' own per-pet price, bundle-discounted, instead of the flat estimate above; never applies to Cats either way)"
+                checked={formUsePricingMatrix}
+                onChange={setFormUsePricingMatrix}
+              />
+
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
                   {formError}
@@ -520,6 +532,7 @@ export function AdminPackageBuilderPage() {
                   </span>
                   <span className={styles.packageMeta}>
                     PHP {pkg.bundled_price.toFixed(2)}
+                    {pkg.use_pricing_matrix ? ' (varies by weight/coat)' : ''}
                   </span>
                   <StatusBadge isActive={pkg.is_active} />
                 </div>
