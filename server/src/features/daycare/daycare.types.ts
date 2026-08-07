@@ -19,18 +19,17 @@ export const DAYCARE_ADVANCE_ROLES: readonly string[] = [
   'Pet Assistant',
 ];
 
+import type { HotelStay } from '../hotel/hotel.types.ts';
+
 export type DaycareStatus = 'Active' | 'Completed';
 
-export interface DaycareSession {
-  id: string;
-  booking_id: string | null;
-  pet_id: string;
-  branch_id: string;
-  created_by_staff_id: string;
-  status: DaycareStatus;
-  check_in_at: string;
-  check_out_at: string | null;
-  computed_charge: number | null;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * Custom change (Daycare/Hotel parity): a Daycare session is now literally
+ * a `stays` row (stay_type: 'Daycare') - the same shared table a Hotel
+ * check-in writes to (migration 20260807104), including cage assignment
+ * and the structured feeding/walking/playing/medication care instructions
+ * Hotel already had. Kept as its own exported name (a type alias of
+ * HotelStay, not a separate shape) so every existing DaycareSession call
+ * site across the client/server keeps working unchanged.
+ */
+export type DaycareSession = HotelStay;

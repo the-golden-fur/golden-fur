@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as daycareApi from '../../api/daycare.api';
+import { getCageSuggestion } from '../../../hotel/api/hotel.api';
 import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
 import { DaycareCheckInPanel } from './DaycareCheckInPanel';
 
@@ -19,11 +20,32 @@ vi.mock('../../components/DaycareBookingPicker/DaycareBookingPicker', () => ({
 vi.mock('../../api/daycare.api', () => ({
   checkInDaycareSession: vi.fn(),
 }));
+vi.mock('../../../hotel/api/hotel.api', () => ({
+  getCageSuggestion: vi.fn(),
+}));
+// Custom change (Daycare/Hotel parity): DaycareCheckInPanel now assigns a
+// cage the same way HotelCheckInPanel does - CageStatusGrid's own fetch
+// behavior is already covered by its own tests, mirrors
+// HotelCheckInPanel.spec.ts's identical stub.
+vi.mock('../../../hotel/components/CageStatusGrid/CageStatusGrid', () => ({
+  CageStatusGrid: () => null,
+}));
+
+function setupCageSuggestion() {
+  vi.mocked(getCageSuggestion).mockResolvedValue({
+    data: {
+      suggestedSize: 'M',
+      availableCages: [{ id: 'cage-1', cage_label: 'Makati-M-01' }],
+    },
+    error: null,
+  } as never);
+}
 
 function renderPanel() {
   return render(
     createElement(DaycareCheckInPanel, {
       accessToken: 'token',
+      role: 'Receptionist',
       branchId: 'branch-makati',
       onCheckedIn: vi.fn(),
     })
@@ -32,6 +54,8 @@ function renderPanel() {
 
 describe('DaycareCheckInPanel (#69)', () => {
   it('AC-1: checks in via an existing Pending booking', async () => {
+    setupCageSuggestion();
+
     const booking = {
       id: 'booking-1',
       customer_id: 'customer-1',
@@ -66,14 +90,20 @@ describe('DaycareCheckInPanel (#69)', () => {
     vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
       data: {
         id: 'session-1',
+        stay_type: 'Daycare',
         booking_id: 'booking-1',
         pet_id: 'pet-1',
         branch_id: 'branch-makati',
+        cage_id: 'cage-1',
         created_by_staff_id: 'reception-1',
         status: 'Active',
         check_in_at: '2026-07-19T02:00:00.000Z',
-        check_out_at: null,
+        scheduled_check_out_date: null,
+        actual_check_out_at: null,
+        downpayment_amount: null,
+        extension_fee: null,
         computed_charge: null,
+        notify_opt_in: false,
         created_at: '2026-07-19T02:00:00.000Z',
         updated_at: '2026-07-19T02:00:00.000Z',
       },
@@ -83,17 +113,24 @@ describe('DaycareCheckInPanel (#69)', () => {
     renderPanel();
 
     await userEvent.click(await screen.findByText('Pick booking'));
+    await screen.findByText(/Suggested size: M/);
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
-    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith('token', {
-      booking_id: 'booking-1',
-    });
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        booking_id: 'booking-1',
+        cage_id: 'cage-1',
+      })
+    );
     expect(
       await screen.findByText(/checked in successfully/i)
     ).toBeInTheDocument();
   });
 
   it('AC-3: a cutoff-blocked check-in shows a clear terminal message and does not clear on its own', async () => {
+    setupCageSuggestion();
+
     vi.mocked(customerApi.listCustomers).mockResolvedValue({
       data: [
         {
@@ -148,6 +185,7 @@ describe('DaycareCheckInPanel (#69)', () => {
     await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
     await userEvent.click(await screen.findByText(/Jane Doe/));
     await userEvent.click(await screen.findByLabelText(/Rex/));
+    await screen.findByText(/Suggested size: M/);
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
     expect(

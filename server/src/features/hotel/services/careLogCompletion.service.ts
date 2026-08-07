@@ -31,11 +31,11 @@ export async function getTodayCareLogEntries({
   const { data, error } = await supabase
     .from('care_log_entries')
     .select(
-      '*, completed_by_staff:staff_profiles(display_name), hotel_stays!inner(cage_id, cages!inner(branch_id), bookings!inner(status))'
+      '*, completed_by_staff:staff_profiles(display_name), stays!inner(branch_id, status)'
     )
     .eq('scheduled_date', date)
-    .eq('hotel_stays.bookings.status', 'In Progress')
-    .eq('hotel_stays.cages.branch_id', branchId);
+    .eq('stays.status', 'Active')
+    .eq('stays.branch_id', branchId);
 
   if (error) throwWithStatus(400, error.message);
 
@@ -55,7 +55,7 @@ export async function completeCareLogEntry({
 }: CompleteParams): Promise<CareLogEntry> {
   const { data: entry, error: fetchError } = await supabase
     .from('care_log_entries')
-    .select('*, hotel_stays!inner(notify_opt_in, pet_id)')
+    .select('*, stays!inner(notify_opt_in, pet_id)')
     .eq('id', entryId)
     .maybeSingle();
 
@@ -84,16 +84,16 @@ export async function completeCareLogEntry({
     throwWithStatus(409, 'This care log entry is already completed');
   }
 
-  const hotelStay = (
+  const stay = (
     entry as unknown as {
-      hotel_stays: { notify_opt_in: boolean; pet_id: string };
+      stays: { notify_opt_in: boolean; pet_id: string };
     }
-  ).hotel_stays;
+  ).stays;
 
-  if (hotelStay.notify_opt_in) {
+  if (stay.notify_opt_in) {
     await sendCareLogCompletedNotification(
       updated as CareLogEntry,
-      hotelStay.pet_id
+      stay.pet_id
     );
   }
 

@@ -92,8 +92,8 @@ export function DaycareSessionPicker({
     matchesQuery: (item, query) => item.petName.toLowerCase().includes(query),
     comparators: {
       'check-in-earliest': (a, b) =>
-        new Date(a.session.check_in_at).getTime() -
-        new Date(b.session.check_in_at).getTime(),
+        new Date(a.session.check_in_at ?? 0).getTime() -
+        new Date(b.session.check_in_at ?? 0).getTime(),
       'pet-name': (a, b) => a.petName.localeCompare(b.petName),
     },
     initialSortKey: 'check-in-earliest',
@@ -136,7 +136,9 @@ export function DaycareSessionPicker({
                 <span className={styles.petName}>{item.petName}</span>
                 <span className={styles.metaLine}>
                   Checked in:{' '}
-                  {new Date(item.session.check_in_at).toLocaleString()}
+                  {item.session.check_in_at
+                    ? new Date(item.session.check_in_at).toLocaleString()
+                    : 'Unknown'}
                 </span>
               </button>
             </li>

@@ -170,9 +170,10 @@ async function getHotelLineItems(
   booking: BookingForBilling
 ): Promise<DraftLineItem[]> {
   const { data: stay, error } = await supabase
-    .from('hotel_stays')
+    .from('stays')
     .select('downpayment_amount, extension_fee')
     .eq('booking_id', booking.id)
+    .eq('stay_type', 'Hotel')
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
@@ -217,13 +218,32 @@ async function getHotelLineItems(
     });
   }
 
+  // Custom change (Hotel free-package trigger): a free package awarded at
+  // booking creation (booking.service.ts's resolveFreePackageAward) is its
+  // own booking_items row (package_id, price_at_booking: 0) alongside the
+  // single Hotel service item - shown here as its own zero-priced line so
+  // the receipt reflects it, per "update the booking receipt... once it
+  // reaches the nights condition".
+  for (const item of booking.items) {
+    if (item.package_id) {
+      lines.push({
+        line_item_type: 'service',
+        reference_id: item.package_id,
+        description: `Free: ${item.description}`,
+        quantity: 1,
+        unit_price: item.price_at_booking,
+        line_total: item.price_at_booking,
+      });
+    }
+  }
+
   return lines;
 }
 
 /**
- * Daycare walk-ins (booking_id IS NULL - daycare_sessions allows this) have
- * no booking to key checkout off of at all, so they are out of scope for
- * POST /billing/checkout, which always requires a booking_id - a walk-in
+ * Daycare walk-ins (booking_id IS NULL - `stays` allows this) have no
+ * booking to key checkout off of at all, so they are out of scope for POST
+ * /billing/checkout, which always requires a booking_id - a walk-in
  * daycare charge is out of scope for this epic's checkout surface pending a
  * dedicated "checkout a walk-in session" entry point.
  */
@@ -231,9 +251,10 @@ async function getDaycareLineItems(
   booking: BookingForBilling
 ): Promise<DraftLineItem[]> {
   const { data: session, error } = await supabase
-    .from('daycare_sessions')
+    .from('stays')
     .select('computed_charge')
     .eq('booking_id', booking.id)
+    .eq('stay_type', 'Daycare')
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);

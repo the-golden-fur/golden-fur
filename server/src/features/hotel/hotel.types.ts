@@ -35,6 +35,8 @@ export type CageStatus =
 export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 export type CareType = 'Feeding' | 'Walking' | 'Medication' | 'Playing';
+export type StayType = 'Hotel' | 'Daycare';
+export type StayStatus = 'Active' | 'Completed';
 
 export interface Cage {
   id: string;
@@ -46,16 +48,41 @@ export interface Cage {
   updated_at: string;
 }
 
+/**
+ * Custom change (Daycare/Hotel parity): renamed from hotel_stays to `stays`
+ * (migration 20260807104) - a Daycare check-in now writes the exact same
+ * row shape (stay_type: 'Daycare'), sharing cage assignment and the
+ * feeding/walking/playing/medication care instructions Hotel already had.
+ * Kept exported as `HotelStay` (not renamed to `Stay`) to avoid rippling
+ * the rename through every existing Hotel call site - daycare.types.ts's
+ * `DaycareSession` is a type alias of this same interface instead of a
+ * separate shape.
+ */
 export interface HotelStay {
   id: string;
-  booking_id: string;
+  stay_type: StayType;
+  /** NULL only for a Daycare walk-in (no booking) - always set for Hotel. */
+  booking_id: string | null;
   pet_id: string;
+  branch_id: string;
   cage_id: string;
+  status: StayStatus;
   check_in_at: string | null;
-  scheduled_check_out_date: string;
+  /** Hotel-only; NULL for Daycare. */
+  scheduled_check_out_date: string | null;
   actual_check_out_at: string | null;
-  downpayment_amount: number;
+  /** Hotel-only; NULL for Daycare. */
+  downpayment_amount: number | null;
   extension_fee: number | null;
+  /** Daycare-only (per-elapsed-hour/night charge, computed at checkout);
+   * NULL for Hotel, which bills via downpayment_amount/extension_fee. */
+  computed_charge: number | null;
+  /** Custom change (Daycare fee configuration): the service this stay's
+   * fee schedule comes from - Daycare-only in practice today (resolved at
+   * check-in from the booking's selected service, an explicit walk-in
+   * choice, or the branch's first active Daycare service). NULL for Hotel
+   * stays (unused there) and for any Daycare stay predating this column. */
+  service_id: string | null;
   notify_opt_in: boolean;
   created_by_staff_id: string;
   created_at: string;
@@ -69,7 +96,7 @@ export interface HotelStay {
 
 export interface CareFeedingInstruction {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   meal_time: MealTime;
   food_type: string;
   quantity: string;
@@ -82,7 +109,7 @@ export interface CareFeedingInstruction {
 
 export interface CareWalkingInstruction {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   time_block: PartOfDay;
   duration_minutes: number;
   notes: string | null;
@@ -91,7 +118,7 @@ export interface CareWalkingInstruction {
 
 export interface CarePlayingInstruction {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   time_block: PartOfDay;
   duration_minutes: number;
   notes: string | null;
@@ -100,7 +127,7 @@ export interface CarePlayingInstruction {
 
 export interface CareMedicationInstruction {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   medication_name: string;
   dose: string;
   scheduled_times: string[];
@@ -112,7 +139,7 @@ export interface CareMedicationInstruction {
 
 export interface CareLogEntry {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   care_type: CareType;
   scheduled_date: string;
   description: string;

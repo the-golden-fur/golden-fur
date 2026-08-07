@@ -103,6 +103,52 @@ export async function createNotification(
   return notification;
 }
 
+/**
+ * Custom change (Hotel free-package trigger): every other createNotification
+ * call site in this codebase already knows a single concrete recipient id -
+ * there was no existing helper to notify "the receptionist" as a role. Fans
+ * out one createNotification call per matching staff_profiles row (a branch
+ * may have more than one Receptionist); best-effort per row, same as
+ * createNotification's own email leg - one recipient's failure doesn't stop
+ * the others from being notified.
+ */
+export async function notifyStaffRoleAtBranch(
+  params: Omit<
+    CreateNotificationParams,
+    'recipientStaffId' | 'recipientCustomerId'
+  > & {
+    role: string;
+    branchId: string;
+  }
+): Promise<void> {
+  const { role, branchId, ...notificationParams } = params;
+
+  const { data: staff, error } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('role', role)
+    .eq('branch_id', branchId);
+
+  if (error) {
+    console.error(
+      `Failed to list ${role} staff at branch ${branchId}:`,
+      error.message
+    );
+    return;
+  }
+
+  for (const row of staff ?? []) {
+    try {
+      await createNotification({
+        ...notificationParams,
+        recipientStaffId: row.id as string,
+      });
+    } catch (notifyError) {
+      console.error(`Failed to notify staff ${row.id} (${role}):`, notifyError);
+    }
+  }
+}
+
 interface InboxParams {
   recipientId: string;
 }

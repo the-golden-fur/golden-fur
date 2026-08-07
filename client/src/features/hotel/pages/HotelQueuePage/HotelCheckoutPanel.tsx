@@ -120,11 +120,11 @@ export function HotelCheckoutPanel({
           </div>
           <div className={styles.breakdownRow}>
             <dt>Checkout due</dt>
-            <dd>{formatDate(selectedStay.scheduled_check_out_date)}</dd>
+            <dd>{formatDate(selectedStay.scheduled_check_out_date!)}</dd>
           </div>
           <div className={styles.breakdownRow}>
             <dt>Downpayment already collected</dt>
-            <dd>₱{selectedStay.downpayment_amount.toFixed(2)}</dd>
+            <dd>₱{selectedStay.downpayment_amount!.toFixed(2)}</dd>
           </div>
         </dl>
 

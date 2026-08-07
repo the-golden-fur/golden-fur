@@ -35,6 +35,7 @@ export function DaycareQueuePage() {
     'loading'
   );
   const [branchId, setBranchId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
 
   const [tab, setTab] = useState<Tab>(
     searchParams.get('tab') === 'check-out' ? 'check-out' : 'check-in'
@@ -56,6 +57,7 @@ export function DaycareQueuePage() {
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
         setBranchId(result.data.branch_id);
+        setRole(result.data.role);
       } else {
         setRoleStatus('denied');
       }
@@ -123,9 +125,10 @@ export function DaycareQueuePage() {
           </button>
         </div>
 
-        {tab === 'check-in' && branchId ? (
+        {tab === 'check-in' && branchId && role ? (
           <DaycareCheckInPanel
             accessToken={accessToken}
+            role={role}
             branchId={branchId}
             onCheckedIn={handleCheckedIn}
           />

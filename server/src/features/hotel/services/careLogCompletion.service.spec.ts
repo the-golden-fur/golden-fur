@@ -43,9 +43,9 @@ function queueFromResults(...results: QueryResult[]) {
 
 const PENDING_ENTRY = {
   id: 'entry-1',
-  hotel_stay_id: 'stay-1',
+  stay_id: 'stay-1',
   completed_at: null,
-  hotel_stays: { notify_opt_in: true, pet_id: 'pet-1' },
+  stays: { notify_opt_in: true, pet_id: 'pet-1' },
 };
 
 describe('careLogCompletion.service (#76)', () => {
@@ -114,7 +114,7 @@ describe('careLogCompletion.service (#76)', () => {
       {
         data: {
           ...PENDING_ENTRY,
-          hotel_stays: { notify_opt_in: false, pet_id: 'pet-1' },
+          stays: { notify_opt_in: false, pet_id: 'pet-1' },
         },
         error: null,
       },

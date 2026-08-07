@@ -79,7 +79,7 @@ export async function checkInHotelStay({
   }
 
   const { data: existingStay, error: existingError } = await supabase
-    .from('hotel_stays')
+    .from('stays')
     .select('id')
     .eq('booking_id', booking.id)
     .maybeSingle();
@@ -89,31 +89,23 @@ export async function checkInHotelStay({
     throwWithStatus(409, 'This booking has already been checked in');
   }
 
-  let cageId = input.cage_id;
-
-  if (!cageId) {
-    const suggestion = await suggestCage(booking.pet_id, branchId);
-    cageId = suggestion.availableCages[0]?.id;
-
-    if (!cageId) {
-      throwWithStatus(
-        409,
-        `No available cage of the suggested size (${suggestion.suggestedSize})`
-      );
-    }
-  }
-
-  const cage = await assignCage(cageId, branchId);
+  const cage = await resolveAndClaimCage(
+    booking.pet_id,
+    branchId,
+    input.cage_id
+  );
 
   try {
     const now = new Date();
     const scheduledCheckOutDate = String(booking.scheduled_end).slice(0, 10);
 
     const { data: stay, error: stayError } = await supabase
-      .from('hotel_stays')
+      .from('stays')
       .insert({
+        stay_type: 'Hotel',
         booking_id: booking.id,
         pet_id: booking.pet_id,
+        branch_id: branchId,
         cage_id: cage.id,
         check_in_at: now.toISOString(),
         scheduled_check_out_date: scheduledCheckOutDate,
@@ -130,7 +122,7 @@ export async function checkInHotelStay({
 
     // Booking-status revision: physical check-in IS the "the service began"
     // trigger for a Hotel booking - advance Pending -> In Progress now that
-    // the hotel_stays row (and the cage claim behind it) exist. Still inside
+    // the stays row (and the cage claim behind it) exist. Still inside
     // the try/catch above, so a failure here (e.g. an unexpected concurrent
     // status change) releases the cage exactly like any other failure past
     // the claim - it never strands an Occupied cage.
@@ -171,8 +163,34 @@ export async function checkInHotelStay({
   }
 }
 
-async function insertFeedingInstructions(
-  hotelStayId: string,
+/** Shared by Hotel and Daycare check-in: accepts an explicit cage_id
+ * override, else auto-suggests the pet's weight-class cage and claims the
+ * first available one - identical to Hotel's original inline logic
+ * (#75), extracted so daycareCheckIn.service.ts can reuse it verbatim. */
+export async function resolveAndClaimCage(
+  petId: string,
+  branchId: string,
+  cageIdOverride?: string
+) {
+  let cageId = cageIdOverride;
+
+  if (!cageId) {
+    const suggestion = await suggestCage(petId, branchId);
+    cageId = suggestion.availableCages[0]?.id;
+
+    if (!cageId) {
+      throwWithStatus(
+        409,
+        `No available cage of the suggested size (${suggestion.suggestedSize})`
+      );
+    }
+  }
+
+  return assignCage(cageId, branchId);
+}
+
+export async function insertFeedingInstructions(
+  stayId: string,
   rows: CheckInInput['feeding']
 ): Promise<CareFeedingInstruction[]> {
   if (rows.length === 0) return [];
@@ -184,7 +202,7 @@ async function insertFeedingInstructions(
     special_instructions: row.special_instructions,
     food_catalog_id: row.food_catalog_id ?? null,
     stay_date: row.stay_date ?? null,
-    hotel_stay_id: hotelStayId,
+    stay_id: stayId,
   }));
 
   const { data, error } = await supabase
@@ -196,30 +214,30 @@ async function insertFeedingInstructions(
   return (data ?? []) as CareFeedingInstruction[];
 }
 
-async function insertWalkingInstructions(
-  hotelStayId: string,
+export async function insertWalkingInstructions(
+  stayId: string,
   rows: CheckInInput['walking']
 ): Promise<CareWalkingInstruction[]> {
   if (rows.length === 0) return [];
 
   const { data, error } = await supabase
     .from('care_walking_instructions')
-    .insert(rows.map((row) => ({ ...row, hotel_stay_id: hotelStayId })))
+    .insert(rows.map((row) => ({ ...row, stay_id: stayId })))
     .select('*');
 
   if (error) throwWithStatus(400, error.message);
   return (data ?? []) as CareWalkingInstruction[];
 }
 
-async function insertPlayingInstructions(
-  hotelStayId: string,
+export async function insertPlayingInstructions(
+  stayId: string,
   rows: CheckInInput['playing']
 ): Promise<CarePlayingInstruction[]> {
   if (rows.length === 0) return [];
 
   const { data, error } = await supabase
     .from('care_playing_instructions')
-    .insert(rows.map((row) => ({ ...row, hotel_stay_id: hotelStayId })))
+    .insert(rows.map((row) => ({ ...row, stay_id: stayId })))
     .select('*');
 
   if (error) throwWithStatus(400, error.message);
@@ -233,8 +251,8 @@ async function insertPlayingInstructions(
  * verbatim as the receptionist's own list, with no source note attached -
  * only genuinely M07-derived rows carry source_prescription_note.
  */
-async function insertMedicationInstructions(
-  hotelStayId: string,
+export async function insertMedicationInstructions(
+  stayId: string,
   petId: string,
   requested: CheckInInput['medications']
 ): Promise<CareMedicationInstruction[]> {
@@ -271,7 +289,7 @@ async function insertMedicationInstructions(
     source_prescription_note: row.source_prescription_note,
     medication_catalog_id: row.medication_catalog_id ?? null,
     stay_date: row.stay_date ?? null,
-    hotel_stay_id: hotelStayId,
+    stay_id: stayId,
   }));
 
   const { data, error } = await supabase
@@ -296,8 +314,8 @@ function rowsForDate<T extends { stay_date: string | null }>(
   return rows.filter((row) => row.stay_date == null);
 }
 
-async function generateCareLogEntries(
-  hotelStayId: string,
+export async function generateCareLogEntries(
+  stayId: string,
   days: string[],
   feeding: CareFeedingInstruction[],
   walking: CareWalkingInstruction[],
@@ -305,7 +323,7 @@ async function generateCareLogEntries(
   medications: CareMedicationInstruction[]
 ): Promise<CareLogEntry[]> {
   const rows: Array<{
-    hotel_stay_id: string;
+    stay_id: string;
     care_type: 'Feeding' | 'Walking' | 'Playing' | 'Medication';
     scheduled_date: string;
     description: string;
@@ -314,7 +332,7 @@ async function generateCareLogEntries(
   for (const date of days) {
     for (const meal of rowsForDate(feeding, date)) {
       rows.push({
-        hotel_stay_id: hotelStayId,
+        stay_id: stayId,
         care_type: 'Feeding',
         scheduled_date: date,
         description: `${meal.meal_time} meal — ${meal.quantity} ${meal.food_type}`,
@@ -323,7 +341,7 @@ async function generateCareLogEntries(
 
     for (const walk of rowsForDate(walking, date)) {
       rows.push({
-        hotel_stay_id: hotelStayId,
+        stay_id: stayId,
         care_type: 'Walking',
         scheduled_date: date,
         description: `${walk.time_block} walk — ${walk.duration_minutes} min`,
@@ -332,7 +350,7 @@ async function generateCareLogEntries(
 
     for (const play of rowsForDate(playing, date)) {
       rows.push({
-        hotel_stay_id: hotelStayId,
+        stay_id: stayId,
         care_type: 'Playing',
         scheduled_date: date,
         description: `${play.time_block} playtime — ${play.duration_minutes} min`,
@@ -347,7 +365,7 @@ async function generateCareLogEntries(
 
       for (const time of times) {
         rows.push({
-          hotel_stay_id: hotelStayId,
+          stay_id: stayId,
           care_type: 'Medication',
           scheduled_date: date,
           description: `${medication.medication_name} ${medication.dose} — ${time}`,

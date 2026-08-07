@@ -40,7 +40,7 @@ describe('DaycareCheckoutPanel (#69)', () => {
         created_by_staff_id: 'reception-1',
         status: 'Completed',
         check_in_at: '2026-07-19T02:00:00.000Z',
-        check_out_at: '2026-07-19T04:10:00.000Z',
+        actual_check_out_at: '2026-07-19T04:10:00.000Z',
         computed_charge: 200,
         created_at: '2026-07-19T02:00:00.000Z',
         updated_at: '2026-07-19T04:10:00.000Z',
