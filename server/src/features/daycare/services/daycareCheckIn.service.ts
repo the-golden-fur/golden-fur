@@ -2,6 +2,15 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
 import type { DaycareSession, DaycareStatus } from '../daycare.types.ts';
 import { startBooking } from '../../booking/services/booking.service.ts';
+import {
+  resolveAndClaimCage,
+  insertFeedingInstructions,
+  insertWalkingInstructions,
+  insertPlayingInstructions,
+  insertMedicationInstructions,
+  generateCareLogEntries,
+} from '../../hotel/services/careInstructions.service.ts';
+import { releaseCage } from '../../hotel/services/cageAssignment.service.ts';
 
 /** Fixed per Modules-Features - not read from branches.daycare_checkin_cutoff
  * even though the column exists on every branch (#62 migration note); only
@@ -83,6 +92,50 @@ function formatCutoffForMessage(cutoffTime: string): string {
   return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
+/**
+ * Custom change (Daycare fee configuration): "this fee itself is attached
+ * to the service, not hardcoded to all daycare services" - checkout needs
+ * to know which Daycare service's first_hour_fee/succeeding_hour_fee apply
+ * to this session. Booking-linked check-ins derive it from the booking's
+ * own selected service (single-select, per CustomerBookingFlowPage); a
+ * walk-in either names one explicitly or falls back to the branch's first
+ * active Daycare service. Returns null only if no Daycare service exists
+ * at all at that branch (computeDaycareCharge then falls back to the
+ * documented ₱100/₱50 defaults).
+ */
+async function resolveDaycareServiceId(
+  branchId: string,
+  bookingId: string | null,
+  explicitServiceId?: string
+): Promise<string | null> {
+  if (bookingId) {
+    const { data } = await supabase
+      .from('booking_items')
+      .select('service_id')
+      .eq('booking_id', bookingId)
+      .not('service_id', 'is', null)
+      .limit(1)
+      .maybeSingle();
+
+    if (data?.service_id) return data.service_id as string;
+  } else if (explicitServiceId) {
+    return explicitServiceId;
+  }
+
+  const { data: fallback } = await supabase
+    .from('services')
+    .select('id, service_branch_availability!inner(branch_id, is_available)')
+    .eq('category', 'Daycare')
+    .eq('is_active', true)
+    .eq('service_branch_availability.branch_id', branchId)
+    .eq('service_branch_availability.is_available', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return (fallback?.id as string | undefined) ?? null;
+}
+
 interface CheckInParams {
   requesterId: string;
   input: CheckInInput;
@@ -90,8 +143,8 @@ interface CheckInParams {
 
 /**
  * Issue #65: cutoff check runs before the check-in write, not after - if the
- * current time is past the branch's cutoff, no daycare_sessions row is
- * created at all (matching the flow diagram's blocked-END path exactly).
+ * current time is past the branch's cutoff, no `stays` row is created at
+ * all (matching the flow diagram's blocked-END path exactly).
  */
 export async function checkInDaycareSession({
   requesterId,
@@ -151,34 +204,78 @@ export async function checkInDaycareSession({
     );
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('daycare_sessions')
-    .insert({
-      booking_id: bookingId,
-      pet_id: petId,
-      branch_id: branchId,
-      created_by_staff_id: requesterId,
-      status: 'Active',
-      check_in_at: now.toISOString(),
-    })
-    .select('*')
-    .maybeSingle();
+  // Custom change (Daycare/Hotel parity): Daycare now claims a real cage the
+  // same way Hotel's check-in does (#75's suggestCage/assignCage, shared via
+  // resolveAndClaimCage) - "it will also have cage config".
+  const cage = await resolveAndClaimCage(petId, branchId, input.cage_id);
+  const serviceId = await resolveDaycareServiceId(
+    branchId,
+    bookingId,
+    input.service_id
+  );
 
-  if (insertError || !inserted) {
-    throwWithStatus(
-      400,
-      insertError?.message ?? 'Failed to check in daycare session'
+  try {
+    const { data: inserted, error: insertError } = await supabase
+      .from('stays')
+      .insert({
+        stay_type: 'Daycare',
+        booking_id: bookingId,
+        pet_id: petId,
+        branch_id: branchId,
+        cage_id: cage.id,
+        service_id: serviceId,
+        created_by_staff_id: requesterId,
+        status: 'Active',
+        check_in_at: now.toISOString(),
+        notify_opt_in: input.notify_opt_in,
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (insertError || !inserted) {
+      throwWithStatus(
+        400,
+        insertError?.message ?? 'Failed to check in daycare session'
+      );
+    }
+
+    // Booking-status revision: sync the linked booking to In Progress now
+    // that the pet has physically checked in. Walk-ins (bookingId is null)
+    // have no booking row to sync at all.
+    if (bookingId) {
+      await startBooking({ bookingId });
+    }
+
+    // Same structured feeding/walking/playing/medication instructions +
+    // Care Log generation as Hotel check-in (#75/#76), reusing the exact
+    // same shared helpers - "the only difference will be their services".
+    // Daycare has no scheduled multi-night stay length (unlike Hotel), so
+    // the Care Log is generated for today only.
+    const checkInDate = now.toISOString().slice(0, 10);
+
+    const feeding = await insertFeedingInstructions(inserted.id, input.feeding);
+    const walking = await insertWalkingInstructions(inserted.id, input.walking);
+    const playing = await insertPlayingInstructions(inserted.id, input.playing);
+    const medications = await insertMedicationInstructions(
+      inserted.id,
+      petId,
+      input.medications
     );
-  }
 
-  // Booking-status revision: sync the linked booking to In Progress now that
-  // the pet has physically checked in. Walk-ins (bookingId is null) have no
-  // booking row to sync at all.
-  if (bookingId) {
-    await startBooking({ bookingId });
-  }
+    await generateCareLogEntries(
+      inserted.id,
+      [checkInDate],
+      feeding,
+      walking,
+      playing,
+      medications
+    );
 
-  return inserted as DaycareSession;
+    return inserted as DaycareSession;
+  } catch (error) {
+    await releaseCage(cage.id);
+    throw error;
+  }
 }
 
 interface ListDaycareSessionsParams {
@@ -187,17 +284,16 @@ interface ListDaycareSessionsParams {
 }
 
 /** Mirrors hotelStay.service.ts's listHotelStays - backs Daycare Checkout's
- * search/filter/sort picker (Daycare had no "browse active sessions"
- * endpoint before this; checkout could only be reached with a known session
- * id). daycare_sessions carries branch_id directly, so unlike hotel_stays
- * this needs no join to resolve the branch scope. */
+ * search/filter/sort picker. `stays` carries branch_id directly, so this
+ * needs no join to resolve the branch scope. */
 export async function listDaycareSessions({
   branchId,
   status,
 }: ListDaycareSessionsParams): Promise<DaycareSession[]> {
   let query = supabase
-    .from('daycare_sessions')
+    .from('stays')
     .select('*')
+    .eq('stay_type', 'Daycare')
     .eq('branch_id', branchId)
     .order('check_in_at', { ascending: false });
 

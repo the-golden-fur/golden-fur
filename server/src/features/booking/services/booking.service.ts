@@ -5,6 +5,14 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
+import { getPackagePricingConfiguration } from '../../maintenance/services/packagePricing.service.ts';
+import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
+import { deriveBundledPrice } from '../../maintenance/utils/deriveBundledPrice.ts';
+import {
+  createNotification,
+  notifyStaffRoleAtBranch,
+} from '../../notifications/services/notification.service.ts';
 import {
   BOOKING_MARK_PAID_ROLES,
   ONLINE_PAYMENT_METHODS,
@@ -39,9 +47,10 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-interface PetRow {
+export interface PetRow {
   id: string;
   customer_id: string;
+  pet_type: 'Dog' | 'Cat';
   weight_class: 'S' | 'M' | 'L' | 'XL' | null;
   coat_type: 'SC' | 'LC' | null;
 }
@@ -60,15 +69,39 @@ interface CreateBookingParams {
 }
 
 /**
+ * Custom change (pricing matrix fix): weight/coat-derived pricing is now
+ * opt-in per service (`use_pricing_matrix`), not automatic for every
+ * Grooming row - the board shows individual add-on services (Nail Trim,
+ * Ear Cleaning, etc.) at one flat price regardless of size/coat, and only
+ * Bath/Blow-dry/Brushing actually varying by size. Cats are always flat
+ * regardless of the service's own flag - "Cat has no weight class or coat
+ * type" (the board shows one flat Cat price, never a size/coat cell) - so a
+ * Cat pet skips the tier lookup even for a matrix-enabled service.
+ *
  * Grooming price is tiered by the pet's size/coat when a matching
- * service_pricing_tiers cell exists; base_price otherwise (and always for the
- * other categories).
+ * service_pricing_tiers cell exists; base_price otherwise (and always for
+ * the other categories, a non-matrix service, or a Cat).
  */
-function resolveServicePrice(
-  service: Awaited<ReturnType<typeof getServiceById>>,
+interface PriceableService {
+  category: ServiceCategory;
+  base_price: number;
+  use_pricing_matrix: boolean;
+  service_pricing_tiers?: Array<{
+    weight_class: string;
+    coat_type: string;
+    price: number;
+  }>;
+}
+
+export function resolveServicePrice(
+  service: PriceableService,
   pet: PetRow
 ): number {
-  if (service.category === 'Grooming') {
+  if (
+    service.category === 'Grooming' &&
+    service.use_pricing_matrix &&
+    pet.pet_type !== 'Cat'
+  ) {
     const tier = (service.service_pricing_tiers ?? []).find(
       (row) =>
         row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
@@ -188,22 +221,27 @@ async function resolveBookingItem(
   );
 
   let memberDurationMinutes = 0;
+  let memberRows: Array<{
+    id: string;
+    category: ServiceCategory;
+    duration_minutes: number | null;
+    base_price: number;
+    use_pricing_matrix: boolean;
+  }> = [];
 
   if (memberServiceIds.length > 0) {
     const { data: memberServices, error } = await supabase
       .from('services')
-      .select('id, category, duration_minutes')
+      .select('id, category, duration_minutes, base_price, use_pricing_matrix')
       .in('id', memberServiceIds);
 
     if (error) throwWithStatus(400, error.message);
 
-    const rows = (memberServices ?? []) as Array<{
-      id: string;
-      category: ServiceCategory;
-      duration_minutes: number | null;
-    }>;
+    memberRows = (memberServices ?? []) as typeof memberRows;
 
-    const offCategory = rows.find((row) => row.category !== serviceCategory);
+    const offCategory = memberRows.find(
+      (row) => row.category !== serviceCategory
+    );
     if (offCategory) {
       throwWithStatus(
         400,
@@ -211,7 +249,7 @@ async function resolveBookingItem(
       );
     }
 
-    memberDurationMinutes = rows.reduce(
+    memberDurationMinutes = memberRows.reduce(
       (sum, row) => sum + (row.duration_minutes ?? 0),
       0
     );
@@ -225,12 +263,61 @@ async function resolveBookingItem(
     packageDurationMinutes
   );
 
+  const packagePrice = await resolvePackagePrice(pkg, memberRows, pet);
+
   return {
     service_id: null,
     package_id: pkg.id,
-    price_at_booking: round2(Number(pkg.bundled_price) * packageQuantity),
+    price_at_booking: round2(packagePrice * packageQuantity),
     duration_minutes_at_booking: packageDurationMinutes,
   };
+}
+
+/**
+ * Custom change (pricing matrix fix): packages never varied by pet before -
+ * bundled_price was always a flat admin-configured figure (sum of members'
+ * base_price, minus the bundle discount). A package can now opt in
+ * (`use_pricing_matrix`) to instead sum each included service's own
+ * per-pet price (respecting that service's own `use_pricing_matrix` flag
+ * and the Cat flat-price rule - see resolveServicePrice), then apply the
+ * same bundle-discount formula (deriveBundledPrice) on top of that
+ * per-pet sum instead of the flat base_price sum. Falls back to the flat
+ * `bundled_price` whenever the package isn't matrix-enabled.
+ */
+export async function resolvePackagePrice(
+  pkg: Pick<
+    Awaited<ReturnType<typeof getPackageById>>,
+    'bundled_price' | 'use_pricing_matrix'
+  >,
+  memberRows: Array<{
+    category: ServiceCategory;
+    base_price: number;
+    use_pricing_matrix: boolean;
+  }>,
+  pet: PetRow
+): Promise<number> {
+  if (!pkg.use_pricing_matrix || memberRows.length === 0) {
+    return Number(pkg.bundled_price);
+  }
+
+  const pricingConfiguration = await getPricingConfiguration();
+  const memberPrices = memberRows.map((row) =>
+    resolveServicePrice(
+      {
+        category: row.category,
+        base_price: row.base_price,
+        use_pricing_matrix: row.use_pricing_matrix,
+        service_pricing_tiers:
+          row.category === 'Grooming' && row.use_pricing_matrix
+            ? deriveGroomingMatrix(Number(row.base_price), pricingConfiguration)
+            : [],
+      },
+      pet
+    )
+  );
+
+  const packagePricingConfiguration = await getPackagePricingConfiguration();
+  return deriveBundledPrice(memberPrices, packagePricingConfiguration);
 }
 
 async function resolveBookingItems(
@@ -266,6 +353,61 @@ async function resolveBookingItems(
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+interface FreePackageAward {
+  packageId: string;
+  packageName: string;
+  nights: number;
+}
+
+/**
+ * Custom change (Hotel fixed-price service + free package trigger): "when
+ * nights # condition is reached... notify the customer and receptionist,
+ * and update the booking receipt" (board: "5+ nights with free Golden
+ * Package"). Hotel bookings are single-select (one service, per
+ * CustomerBookingFlowPage), so the one Hotel service_id item in `items` (if
+ * any) is checked against its own min_nights_for_free_package/
+ * free_package_name. The package is resolved by (branch_id, name) rather
+ * than a direct FK, since packages are seeded one row per branch while this
+ * services row is branch-independent (see migration
+ * 20260807105_m13_hotel_fixed_price_service.sql).
+ */
+async function resolveFreePackageAward(
+  input: CreateBookingInput
+): Promise<FreePackageAward | null> {
+  if (input.service_category !== 'Hotel') return null;
+
+  const hotelServiceItem = input.items.find(
+    (item): item is { service_id: string } => 'service_id' in item
+  );
+  if (!hotelServiceItem) return null;
+
+  const service = await getServiceById(hotelServiceItem.service_id);
+  if (!service.min_nights_for_free_package || !service.free_package_name) {
+    return null;
+  }
+
+  const nights = resolveQuantity(
+    input.service_category,
+    input.scheduled_start,
+    input.scheduled_end,
+    service.duration_minutes ?? 1440
+  );
+
+  if (nights < service.min_nights_for_free_package) return null;
+
+  const { data: pkg, error } = await supabase
+    .from('packages')
+    .select('id, name')
+    .eq('branch_id', input.branch_id)
+    .eq('name', service.free_package_name)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error || !pkg) return null;
+
+  return { packageId: pkg.id, packageName: pkg.name, nights };
 }
 
 async function resolveBranchScope(
@@ -581,7 +723,7 @@ export async function createBooking({
 
   const { data: pet, error: petError } = await supabase
     .from('pets')
-    .select('id, customer_id, weight_class, coat_type')
+    .select('id, customer_id, pet_type, weight_class, coat_type')
     .eq('id', input.pet_id)
     .maybeSingle();
 
@@ -611,6 +753,17 @@ export async function createBooking({
     input.scheduled_start,
     input.scheduled_end
   );
+
+  const freePackageAward = await resolveFreePackageAward(input);
+
+  if (freePackageAward) {
+    resolvedItems.push({
+      service_id: null,
+      package_id: freePackageAward.packageId,
+      price_at_booking: 0,
+      duration_minutes_at_booking: 0,
+    });
+  }
 
   const totalPrice = resolvedItems.reduce(
     (sum, item) => sum + item.price_at_booking,
@@ -740,6 +893,31 @@ export async function createBooking({
   }
 
   await sendBookingConfirmedNotification(booking);
+
+  if (freePackageAward) {
+    // Reuses the 'booking_confirmed' event type rather than adding a ninth
+    // (notifications.types.ts documents the enum as "exact 8 values per
+    // Modules-Features") - this notification is itself an update to the
+    // just-confirmed Hotel booking, so the existing event type already fits.
+    const message = `${freePackageAward.nights}+ nights unlocked a free ${freePackageAward.packageName} for this stay.`;
+
+    await createNotification({
+      recipientCustomerId: booking.customer_id,
+      eventType: 'booking_confirmed',
+      title: 'Free package unlocked!',
+      message,
+      relatedBookingId: booking.id,
+    });
+
+    await notifyStaffRoleAtBranch({
+      role: 'Receptionist',
+      branchId: booking.branch_id,
+      eventType: 'booking_confirmed',
+      title: 'Free package unlocked for a Hotel booking',
+      message: `${message} (Booking ${booking.id})`,
+      relatedBookingId: booking.id,
+    });
+  }
 
   return getBookingById({ requesterId, bookingId: booking.id });
 }

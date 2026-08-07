@@ -6,6 +6,8 @@ export type CageStatus =
   | 'Under Maintenance';
 export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
+export type StayType = 'Hotel' | 'Daycare';
+export type StayStatus = 'Active' | 'Completed';
 
 export interface Cage {
   id: string;
@@ -17,16 +19,26 @@ export interface Cage {
   updated_at: string;
 }
 
+/** Custom change (Daycare/Hotel parity): the server's `stays` table
+ * (renamed from hotel_stays) now also backs Daycare check-ins - see
+ * daycare.types.ts's DaycareSession, a type alias of this same shape. */
 export interface HotelStay {
   id: string;
-  booking_id: string;
+  stay_type: StayType;
+  booking_id: string | null;
   pet_id: string;
+  branch_id: string;
   cage_id: string;
+  status: StayStatus;
   check_in_at: string | null;
-  scheduled_check_out_date: string;
+  scheduled_check_out_date: string | null;
   actual_check_out_at: string | null;
-  downpayment_amount: number;
+  downpayment_amount: number | null;
   extension_fee: number | null;
+  computed_charge: number | null;
+  /** Custom change (Daycare fee configuration): the service this stay's
+   * fee schedule comes from - Daycare-only in practice today. */
+  service_id: string | null;
   notify_opt_in: boolean;
   created_by_staff_id: string;
   created_at: string;
@@ -92,7 +104,7 @@ export interface MedicationInstructionPayload {
 
 export interface CareLogEntry {
   id: string;
-  hotel_stay_id: string;
+  stay_id: string;
   care_type: 'Feeding' | 'Walking' | 'Medication' | 'Playing';
   scheduled_date: string;
   description: string;

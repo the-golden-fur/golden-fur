@@ -135,7 +135,7 @@ describe('createBookingValidator', () => {
     ).toBe(true);
   });
 
-  it('rejects hotel_preferences on a non-Hotel booking', () => {
+  it('rejects hotel_preferences on a non-Hotel, non-Daycare booking', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
@@ -147,6 +147,25 @@ describe('createBookingValidator', () => {
         },
       }).success
     ).toBe(false);
+  });
+
+  it('Custom change (Daycare/Hotel parity follow-up): accepts hotel_preferences on a Daycare booking too', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Daycare',
+        hotel_preferences: {
+          feeding: [
+            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(true);
   });
 
   it('accepts hotel_preferences with catalog linkage from the staff booking flow', () => {

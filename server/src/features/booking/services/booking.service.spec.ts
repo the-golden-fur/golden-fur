@@ -4,6 +4,8 @@ import {
   createBooking,
   listBookings,
   overrideBookingStatus,
+  resolvePackagePrice,
+  resolveServicePrice,
   startBooking,
 } from './booking.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -100,6 +102,7 @@ const CUSTOMER_ID = 'cust-1';
 const PET = {
   id: 'pet-1',
   customer_id: CUSTOMER_ID,
+  pet_type: 'Dog',
   weight_class: 'S',
   coat_type: 'SC',
 };
@@ -108,8 +111,16 @@ const PET = {
 const UNASSESSED_PET = {
   id: 'pet-2',
   customer_id: CUSTOMER_ID,
+  pet_type: 'Dog',
   weight_class: null,
   coat_type: null,
+};
+const CAT_PET = {
+  id: 'pet-3',
+  customer_id: CUSTOMER_ID,
+  pet_type: 'Cat',
+  weight_class: 'S',
+  coat_type: 'SC',
 };
 
 const DEFAULT_POLICY = {
@@ -129,7 +140,23 @@ const GROOMING_SERVICE = {
   base_price: 300,
   is_active: true,
   requires_assessed_pet: true,
+  use_pricing_matrix: true,
   service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
+} as never;
+
+// Custom change (pricing matrix fix): individual add-on services default to
+// flat pricing now - use_pricing_matrix: false means the tier is never
+// consulted even though one exists on this fixture, matching the board's
+// "individual services don't vary by size/coat" pricing.
+const FLAT_GROOMING_SERVICE = {
+  id: 'service-flat-groom',
+  category: 'Grooming',
+  name: 'Nail Trim',
+  base_price: 100,
+  is_active: true,
+  requires_assessed_pet: true,
+  use_pricing_matrix: false,
+  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 999 }],
 } as never;
 
 const ASSESSMENT_SERVICE = {
@@ -139,6 +166,7 @@ const ASSESSMENT_SERVICE = {
   base_price: 0,
   is_active: true,
   requires_assessed_pet: false,
+  use_pricing_matrix: false,
   service_pricing_tiers: [],
 } as never;
 
@@ -1133,6 +1161,129 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({ total_price: 800 });
+    });
+  });
+
+  // Custom change (Fix pricing matrix, P-1): "Coat and weight doesn't seem
+  // to influence individual service" (fixed by making the matrix opt-in per
+  // service/package via use_pricing_matrix) and "Cat has no weight class or
+  // coat type, fixed price" (fixed by always using the flat base_price for
+  // a Cat pet, regardless of the matrix flag).
+  describe('pricing matrix (custom change)', () => {
+    const PRICING_CONFIG = {
+      id: 'pricing-config-1',
+      size_s_rule_type: 'multiplier',
+      size_s_rule_value: 1.0,
+      size_m_rule_type: 'multiplier',
+      size_m_rule_value: 1.1,
+      size_l_rule_type: 'multiplier',
+      size_l_rule_value: 1.25,
+      size_xl_rule_type: 'multiplier',
+      size_xl_rule_value: 1.5,
+      coat_long_rule_type: 'flat',
+      coat_long_rule_value: 0,
+      updated_by_staff_id: null,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    const PACKAGE_PRICING_CONFIG = {
+      id: 'package-pricing-config-1',
+      bundle_discount_percentage: 0.1,
+      updated_by_staff_id: null,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    it('resolveServicePrice: a matrix-enabled Grooming service returns the matching tier for a Dog', () => {
+      const price = resolveServicePrice(
+        {
+          category: 'Grooming',
+          base_price: 300,
+          use_pricing_matrix: true,
+          service_pricing_tiers: [
+            { weight_class: 'S', coat_type: 'SC', price: 350 },
+          ],
+        },
+        PET as never
+      );
+
+      expect(price).toBe(350);
+    });
+
+    it('resolveServicePrice: a non-matrix Grooming service ignores a matching tier (individual add-on services)', () => {
+      const price = resolveServicePrice(
+        {
+          category: 'Grooming',
+          base_price: 100,
+          use_pricing_matrix: false,
+          service_pricing_tiers: [
+            { weight_class: 'S', coat_type: 'SC', price: 999 },
+          ],
+        },
+        PET as never
+      );
+
+      expect(price).toBe(100);
+    });
+
+    it('resolveServicePrice: a Cat pet always gets the flat base_price, even for a matrix-enabled service', () => {
+      const price = resolveServicePrice(
+        {
+          category: 'Grooming',
+          base_price: 300,
+          use_pricing_matrix: true,
+          service_pricing_tiers: [
+            { weight_class: 'S', coat_type: 'SC', price: 350 },
+          ],
+        },
+        CAT_PET as never
+      );
+
+      expect(price).toBe(300);
+    });
+
+    it('resolvePackagePrice: a non-matrix package uses the flat bundled_price regardless of members', async () => {
+      const price = await resolvePackagePrice(
+        { bundled_price: 999, use_pricing_matrix: false },
+        [{ category: 'Grooming', base_price: 300, use_pricing_matrix: true }],
+        PET as never
+      );
+
+      expect(price).toBe(999);
+    });
+
+    it("resolvePackagePrice: a matrix-enabled package sums each member's own per-pet price, bundle-discounted", async () => {
+      queueFromResults(
+        { data: PRICING_CONFIG, error: null }, // getPricingConfiguration
+        { data: PACKAGE_PRICING_CONFIG, error: null } // getPackagePricingConfiguration
+      );
+
+      const price = await resolvePackagePrice(
+        { bundled_price: 999, use_pricing_matrix: true },
+        [
+          { category: 'Grooming', base_price: 300, use_pricing_matrix: true }, // S multiplier 1.0 -> 300
+          { category: 'Grooming', base_price: 100, use_pricing_matrix: false }, // flat -> 100
+        ],
+        PET as never // S/SC
+      );
+
+      // (300 + 100) * (1 - 0.10) = 360
+      expect(price).toBe(360);
+    });
+
+    it("resolvePackagePrice: a Cat pet gets every member's flat base_price even when matrix-enabled", async () => {
+      queueFromResults(
+        { data: PRICING_CONFIG, error: null },
+        { data: PACKAGE_PRICING_CONFIG, error: null }
+      );
+
+      const price = await resolvePackagePrice(
+        { bundled_price: 999, use_pricing_matrix: true },
+        [{ category: 'Grooming', base_price: 300, use_pricing_matrix: true }],
+        CAT_PET as never
+      );
+
+      // 300 * (1 - 0.10) = 270
+      expect(price).toBe(270);
     });
   });
 });

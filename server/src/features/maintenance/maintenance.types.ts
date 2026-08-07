@@ -49,17 +49,28 @@ export interface ServicePricingTier {
   price: number;
 }
 
+/** Custom change (configurable pricing rules): each size (and Long coat)
+ * derives its own adjustment independently - a flat multiplier is no longer
+ * the only option. `percentage` is always a percentage of the service's own
+ * base_price, never of another rule's already-adjusted result. */
+export type PricingRuleType = 'multiplier' | 'flat' | 'percentage';
+
 /** Epic B (#80): the shared, singleton grooming size/coat calculation.
- * daycare_overnight_fee (#22) is unrelated to grooming but reuses this same
- * singleton, Admin/Superadmin-editable row rather than a new table. */
+ * daycare_overnight_fee used to live here too (#22) but was moved to
+ * services.daycare_overnight_fee (Custom change: Daycare fee
+ * configuration) - a per-service fee, not a Grooming pricing rule. */
 export interface PricingConfiguration {
   id: string;
-  size_s_multiplier: number;
-  size_m_multiplier: number;
-  size_l_multiplier: number;
-  size_xl_multiplier: number;
-  long_coat_addon: number;
-  daycare_overnight_fee: number;
+  size_s_rule_type: PricingRuleType;
+  size_s_rule_value: number;
+  size_m_rule_type: PricingRuleType;
+  size_m_rule_value: number;
+  size_l_rule_type: PricingRuleType;
+  size_l_rule_value: number;
+  size_xl_rule_type: PricingRuleType;
+  size_xl_rule_value: number;
+  coat_long_rule_type: PricingRuleType;
+  coat_long_rule_value: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -101,6 +112,38 @@ export interface Service {
    * assessed onsite) may book this service - false only for the seeded
    * "Initial Assessment" service. See ...073_m02_pets_assessment_lock.sql. */
   requires_assessed_pet: boolean;
+  /** Hotel-only: booking this service for this many nights or more
+   * auto-awards free_package_name as a zero-priced booking_items row. NULL
+   * = no free-package condition. See ...105_m13_hotel_fixed_price_service.sql. */
+  min_nights_for_free_package: number | null;
+  /** Hotel-only: matched against packages.name at the booking's own
+   * branch_id when min_nights_for_free_package is met - not a direct FK,
+   * since packages are seeded one row per branch while this services row is
+   * branch-independent. */
+  free_package_name: string | null;
+  /** Custom change (pricing matrix fix): whether this service's price
+   * varies by the pet's weight_class/coat_type (Grooming only -
+   * meaningless elsewhere). Off by default for new services - only
+   * Bath/Blow-dry/Brushing are seeded on, matching the board's "individual
+   * services don't vary by size/coat" pricing. Always ignored for a Cat
+   * pet regardless of this flag - see resolveServicePrice in
+   * booking.service.ts. */
+  use_pricing_matrix: boolean;
+  /** Daycare-only: flat charge for the first hour (or less) of a session on
+   * this service. NULL falls back to the documented ₱100 default
+   * (daycareBilling.service.ts). */
+  first_hour_fee: number | null;
+  /** Daycare-only: charge per additional billable hour (rounded up) beyond
+   * the first, on this service. NULL falls back to the documented ₱50
+   * default. */
+  succeeding_hour_fee: number | null;
+  /** Daycare-only: charged per night when a pet on this service isn't
+   * picked up before closing, on top of the hourly charge. NULL falls back
+   * to the documented ₱850 default. Moved here from a shared
+   * policy_configurations column (Custom change: Daycare fee
+   * configuration) - "each Daycare-type service can have its own overnight
+   * fee." */
+  daycare_overnight_fee: number | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -134,6 +177,15 @@ export interface Package {
    * booking-creation time in booking.service.ts).
    */
   total_duration_minutes: number | null;
+  /** Custom change (pricing matrix fix): off by default (packages have
+   * never varied by pet before). When on, the booking-time price is
+   * derived as the sum of each included service's own per-pet price
+   * (respecting each member's own use_pricing_matrix flag and the Cat
+   * flat-price rule) with the bundle discount applied on top - see
+   * resolvePackagePrice in booking.service.ts - instead of this row's own
+   * flat bundled_price. bundled_price above still shows the flat estimate
+   * either way (an S/SC-equivalent reference figure for the admin list). */
+  use_pricing_matrix: boolean;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;

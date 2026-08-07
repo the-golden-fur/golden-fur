@@ -284,6 +284,7 @@ describe('AdminPackageBuilderPage', () => {
         branch_id: 'branch-southwoods',
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
+        use_pricing_matrix: false,
       });
     });
 

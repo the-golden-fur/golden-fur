@@ -7,37 +7,115 @@ import {
   updatePricingConfiguration,
 } from '../../api/maintenance.api';
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
-import type { PricingConfiguration } from '../../maintenance.types';
+import {
+  PRICING_RULE_TYPES,
+  type PricingConfiguration,
+  type PricingRuleType,
+} from '../../maintenance.types';
 import styles from './PricingConfigurationPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
+const RULE_TYPE_LABELS: Record<PricingRuleType, string> = {
+  multiplier: 'Multiplier',
+  flat: 'Flat add-on (PHP)',
+  percentage: 'Percentage add-on (% of base price)',
+};
+
+interface RuleFormState {
+  type: PricingRuleType;
+  value: string;
+}
+
 interface FormState {
-  sizeS: string;
-  sizeM: string;
-  sizeL: string;
-  sizeXl: string;
-  longCoatAddon: string;
-  daycareOvernightFee: string;
+  sizeSmall: RuleFormState;
+  sizeMedium: RuleFormState;
+  sizeLarge: RuleFormState;
+  sizeExtraLarge: RuleFormState;
+  coatLong: RuleFormState;
 }
 
 function formStateFromConfiguration(config: PricingConfiguration): FormState {
   return {
-    sizeS: String(config.size_s_multiplier),
-    sizeM: String(config.size_m_multiplier),
-    sizeL: String(config.size_l_multiplier),
-    sizeXl: String(config.size_xl_multiplier),
-    longCoatAddon: String(config.long_coat_addon),
-    daycareOvernightFee: String(config.daycare_overnight_fee),
+    sizeSmall: {
+      type: config.size_s_rule_type,
+      value: String(config.size_s_rule_value),
+    },
+    sizeMedium: {
+      type: config.size_m_rule_type,
+      value: String(config.size_m_rule_value),
+    },
+    sizeLarge: {
+      type: config.size_l_rule_type,
+      value: String(config.size_l_rule_value),
+    },
+    sizeExtraLarge: {
+      type: config.size_xl_rule_type,
+      value: String(config.size_xl_rule_value),
+    },
+    coatLong: {
+      type: config.coat_long_rule_type,
+      value: String(config.coat_long_rule_value),
+    },
   };
+}
+
+interface RuleFieldProps {
+  legend: string;
+  rule: RuleFormState;
+  onChange: (rule: RuleFormState) => void;
+}
+
+/**
+ * One size/coat rule: a type selector (Multiplier/Flat add-on/Percentage
+ * add-on) plus its value - custom change (configurable pricing rules), on
+ * live follow-up feedback that "long coat is just a flat price add on,
+ * shouldn't it be a multiplier as well" - every size and Long coat now
+ * configure their own type independently instead of size always being a
+ * multiplier and coat always being a flat add-on.
+ */
+function RuleField({ legend, rule, onChange }: RuleFieldProps) {
+  return (
+    <fieldset className={styles.ruleField}>
+      <legend className={styles.fieldLabel}>{legend}</legend>
+      <select
+        className={styles.input}
+        aria-label={`${legend} type`}
+        value={rule.type}
+        onChange={(event) =>
+          onChange({ ...rule, type: event.target.value as PricingRuleType })
+        }
+      >
+        {PRICING_RULE_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {RULE_TYPE_LABELS[type]}
+          </option>
+        ))}
+      </select>
+      <input
+        className={styles.input}
+        aria-label={`${legend} value`}
+        type="number"
+        min={rule.type === 'multiplier' ? '0.01' : '0'}
+        step="0.01"
+        inputMode="decimal"
+        value={rule.value}
+        onChange={(event) => onChange({ ...rule, value: event.target.value })}
+        required
+      />
+    </fieldset>
+  );
 }
 
 /**
  * Issue #81: single shared calculation that drives every Grooming service's
  * derived size/coat matrix - its own Maintenance sub-page rather than a modal
  * on a service form, since the rule is shared across services, not owned by
- * one (#81 Dev Notes).
+ * one (#81 Dev Notes). Custom change (configurable pricing rules): each size
+ * (Small/Medium/Large/Extra Large) and Long coat now configure their own
+ * rule type (Multiplier/Flat add-on/Percentage add-on) independently,
+ * instead of size always being a multiplier and coat always a flat add-on.
  */
 export function PricingConfigurationPage() {
   const { user, accessToken } = useAuth();
@@ -116,34 +194,41 @@ export function PricingConfigurationPage() {
       return;
     }
 
-    const sizeS = Number(form.sizeS);
-    const sizeM = Number(form.sizeM);
-    const sizeL = Number(form.sizeL);
-    const sizeXl = Number(form.sizeXl);
-    const longCoatAddon = Number(form.longCoatAddon);
-    const daycareOvernightFee = Number(form.daycareOvernightFee);
+    const rules = [
+      { label: 'Small size', rule: form.sizeSmall },
+      { label: 'Medium size', rule: form.sizeMedium },
+      { label: 'Large size', rule: form.sizeLarge },
+      { label: 'Extra Large size', rule: form.sizeExtraLarge },
+      { label: 'Long coat', rule: form.coatLong },
+    ];
 
-    if (
-      [sizeS, sizeM, sizeL, sizeXl].some((value) => !(value > 0)) ||
-      !(longCoatAddon >= 0) ||
-      !(daycareOvernightFee >= 0)
-    ) {
-      setFormError(
-        'Every size multiplier must be a positive number, and the long coat add-on and daycare overnight fee must be zero or more.'
-      );
-      return;
+    for (const { label, rule } of rules) {
+      const value = Number(rule.value);
+
+      if (!(value >= 0) || (rule.type === 'multiplier' && !(value > 0))) {
+        setFormError(
+          rule.type === 'multiplier'
+            ? `${label}'s multiplier must be a positive number.`
+            : `${label}'s value must be zero or more.`
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
     setFormError(null);
 
     const result = await updatePricingConfiguration(accessToken, {
-      size_s_multiplier: sizeS,
-      size_m_multiplier: sizeM,
-      size_l_multiplier: sizeL,
-      size_xl_multiplier: sizeXl,
-      long_coat_addon: longCoatAddon,
-      daycare_overnight_fee: daycareOvernightFee,
+      size_s_rule_type: form.sizeSmall.type,
+      size_s_rule_value: Number(form.sizeSmall.value),
+      size_m_rule_type: form.sizeMedium.type,
+      size_m_rule_value: Number(form.sizeMedium.value),
+      size_l_rule_type: form.sizeLarge.type,
+      size_l_rule_value: Number(form.sizeLarge.value),
+      size_xl_rule_type: form.sizeExtraLarge.type,
+      size_xl_rule_value: Number(form.sizeExtraLarge.value),
+      coat_long_rule_type: form.coatLong.type,
+      coat_long_rule_value: Number(form.coatLong.value),
     });
 
     setIsSubmitting(false);
@@ -214,11 +299,11 @@ export function PricingConfigurationPage() {
         <h1 className={styles.title}>Pricing Configuration</h1>
         <p className={styles.copy}>
           One shared calculation drives every Grooming service&apos;s size/coat
-          matrix. Changing a multiplier or the long coat add-on here updates the
-          derived matrix everywhere it is shown, not just one service. The
-          daycare overnight fee below is unrelated to grooming - it&apos;s the
-          flat per-night charge applied when a daycare pet isn&apos;t picked up
-          before closing.
+          matrix. Each size, and Long coat, has its own independently
+          configurable rule - a Multiplier scales the price, a Flat add-on adds
+          a fixed peso amount, and a Percentage add-on adds a percentage of the
+          service&apos;s own base price. Changing a rule here updates the
+          derived matrix everywhere it is shown, not just one service.
         </p>
 
         {message ? (
@@ -228,120 +313,41 @@ export function PricingConfigurationPage() {
         ) : null}
 
         <form className={styles.form} onSubmit={handleSubmit}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Size S multiplier</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={form.sizeS}
-              onChange={(event) =>
-                setForm(
-                  (prev) => prev && { ...prev, sizeS: event.target.value }
-                )
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Size M multiplier</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={form.sizeM}
-              onChange={(event) =>
-                setForm(
-                  (prev) => prev && { ...prev, sizeM: event.target.value }
-                )
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Size L multiplier</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={form.sizeL}
-              onChange={(event) =>
-                setForm(
-                  (prev) => prev && { ...prev, sizeL: event.target.value }
-                )
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Size XL multiplier</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              value={form.sizeXl}
-              onChange={(event) =>
-                setForm(
-                  (prev) => prev && { ...prev, sizeXl: event.target.value }
-                )
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Long coat add-on (PHP)</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={form.longCoatAddon}
-              onChange={(event) =>
-                setForm(
-                  (prev) =>
-                    prev && { ...prev, longCoatAddon: event.target.value }
-                )
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              Daycare overnight fee (PHP/night)
-            </span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={form.daycareOvernightFee}
-              onChange={(event) =>
-                setForm(
-                  (prev) =>
-                    prev && {
-                      ...prev,
-                      daycareOvernightFee: event.target.value,
-                    }
-                )
-              }
-              required
-            />
-          </label>
+          <RuleField
+            legend="Small size"
+            rule={form.sizeSmall}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, sizeSmall: rule })
+            }
+          />
+          <RuleField
+            legend="Medium size"
+            rule={form.sizeMedium}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, sizeMedium: rule })
+            }
+          />
+          <RuleField
+            legend="Large size"
+            rule={form.sizeLarge}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, sizeLarge: rule })
+            }
+          />
+          <RuleField
+            legend="Extra Large size"
+            rule={form.sizeExtraLarge}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, sizeExtraLarge: rule })
+            }
+          />
+          <RuleField
+            legend="Long coat"
+            rule={form.coatLong}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, coatLong: rule })
+            }
+          />
 
           {formError ? (
             <p className={styles.errorBanner} role="alert">
@@ -380,18 +386,25 @@ export function PricingConfigurationPage() {
             basePrice={Number(previewBasePrice) || 0}
             configuration={{
               ...configuration,
-              size_s_multiplier:
-                Number(form.sizeS) || configuration.size_s_multiplier,
-              size_m_multiplier:
-                Number(form.sizeM) || configuration.size_m_multiplier,
-              size_l_multiplier:
-                Number(form.sizeL) || configuration.size_l_multiplier,
-              size_xl_multiplier:
-                Number(form.sizeXl) || configuration.size_xl_multiplier,
-              long_coat_addon:
-                form.longCoatAddon === ''
-                  ? configuration.long_coat_addon
-                  : Number(form.longCoatAddon),
+              size_s_rule_type: form.sizeSmall.type,
+              size_s_rule_value:
+                Number(form.sizeSmall.value) || configuration.size_s_rule_value,
+              size_m_rule_type: form.sizeMedium.type,
+              size_m_rule_value:
+                Number(form.sizeMedium.value) ||
+                configuration.size_m_rule_value,
+              size_l_rule_type: form.sizeLarge.type,
+              size_l_rule_value:
+                Number(form.sizeLarge.value) || configuration.size_l_rule_value,
+              size_xl_rule_type: form.sizeExtraLarge.type,
+              size_xl_rule_value:
+                Number(form.sizeExtraLarge.value) ||
+                configuration.size_xl_rule_value,
+              coat_long_rule_type: form.coatLong.type,
+              coat_long_rule_value:
+                form.coatLong.value === ''
+                  ? configuration.coat_long_rule_value
+                  : Number(form.coatLong.value),
             }}
           />
         </section>

@@ -564,6 +564,98 @@ describe('CustomerBookingFlowPage', () => {
     ).toBeInTheDocument();
   }, 15000); // vitest's 5s default. // busy full-suite run (vs. this file in isolation) doesn't flake on // Long, many-step walk through the whole flow - generous timeout so a
 
+  it('Custom change (Daycare/Hotel parity follow-up): Daycare gets the same Care Instructions step as Hotel', async () => {
+    const DAYCARE_SERVICE = {
+      id: 'service-daycare-1',
+      category: 'Daycare' as const,
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      is_active: true,
+      requires_assessed_pet: true,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      daycare_overnight_fee: 850,
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    // Daycare has no Staff Picker step.
+    await advanceThroughAvailability(user, { staff: false });
+
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await user.click(screen.getByText('Next'));
+
+    // The step that used to only exist for Hotel now appears for Daycare
+    // too, with the same feeding/walking/playtime/medications sections
+    // (no per-night toggle - a Daycare session is a single day).
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Add feeding time' })
+      ).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByText('Same instructions every night')
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add feeding time' }));
+    const foodInput = await screen.findByPlaceholderText('Food type');
+    await user.click(foodInput);
+    await user.click(await screen.findByText('Premium Kibble'));
+
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'Cash' } });
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() =>
+      expect(bookingApi.createBooking).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          service_category: 'Daycare',
+          hotel_preferences: expect.objectContaining({
+            feeding: [
+              expect.objectContaining({
+                food_type: 'Premium Kibble',
+                food_catalog_id: 'food-1',
+              }),
+            ],
+          }),
+        })
+      )
+    );
+  });
+
   it('Hotel: selecting a second cage replaces the first (one cage per booking)', async () => {
     const SMALL_CAGE = {
       id: 'service-hotel-2',
@@ -702,7 +794,7 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Next'));
   }
 
-  it("switching category tabs preserves each tab's own selections", async () => {
+  it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
     const user = userEvent.setup();
     renderPage();
     await goToCategoryStep(user);
@@ -715,100 +807,29 @@ describe('CustomerBookingFlowPage', () => {
     // Both the option card and the running total show "PHP 300.00".
     expect(screen.getAllByText('PHP 300.00')).toHaveLength(2);
 
-    // Back to category step, browse to Hotel - Bath itself hasn't been
-    // deselected, just not the active tab's items anymore.
+    // Back to category step, switch to Hotel - Bath's pick is dropped the
+    // moment the category actually changes, not just once something new is
+    // picked - so there's nothing left to warn about.
     await user.click(screen.getByText('Back'));
     await user.click(screen.getByText('Back'));
     await waitFor(() =>
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Hotel'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
     await advanceThroughAvailability(user, { staff: false });
     await waitFor(() =>
       expect(screen.getByText('Hotel Stay - Medium Cage')).toBeInTheDocument()
     );
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
 
-    // Switching back to Grooming restores the selection.
+    // Switching back to Grooming does NOT restore the dropped selection.
     await user.click(screen.getByText('Back'));
     await user.click(screen.getByText('Back'));
     await user.click(screen.getByText('Grooming'));
     await advanceThroughAvailability(user, { staff: true });
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    expect(screen.getByText('Bath').closest('button')?.className).toMatch(
-      /selected/
-    );
-    expect(screen.getAllByText('PHP 300.00')).toHaveLength(2);
-  });
-
-  it('warns at the category step when another category still has picks', async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await goToCategoryStep(user);
-
-    await user.click(screen.getByText('Grooming'));
-
-    // No warning yet - Grooming is both the only category with picks and
-    // the active tab, so there's nothing "elsewhere" to warn about.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    await advanceThroughAvailability(user, { staff: true });
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    await user.click(screen.getByText('Bath'));
-
-    await user.click(screen.getByText('Back'));
-    await user.click(screen.getByText('Back'));
-    await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Hotel'));
-
-    const notice = screen.getByRole('alert');
-    expect(notice.textContent).toContain('Grooming');
-    expect(notice.textContent).toContain('Hotel');
-
-    // Switching back to the tab that actually holds the picks clears the
-    // warning again.
-    await user.click(screen.getByText('Grooming'));
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it("selecting an item in a different category clears the previous category's selection", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await goToCategoryStep(user);
-
-    await user.click(screen.getByText('Grooming'));
-    await advanceThroughAvailability(user, { staff: true });
-    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
-    await user.click(screen.getByText('Bath'));
-
-    await user.click(screen.getByText('Back'));
-    await user.click(screen.getByText('Back'));
-    await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
-    );
-
-    // Just browsing to Hotel's category tab doesn't clear Grooming's pick.
-    await user.click(screen.getByText('Hotel'));
-    expect(screen.getByRole('alert').textContent).toContain('Grooming');
-
-    await advanceThroughAvailability(user, { staff: false });
-    const cage = await screen.findByText('Hotel Stay - Medium Cage');
-
-    // Actually selecting something here clears Grooming's pick.
-    await user.click(cage);
-
-    await user.click(screen.getByText('Back'));
-    await user.click(screen.getByText('Back'));
-    await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
-    );
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    await user.click(screen.getByText('Grooming'));
-    await advanceThroughAvailability(user, { staff: true });
-    await waitFor(() => expect(screen.queryByText('Bath')).toBeInTheDocument());
     expect(screen.getByText('Bath').closest('button')?.className).not.toMatch(
       /selected/
     );

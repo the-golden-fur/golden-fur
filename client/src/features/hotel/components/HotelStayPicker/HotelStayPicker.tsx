@@ -154,9 +154,11 @@ export function HotelStayPicker({
       item.ownerName.toLowerCase().includes(query) ||
       item.stay.cage_label.toLowerCase().includes(query),
     comparators: {
+      // scheduled_check_out_date/downpayment_amount are only ever null for a
+      // Daycare stay - this picker only ever lists Hotel stays.
       'checkout-soonest': (a, b) =>
-        new Date(a.stay.scheduled_check_out_date).getTime() -
-        new Date(b.stay.scheduled_check_out_date).getTime(),
+        new Date(a.stay.scheduled_check_out_date!).getTime() -
+        new Date(b.stay.scheduled_check_out_date!).getTime(),
       'checkin-soonest': (a, b) =>
         new Date(a.stay.check_in_at ?? 0).getTime() -
         new Date(b.stay.check_in_at ?? 0).getTime(),
@@ -215,7 +217,7 @@ export function HotelStayPicker({
                   <span className={styles.cageBadge}>
                     {item.stay.cage_label}
                   </span>
-                  {isOverdue(item.stay.scheduled_check_out_date) ? (
+                  {isOverdue(item.stay.scheduled_check_out_date!) ? (
                     <span className={styles.overdueBadge}>Overdue</span>
                   ) : null}
                 </div>
@@ -228,10 +230,11 @@ export function HotelStayPicker({
                   </span>
                 ) : null}
                 <span className={styles.metaLine}>
-                  Checkout due: {formatDate(item.stay.scheduled_check_out_date)}
+                  Checkout due:{' '}
+                  {formatDate(item.stay.scheduled_check_out_date!)}
                 </span>
                 <span className={styles.metaLine}>
-                  Downpayment: PHP {item.stay.downpayment_amount.toFixed(2)}
+                  Downpayment: PHP {item.stay.downpayment_amount!.toFixed(2)}
                 </span>
               </button>
             </li>

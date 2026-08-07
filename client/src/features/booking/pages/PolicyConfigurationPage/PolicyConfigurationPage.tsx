@@ -95,7 +95,10 @@ const DOCUMENTED_DEFAULTS: FormState = {
  * notice period (read by reschedule.service.ts and the Bookings Queue's
  * Reschedule button gate), Staff Picker visibility, and the fixed lunch
  * break - system-wide default or per-branch override, same branch-selector
- * UX as System Configuration.
+ * UX as System Configuration. (The Daycare overnight fee briefly lived here
+ * too - Custom change: Daycare fee configuration - but moved to be
+ * per-service instead, on live follow-up feedback, so each Daycare service
+ * can set its own; see AdminServicesPage.)
  */
 export function PolicyConfigurationPage() {
   const { user, accessToken } = useAuth();

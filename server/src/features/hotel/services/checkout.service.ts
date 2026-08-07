@@ -50,31 +50,40 @@ interface CheckoutParams {
  * transactions row is created.
  * TODO(Sprint 5, M08): replace with a real transaction-creation call.
  *
- * Booking-status revision: hotel_stays no longer has its own status column,
- * so checkout is only possible while the joined booking is 'In Progress',
- * and completeBooking() is what actually advances the booking (In Progress
- * -> Completed/Paid). completeBooking's own read-then-write isn't itself
- * atomic against a second concurrent checkout call for the same stay (it
- * reads the booking, checks status, then writes - no conditional guard in
- * the UPDATE itself), so it alone would NOT reproduce the single-writer
- * guarantee the old `.eq('status', 'Active')` conditional update gave us.
- * The real race gate is still a conditional UPDATE against hotel_stays -
- * `actual_check_out_at IS NULL` takes over from the dropped `status =
- * 'Active'` predicate (both columns were kept for exactly this kind of
- * reason - see the M05 migration notes). Only the request that wins that
- * conditional update goes on to release the cage / return a result; the
- * loser gets the same 409 as before. completeBooking is called first so an
- * illegal transition (e.g. the booking was never started) fails fast without
- * mutating hotel_stays at all.
+ * Booking-status revision: for Hotel, checkout gating still keys off the
+ * joined booking's status ('In Progress' required) rather than the stays
+ * row's own `status` column - completeBooking() is what actually advances
+ * the booking (In Progress -> Completed/Paid). completeBooking's own
+ * read-then-write isn't itself atomic against a second concurrent checkout
+ * call for the same stay (it reads the booking, checks status, then writes
+ * - no conditional guard in the UPDATE itself), so it alone would NOT
+ * reproduce a single-writer guarantee. The real race gate is a conditional
+ * UPDATE against `stays` - `actual_check_out_at IS NULL` (both this and
+ * `status` are kept in sync at checkout, but `actual_check_out_at` is the
+ * one this conditional update actually guards on). Only the request that
+ * wins that conditional update goes on to release the cage / return a
+ * result; the loser gets the same 409 as before. completeBooking is called
+ * first so an illegal transition (e.g. the booking was never started) fails
+ * fast without mutating `stays` at all.
+ *
+ * Custom change (Daycare/Hotel parity, migration 20260807104): `stays.status`
+ * was reintroduced (it originally lived on hotel_stays, then was dropped by
+ * the booking-status revision, then came back once Daycare walk-ins - which
+ * have no booking at all - needed to share this table). Hotel rows keep
+ * setting it here for read-path consistency (careLogCompletion.service.ts /
+ * careLogFlagging.service.ts now filter on `stays.status` directly instead
+ * of joining through `bookings`), even though this function's own gating
+ * still authoritatively reads the booking's status, not this column.
  */
 export async function checkOutHotelStay({
   stayId,
   branchId,
 }: CheckoutParams): Promise<CheckoutResult> {
   const { data: stay, error: stayError } = await supabase
-    .from('hotel_stays')
+    .from('stays')
     .select('*, cages!inner(branch_id), bookings!inner(total_price, status)')
     .eq('id', stayId)
+    .eq('stay_type', 'Hotel')
     .maybeSingle();
 
   if (stayError) throwWithStatus(400, stayError.message);
@@ -106,8 +115,9 @@ export async function checkOutHotelStay({
   await completeBooking({ bookingId: stay.booking_id });
 
   const { data: updated, error: updateError } = await supabase
-    .from('hotel_stays')
+    .from('stays')
     .update({
+      status: 'Completed',
       actual_check_out_at: now.toISOString(),
       extension_fee: extensionFee,
       updated_at: now.toISOString(),

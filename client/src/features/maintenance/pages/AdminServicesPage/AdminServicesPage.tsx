@@ -35,6 +35,12 @@ interface ServiceFormState {
   basePrice: string;
   durationMinutes: string;
   requiresAssessedPet: boolean;
+  minNightsForFreePackage: string;
+  freePackageName: string;
+  usePricingMatrix: boolean;
+  firstHourFee: string;
+  succeedingHourFee: string;
+  daycareOvernightFee: string;
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -43,6 +49,12 @@ const EMPTY_FORM: ServiceFormState = {
   basePrice: '',
   durationMinutes: '',
   requiresAssessedPet: true,
+  minNightsForFreePackage: '',
+  freePackageName: '',
+  usePricingMatrix: false,
+  firstHourFee: '',
+  succeedingHourFee: '',
+  daycareOvernightFee: '',
 };
 
 function formStateFromService(service: Service): ServiceFormState {
@@ -53,6 +65,22 @@ function formStateFromService(service: Service): ServiceFormState {
     durationMinutes:
       service.duration_minutes === null ? '' : String(service.duration_minutes),
     requiresAssessedPet: service.requires_assessed_pet,
+    minNightsForFreePackage:
+      service.min_nights_for_free_package === null
+        ? ''
+        : String(service.min_nights_for_free_package),
+    freePackageName: service.free_package_name ?? '',
+    usePricingMatrix: service.use_pricing_matrix,
+    firstHourFee:
+      service.first_hour_fee === null ? '' : String(service.first_hour_fee),
+    succeedingHourFee:
+      service.succeeding_hour_fee === null
+        ? ''
+        : String(service.succeeding_hour_fee),
+    daycareOvernightFee:
+      service.daycare_overnight_fee === null
+        ? ''
+        : String(service.daycare_overnight_fee),
   };
 }
 
@@ -266,15 +294,60 @@ export function AdminServicesPage() {
       return;
     }
 
+    if (form.name.trim() === '') {
+      setFormError('A name is required.');
+      return;
+    }
+
+    // Custom change (Daycare fee configuration follow-up): base_price isn't
+    // admin-entered for Daycare - the server derives it from first_hour_fee
+    // instead (services.service.ts), so it's neither shown nor validated
+    // here for that category.
     const basePrice = Number(form.basePrice);
 
-    if (form.name.trim() === '' || form.basePrice === '' || basePrice < 0) {
-      setFormError('A name and a non-negative base price are required.');
+    if (
+      form.category !== 'Daycare' &&
+      (form.basePrice === '' || basePrice < 0)
+    ) {
+      setFormError('A non-negative base price is required.');
+      return;
+    }
+
+    const firstHourFee =
+      form.firstHourFee === '' ? undefined : Number(form.firstHourFee);
+    const succeedingHourFee =
+      form.succeedingHourFee === ''
+        ? undefined
+        : Number(form.succeedingHourFee);
+    const daycareOvernightFee =
+      form.daycareOvernightFee === ''
+        ? undefined
+        : Number(form.daycareOvernightFee);
+
+    if (
+      form.category === 'Daycare' &&
+      (firstHourFee === undefined ||
+        succeedingHourFee === undefined ||
+        firstHourFee < 0 ||
+        succeedingHourFee < 0 ||
+        (daycareOvernightFee !== undefined && daycareOvernightFee < 0))
+    ) {
+      setFormError(
+        'A Daycare service needs a non-negative first-hour fee and succeeding-hour fee.'
+      );
       return;
     }
 
     const durationMinutes =
       form.durationMinutes === '' ? undefined : Number(form.durationMinutes);
+    const minNightsForFreePackage =
+      form.category === 'Hotel' && form.minNightsForFreePackage !== ''
+        ? Number(form.minNightsForFreePackage)
+        : undefined;
+    const freePackageName =
+      form.category === 'Hotel' && form.freePackageName.trim() !== ''
+        ? form.freePackageName.trim()
+        : undefined;
 
     setIsSubmitting(true);
     setFormError(null);
@@ -283,10 +356,24 @@ export function AdminServicesPage() {
       const result = await createService(accessToken, {
         name: form.name.trim(),
         category: form.category,
-        base_price: basePrice,
         requires_assessed_pet: form.requiresAssessedPet,
+        use_pricing_matrix: form.usePricingMatrix,
+        ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
         ...(durationMinutes !== undefined
           ? { duration_minutes: durationMinutes }
+          : {}),
+        ...(minNightsForFreePackage !== undefined
+          ? { min_nights_for_free_package: minNightsForFreePackage }
+          : {}),
+        ...(freePackageName !== undefined
+          ? { free_package_name: freePackageName }
+          : {}),
+        ...(firstHourFee !== undefined ? { first_hour_fee: firstHourFee } : {}),
+        ...(succeedingHourFee !== undefined
+          ? { succeeding_hour_fee: succeedingHourFee }
+          : {}),
+        ...(daycareOvernightFee !== undefined
+          ? { daycare_overnight_fee: daycareOvernightFee }
           : {}),
       });
 
@@ -306,9 +393,15 @@ export function AdminServicesPage() {
     const payload: UpdateServicePayload = {
       name: form.name.trim(),
       category: form.category,
-      base_price: basePrice,
       duration_minutes: durationMinutes ?? null,
       requires_assessed_pet: form.requiresAssessedPet,
+      min_nights_for_free_package: minNightsForFreePackage ?? null,
+      free_package_name: freePackageName ?? null,
+      use_pricing_matrix: form.usePricingMatrix,
+      first_hour_fee: firstHourFee ?? null,
+      succeeding_hour_fee: succeedingHourFee ?? null,
+      daycare_overnight_fee: daycareOvernightFee ?? null,
+      ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
     };
 
     const result = await updateService(editingServiceId, accessToken, payload);
@@ -490,24 +583,26 @@ export function AdminServicesPage() {
                 </select>
               </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Base price (PHP)</span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={form.basePrice}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      basePrice: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
+              {form.category !== 'Daycare' ? (
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Base price (PHP)</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={form.basePrice}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        basePrice: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+              ) : null}
 
               {form.category === 'Hotel' || form.category === 'Daycare' ? (
                 <label className={styles.field}>
@@ -531,11 +626,134 @@ export function AdminServicesPage() {
                 </label>
               ) : null}
 
-              {form.category === 'Grooming' && pricingConfiguration ? (
+              {form.category === 'Grooming' ? (
+                <ToggleSwitch
+                  label="Derive price from weight/coat matrix (off = flat base price for every pet, except this never applies to Cats either way)"
+                  checked={form.usePricingMatrix}
+                  onChange={(checked) =>
+                    setForm((prev) => ({ ...prev, usePricingMatrix: checked }))
+                  }
+                />
+              ) : null}
+
+              {form.category === 'Grooming' &&
+              form.usePricingMatrix &&
+              pricingConfiguration ? (
                 <PricingMatrixPreview
                   basePrice={Number(form.basePrice) || 0}
                   configuration={pricingConfiguration}
                 />
+              ) : null}
+
+              {form.category === 'Hotel' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Free package after this many nights (optional)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      placeholder="e.g. 5"
+                      value={form.minNightsForFreePackage}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          minNightsForFreePackage: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Free package name (matched against this branch&apos;s
+                      packages at booking time)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="text"
+                      placeholder="e.g. Golden Package"
+                      value={form.freePackageName}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          freePackageName: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              {form.category === 'Daycare' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      First hour fee (PHP)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="e.g. 100"
+                      value={form.firstHourFee}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          firstHourFee: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Succeeding hour fee (PHP, per additional billable hour)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="e.g. 50"
+                      value={form.succeedingHourFee}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          succeedingHourFee: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Overnight fee (PHP/night, charged when not picked up
+                      before closing - optional, defaults to ₱850)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="e.g. 850"
+                      value={form.daycareOvernightFee}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          daycareOvernightFee: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
               ) : null}
 
               <ToggleSwitch
@@ -583,12 +801,41 @@ export function AdminServicesPage() {
                   <span className={styles.categoryBadge}>
                     {service.category}
                   </span>
-                  <span className={styles.servicePrice}>
-                    PHP {service.base_price.toFixed(2)}
-                  </span>
+                  {service.category !== 'Daycare' ? (
+                    <span className={styles.servicePrice}>
+                      PHP {service.base_price.toFixed(2)}
+                    </span>
+                  ) : null}
                   {!service.requires_assessed_pet ? (
                     <span className={styles.categoryBadge}>
                       No assessment required
+                    </span>
+                  ) : null}
+                  {service.category === 'Grooming' &&
+                  service.use_pricing_matrix ? (
+                    <span className={styles.categoryBadge}>
+                      Varies by weight/coat
+                    </span>
+                  ) : null}
+                  {service.min_nights_for_free_package &&
+                  service.free_package_name ? (
+                    <span className={styles.categoryBadge}>
+                      {service.min_nights_for_free_package}+ nights: free{' '}
+                      {service.free_package_name}
+                    </span>
+                  ) : null}
+                  {service.category === 'Daycare' &&
+                  service.first_hour_fee !== null &&
+                  service.succeeding_hour_fee !== null ? (
+                    <span className={styles.categoryBadge}>
+                      PHP {service.first_hour_fee.toFixed(2)} first hr, PHP{' '}
+                      {service.succeeding_hour_fee.toFixed(2)}/hr after
+                    </span>
+                  ) : null}
+                  {service.category === 'Daycare' ? (
+                    <span className={styles.categoryBadge}>
+                      PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}
+                      /night if not picked up
                     </span>
                   ) : null}
                   <StatusBadge isActive={service.is_active} />

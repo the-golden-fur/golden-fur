@@ -197,11 +197,16 @@ export type RescheduleFeeType = 'Flat' | 'Percentage';
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
- * Freetext preferences captured at booking time for a Hotel booking, so the
- * check-in form (M05's structured, staff-only, billable care instructions -
- * see hotel.types.ts) can be pre-filled instead of starting blank. Not the
- * authoritative care record - the receptionist still confirms/edits
- * everything at physical check-in.
+ * Freetext preferences captured at booking time for a Hotel OR Daycare
+ * booking (Custom change: Daycare/Hotel parity follow-up - "make daycare
+ * the same as hotel" extends to this step too), so the check-in form (M05's
+ * structured, staff-only, billable care instructions - see hotel.types.ts)
+ * can be pre-filled instead of starting blank. Not the authoritative care
+ * record - the receptionist still confirms/edits everything at physical
+ * check-in. Named/typed Hotel-specific (also the `bookings.hotel_preferences`
+ * column) since Hotel had it first - reused as-is for Daycare rather than
+ * adding a parallel `daycare_preferences` field, since the shape is
+ * identical and category-agnostic.
  */
 /** null/undefined stay_date = applies to every night of the stay (the "same
  * instructions every night" default); a specific date scopes the row to

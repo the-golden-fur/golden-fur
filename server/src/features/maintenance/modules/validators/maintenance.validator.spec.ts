@@ -61,6 +61,37 @@ describe('createServiceValidator', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('rejects a non-Daycare service with no base_price (Custom change: Daycare fee configuration follow-up)', () => {
+    const result = createServiceValidator.safeParse({
+      name: 'Bath',
+      category: 'Grooming',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a Daycare service with no base_price, given first/succeeding-hour fees', () => {
+    const result = createServiceValidator.safeParse({
+      name: 'Daycare (per hour)',
+      category: 'Daycare',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a Daycare service missing succeeding_hour_fee, even with base_price present', () => {
+    const result = createServiceValidator.safeParse({
+      name: 'Daycare (per hour)',
+      category: 'Daycare',
+      base_price: 100,
+      first_hour_fee: 100,
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updateServiceValidator', () => {
@@ -355,25 +386,46 @@ describe('updateBreedValidator', () => {
   });
 });
 
-describe('updatePricingConfigurationValidator (Epic B #80)', () => {
-  it('accepts a partial multiplier update', () => {
+describe('updatePricingConfigurationValidator (Epic B #80; custom change: configurable pricing rules)', () => {
+  it('accepts a partial rule-value update', () => {
     expect(
-      updatePricingConfigurationValidator.safeParse({ long_coat_addon: 75 })
-        .success
+      updatePricingConfigurationValidator.safeParse({
+        coat_long_rule_value: 75,
+      }).success
     ).toBe(true);
   });
 
-  it('rejects a non-positive multiplier', () => {
+  it('accepts a flat/percentage rule of exactly 0', () => {
     expect(
-      updatePricingConfigurationValidator.safeParse({ size_s_multiplier: 0 })
-        .success
+      updatePricingConfigurationValidator.safeParse({
+        coat_long_rule_type: 'flat',
+        coat_long_rule_value: 0,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a multiplier rule of exactly 0 when both fields are in the same request', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({
+        size_s_rule_type: 'multiplier',
+        size_s_rule_value: 0,
+      }).success
     ).toBe(false);
   });
 
-  it('rejects a negative long_coat_addon', () => {
+  it('rejects a negative rule value', () => {
     expect(
-      updatePricingConfigurationValidator.safeParse({ long_coat_addon: -1 })
-        .success
+      updatePricingConfigurationValidator.safeParse({
+        coat_long_rule_value: -1,
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects an unrecognized rule type', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({
+        size_s_rule_type: 'exponential',
+      }).success
     ).toBe(false);
   });
 });

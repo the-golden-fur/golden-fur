@@ -42,8 +42,9 @@ export async function listHotelStays({
   status,
 }: ListHotelStaysParams): Promise<HotelStayWithCage[]> {
   let query = supabase
-    .from('hotel_stays')
+    .from('stays')
     .select('*, cages!inner(branch_id, cage_label), bookings!inner(status)')
+    .eq('stay_type', 'Hotel')
     .eq('cages.branch_id', branchId)
     .order('created_at', { ascending: false });
 

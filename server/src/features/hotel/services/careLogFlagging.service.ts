@@ -28,15 +28,13 @@ export async function getFlaggedCareLogEntries({
 }: FlaggedParams): Promise<CareLogEntry[]> {
   let query = supabase
     .from('care_log_entries')
-    .select(
-      '*, hotel_stays!inner(cage_id, cages!inner(branch_id), bookings!inner(status))'
-    )
+    .select('*, stays!inner(branch_id, status)')
     .lte('scheduled_date', today)
     .is('completed_at', null)
-    .eq('hotel_stays.bookings.status', 'In Progress');
+    .eq('stays.status', 'Active');
 
   if (branchId) {
-    query = query.eq('hotel_stays.cages.branch_id', branchId);
+    query = query.eq('stays.branch_id', branchId);
   }
 
   const { data, error } = await query;

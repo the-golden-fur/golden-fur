@@ -144,10 +144,20 @@ export async function createService({
   requesterId,
   input,
 }: CreateServiceParams): Promise<Service> {
+  // Custom change (Daycare fee configuration follow-up): base_price isn't
+  // admin-entered for Daycare - the validator requires first_hour_fee
+  // instead (requireDaycareFeesOrBasePrice), so it's mirrored into
+  // base_price here to satisfy the NOT NULL column and to give Daycare
+  // bookings a sensible price snapshot at creation time (before the actual
+  // hourly charge is known at checkout - see daycareBilling.service.ts).
+  const basePrice =
+    input.category === 'Daycare' ? input.first_hour_fee! : input.base_price!;
+
   const { data: service, error } = await supabase
     .from('services')
     .insert({
       ...input,
+      base_price: basePrice,
       duration_minutes: input.duration_minutes ?? null,
       created_by: requesterId,
       updated_by: requesterId,
@@ -190,18 +200,33 @@ export async function updateService({
 }: UpdateServiceParams): Promise<Service> {
   const { data: existing, error: lookupError } = await supabase
     .from('services')
-    .select('id, category')
+    .select('id, category, first_hour_fee')
     .eq('id', serviceId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Service not found');
 
-  if (Object.keys(updates).length > 0) {
+  // Custom change (Daycare fee configuration follow-up): keep base_price
+  // mirroring first_hour_fee whenever the (possibly just-updated) category
+  // is Daycare, same as createService - covers both "category changed to
+  // Daycare" and "first_hour_fee changed on an existing Daycare service".
+  const effectiveCategory = updates.category ?? existing.category;
+  const effectiveFirstHourFee =
+    updates.first_hour_fee !== undefined
+      ? updates.first_hour_fee
+      : existing.first_hour_fee;
+
+  const finalUpdates =
+    effectiveCategory === 'Daycare' && effectiveFirstHourFee != null
+      ? { ...updates, base_price: effectiveFirstHourFee }
+      : updates;
+
+  if (Object.keys(finalUpdates).length > 0) {
     const { error: updateError } = await supabase
       .from('services')
       .update({
-        ...updates,
+        ...finalUpdates,
         updated_by: requesterId,
         updated_at: new Date().toISOString(),
       })

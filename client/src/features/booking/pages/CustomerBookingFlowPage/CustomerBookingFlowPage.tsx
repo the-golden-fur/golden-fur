@@ -282,11 +282,12 @@ export function CustomerBookingFlowPage() {
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
   // selections in either accumulate into the same booking (multi-item
   // bookings revision, replacing the old single selectedServiceId/
-  // selectedPackageId radio pair plus the separate Add-ons step). Kept per
-  // CATEGORY (not one flat array) so browsing another category tab to
-  // compare doesn't wipe out what you'd already picked in the one you were
-  // on - only an actual branch/pet change clears everything, since the
-  // catalog itself changes then.
+  // selectedPackageId radio pair plus the separate Add-ons step). Keyed by
+  // category, but in practice only ever holds the current category's own
+  // entry - handleCategorySelect clears the whole map the moment the
+  // category actually changes (a booking always covers exactly one
+  // category), so there's nothing left over from a previous tab to warn
+  // about or reconcile later.
   const [selectionsByCategory, setSelectionsByCategory] = useState<
     Partial<
       Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>
@@ -381,20 +382,27 @@ export function CustomerBookingFlowPage() {
     useState(true);
   const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
 
-  // A customer's own saved food/medication types (#22), fetched only once
-  // Hotel is the selected category (the only category with a Care
-  // Instructions step) - receptionist mode reads the walk-in customer's
-  // catalog via the staff-facing endpoint, self-service mode reads the
-  // logged-in customer's own via the "me" endpoint. Neither is the old
-  // global staff Product Catalog - hotel Care Instructions never shows
-  // that list (or its prices) anymore.
+  // A customer's own saved food/medication types (#22), fetched only when
+  // Hotel or Daycare is the selected category (the two categories with a
+  // Care Instructions step - #27 gave Daycare parity with Hotel here) -
+  // receptionist mode reads the walk-in customer's catalog via the
+  // staff-facing endpoint, self-service mode reads the logged-in
+  // customer's own via the "me" endpoint. Neither is the old global staff
+  // Product Catalog - Care Instructions never shows that list (or its
+  // prices) anymore.
   const [foodCatalog, setFoodCatalog] = useState<ProductCatalogItem[]>([]);
   const [medicationCatalog, setMedicationCatalog] = useState<
     ProductCatalogItem[]
   >([]);
 
   useEffect(() => {
-    if (!accessToken || !effectiveCustomerId || category !== 'Hotel') return;
+    if (
+      !accessToken ||
+      !effectiveCustomerId ||
+      (category !== 'Hotel' && category !== 'Daycare')
+    ) {
+      return;
+    }
 
     let isMounted = true;
 
@@ -469,15 +477,21 @@ export function CustomerBookingFlowPage() {
   }
 
   function handleCategorySelect(nextCategory: ServiceCategory) {
+    // A booking always covers exactly one category, so switching clears
+    // every other category's cached picks immediately - no more "you still
+    // have items selected under X" warning to reconcile later, since
+    // there's nothing left to warn about by the time you reach the Services
+    // step. Only actually clears when the category is changing (re-picking
+    // the same one you're already on is a no-op, not a reset).
+    if (nextCategory !== category) {
+      setSelectionsByCategory({});
+    }
     setCategory(nextCategory);
     setSelectionMode('service');
-    // Item selections are NOT cleared here - selectionsByCategory keeps
-    // each tab's own picks, so browsing to another category to compare
-    // doesn't lose progress. hotelNights is left alone for the same reason
-    // (it's meaningless outside Hotel, so there's nothing to conflict with
-    // by leaving it set while browsing elsewhere). Date/time and staff
-    // still reset, since those depend on which category you're actually
-    // committing to.
+    // hotelNights is left alone even on a category switch - it's
+    // meaningless outside Hotel, so there's nothing to conflict with by
+    // leaving it set. Date/time and staff still reset, since those depend
+    // on which category you're actually committing to.
     setSelectedDiscountId('');
     setSelectedPromoId('');
     setDiscountIdVerified(false);
@@ -690,23 +704,6 @@ export function CustomerBookingFlowPage() {
     return covered;
   }, [selectedPackageIds, packages]);
 
-  // selectionsByCategory persists a tab's picks while you're just browsing
-  // (switching tabs without selecting anything), but updateCategorySelection
-  // clears every other category's picks the moment you actually select or
-  // deselect an item anywhere - a booking is always exactly one category,
-  // so this can only ever be non-empty for the brief window after switching
-  // tabs and before making a new pick, warning that the old pick is about
-  // to be dropped.
-  const categoriesWithOtherSelections = useMemo(
-    () =>
-      SERVICE_CATEGORIES.filter((candidate) => {
-        if (candidate === category) return false;
-        const picks = selectionsByCategory[candidate];
-        return Boolean(picks?.serviceIds.length || picks?.packageIds.length);
-      }),
-    [selectionsByCategory, category]
-  );
-
   const slotDurationMinutes =
     selectedServices.reduce(
       (sum, service) => sum + (service.duration_minutes ?? 60),
@@ -872,7 +869,13 @@ export function CustomerBookingFlowPage() {
 
     list.push({ key: 'items', label: 'Services' });
 
-    if (category === 'Hotel') {
+    // "make daycare the same as hotel" (#27) - Daycare gets the same
+    // optional Care Instructions preview step as Hotel; the "Same
+    // instructions every night" toggle/NightTabs inside it are Hotel-only
+    // (a Daycare session is a single day, so there's no "night" to scope
+    // per - see the 'hotelDetails' render case below), but Feeding/
+    // Walking/Playtime/Medications apply identically to both.
+    if (category === 'Hotel' || category === 'Daycare') {
       list.push({ key: 'hotelDetails', label: 'Care Instructions' });
     }
 
@@ -1239,9 +1242,13 @@ export function CustomerBookingFlowPage() {
 
   /** Undefined (never sent) unless the customer/receptionist actually
    * entered something - an empty-everything payload adds nothing the
-   * check-in form's own blank state doesn't already give. */
+   * check-in form's own blank state doesn't already give. Sent under the
+   * `hotel_preferences` key/column for Daycare too (#27 parity) - the
+   * shape (feeding/walking/playing/medications) is category-agnostic care
+   * data, not literally Hotel-specific; renaming the column was judged
+   * out of scope for this parity fix. */
   const hotelPreferencesPayload = useMemo(() => {
-    if (category !== 'Hotel') return undefined;
+    if (category !== 'Hotel' && category !== 'Daycare') return undefined;
 
     const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding.map(
       (row) => ({
@@ -1551,23 +1558,6 @@ export function CustomerBookingFlowPage() {
               })}
             </div>
 
-            {categoriesWithOtherSelections.length > 0 ? (
-              <p className={styles.crossCategoryNotice} role="alert">
-                You still have items selected under{' '}
-                {categoriesWithOtherSelections.join(', ')} - a booking only ever
-                covers one category, so selecting anything under{' '}
-                <strong>{category}</strong> will clear
-                {categoriesWithOtherSelections.length > 1
-                  ? ' those selections'
-                  : ' that selection'}
-                . Book the other
-                {categoriesWithOtherSelections.length > 1
-                  ? ' categories'
-                  : ' category'}{' '}
-                separately if you need both.
-              </p>
-            ) : null}
-
             {selectedPet && !isSelectedPetAssessed ? (
               <p className={styles.copy}>
                 {selectedPet.name} hasn&apos;t been assessed by staff yet
@@ -1743,8 +1733,19 @@ export function CustomerBookingFlowPage() {
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
                           ? `PHP ${service.base_price.toFixed(2)}/night`
-                          : `PHP ${service.base_price.toFixed(2)}`}
+                          : category === 'Daycare' &&
+                              service.first_hour_fee !== null &&
+                              service.succeeding_hour_fee !== null
+                            ? `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
+                            : `PHP ${service.base_price.toFixed(2)}`}
                       </span>
+                      {category === 'Daycare' ? (
+                        <span className={styles.optionMeta}>
+                          PHP{' '}
+                          {(service.daycare_overnight_fee ?? 850).toFixed(2)}
+                          /night if not picked up before closing
+                        </span>
+                      ) : null}
                       {coveredByPackageName !== undefined ? (
                         <span className={styles.optionMeta}>
                           Included in {coveredByPackageName}
@@ -1824,19 +1825,23 @@ export function CustomerBookingFlowPage() {
               these details when your pet checks in.
             </p>
 
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={hotelUniformInstructions}
-                onChange={(event) => {
-                  setHotelUniformInstructions(event.target.checked);
-                  setActiveNightDate(null);
-                }}
-              />
-              Same instructions every night
-            </label>
+            {category === 'Hotel' ? (
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={hotelUniformInstructions}
+                  onChange={(event) => {
+                    setHotelUniformInstructions(event.target.checked);
+                    setActiveNightDate(null);
+                  }}
+                />
+                Same instructions every night
+              </label>
+            ) : null}
 
-            {!hotelUniformInstructions && selectedSlot ? (
+            {category === 'Hotel' &&
+            !hotelUniformInstructions &&
+            selectedSlot ? (
               <NightTabs
                 nights={getHotelNightDates(selectedSlot.start, hotelNights)}
                 activeDate={activeNightDate}

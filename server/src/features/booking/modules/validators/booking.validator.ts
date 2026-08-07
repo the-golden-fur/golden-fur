@@ -198,11 +198,21 @@ export const createBookingValidator = z
     requireNoDuplicateItems(input, ctx);
     requireEndAfterStart(input, ctx);
 
-    if (input.hotel_preferences && input.service_category !== 'Hotel') {
+    // Custom change (Daycare/Hotel parity follow-up): Daycare's Care
+    // Instructions booking-time step now sends the same
+    // feeding/walking/playing/medications shape Hotel does, reusing this
+    // field/column rather than adding a parallel one - the data is
+    // category-agnostic care instructions, not literally Hotel-specific.
+    if (
+      input.hotel_preferences &&
+      input.service_category !== 'Hotel' &&
+      input.service_category !== 'Daycare'
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['hotel_preferences'],
-        message: 'hotel_preferences is only valid for Hotel bookings',
+        message:
+          'hotel_preferences is only valid for Hotel or Daycare bookings',
       });
     }
   });

@@ -71,9 +71,13 @@ export function DaycareCheckoutPanel({
   }
 
   if (checkedOut) {
-    const succeedingHours = checkedOut.check_out_at
-      ? succeedingHoursFor(checkedOut.check_in_at, checkedOut.check_out_at)
-      : 0;
+    const succeedingHours =
+      checkedOut.actual_check_out_at && checkedOut.check_in_at
+        ? succeedingHoursFor(
+            checkedOut.check_in_at,
+            checkedOut.actual_check_out_at
+          )
+        : 0;
     const succeedingCharge = succeedingHours * SUCCEEDING_HOUR_CHARGE;
 
     return (
@@ -136,7 +140,11 @@ export function DaycareCheckoutPanel({
         <dl className={styles.breakdown}>
           <div className={styles.breakdownRow}>
             <dt>Checked in</dt>
-            <dd>{new Date(selectedSession.check_in_at).toLocaleString()}</dd>
+            <dd>
+              {selectedSession.check_in_at
+                ? new Date(selectedSession.check_in_at).toLocaleString()
+                : 'Unknown'}
+            </dd>
           </div>
         </dl>
 

@@ -11,6 +11,7 @@ const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
 const BRANCH_SCOPES = ['makati', 'southwoods', 'both'] as const;
 const CAP_TYPES = ['percentage', 'flat'] as const;
+const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
 /** YYYY-MM-DD, matching the promos.start_date/end_date date columns. */
 const dateString = z
@@ -22,15 +23,77 @@ const dateString = z
  * pricing_configuration, not accepted as manual per-cell input - services no
  * longer take a pricing_tiers field on create or update.
  */
+/**
+ * Custom change (Daycare fee configuration follow-up): base_price is
+ * required for every category except Daycare, where it's derived
+ * server-side from first_hour_fee (services.service.ts) instead of
+ * admin-entered - "why are there so many prices to config" was resolved by
+ * dropping the redundant Daycare input rather than the column itself
+ * (base_price still backs the booking-time pricing snapshot everywhere).
+ */
+function requireDaycareFeesOrBasePrice(
+  input: {
+    category?: (typeof CATEGORIES)[number];
+    base_price?: number;
+    first_hour_fee?: number;
+    succeeding_hour_fee?: number;
+  },
+  ctx: z.RefinementCtx
+) {
+  if (input.category === 'Daycare') {
+    if (input.first_hour_fee === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['first_hour_fee'],
+        message: 'A Daycare service requires a first-hour fee',
+      });
+    }
+    if (input.succeeding_hour_fee === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['succeeding_hour_fee'],
+        message: 'A Daycare service requires a succeeding-hour fee',
+      });
+    }
+  } else if (input.base_price === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['base_price'],
+      message: 'base_price is required for non-Daycare services',
+    });
+  }
+}
+
 export const createServiceValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
     category: z.enum(CATEGORIES),
-    base_price: z.number().nonnegative(),
+    // Optional here (not per-category-gated at the schema level) since
+    // Daycare instead derives it from first_hour_fee - see
+    // requireDaycareFeesOrBasePrice below.
+    base_price: z.number().nonnegative().optional(),
     duration_minutes: z.number().int().positive().optional(),
     requires_assessed_pet: z.boolean().optional(),
+    // Hotel-only ("5+ nights -> free Golden Package" board condition) -
+    // meaningless for other categories but not category-gated here, mirroring
+    // duration_minutes' own "accepted, just unused elsewhere" convention.
+    min_nights_for_free_package: z.number().int().positive().optional(),
+    free_package_name: z.string().trim().min(1).optional(),
+    // Custom change (pricing matrix fix): opt-in per service - meaningful
+    // for Grooming only, but not category-gated here, same convention as
+    // duration_minutes.
+    use_pricing_matrix: z.boolean().optional(),
+    // Custom change (Daycare fee configuration): Daycare-only - meaningful
+    // for Daycare only, but not category-gated here, same convention as
+    // every other category-specific optional field above.
+    first_hour_fee: z.number().nonnegative().optional(),
+    succeeding_hour_fee: z.number().nonnegative().optional(),
+    // Custom change (Daycare fee configuration follow-up): optional even
+    // for Daycare - falls back to the documented ₱850 default when omitted.
+    daycare_overnight_fee: z.number().nonnegative().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(requireDaycareFeesOrBasePrice);
 
 export const updateServiceValidator = z
   .object({
@@ -40,20 +103,90 @@ export const updateServiceValidator = z
     duration_minutes: z.number().int().positive().nullable().optional(),
     is_active: z.boolean().optional(),
     requires_assessed_pet: z.boolean().optional(),
+    min_nights_for_free_package: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional(),
+    free_package_name: z.string().trim().min(1).nullable().optional(),
+    use_pricing_matrix: z.boolean().optional(),
+    first_hour_fee: z.number().nonnegative().nullable().optional(),
+    succeeding_hour_fee: z.number().nonnegative().nullable().optional(),
+    daycare_overnight_fee: z.number().nonnegative().nullable().optional(),
   })
   .strict();
 
-/** Epic B (#80): every field optional - PATCH semantics for the singleton. */
+/**
+ * Custom change (configurable pricing rules): every field optional - PATCH
+ * semantics for the singleton, same as before. A `_rule_value` of exactly 0
+ * is only rejected when its paired `_rule_type` is 'multiplier' *in the same
+ * request* (a 0 multiplier would silently zero out that size's price) -
+ * flat/percentage rules may legitimately be 0. If the type isn't part of
+ * this particular PATCH, the value is trusted as-is (whatever it's paired
+ * with server-side is unknown from a single field's update).
+ */
+function rejectZeroMultiplier(
+  ruleType: (typeof PRICING_RULE_TYPES)[number] | undefined,
+  ruleValue: number | undefined,
+  path: string,
+  ctx: z.RefinementCtx
+) {
+  if (ruleType === 'multiplier' && ruleValue === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: [path],
+      message: 'A multiplier rule cannot be zero',
+    });
+  }
+}
+
 export const updatePricingConfigurationValidator = z
   .object({
-    size_s_multiplier: z.number().positive().optional(),
-    size_m_multiplier: z.number().positive().optional(),
-    size_l_multiplier: z.number().positive().optional(),
-    size_xl_multiplier: z.number().positive().optional(),
-    long_coat_addon: z.number().nonnegative().optional(),
-    daycare_overnight_fee: z.number().nonnegative().optional(),
+    size_s_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    size_s_rule_value: z.number().nonnegative().optional(),
+    size_m_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    size_m_rule_value: z.number().nonnegative().optional(),
+    size_l_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    size_l_rule_value: z.number().nonnegative().optional(),
+    size_xl_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    size_xl_rule_value: z.number().nonnegative().optional(),
+    coat_long_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    coat_long_rule_value: z.number().nonnegative().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    rejectZeroMultiplier(
+      input.size_s_rule_type,
+      input.size_s_rule_value,
+      'size_s_rule_value',
+      ctx
+    );
+    rejectZeroMultiplier(
+      input.size_m_rule_type,
+      input.size_m_rule_value,
+      'size_m_rule_value',
+      ctx
+    );
+    rejectZeroMultiplier(
+      input.size_l_rule_type,
+      input.size_l_rule_value,
+      'size_l_rule_value',
+      ctx
+    );
+    rejectZeroMultiplier(
+      input.size_xl_rule_type,
+      input.size_xl_rule_value,
+      'size_xl_rule_value',
+      ctx
+    );
+    rejectZeroMultiplier(
+      input.coat_long_rule_type,
+      input.coat_long_rule_value,
+      'coat_long_rule_value',
+      ctx
+    );
+  });
 
 /** Epic B (#82): fraction of the included services' base_price sum. */
 export const updatePackagePricingConfigurationValidator = z
@@ -95,6 +228,10 @@ export const createPackageValidator = z
     service_ids: z
       .array(z.uuid())
       .min(2, 'A package bundles two or more services'),
+    // Custom change (pricing matrix fix): opt-in weight/coat-derived
+    // pricing for this package (sum of included services' own per-pet
+    // price, bundle-discounted) instead of the flat bundled_price.
+    use_pricing_matrix: z.boolean().optional(),
   })
   .strict();
 
@@ -104,6 +241,7 @@ export const updatePackageValidator = z
     is_active: z.boolean().optional(),
     /** Full replacement of the included-services set when provided. */
     service_ids: z.array(z.uuid()).min(2).optional(),
+    use_pricing_matrix: z.boolean().optional(),
   })
   .strict();
 

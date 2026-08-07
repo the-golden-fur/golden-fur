@@ -31,11 +31,16 @@ const BRANCHES = [
 
 const PRICING_CONFIGURATION: PricingConfiguration = {
   id: 'pricing-config-1',
-  size_s_multiplier: 1,
-  size_m_multiplier: 1.1,
-  size_l_multiplier: 1.25,
-  size_xl_multiplier: 1.5,
-  long_coat_addon: 50,
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.1,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.25,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 1.5,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -223,6 +228,14 @@ describe('AdminServicesPage', () => {
     await user.type(screen.getByLabelText('Name'), 'Dematting');
     await user.type(screen.getByLabelText('Base price (PHP)'), '350');
 
+    // Custom change (pricing matrix fix): the matrix is now opt-in - off by
+    // default, so the preview doesn't render until the checkbox is checked.
+    await user.click(
+      screen.getByRole('switch', {
+        name: /Derive price from weight\/coat matrix/,
+      })
+    );
+
     // The derived preview shows the computed price, with no editable inputs
     // of its own (only the Name/Base price form fields remain spinbuttons).
     expect(screen.getByText('PHP 350.00')).toBeInTheDocument();
@@ -236,19 +249,34 @@ describe('AdminServicesPage', () => {
         category: 'Grooming',
         base_price: 350,
         requires_assessed_pet: true,
+        use_pricing_matrix: true,
       });
     });
 
     expect(await screen.findByText('Service created.')).toBeInTheDocument();
   });
 
-  it('the pricing matrix preview is hidden entirely for non-Grooming categories', async () => {
+  it('the pricing matrix preview is opt-in for Grooming and hidden entirely for non-Grooming categories', async () => {
     renderPage();
     const user = userEvent.setup();
 
     await user.click(
       await screen.findByRole('button', { name: 'New service' })
     );
+
+    // Custom change (pricing matrix fix): off by default even for Grooming -
+    // the checkbox exists, but the preview doesn't render until it's checked.
+    const matrixCheckbox = screen.getByRole('switch', {
+      name: /Derive price from weight\/coat matrix/,
+    });
+    expect(matrixCheckbox).not.toBeChecked();
+    expect(
+      screen.queryByText(
+        'Size & coat pricing matrix (Grooming) - derived, read-only'
+      )
+    ).not.toBeInTheDocument();
+
+    await user.click(matrixCheckbox);
 
     expect(
       screen.getByText(
@@ -261,10 +289,70 @@ describe('AdminServicesPage', () => {
     await user.selectOptions(screen.getAllByLabelText('Category')[1], 'Hotel');
 
     expect(
+      screen.queryByRole('switch', {
+        name: /Derive price from weight\/coat matrix/,
+      })
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByText(
         'Size & coat pricing matrix (Grooming) - derived, read-only'
       )
     ).not.toBeInTheDocument();
+  });
+
+  it('Custom change (Daycare fee configuration follow-up): a Daycare service form hides base price and creates without it', async () => {
+    vi.mocked(maintenanceApi.createService).mockResolvedValue({
+      data: buildService({
+        id: 'service-new',
+        name: 'Daycare (per hour)',
+        category: 'Daycare',
+        first_hour_fee: 100,
+        succeeding_hour_fee: 50,
+        daycare_overnight_fee: null,
+      }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'New service' })
+    );
+    await user.type(screen.getByLabelText('Name'), 'Daycare (per hour)');
+    await user.selectOptions(
+      screen.getAllByLabelText('Category')[1],
+      'Daycare'
+    );
+
+    expect(screen.queryByLabelText('Base price (PHP)')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('First hour fee (PHP)'), '100');
+    await user.type(
+      screen.getByLabelText(
+        'Succeeding hour fee (PHP, per additional billable hour)'
+      ),
+      '50'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.createService).toHaveBeenCalledWith(
+        'token',
+        expect.not.objectContaining({ base_price: expect.anything() })
+      );
+    });
+    expect(maintenanceApi.createService).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        category: 'Daycare',
+        first_hour_fee: 100,
+        succeeding_hour_fee: 50,
+      })
+    );
+
+    expect(await screen.findByText('Service created.')).toBeInTheDocument();
   });
 
   it('AC-3: a branch availability toggle updates in place without a reload', async () => {

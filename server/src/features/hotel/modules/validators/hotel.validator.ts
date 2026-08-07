@@ -14,7 +14,11 @@ const mealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
  * no longer buy food/medication on a customer's behalf, so every row is
  * implicitly customer-supplied now.
  */
-const feedingInstructionSchema = z
+// Exported so daycare.validator.ts's checkInValidator can build on the
+// identical shape (Custom change: Daycare/Hotel parity) rather than
+// re-declaring it - both categories now write to the same care_*
+// instruction tables (migration 20260807104).
+export const feedingInstructionSchema = z
   .object({
     meal_time: mealTime,
     food_type: z.string().min(1),
@@ -25,7 +29,7 @@ const feedingInstructionSchema = z
   })
   .strict();
 
-const walkingInstructionSchema = z
+export const walkingInstructionSchema = z
   .object({
     time_block: partOfDay,
     duration_minutes: z.number().int().positive(),
@@ -34,7 +38,7 @@ const walkingInstructionSchema = z
   })
   .strict();
 
-const playingInstructionSchema = z
+export const playingInstructionSchema = z
   .object({
     time_block: partOfDay,
     duration_minutes: z.number().int().positive(),
@@ -43,7 +47,7 @@ const playingInstructionSchema = z
   })
   .strict();
 
-const medicationInstructionSchema = z
+export const medicationInstructionSchema = z
   .object({
     medication_name: z.string().min(1),
     dose: z.string().min(1),

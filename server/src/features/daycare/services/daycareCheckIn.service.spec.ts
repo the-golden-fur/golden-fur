@@ -34,7 +34,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq']) {
+    for (const method of ['select', 'eq', 'update', 'not', 'order', 'limit']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -44,6 +44,12 @@ function queueFromResults(...results: QueryResult[]) {
     });
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+    // suggestCage's cages lookup (cageAssignment.service.ts) awaits the
+    // query builder directly without a trailing .maybeSingle() - a plain
+    // await needs a thenable to resolve to `result` instead of the builder
+    // object itself, matching careLogCompletion.service.spec.ts's identical
+    // convention.
+    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
     return builder;
   }) as never);
@@ -95,6 +101,13 @@ describe('daycareCheckIn.service (#65)', () => {
           error: null,
         },
         { data: MAKATI_BRANCH, error: null },
+        { data: { weight_class: 'S' }, error: null },
+        {
+          data: [{ id: 'cage-1', size: 'S', status: 'Available' }],
+          error: null,
+        },
+        { data: { id: 'cage-1', size: 'S', status: 'Occupied' }, error: null },
+        { data: { service_id: 'service-daycare-1' }, error: null }, // resolveDaycareServiceId: booking_items lookup
         {
           data: { id: 'session-1', booking_id: 'booking-1', status: 'Active' },
           error: null,
@@ -103,7 +116,14 @@ describe('daycareCheckIn.service (#65)', () => {
 
       const result = await checkInDaycareSession({
         requesterId: 'staff-1',
-        input: { booking_id: 'booking-1' },
+        input: {
+          booking_id: 'booking-1',
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
       });
 
       expect(result.status).toBe('Active');
@@ -112,6 +132,7 @@ describe('daycareCheckIn.service (#65)', () => {
         booking_id: 'booking-1',
         pet_id: 'pet-1',
         branch_id: 'branch-makati',
+        cage_id: 'cage-1',
       });
       expect(startBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
 
@@ -147,6 +168,13 @@ describe('daycareCheckIn.service (#65)', () => {
 
       queueFromResults(
         { data: MAKATI_BRANCH, error: null },
+        { data: { weight_class: 'M' }, error: null },
+        {
+          data: [{ id: 'cage-2', size: 'M', status: 'Available' }],
+          error: null,
+        },
+        { data: { id: 'cage-2', size: 'M', status: 'Occupied' }, error: null },
+        { data: { id: 'service-daycare-1' }, error: null }, // resolveDaycareServiceId: branch fallback lookup
         {
           data: { id: 'session-2', booking_id: null, status: 'Active' },
           error: null,
@@ -155,7 +183,15 @@ describe('daycareCheckIn.service (#65)', () => {
 
       const result = await checkInDaycareSession({
         requesterId: 'staff-1',
-        input: { pet_id: 'pet-2', branch_id: 'branch-makati' },
+        input: {
+          pet_id: 'pet-2',
+          branch_id: 'branch-makati',
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
       });
 
       expect(result.status).toBe('Active');
@@ -163,6 +199,7 @@ describe('daycareCheckIn.service (#65)', () => {
       expect(insert?.payload).toMatchObject({
         booking_id: null,
         pet_id: 'pet-2',
+        cage_id: 'cage-2',
       });
       // Walk-ins have no booking_id, so there's nothing to sync.
       expect(startBooking).not.toHaveBeenCalled();
@@ -199,6 +236,13 @@ describe('daycareCheckIn.service (#65)', () => {
 
       queueFromResults(
         { data: SOUTHWOODS_BRANCH, error: null },
+        { data: { weight_class: 'L' }, error: null },
+        {
+          data: [{ id: 'cage-3', size: 'L', status: 'Available' }],
+          error: null,
+        },
+        { data: { id: 'cage-3', size: 'L', status: 'Occupied' }, error: null },
+        { data: { id: 'service-daycare-1' }, error: null }, // resolveDaycareServiceId: branch fallback lookup
         {
           data: { id: 'session-3', booking_id: null, status: 'Active' },
           error: null,
@@ -207,7 +251,15 @@ describe('daycareCheckIn.service (#65)', () => {
 
       const result = await checkInDaycareSession({
         requesterId: 'staff-1',
-        input: { pet_id: 'pet-3', branch_id: 'branch-southwoods' },
+        input: {
+          pet_id: 'pet-3',
+          branch_id: 'branch-southwoods',
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
       });
 
       expect(result.status).toBe('Active');

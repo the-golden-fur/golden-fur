@@ -1,7 +1,19 @@
 import { z } from 'zod';
+import {
+  feedingInstructionSchema,
+  medicationInstructionSchema,
+  playingInstructionSchema,
+  walkingInstructionSchema,
+} from '../../../hotel/modules/validators/hotel.validator.ts';
 
 /**
- * Check-in accepts either path: an existing confirmed booking (booking_id),
+ * Custom change (Daycare/Hotel parity): "make daycare the same as hotel...
+ * as well as the feeding, medication, walk and playtime (exactly like
+ * hotel)". Daycare check-in now accepts the exact same cage_id override +
+ * structured care-instruction fields Hotel's checkInValidator does (shared
+ * schemas imported above - both categories write to the same care_*
+ * instruction tables, migration 20260807104), on top of Daycare's
+ * pre-existing either/or path: an existing confirmed booking (booking_id),
  * or a brand-new walk-in session created directly against a pet profile
  * (pet_id + branch_id, no booking_id at all) - #65 dev notes.
  */
@@ -10,6 +22,18 @@ export const checkInValidator = z
     booking_id: z.uuid().optional(),
     pet_id: z.uuid().optional(),
     branch_id: z.uuid().optional(),
+    cage_id: z.uuid().optional(),
+    // Custom change (Daycare fee configuration): which Daycare service this
+    // session bills against (walk-in only - a booking-linked check-in
+    // always derives it server-side from the booking's own selected
+    // service instead, ignoring this field if sent). Omitted entirely
+    // falls back to the branch's first active Daycare service.
+    service_id: z.uuid().optional(),
+    feeding: z.array(feedingInstructionSchema).default([]),
+    walking: z.array(walkingInstructionSchema).default([]),
+    playing: z.array(playingInstructionSchema).default([]),
+    medications: z.array(medicationInstructionSchema).optional(),
+    notify_opt_in: z.boolean().default(false),
   })
   .strict()
   .superRefine((input, ctx) => {

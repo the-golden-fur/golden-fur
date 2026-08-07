@@ -155,7 +155,10 @@ export function HotelBookingPicker({
 
       const map: Record<string, string> = {};
       for (const stay of result.data) {
-        map[stay.booking_id] = stay.id;
+        // Every Hotel stay always has a booking_id (booking_id is only ever
+        // null for a Daycare walk-in) - listHotelStays only ever returns
+        // Hotel-type stays.
+        if (stay.booking_id) map[stay.booking_id] = stay.id;
       }
       setStayByBookingId(map);
     });

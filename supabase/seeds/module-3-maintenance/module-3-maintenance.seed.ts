@@ -154,6 +154,7 @@ export async function seedGoldenPackage(
         .insert({
           branch_id: branch.id,
           name: GOLDEN_PACKAGE_NAME,
+          use_pricing_matrix: true,
         })
         .select('id')
         .maybeSingle();
