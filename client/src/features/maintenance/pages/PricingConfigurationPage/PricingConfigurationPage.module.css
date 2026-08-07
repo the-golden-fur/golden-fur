@@ -49,6 +49,14 @@
   gap: var(--space-0-5);
 }
 
+.ruleField {
+  display: grid;
+  gap: var(--space-1);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
 .fieldLabel {
   color: var(--color-text-secondary);
   font-size: var(--text-label);

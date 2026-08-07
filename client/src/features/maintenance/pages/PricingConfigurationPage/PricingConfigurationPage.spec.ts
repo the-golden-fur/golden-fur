@@ -22,12 +22,16 @@ vi.mock('../../api/maintenance.api', () => ({
 
 const CONFIGURATION: PricingConfiguration = {
   id: 'pricing-config-1',
-  size_s_multiplier: 1,
-  size_m_multiplier: 1.1,
-  size_l_multiplier: 1.25,
-  size_xl_multiplier: 1.5,
-  long_coat_addon: 0,
-  daycare_overnight_fee: 850,
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.1,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.25,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 1.5,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 0,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -111,26 +115,30 @@ describe('PricingConfigurationPage', () => {
     expect(maintenanceApi.getPricingConfiguration).not.toHaveBeenCalled();
   });
 
-  it('#81 AC-1: loads and displays the shared multipliers', async () => {
+  it('Custom change (configurable pricing rules) AC-1: loads and displays each size/coat rule, full names', async () => {
     renderPage();
 
-    expect(await screen.findByLabelText('Size S multiplier')).toHaveValue(1);
-    expect(screen.getByLabelText('Size M multiplier')).toHaveValue(1.1);
-    expect(screen.getByLabelText('Long coat add-on (PHP)')).toHaveValue(0);
+    expect(await screen.findByLabelText('Small size type')).toHaveValue(
+      'multiplier'
+    );
+    expect(screen.getByLabelText('Small size value')).toHaveValue(1);
+    expect(screen.getByLabelText('Medium size value')).toHaveValue(1.1);
+    expect(screen.getByLabelText('Long coat type')).toHaveValue('flat');
+    expect(screen.getByLabelText('Long coat value')).toHaveValue(0);
   });
 
-  it('#81 AC-2: saving an updated multiplier updates the derived preview', async () => {
+  it('Custom change (configurable pricing rules) AC-2: saving an updated rule value updates the derived preview', async () => {
     vi.mocked(maintenanceApi.updatePricingConfiguration).mockResolvedValue({
-      data: { ...CONFIGURATION, long_coat_addon: 50 },
+      data: { ...CONFIGURATION, coat_long_rule_value: 50 },
       error: null,
     });
 
     renderPage();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('Size S multiplier');
+    await screen.findByLabelText('Small size value');
 
-    const addonInput = screen.getByLabelText('Long coat add-on (PHP)');
+    const addonInput = screen.getByLabelText('Long coat value');
     await user.clear(addonInput);
     await user.type(addonInput, '50');
 
@@ -142,12 +150,16 @@ describe('PricingConfigurationPage', () => {
       expect(maintenanceApi.updatePricingConfiguration).toHaveBeenCalledWith(
         'token',
         {
-          size_s_multiplier: 1,
-          size_m_multiplier: 1.1,
-          size_l_multiplier: 1.25,
-          size_xl_multiplier: 1.5,
-          long_coat_addon: 50,
-          daycare_overnight_fee: 850,
+          size_s_rule_type: 'multiplier',
+          size_s_rule_value: 1,
+          size_m_rule_type: 'multiplier',
+          size_m_rule_value: 1.1,
+          size_l_rule_type: 'multiplier',
+          size_l_rule_value: 1.25,
+          size_xl_rule_type: 'multiplier',
+          size_xl_rule_value: 1.5,
+          coat_long_rule_type: 'flat',
+          coat_long_rule_value: 50,
         }
       );
     });
@@ -155,5 +167,37 @@ describe('PricingConfigurationPage', () => {
     expect(
       await screen.findByText('Pricing configuration updated.')
     ).toBeInTheDocument();
+  });
+
+  it('Custom change (configurable pricing rules): changing a rule type to Percentage still saves a valid (zero-allowed) value', async () => {
+    vi.mocked(maintenanceApi.updatePricingConfiguration).mockResolvedValue({
+      data: {
+        ...CONFIGURATION,
+        coat_long_rule_type: 'percentage',
+        coat_long_rule_value: 0,
+      },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('Long coat type');
+
+    await user.selectOptions(
+      screen.getByLabelText('Long coat type'),
+      'percentage'
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Save pricing configuration' })
+    );
+
+    await waitFor(() => {
+      expect(maintenanceApi.updatePricingConfiguration).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({ coat_long_rule_type: 'percentage' })
+      );
+    });
   });
 });

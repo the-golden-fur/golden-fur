@@ -4,11 +4,16 @@ import type { PricingConfiguration } from '../maintenance.types';
 
 const CONFIG: PricingConfiguration = {
   id: 'pricing-config-1',
-  size_s_multiplier: 1,
-  size_m_multiplier: 1.1,
-  size_l_multiplier: 1.25,
-  size_xl_multiplier: 1.5,
-  long_coat_addon: 50,
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.1,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.25,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 1.5,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };

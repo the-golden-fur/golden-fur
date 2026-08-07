@@ -39,28 +39,49 @@ export interface ServicePricingTier {
   price: number;
 }
 
+/** Custom change (configurable pricing rules): each size (and Long coat)
+ * derives its own adjustment independently - a flat multiplier is no longer
+ * the only option. `percentage` is always a percentage of the service's own
+ * base_price, never of another rule's already-adjusted result. */
+export type PricingRuleType = 'multiplier' | 'flat' | 'percentage';
+
+export const PRICING_RULE_TYPES: PricingRuleType[] = [
+  'multiplier',
+  'flat',
+  'percentage',
+];
+
 /** Epic B (#80): the shared, singleton grooming size/coat calculation.
- * daycare_overnight_fee (#22) reuses this same singleton row rather than a
- * new table, even though it's unrelated to grooming. */
+ * daycare_overnight_fee used to live here too (#22) but moved to
+ * Service.daycare_overnight_fee (Custom change: Daycare fee configuration)
+ * - a per-service fee, not a Grooming pricing rule. */
 export interface PricingConfiguration {
   id: string;
-  size_s_multiplier: number;
-  size_m_multiplier: number;
-  size_l_multiplier: number;
-  size_xl_multiplier: number;
-  long_coat_addon: number;
-  daycare_overnight_fee: number;
+  size_s_rule_type: PricingRuleType;
+  size_s_rule_value: number;
+  size_m_rule_type: PricingRuleType;
+  size_m_rule_value: number;
+  size_l_rule_type: PricingRuleType;
+  size_l_rule_value: number;
+  size_xl_rule_type: PricingRuleType;
+  size_xl_rule_value: number;
+  coat_long_rule_type: PricingRuleType;
+  coat_long_rule_value: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
 
 export interface UpdatePricingConfigurationPayload {
-  size_s_multiplier?: number;
-  size_m_multiplier?: number;
-  size_l_multiplier?: number;
-  size_xl_multiplier?: number;
-  long_coat_addon?: number;
-  daycare_overnight_fee?: number;
+  size_s_rule_type?: PricingRuleType;
+  size_s_rule_value?: number;
+  size_m_rule_type?: PricingRuleType;
+  size_m_rule_value?: number;
+  size_l_rule_type?: PricingRuleType;
+  size_l_rule_value?: number;
+  size_xl_rule_type?: PricingRuleType;
+  size_xl_rule_value?: number;
+  coat_long_rule_type?: PricingRuleType;
+  coat_long_rule_value?: number;
 }
 
 /** Epic B (#82): the shared, singleton package bundled-price calculation. */
@@ -112,6 +133,27 @@ export interface Service {
    * couldn't be trusted to self-report weight/coat, so an unassessed pet
    * is locked out of every other service until staff records this. */
   requires_assessed_pet: boolean;
+  /** Hotel-only: booking this service for this many nights or more
+   * auto-awards free_package_name as a zero-priced line item. NULL = no
+   * free-package condition. */
+  min_nights_for_free_package: number | null;
+  /** Hotel-only: matched against a package's name at the booking's own
+   * branch (packages are branch-scoped; this services row is not). */
+  free_package_name: string | null;
+  /** Whether this service's price varies by the pet's weight_class/
+   * coat_type (Grooming only). Ignored for a Cat pet regardless (flat
+   * base_price always). */
+  use_pricing_matrix: boolean;
+  /** Daycare-only: flat charge for the first hour (or less) of a session
+   * on this service. NULL falls back to the documented ₱100 default. */
+  first_hour_fee: number | null;
+  /** Daycare-only: charge per additional billable hour (rounded up)
+   * beyond the first, on this service. NULL falls back to ₱50. */
+  succeeding_hour_fee: number | null;
+  /** Daycare-only: charged per night when a pet on this service isn't
+   * picked up before closing, on top of the hourly charge. NULL falls
+   * back to ₱850. */
+  daycare_overnight_fee: number | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -129,6 +171,10 @@ export interface Package {
    * estimate a package's contribution to a booking's total scheduled time
    * (multi-item bookings revision). */
   total_duration_minutes: number | null;
+  /** Whether this package's booking-time price is derived from its
+   * included services' own per-pet price (bundle-discounted) instead of
+   * the flat bundled_price above. Ignored for a Cat pet regardless. */
+  use_pricing_matrix: boolean;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -208,9 +254,17 @@ export interface CreateBranchPayload {
 export interface CreateServicePayload {
   name: string;
   category: ServiceCategory;
-  base_price: number;
+  /** Optional for Daycare - the server derives it from first_hour_fee.
+   * Required for every other category. */
+  base_price?: number;
   duration_minutes?: number;
   requires_assessed_pet?: boolean;
+  min_nights_for_free_package?: number;
+  free_package_name?: string;
+  use_pricing_matrix?: boolean;
+  first_hour_fee?: number;
+  succeeding_hour_fee?: number;
+  daycare_overnight_fee?: number;
 }
 
 export interface UpdateServicePayload {
@@ -220,6 +274,12 @@ export interface UpdateServicePayload {
   duration_minutes?: number | null;
   is_active?: boolean;
   requires_assessed_pet?: boolean;
+  min_nights_for_free_package?: number | null;
+  free_package_name?: string | null;
+  use_pricing_matrix?: boolean;
+  first_hour_fee?: number | null;
+  succeeding_hour_fee?: number | null;
+  daycare_overnight_fee?: number | null;
 }
 
 export interface BranchAvailabilityPayload {
@@ -232,6 +292,7 @@ export interface CreatePackagePayload {
   branch_id: string;
   name: string;
   service_ids: string[];
+  use_pricing_matrix?: boolean;
 }
 
 export interface UpdatePackagePayload {
@@ -239,6 +300,7 @@ export interface UpdatePackagePayload {
   is_active?: boolean;
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
+  use_pricing_matrix?: boolean;
 }
 
 /**
