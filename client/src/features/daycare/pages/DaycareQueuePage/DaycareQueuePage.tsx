@@ -7,7 +7,6 @@ import { DaycareCheckoutPanel } from './DaycareCheckoutPanel';
 import styles from './DaycareQueuePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
-  'Receptionist',
   'Admin',
   'Supervisor',
   'Superadmin',
@@ -21,9 +20,9 @@ type Tab = 'check-in' | 'check-out';
  * Queue redesign: replaces the former separate Daycare Check-in and Daycare
  * Checkout pages/routes with one screen, matching the "Daycare Queue, not
  * Daycare Check-in + Daycare Checkout" request - mirrors HotelQueuePage.
- * Groomer and Pet Assistant can act here too (Daycare has no dedicated
- * assigned-staff role, unlike Grooming/Veterinary - see
- * DAYCARE_ADVANCE_ROLES server-side). The legacy /staff/daycare/check-in
+ * Groomer and Pet Assistant are this page's intended users, not Receptionist
+ * (deliberately narrower than DAYCARE_ADVANCE_ROLES server-side, which still
+ * allows Receptionist for other Daycare routes). The legacy /staff/daycare/check-in
  * and /staff/daycare/checkout(/:sessionId) routes now redirect here (see
  * DaycareLegacyRedirects.tsx).
  */
