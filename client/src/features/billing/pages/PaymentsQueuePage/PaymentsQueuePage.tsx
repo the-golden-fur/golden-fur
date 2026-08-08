@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -22,31 +21,28 @@ import {
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
-import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
-import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
-import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
-import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import { PaymentStageBadge } from '../../../booking/components/shared/PaymentStageBadge/PaymentStageBadge';
 import {
-  cancelBooking,
+  advancePaymentStage,
+  completeBooking,
   listBookings,
-  rescheduleBooking,
-} from '../../api/booking.api';
+  overrideBookingStatus,
+  overridePaymentStage,
+  startBooking,
+} from '../../../booking/api/booking.api';
 import {
-  listPolicyConfigurations,
-  resolveEffectivePolicy,
-} from '../../api/policy.api';
-import {
+  BOOKING_STATUS_OVERRIDE_ROLES,
   BOOKING_STATUSES,
-  CANCELLABLE_BOOKING_STATUSES,
-  RESCHEDULABLE_BOOKING_STATUSES,
+  OVERRIDABLE_BOOKING_STATUSES,
+  OVERRIDABLE_PAYMENT_STAGES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingStatus,
-  type PolicyConfiguration,
+  type PaymentStage,
   type ServiceCategory,
-  type StaffPreferenceInput,
-} from '../../booking.types';
-import styles from './ReceptionistBookingsQueuePage.module.css';
+} from '../../../booking/booking.types';
+import styles from './PaymentsQueuePage.module.css';
 
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
@@ -71,37 +67,28 @@ function formatDateTime(iso: string): string {
 
 type ActiveAction = {
   bookingId: string;
-  type: 'reschedule' | 'cancel';
+  type: 'advance-payment';
 };
 
 /**
- * Issue #60: branch-wide daily/filtered booking queue for Receptionist/
- * Admin/Supervisor/Superadmin (branch filter additionally shown for
- * Superadmin, AC-2). Reschedule/cancel call the same #54 endpoints a
- * customer would, with the requesting staff_id recorded server-side from
- * the JWT - no separate receptionist-only endpoint (dev notes).
- *
- * Custom change (bookings-queue-readonly-and-sidebar-reorg): Start/Complete,
- * the Admin/Superadmin status-override dropdown, and both payment_stage
- * actions (Mark as Paid / payment-stage override) were removed from here -
- * every service category now advances status through its own dedicated
- * queue (Hotel/Daycare check-in-out, Grooming queue, Veterinary console),
- * and payment actions (plus the Misc-category start/complete that has no
- * dedicated queue of its own) moved to PaymentsQueuePage. This page is left
- * with only the actions that are genuinely a receptionist's own job: view
- * details, reschedule, cancel, and create a new booking.
+ * Custom change (bookings-queue-readonly-and-sidebar-reorg): the payment
+ * side of the old ReceptionistBookingsQueuePage - Mark as Paid, the
+ * Admin/Superadmin payment-stage override dropdown, and (since Misc-category
+ * bookings have no dedicated queue of their own, unlike Hotel/Daycare/
+ * Grooming/Veterinary) that category's Start/Complete/status-override too.
+ * Filtering/search/sort/role-resolution intentionally mirror
+ * ReceptionistBookingsQueuePage's own scaffold so the two queues stay
+ * consistent for staff switching between them.
  */
-export function ReceptionistBookingsQueuePage() {
+export function PaymentsQueuePage() {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
-  const nowMs = useNowMs();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
-  const [policies, setPolicies] = useState<PolicyConfiguration[]>([]);
   const [branchFilter, setBranchFilter] = useState('All');
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
@@ -127,22 +114,9 @@ export function ReceptionistBookingsQueuePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
-  const [rescheduleSlot, setRescheduleSlot] = useState<{
-    start: string;
-    end: string;
-  } | null>(null);
-  const [rescheduleStaffPreference, setRescheduleStaffPreference] =
-    useState<StaffPreferenceInput | null>(null);
-  // Resolved from GET /bookings/staff-picker once StaffPickerList mounts -
-  // see StaffPickerList's onUnavailable contract.
-  const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
-  const [cancellationReason, setCancellationReason] = useState('');
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   // Viewer role/branch via the requester's own row in GET /staff, same
-  // recipe as every other admin-adjacent staff page (the JWT's user.role is
-  // just Postgres "authenticated" - the app role only lives in staff_profiles).
+  // recipe as ReceptionistBookingsQueuePage.
   useEffect(() => {
     if (!accessToken || !user?.id) return;
 
@@ -163,22 +137,16 @@ export function ReceptionistBookingsQueuePage() {
   }, [accessToken, user?.id]);
 
   const isSuperadmin = viewerRole === 'Superadmin';
+  // Admin/Superadmin get one status dropdown (forward or backward) instead
+  // of the one-directional Start/Complete buttons everyone else uses.
+  const isStatusOverrideRole =
+    viewerRole !== null && BOOKING_STATUS_OVERRIDE_ROLES.includes(viewerRole);
 
   useEffect(() => {
     void listBranches().then((result) => {
       if (result.data) setBranches(result.data);
     });
   }, []);
-
-  // Reschedule button gate (below) needs the same policy_configurations rows
-  // the Policies admin page reads - all-staff read, no role gate needed here.
-  useEffect(() => {
-    if (!accessToken) return;
-
-    void listPolicyConfigurations(accessToken).then((result) => {
-      if (result.data) setPolicies(result.data);
-    });
-  }, [accessToken]);
 
   const effectiveBranchId = isSuperadmin
     ? branchFilter === 'All'
@@ -204,7 +172,7 @@ export function ReceptionistBookingsQueuePage() {
       setIsLoading(false);
 
       if (result.error || !result.data) {
-        setLoadError(result.error ?? 'Could not load the bookings queue.');
+        setLoadError(result.error ?? 'Could not load the payments queue.');
         return;
       }
 
@@ -261,10 +229,6 @@ export function ReceptionistBookingsQueuePage() {
     [branches]
   );
 
-  // Search/sort mirror HotelBookingPicker's own useSearchAndSort usage
-  // (client-side, over the already date/status/category-filtered `bookings`
-  // fetched above) so the two queues offer a consistent search/sort
-  // vocabulary via the same shared hook/UI.
   const {
     search,
     setSearch,
@@ -366,70 +330,114 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
-  function openReschedule(booking: Booking) {
-    setActiveAction({ bookingId: booking.id, type: 'reschedule' });
-    setRescheduleSlot(null);
-    setRescheduleStaffPreference(null);
-    setStaffPickerUnavailable(false);
-    setActionError(null);
-  }
+  // Error kept alongside the booking id it belongs to (mirrors
+  // ReceptionistBookingsQueuePage's own advanceError) so it renders under
+  // the right row after `advancingBookingId` itself has already cleared.
+  const [advancingBookingId, setAdvancingBookingId] = useState<string | null>(
+    null
+  );
+  const [advanceError, setAdvanceError] = useState<{
+    bookingId: string;
+    message: string;
+  } | null>(null);
 
-  function openCancel(booking: Booking) {
-    setActiveAction({ bookingId: booking.id, type: 'cancel' });
-    setCancellationReason('');
-    setActionError(null);
-  }
+  async function runAdvanceAction(
+    booking: Booking,
+    action: (
+      bookingId: string,
+      accessToken: string
+    ) => ReturnType<typeof startBooking>,
+    failureMessage: string
+  ): Promise<boolean> {
+    if (!accessToken) return false;
 
-  function closeAction() {
-    setActiveAction(null);
-  }
+    setAdvancingBookingId(booking.id);
+    setAdvanceError(null);
 
-  async function confirmReschedule(booking: Booking) {
-    if (!accessToken || !rescheduleSlot) return;
+    const result = await action(booking.id, accessToken);
 
-    setIsSubmittingAction(true);
-    setActionError(null);
-
-    const result = await rescheduleBooking(booking.id, accessToken, {
-      scheduled_start: rescheduleSlot.start,
-      scheduled_end: rescheduleSlot.end,
-      ...(rescheduleStaffPreference
-        ? { staff_preference: rescheduleStaffPreference }
-        : {}),
-    });
-
-    setIsSubmittingAction(false);
+    setAdvancingBookingId(null);
 
     if (result.error || !result.data) {
-      setActionError(result.error ?? 'Could not reschedule this booking.');
-      return;
+      setAdvanceError({
+        bookingId: booking.id,
+        message: result.error ?? failureMessage,
+      });
+      return false;
     }
 
-    replaceBooking(result.data.booking);
-    setActiveAction(null);
+    replaceBooking(result.data);
+    return true;
   }
 
-  async function confirmCancel(booking: Booking) {
-    if (!accessToken) return;
+  // Misc-category start/complete/status-override: every other service
+  // category advances status through its own dedicated queue (Hotel/Daycare
+  // check-in-out, Grooming queue, Veterinary console) - Misc (Initial
+  // Assessment/Reassessment) has none, so it keeps the old generic actions
+  // here rather than losing them entirely.
+  function handleStart(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      startBooking,
+      'Could not start this booking.'
+    );
+  }
 
-    setIsSubmittingAction(true);
-    setActionError(null);
+  function handleComplete(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      completeBooking,
+      'Could not complete this booking.'
+    );
+  }
 
-    const result = await cancelBooking(booking.id, accessToken, {
-      ...(cancellationReason.trim()
-        ? { cancellation_reason: cancellationReason.trim() }
-        : {}),
-    });
+  function handleOverrideStatus(booking: Booking, status: BookingStatus) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => overrideBookingStatus(bookingId, status, token),
+      'Could not update this booking’s status.'
+    );
+  }
 
-    setIsSubmittingAction(false);
+  // payment_stage "Mark as Paid" action - independent of the status actions
+  // above (see PaymentStage's dev note in booking.types.ts). From Unpaid,
+  // clicking it opens a modal (via `activeAction`, rendered once outside the
+  // row list below) asking whether this is an advance payment or a normal
+  // onsite one; from Paid in Advance there's only one possible next step, so
+  // it advances straight to Paid with no modal.
+  function handleAdvancePayment(
+    booking: Booking,
+    choice?: 'advance' | 'onsite'
+  ) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => advancePaymentStage(bookingId, token, choice),
+      'Could not advance this booking’s payment stage.'
+    );
+  }
 
-    if (result.error || !result.data) {
-      setActionError(result.error ?? 'Could not cancel this booking.');
+  function openAdvancePayment(booking: Booking) {
+    if (booking.payment_stage === 'Paid in Advance') {
+      void handleAdvancePayment(booking);
       return;
     }
+    setActiveAction({ bookingId: booking.id, type: 'advance-payment' });
+  }
 
-    replaceBooking(result.data.booking);
-    setActiveAction(null);
+  async function confirmAdvancePayment(
+    booking: Booking,
+    choice: 'advance' | 'onsite'
+  ) {
+    const succeeded = await handleAdvancePayment(booking, choice);
+    if (succeeded) setActiveAction(null);
+  }
+
+  function handleOverridePaymentStage(booking: Booking, stage: PaymentStage) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => overridePaymentStage(bookingId, stage, token),
+      'Could not update this booking’s payment stage.'
+    );
   }
 
   if (!user?.id || !accessToken) {
@@ -437,7 +445,7 @@ export function ReceptionistBookingsQueuePage() {
       <main className={styles.page}>
         <div className={styles.content}>
           <p className={styles.errorBanner} role="alert">
-            Unable to load the bookings queue.
+            Unable to load the payments queue.
           </p>
         </div>
       </main>
@@ -454,20 +462,20 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
+  // Rendered once, outside the row list, as a modal - not per-row - since
+  // only one booking can ever be mid-prompt at a time (activeAction is
+  // single-valued).
+  const paymentAdvanceModalBooking =
+    activeAction?.type === 'advance-payment'
+      ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
+        null)
+      : null;
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Bookings queue</h1>
-          {viewerRole !== 'Cashier' ? (
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => navigate('/staff/bookings/new')}
-            >
-              New booking
-            </button>
-          ) : null}
+          <h1 className={styles.title}>Payments Queue</h1>
         </div>
 
         <QueueFilterBar
@@ -544,52 +552,27 @@ export function ReceptionistBookingsQueuePage() {
         {!isLoading && !loadError && filteredAndSorted.length > 0 ? (
           <ul className={styles.bookingList}>
             {filteredAndSorted.map((booking) => {
-              // Reschedule additionally requires the appointment itself to
-              // still be ahead of us - a Pending booking whose own time has
-              // already passed is effectively a no-show waiting for the
-              // server's lazy transition, not something to move to a new
-              // slot (matches reschedule.service.ts's own past-due guard).
-              const isPastDue =
-                new Date(booking.scheduled_start).getTime() <= nowMs;
-              // Mirrors reschedule.service.ts's evaluateNoticePeriod/Strict
-              // block exactly, so the button never promises something the
-              // server would then reject: enforcement off, Soft mode (the
-              // server lets it through with a policy_violation flag, so
-              // hiding the button here would contradict that deliberate
-              // escape hatch), or the notice window is still satisfied.
-              const bookingPolicy = resolveEffectivePolicy(
-                policies,
-                booking.branch_id
-              );
-              const noticeMet =
-                !bookingPolicy?.notice_enforcement_enabled ||
-                bookingPolicy.notice_enforcement_mode === 'Soft' ||
-                new Date(booking.scheduled_start).getTime() - nowMs >=
-                  bookingPolicy.notice_period_days * 24 * 60 * 60 * 1000;
-              const canReschedule =
-                RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status) &&
-                !isPastDue &&
-                noticeMet;
-              const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
-                booking.status
-              );
-              const isRescheduling =
-                activeAction?.bookingId === booking.id &&
-                activeAction.type === 'reschedule';
-              const isCancelling =
-                activeAction?.bookingId === booking.id &&
-                activeAction.type === 'cancel';
-
-              const durationMinutes = Math.round(
-                (new Date(booking.scheduled_end).getTime() -
-                  new Date(booking.scheduled_start).getTime()) /
-                  60000
-              );
-              const showStaffPicker =
-                (booking.service_category === 'Grooming' ||
-                  booking.service_category === 'Veterinary') &&
-                rescheduleSlot !== null &&
-                !staffPickerUnavailable;
+              const isMisc = booking.service_category === 'Misc';
+              const canOverrideStatus =
+                isMisc &&
+                isStatusOverrideRole &&
+                (OVERRIDABLE_BOOKING_STATUSES as readonly string[]).includes(
+                  booking.status
+                );
+              const canAdvanceStatus =
+                isMisc &&
+                !isStatusOverrideRole &&
+                viewerRole !== 'Cashier' &&
+                (booking.status === 'Pending' ||
+                  booking.status === 'In Progress');
+              const canOverridePaymentStage =
+                isStatusOverrideRole &&
+                (OVERRIDABLE_PAYMENT_STAGES as readonly string[]).includes(
+                  booking.payment_stage
+                );
+              const canAdvancePayment =
+                !isStatusOverrideRole && booking.payment_stage !== 'Paid';
+              const isAdvancing = advancingBookingId === booking.id;
 
               return (
                 <li key={booking.id} className={styles.bookingRow}>
@@ -611,143 +594,169 @@ export function ReceptionistBookingsQueuePage() {
                     {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
 
-                  {!isRescheduling && !isCancelling ? (
-                    <div className={styles.bookingControls}>
+                  <div className={styles.bookingControls}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => navigate(`/staff/bookings/${booking.id}`)}
+                    >
+                      View details
+                    </button>
+                    {canOverrideStatus ? (
+                      <label className={styles.statusOverrideField}>
+                        <span className={styles.filterLabel}>Status</span>
+                        <select
+                          className={styles.filterSelect}
+                          value={booking.status}
+                          disabled={isAdvancing}
+                          onChange={(event) =>
+                            void handleOverrideStatus(
+                              booking,
+                              event.target.value as BookingStatus
+                            )
+                          }
+                        >
+                          {OVERRIDABLE_BOOKING_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {canAdvanceStatus && booking.status === 'Pending' ? (
                       <button
                         type="button"
                         className={styles.secondaryButton}
-                        onClick={() => navigate(`/staff/bookings/${booking.id}`)}
+                        disabled={isAdvancing}
+                        onClick={() => void handleStart(booking)}
                       >
-                        View details
+                        {isAdvancing ? 'Starting...' : 'Start'}
                       </button>
-                      {canReschedule ? (
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() => openReschedule(booking)}
-                        >
-                          Reschedule
-                        </button>
-                      ) : null}
-                      {canCancel ? (
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() => openCancel(booking)}
-                        >
-                          Cancel
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {isRescheduling ? (
-                    <div className={styles.actionPanel}>
-                      <SlotPicker
-                        accessToken={accessToken}
-                        branchId={booking.branch_id}
-                        serviceCategory={booking.service_category}
-                        slotDurationMinutes={durationMinutes}
-                        viewerMode="staff"
-                        selectedSlot={rescheduleSlot}
-                        onSelect={setRescheduleSlot}
-                      />
-
-                      {showStaffPicker && rescheduleSlot ? (
-                        <StaffPickerList
-                          accessToken={accessToken}
-                          branchId={booking.branch_id}
-                          serviceCategory={
-                            booking.service_category as
-                              | 'Grooming'
-                              | 'Veterinary'
-                          }
-                          scheduledStart={rescheduleSlot.start}
-                          scheduledEnd={rescheduleSlot.end}
-                          selected={rescheduleStaffPreference}
-                          onSelect={setRescheduleStaffPreference}
-                          onUnavailable={() => setStaffPickerUnavailable(true)}
-                        />
-                      ) : null}
-
-                      {actionError ? (
-                        <p className={styles.errorBanner} role="alert">
-                          {actionError}
-                        </p>
-                      ) : null}
-
-                      <div className={styles.bookingControls}>
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          disabled={!rescheduleSlot || isSubmittingAction}
-                          onClick={() => void confirmReschedule(booking)}
-                        >
-                          {isSubmittingAction
-                            ? 'Rescheduling...'
-                            : 'Confirm new time'}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={closeAction}
-                        >
-                          Cancel reschedule
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {isCancelling ? (
-                    <div className={styles.actionPanel}>
-                      <p className={styles.copy} role="alert">
-                        Cancel this booking on the customer's behalf? This
-                        cannot be undone.
-                      </p>
-                      <label className={styles.field}>
-                        <span className={styles.fieldLabel}>
-                          Reason (optional)
-                        </span>
-                        <textarea
-                          className={styles.input}
-                          value={cancellationReason}
+                    ) : null}
+                    {canAdvanceStatus && booking.status === 'In Progress' ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={isAdvancing}
+                        onClick={() => void handleComplete(booking)}
+                      >
+                        {isAdvancing ? 'Completing...' : 'Complete'}
+                      </button>
+                    ) : null}
+                    {canOverridePaymentStage ? (
+                      <label className={styles.statusOverrideField}>
+                        <span className={styles.filterLabel}>Payment</span>
+                        <select
+                          className={styles.filterSelect}
+                          value={booking.payment_stage}
+                          disabled={isAdvancing}
                           onChange={(event) =>
-                            setCancellationReason(event.target.value)
+                            void handleOverridePaymentStage(
+                              booking,
+                              event.target.value as PaymentStage
+                            )
                           }
-                        />
+                        >
+                          {OVERRIDABLE_PAYMENT_STAGES.map((stage) => (
+                            <option key={stage} value={stage}>
+                              {stage}
+                            </option>
+                          ))}
+                        </select>
                       </label>
+                    ) : null}
+                    {canAdvancePayment ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={isAdvancing}
+                        onClick={() => openAdvancePayment(booking)}
+                      >
+                        {isAdvancing ? 'Marking paid...' : 'Mark as Paid'}
+                      </button>
+                    ) : null}
+                  </div>
 
-                      {actionError ? (
-                        <p className={styles.errorBanner} role="alert">
-                          {actionError}
-                        </p>
-                      ) : null}
-
-                      <div className={styles.bookingControls}>
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          disabled={isSubmittingAction}
-                          onClick={() => void confirmCancel(booking)}
-                        >
-                          {isSubmittingAction
-                            ? 'Cancelling...'
-                            : 'Yes, cancel booking'}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={closeAction}
-                        >
-                          Keep booking
-                        </button>
-                      </div>
-                    </div>
+                  {advanceError && advanceError.bookingId === booking.id ? (
+                    <p className={styles.errorBanner} role="alert">
+                      {advanceError.message}
+                    </p>
                   ) : null}
                 </li>
               );
             })}
           </ul>
+        ) : null}
+
+        {paymentAdvanceModalBooking ? (
+          <div className={styles.modalBackdrop} role="presentation">
+            <section
+              className={styles.modalDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mark-as-paid-title"
+            >
+              <h2 id="mark-as-paid-title" className={styles.modalTitle}>
+                Mark as Paid
+              </h2>
+              <p className={styles.modalBody}>
+                Was this payment collected in advance (before the service
+                happens), or is this a normal onsite payment?
+              </p>
+
+              {advanceError &&
+              advanceError.bookingId === paymentAdvanceModalBooking.id ? (
+                <p className={styles.errorBanner} role="alert">
+                  {advanceError.message}
+                </p>
+              ) : null}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAction(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={
+                    advancingBookingId === paymentAdvanceModalBooking.id
+                  }
+                  onClick={() =>
+                    void confirmAdvancePayment(
+                      paymentAdvanceModalBooking,
+                      'onsite'
+                    )
+                  }
+                >
+                  {advancingBookingId === paymentAdvanceModalBooking.id
+                    ? 'Marking paid...'
+                    : 'Normal onsite payment'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={
+                    advancingBookingId === paymentAdvanceModalBooking.id
+                  }
+                  onClick={() =>
+                    void confirmAdvancePayment(
+                      paymentAdvanceModalBooking,
+                      'advance'
+                    )
+                  }
+                >
+                  {advancingBookingId === paymentAdvanceModalBooking.id
+                    ? 'Marking paid...'
+                    : 'Advance payment'}
+                </button>
+              </div>
+            </section>
+          </div>
         ) : null}
       </div>
     </main>
