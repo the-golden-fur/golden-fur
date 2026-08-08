@@ -222,18 +222,29 @@ describe('staffPicker.service (#52)', () => {
   });
 
   describe('autoAssignStaff', () => {
-    it('picks the RPC-ordered first eligible staff member, or null when none', async () => {
+    it('picks a random eligible staff member (not always the RPC-ordered first), or null when none', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: GROOMERS,
         error: null,
       } as never);
 
-      const assigned = await autoAssignStaff({
+      const randomSpy = vi.spyOn(Math, 'random');
+
+      randomSpy.mockReturnValueOnce(0);
+      let assigned = await autoAssignStaff({
         ...WINDOW,
         serviceCategory: 'Grooming',
       });
-
       expect(assigned?.staff_id).toBe('groomer-1');
+
+      randomSpy.mockReturnValueOnce(0.9999);
+      assigned = await autoAssignStaff({
+        ...WINDOW,
+        serviceCategory: 'Grooming',
+      });
+      expect(assigned?.staff_id).toBe('groomer-2');
+
+      randomSpy.mockRestore();
 
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: [],

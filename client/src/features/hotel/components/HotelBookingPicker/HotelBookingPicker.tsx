@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   QueueFilterBar,
   type QueueStatusOption,
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
+  dateRangePresetLabel,
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
@@ -100,6 +103,7 @@ export function HotelBookingPicker({
   onSelect,
   selectedBookingId,
 }: HotelBookingPickerProps) {
+  const navigate = useNavigate();
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -272,6 +276,46 @@ export function HotelBookingPicker({
     initialSortKey: 'soonest',
   });
 
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (dateRangePreset !== 'today') {
+      chips.push({
+        id: 'date',
+        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
+        onClear: () => setDateRangePreset('today'),
+      });
+    }
+    if (statusFilter !== 'Pending') {
+      chips.push({
+        id: 'status',
+        label: `Status: ${
+          STATUS_OPTIONS.find((option) => option.value === statusFilter)
+            ?.label ?? statusFilter
+        }`,
+        onClear: () => setStatusFilter('Pending'),
+      });
+    }
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'soonest') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('soonest'),
+      });
+    }
+
+    return chips;
+  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
+
   return (
     <div className={styles.wrapper}>
       <QueueFilterBar
@@ -294,6 +338,8 @@ export function HotelBookingPicker({
           sortOptions={SORT_OPTIONS}
         />
       </QueueFilterBar>
+
+      <ActiveFilterChips chips={filterChips} />
 
       <p className={styles.resultCount}>
         {isLoading
@@ -333,20 +379,6 @@ export function HotelBookingPicker({
                   className={`${styles.card} ${
                     selectedBookingId === item.booking.id ? styles.selected : ''
                   } ${!isCheckinable ? styles.disabledCard : ''}`}
-                  role={isCheckinable ? 'button' : undefined}
-                  tabIndex={isCheckinable ? 0 : undefined}
-                  onClick={
-                    isCheckinable ? () => onSelect(item.booking) : undefined
-                  }
-                  onKeyDown={
-                    isCheckinable
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            onSelect(item.booking);
-                          }
-                        }
-                      : undefined
-                  }
                 >
                   <div className={styles.cardHeader}>
                     <span className={styles.petName}>{item.petName}</span>
@@ -360,6 +392,18 @@ export function HotelBookingPicker({
                     ) : !isCheckinable ? (
                       <BookingStatusBadge status={item.booking.status} />
                     ) : null}
+                    <span className={styles.menuSlot}>
+                      <MoreOptionsMenu
+                        label={`More options for ${item.petName}`}
+                        items={[
+                          {
+                            label: 'View booking details',
+                            onSelect: () =>
+                              navigate(`/staff/bookings/${item.booking.id}`),
+                          },
+                        ]}
+                      />
+                    </span>
                   </div>
                   <span className={styles.metaLine}>
                     Owner: {item.ownerName} ({item.ownerContact})
@@ -382,15 +426,25 @@ export function HotelBookingPicker({
                       {item.booking.special_instructions}
                     </span>
                   ) : null}
-                  {isCheckedIn && item.existingStayId ? (
-                    <Link
-                      className={styles.checkoutLink}
-                      to={`/staff/hotel/checkout/${item.existingStayId}`}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      Go to checkout &rarr;
-                    </Link>
-                  ) : null}
+                  <div className={styles.cardControls}>
+                    {isCheckinable ? (
+                      <button
+                        type="button"
+                        className={styles.checkInButton}
+                        onClick={() => onSelect(item.booking)}
+                      >
+                        Check in
+                      </button>
+                    ) : null}
+                    {isCheckedIn && item.existingStayId ? (
+                      <Link
+                        className={styles.checkoutLink}
+                        to={`/staff/hotel/checkout/${item.existingStayId}`}
+                      >
+                        Go to checkout &rarr;
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             );

@@ -64,12 +64,6 @@
   padding: var(--space-2);
 }
 
-.resultCount {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-}
-
 .bookingList {
   display: grid;
   gap: var(--space-2);
@@ -140,34 +134,6 @@
   padding: var(--space-0-5) var(--space-1);
 }
 
-.actionPanel {
-  display: grid;
-  gap: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-2);
-}
-
-.field {
-  display: grid;
-  gap: var(--space-0-5);
-}
-
-.fieldLabel {
-  color: var(--color-text-secondary);
-  font-size: var(--text-label);
-  font-weight: var(--weight-normal);
-  text-transform: uppercase;
-}
-
-.input {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-  font: inherit;
-  padding: var(--space-2);
-}
-
 .primaryButton {
   border: none;
   border-radius: var(--radius-pill);
@@ -218,9 +184,8 @@
   border-color: var(--color-accent-gold-primary);
 }
 
-/* Mark as Paid modal - mirrors shared/components/ConfirmDialog's look
-   (this prompt needs two distinct choice buttons plus Cancel, which
-   ConfirmDialog's single confirm/cancel shape can't express). */
+/* Mark as Paid modal - mirrors ReceptionistBookingsQueuePage's own version
+   of this same prompt (moved here along with the action itself). */
 .modalBackdrop {
   position: fixed;
   inset: 0;

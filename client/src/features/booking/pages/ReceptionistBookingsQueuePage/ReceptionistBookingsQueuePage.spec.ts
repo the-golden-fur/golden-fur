@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -31,11 +31,6 @@ vi.mock('../../api/booking.api', () => ({
   listBookings: vi.fn(),
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
-  startBooking: vi.fn(),
-  completeBooking: vi.fn(),
-  advancePaymentStage: vi.fn(),
-  overridePaymentStage: vi.fn(),
-  overrideBookingStatus: vi.fn(),
 }));
 
 // Reschedule button gating (#24) reads policy_configurations - only the
@@ -315,116 +310,26 @@ describe('ReceptionistBookingsQueuePage', () => {
     expect(call[1].dateFrom).not.toEqual(call[1].dateTo);
   });
 
-  it('booking-status revision: shows Start for a Pending booking, and it advances to In Progress on click', async () => {
-    const user = userEvent.setup();
+  it('read-only queue: never shows Start/Complete/status-override/payment controls, regardless of status or role', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
-      data: [buildViewer('Receptionist')],
-      error: null,
-    });
-    vi.mocked(bookingApi.startBooking).mockResolvedValue({
-      data: buildBooking({ status: 'In Progress' }),
-      error: null,
-    });
-
-    renderPage();
-
-    await waitFor(() => expect(screen.getByText('Start')).toBeInTheDocument());
-    await user.click(screen.getByText('Start'));
-
-    await waitFor(() =>
-      expect(bookingApi.startBooking).toHaveBeenCalledWith('booking-1', 'token')
-    );
-    const row = screen.getByRole('listitem');
-    expect(await within(row).findByText('In Progress')).toBeInTheDocument();
-  });
-
-  it('booking-status revision: shows Complete for an In Progress booking, not Start', async () => {
-    vi.mocked(staffApi.listStaff).mockResolvedValue({
-      data: [buildViewer('Receptionist')],
+      data: [buildViewer('Superadmin')],
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'In Progress' })],
+      data: [buildBooking({ status: 'In Progress', payment_stage: 'Unpaid' })],
       error: null,
     });
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByText('Complete')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
     expect(screen.queryByText('Start')).not.toBeInTheDocument();
-  });
-
-  it('payment_stage: shows Mark as Paid for an Unpaid booking, prompts via modal, and advances via "Normal onsite payment"', async () => {
-    const user = userEvent.setup();
-    vi.mocked(staffApi.listStaff).mockResolvedValue({
-      data: [buildViewer('Receptionist')],
-      error: null,
-    });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Completed', payment_stage: 'Unpaid' })],
-      error: null,
-    });
-    vi.mocked(bookingApi.advancePaymentStage).mockResolvedValue({
-      data: buildBooking({ status: 'Completed', payment_stage: 'Paid' }),
-      error: null,
-    });
-
-    renderPage();
-
-    await waitFor(() =>
-      expect(screen.getByText('Mark as Paid')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Mark as Paid'));
-
-    // Unpaid -> the advance/onsite choice shows as a modal, not inline.
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByText('Normal onsite payment'));
-
-    await waitFor(() =>
-      expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
-        'booking-1',
-        'token',
-        'onsite'
-      )
-    );
-    const row = screen.getByRole('listitem');
-    expect(await within(row).findByText('Payment: Paid')).toBeInTheDocument();
-  });
-
-  it('payment_stage: a Paid in Advance booking advances straight to Paid with one click, no modal', async () => {
-    const user = userEvent.setup();
-    vi.mocked(staffApi.listStaff).mockResolvedValue({
-      data: [buildViewer('Receptionist')],
-      error: null,
-    });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        buildBooking({ status: 'Completed', payment_stage: 'Paid in Advance' }),
-      ],
-      error: null,
-    });
-    vi.mocked(bookingApi.advancePaymentStage).mockResolvedValue({
-      data: buildBooking({ status: 'Completed', payment_stage: 'Paid' }),
-      error: null,
-    });
-
-    renderPage();
-
-    await waitFor(() =>
-      expect(screen.getByText('Mark as Paid')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Mark as Paid'));
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
-        'booking-1',
-        'token',
-        undefined
-      )
-    );
+    expect(screen.queryByText('Complete')).not.toBeInTheDocument();
+    expect(screen.queryByText('Mark as Paid')).not.toBeInTheDocument();
+    // Only the QueueFilterBar's own "Status" select remains - the row-level
+    // status-override dropdown (same label text) is gone.
+    expect(screen.getAllByLabelText('Status')).toHaveLength(1);
+    expect(screen.queryByLabelText('Payment')).not.toBeInTheDocument();
   });
 
   it("shouldn't offer Reschedule once a Pending booking's own scheduled time has already passed", async () => {

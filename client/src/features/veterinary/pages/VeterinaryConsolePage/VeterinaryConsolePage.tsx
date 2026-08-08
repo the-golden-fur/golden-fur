@@ -14,10 +14,15 @@ import {
   type QueueStatusOption,
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
+  dateRangePresetLabel,
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   getPetConsultationHistory,
@@ -52,6 +57,12 @@ type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...STATUS_GROUPS.map((status) => ({ value: status, label: status })),
+];
+
+type SortKey = 'time' | 'pet-name';
+const SORT_OPTIONS: SortOption<SortKey>[] = [
+  { value: 'time', label: 'Sort: Scheduled time (earliest)' },
+  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
 ];
 
 // Issue #70 AC-1/AC-4: no WebSocket/realtime infra exists anywhere in this
@@ -223,7 +234,7 @@ export function VeterinaryConsolePage() {
     sortKey,
     setSortKey,
     result: visibleRows,
-  } = useSearchAndSort<QueueRow, 'time' | 'pet-name'>({
+  } = useSearchAndSort<QueueRow, SortKey>({
     items: statusFiltered,
     matchesQuery: (row, query) =>
       row.petName.toLowerCase().includes(query) ||
@@ -236,6 +247,43 @@ export function VeterinaryConsolePage() {
     },
     initialSortKey: 'time',
   });
+
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (dateRangePreset !== 'today') {
+      chips.push({
+        id: 'date',
+        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
+        onClear: () => setDateRangePreset('today'),
+      });
+    }
+    if (statusFilter !== 'All') {
+      chips.push({
+        id: 'status',
+        label: `Status: ${statusFilter}`,
+        onClear: () => setStatusFilter('All'),
+      });
+    }
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'time') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('time'),
+      });
+    }
+
+    return chips;
+  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
 
@@ -423,12 +471,11 @@ export function VeterinaryConsolePage() {
             searchPlaceholder="Search by pet or owner..."
             sortValue={sortKey}
             onSortChange={setSortKey}
-            sortOptions={[
-              { value: 'time', label: 'Sort: Scheduled time (earliest)' },
-              { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
-            ]}
+            sortOptions={SORT_OPTIONS}
           />
         </QueueFilterBar>
+
+        <ActiveFilterChips chips={filterChips} />
 
         {isLoading ? (
           <p className={styles.copy}>Loading consultations...</p>

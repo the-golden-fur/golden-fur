@@ -17,10 +17,15 @@ import {
   type QueueStatusOption,
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
+  dateRangePresetLabel,
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listGroomingQueue,
@@ -49,6 +54,12 @@ type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...GROOMING_STATUSES.map((status) => ({ value: status, label: status })),
+];
+
+type SortKey = 'queue' | 'pet-name';
+const SORT_OPTIONS: SortOption<SortKey>[] = [
+  { value: 'queue', label: 'Sort: Queue order' },
+  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
 ];
 
 // Issue #68 AC-5: no WebSocket/realtime infra exists anywhere in this
@@ -269,7 +280,7 @@ export function GroomerDashboardPage() {
     sortKey,
     setSortKey,
     result: visibleSessions,
-  } = useSearchAndSort<EnrichedSession, 'queue' | 'pet-name'>({
+  } = useSearchAndSort<EnrichedSession, SortKey>({
     items: statusFiltered,
     matchesQuery: (item, query) =>
       item.petName.toLowerCase().includes(query) ||
@@ -281,6 +292,43 @@ export function GroomerDashboardPage() {
     },
     initialSortKey: 'queue',
   });
+
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (dateRangePreset !== 'today') {
+      chips.push({
+        id: 'date',
+        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
+        onClear: () => setDateRangePreset('today'),
+      });
+    }
+    if (statusFilter !== 'All') {
+      chips.push({
+        id: 'status',
+        label: `Status: ${statusFilter}`,
+        onClear: () => setStatusFilter('All'),
+      });
+    }
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'queue') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('queue'),
+      });
+    }
+
+    return chips;
+  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
   const hasSessions = visibleSessions.length > 0;
 
@@ -361,12 +409,11 @@ export function GroomerDashboardPage() {
             searchPlaceholder="Search by pet or owner..."
             sortValue={sortKey}
             onSortChange={setSortKey}
-            sortOptions={[
-              { value: 'queue', label: 'Sort: Queue order' },
-              { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
-            ]}
+            sortOptions={SORT_OPTIONS}
           />
         </QueueFilterBar>
+
+        <ActiveFilterChips chips={filterChips} />
 
         {actionError ? (
           <p className={styles.errorBanner} role="alert">

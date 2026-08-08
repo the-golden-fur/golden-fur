@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { listHotelStays } from '../../api/hotel.api';
 import {
   getCustomerProfile,
@@ -6,6 +7,8 @@ import {
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type { HotelStayWithCage } from '../../hotel.types';
 import styles from './HotelStayPicker.module.css';
@@ -63,6 +66,7 @@ export function HotelStayPicker({
   onSelect,
   selectedStayId,
 }: HotelStayPickerProps) {
+  const navigate = useNavigate();
   const [stays, setStays] = useState<HotelStayWithCage[]>([]);
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
@@ -168,6 +172,29 @@ export function HotelStayPicker({
     initialSortKey: 'checkout-soonest',
   });
 
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'checkout-soonest') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('checkout-soonest'),
+      });
+    }
+
+    return chips;
+  }, [search, sortKey, setSearch, setSortKey]);
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.toolbar}>
@@ -180,6 +207,8 @@ export function HotelStayPicker({
           sortOptions={SORT_OPTIONS}
         />
       </div>
+
+      <ActiveFilterChips chips={filterChips} />
 
       <p className={styles.resultCount}>
         {isLoading
@@ -205,12 +234,10 @@ export function HotelStayPicker({
         <ul className={styles.list}>
           {filteredAndSorted.map((item) => (
             <li key={item.stay.id}>
-              <button
-                type="button"
+              <div
                 className={`${styles.card} ${
                   selectedStayId === item.stay.id ? styles.selected : ''
                 }`}
-                onClick={() => onSelect(item.stay)}
               >
                 <div className={styles.cardHeader}>
                   <span className={styles.petName}>{item.petName}</span>
@@ -219,6 +246,22 @@ export function HotelStayPicker({
                   </span>
                   {isOverdue(item.stay.scheduled_check_out_date!) ? (
                     <span className={styles.overdueBadge}>Overdue</span>
+                  ) : null}
+                  {item.stay.booking_id ? (
+                    <span className={styles.menuSlot}>
+                      <MoreOptionsMenu
+                        label={`More options for ${item.petName}`}
+                        items={[
+                          {
+                            label: 'View booking details',
+                            onSelect: () =>
+                              navigate(
+                                `/staff/bookings/${item.stay.booking_id}`
+                              ),
+                          },
+                        ]}
+                      />
+                    </span>
                   ) : null}
                 </div>
                 <span className={styles.metaLine}>
@@ -236,7 +279,16 @@ export function HotelStayPicker({
                 <span className={styles.metaLine}>
                   Downpayment: PHP {item.stay.downpayment_amount!.toFixed(2)}
                 </span>
-              </button>
+                <div className={styles.cardControls}>
+                  <button
+                    type="button"
+                    className={styles.checkOutButton}
+                    onClick={() => onSelect(item.stay)}
+                  >
+                    Check out
+                  </button>
+                </div>
+              </div>
             </li>
           ))}
         </ul>

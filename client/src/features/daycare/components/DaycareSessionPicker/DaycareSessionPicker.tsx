@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { getPet } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { listDaycareSessions } from '../../api/daycare.api';
 import type { DaycareSession } from '../../daycare.types';
@@ -34,6 +37,7 @@ export function DaycareSessionPicker({
   accessToken,
   onSelect,
 }: DaycareSessionPickerProps) {
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState<DaycareSession[]>([]);
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -99,6 +103,29 @@ export function DaycareSessionPicker({
     initialSortKey: 'check-in-earliest',
   });
 
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'check-in-earliest') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('check-in-earliest'),
+      });
+    }
+
+    return chips;
+  }, [search, sortKey, setSearch, setSortKey]);
+
   return (
     <div className={styles.wrapper}>
       <SearchSortBar
@@ -109,6 +136,8 @@ export function DaycareSessionPicker({
         onSortChange={setSortKey}
         sortOptions={SORT_OPTIONS}
       />
+
+      <ActiveFilterChips chips={filterChips} />
 
       {error ? (
         <p className={styles.errorBanner} role="alert">
@@ -128,19 +157,42 @@ export function DaycareSessionPicker({
         <ul className={styles.list}>
           {visibleSessions.map((item) => (
             <li key={item.session.id}>
-              <button
-                type="button"
-                className={styles.card}
-                onClick={() => onSelect(item.session)}
-              >
-                <span className={styles.petName}>{item.petName}</span>
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span className={styles.petName}>{item.petName}</span>
+                  {item.session.booking_id ? (
+                    <span className={styles.menuSlot}>
+                      <MoreOptionsMenu
+                        label={`More options for ${item.petName}`}
+                        items={[
+                          {
+                            label: 'View booking details',
+                            onSelect: () =>
+                              navigate(
+                                `/staff/bookings/${item.session.booking_id}`
+                              ),
+                          },
+                        ]}
+                      />
+                    </span>
+                  ) : null}
+                </div>
                 <span className={styles.metaLine}>
                   Checked in:{' '}
                   {item.session.check_in_at
                     ? new Date(item.session.check_in_at).toLocaleString()
                     : 'Unknown'}
                 </span>
-              </button>
+                <div className={styles.cardControls}>
+                  <button
+                    type="button"
+                    className={styles.checkOutButton}
+                    onClick={() => onSelect(item.session)}
+                  >
+                    Check out
+                  </button>
+                </div>
+              </div>
             </li>
           ))}
         </ul>

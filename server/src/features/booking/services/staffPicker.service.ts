@@ -179,16 +179,29 @@ export async function getStaffPickerOptions(
 }
 
 /**
- * "No preference" resolution: the next available eligible staff member at
- * confirmation time. The RPC orders by display_name, so assignment is
- * deterministic. Returns null when nobody is eligible (a capacity error
- * upstream).
+ * Uniform random pick among eligible staff - shared by autoAssignStaff below
+ * and reschedule.service.ts's own "no preference" fallback, so both actually
+ * spread load across every eligible staff member instead of the RPC's
+ * display_name ordering always favoring the same one.
+ */
+export function pickRandomAvailableStaff(
+  staff: AvailableStaff[]
+): AvailableStaff | undefined {
+  if (staff.length === 0) return undefined;
+  return staff[Math.floor(Math.random() * staff.length)];
+}
+
+/**
+ * "No preference" resolution: a random eligible staff member at confirmation
+ * time (see pickRandomAvailableStaff - deliberately not the RPC's own
+ * display_name ordering, so assignment isn't always the same person). Returns
+ * null when nobody is eligible (a capacity error upstream).
  */
 export async function autoAssignStaff(
   params: AvailabilityWindowParams
 ): Promise<AvailableStaff | null> {
   const staff = await listAvailableStaff(params);
-  return staff[0] ?? null;
+  return pickRandomAvailableStaff(staff) ?? null;
 }
 
 interface UpdatePolicyParams {

@@ -7,7 +7,6 @@ import { HotelCheckoutPanel } from './HotelCheckoutPanel';
 import styles from './HotelQueuePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
-  'Receptionist',
   'Admin',
   'Supervisor',
   'Superadmin',
@@ -22,9 +21,10 @@ type Tab = 'check-in' | 'check-out';
  * Checkout pages/routes with one screen, matching the "Hotel Queue, not
  * Hotel Check-in + Hotel Checkout" request - the two flows are now tabs
  * sharing a single role check, instead of two standalone routes each doing
- * their own. Groomer and Pet Assistant can act here too (Hotel has no
- * dedicated assigned-staff role, unlike Grooming/Veterinary - see
- * HOTEL_ADVANCE_ROLES server-side). The legacy /staff/hotel/check-in and
+ * their own. Groomer and Pet Assistant are this page's intended users, not
+ * Receptionist (deliberately narrower than HOTEL_ADVANCE_ROLES server-side,
+ * which still allows Receptionist for other Hotel routes - see that
+ * constant's own dev note in hotel.types.ts). The legacy /staff/hotel/check-in and
  * /staff/hotel/checkout(/:stayId) routes now redirect here (see
  * HotelLegacyRedirects.tsx), preserving HotelBookingPicker's own
  * "already checked in -> go to checkout" cross-link and any old bookmarks.

@@ -101,28 +101,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/admin/staff',
           },
           {
-            title: 'Customer Management',
-            description: 'Look up customers, pets, and walk-in records.',
-            to: '/staff/admin/customers',
-          },
-          {
-            title: 'Days Off Approval Queue',
-            description: 'Review pending staff day-off requests.',
-            to: '/staff/admin/unavailability',
-          },
-          {
-            title: 'Monthly Schedule',
-            description:
-              'Plot rest days and vacation/sick leave on a branch-wide calendar.',
-            to: '/staff/admin/monthly-schedule',
-          },
-          {
-            title: 'Bookings Queue',
-            description:
-              'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
-            to: '/staff/bookings/queue',
-          },
-          {
             title: 'Archive',
             description:
               'Restore or permanently delete archived products, staff, and customers.',
@@ -134,15 +112,15 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: 'Receptionist',
         tiles: [
           {
-            title: 'Hotel Queue',
-            description:
-              'Check pets in and out, cage assignment, and billing handoff.',
-            to: '/staff/hotel/queue',
+            title: 'Customer Management',
+            description: 'Look up customers, pets, and walk-in records.',
+            to: '/staff/admin/customers',
           },
           {
-            title: 'Daycare Queue',
-            description: 'Check pets in and out of daycare sessions.',
-            to: '/staff/daycare/queue',
+            title: 'Bookings Queue',
+            description:
+              'Branch-wide booking queue - view every status, reschedule, or cancel.',
+            to: '/staff/bookings/queue',
           },
         ],
       },
@@ -153,6 +131,17 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Grooming Queue',
             description: "Today's grooming appointments and status updates.",
             to: '/staff/grooming/queue',
+          },
+          {
+            title: 'Hotel Queue',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
+            to: '/staff/hotel/queue',
+          },
+          {
+            title: 'Daycare Queue',
+            description: 'Check pets in and out of daycare sessions.',
+            to: '/staff/daycare/queue',
           },
         ],
       },
@@ -174,6 +163,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
+            title: 'Payments Queue',
+            description:
+              'Mark completed bookings as paid, or override a payment stage.',
+            to: '/staff/billing/payments-queue',
+          },
+          {
             title: 'Credit Management',
             description:
               "Look up a customer's branch credit balance, history, and expiry.",
@@ -189,11 +184,33 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'End-of-day uncompleted care log flags.',
             to: '/staff/hotel/care-log',
           },
+          {
+            title: 'Hotel Queue',
+            description:
+              'Check pets in and out, cage assignment, and billing handoff.',
+            to: '/staff/hotel/queue',
+          },
+          {
+            title: 'Daycare Queue',
+            description: 'Check pets in and out of daycare sessions.',
+            to: '/staff/daycare/queue',
+          },
         ],
       },
       {
         label: 'Supervisor',
         tiles: [
+          {
+            title: 'Days Off Approval Queue',
+            description: 'Review pending staff day-off requests.',
+            to: '/staff/admin/unavailability',
+          },
+          {
+            title: 'Monthly Schedule',
+            description:
+              'Plot rest days and vacation/sick leave on a branch-wide calendar.',
+            to: '/staff/admin/monthly-schedule',
+          },
           {
             title: 'Branch Reports',
             description:
@@ -295,17 +312,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: "Today's confirmed bookings for the front desk.",
             to: '/staff/bookings/queue',
           },
-          {
-            title: 'Hotel Queue',
-            description:
-              'Check pets in and out, cage assignment, and billing handoff.',
-            to: '/staff/hotel/queue',
-          },
-          {
-            title: 'Daycare Queue',
-            description: 'Check pets in and out of daycare sessions.',
-            to: '/staff/daycare/queue',
-          },
         ],
       },
     ],
@@ -373,14 +379,14 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
-            title: 'Bookings Queue',
-            description:
-              'Branch-wide booking queue - view every status and mark completed bookings as paid.',
-            to: '/staff/bookings/queue',
-          },
-          {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
+          },
+          {
+            title: 'Payments Queue',
+            description:
+              'Mark completed bookings as paid, or override a payment stage.',
+            to: '/staff/billing/payments-queue',
           },
           {
             title: 'Credit Management',
@@ -453,6 +459,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Grooming Queue': Scissors,
   'Consultation Queue': Stethoscope,
   'Checkout & Billing': Wallet,
+  'Payments Queue': Receipt,
   'Credit Management': Coins,
   'Hotel Care Log': Heart,
   'Care Log': Heart,

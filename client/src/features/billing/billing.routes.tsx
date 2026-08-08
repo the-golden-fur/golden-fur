@@ -4,6 +4,7 @@ import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGua
 import { CashierCheckoutPage } from './pages/CashierCheckoutPage/CashierCheckoutPage';
 import { MiscellaneousSalePage } from './pages/MiscellaneousSalePage/MiscellaneousSalePage';
 import { MiscSaleManagementPage } from './pages/MiscSaleManagementPage/MiscSaleManagementPage';
+import { PaymentsQueuePage } from './pages/PaymentsQueuePage/PaymentsQueuePage';
 
 /** Sprint 5 Epic A (#86/#87): role enforcement for the cashier-facing pages
  * happens server-side only (every staff role that can reach /staff may
@@ -19,6 +20,10 @@ export const billingRoutes = (
       <Route
         path="/staff/billing/checkout/:bookingId"
         element={<CashierCheckoutPage />}
+      />
+      <Route
+        path="/staff/billing/payments-queue"
+        element={<PaymentsQueuePage />}
       />
       <Route
         path="/staff/billing/misc-sale"
