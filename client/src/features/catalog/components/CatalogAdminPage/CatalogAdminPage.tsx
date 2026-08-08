@@ -1,12 +1,24 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type {
   CreateProductPayload,
   UpdateProductPayload,
 } from '../../catalog.types';
 import styles from './CatalogAdminPage.module.css';
+
+type CatalogSortKey = 'name' | 'price-low' | 'price-high';
+
+const SORT_OPTIONS: SortOption<CatalogSortKey>[] = [
+  { value: 'name', label: 'Name (A-Z)' },
+  { value: 'price-low', label: 'Price (low to high)' },
+  { value: 'price-high', label: 'Price (high to low)' },
+];
 
 interface CatalogItem {
   id: string;
@@ -119,7 +131,7 @@ export function CatalogAdminPage({
     sortKey,
     setSortKey,
     result: visibleItems,
-  } = useSearchAndSort<CatalogItem, 'name' | 'price-low' | 'price-high'>({
+  } = useSearchAndSort<CatalogItem, CatalogSortKey>({
     items,
     matchesQuery: (item, query) =>
       item.name.toLowerCase().includes(query) ||
@@ -131,6 +143,29 @@ export function CatalogAdminPage({
     },
     initialSortKey: 'name',
   });
+
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'name') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('name'),
+      });
+    }
+
+    return chips;
+  }, [search, sortKey, setSearch, setSortKey]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -368,13 +403,11 @@ export function CatalogAdminPage({
             searchPlaceholder={`Search ${itemNoun}s by name or category...`}
             sortValue={sortKey}
             onSortChange={setSortKey}
-            sortOptions={[
-              { value: 'name', label: 'Name (A-Z)' },
-              { value: 'price-low', label: 'Price (low to high)' },
-              { value: 'price-high', label: 'Price (high to low)' },
-            ]}
+            sortOptions={SORT_OPTIONS}
           />
         </div>
+
+        <ActiveFilterChips chips={filterChips} />
 
         {isLoading ? (
           <p className={styles.copy}>Loading {itemNoun} catalog...</p>

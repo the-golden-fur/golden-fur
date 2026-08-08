@@ -11,6 +11,9 @@
 }
 
 .filterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
   color: var(--color-text-secondary);
   font-size: var(--text-label);
   font-weight: var(--weight-normal);
@@ -24,6 +27,20 @@
   color: var(--color-text-primary);
   font: inherit;
   padding: var(--space-2);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.filterSelect:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.filterSelect:focus-visible {
+  outline: none;
+  border-color: var(--color-accent-gold-primary);
+  box-shadow: 0 0 0 3px var(--color-badge-bg-gold);
 }
 
 @media (max-width: 640px) {

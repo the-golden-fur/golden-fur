@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { CalendarDays, ListFilter } from 'lucide-react';
 import {
   DATE_RANGE_PRESET_OPTIONS,
   type DateRangePreset,
@@ -45,7 +46,10 @@ export function QueueFilterBar({
   return (
     <div className={styles.toolbar}>
       <label className={styles.filterField}>
-        <span className={styles.filterLabel}>Date</span>
+        <span className={styles.filterLabel}>
+          <CalendarDays size={12} aria-hidden="true" />
+          Date
+        </span>
         <select
           className={styles.filterSelect}
           value={dateRangePreset}
@@ -74,7 +78,10 @@ export function QueueFilterBar({
       ) : null}
 
       <label className={styles.filterField}>
-        <span className={styles.filterLabel}>{statusLabel}</span>
+        <span className={styles.filterLabel}>
+          <ListFilter size={12} aria-hidden="true" />
+          {statusLabel}
+        </span>
         <select
           className={styles.filterSelect}
           value={statusValue}

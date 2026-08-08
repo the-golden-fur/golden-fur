@@ -1,3 +1,4 @@
+import { ArrowUpDown, Search } from 'lucide-react';
 import styles from './SearchSortBar.module.css';
 
 export interface SortOption<SortKey extends string> {
@@ -30,24 +31,30 @@ export function SearchSortBar<SortKey extends string>({
 }: SearchSortBarProps<SortKey>) {
   return (
     <>
-      <input
-        className={styles.searchInput}
-        type="search"
-        placeholder={searchPlaceholder}
-        value={searchValue}
-        onChange={(event) => onSearchChange(event.target.value)}
-      />
-      <select
-        className={styles.sortSelect}
-        value={sortValue}
-        onChange={(event) => onSortChange(event.target.value as SortKey)}
-      >
-        {sortOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div className={styles.searchField}>
+        <Search className={styles.searchIcon} size={15} aria-hidden="true" />
+        <input
+          className={styles.searchInput}
+          type="search"
+          placeholder={searchPlaceholder}
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+      </div>
+      <div className={styles.sortField}>
+        <ArrowUpDown className={styles.sortIcon} size={14} aria-hidden="true" />
+        <select
+          className={styles.sortSelect}
+          value={sortValue}
+          onChange={(event) => onSortChange(event.target.value as SortKey)}
+        >
+          {sortOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </>
   );
 }

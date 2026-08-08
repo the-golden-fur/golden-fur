@@ -29,6 +29,15 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Display label for a preset - used by pages' active-filter chip rows so
+ * the chip text always matches the select's own option label. */
+export function dateRangePresetLabel(preset: DateRangePreset): string {
+  return (
+    DATE_RANGE_PRESET_OPTIONS.find((option) => option.value === preset)
+      ?.label ?? preset
+  );
+}
+
 /**
  * Resolves a preset to an inclusive [from, to] date range, computed in UTC
  * calendar terms - matching the server's own day-boundary queries

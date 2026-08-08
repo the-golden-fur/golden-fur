@@ -8,6 +8,7 @@ import {
 } from '../../api/staff.api';
 import { UnavailabilityReviewCard } from '../../components/review/UnavailabilityReviewCard/UnavailabilityReviewCard';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type { PendingUnavailabilityBlock, StaffRole } from '../../staff.types';
 import styles from './UnavailabilityApprovalQueuePage.module.css';
@@ -129,6 +130,36 @@ export function UnavailabilityApprovalQueuePage() {
     initialSortKey: 'requested-earliest',
   });
 
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (viewerRole === 'Superadmin' && branchFilter !== 'All') {
+      chips.push({
+        id: 'branch',
+        label: `Branch: ${branchFilter.slice(0, 8)}`,
+        onClear: () => setBranchFilter('All'),
+      });
+    }
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'requested-earliest') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('requested-earliest'),
+      });
+    }
+
+    return chips;
+  }, [viewerRole, branchFilter, search, sortKey, setSearch, setSortKey]);
+
   const handleReview = (
     block: PendingUnavailabilityBlock,
     decision: 'approved' | 'denied',
@@ -212,6 +243,8 @@ export function UnavailabilityApprovalQueuePage() {
             sortOptions={SORT_OPTIONS}
           />
         </div>
+
+        <ActiveFilterChips chips={filterChips} />
 
         {actionError ? (
           <p className={styles.errorBanner} role="alert">
