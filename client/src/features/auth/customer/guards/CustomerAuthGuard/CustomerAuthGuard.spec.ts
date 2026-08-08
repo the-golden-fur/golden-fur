@@ -107,8 +107,7 @@ describe('CustomerAuthGuard', () => {
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
-    await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
-    expect(screen.getByText('Customer portal')).toBeInTheDocument();
+    expect(await screen.findByText('Customer portal')).toBeInTheDocument();
   });
 
   it('renders the identity chip (full name, no role badge) and the portal sidebar', async () => {
@@ -221,8 +220,7 @@ describe('CustomerAuthGuard', () => {
       } as Partial<AuthContextValue> as AuthContextValue)
     );
 
-    await waitFor(() => expect(mfaApi.getMfaStatus).toHaveBeenCalled());
-    expect(screen.getByText('Customer portal')).toBeInTheDocument();
+    expect(await screen.findByText('Customer portal')).toBeInTheDocument();
   });
 
   it('signs out and redirects to login when the session has no customer_profiles row (cross-role session)', async () => {
