@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import {
   getCustomerProfile,
@@ -9,6 +10,12 @@ import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { listHotelStays } from '../../api/hotel.api';
 import type { HotelStayWithCage } from '../../hotel.types';
 import { HotelStayPicker } from './HotelStayPicker';
+
+function renderPicker(props: Parameters<typeof HotelStayPicker>[0]) {
+  return render(
+    createElement(MemoryRouter, null, createElement(HotelStayPicker, props))
+  );
+}
 
 vi.mock('../../api/hotel.api', () => ({
   listHotelStays: vi.fn(),
@@ -79,12 +86,7 @@ describe('HotelStayPicker', () => {
   it('lists an active stay with cage, owner, and checkout-due date', async () => {
     setupMocks([stay()]);
 
-    render(
-      createElement(HotelStayPicker, {
-        accessToken: 'token',
-        onSelect: vi.fn(),
-      })
-    );
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
 
     expect(await screen.findByText('Mochi')).toBeInTheDocument();
     expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
@@ -94,24 +96,20 @@ describe('HotelStayPicker', () => {
   it('only ever requests In Progress stays', async () => {
     setupMocks([stay()]);
 
-    render(
-      createElement(HotelStayPicker, {
-        accessToken: 'token',
-        onSelect: vi.fn(),
-      })
-    );
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
 
     await screen.findByText('Mochi');
     expect(listHotelStays).toHaveBeenCalledWith('token', 'In Progress');
   });
 
-  it('clicking a card calls onSelect with that stay', async () => {
+  it('clicking the Check out button calls onSelect with that stay', async () => {
     setupMocks([stay()]);
     const onSelect = vi.fn();
 
-    render(createElement(HotelStayPicker, { accessToken: 'token', onSelect }));
+    renderPicker({ accessToken: 'token', onSelect });
 
-    fireEvent.click(await screen.findByText('Mochi'));
+    await screen.findByText('Mochi');
+    fireEvent.click(screen.getByRole('button', { name: 'Check out' }));
 
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'stay-1' })
@@ -121,12 +119,7 @@ describe('HotelStayPicker', () => {
   it('search filters by pet, owner, or cage', async () => {
     setupMocks([stay()]);
 
-    render(
-      createElement(HotelStayPicker, {
-        accessToken: 'token',
-        onSelect: vi.fn(),
-      })
-    );
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
 
     await screen.findByText('Mochi');
 

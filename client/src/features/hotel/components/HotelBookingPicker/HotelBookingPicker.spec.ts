@@ -143,33 +143,33 @@ describe('HotelBookingPicker', () => {
     expect(screen.getByText('Hotel Stay - Small Cage')).toBeInTheDocument();
   });
 
-  it('clicking a Pending card calls onSelect with that booking', async () => {
+  it('clicking the Check in button calls onSelect with that booking', async () => {
     setupMocks([booking()]);
     const onSelect = vi.fn();
 
     renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
 
-    fireEvent.click(await screen.findByText('Mochi'));
+    await screen.findByText('Mochi');
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
 
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'booking-1' })
     );
   });
 
-  it('a non-Pending booking renders its status badge and is not selectable', async () => {
+  it('a non-Pending booking renders its status badge and offers no Check in button', async () => {
     setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
-    const onSelect = vi.fn();
 
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
+    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByText('Mochi'));
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Check in' })
+    ).not.toBeInTheDocument();
   });
 
-  it('an already-checked-in booking (In Progress, with a hotel_stays row) shows a badge, a checkout link, and is not selectable for check-in again', async () => {
+  it('an already-checked-in booking (In Progress, with a hotel_stays row) shows a badge, a checkout link, and offers no Check in button', async () => {
     setupMocks([booking({ status: 'In Progress' })]);
     vi.mocked(listHotelStays).mockResolvedValue({
       data: [
@@ -193,18 +193,16 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    const onSelect = vi.fn();
-
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
+    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
 
     expect(await screen.findByText('Already checked in')).toBeInTheDocument();
     expect(screen.getByText(/Go to checkout/)).toHaveAttribute(
       'href',
       '/staff/hotel/checkout/stay-1'
     );
-
-    fireEvent.click(screen.getByText('Mochi'));
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Check in' })
+    ).not.toBeInTheDocument();
   });
 
   it('a checked-out booking (Completed, with a hotel_stays row) shows its booking-status badge instead of a checkout link', async () => {
@@ -231,17 +229,15 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    const onSelect = vi.fn();
-
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
+    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.queryByText('Already checked in')).not.toBeInTheDocument();
     expect(screen.queryByText(/Go to checkout/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Mochi'));
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Check in' })
+    ).not.toBeInTheDocument();
   });
 
   it('search filters by pet, owner, or weight class', async () => {

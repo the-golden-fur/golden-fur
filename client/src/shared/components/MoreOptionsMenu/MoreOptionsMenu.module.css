@@ -1,0 +1,58 @@
+.container {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.menu {
+  composes: animate-fade-in from global;
+  position: absolute;
+  top: calc(100% + var(--space-0-5));
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  min-width: 10rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-0-5);
+}
+
+.menuItem {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  transition: background-color 0.15s ease;
+}
+
+.menuItem:hover {
+  background: var(--color-badge-bg-gold);
+}

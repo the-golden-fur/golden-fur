@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import {
   QueueFilterBar,
   type QueueStatusOption,
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
+  dateRangePresetLabel,
   resolveDateRangePreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
+import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
@@ -67,6 +71,7 @@ export function DaycareBookingPicker({
   onSelect,
   selectedBookingId,
 }: DaycareBookingPickerProps) {
+  const navigate = useNavigate();
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -189,6 +194,46 @@ export function DaycareBookingPicker({
     initialSortKey: 'soonest',
   });
 
+  const filterChips = useMemo(() => {
+    const chips: { id: string; label: string; onClear: () => void }[] = [];
+
+    if (dateRangePreset !== 'today') {
+      chips.push({
+        id: 'date',
+        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
+        onClear: () => setDateRangePreset('today'),
+      });
+    }
+    if (statusFilter !== 'Pending') {
+      chips.push({
+        id: 'status',
+        label: `Status: ${
+          STATUS_OPTIONS.find((option) => option.value === statusFilter)
+            ?.label ?? statusFilter
+        }`,
+        onClear: () => setStatusFilter('Pending'),
+      });
+    }
+    if (search.trim() !== '') {
+      chips.push({
+        id: 'search',
+        label: `Search: "${search.trim()}"`,
+        onClear: () => setSearch(''),
+      });
+    }
+    if (sortKey !== 'soonest') {
+      chips.push({
+        id: 'sort',
+        label:
+          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
+          sortKey,
+        onClear: () => setSortKey('soonest'),
+      });
+    }
+
+    return chips;
+  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
+
   return (
     <div className={styles.wrapper}>
       <QueueFilterBar
@@ -211,6 +256,8 @@ export function DaycareBookingPicker({
           sortOptions={SORT_OPTIONS}
         />
       </QueueFilterBar>
+
+      <ActiveFilterChips chips={filterChips} />
 
       <p className={styles.resultCount}>
         {isLoading
@@ -242,20 +289,6 @@ export function DaycareBookingPicker({
                   className={`${styles.card} ${
                     selectedBookingId === item.booking.id ? styles.selected : ''
                   } ${!isCheckinable ? styles.disabledCard : ''}`}
-                  role={isCheckinable ? 'button' : undefined}
-                  tabIndex={isCheckinable ? 0 : undefined}
-                  onClick={
-                    isCheckinable ? () => onSelect(item.booking) : undefined
-                  }
-                  onKeyDown={
-                    isCheckinable
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            onSelect(item.booking);
-                          }
-                        }
-                      : undefined
-                  }
                 >
                   <div className={styles.cardHeader}>
                     <span className={styles.petName}>{item.petName}</span>
@@ -263,11 +296,34 @@ export function DaycareBookingPicker({
                     {!isCheckinable ? (
                       <BookingStatusBadge status={item.booking.status} />
                     ) : null}
+                    <span className={styles.menuSlot}>
+                      <MoreOptionsMenu
+                        label={`More options for ${item.petName}`}
+                        items={[
+                          {
+                            label: 'View booking details',
+                            onSelect: () =>
+                              navigate(`/staff/bookings/${item.booking.id}`),
+                          },
+                        ]}
+                      />
+                    </span>
                   </div>
                   <span className={styles.metaLine}>{item.serviceLabel}</span>
                   <span className={styles.metaLine}>
                     {new Date(item.booking.scheduled_start).toLocaleString()}
                   </span>
+                  {isCheckinable ? (
+                    <div className={styles.cardControls}>
+                      <button
+                        type="button"
+                        className={styles.checkInButton}
+                        onClick={() => onSelect(item.booking)}
+                      >
+                        Check in
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </li>
             );
