@@ -70,15 +70,15 @@ were grouped under the wrong section relative to what that same tile's own
 `ALLOWED_VIEWER_ROLES` / that role's own dashboard says. Fixed by moving them into the
 section that actually matches:
 
-| Tile | Was under | Now under |
-|---|---|---|
-| Bookings Queue | Management | **Receptionist** |
-| Customer Management | Management | **Receptionist** |
-| Days Off Approval Queue | Management | **Supervisor** |
-| Monthly Schedule | Management | **Supervisor** |
-| Hotel Queue | Receptionist | **Groomer** + **Pet Assistant** |
-| Daycare Queue | Receptionist | **Groomer** + **Pet Assistant** |
-| Payments Queue (new) | - | **Cashier** |
+| Tile                    | Was under    | Now under                       |
+| ----------------------- | ------------ | ------------------------------- |
+| Bookings Queue          | Management   | **Receptionist**                |
+| Customer Management     | Management   | **Receptionist**                |
+| Days Off Approval Queue | Management   | **Supervisor**                  |
+| Monthly Schedule        | Management   | **Supervisor**                  |
+| Hotel Queue             | Receptionist | **Groomer** + **Pet Assistant** |
+| Daycare Queue           | Receptionist | **Groomer** + **Pet Assistant** |
+| Payments Queue (new)    | -            | **Cashier**                     |
 
 Admin's "Management" section is now just Days Off, Staff Management, Archive - the
 tiles that don't map to any single lower-privilege role. The Cashier role's own
@@ -96,6 +96,7 @@ reorg only touches how Admin/Superadmin's grouped view labels the same shared ti
 **New**: `client/src/features/billing/pages/PaymentsQueuePage/{PaymentsQueuePage.tsx,PaymentsQueuePage.module.css,PaymentsQueuePage.spec.ts}`.
 
 **Edited**:
+
 - `client/src/features/booking/pages/ReceptionistBookingsQueuePage/ReceptionistBookingsQueuePage.tsx` - stripped Start/Complete/status-override/payment actions.
 - `client/src/features/booking/pages/ReceptionistBookingsQueuePage/ReceptionistBookingsQueuePage.spec.ts` - removed the now-relocated Start/Complete/Mark-as-Paid tests, added one read-only assertion.
 - `client/src/features/billing/billing.routes.tsx` - new `/staff/billing/payments-queue` route.

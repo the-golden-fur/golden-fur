@@ -27,7 +27,9 @@ describe('MoreOptionsMenu', () => {
     await user.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: 'View booking details' }));
+    await user.click(
+      screen.getByRole('menuitem', { name: 'View booking details' })
+    );
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();

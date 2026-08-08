@@ -181,7 +181,7 @@ describe('PaymentsQueuePage', () => {
     });
   });
 
-  it('loads the queue scoped to the viewer\'s own branch by default', async () => {
+  it("loads the queue scoped to the viewer's own branch by default", async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
       error: null,

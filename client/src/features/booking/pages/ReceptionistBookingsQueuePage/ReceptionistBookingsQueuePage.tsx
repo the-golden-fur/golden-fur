@@ -616,7 +616,9 @@ export function ReceptionistBookingsQueuePage() {
                       <button
                         type="button"
                         className={styles.secondaryButton}
-                        onClick={() => navigate(`/staff/bookings/${booking.id}`)}
+                        onClick={() =>
+                          navigate(`/staff/bookings/${booking.id}`)
+                        }
                       >
                         View details
                       </button>

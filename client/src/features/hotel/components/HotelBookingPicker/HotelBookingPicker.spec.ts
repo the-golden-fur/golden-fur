@@ -160,7 +160,11 @@ describe('HotelBookingPicker', () => {
   it('a non-Pending booking renders its status badge and offers no Check in button', async () => {
     setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
 
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
+    renderPicker({
+      accessToken: 'token',
+      branchId: 'branch-1',
+      onSelect: vi.fn(),
+    });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
@@ -193,7 +197,11 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
+    renderPicker({
+      accessToken: 'token',
+      branchId: 'branch-1',
+      onSelect: vi.fn(),
+    });
 
     expect(await screen.findByText('Already checked in')).toBeInTheDocument();
     expect(screen.getByText(/Go to checkout/)).toHaveAttribute(
@@ -229,7 +237,11 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect: vi.fn() });
+    renderPicker({
+      accessToken: 'token',
+      branchId: 'branch-1',
+      onSelect: vi.fn(),
+    });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
