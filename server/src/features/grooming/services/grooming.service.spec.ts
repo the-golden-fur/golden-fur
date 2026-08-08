@@ -38,7 +38,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'in', 'gte', 'lt']) {
+    for (const method of ['select', 'eq', 'in', 'gte', 'lt', 'or']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -259,7 +259,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
       vi.mocked(supabase.from).mockImplementation(((table: string) => {
         const builder: Record<string, unknown> = {};
 
-        for (const method of ['select', 'eq', 'gte', 'lt']) {
+        for (const method of ['select', 'eq', 'gte', 'lt', 'or']) {
           builder[method] = vi.fn(() => builder);
         }
 

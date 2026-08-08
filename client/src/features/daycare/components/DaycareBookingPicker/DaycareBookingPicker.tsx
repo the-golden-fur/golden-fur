@@ -122,6 +122,7 @@ export function DaycareBookingPicker({
       dateTo: dateRange.to ?? undefined,
       serviceCategory: 'Daycare',
       status: statusFilter === 'All' ? undefined : statusFilter,
+      excludeUnpaidDownpayment: true,
     }).then((result) => {
       if (!isMounted) return;
 

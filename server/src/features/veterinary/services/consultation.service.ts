@@ -98,7 +98,10 @@ export async function listConsultationQueue({
     .eq('service_category', 'Veterinary')
     .in('status', QUEUE_BOOKING_STATUSES)
     .gte('scheduled_start', dayStart)
-    .lt('scheduled_start', dayEnd);
+    .lt('scheduled_start', dayEnd)
+    // Custom change (P-1 roadmap item: generic downpayment): same gate as
+    // grooming.service.ts's listGroomingQueue - see 20260808111's dev notes.
+    .or('downpayment_required.eq.false,payment_stage.neq.Unpaid');
 
   if (bookingsError) throwWithStatus(400, bookingsError.message);
 

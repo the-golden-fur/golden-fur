@@ -235,6 +235,9 @@ export interface Booking {
   payment_stage: PaymentStage;
   total_price: number;
   downpayment_amount: number | null;
+  /** True when at least one selected service/package was flagged
+   * requires_downpayment at creation - drives staff queue gating. */
+  downpayment_required: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only for the discount)
@@ -310,8 +313,6 @@ export interface PolicyConfiguration {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
-  /** % of total booking cost required as Hotel downpayment (#88). */
-  downpayment_percentage: number;
   reschedule_fee_enabled: boolean;
   /** Populated only when reschedule_fee_enabled is true. */
   reschedule_fee_type: RescheduleFeeType | null;
@@ -334,7 +335,6 @@ export type EffectivePolicy = Pick<
   | 'lunch_break_enabled'
   | 'lunch_break_start'
   | 'lunch_break_end'
-  | 'downpayment_percentage'
   | 'reschedule_fee_enabled'
   | 'reschedule_fee_type'
   | 'reschedule_fee_value'
@@ -353,7 +353,6 @@ export interface UpdatePolicyPayload {
   lunch_break_enabled?: boolean;
   lunch_break_start?: string;
   lunch_break_end?: string;
-  downpayment_percentage?: number;
   reschedule_fee_enabled?: boolean;
   reschedule_fee_type?: RescheduleFeeType | null;
   reschedule_fee_value?: number | null;
@@ -380,6 +379,13 @@ export interface CreateBookingPayload {
   staff_preference?: StaffPreferenceInput;
   payment_method?: PaymentMethod;
   payment_confirmed?: boolean;
+  /** Only meaningful when the selected items require a downpayment and
+   * payment_confirmed is true (an online method) - lets the customer/
+   * receptionist choose to pay just the downpayment now (payment_stage
+   * becomes 'Paid in Advance', balance settled later at the counter) or the
+   * full amount now (payment_stage becomes 'Paid'). Omitted/'full' behaves
+   * like every booking did before this field existed. */
+  payment_choice?: 'downpayment' | 'full';
   // Staff-only (money-handling roles), Cash-only - see booking.service.ts's
   // resolveDiscountAndPromo.
   discount_id?: string;
@@ -447,4 +453,7 @@ export interface ListBookingsFilters {
    * viewer's own id for "assigned to me"), or the sentinel 'unassigned' for
    * bookings with no assigned staff yet. */
   assignedStaffId?: string;
+  /** Opt-in: excludes a Pending/In Progress booking whose downpayment hasn't
+   * been paid yet. Used only by the Hotel/Daycare check-in queue pickers. */
+  excludeUnpaidDownpayment?: boolean;
 }

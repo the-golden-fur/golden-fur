@@ -116,6 +116,39 @@ export async function getTransactionHistory(
   return { data: result.data?.transactions ?? null, error: result.error };
 }
 
+/** Customer-facing counterpart to getTransactionHistory above - always
+ * scoped server-side to the caller's own customer_id (GET /reports/
+ * my-transaction-history), no customer_id/branch_id filter to pass. */
+export async function getMyTransactionHistory(
+  filters: Pick<
+    TransactionHistoryFilters,
+    'petId' | 'dateFrom' | 'dateTo' | 'serviceCategory'
+  >,
+  accessToken: string
+): Promise<ReportsApiResult<TransactionRecord[]>> {
+  const params = new URLSearchParams();
+  if (filters.petId) params.set('pet_id', filters.petId);
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  if (filters.serviceCategory)
+    params.set('service_category', filters.serviceCategory);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
+  const response = await fetch(
+    `${API_BASE_URL}/reports/my-transaction-history${query}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ transactions: TransactionRecord[] }>(
+    response
+  );
+  return { data: result.data?.transactions ?? null, error: result.error };
+}
+
 export async function getAnalyticsSummary(
   timeFilter: string,
   branchId: string | null,

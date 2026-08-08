@@ -25,6 +25,13 @@ export interface BookingForBilling {
   items: BookingLineItem[];
   status: string;
   total_price: number;
+  /** Custom change (P-1 roadmap item: generic downpayment) - true when this
+   * booking's downpayment_amount came from a flagged catalog item rather
+   * than Hotel's own percentage fallback. Non-Hotel categories net this out
+   * as a "Downpayment already collected" line below, same as Hotel's own
+   * (untouched) stays-based netting in getHotelLineItems. */
+  downpayment_required: boolean;
+  downpayment_amount: number | null;
   payment_method: string | null;
   /** Locked in at booking creation (staff-only, Cash-only discount; any-
    * payment-method promo) - see resolveDiscountAndPromo in
@@ -51,7 +58,7 @@ export async function getBookingForBilling(
   const { data, error } = await supabase
     .from('bookings')
     .select(
-      'id, customer_id, branch_id, service_category, status, total_price, payment_method, selected_discount_id, discount_amount, selected_promo_id, promo_amount, branches!inner(name), discounts(name), promos(name), booking_items(id, service_id, package_id, price_at_booking, services(name), packages(name))'
+      'id, customer_id, branch_id, service_category, status, total_price, downpayment_required, downpayment_amount, payment_method, selected_discount_id, discount_amount, selected_promo_id, promo_amount, branches!inner(name), discounts(name), promos(name), booking_items(id, service_id, package_id, price_at_booking, services(name), packages(name))'
     )
     .eq('id', bookingId)
     .maybeSingle();
@@ -101,6 +108,8 @@ export async function getBookingForBilling(
   });
 
   const raw = data as unknown as {
+    downpayment_required: boolean;
+    downpayment_amount: number | null;
     payment_method: string | null;
     selected_discount_id: string | null;
     discount_amount: number;
@@ -125,6 +134,9 @@ export async function getBookingForBilling(
     items,
     status,
     total_price: Number(data.total_price),
+    downpayment_required: raw.downpayment_required,
+    downpayment_amount:
+      raw.downpayment_amount === null ? null : Number(raw.downpayment_amount),
     payment_method: raw.payment_method,
     selected_discount_id: raw.selected_discount_id,
     selected_discount_name: discountName ?? null,
@@ -133,6 +145,31 @@ export async function getBookingForBilling(
     selected_promo_name: promoName ?? null,
     promo_amount: Number(raw.promo_amount ?? 0),
   };
+}
+
+/**
+ * Custom change (P-1 roadmap item: generic downpayment): a downpayment-
+ * required booking is only ever gated into the queue (and thus only ever
+ * reaches Completed/checkout) once its downpayment_amount was actually
+ * collected - see the booking-service.ts/grooming/consultation queue gates
+ * keyed off downpayment_required + payment_stage. So unlike Hotel's own
+ * netting (getHotelLineItems below, which stays keyed off `stays` and is
+ * left untouched), this is unconditional on payment_stage: by the time a
+ * flagged booking can reach here, the downpayment is guaranteed paid.
+ */
+function downpaymentNettingLines(booking: BookingForBilling): DraftLineItem[] {
+  if (!booking.downpayment_required || !booking.downpayment_amount) return [];
+
+  return [
+    {
+      line_item_type: 'discount',
+      reference_id: null,
+      description: 'Downpayment already collected',
+      quantity: 1,
+      unit_price: -booking.downpayment_amount,
+      line_total: -booking.downpayment_amount,
+    },
+  ];
 }
 
 /**
@@ -149,7 +186,7 @@ export async function getBookingForBilling(
 async function getItemBasedLineItems(
   booking: BookingForBilling
 ): Promise<DraftLineItem[]> {
-  return booking.items.map((item) => ({
+  const lines: DraftLineItem[] = booking.items.map((item) => ({
     line_item_type: 'service',
     reference_id: item.service_id ?? item.package_id,
     description: item.description,
@@ -157,6 +194,8 @@ async function getItemBasedLineItems(
     unit_price: item.price_at_booking,
     line_total: item.price_at_booking,
   }));
+
+  return [...lines, ...downpaymentNettingLines(booking)];
 }
 
 /**
@@ -271,6 +310,7 @@ async function getDaycareLineItems(
       unit_price: Number(session.computed_charge),
       line_total: Number(session.computed_charge),
     },
+    ...downpaymentNettingLines(booking),
   ];
 }
 
@@ -295,16 +335,18 @@ async function getVeterinaryLineItems(
 
   if (itemsError) throwWithStatus(400, itemsError.message);
 
-  return ((items ?? []) as Array<{ description: string; amount: number }>).map(
-    (item) => ({
-      line_item_type: 'service',
-      reference_id: consultation.id,
-      description: item.description,
-      quantity: 1,
-      unit_price: Number(item.amount),
-      line_total: Number(item.amount),
-    })
-  );
+  const lines = (
+    (items ?? []) as Array<{ description: string; amount: number }>
+  ).map((item) => ({
+    line_item_type: 'service' as const,
+    reference_id: consultation.id,
+    description: item.description,
+    quantity: 1,
+    unit_price: Number(item.amount),
+    line_total: Number(item.amount),
+  }));
+
+  return [...lines, ...downpaymentNettingLines(booking)];
 }
 
 /** Dispatches to the right M04/M05/M06/M07 source by

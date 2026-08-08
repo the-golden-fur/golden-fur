@@ -268,6 +268,10 @@ export interface Booking {
   payment_stage: PaymentStage;
   total_price: number;
   downpayment_amount: number | null;
+  /** True when at least one selected service/package was flagged
+   * requires_downpayment at creation. Drives queue gating (grooming/
+   * consultation/listBookings) - see 20260808111's dev notes. */
+  downpayment_required: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -333,8 +337,6 @@ export interface PolicyConfiguration {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
-  /** % of total booking cost required as Hotel downpayment (#88). */
-  downpayment_percentage: number;
   reschedule_fee_enabled: boolean;
   /** Populated only when reschedule_fee_enabled is true. */
   reschedule_fee_type: RescheduleFeeType | null;
@@ -361,7 +363,6 @@ export type EffectivePolicy = Pick<
   | 'lunch_break_enabled'
   | 'lunch_break_start'
   | 'lunch_break_end'
-  | 'downpayment_percentage'
   | 'reschedule_fee_enabled'
   | 'reschedule_fee_type'
   | 'reschedule_fee_value'

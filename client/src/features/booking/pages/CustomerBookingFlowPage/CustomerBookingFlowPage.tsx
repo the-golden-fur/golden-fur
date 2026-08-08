@@ -65,7 +65,6 @@ import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './CustomerBookingFlowPage.module.css';
 
 const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
-const HOTEL_DOWNPAYMENT_RATE = 0.5;
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
  * array (and invalidate every memo that depends on them) on every render. */
@@ -357,6 +356,12 @@ export function CustomerBookingFlowPage() {
   // and checking this box IS the attestation.
   const [discountIdVerified, setDiscountIdVerified] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+  // Custom change (P-1 roadmap item: generic downpayment) - only surfaced
+  // (and only sent to the server) when the selection requires a downpayment
+  // and an online payment method is picked - see showPaymentChoice below.
+  const [paymentChoice, setPaymentChoice] = useState<'downpayment' | 'full'>(
+    'downpayment'
+  );
   const [specialInstructions, setSpecialInstructions] = useState('');
 
   // Hotel-only: freetext feeding/walking/medication preferences captured at
@@ -832,10 +837,51 @@ export function CustomerBookingFlowPage() {
   const estimatedTotal = Math.max(0, subtotal - discountAmount - promoDiscount);
 
   const requiresPayment = category !== 'Veterinary';
-  const downpaymentAmount =
-    category === 'Hotel'
-      ? Math.round(subtotal * HOTEL_DOWNPAYMENT_RATE * 100) / 100
-      : null;
+
+  // Custom change (P-1 roadmap item: generic downpayment, later revised to
+  // flat-or-percentage and to fully replace the old Hotel-only branch-wide
+  // percentage - see resolveBookingItem/createBooking in booking.service.ts
+  // for the authoritative, server-side version of this same math): each
+  // flagged item's own contribution is either a flat PHP downpayment_amount,
+  // or that percentage of the item's own price (mirroring the price shown
+  // per item in the pricing summary below, i.e. base_price/bundled_price
+  // times hotelNightsMultiplier).
+  const catalogDownpaymentAmount =
+    selectedServices.reduce((sum, service) => {
+      if (!service.requires_downpayment) return sum;
+
+      const itemPrice = service.base_price * hotelNightsMultiplier;
+      const contribution =
+        service.downpayment_type === 'Percentage'
+          ? itemPrice * ((service.downpayment_amount ?? 0) / 100)
+          : (service.downpayment_amount ?? 0);
+
+      return sum + contribution;
+    }, 0) +
+    selectedPackages.reduce((sum, pkg) => {
+      if (!pkg.requires_downpayment) return sum;
+
+      const itemPrice = pkg.bundled_price * hotelNightsMultiplier;
+      const contribution =
+        pkg.downpayment_type === 'Percentage'
+          ? itemPrice * ((pkg.downpayment_amount ?? 0) / 100)
+          : (pkg.downpayment_amount ?? 0);
+
+      return sum + contribution;
+    }, 0);
+  const downpaymentRequired = catalogDownpaymentAmount > 0;
+  const downpaymentAmount = downpaymentRequired
+    ? catalogDownpaymentAmount
+    : null;
+  // Only meaningful when paying online right now (GCash/Maya) - pay-at-
+  // counter methods always defer the whole amount to later regardless, same
+  // as today, so there's nothing to choose between until the customer is
+  // actually at the counter (handled there via the Payments Queue's
+  // existing Mark as Paid "Advance payment" vs "Normal onsite payment").
+  const showPaymentChoice =
+    downpaymentRequired &&
+    paymentMethod !== '' &&
+    ONLINE_METHODS.has(paymentMethod);
 
   // ---- Steps ----
 
@@ -1367,6 +1413,7 @@ export function CustomerBookingFlowPage() {
               payment_confirmed: paymentConfirmed,
             }
           : {}),
+        ...(showPaymentChoice ? { payment_choice: paymentChoice } : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
         ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
         ...(specialInstructions.trim()
@@ -2266,8 +2313,7 @@ export function CustomerBookingFlowPage() {
               </div>
               {downpaymentAmount !== null ? (
                 <p className={styles.copy}>
-                  50% downpayment required now: PHP{' '}
-                  {downpaymentAmount.toFixed(2)}
+                  Downpayment required now: PHP {downpaymentAmount.toFixed(2)}
                 </p>
               ) : null}
             </section>
@@ -2295,6 +2341,35 @@ export function CustomerBookingFlowPage() {
                 No upfront payment is required for Veterinary bookings.
               </p>
             )}
+
+            {showPaymentChoice ? (
+              <fieldset className={styles.field}>
+                <legend className={styles.fieldLabel}>
+                  This booking requires a downpayment - pay it now, or pay in
+                  full?
+                </legend>
+                <label className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="paymentChoice"
+                    checked={paymentChoice === 'downpayment'}
+                    onChange={() => setPaymentChoice('downpayment')}
+                  />
+                  Pay downpayment only now (PHP{' '}
+                  {(downpaymentAmount ?? 0).toFixed(2)}) - the rest is due at
+                  the counter
+                </label>
+                <label className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="paymentChoice"
+                    checked={paymentChoice === 'full'}
+                    onChange={() => setPaymentChoice('full')}
+                  />
+                  Pay in full now (PHP {estimatedTotal.toFixed(2)})
+                </label>
+              </fieldset>
+            ) : null}
 
             {canApplyDiscounts ? (
               paymentMethod === 'Cash' ? (

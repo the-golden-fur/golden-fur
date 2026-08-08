@@ -89,7 +89,12 @@ export async function listGroomingQueue({
     .eq('service_category', 'Grooming')
     .in('status', ['Pending', 'In Progress'])
     .gte('scheduled_start', dayStart)
-    .lt('scheduled_start', dayEnd);
+    .lt('scheduled_start', dayEnd)
+    // Custom change (P-1 roadmap item: generic downpayment): a booking
+    // whose service/package requires a downpayment stays out of the queue
+    // (and never gets a grooming_sessions row vivified below) until its
+    // downpayment is paid - see 20260808111's dev notes.
+    .or('downpayment_required.eq.false,payment_stage.neq.Unpaid');
 
   if (requesterRole === 'Groomer') {
     bookingQuery = bookingQuery.eq('assigned_staff_id', requesterId);

@@ -113,6 +113,39 @@ export async function transactionHistoryController(
   }
 }
 
+/**
+ * Custom change (P-1 roadmap item: transaction history visibility) - the
+ * customer-facing counterpart to transactionHistoryController above. No
+ * staff role or branch_id involved: req.user.sub is trusted directly as the
+ * customer_id filter (a customer JWT can only ever be their own), same
+ * ownership-scoping convention booking.service.ts's listBookings uses for a
+ * non-staff caller.
+ */
+export async function customerTransactionHistoryController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const customerId = req.user?.sub;
+
+  if (!customerId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const transactions = await listTransactionHistory({
+      customerId,
+      petId: queryParam(req, 'pet_id'),
+      dateFrom: queryParam(req, 'date_from'),
+      dateTo: queryParam(req, 'date_to'),
+      serviceCategory: queryParam(req, 'service_category'),
+    });
+
+    return res.status(200).json({ transactions });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function analyticsSummaryController(
   req: AuthenticatedRequest,
   res: Response

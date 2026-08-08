@@ -198,6 +198,39 @@ const VET_SERVICE = {
   service_pricing_tiers: [],
 } as never;
 
+// Custom change (P-1 roadmap item: generic downpayment) - a flat catalog
+// downpayment_amount, independent of the tiered base_price, so tests can
+// assert the two never get confused with each other.
+const DOWNPAYMENT_GROOMING_SERVICE = {
+  id: 'service-groom-dp',
+  category: 'Grooming',
+  name: 'Full Groom (downpayment)',
+  base_price: 300,
+  is_active: true,
+  requires_assessed_pet: true,
+  use_pricing_matrix: true,
+  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
+  requires_downpayment: true,
+  downpayment_amount: 150,
+  downpayment_type: 'Flat',
+} as never;
+
+// Custom change (follow-up: flat-or-percentage) - 20% of the S/SC tier
+// price (350), i.e. 70, not 20% of base_price (300).
+const PERCENTAGE_DOWNPAYMENT_GROOMING_SERVICE = {
+  id: 'service-groom-dp-pct',
+  category: 'Grooming',
+  name: 'Full Groom (percentage downpayment)',
+  base_price: 300,
+  is_active: true,
+  requires_assessed_pet: true,
+  use_pricing_matrix: true,
+  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
+  requires_downpayment: true,
+  downpayment_amount: 20,
+  downpayment_type: 'Percentage',
+} as never;
+
 const GROOMER = {
   staff_id: 'groomer-1',
   display_name: 'Ana',
@@ -814,6 +847,34 @@ describe('booking.service (#51)', () => {
       expect(update?.payload).not.toHaveProperty('payment_stage');
     });
 
+    // Custom change (P-1 roadmap item: generic downpayment) - a booking
+    // already at 'Paid in Advance' only had its downpayment collected
+    // online; the remaining balance is still owed, so completeBooking must
+    // not blindly re-advance it straight to 'Paid'.
+    it('completeBooking: does not re-advance a Paid in Advance booking (only the downpayment was collected online)', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'In Progress',
+            payment_method: 'GCash',
+            payment_confirmed: true,
+            payment_stage: 'Paid in Advance',
+          },
+          error: null,
+        }, // load
+        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
+      );
+
+      const booking = await completeBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('Completed');
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({ status: 'Completed' });
+      expect(update?.payload).not.toHaveProperty('payment_stage');
+      expect(update?.payload).not.toHaveProperty('paid_at');
+    });
+
     it('completeBooking: rejects a booking that is not In Progress', async () => {
       queueFromResults({
         data: { ...INSERTED_BOOKING, status: 'Pending' },
@@ -1161,6 +1222,189 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({ total_price: 800 });
+    });
+  });
+
+  // Custom change (P-1 roadmap item): "Add a 'requires downpayment'
+  // checkbox (with a specified amount) when creating a service or package -
+  // broader than the existing branch-level Hotel downpayment percentage."
+  describe('generic downpayment (custom change)', () => {
+    it('a flat-type flagged service snapshots downpayment_required/downpayment_amount from the catalog (this is Grooming, not Hotel - downpayment is no longer category-restricted at all)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp' }],
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        total_price: 350, // still the S/SC tier price - unaffected
+        downpayment_required: true,
+        downpayment_amount: 150, // the flat catalog amount, not the tier price
+      });
+    });
+
+    it('a percentage-type flagged service computes downpayment_amount as a percentage of price_at_booking, not base_price', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(
+        PERCENTAGE_DOWNPAYMENT_GROOMING_SERVICE
+      );
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp-pct' }],
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        total_price: 350, // the S/SC tier price
+        downpayment_required: true,
+        downpayment_amount: 70, // 20% of 350 (price_at_booking), not 20% of base_price (300)
+      });
+    });
+
+    it('a non-flagged service leaves downpayment_required false and downpayment_amount null (unchanged pre-existing behavior)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: BASE_INPUT,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        downpayment_required: false,
+        downpayment_amount: null,
+      });
+    });
+
+    it('paying online with payment_choice "downpayment" sets payment_stage to Paid in Advance at creation', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp' }],
+          payment_method: 'GCash',
+          payment_confirmed: true,
+          payment_choice: 'downpayment',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        payment_stage: 'Paid in Advance',
+      });
+    });
+
+    it('paying online with payment_choice "full" sets payment_stage to Paid at creation', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp' }],
+          payment_method: 'GCash',
+          payment_confirmed: true,
+          payment_choice: 'full',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ payment_stage: 'Paid' });
+    });
+
+    it('a flagged service paid at the counter (payment_confirmed=false) leaves payment_stage unset (defaults to Unpaid), gating the queue until staff collect it', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp' }],
+          payment_method: 'Cash',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        downpayment_required: true,
+        payment_stage: 'Unpaid', // same as the column's own default
+      });
     });
   });
 
