@@ -1,0 +1,43 @@
+/* --- Default form control theming ---
+   Every page that defines its own input/select styling (CSS Modules) already
+   wins over these bare-tag rules by specificity - this file only themes the
+   native controls nothing else has styled yet (checkboxes/radios, and a
+   sane fallback for any other bare input/select/textarea), so the app never
+   shows an unthemed browser-default control regardless of light/dark mode. */
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-accent-gold-primary);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+select,
+textarea,
+input:not([type='checkbox']):not([type='radio']) {
+  font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+select {
+  cursor: pointer;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-muted);
+}

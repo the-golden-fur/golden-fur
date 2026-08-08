@@ -4,6 +4,7 @@
 @import './variables/shadows.css';
 @import './variables/colors.css';
 @import './base/reset.css';
+@import './base/forms.css';
 @import './base/layout.css';
 @import './animations.css';
 
