@@ -37,6 +37,7 @@ function queueFromResults(...results: QueryResult[]) {
       'in',
       'gte',
       'lt',
+      'or',
       'order',
       'limit',
     ]) {

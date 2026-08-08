@@ -178,6 +178,7 @@ export function HotelBookingPicker({
       dateTo: dateRange.to ?? undefined,
       serviceCategory: 'Hotel',
       status: statusFilter === 'All' ? undefined : statusFilter,
+      excludeUnpaidDownpayment: true,
     }).then((result) => {
       if (!isMounted) return;
 
