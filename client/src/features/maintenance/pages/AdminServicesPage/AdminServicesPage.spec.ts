@@ -250,6 +250,7 @@ describe('AdminServicesPage', () => {
         base_price: 350,
         requires_assessed_pet: true,
         use_pricing_matrix: true,
+        requires_downpayment: false,
       });
     });
 

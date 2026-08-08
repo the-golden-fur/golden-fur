@@ -154,6 +154,14 @@ export interface Service {
    * picked up before closing, on top of the hourly charge. NULL falls
    * back to ₱850. */
   daycare_overnight_fee: number | null;
+  /** Whether booking this service requires a downpayment before the service
+   * may start - broader than the branch-level Hotel downpayment percentage
+   * (policy configuration), which this doesn't affect. Not category-gated. */
+  requires_downpayment: boolean;
+  /** A flat PHP amount, or a 0-100 percentage of this item's own price,
+   * per downpayment_type. NULL unless requires_downpayment is true. */
+  downpayment_amount: number | null;
+  downpayment_type: 'Flat' | 'Percentage' | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -175,6 +183,10 @@ export interface Package {
    * included services' own per-pet price (bundle-discounted) instead of
    * the flat bundled_price above. Ignored for a Cat pet regardless. */
   use_pricing_matrix: boolean;
+  /** Same convention as Service's downpayment fields above. */
+  requires_downpayment: boolean;
+  downpayment_amount: number | null;
+  downpayment_type: 'Flat' | 'Percentage' | null;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -265,6 +277,9 @@ export interface CreateServicePayload {
   first_hour_fee?: number;
   succeeding_hour_fee?: number;
   daycare_overnight_fee?: number;
+  requires_downpayment?: boolean;
+  downpayment_amount?: number;
+  downpayment_type?: 'Flat' | 'Percentage';
 }
 
 export interface UpdateServicePayload {
@@ -280,6 +295,9 @@ export interface UpdateServicePayload {
   first_hour_fee?: number | null;
   succeeding_hour_fee?: number | null;
   daycare_overnight_fee?: number | null;
+  requires_downpayment?: boolean;
+  downpayment_amount?: number | null;
+  downpayment_type?: 'Flat' | 'Percentage' | null;
 }
 
 export interface BranchAvailabilityPayload {
@@ -293,6 +311,9 @@ export interface CreatePackagePayload {
   name: string;
   service_ids: string[];
   use_pricing_matrix?: boolean;
+  requires_downpayment?: boolean;
+  downpayment_amount?: number;
+  downpayment_type?: 'Flat' | 'Percentage';
 }
 
 export interface UpdatePackagePayload {
@@ -301,6 +322,9 @@ export interface UpdatePackagePayload {
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
   use_pricing_matrix?: boolean;
+  requires_downpayment?: boolean;
+  downpayment_amount?: number | null;
+  downpayment_type?: 'Flat' | 'Percentage' | null;
 }
 
 /**

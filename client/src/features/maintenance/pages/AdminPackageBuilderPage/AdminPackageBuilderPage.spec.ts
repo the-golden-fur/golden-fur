@@ -285,6 +285,7 @@ describe('AdminPackageBuilderPage', () => {
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
         use_pricing_matrix: false,
+        requires_downpayment: false,
       });
     });
 
@@ -339,6 +340,9 @@ describe('AdminPackageBuilderPage', () => {
         {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
+          requires_downpayment: false,
+          downpayment_amount: null,
+          downpayment_type: null,
         }
       );
     });

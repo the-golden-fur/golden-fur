@@ -52,6 +52,11 @@ export function AdminPackageBuilderPage() {
   const [formBranchId, setFormBranchId] = useState('');
   const [formName, setFormName] = useState('');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  const [formRequiresDownpayment, setFormRequiresDownpayment] = useState(false);
+  const [formDownpaymentAmount, setFormDownpaymentAmount] = useState('');
+  const [formDownpaymentType, setFormDownpaymentType] = useState<
+    'Flat' | 'Percentage'
+  >('Flat');
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -175,6 +180,9 @@ export function AdminPackageBuilderPage() {
     setFormBranchId('');
     setFormName('');
     setFormUsePricingMatrix(false);
+    setFormRequiresDownpayment(false);
+    setFormDownpaymentAmount('');
+    setFormDownpaymentType('Flat');
     setSelectedServiceIds([]);
     setFormError(null);
     setIsFormOpen(true);
@@ -185,6 +193,11 @@ export function AdminPackageBuilderPage() {
     setFormBranchId(pkg.branch_id);
     setFormName(pkg.name);
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormRequiresDownpayment(pkg.requires_downpayment ?? false);
+    setFormDownpaymentAmount(
+      pkg.downpayment_amount == null ? '' : String(pkg.downpayment_amount)
+    );
+    setFormDownpaymentType(pkg.downpayment_type ?? 'Flat');
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
@@ -273,6 +286,29 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    const downpaymentAmount =
+      formDownpaymentAmount === '' ? undefined : Number(formDownpaymentAmount);
+
+    if (
+      formRequiresDownpayment &&
+      (downpaymentAmount === undefined || downpaymentAmount <= 0)
+    ) {
+      setFormError(
+        'A positive downpayment amount is required when downpayment is required.'
+      );
+      return;
+    }
+
+    if (
+      formRequiresDownpayment &&
+      formDownpaymentType === 'Percentage' &&
+      downpaymentAmount !== undefined &&
+      downpaymentAmount > 100
+    ) {
+      setFormError('A percentage downpayment cannot exceed 100.');
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -288,6 +324,13 @@ export function AdminPackageBuilderPage() {
         name: formName.trim(),
         service_ids: selectedServiceIds,
         use_pricing_matrix: formUsePricingMatrix,
+        requires_downpayment: formRequiresDownpayment,
+        ...(downpaymentAmount !== undefined
+          ? {
+              downpayment_amount: downpaymentAmount,
+              downpayment_type: formDownpaymentType,
+            }
+          : {}),
       });
 
       setIsSubmitting(false);
@@ -307,6 +350,9 @@ export function AdminPackageBuilderPage() {
       name: formName.trim(),
       service_ids: selectedServiceIds,
       use_pricing_matrix: formUsePricingMatrix,
+      requires_downpayment: formRequiresDownpayment,
+      downpayment_amount: downpaymentAmount ?? null,
+      downpayment_type: formRequiresDownpayment ? formDownpaymentType : null,
     });
 
     setIsSubmitting(false);
@@ -489,6 +535,56 @@ export function AdminPackageBuilderPage() {
                 onChange={setFormUsePricingMatrix}
               />
 
+              <ToggleSwitch
+                label="Requires a downpayment before the service can start"
+                checked={formRequiresDownpayment}
+                onChange={setFormRequiresDownpayment}
+              />
+
+              {formRequiresDownpayment ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Downpayment type</span>
+                    <select
+                      className={styles.input}
+                      value={formDownpaymentType}
+                      onChange={(event) =>
+                        setFormDownpaymentType(
+                          event.target.value as 'Flat' | 'Percentage'
+                        )
+                      }
+                    >
+                      <option value="Flat">Flat amount (PHP)</option>
+                      <option value="Percentage">
+                        Percentage of bundled price
+                      </option>
+                    </select>
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      {formDownpaymentType === 'Percentage'
+                        ? 'Downpayment percentage (0-100)'
+                        : 'Downpayment amount (PHP)'}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0.01"
+                      max={
+                        formDownpaymentType === 'Percentage' ? 100 : undefined
+                      }
+                      step="0.01"
+                      inputMode="decimal"
+                      value={formDownpaymentAmount}
+                      onChange={(event) =>
+                        setFormDownpaymentAmount(event.target.value)
+                      }
+                      required
+                    />
+                  </label>
+                </>
+              ) : null}
+
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
                   {formError}
@@ -534,6 +630,14 @@ export function AdminPackageBuilderPage() {
                     PHP {pkg.bundled_price.toFixed(2)}
                     {pkg.use_pricing_matrix ? ' (varies by weight/coat)' : ''}
                   </span>
+                  {pkg.requires_downpayment &&
+                  pkg.downpayment_amount !== null ? (
+                    <span className={styles.branchBadge}>
+                      {pkg.downpayment_type === 'Percentage'
+                        ? `Requires ${pkg.downpayment_amount}% downpayment`
+                        : `Requires PHP ${pkg.downpayment_amount.toFixed(2)} downpayment`}
+                    </span>
+                  ) : null}
                   <StatusBadge isActive={pkg.is_active} />
                 </div>
 

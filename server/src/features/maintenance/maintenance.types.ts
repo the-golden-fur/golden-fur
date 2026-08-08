@@ -144,6 +144,20 @@ export interface Service {
    * configuration) - "each Daycare-type service can have its own overnight
    * fee." */
   daycare_overnight_fee: number | null;
+  /** Custom change (P-1 roadmap item): whether booking this service requires
+   * a downpayment before the service may start. Not category-gated, though
+   * expected to be used mainly for Hotel services per the roadmap note
+   * (the seeded Hotel service is itself flagged, replacing the old
+   * branch-wide policy_configurations.downpayment_percentage, since
+   * removed). See resolveBookingItem in booking.service.ts. */
+  requires_downpayment: boolean;
+  /** The downpayment figure - a flat PHP amount, or a 0-100 percentage of
+   * this item's own price_at_booking, per downpayment_type. NULL unless
+   * requires_downpayment is true. */
+  downpayment_amount: number | null;
+  /** How to interpret downpayment_amount. NULL unless requires_downpayment
+   * is true. See resolveBookingItem in booking.service.ts. */
+  downpayment_type: 'Flat' | 'Percentage' | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -186,6 +200,11 @@ export interface Package {
    * flat bundled_price. bundled_price above still shows the flat estimate
    * either way (an S/SC-equivalent reference figure for the admin list). */
   use_pricing_matrix: boolean;
+  /** Custom change (P-1 roadmap item): same convention as
+   * Service.requires_downpayment/downpayment_amount/downpayment_type above. */
+  requires_downpayment: boolean;
+  downpayment_amount: number | null;
+  downpayment_type: 'Flat' | 'Percentage' | null;
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
