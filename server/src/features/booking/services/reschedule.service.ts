@@ -10,6 +10,7 @@ import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.servi
 import { checkCapacity } from './capacity.service.ts';
 import {
   listAvailableStaff,
+  pickRandomAvailableStaff,
   resolveEffectivePolicy,
 } from './staffPicker.service.ts';
 import { writeCancellationLog } from './cancellationLog.service.ts';
@@ -185,8 +186,9 @@ export async function rescheduleBooking({
       assignedStaffId = input.staff_preference.staff_id!;
     } else {
       // Keep the currently assigned staff member when they're still
-      // eligible for the new window; otherwise fall back to the next
-      // available one ("No preference" semantics).
+      // eligible for the new window; otherwise fall back to a random
+      // eligible one ("No preference" semantics - see autoAssignStaff's own
+      // dev note on why this isn't the RPC's display_name ordering).
       const eligible = await listAvailableStaff(baseParams);
 
       if (eligible.length === 0) {
@@ -200,7 +202,8 @@ export async function rescheduleBooking({
         (member) => member.staff_id === booking.assigned_staff_id
       );
 
-      assignedStaffId = (current ?? eligible[0]).staff_id;
+      assignedStaffId = (current ?? pickRandomAvailableStaff(eligible)!)
+        .staff_id;
     }
   } else {
     const { data: pet, error: petError } = await supabase
