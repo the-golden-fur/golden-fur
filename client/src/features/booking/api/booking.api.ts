@@ -105,6 +105,9 @@ export async function listBookings(
   if (filters.assignedStaffId) {
     params.set('assigned_staff_id', filters.assignedStaffId);
   }
+  if (filters.excludeUnpaidDownpayment) {
+    params.set('exclude_unpaid_downpayment', 'true');
+  }
 
   const query = params.size > 0 ? `?${params.toString()}` : '';
   const response = await fetch(`${API_BASE_URL}/bookings${query}`, {

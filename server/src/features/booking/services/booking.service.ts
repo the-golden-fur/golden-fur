@@ -34,11 +34,6 @@ import {
   listAvailableStaff,
 } from './staffPicker.service.ts';
 
-/** Hardcoded per Modules-Features baseline (Guide #51 dev notes) - the
- * configurable policy_configurations.downpayment_percent column is explicitly
- * out of this epic's stub scope (Sprint 5, M09). */
-const HOTEL_DOWNPAYMENT_RATE = 0.5;
-
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -118,6 +113,14 @@ interface ResolvedBookingItem {
   package_id: string | null;
   price_at_booking: number;
   duration_minutes_at_booking: number;
+  /** Custom change (P-1 roadmap item: generic downpayment, later revised to
+   * flat-or-percentage) - carried through from the resolved service/
+   * package row so createBooking can sum every flagged item's catalog
+   * downpayment contribution (a flat PHP figure, or a percentage of this
+   * item's own price_at_booking). */
+  requires_downpayment: boolean;
+  downpayment_amount: number | null;
+  downpayment_type: 'Flat' | 'Percentage' | null;
 }
 
 /**
@@ -196,6 +199,12 @@ async function resolveBookingItem(
       package_id: null,
       price_at_booking: round2(resolveServicePrice(service, pet) * quantity),
       duration_minutes_at_booking: durationMinutes,
+      requires_downpayment: service.requires_downpayment,
+      downpayment_amount:
+        service.downpayment_amount === null
+          ? null
+          : Number(service.downpayment_amount),
+      downpayment_type: service.downpayment_type,
     };
   }
 
@@ -270,6 +279,10 @@ async function resolveBookingItem(
     package_id: pkg.id,
     price_at_booking: round2(packagePrice * packageQuantity),
     duration_minutes_at_booking: packageDurationMinutes,
+    requires_downpayment: pkg.requires_downpayment,
+    downpayment_amount:
+      pkg.downpayment_amount === null ? null : Number(pkg.downpayment_amount),
+    downpayment_type: pkg.downpayment_type,
   };
 }
 
@@ -762,6 +775,12 @@ export async function createBooking({
       package_id: freePackageAward.packageId,
       price_at_booking: 0,
       duration_minutes_at_booking: 0,
+      // An awarded freebie is never itself catalog-flagged for a
+      // downpayment - it's a zero-priced bonus item, not something the
+      // customer picked.
+      requires_downpayment: false,
+      downpayment_amount: null,
+      downpayment_type: null,
     });
   }
 
@@ -770,10 +789,33 @@ export async function createBooking({
     0
   );
 
-  const downpaymentAmount =
-    input.service_category === 'Hotel'
-      ? Math.round(totalPrice * HOTEL_DOWNPAYMENT_RATE * 100) / 100
-      : null;
+  // Custom change (P-1 roadmap item: generic downpayment, later revised to
+  // flat-or-percentage): downpayment is now driven exclusively by the
+  // catalog flag - the old Hotel-only branch-wide percentage fallback
+  // (policy_configurations.downpayment_percentage / the hardcoded
+  // HOTEL_DOWNPAYMENT_RATE constant) was removed as redundant once every
+  // service/package can carry its own downpayment (20260808112) - the
+  // seeded Hotel service is itself flagged requires_downpayment=true,
+  // downpayment_type='Percentage', downpayment_amount=50 to preserve its
+  // pre-existing 50%-of-total behavior. Each flagged item's own
+  // contribution is either its flat PHP downpayment_amount, or that
+  // percentage of the item's own price_at_booking.
+  const catalogDownpaymentAmount = round2(
+    resolvedItems.reduce((sum, item) => {
+      if (!item.requires_downpayment) return sum;
+
+      const contribution =
+        item.downpayment_type === 'Percentage'
+          ? item.price_at_booking * ((item.downpayment_amount ?? 0) / 100)
+          : (item.downpayment_amount ?? 0);
+
+      return sum + contribution;
+    }, 0)
+  );
+  const downpaymentRequired = catalogDownpaymentAmount > 0;
+  const downpaymentAmount = downpaymentRequired
+    ? catalogDownpaymentAmount
+    : null;
 
   const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
     await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
@@ -790,6 +832,24 @@ export async function createBooking({
       ? false
       : (input.payment_confirmed ?? false);
   const status: Booking['status'] = 'Pending';
+
+  // Custom change (P-1 roadmap item: generic downpayment): only a
+  // downpayment-required booking gets payment_stage set explicitly at
+  // creation time - every other booking keeps today's behavior (defaults to
+  // 'Unpaid', only ever bumped by completeBooking's own onlinePrepaid fast
+  // path or a staff Mark as Paid action). When required and paid online now,
+  // 'downpayment' lands on 'Paid in Advance' (balance settled later at the
+  // counter, same as every other Paid in Advance booking); 'full' (or the
+  // choice omitted) lands straight on 'Paid'. See completeBooking below for
+  // why its own onlinePrepaid fast path must not blindly re-advance a
+  // 'Paid in Advance' booking straight to 'Paid'.
+  const paymentStage: Booking['payment_stage'] | undefined = downpaymentRequired
+    ? paymentConfirmed
+      ? input.payment_choice === 'downpayment'
+        ? 'Paid in Advance'
+        : 'Paid'
+      : 'Unpaid'
+    : undefined;
 
   // Staff resolution (Grooming/Veterinary) happens before the generic
   // capacity check because for these categories staff availability IS the
@@ -831,6 +891,8 @@ export async function createBooking({
       status,
       total_price: totalPrice,
       downpayment_amount: downpaymentAmount,
+      downpayment_required: downpaymentRequired,
+      ...(paymentStage ? { payment_stage: paymentStage } : {}),
       payment_method: input.payment_method ?? null,
       payment_confirmed: paymentConfirmed,
       selected_discount_id: selectedDiscountId,
@@ -970,6 +1032,15 @@ export interface ListBookingsFilters {
    * preference" filter - the client resolves "me" to the viewer's own id
    * before sending it, this layer only ever sees a concrete value. */
   assignedStaffId?: string;
+  /** Custom change (P-1 roadmap item: generic downpayment) - opt-in, used
+   * only by the Hotel/Daycare check-in queue pickers (HotelBookingPicker/
+   * DaycareBookingPicker) to exclude a Pending/In Progress booking whose
+   * downpayment hasn't been paid yet. Left off for every other caller
+   * (customer's own bookings list, the receptionist bookings queue, the
+   * payments queue) - those need to keep showing an unpaid booking so it can
+   * actually be paid. Mirrors the same predicate grooming.service.ts/
+   * consultation.service.ts apply directly. */
+  excludeUnpaidDownpayment?: boolean;
 }
 
 interface ListBookingsParams {
@@ -1012,6 +1083,10 @@ export async function listBookings({
     query = query.is('assigned_staff_id', null);
   } else if (filters.assignedStaffId) {
     query = query.eq('assigned_staff_id', filters.assignedStaffId);
+  }
+
+  if (filters.excludeUnpaidDownpayment) {
+    query = query.or('downpayment_required.eq.false,payment_stage.neq.Unpaid');
   }
 
   if (filters.date) {
@@ -1168,7 +1243,14 @@ export async function completeBooking({
   }
 
   const now = new Date().toISOString();
+  // Custom change (P-1 roadmap item: generic downpayment): a booking
+  // already sitting at 'Paid in Advance' only had its downpayment collected
+  // online (createBooking's payment_choice === 'downpayment' path) - the
+  // remaining balance is still owed, so this fast path must not blindly
+  // re-advance it straight to 'Paid'. Every other booking (payment_stage
+  // still 'Unpaid' here, same as before this feature existed) is unaffected.
   const onlinePrepaid =
+    booking.payment_stage !== 'Paid in Advance' &&
     booking.payment_method !== null &&
     booking.payment_confirmed &&
     ONLINE_PAYMENT_METHODS.includes(booking.payment_method);

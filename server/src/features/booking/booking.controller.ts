@@ -141,6 +141,7 @@ export async function listBookingsController(
         serviceCategory: parsed.data.service_category,
         status: parsed.data.status,
         assignedStaffId: parsed.data.assigned_staff_id,
+        excludeUnpaidDownpayment: parsed.data.exclude_unpaid_downpayment,
       },
     });
 

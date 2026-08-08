@@ -183,6 +183,12 @@ export const createBookingValidator = z
     staff_preference: staffPreferenceValidator.optional(),
     payment_method: z.enum(PAYMENT_METHODS).optional(),
     payment_confirmed: z.boolean().optional(),
+    // Custom change (P-1 roadmap item: generic downpayment) - only
+    // meaningful when the selected items require a downpayment and payment
+    // is confirmed now (online); ignored otherwise. Omitted/'full' behaves
+    // exactly like every booking did before this field existed. See
+    // createBooking in booking.service.ts.
+    payment_choice: z.enum(['downpayment', 'full']).optional(),
     special_instructions: z.string().trim().min(1).optional(),
     hotel_preferences: hotelPreferencesValidator.optional(),
     // Role (money-handling staff only) and Cash-only enforcement happen in
@@ -254,7 +260,6 @@ export const updatePolicyValidator = z
       .string()
       .regex(TIME_PATTERN, 'Use HH:MM (24h)')
       .optional(),
-    downpayment_percentage: z.number().min(0).max(100).optional(),
     reschedule_fee_enabled: z.boolean().optional(),
     reschedule_fee_type: z.enum(RESCHEDULE_FEE_TYPES).nullable().optional(),
     reschedule_fee_value: z.number().min(0).nullable().optional(),
@@ -402,6 +407,9 @@ export const listBookingsQueryValidator = z.object({
   // Bookings Queue's "assigned to me / no preference" filter - a staff
   // UUID, or the sentinel 'unassigned' for assigned_staff_id IS NULL.
   assigned_staff_id: z.union([z.uuid(), z.literal('unassigned')]).optional(),
+  // Custom change (P-1 roadmap item: generic downpayment) - opt-in, see
+  // ListBookingsFilters.excludeUnpaidDownpayment in booking.service.ts.
+  exclude_unpaid_downpayment: z.coerce.boolean().optional(),
 });
 
 /** Admin/Superadmin-only direct status set (forward or backward) - see

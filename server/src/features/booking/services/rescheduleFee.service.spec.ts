@@ -12,7 +12,6 @@ function policy(overrides: Partial<EffectivePolicy> = {}): EffectivePolicy {
     lunch_break_enabled: true,
     lunch_break_start: '12:00',
     lunch_break_end: '13:00',
-    downpayment_percentage: 50,
     reschedule_fee_enabled: false,
     reschedule_fee_type: null,
     reschedule_fee_value: null,

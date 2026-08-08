@@ -32,7 +32,6 @@ interface FormState {
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
-  downpayment_percentage: number;
   reschedule_fee_enabled: boolean;
   reschedule_fee_type: RescheduleFeeType;
   reschedule_fee_value: number;
@@ -56,7 +55,6 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     lunch_break_enabled: policy.lunch_break_enabled,
     lunch_break_start: policy.lunch_break_start.slice(0, 5),
     lunch_break_end: policy.lunch_break_end.slice(0, 5),
-    downpayment_percentage: policy.downpayment_percentage,
     reschedule_fee_enabled: policy.reschedule_fee_enabled,
     reschedule_fee_type: policy.reschedule_fee_type ?? 'Flat',
     reschedule_fee_value: policy.reschedule_fee_value ?? 0,
@@ -77,7 +75,6 @@ const DOCUMENTED_DEFAULTS: FormState = {
   lunch_break_enabled: true,
   lunch_break_start: '12:00',
   lunch_break_end: '13:00',
-  downpayment_percentage: 50,
   reschedule_fee_enabled: false,
   reschedule_fee_type: 'Flat',
   reschedule_fee_value: 0,
@@ -222,7 +219,6 @@ export function PolicyConfigurationPage() {
       lunch_break_enabled: form.lunch_break_enabled,
       lunch_break_start: form.lunch_break_start,
       lunch_break_end: form.lunch_break_end,
-      downpayment_percentage: form.downpayment_percentage,
       reschedule_fee_enabled: form.reschedule_fee_enabled,
       reschedule_fee_type: form.reschedule_fee_type,
       reschedule_fee_value: form.reschedule_fee_value,
@@ -457,31 +453,6 @@ export function PolicyConfigurationPage() {
                 aria-label="Lunch break end"
               />
             </div>
-          </section>
-
-          <section aria-labelledby="downpayment-heading">
-            <h2 className={styles.sectionTitle} id="downpayment-heading">
-              Downpayment
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Hotel downpayment (% of total)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                max={100}
-                value={form.downpayment_percentage}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    downpayment_percentage: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
           </section>
 
           <section aria-labelledby="reschedule-fee-heading">
