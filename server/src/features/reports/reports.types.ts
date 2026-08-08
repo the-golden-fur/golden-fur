@@ -9,6 +9,16 @@ export const REPORTS_READ_ROLES: readonly string[] = [
   'Supervisor',
 ];
 
+/** Custom change (transaction history visibility): DSR/cage-occupancy stay
+ * REPORTS_READ_ROLES-only, but Transaction History also opens to Cashier -
+ * matching the client's own ALLOWED_VIEWER_ROLES in
+ * TransactionHistoryTable.tsx, which already assumed this and was 403ing
+ * against the server's narrower list. */
+export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
+  ...REPORTS_READ_ROLES,
+  'Cashier',
+];
+
 /** Modules-Features is explicit the analytics dashboard is Superadmin-only,
  * distinct from the DSR which Admin/Supervisor can also see for their own
  * branch (Issue #103 dev notes). */
