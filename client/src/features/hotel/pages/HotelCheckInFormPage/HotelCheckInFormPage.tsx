@@ -4,7 +4,7 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { getBooking } from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
-import { HOTEL_QUEUE_VIEWER_ROLES } from '../HotelQueuePage/HotelQueuePage';
+import { HOTEL_QUEUE_VIEWER_ROLES } from '../HotelQueuePage/hotelQueueRoles';
 import { HotelCheckInPanel } from '../HotelQueuePage/HotelCheckInPanel';
 import styles from './HotelCheckInFormPage.module.css';
 
@@ -127,6 +127,7 @@ export function HotelCheckInFormPage() {
         <h1 className={styles.title}>Check in</h1>
 
         <HotelCheckInPanel
+          key={booking.id}
           accessToken={accessToken}
           role={role ?? ''}
           booking={booking}

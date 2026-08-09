@@ -4,18 +4,9 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import { HotelCheckoutPanel } from './HotelCheckoutPanel';
+import { HOTEL_QUEUE_VIEWER_ROLES } from './hotelQueueRoles';
 import styles from './HotelQueuePage.module.css';
 
-/** Shared with HotelCheckInFormPage - the routed check-in form is reached
- * from this page's picker but is its own route, so it needs the same role
- * gate rather than inheriting one. */
-export const HOTEL_QUEUE_VIEWER_ROLES = new Set([
-  'Admin',
-  'Supervisor',
-  'Superadmin',
-  'Groomer',
-  'Pet Assistant',
-]);
 const ALLOWED_VIEWER_ROLES = HOTEL_QUEUE_VIEWER_ROLES;
 
 type Tab = 'check-in' | 'check-out';

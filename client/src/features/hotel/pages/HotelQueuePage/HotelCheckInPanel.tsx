@@ -46,6 +46,59 @@ const PART_OF_DAY_DEFAULT_TIME: Record<PartOfDay, string> = {
   Evening: '18:00',
 };
 
+// Pre-fills from whatever the customer/receptionist entered at booking time
+// (CustomerBookingFlowPage's "Care Instructions" step). Used as useState's
+// lazy initializer (not an effect) since the parent now remounts this panel
+// per booking (see HotelCheckInFormPage's key={booking.id}) - still just a
+// starting point, freely editable below before it becomes the authoritative
+// record.
+function initialFeeding(booking: Booking): FeedingUiState[] {
+  return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
+    mealTime: item.meal_time,
+    // Carries the booking flow's catalog match through when present (its
+    // Care Instructions step now uses the same catalog), instead of always
+    // discarding it as freetext.
+    foodType: {
+      catalogId: item.food_catalog_id ?? null,
+      text: item.food_type,
+    },
+    quantity: item.quantity,
+    specialInstructions: item.special_instructions ?? '',
+  }));
+}
+
+function initialWalking(booking: Booking): WalkBlockUi[] {
+  return (booking.hotel_preferences?.walking ?? []).map((item) => ({
+    mode: 'duration',
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    endTime: '',
+    durationMinutes: item.duration_minutes,
+    notes: item.notes ?? '',
+  }));
+}
+
+function initialPlaying(booking: Booking): WalkBlockUi[] {
+  return (booking.hotel_preferences?.playing ?? []).map((item) => ({
+    mode: 'duration',
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    endTime: '',
+    durationMinutes: item.duration_minutes,
+    notes: item.notes ?? '',
+  }));
+}
+
+function initialMedications(booking: Booking): MedicationUiState[] {
+  return (booking.hotel_preferences?.medications ?? []).map((item) => ({
+    name: {
+      catalogId: item.medication_catalog_id ?? null,
+      text: item.medication_name,
+    },
+    dose: item.dose,
+    scheduledTimes: item.scheduled_times,
+    administrationNotes: item.administration_notes ?? '',
+  }));
+}
+
 interface HotelCheckInPanelProps {
   accessToken: string;
   role: string;
@@ -141,10 +194,18 @@ export function HotelCheckInPanel({
     ProductCatalogItem[]
   >([]);
 
-  const [feeding, setFeeding] = useState<FeedingUiState[]>([]);
-  const [walking, setWalking] = useState<WalkBlockUi[]>([]);
-  const [playing, setPlaying] = useState<WalkBlockUi[]>([]);
-  const [medications, setMedications] = useState<MedicationUiState[]>([]);
+  const [feeding, setFeeding] = useState<FeedingUiState[]>(() =>
+    initialFeeding(booking)
+  );
+  const [walking, setWalking] = useState<WalkBlockUi[]>(() =>
+    initialWalking(booking)
+  );
+  const [playing, setPlaying] = useState<WalkBlockUi[]>(() =>
+    initialPlaying(booking)
+  );
+  const [medications, setMedications] = useState<MedicationUiState[]>(() =>
+    initialMedications(booking)
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -186,73 +247,15 @@ export function HotelCheckInPanel({
   }, [accessToken, booking.customer_id]);
 
   // Runs once for this page's one booking (mirrors the old picker
-  // onSelect's setup, now triggered by mount/booking-id-change instead of a
-  // click) - pre-fills from whatever the customer/receptionist entered at
-  // booking time.
+  // onSelect's setup, now triggered by mount/booking-id-change - the parent
+  // HotelCheckInFormPage keys this panel by booking.id, so a different
+  // booking is a fresh mount, not a re-render of this one). The booking-time
+  // preferences themselves are read directly into useState's initializer
+  // above (initialFeeding/initialWalking/initialPlaying/initialMedications)
+  // rather than set here, since setState synchronously inside an effect body
+  // causes an extra cascading render for no benefit over initializing state
+  // once at mount.
   useEffect(() => {
-    // Pre-fills from whatever the customer/receptionist entered at booking
-    // time (CustomerBookingFlowPage's "Care Instructions" step), so this
-    // form doesn't start blank - still just a starting point, freely
-    // editable below before it becomes the authoritative record.
-    const preferences = booking.hotel_preferences;
-
-    if (preferences) {
-      if (preferences.feeding.length > 0) {
-        setFeeding(
-          preferences.feeding.map((item) => ({
-            mealTime: item.meal_time,
-            // Carries the booking flow's catalog match through when present
-            // (its Care Instructions step now uses the same catalog),
-            // instead of always discarding it as freetext.
-            foodType: {
-              catalogId: item.food_catalog_id ?? null,
-              text: item.food_type,
-            },
-            quantity: item.quantity,
-            specialInstructions: item.special_instructions ?? '',
-          }))
-        );
-      }
-
-      if (preferences.walking.length > 0) {
-        setWalking(
-          preferences.walking.map((item) => ({
-            mode: 'duration',
-            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
-            endTime: '',
-            durationMinutes: item.duration_minutes,
-            notes: item.notes ?? '',
-          }))
-        );
-      }
-
-      if (preferences.playing.length > 0) {
-        setPlaying(
-          preferences.playing.map((item) => ({
-            mode: 'duration',
-            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
-            endTime: '',
-            durationMinutes: item.duration_minutes,
-            notes: item.notes ?? '',
-          }))
-        );
-      }
-
-      if (preferences.medications.length > 0) {
-        setMedications(
-          preferences.medications.map((item) => ({
-            name: {
-              catalogId: item.medication_catalog_id ?? null,
-              text: item.medication_name,
-            },
-            dose: item.dose,
-            scheduledTimes: item.scheduled_times,
-            administrationNotes: item.administration_notes ?? '',
-          }))
-        );
-      }
-    }
-
     void getCageSuggestion(booking.pet_id, accessToken).then((result) => {
       if (result.data) {
         setSuggestedSize(result.data.suggestedSize);
@@ -276,8 +279,9 @@ export function HotelCheckInPanel({
             })
           );
 
-          // Prepended, not replaced - a booking-time preference entered
-          // above (synchronously) must survive this later-resolving fetch.
+          // Prepended, not replaced - a booking-time preference already in
+          // state (from initialMedications at mount) must survive this
+          // later-resolving fetch.
           setMedications((prev) => [...prescriptionMedications, ...prev]);
         }
       }

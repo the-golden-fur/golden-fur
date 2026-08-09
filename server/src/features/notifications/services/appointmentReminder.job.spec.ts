@@ -28,7 +28,7 @@ function queueFromResults(...results: QueryResult[]) {
     }
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
-    builder.then = (resolve: (result: QueryResult) => void) => resolve(result);
+    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
     return builder;
   }) as never);
