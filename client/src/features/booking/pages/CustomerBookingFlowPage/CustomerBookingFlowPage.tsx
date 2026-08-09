@@ -19,16 +19,19 @@ import type {
   Package,
   Promo,
   Service,
+  ServiceType,
 } from '../../../maintenance/maintenance.types';
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CagePicker } from '../../components/CagePicker/CagePicker';
+import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
 import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFeeNotice';
 import {
   createBooking,
   getBookingCatalog,
   getNextAvailableSlot,
+  listServiceTypes,
   type NextAvailableSlot,
 } from '../../api/booking.api';
 import {
@@ -36,6 +39,7 @@ import {
   PAYMENT_METHODS,
   SERVICE_CATEGORIES,
   type Booking,
+  type CagePreferenceInput,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
@@ -204,6 +208,90 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   stay_date: null as string | null,
 };
 
+// Browser-close-safe wizard progress (localStorage, not sessionStorage - a
+// closed tab must not lose the draft). Only the wizard's own form state is
+// kept here, never fetched reference data (pets/branches/catalog/etc, all
+// re-fetched on mount) or transient submit/loading flags.
+const BOOKING_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface PersistedBookingDraft {
+  savedAt: number;
+  selectedPetId: string;
+  selectedBranchId: string;
+  category: ServiceCategory | '';
+  selectionMode: 'service' | 'package';
+  selectionsByCategory: Partial<
+    Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>
+  >;
+  selectedSlot: { start: string; end: string } | null;
+  hotelNights: number;
+  selectedPromoId: string;
+  selectedDiscountId: string;
+  paymentMethod: PaymentMethod | '';
+  paymentChoice: 'downpayment' | 'full';
+  specialInstructions: string;
+  hotelFeeding: HotelFeedingRowState[];
+  hotelWalking: Array<typeof EMPTY_HOTEL_WALKING_ROW>;
+  hotelPlaying: Array<typeof EMPTY_HOTEL_PLAYING_ROW>;
+  hotelMedications: Array<typeof EMPTY_HOTEL_MEDICATION_ROW>;
+  currentStepKey: StepDef['key'];
+  // Set has no native JSON representation - stored as an array and
+  // rehydrated back into a Set on restore.
+  reachedStepKeys: StepDef['key'][];
+  // Receptionist mode only - keyed off the staff terminal (see
+  // bookingDraftStorageKey), so the picked walk-in customer has to travel
+  // inside the payload itself rather than in the key.
+  walkInCustomer: CustomerProfile | null;
+}
+
+/** Customer self-booking is keyed off the customer's own id; receptionist
+ * walk-in mode is keyed off the signed-in staff member instead of the
+ * walk-in customer, since no customer has been picked yet at the very start
+ * of that flow and one terminal works through many walk-ins back to back -
+ * one in-progress draft per staff terminal is the right granularity. */
+function bookingDraftStorageKey(
+  isReceptionistMode: boolean,
+  userId: string
+): string {
+  return isReceptionistMode
+    ? `booking-draft:staff:${userId}`
+    : `booking-draft:customer:${userId}`;
+}
+
+function readBookingDraft(key: string): PersistedBookingDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as PersistedBookingDraft;
+    // Stale abandoned draft - drop it silently, nothing to tell the user.
+    if (Date.now() - parsed.savedAt > BOOKING_DRAFT_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeBookingDraft(key: string, draft: PersistedBookingDraft) {
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // Quota exceeded / private browsing - losing draft persistence silently
+    // is preferable to breaking the booking flow over it.
+  }
+}
+
+function clearBookingDraft(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // see writeBookingDraft
+  }
+}
+
 /**
  * Issue #55: 8-step booking flow shell + step navigation, with #56 (Slot
  * Picker), #57 (Staff Picker), and #58 (add-ons/pricing/payment) plugged
@@ -270,6 +358,8 @@ export function CustomerBookingFlowPage() {
   const [selectedPetId, setSelectedPetId] = useState('');
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
+  // Custom change: Service Types addendum (Admin Settings > Service Types).
+  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
 
   const [category, setCategory] = useState<ServiceCategory | ''>('');
@@ -343,6 +433,14 @@ export function CustomerBookingFlowPage() {
   // staff-only (#52). Tentatively assume the step exists until proven
   // otherwise, per StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
+  // Custom change: Cage Picker addendum - same shape/contract as
+  // staffPreference/staffPickerUnavailable above, resolved from GET
+  // /bookings/cage-picker once CagePickerList mounts (gated on the Hotel
+  // service type's cage_picker_enabled toggle, Admin Settings > Service
+  // Types).
+  const [cagePreference, setCagePreference] =
+    useState<CagePreferenceInput | null>(null);
+  const [cagePickerUnavailable, setCagePickerUnavailable] = useState(false);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState('');
@@ -503,6 +601,8 @@ export function CustomerBookingFlowPage() {
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
+    setCagePreference(null);
+    setCagePickerUnavailable(false);
     resetHotelPreferences();
   }
 
@@ -511,6 +611,17 @@ export function CustomerBookingFlowPage() {
   useEffect(() => {
     void listBranches().then((result) => {
       if (result.data) setBranches(result.data);
+    });
+  }, []);
+
+  // Custom change: Service Types addendum - drives the Service Type step's
+  // active/inactive filtering and customer-facing labels below. An empty/
+  // failed result degrades to every hardcoded ServiceCategory shown under
+  // its own literal name (today's behavior, unchanged) rather than hiding
+  // the step entirely.
+  useEffect(() => {
+    void listServiceTypes().then((result) => {
+      if (result.data) setServiceTypes(result.data);
     });
   }, []);
 
@@ -573,6 +684,145 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId, canApplyDiscounts]);
 
+  // ---- Draft autosave/restore ----
+
+  const draftStorageKey = user?.id
+    ? bookingDraftStorageKey(isReceptionistMode, user.id)
+    : null;
+
+  const [showRestoredBanner, setShowRestoredBanner] = useState(false);
+  // Guards the one-time restore below from re-firing on every render (a
+  // plain dependency array isn't enough - draftStorageKey is stable once
+  // user.id is known, but the effect body itself calls several setState
+  // updates that must only ever run once per mount).
+  const hasCheckedDraftRef = useRef(false);
+
+  useEffect(() => {
+    if (hasCheckedDraftRef.current || !draftStorageKey) return;
+    hasCheckedDraftRef.current = true;
+
+    const draft = readBookingDraft(draftStorageKey);
+    if (!draft) return;
+
+    // Deferred to a microtask (mirrors the auto-select-assessment effect
+    // above) so these updates never run synchronously inside the effect
+    // body itself.
+    void Promise.resolve().then(() => {
+      setSelectedPetId(draft.selectedPetId);
+      setSelectedBranchId(draft.selectedBranchId);
+      setCategory(draft.category);
+      setSelectionMode(draft.selectionMode);
+      setSelectionsByCategory(draft.selectionsByCategory);
+      setSelectedSlot(draft.selectedSlot);
+      setHotelNights(draft.hotelNights);
+      setSelectedPromoId(draft.selectedPromoId);
+      setSelectedDiscountId(draft.selectedDiscountId);
+      setPaymentMethod(draft.paymentMethod);
+      setPaymentChoice(draft.paymentChoice);
+      setSpecialInstructions(draft.specialInstructions);
+      setHotelFeeding(draft.hotelFeeding);
+      setHotelWalking(draft.hotelWalking);
+      setHotelPlaying(draft.hotelPlaying);
+      setHotelMedications(draft.hotelMedications);
+      setCurrentStepKey(draft.currentStepKey);
+      setReachedStepKeys(new Set(draft.reachedStepKeys));
+      if (isReceptionistMode && draft.walkInCustomer) {
+        setWalkInCustomer(draft.walkInCustomer);
+      }
+      // discountIdVerified is deliberately NOT restored - it's an onsite ID
+      // check attestation, not something that should survive a page reload.
+      setShowRestoredBanner(true);
+    });
+  }, [draftStorageKey, isReceptionistMode]);
+
+  // Debounced so browsing between steps or typing into a field doesn't hit
+  // localStorage synchronously on every change - only the settled value
+  // 500ms after the last change gets written.
+  useEffect(() => {
+    if (!draftStorageKey || confirmedBooking) return;
+
+    const timeoutId = window.setTimeout(() => {
+      writeBookingDraft(draftStorageKey, {
+        savedAt: Date.now(),
+        selectedPetId,
+        selectedBranchId,
+        category,
+        selectionMode,
+        selectionsByCategory,
+        selectedSlot,
+        hotelNights,
+        selectedPromoId,
+        selectedDiscountId,
+        paymentMethod,
+        paymentChoice,
+        specialInstructions,
+        hotelFeeding,
+        hotelWalking,
+        hotelPlaying,
+        hotelMedications,
+        currentStepKey,
+        reachedStepKeys: Array.from(reachedStepKeys),
+        walkInCustomer: isReceptionistMode ? walkInCustomer : null,
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    draftStorageKey,
+    confirmedBooking,
+    selectedPetId,
+    selectedBranchId,
+    category,
+    selectionMode,
+    selectionsByCategory,
+    selectedSlot,
+    hotelNights,
+    selectedPromoId,
+    selectedDiscountId,
+    paymentMethod,
+    paymentChoice,
+    specialInstructions,
+    hotelFeeding,
+    hotelWalking,
+    hotelPlaying,
+    hotelMedications,
+    currentStepKey,
+    reachedStepKeys,
+    isReceptionistMode,
+    walkInCustomer,
+  ]);
+
+  /** Clears the persisted draft and resets every field it covers back to
+   * its blank-wizard default - mirrors the individual reset handlers above
+   * (handlePetSelect/handleBranchSelect/handleCategorySelect) rather than
+   * reloading the page, so this stays a plain in-memory reset. */
+  function handleStartOver() {
+    if (draftStorageKey) clearBookingDraft(draftStorageKey);
+    setShowRestoredBanner(false);
+
+    setSelectedPetId('');
+    setSelectedBranchId('');
+    setCategory('');
+    setSelectionMode('service');
+    setSelectionsByCategory({});
+    setSelectedSlot(null);
+    setHotelNights(1);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    setSelectedPromoId('');
+    setSelectedDiscountId('');
+    setDiscountIdVerified(false);
+    setPaymentMethod('');
+    setPaymentChoice('downpayment');
+    setSpecialInstructions('');
+    resetHotelPreferences();
+    if (isReceptionistMode) setWalkInCustomer(null);
+
+    const startKey = isReceptionistMode ? 'customer' : 'pet';
+    setCurrentStepKey(startKey);
+    setReachedStepKeys(new Set([startKey]));
+  }
+
   // ---- Derived data ----
 
   const selectedPet = useMemo(
@@ -593,6 +843,16 @@ export function CustomerBookingFlowPage() {
     [branches, selectedBranchId]
   );
 
+  // Custom change: Service Types addendum - a lookup by the hardcoded
+  // ServiceCategory key each row represents (Admin Settings > Service
+  // Types). A candidate absent from this map (fetch failed, or a row was
+  // never seeded) is treated as active/unlabeled - today's behavior,
+  // unchanged - rather than hiding it.
+  const serviceTypeByKey = useMemo(
+    () => new Map(serviceTypes.map((type) => [type.key, type])),
+    [serviceTypes]
+  );
+
   const availableCategories = useMemo(() => {
     // An unassessed pet can only ever book a Misc service flagged
     // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
@@ -604,9 +864,11 @@ export function CustomerBookingFlowPage() {
 
     return SERVICE_CATEGORIES.filter(
       (candidate) =>
-        candidate !== 'Veterinary' || (selectedBranch?.is_vet_branch ?? true)
+        (candidate !== 'Veterinary' ||
+          (selectedBranch?.is_vet_branch ?? true)) &&
+        (serviceTypeByKey.get(candidate)?.is_active ?? true)
     );
-  }, [selectedBranch, isSelectedPetAssessed]);
+  }, [selectedBranch, isSelectedPetAssessed, serviceTypeByKey]);
 
   // For an unassessed pet, Initial Assessment is the only thing bookable at
   // all (see availableCategories above) - once the branch's catalog has
@@ -1407,6 +1669,7 @@ export function CustomerBookingFlowPage() {
         scheduled_start: selectedSlot.start,
         scheduled_end: finalScheduledEnd!,
         ...(staffPreference ? { staff_preference: staffPreference } : {}),
+        ...(cagePreference ? { cage_preference: cagePreference } : {}),
         ...(requiresPayment && paymentMethod
           ? {
               payment_method: paymentMethod,
@@ -1438,6 +1701,7 @@ export function CustomerBookingFlowPage() {
       }
 
       setConfirmedBooking(result.data);
+      if (draftStorageKey) clearBookingDraft(draftStorageKey);
     } catch {
       setSubmitError(
         'Could not reach the server. Check your connection and try again.'
@@ -1588,6 +1852,11 @@ export function CustomerBookingFlowPage() {
             <div className={styles.categoryGrid}>
               {availableCategories.map((candidate) => {
                 const Icon = CATEGORY_ICONS[candidate];
+                // Custom change: Service Types addendum - the row's `name`
+                // is only ever a display-label override (Admin Settings >
+                // Service Types); `candidate` (the real ServiceCategory
+                // value) is still what's submitted/compared everywhere else.
+                const label = serviceTypeByKey.get(candidate)?.name ?? candidate;
                 return (
                   <button
                     key={candidate}
@@ -1599,7 +1868,7 @@ export function CustomerBookingFlowPage() {
                     onClick={() => handleCategorySelect(candidate)}
                   >
                     <Icon className={styles.categoryIcon} aria-hidden="true" />
-                    <span className={styles.categoryLabel}>{candidate}</span>
+                    <span className={styles.categoryLabel}>{label}</span>
                   </button>
                 );
               })}
@@ -1695,6 +1964,23 @@ export function CustomerBookingFlowPage() {
                 branchId={selectedBranchId}
                 date={selectedSlot.start.slice(0, 10)}
                 recommendedSize={selectedPet?.weight_class ?? null}
+              />
+            ) : null}
+
+            {/* Custom change: Cage Picker addendum - lets the customer/
+              receptionist name a specific cage preference, distinct from
+              CagePicker above (which only shows size-level capacity). Only
+              renders once the Hotel service type's cage_picker_enabled
+              toggle (Admin Settings > Service Types) resolves true;
+              CagePickerList's own onUnavailable degrades this to "no
+              preference" otherwise, same contract as StaffPickerList. */}
+            {selectedSlot && category === 'Hotel' && !cagePickerUnavailable ? (
+              <CagePickerList
+                accessToken={accessToken!}
+                branchId={selectedBranchId}
+                selected={cagePreference}
+                onSelect={setCagePreference}
+                onUnavailable={() => setCagePickerUnavailable(true)}
               />
             ) : null}
           </div>
@@ -2491,6 +2777,28 @@ export function CustomerBookingFlowPage() {
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Book a service</h1>
+
+      {showRestoredBanner ? (
+        <div className={styles.restoredBanner} role="status">
+          <span>We restored your in-progress booking.</span>
+          <div className={styles.restoredBannerActions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleStartOver}
+            >
+              Start over
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setShowRestoredBanner(false)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <BookingStepper
         steps={steps.map((step) => step.label)}
