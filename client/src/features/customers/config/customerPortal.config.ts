@@ -5,7 +5,6 @@ import {
   PawPrint,
   Receipt,
   Salad,
-  Settings,
 } from 'lucide-react';
 import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar';
 
@@ -14,6 +13,10 @@ import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar'
  * role-config system like the staff dashboard (staffDashboard.config.ts).
  * Single `label: null` section renders as a flat list (Sidebar), same as
  * every non-admin staff role.
+ *
+ * No Settings entry here - the Navbar's gear icon already links to
+ * /portal/settings for every page (same as staff, whose sidebar config
+ * never had one either), so a sidebar entry would just duplicate it.
  */
 export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
   {
@@ -29,7 +32,6 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
         to: '/portal/food-medication',
         icon: Salad,
       },
-      { title: 'Settings', to: '/portal/settings', icon: Settings },
     ],
   },
 ];
