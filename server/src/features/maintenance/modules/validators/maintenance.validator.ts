@@ -470,6 +470,25 @@ export const updateBreedValidator = z
   })
   .strict();
 
+/** Custom change: Service Types admin CRUD. */
+export const createServiceTypeValidator = z
+  .object({
+    key: z.string().trim().min(1, 'Key is required'),
+    name: z.string().trim().min(1, 'Name is required'),
+    staff_picker_enabled: z.boolean().optional(),
+    cage_picker_enabled: z.boolean().optional(),
+  })
+  .strict();
+
+export const updateServiceTypeValidator = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    is_active: z.boolean().optional(),
+    staff_picker_enabled: z.boolean().optional(),
+    cage_picker_enabled: z.boolean().optional(),
+  })
+  .strict();
+
 export type CreateServiceInput = z.infer<typeof createServiceValidator>;
 export type UpdateServiceInput = z.infer<typeof updateServiceValidator>;
 export type BranchAvailabilityInput = z.infer<
@@ -481,6 +500,8 @@ export type CreatePromoInput = z.infer<typeof createPromoValidator>;
 export type UpdatePromoInput = z.infer<typeof updatePromoValidator>;
 export type CreateBreedInput = z.infer<typeof createBreedValidator>;
 export type UpdateBreedInput = z.infer<typeof updateBreedValidator>;
+export type CreateServiceTypeInput = z.infer<typeof createServiceTypeValidator>;
+export type UpdateServiceTypeInput = z.infer<typeof updateServiceTypeValidator>;
 export type UpdatePricingConfigurationInput = z.infer<
   typeof updatePricingConfigurationValidator
 >;
