@@ -29,6 +29,26 @@
   padding: var(--space-2);
 }
 
+.restoredBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.restoredBannerActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .stepContent {
   display: grid;
   gap: var(--space-2);

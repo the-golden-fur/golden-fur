@@ -4,9 +4,9 @@ import styles from '../SettingsPage.module.css';
 
 const CONFIG_TILES: DashboardTileConfig[] = [
   {
-    title: 'Services',
-    description: 'Manage the service catalog.',
-    to: '/staff/admin/maintenance/services',
+    title: 'Services and Packages',
+    description: 'Manage services, service types, and packages.',
+    to: '/staff/admin/maintenance/services-and-packages',
   },
   {
     title: 'Pricing Configuration',
@@ -14,20 +14,9 @@ const CONFIG_TILES: DashboardTileConfig[] = [
     to: '/staff/admin/maintenance/pricing-configuration',
   },
   {
-    title: 'Packages',
-    description: 'Bundle services into sellable packages.',
-    to: '/staff/admin/maintenance/packages',
-  },
-  {
     title: 'Promos',
     description: 'Configure time-limited promotions.',
     to: '/staff/admin/maintenance/promos',
-  },
-  {
-    title: 'Promo Cap Configuration',
-    description:
-      'Set the per-branch and system-wide cap on combined promo discounts.',
-    to: '/staff/admin/maintenance/promo-cap-configuration',
   },
   {
     title: 'Breed Management',

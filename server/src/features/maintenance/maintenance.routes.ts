@@ -9,6 +9,7 @@ import {
   createPackageController,
   createPromoController,
   createServiceController,
+  createServiceTypeController,
   deleteBreedController,
   getPackageController,
   getPackagePricingConfigurationController,
@@ -23,6 +24,7 @@ import {
   listPackagesController,
   listPromoCapConfigurationsController,
   listPromosController,
+  listServiceTypesController,
   listServicesController,
   restorePackageController,
   restorePromoController,
@@ -33,6 +35,7 @@ import {
   updatePricingConfigurationController,
   updatePromoController,
   updateServiceController,
+  updateServiceTypeController,
   upsertPromoCapConfigurationController,
 } from './maintenance.controller.ts';
 import {
@@ -162,5 +165,18 @@ router.get('/maintenance/breeds', staffRead, listBreedsController);
 router.post('/maintenance/breeds', adminWrite, createBreedController);
 router.patch('/maintenance/breeds/:id', adminWrite, updateBreedController);
 router.delete('/maintenance/breeds/:id', adminWrite, deleteBreedController);
+
+// Service Types (Custom change)
+router.get('/maintenance/service-types', staffRead, listServiceTypesController);
+router.post(
+  '/maintenance/service-types',
+  adminWrite,
+  createServiceTypeController
+);
+router.patch(
+  '/maintenance/service-types/:id',
+  adminWrite,
+  updateServiceTypeController
+);
 
 export default router;

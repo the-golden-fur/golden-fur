@@ -224,6 +224,27 @@ export interface Breed {
   created_at: string;
 }
 
+/**
+ * Custom change: admin-editable metadata for the customer-selectable
+ * service lines (Grooming/Hotel/Daycare/Veterinary) - `key` matches the
+ * hardcoded ServiceCategory value each row represents; renaming `name` only
+ * changes the customer-facing label. staff_picker_enabled/
+ * cage_picker_enabled gate whether those steps are offered in the booking
+ * flow for this type - see staffPicker.service.ts/cagePicker.service.ts.
+ */
+export interface ServiceType {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  staff_picker_enabled: boolean;
+  cage_picker_enabled: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type PromoScopeType = 'all_services' | 'specific';
 export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 

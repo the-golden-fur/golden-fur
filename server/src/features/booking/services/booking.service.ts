@@ -33,6 +33,10 @@ import {
   isStaffPickerEnabled,
   listAvailableStaff,
 } from './staffPicker.service.ts';
+import {
+  isCagePickerEnabled,
+  verifyCagePreference,
+} from './cagePicker.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
@@ -856,6 +860,20 @@ export async function createBooking({
   // capacity check.
   const staffResolution = await resolveStaffAssignment(input);
 
+  // Cage preference (Hotel only, custom change) - advisory-only, so an
+  // invalid/no-longer-available preference silently degrades to null rather
+  // than rejecting the booking; check-in's own suggestCage/assignCage flow
+  // re-validates and lets the receptionist re-pick regardless.
+  const preferredCageId =
+    input.service_category === 'Hotel' &&
+    input.cage_preference?.type === 'specific' &&
+    (await isCagePickerEnabled(input.service_category))
+      ? await verifyCagePreference(
+          input.cage_preference.cage_id!,
+          input.branch_id
+        )
+      : null;
+
   if (
     input.service_category === 'Hotel' ||
     input.service_category === 'Daycare'
@@ -901,6 +919,7 @@ export async function createBooking({
       promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
       hotel_preferences: input.hotel_preferences ?? null,
+      preferred_cage_id: preferredCageId,
     })
     .select('*')
     .maybeSingle();

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -8,7 +8,12 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../api/maintenance.api';
-import type { Package, Promo, Service } from '../../maintenance.types';
+import type {
+  Package,
+  Promo,
+  PromoCapConfiguration,
+  Service,
+} from '../../maintenance.types';
 import { AdminPromoConfigPage } from './AdminPromoConfigPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -21,7 +26,34 @@ vi.mock('../../api/maintenance.api', () => ({
   listPromos: vi.fn(),
   createPromo: vi.fn(),
   updatePromo: vi.fn(),
+  listBranches: vi.fn(),
+  listPromoCapConfigurations: vi.fn(),
+  upsertPromoCapConfiguration: vi.fn(),
 }));
+
+const BRANCHES = [
+  { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
+  { id: 'branch-southwoods', name: 'Southwoods', is_vet_branch: false },
+];
+
+const CAP_CONFIGURATIONS: PromoCapConfiguration[] = [
+  {
+    id: 'cap-default',
+    branch_id: null,
+    cap_type: 'percentage',
+    cap_value: 20,
+    updated_by_staff_id: null,
+    updated_at: '2026-07-26T00:00:00.000Z',
+  },
+  {
+    id: 'cap-makati',
+    branch_id: 'branch-makati',
+    cap_type: 'flat',
+    cap_value: 150,
+    updated_by_staff_id: null,
+    updated_at: '2026-07-26T00:00:00.000Z',
+  },
+];
 
 function buildService(overrides: Partial<Service> = {}): Service {
   return {
@@ -151,6 +183,14 @@ describe('AdminPromoConfigPage', () => {
       data: [buildPromo()],
       error: null,
     });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPromoCapConfigurations).mockResolvedValue({
+      data: CAP_CONFIGURATIONS,
+      error: null,
+    });
   });
 
   it('AC-5: redirects a non-Admin/Superadmin role to /staff/settings', async () => {
@@ -175,12 +215,45 @@ describe('AdminPromoConfigPage', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('the promo cap is not on this page anymore (moved to its own subpage)', async () => {
+  it('the promo cap configuration is embedded on this page (no longer a separate subpage)', async () => {
     renderPage();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
-    expect(screen.queryByText('Promo Cap')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Cap value/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Both branches (system-wide default)')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Makati' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Southwoods' })
+    ).toBeInTheDocument();
+  });
+
+  it('saves a branch promo cap independently of the default cap', async () => {
+    vi.mocked(maintenanceApi.upsertPromoCapConfiguration).mockResolvedValue({
+      data: { ...CAP_CONFIGURATIONS[1], cap_value: 300 },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByRole('heading', { name: 'Makati' });
+    const makatiCard = screen
+      .getByRole('heading', { name: 'Makati' })
+      .closest('article') as HTMLElement;
+    const valueInput = within(makatiCard).getByLabelText('Cap value (PHP)');
+    await user.clear(valueInput);
+    await user.type(valueInput, '300');
+    await user.click(within(makatiCard).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.upsertPromoCapConfiguration).toHaveBeenCalledWith(
+        'token',
+        { branch_id: 'branch-makati', cap_type: 'flat', cap_value: 300 }
+      );
+    });
+
+    expect(await screen.findByText('Promo cap updated.')).toBeInTheDocument();
   });
 
   it('branch scope filter narrows the list without navigating', async () => {

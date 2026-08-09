@@ -20,7 +20,7 @@ describe('ConfigTab', () => {
 
     expect(screen.getByRole('link', { name: /^services/i })).toHaveAttribute(
       'href',
-      '/staff/admin/maintenance/services'
+      '/staff/admin/maintenance/services-and-packages'
     );
     expect(screen.getByRole('link', { name: /^discounts/i })).toHaveAttribute(
       'href',

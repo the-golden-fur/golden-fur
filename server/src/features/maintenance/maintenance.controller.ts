@@ -46,16 +46,23 @@ import {
   upsertPromoCapConfiguration,
 } from './services/promoCap.service.ts';
 import {
+  createServiceType,
+  listServiceTypes,
+  updateServiceType,
+} from './services/serviceTypes.service.ts';
+import {
   branchAvailabilityValidator,
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
+  createServiceTypeValidator,
   createServiceValidator,
   updateBreedValidator,
   updatePackagePricingConfigurationValidator,
   updatePackageValidator,
   updatePricingConfigurationValidator,
   updatePromoValidator,
+  updateServiceTypeValidator,
   updateServiceValidator,
   upsertPromoCapConfigurationValidator,
 } from './modules/validators/maintenance.validator.ts';
@@ -690,6 +697,78 @@ export async function deleteBreedController(
   try {
     await deleteBreed(paramId(req, 'id'));
     return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Service Types (Custom change)
+// ---------------------------------------------------------------------------
+
+export async function listServiceTypesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const serviceTypes = await listServiceTypes();
+    return res.status(200).json({ service_types: serviceTypes });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createServiceTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createServiceTypeValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const serviceType = await createServiceType(parsed.data, requesterId);
+    return res.status(201).json({ service_type: serviceType });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updateServiceTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updateServiceTypeValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const serviceType = await updateServiceType(
+      paramId(req, 'id'),
+      parsed.data,
+      requesterId
+    );
+    return res.status(200).json({ service_type: serviceType });
   } catch (error) {
     return sendServiceError(res, error);
   }

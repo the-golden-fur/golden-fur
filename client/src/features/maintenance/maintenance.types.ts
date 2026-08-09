@@ -408,6 +408,41 @@ export interface CreateBreedPayload {
   name: string;
 }
 
+/**
+ * Custom change: admin-editable metadata for the customer-selectable
+ * service lines (Grooming/Hotel/Daycare/Veterinary) - `key` matches the
+ * hardcoded ServiceCategory value each row represents; renaming `name` only
+ * changes the customer-facing label. A brand-new row's `key` won't have
+ * matching category-specific booking behavior until that's built in code -
+ * see AdminServiceTypesPage's own copy.
+ */
+export interface ServiceType {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  staff_picker_enabled: boolean;
+  cage_picker_enabled: boolean;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateServiceTypePayload {
+  key: string;
+  name: string;
+  staff_picker_enabled?: boolean;
+  cage_picker_enabled?: boolean;
+}
+
+export interface UpdateServiceTypePayload {
+  name?: string;
+  is_active?: boolean;
+  staff_picker_enabled?: boolean;
+  cage_picker_enabled?: boolean;
+}
+
 export interface UpdateBreedPayload {
   pet_type?: PetType;
   name?: string;

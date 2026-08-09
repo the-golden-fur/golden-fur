@@ -5,6 +5,7 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import {
   advancePaymentStageController,
   availabilityController,
+  cagePickerOptionsController,
   cancelBookingController,
   catalogController,
   completeBookingController,
@@ -117,6 +118,9 @@ router.get(
   jwtMiddleware,
   staffPickerOptionsController
 );
+
+// Cage Picker resolution (Custom change - mirrors Staff Picker)
+router.get('/bookings/cage-picker', jwtMiddleware, cagePickerOptionsController);
 
 // policy_configurations stub (#52)
 router.get('/bookings/policy', staffRead, listPolicyConfigurationsController);

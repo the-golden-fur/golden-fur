@@ -283,6 +283,13 @@ export interface Booking {
   promo_amount: number;
   special_instructions: string | null;
   hotel_preferences: HotelBookingPreferences | null;
+  /** Custom change: Cage Picker addendum - a Hotel booking's soft, booking-
+   * time cage preference. Never a hard claim on its own; check-in's existing
+   * suggestCage/assignCage flow (hotel/services/cageAssignment.service.ts)
+   * still performs the real, concurrency-safe reservation, using this only
+   * to pre-select what the customer already asked for. NULL = no
+   * preference. */
+  preferred_cage_id: string | null;
   started_at: string | null;
   completed_at: string | null;
   paid_at: string | null;
@@ -399,4 +406,16 @@ export type StaffPickerOption =
       staff_id: string;
       display_name: string;
       profile_photo_url: string | null;
+    };
+
+/** Custom change: Cage Picker addendum - mirrors StaffPickerOption's shape.
+ * Only meaningful for Hotel bookings whose service type has
+ * cage_picker_enabled set (service_types table) - see cagePicker.service.ts. */
+export type CagePickerOption =
+  | { type: 'no_preference' }
+  | {
+      type: 'specific';
+      cage_id: string;
+      cage_label: string;
+      size: string;
     };

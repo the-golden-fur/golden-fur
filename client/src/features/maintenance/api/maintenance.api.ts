@@ -7,6 +7,7 @@ import type {
   CreatePackagePayload,
   CreatePromoPayload,
   CreateServicePayload,
+  CreateServiceTypePayload,
   Package,
   PackagePricingConfiguration,
   PetType,
@@ -15,12 +16,14 @@ import type {
   PromoCapConfiguration,
   Service,
   ServiceBranchAvailability,
+  ServiceType,
   UpdateBreedPayload,
   UpdatePackagePayload,
   UpdatePackagePricingConfigurationPayload,
   UpdatePricingConfigurationPayload,
   UpdatePromoPayload,
   UpdateServicePayload,
+  UpdateServiceTypePayload,
   UpsertPromoCapConfigurationPayload,
 } from '../maintenance.types';
 
@@ -676,4 +679,60 @@ export async function deleteBreedAdmin(
   }
 
   return { data: null, error: null };
+}
+
+/** Custom change: Service Types admin CRUD. */
+export async function listServiceTypes(
+  accessToken: string
+): Promise<MaintenanceApiResult<ServiceType[]>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/service-types`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service_types: ServiceType[] }>(response);
+  return { data: result.data?.service_types ?? null, error: result.error };
+}
+
+export async function createServiceType(
+  accessToken: string,
+  payload: CreateServiceTypePayload
+): Promise<MaintenanceApiResult<ServiceType>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/service-types`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service_type: ServiceType }>(response);
+  return { data: result.data?.service_type ?? null, error: result.error };
+}
+
+export async function updateServiceType(
+  serviceTypeId: string,
+  accessToken: string,
+  payload: UpdateServiceTypePayload
+): Promise<MaintenanceApiResult<ServiceType>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/service-types/${serviceTypeId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service_type: ServiceType }>(response);
+  return { data: result.data?.service_type ?? null, error: result.error };
 }

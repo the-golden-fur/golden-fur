@@ -31,6 +31,10 @@ vi.mock('../../api/booking.api', () => ({
   getBookingCatalog: vi.fn(),
   createBooking: vi.fn(),
   getNextAvailableSlot: vi.fn(),
+  // Custom change: Service Types addendum - default to an empty list so
+  // every existing test keeps seeing every ServiceCategory under its plain
+  // literal label (today's behavior, unchanged).
+  listServiceTypes: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -126,6 +130,37 @@ vi.mock('../../components/StaffPickerList/StaffPickerList', () => ({
 }));
 vi.mock('../../components/CagePicker/CagePicker', () => ({
   CagePicker: () => createElement('div', { 'data-testid': 'cage-picker' }),
+}));
+// Custom change: Cage Picker addendum - mocked the same way as
+// StaffPickerList above, so existing tests never hit the real
+// GET /bookings/cage-picker call.
+vi.mock('../../components/CagePickerList/CagePickerList', () => ({
+  CagePickerList: ({
+    onSelect,
+    onUnavailable,
+  }: {
+    onSelect: (preference: { type: 'no_preference' }) => void;
+    onUnavailable?: () => void;
+  }) =>
+    createElement(
+      'div',
+      { 'data-testid': 'cage-picker-list' },
+      createElement(
+        'button',
+        { type: 'button', onClick: () => onSelect({ type: 'no_preference' }) },
+        'Pick no cage preference'
+      ),
+      onUnavailable
+        ? createElement(
+            'button',
+            {
+              type: 'button',
+              onClick: () => onUnavailable(),
+            },
+            'Simulate cage picker unavailable'
+          )
+        : null
+    ),
 }));
 
 const PET = {
@@ -288,6 +323,11 @@ function renderStaffPage() {
 
 describe('CustomerBookingFlowPage', () => {
   beforeEach(() => {
+    // Draft autosave/restore persists to real localStorage (must survive an
+    // actual browser close, so sessionStorage won't do) - jsdom's
+    // localStorage otherwise leaks a draft written by one test into the
+    // next.
+    localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
       data: [PET],
@@ -1042,5 +1082,117 @@ describe('CustomerBookingFlowPage', () => {
     // Clicking the disabled card does nothing.
     await user.click(bathCard!);
     expect(bathCard?.className).not.toMatch(/selected/);
+  });
+
+  // Browser-close-safe draft autosave/restore - keyed off the signed-in
+  // customer's own id (renderPage's user.id is 'cust-1'), matching
+  // bookingDraftStorageKey's customer-mode branch.
+  const CUSTOMER_DRAFT_KEY = 'booking-draft:customer:cust-1';
+
+  function seedDraft(overrides: Record<string, unknown> = {}) {
+    localStorage.setItem(
+      CUSTOMER_DRAFT_KEY,
+      JSON.stringify({
+        savedAt: Date.now(),
+        selectedPetId: 'pet-1',
+        selectedBranchId: '',
+        category: '',
+        selectionMode: 'service',
+        selectionsByCategory: {},
+        selectedSlot: null,
+        hotelNights: 1,
+        selectedPromoId: '',
+        selectedDiscountId: '',
+        paymentMethod: '',
+        paymentChoice: 'downpayment',
+        specialInstructions: '',
+        hotelFeeding: [],
+        hotelWalking: [],
+        hotelPlaying: [],
+        hotelMedications: [],
+        currentStepKey: 'branch',
+        reachedStepKeys: ['pet', 'branch'],
+        walkInCustomer: null,
+        ...overrides,
+      })
+    );
+  }
+
+  it('restores an in-progress draft on mount and shows the restored banner', async () => {
+    seedDraft();
+
+    renderPage();
+
+    expect(
+      await screen.findByText('We restored your in-progress booking.')
+    ).toBeInTheDocument();
+    // currentStepKey was restored to 'branch' - the wizard should land
+    // there directly instead of back at the blank Pet step.
+    expect(await screen.findByText('Makati')).toBeInTheDocument();
+  });
+
+  it('"Start over" clears the restored state and the stored draft', async () => {
+    seedDraft();
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('We restored your in-progress booking.');
+    await user.click(screen.getByText('Start over'));
+
+    expect(
+      screen.queryByText('We restored your in-progress booking.')
+    ).not.toBeInTheDocument();
+    // Back at a blank wizard - the Pet step, not the restored Branch step.
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
+  });
+
+  it('submitting a booking clears the stored draft', async () => {
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'Cash' } });
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
+    );
+    expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
+  });
+
+  it('does not restore (or show a banner for) a draft older than 24 hours', async () => {
+    seedDraft({ savedAt: Date.now() - 25 * 60 * 60 * 1000 });
+
+    renderPage();
+
+    // Blank wizard - back at the Pet step, not the draft's restored Branch
+    // step - and no banner, since there's nothing to tell the user about a
+    // silently-dropped stale draft.
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(
+      screen.queryByText('We restored your in-progress booking.')
+    ).not.toBeInTheDocument();
+    expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
   });
 });
