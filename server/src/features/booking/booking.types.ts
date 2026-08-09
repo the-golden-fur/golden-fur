@@ -352,6 +352,11 @@ export interface PolicyConfiguration {
   reschedule_free_allowance: number | null;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  /** Master toggle for the customer-facing PayMongo "Pay" button - when
+   * false, the button still renders (disabled, with an explanatory
+   * tooltip) rather than disappearing. See isOnlinePaymentsEnabled in
+   * staffPicker.service.ts. */
+  online_payments_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -376,6 +381,7 @@ export type EffectivePolicy = Pick<
   | 'reschedule_free_allowance'
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
+  | 'online_payments_enabled'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

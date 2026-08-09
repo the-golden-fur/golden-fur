@@ -267,6 +267,24 @@ export const cancelBookingValidator = z
   })
   .strict();
 
+/** Customer self-service Pay button (CustomerBookingsPage). */
+export const payBookingValidator = z
+  .object({
+    payment_method: z.enum(['GCash', 'Maya']),
+    pay_in_full: z.boolean(),
+  })
+  .strict();
+
+export const onlinePaymentsStatusQueryValidator = z.object({
+  branch_id: z.uuid(),
+});
+
+/** Custom change: duplicate-booking prevention - which pets have an
+ * unresolved Hotel/Daycare booking. */
+export const petBookingConflictsQueryValidator = z.object({
+  customer_id: z.uuid(),
+});
+
 export const updatePolicyValidator = z
   .object({
     // null/omitted targets the system-wide default row; a uuid targets (or
@@ -293,6 +311,7 @@ export const updatePolicyValidator = z
     reschedule_free_allowance: z.number().int().min(0).nullable().optional(),
     credit_expiry_enabled: z.boolean().optional(),
     credit_expiry_days: z.number().int().min(1).optional(),
+    online_payments_enabled: z.boolean().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -477,6 +496,13 @@ export type CreateBookingInput = z.infer<typeof createBookingValidator>;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
+export type PayBookingInput = z.infer<typeof payBookingValidator>;
+export type OnlinePaymentsStatusQueryInput = z.infer<
+  typeof onlinePaymentsStatusQueryValidator
+>;
+export type PetBookingConflictsQueryInput = z.infer<
+  typeof petBookingConflictsQueryValidator
+>;
 export type StaffPickerQueryInput = z.infer<typeof staffPickerQueryValidator>;
 export type CagePickerQueryInput = z.infer<typeof cagePickerQueryValidator>;
 export type AvailabilityQueryInput = z.infer<typeof availabilityQueryValidator>;

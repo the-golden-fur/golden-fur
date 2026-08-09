@@ -6,12 +6,14 @@ import {
   createBooking,
   getBookingById,
   listBookings,
+  listPetBookingConflicts,
   overrideBookingStatus,
   overridePaymentStage,
   startBooking,
 } from './services/booking.service.ts';
 import {
   getStaffPickerOptions,
+  isOnlinePaymentsEnabled,
   listPolicyConfigurations,
   updatePolicyConfiguration,
 } from './services/staffPicker.service.ts';
@@ -25,6 +27,7 @@ import {
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
+import { payForBooking } from '../billing/services/customerBookingPayment.service.ts';
 import {
   advancePaymentStageValidator,
   availabilityQueryValidator,
@@ -34,9 +37,12 @@ import {
   createBookingValidator,
   listBookingsQueryValidator,
   nextAvailableSlotQueryValidator,
+  onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
   overridePaymentStageValidator,
   partsOfDayQueryValidator,
+  payBookingValidator,
+  petBookingConflictsQueryValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
   updatePolicyValidator,
@@ -404,6 +410,99 @@ export async function rescheduleBookingController(
     });
 
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Customer self-service Pay button (CustomerBookingsPage). */
+export async function payBookingController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = payBookingValidator.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await payForBooking({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+      paymentMethod: parsed.data.payment_method,
+      payInFull: parsed.data.pay_in_full,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Whether the customer-facing Pay button should be enabled for a branch -
+ * see isOnlinePaymentsEnabled's own doc comment. */
+export async function onlinePaymentsStatusController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = onlinePaymentsStatusQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const enabled = await isOnlinePaymentsEnabled(parsed.data.branch_id);
+    return res.status(200).json({ online_payments_enabled: enabled });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change: duplicate-booking prevention - pet ids with an unresolved
+ * Hotel/Daycare booking, for the booking flow's pet-selection step. */
+export async function petBookingConflictsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = petBookingConflictsQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const conflicts = await listPetBookingConflicts({
+      requesterId,
+      customerId: parsed.data.customer_id,
+    });
+
+    return res.status(200).json({ conflicts });
   } catch (error) {
     return sendServiceError(res, error);
   }

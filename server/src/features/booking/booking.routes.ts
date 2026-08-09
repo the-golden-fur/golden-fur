@@ -14,9 +14,12 @@ import {
   listBookingsController,
   listPolicyConfigurationsController,
   nextAvailableSlotController,
+  onlinePaymentsStatusController,
   overrideBookingStatusController,
   overridePaymentStageController,
   partsOfDayController,
+  payBookingController,
+  petBookingConflictsController,
   rescheduleBookingController,
   staffPickerOptionsController,
   startBookingController,
@@ -122,6 +125,23 @@ router.get(
 // Cage Picker resolution (Custom change - mirrors Staff Picker)
 router.get('/bookings/cage-picker', jwtMiddleware, cagePickerOptionsController);
 
+// Custom change: whether the customer-facing Pay button should be enabled
+// for a branch - read by both the customer Bookings page and the Admin
+// online-payments toggle's own preview.
+router.get(
+  '/bookings/online-payments-status',
+  jwtMiddleware,
+  onlinePaymentsStatusController
+);
+
+// Custom change: duplicate-booking prevention - pet ids with an unresolved
+// Hotel/Daycare booking, read by the booking flow's pet-selection step.
+router.get(
+  '/bookings/pet-conflicts',
+  jwtMiddleware,
+  petBookingConflictsController
+);
+
 // policy_configurations stub (#52)
 router.get('/bookings/policy', staffRead, listPolicyConfigurationsController);
 router.patch(
@@ -139,6 +159,10 @@ router.post(
   rescheduleBookingController
 );
 router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
+
+// Customer self-service Pay button (CustomerBookingsPage) - ownership
+// checked in payForBooking, same pattern as reschedule/cancel above.
+router.post('/bookings/:id/pay', jwtMiddleware, payBookingController);
 
 // Manual status-advance actions (booking-status revision, replacing the
 // retired 'Confirmed' payment gate): Start/Complete open to any staff role

@@ -771,6 +771,20 @@ export async function createBooking({
     input.scheduled_end
   );
 
+  // A downpayment-required item (e.g. Surgery, Dental Cleaning, Overnight
+  // Stay) can't be combined with anything else - mirrors
+  // CustomerBookingFlowPage.tsx's client-side selection lock, enforced here
+  // too so a direct API call can't bypass it.
+  if (
+    resolvedItems.length > 1 &&
+    resolvedItems.some((item) => item.requires_downpayment)
+  ) {
+    throwWithStatus(
+      400,
+      'A service or package that requires a downpayment must be booked on its own'
+    );
+  }
+
   const freePackageAward = await resolveFreePackageAward(input);
 
   if (freePackageAward) {
@@ -933,7 +947,10 @@ export async function createBooking({
   const { error: itemsError } = await supabase.from('booking_items').insert(
     resolvedItems.map((item) => ({
       booking_id: booking.id,
-      ...item,
+      service_id: item.service_id,
+      package_id: item.package_id,
+      price_at_booking: item.price_at_booking,
+      duration_minutes_at_booking: item.duration_minutes_at_booking,
     }))
   );
 
@@ -1001,6 +1018,82 @@ export async function createBooking({
   }
 
   return getBookingById({ requesterId, bookingId: booking.id });
+}
+
+/** Custom change: duplicate-booking prevention at pet selection - "still
+ * not resolved" means the booking hasn't finished yet, so this is
+ * deliberately narrower than ACTIVE_BOOKING_STATUSES (which also includes
+ * 'Completed', for the staff-availability overlap check's own different
+ * purpose). A Completed booking means the service already happened and the
+ * pet is free to be booked again. */
+const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
+  'Pending',
+  'In Progress',
+];
+
+interface PetBookingConflictsParams {
+  requesterId: string;
+  customerId: string;
+}
+
+export interface PetBookingConflict {
+  pet_id: string;
+  booking_id: string;
+  service_category: Booking['service_category'];
+  scheduled_start: string;
+}
+
+/**
+ * Custom change: which of a customer's pets currently have an unresolved
+ * booking (any category, not just Hotel/Daycare - live feedback after
+ * duplicate Grooming bookings for the same pet/time slipped through the
+ * original Hotel/Daycare-only version) - the booking flow's pet-selection
+ * step (both customer self-service and staff-assisted, since both use the
+ * same CustomerBookingFlowPage) disables a flagged pet, and clicking it
+ * offers a way to go manage the existing booking instead. Category isn't
+ * chosen until a later step, so this can't scope to "the same category
+ * being booked now" - it's deliberately category-agnostic. One conflict
+ * per pet (the earliest-scheduled unresolved booking) is enough to block
+ * selection and to link to.
+ */
+export async function listPetBookingConflicts({
+  requesterId,
+  customerId,
+}: PetBookingConflictsParams): Promise<PetBookingConflict[]> {
+  if (customerId !== requesterId) {
+    const staffRole = await getStaffRoleOrNull(requesterId);
+    if (!staffRole) {
+      throwWithStatus(403, 'Forbidden');
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, pet_id, service_category, scheduled_start')
+    .eq('customer_id', customerId)
+    .in('status', UNRESOLVED_BOOKING_STATUSES)
+    .order('scheduled_start', { ascending: true });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const conflictByPetId = new Map<string, PetBookingConflict>();
+
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    pet_id: string;
+    service_category: Booking['service_category'];
+    scheduled_start: string;
+  }>) {
+    if (conflictByPetId.has(row.pet_id)) continue;
+    conflictByPetId.set(row.pet_id, {
+      pet_id: row.pet_id,
+      booking_id: row.id,
+      service_category: row.service_category,
+      scheduled_start: row.scheduled_start,
+    });
+  }
+
+  return [...conflictByPetId.values()];
 }
 
 interface GetBookingParams {

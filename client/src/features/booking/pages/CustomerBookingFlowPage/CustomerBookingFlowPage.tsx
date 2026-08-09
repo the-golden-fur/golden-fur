@@ -24,13 +24,13 @@ import type {
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
-import { CagePicker } from '../../components/CagePicker/CagePicker';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
 import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFeeNotice';
 import {
   createBooking,
   getBookingCatalog,
   getNextAvailableSlot,
+  getPetBookingConflicts,
   listServiceTypes,
   type NextAvailableSlot,
 } from '../../api/booking.api';
@@ -45,6 +45,7 @@ import {
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
   type PaymentMethod,
+  type PetBookingConflict,
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
@@ -356,6 +357,22 @@ export function CustomerBookingFlowPage() {
   const [isPetsLoading, setIsPetsLoading] = useState(true);
   const [showAddPet, setShowAddPet] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState('');
+  // Custom change: duplicate-booking prevention - pets with an unresolved
+  // booking (any category - live feedback after duplicate Grooming
+  // bookings for the same pet/time slipped through the original Hotel/
+  // Daycare-only version) are unselectable at this step (both customer
+  // self-service and staff-assisted, since both use this same flow).
+  // Keyed by pet id so the click handler can also show which existing
+  // booking is blocking selection.
+  const [petConflicts, setPetConflicts] = useState<
+    Map<string, PetBookingConflict>
+  >(new Map());
+  // Which pet's conflict prompt is currently expanded - clicking a
+  // disabled pet card shows "go manage that booking instead" rather than
+  // doing nothing.
+  const [expandedConflictPetId, setExpandedConflictPetId] = useState<
+    string | null
+  >(null);
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   // Custom change: Service Types addendum (Admin Settings > Service Types).
@@ -635,6 +652,16 @@ export function CustomerBookingFlowPage() {
       setIsPetsLoading(false);
       setPets(result.data ?? []);
     });
+
+    void getPetBookingConflicts(effectiveCustomerId, accessToken).then(
+      (result) => {
+        if (isMounted && result.data) {
+          setPetConflicts(
+            new Map(result.data.map((conflict) => [conflict.pet_id, conflict]))
+          );
+        }
+      }
+    );
 
     return () => {
       isMounted = false;
@@ -955,6 +982,17 @@ export function CustomerBookingFlowPage() {
   // Hotel (one cage) and Daycare (one session) only ever hold a single item;
   // Grooming/Veterinary stay multi-select.
   const singleSelectCategory = category === 'Hotel' || category === 'Daycare';
+
+  /** A downpayment-required service (e.g. Surgery, Dental Cleaning) can't be
+   * combined with anything else - selecting one behaves like a
+   * singleSelectCategory pick (see toggleServiceSelect) and every other
+   * service option is disabled while it's selected, so the amount owed
+   * up-front is unambiguous. */
+  const lockedDownpaymentService = useMemo(
+    () =>
+      selectedServices.find((service) => service.requires_downpayment) ?? null,
+    [selectedServices]
+  );
 
   /** Union of every service already covered by a currently-selected
    * package's bundled price - those services are shown read-only in the
@@ -1354,6 +1392,14 @@ export function CustomerBookingFlowPage() {
   }
 
   function handlePetSelect(petId: string) {
+    if (petConflicts.has(petId)) {
+      // Clicking a conflicted pet doesn't select it - it shows a prompt to
+      // go manage the existing booking instead (toggle so clicking again,
+      // or clicking a different conflicted pet, doesn't stack prompts).
+      setExpandedConflictPetId((current) => (current === petId ? null : petId));
+      return;
+    }
+
     setSelectedPetId(petId);
     // Clears every category's selections - important since an unassessed
     // pet can only book Misc's Initial Assessment, so a selection valid for
@@ -1403,6 +1449,12 @@ export function CustomerBookingFlowPage() {
     // (the option card's own onClick shouldn't even be reachable, but this
     // guards against it directly too).
     if (servicesCoveredByPackages.has(serviceId)) return;
+    // A different downpayment-required service is already locked in - the
+    // option card's own `disabled` attribute already blocks this click, but
+    // guard here too in case this is ever called from somewhere else.
+    if (lockedDownpaymentService && lockedDownpaymentService.id !== serviceId) {
+      return;
+    }
 
     // #22 follow-up: no longer resets selectedSlot/staffPreference here -
     // that made sense when items were picked BEFORE availability (the real
@@ -1417,21 +1469,32 @@ export function CustomerBookingFlowPage() {
         ...current,
         serviceIds: current.serviceIds.filter((id) => id !== serviceId),
       }));
-    } else if (singleSelectCategory) {
-      updateCategorySelection(category, () => ({
-        serviceIds: [serviceId],
-        packageIds: [],
-      }));
     } else {
-      updateCategorySelection(category, (current) => ({
-        ...current,
-        serviceIds: [...current.serviceIds, serviceId],
-      }));
+      const service = allServices.find(
+        (candidate) => candidate.id === serviceId
+      );
+
+      if (singleSelectCategory || service?.requires_downpayment) {
+        updateCategorySelection(category, () => ({
+          serviceIds: [serviceId],
+          packageIds: [],
+        }));
+      } else {
+        updateCategorySelection(category, (current) => ({
+          ...current,
+          serviceIds: [...current.serviceIds, serviceId],
+        }));
+      }
     }
   }
 
   function togglePackageSelect(packageId: string) {
     if (!category) return;
+    // A downpayment-required service is locked in (see toggleServiceSelect)
+    // - packages can't be layered on top of it.
+    if (lockedDownpaymentService && !selectedPackageIds.includes(packageId)) {
+      return;
+    }
 
     // #22 follow-up: see toggleServiceSelect's comment above - the
     // selectedSlot/staffPreference reset was removed for the same reason.
@@ -1777,31 +1840,80 @@ export function CustomerBookingFlowPage() {
         }
         return (
           <div className={styles.optionGrid}>
-            {pets.map((pet) => (
-              <button
-                key={pet.id}
-                type="button"
-                className={`${styles.optionCard} ${
-                  selectedPetId === pet.id ? styles.selected : ''
-                }`}
-                onClick={() => handlePetSelect(pet.id)}
-              >
-                <span className={styles.optionTitle}>{pet.name}</span>
-                <span className={styles.optionMeta}>
-                  {PET_TYPE_LABEL[pet.pet_type]}
-                  {pet.weight_class && pet.coat_type ? (
-                    <>
-                      {' '}
-                      &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
-                      {pet.weight_class}) &middot;{' '}
-                      {COAT_TYPE_LABEL[pet.coat_type]}
-                    </>
-                  ) : (
-                    <> &middot; Not yet assessed</>
-                  )}
-                </span>
-              </button>
-            ))}
+            {pets.map((pet) => {
+              const conflict = petConflicts.get(pet.id);
+              const hasConflict = Boolean(conflict);
+              const isConflictExpanded = expandedConflictPetId === pet.id;
+
+              return (
+                <div key={pet.id} className={styles.optionCardWrapper}>
+                  <button
+                    type="button"
+                    aria-disabled={hasConflict}
+                    aria-expanded={hasConflict ? isConflictExpanded : undefined}
+                    title={
+                      hasConflict
+                        ? `${pet.name} already has an unresolved booking - click for details.`
+                        : undefined
+                    }
+                    className={`${styles.optionCard} ${
+                      selectedPetId === pet.id ? styles.selected : ''
+                    } ${hasConflict ? styles.readOnly : ''}`}
+                    onClick={() => handlePetSelect(pet.id)}
+                  >
+                    <span className={styles.optionTitle}>{pet.name}</span>
+                    <span className={styles.optionMeta}>
+                      {PET_TYPE_LABEL[pet.pet_type]}
+                      {pet.weight_class && pet.coat_type ? (
+                        <>
+                          {' '}
+                          &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
+                          {pet.weight_class}) &middot;{' '}
+                          {COAT_TYPE_LABEL[pet.coat_type]}
+                        </>
+                      ) : (
+                        <> &middot; Not yet assessed</>
+                      )}
+                    </span>
+                    {hasConflict ? (
+                      <span className={styles.optionMeta}>
+                        Already has an unresolved booking
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {conflict && isConflictExpanded ? (
+                    <div className={styles.conflictPrompt} role="alert">
+                      <p className={styles.copy}>
+                        {pet.name} already has a {conflict.service_category}{' '}
+                        booking on{' '}
+                        {new Date(conflict.scheduled_start).toLocaleString(
+                          undefined,
+                          { dateStyle: 'medium', timeStyle: 'short' }
+                        )}{' '}
+                        that hasn&apos;t been resolved yet. Resolve or manage
+                        that booking before starting a new one for this pet.
+                      </p>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          navigate(
+                            isReceptionistMode
+                              ? `/staff/bookings/${conflict.booking_id}`
+                              : '/portal/bookings'
+                          )
+                        }
+                      >
+                        {isReceptionistMode
+                          ? 'View that booking'
+                          : 'Go to My Bookings'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
             {pets.length === 0 && !showAddPet ? (
               <p className={styles.copy}>No pets on file yet.</p>
             ) : null}
@@ -1959,22 +2071,18 @@ export function CustomerBookingFlowPage() {
               />
             ) : null}
 
-            {selectedSlot && category === 'Hotel' ? (
-              <CagePicker
-                accessToken={accessToken!}
-                branchId={selectedBranchId}
-                date={selectedSlot.start.slice(0, 10)}
-                recommendedSize={selectedPet?.weight_class ?? null}
-              />
-            ) : null}
-
             {/* Custom change: Cage Picker addendum - lets the customer/
-              receptionist name a specific cage preference, distinct from
-              CagePicker above (which only shows size-level capacity). Only
-              renders once the Hotel service type's cage_picker_enabled
-              toggle (Admin Settings > Service Types) resolves true;
+              receptionist name a specific cage preference. Only renders
+              once the Hotel service type's cage_picker_enabled toggle
+              (Admin Settings > Service Types) resolves true;
               CagePickerList's own onUnavailable degrades this to "no
-              preference" otherwise, same contract as StaffPickerList. */}
+              preference" otherwise, same contract as StaffPickerList. (The
+              older, purely-informational CagePicker size-capacity grid
+              that used to render above this was removed as dead/superseded
+              UI - it had no onSelect and nothing it showed ever flowed
+              into the booking; recommendedSize below folds its one useful
+              signal, the pet's own weight-class "Recommended" hint, into
+              this picker instead of losing it.) */}
             {selectedSlot && category === 'Hotel' && !cagePickerUnavailable ? (
               <CagePickerList
                 accessToken={accessToken!}
@@ -1982,6 +2090,7 @@ export function CustomerBookingFlowPage() {
                 selected={cagePreference}
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
+                recommendedSize={selectedPet?.weight_class ?? null}
               />
             ) : null}
           </div>
@@ -2023,6 +2132,14 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {!singleSelectCategory && lockedDownpaymentService ? (
+              <p className={styles.copy}>
+                {lockedDownpaymentService.name} requires a downpayment and must
+                be booked on its own - deselect it to choose a different
+                service.
+              </p>
+            ) : null}
+
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
@@ -2041,17 +2158,23 @@ export function CustomerBookingFlowPage() {
                   const coveredByPackageName = servicesCoveredByPackages.get(
                     service.id
                   );
+                  const isBlockedByDownpaymentLock =
+                    lockedDownpaymentService !== null &&
+                    lockedDownpaymentService.id !== service.id;
+                  const isDisabled =
+                    coveredByPackageName !== undefined ||
+                    isBlockedByDownpaymentLock;
 
                   return (
                     <button
                       key={service.id}
                       type="button"
                       aria-pressed={isChecked}
-                      aria-disabled={coveredByPackageName !== undefined}
-                      disabled={coveredByPackageName !== undefined}
+                      aria-disabled={isDisabled}
+                      disabled={isDisabled}
                       className={`${styles.optionCard} ${
                         isChecked ? styles.selected : ''
-                      } ${coveredByPackageName !== undefined ? styles.readOnly : ''}`}
+                      } ${isDisabled ? styles.readOnly : ''}`}
                       onClick={() => toggleServiceSelect(service.id)}
                     >
                       <span className={styles.optionTitleRow}>
@@ -2080,6 +2203,11 @@ export function CustomerBookingFlowPage() {
                           /night if not picked up before closing
                         </span>
                       ) : null}
+                      {service.requires_downpayment ? (
+                        <span className={styles.optionMeta}>
+                          Requires a downpayment - booked on its own
+                        </span>
+                      ) : null}
                       {coveredByPackageName !== undefined ? (
                         <span className={styles.optionMeta}>
                           Included in {coveredByPackageName}
@@ -2095,15 +2223,19 @@ export function CustomerBookingFlowPage() {
               <div className={styles.optionGrid}>
                 {packagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
+                  const isDisabled =
+                    lockedDownpaymentService !== null && !isChecked;
 
                   return (
                     <button
                       key={pkg.id}
                       type="button"
                       aria-pressed={isChecked}
+                      aria-disabled={isDisabled}
+                      disabled={isDisabled}
                       className={`${styles.optionCard} ${
                         isChecked ? styles.selected : ''
-                      }`}
+                      } ${isDisabled ? styles.readOnly : ''}`}
                       onClick={() => togglePackageSelect(pkg.id)}
                     >
                       <span className={styles.optionTitle}>{pkg.name}</span>

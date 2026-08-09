@@ -43,6 +43,7 @@ interface FormState {
   reschedule_free_allowance: number;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  online_payments_enabled: boolean;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -63,6 +64,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     reschedule_free_allowance: policy.reschedule_free_allowance ?? 1,
     credit_expiry_enabled: policy.credit_expiry_enabled,
     credit_expiry_days: policy.credit_expiry_days,
+    online_payments_enabled: policy.online_payments_enabled,
   };
 }
 
@@ -82,6 +84,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   reschedule_free_allowance: 1,
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
+  online_payments_enabled: true,
 };
 
 /**
@@ -227,6 +230,7 @@ export function PolicyConfigurationPage() {
         : form.reschedule_free_allowance,
       credit_expiry_enabled: form.credit_expiry_enabled,
       credit_expiry_days: form.credit_expiry_days,
+      online_payments_enabled: form.online_payments_enabled,
     });
 
     setIsSubmitting(false);
@@ -550,6 +554,31 @@ export function PolicyConfigurationPage() {
                 />
               </label>
             ) : null}
+          </section>
+
+          <section aria-labelledby="online-payments-heading">
+            <h2 className={styles.sectionTitle} id="online-payments-heading">
+              Online payments
+            </h2>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.online_payments_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    online_payments_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Allow customers to pay online via GCash/Maya</span>
+            </label>
+            <p className={styles.copy}>
+              When disabled, the Pay button still shows on the customer's own
+              Bookings page, but is disabled with an explanation - it never
+              disappears entirely.
+            </p>
           </section>
 
           <section aria-labelledby="credit-expiry-heading">
