@@ -23,9 +23,27 @@ export type NotificationChannelPreference = Record<
   boolean
 >;
 
+/** Presets for "how long before the appointment should the reminder fire" -
+ * only meaningful on the 'appointment_reminder' event's preference entry.
+ * 1440 (1 day before) matches the reminder job's pre-existing fixed
+ * behavior, kept as the default so an unset preference doesn't change
+ * anything for a customer who's never touched this setting. */
+export const REMINDER_OFFSET_MINUTES_OPTIONS = [
+  15, 60, 180, 1440, 2880,
+] as const;
+export type ReminderOffsetMinutes =
+  (typeof REMINDER_OFFSET_MINUTES_OPTIONS)[number];
+export const DEFAULT_REMINDER_OFFSET_MINUTES: ReminderOffsetMinutes = 1440;
+
+export type NotificationEventPreference = NotificationChannelPreference & {
+  /** Only ever set on the 'appointment_reminder' entry - see
+   * REMINDER_OFFSET_MINUTES_OPTIONS. */
+  reminder_offset_minutes?: number;
+};
+
 export type NotificationPreferences = Record<
   NotificationEventType,
-  NotificationChannelPreference
+  NotificationEventPreference
 >;
 
 export interface Notification {

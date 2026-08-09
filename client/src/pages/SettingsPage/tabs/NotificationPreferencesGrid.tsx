@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { ToggleSwitch } from '../../../shared/components/ToggleSwitch/ToggleSwitch';
 import {
+  DEFAULT_REMINDER_OFFSET_MINUTES,
   getNotificationPreferences,
+  REMINDER_OFFSET_LABELS,
+  REMINDER_OFFSET_MINUTES_OPTIONS,
   updateNotificationPreference,
+  updateReminderOffset,
   type NotificationChannel,
   type NotificationPreferences,
 } from '../../../shared/api/preferences.api';
@@ -111,6 +115,40 @@ export function NotificationPreferencesGrid({
     });
   };
 
+  const handleReminderOffsetChange = (minutes: number) => {
+    const previous =
+      preferences?.appointment_reminder?.reminder_offset_minutes ??
+      DEFAULT_REMINDER_OFFSET_MINUTES;
+
+    setPreferences((current) => {
+      const base = current ?? ({} as NotificationPreferences);
+      return {
+        ...base,
+        appointment_reminder: {
+          ...DEFAULT_CHANNEL_PREFERENCE,
+          ...base.appointment_reminder,
+          reminder_offset_minutes: minutes,
+        },
+      };
+    });
+
+    void updateReminderOffset(accessToken, minutes).then((result) => {
+      if (result.error) {
+        setPreferences((current) => {
+          const base = current ?? ({} as NotificationPreferences);
+          return {
+            ...base,
+            appointment_reminder: {
+              ...DEFAULT_CHANNEL_PREFERENCE,
+              ...base.appointment_reminder,
+              reminder_offset_minutes: previous,
+            },
+          };
+        });
+      }
+    });
+  };
+
   const events = EVENT_TYPES_BY_ROLE[role];
 
   if (isLoading) {
@@ -127,23 +165,56 @@ export function NotificationPreferencesGrid({
       {events.map(({ type, label }) => {
         const channelPreference =
           preferences?.[type] ?? DEFAULT_CHANNEL_PREFERENCE;
+        const isReminderDisabled =
+          !channelPreference.email && !channelPreference.in_browser;
 
         return (
-          <div key={type} className={styles.notificationGridRow}>
-            <span className={styles.notificationGridLabel}>{label}</span>
-            <ToggleSwitch
-              checked={channelPreference.email}
-              onChange={(checked) => handleToggle(type, 'email', checked)}
-              label={`Email notifications for ${label}`}
-              hideLabel
-            />
-            <ToggleSwitch
-              checked={channelPreference.in_browser}
-              onChange={(checked) => handleToggle(type, 'in_browser', checked)}
-              label={`In-browser notifications for ${label}`}
-              hideLabel
-            />
-          </div>
+          <Fragment key={type}>
+            <div className={styles.notificationGridRow}>
+              <span className={styles.notificationGridLabel}>{label}</span>
+              <ToggleSwitch
+                checked={channelPreference.email}
+                onChange={(checked) => handleToggle(type, 'email', checked)}
+                label={`Email notifications for ${label}`}
+                hideLabel
+              />
+              <ToggleSwitch
+                checked={channelPreference.in_browser}
+                onChange={(checked) =>
+                  handleToggle(type, 'in_browser', checked)
+                }
+                label={`In-browser notifications for ${label}`}
+                hideLabel
+              />
+            </div>
+
+            {role === 'customer' && type === 'appointment_reminder' ? (
+              <div className={styles.notificationGridRow}>
+                <span className={styles.notificationGridSubLabel}>
+                  Send the reminder
+                </span>
+                <select
+                  className={`${styles.input} ${styles.notificationGridReminderOffset}`}
+                  aria-label="When to send the booking reminder"
+                  disabled={isReminderDisabled}
+                  value={
+                    preferences?.appointment_reminder
+                      ?.reminder_offset_minutes ??
+                    DEFAULT_REMINDER_OFFSET_MINUTES
+                  }
+                  onChange={(event) =>
+                    handleReminderOffsetChange(Number(event.target.value))
+                  }
+                >
+                  {REMINDER_OFFSET_MINUTES_OPTIONS.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {REMINDER_OFFSET_LABELS[minutes]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+          </Fragment>
         );
       })}
     </div>
