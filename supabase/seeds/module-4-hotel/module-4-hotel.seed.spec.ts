@@ -10,7 +10,10 @@ interface ProductCatalogRow {
   price: number;
   category: string;
   service_scope: string;
+  owner_customer_id: string;
 }
+
+const OWNER_CUSTOMER_ID = 'customer-1';
 
 function createMockSupabase() {
   const state = {
@@ -23,8 +26,9 @@ function createMockSupabase() {
       { branch_id: string; cage_label: string; size: string; status: string }
     >(),
     // Sprint 5 unification (#82): both catalogs now write into the same
-    // product_catalog table, keyed here by `${category}:${name}` to mirror
-    // the table's real (name, category) uniqueness.
+    // product_catalog table, keyed here by `${owner}:${category}:${name}` to
+    // mirror the table's real (owner_customer_id, name, category) partial
+    // uniqueness (20260803085).
     productCatalog: new Map<string, ProductCatalogRow>(),
   };
 
@@ -64,19 +68,26 @@ function createMockSupabase() {
       if (table === 'product_catalog') {
         return {
           select: () => ({
-            eq: (_c1: string, name: string) => ({
-              eq: (_c2: string, category: string) => ({
-                maybeSingle: () =>
-                  Promise.resolve({
-                    data:
-                      state.productCatalog.get(`${category}:${name}`) ?? null,
-                    error: null,
-                  }),
+            eq: (_c1: string, ownerCustomerId: string) => ({
+              eq: (_c2: string, name: string) => ({
+                eq: (_c3: string, category: string) => ({
+                  maybeSingle: () =>
+                    Promise.resolve({
+                      data:
+                        state.productCatalog.get(
+                          `${ownerCustomerId}:${category}:${name}`
+                        ) ?? null,
+                      error: null,
+                    }),
+                }),
               }),
             }),
           }),
           insert: (row: ProductCatalogRow) => {
-            state.productCatalog.set(`${row.category}:${row.name}`, row);
+            state.productCatalog.set(
+              `${row.owner_customer_id}:${row.category}:${row.name}`,
+              row
+            );
             return Promise.resolve({ error: null });
           },
         };
@@ -129,8 +140,8 @@ describe('module-4-hotel seed', () => {
   });
 
   describe('seedFoodCatalog', () => {
-    it('creates every planned food catalog item with a price, category, and service_scope', async () => {
-      await seedFoodCatalog(supabase as never);
+    it('creates every planned food catalog item owned by the given customer, with a price, category, and service_scope', async () => {
+      await seedFoodCatalog(supabase as never, OWNER_CUSTOMER_ID);
 
       const foodRows = Array.from(
         supabase.state.productCatalog.values()
@@ -139,13 +150,14 @@ describe('module-4-hotel seed', () => {
       for (const item of foodRows) {
         expect(typeof item.price).toBe('number');
         expect(item.service_scope).toBe('hotel');
+        expect(item.owner_customer_id).toBe(OWNER_CUSTOMER_ID);
       }
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
-      await seedFoodCatalog(supabase as never);
+      await seedFoodCatalog(supabase as never, OWNER_CUSTOMER_ID);
       const firstCount = catalogSize(supabase.state.productCatalog, 'food');
-      await seedFoodCatalog(supabase as never);
+      await seedFoodCatalog(supabase as never, OWNER_CUSTOMER_ID);
 
       expect(catalogSize(supabase.state.productCatalog, 'food')).toBe(
         firstCount
@@ -154,8 +166,8 @@ describe('module-4-hotel seed', () => {
   });
 
   describe('seedMedicationCatalog', () => {
-    it('creates every planned medication catalog item with a price, category, and service_scope', async () => {
-      await seedMedicationCatalog(supabase as never);
+    it('creates every planned medication catalog item owned by the given customer, with a price, category, and service_scope', async () => {
+      await seedMedicationCatalog(supabase as never, OWNER_CUSTOMER_ID);
 
       const medicationRows = Array.from(
         supabase.state.productCatalog.values()
@@ -164,16 +176,17 @@ describe('module-4-hotel seed', () => {
       for (const item of medicationRows) {
         expect(typeof item.price).toBe('number');
         expect(item.service_scope).toBe('hotel');
+        expect(item.owner_customer_id).toBe(OWNER_CUSTOMER_ID);
       }
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
-      await seedMedicationCatalog(supabase as never);
+      await seedMedicationCatalog(supabase as never, OWNER_CUSTOMER_ID);
       const firstCount = catalogSize(
         supabase.state.productCatalog,
         'medication'
       );
-      await seedMedicationCatalog(supabase as never);
+      await seedMedicationCatalog(supabase as never, OWNER_CUSTOMER_ID);
 
       expect(catalogSize(supabase.state.productCatalog, 'medication')).toBe(
         firstCount
