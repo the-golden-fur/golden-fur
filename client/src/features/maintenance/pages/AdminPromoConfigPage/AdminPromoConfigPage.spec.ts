@@ -222,9 +222,7 @@ describe('AdminPromoConfigPage', () => {
     expect(
       screen.getByText('Both branches (system-wide default)')
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Makati' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Makati' })).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Southwoods' })
     ).toBeInTheDocument();

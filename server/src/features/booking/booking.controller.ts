@@ -338,10 +338,7 @@ export async function cagePickerOptionsController(
   }
 
   try {
-    const result = await getCagePickerOptions(
-      parsed.data.branch_id,
-      'Hotel'
-    );
+    const result = await getCagePickerOptions(parsed.data.branch_id, 'Hotel');
 
     return res.status(200).json(result);
   } catch (error) {

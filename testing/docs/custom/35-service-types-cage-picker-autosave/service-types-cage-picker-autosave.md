@@ -44,7 +44,7 @@ controls:
 - whether a type is **Active** (shown at all in that step),
 - each type's **Staff Picker** / **Cage Picker** toggle.
 
-Adding a brand-new row (e.g. "Boarding") makes it *selectable* if you flip
+Adding a brand-new row (e.g. "Boarding") makes it _selectable_ if you flip
 it Active, but it has **no real booking behavior** - no availability
 checking, no pricing, no capacity, nothing - until that's separately built
 in code. The admin page's own copy says this explicitly so it doesn't look
@@ -55,6 +55,7 @@ like a bug later.
 ## 1. Promo Cap Configuration → merged into Promos
 
 **What changed:**
+
 - `PromoCapConfigurationPage` (its own page/route) was deleted. Its content
   (the per-branch + system-wide cap cards) now renders as a "Promo Cap
   Configuration" section at the bottom of `AdminPromoConfigPage`
@@ -68,6 +69,7 @@ like a bug later.
 `PromoCapConfigurationPage/` folder entirely).
 
 **Verify manually:**
+
 1. Log in as Admin or Superadmin, go to **Settings → Config**. Confirm
    there's only one "Promos" tile now (no separate "Promo Cap
    Configuration" tile).
@@ -85,6 +87,7 @@ like a bug later.
 ## 2. Product Catalog - no change
 
 Confirmed still needed as-is:
+
 - `MiscellaneousSaleForm.tsx` (Billing) reads `listProducts` (the admin
   catalog) for `misc_retail` items when staff record a walk-in sale.
 - The customer-facing food/medication catalog (`CustomerFoodMedicationPage`,
@@ -108,6 +111,7 @@ claim still happens at check-in (`suggestCage`/`assignCage`, unchanged);
 this only lets the receptionist see what the customer already asked for.
 
 **Where it lives:**
+
 - Config: on the **Hotel** row of the new **Service Types** page (see
   section 5) - a "Cage picker enabled" toggle, not a separate Policies-page
   section (Staff Picker's existing per-branch override on the Policies page
@@ -141,6 +145,7 @@ optional `cage_preference: { type: 'no_preference' | 'specific', cage_id? }`.
 `client/src/features/booking/pages/CustomerBookingFlowPage/CustomerBookingFlowPage.tsx`.
 
 **Verify manually:**
+
 1. Apply the two new migrations first - see **Migrations** section below.
 2. As Admin, go to **Settings → Config → Services and Packages → Service Types**. Confirm **Hotel**
    shows "Cage picker" toggled **on** (it's seeded that way) and Grooming/
@@ -186,6 +191,7 @@ field should immediately gray out and become unclickable.
 **New page:** originally its own tile/route, since merged (per your
 follow-up) into **Settings → Config → Services and Packages →
 Service Types** tab (`/staff/admin/maintenance/services-and-packages?section=service-types`)
+
 - see section 7 below.
 
 **Create/edit form fields:** Key (new rows only), Name, **Staff picker
@@ -218,6 +224,7 @@ read for the booking flow - same pattern as `listBranches`),
 `client/src/features/booking/pages/CustomerBookingFlowPage/CustomerBookingFlowPage.tsx`.
 
 **Verify manually:**
+
 1. Apply the migrations (see below), then go to **Settings → Config →
    Services and Packages → Service Types** tab as Admin/Superadmin.
 2. Confirm four rows: Grooming, Hotel, Daycare, Veterinary, all **Active**.
@@ -264,6 +271,7 @@ return.
   successfully.
 
 **Verify manually:**
+
 1. As a customer, start a booking - pick a pet, branch, and service
    category, get partway through (e.g. reach the Services step).
 2. Close the browser tab entirely (not just navigate away - actually close
@@ -310,6 +318,7 @@ behavior.
 `client/src/pages/SettingsPage/tabs/ConfigTab.{tsx,spec.ts}`.
 
 **Verify manually:**
+
 1. Settings → Config: confirm exactly one tile reading "Services and
    Packages" (no separate Services/Service Types/Packages tiles anymore).
 2. Click it. Confirm three tabs - **Services**, **Service Types**,

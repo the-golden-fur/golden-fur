@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCagePickerOptions } from '../../api/booking.api';
-import type { CagePickerOption, CagePreferenceInput } from '../../booking.types';
+import type {
+  CagePickerOption,
+  CagePreferenceInput,
+} from '../../booking.types';
 import styles from './CagePickerList.module.css';
 
 interface CagePickerListProps {
@@ -123,7 +126,9 @@ export function CagePickerList({
         <div className={styles.grid}>
           {options.map((option) => {
             const key =
-              option.type === 'no_preference' ? 'no_preference' : option.cage_id;
+              option.type === 'no_preference'
+                ? 'no_preference'
+                : option.cage_id;
             const active = isSelected(option, selected);
 
             return (

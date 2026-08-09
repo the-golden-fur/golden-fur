@@ -44,7 +44,10 @@ export async function createServiceType(
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      throwWithStatus(409, `A service type with key "${input.key}" already exists`);
+      throwWithStatus(
+        409,
+        `A service type with key "${input.key}" already exists`
+      );
     }
     throwWithStatus(400, error.message);
   }

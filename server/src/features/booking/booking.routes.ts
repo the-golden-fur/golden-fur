@@ -120,11 +120,7 @@ router.get(
 );
 
 // Cage Picker resolution (Custom change - mirrors Staff Picker)
-router.get(
-  '/bookings/cage-picker',
-  jwtMiddleware,
-  cagePickerOptionsController
-);
+router.get('/bookings/cage-picker', jwtMiddleware, cagePickerOptionsController);
 
 // policy_configurations stub (#52)
 router.get('/bookings/policy', staffRead, listPolicyConfigurationsController);

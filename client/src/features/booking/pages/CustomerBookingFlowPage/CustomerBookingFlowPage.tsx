@@ -1856,7 +1856,8 @@ export function CustomerBookingFlowPage() {
                 // is only ever a display-label override (Admin Settings >
                 // Service Types); `candidate` (the real ServiceCategory
                 // value) is still what's submitted/compared everywhere else.
-                const label = serviceTypeByKey.get(candidate)?.name ?? candidate;
+                const label =
+                  serviceTypeByKey.get(candidate)?.name ?? candidate;
                 return (
                   <button
                     key={candidate}

@@ -218,12 +218,12 @@ export function AdminServiceTypesPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Service Types</h1>
         <p className={styles.copy}>
-          The service lines customers choose between at booking time
-          (Grooming, Hotel, Daycare, Veterinary). Rename a type's
-          customer-facing label, deactivate it, or turn on the Staff
-          Picker/Cage Picker step for it. Adding a brand new type only makes
-          it selectable here - real booking behavior for it (availability,
-          pricing, etc.) still needs to be built separately.
+          The service lines customers choose between at booking time (Grooming,
+          Hotel, Daycare, Veterinary). Rename a type's customer-facing label,
+          deactivate it, or turn on the Staff Picker/Cage Picker step for it.
+          Adding a brand new type only makes it selectable here - real booking
+          behavior for it (availability, pricing, etc.) still needs to be built
+          separately.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -324,9 +324,7 @@ export function AdminServiceTypesPage() {
                       <input
                         className={styles.input}
                         value={editingName}
-                        onChange={(event) =>
-                          setEditingName(event.target.value)
-                        }
+                        onChange={(event) => setEditingName(event.target.value)}
                       />
                       <button
                         type="button"
@@ -348,9 +346,7 @@ export function AdminServiceTypesPage() {
                       <span className={styles.typeName}>
                         {serviceType.name}
                       </span>
-                      <span className={styles.typeKey}>
-                        {serviceType.key}
-                      </span>
+                      <span className={styles.typeKey}>{serviceType.key}</span>
                       <StatusBadge isActive={serviceType.is_active} />
                       <button
                         type="button"
