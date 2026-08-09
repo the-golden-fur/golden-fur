@@ -28,26 +28,28 @@ describe('resolveDateRangePreset', () => {
     });
   });
 
-  it("'this_week' spans Monday through Sunday", () => {
+  it("'this_week' is a rolling 7-day window starting today (today through today+6)", () => {
     expect(resolveDateRangePreset('this_week', WEDNESDAY)).toEqual({
-      from: '2026-07-20',
-      to: '2026-07-26',
+      from: '2026-07-22',
+      to: '2026-07-28',
     });
   });
 
-  it("'this_week' resolves correctly when 'now' is a Sunday", () => {
+  it("'this_week' always includes tomorrow, even when 'now' is a Sunday (regression: a fixed Monday-Sunday week used to end on Sunday itself, excluding the very next day)", () => {
     const sunday = new Date('2026-07-26T23:00:00.000Z');
-    expect(resolveDateRangePreset('this_week', sunday)).toEqual({
-      from: '2026-07-20',
-      to: '2026-07-26',
-    });
+    const tomorrow = resolveDateRangePreset('tomorrow', sunday);
+    const thisWeek = resolveDateRangePreset('this_week', sunday);
+
+    expect(thisWeek).toEqual({ from: '2026-07-26', to: '2026-08-01' });
+    expect(tomorrow.from! >= thisWeek.from!).toBe(true);
+    expect(tomorrow.from! <= thisWeek.to!).toBe(true);
   });
 
-  it("'this_week' resolves correctly when 'now' is a Monday", () => {
-    const monday = new Date('2026-07-20T00:30:00.000Z');
+  it("'this_week' rolls over a month boundary correctly", () => {
+    const monday = new Date('2026-07-27T00:30:00.000Z');
     expect(resolveDateRangePreset('this_week', monday)).toEqual({
-      from: '2026-07-20',
-      to: '2026-07-26',
+      from: '2026-07-27',
+      to: '2026-08-02',
     });
   });
 
