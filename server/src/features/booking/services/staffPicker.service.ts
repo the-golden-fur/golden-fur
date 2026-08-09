@@ -34,6 +34,7 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   reschedule_free_allowance: null,
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
+  online_payments_enabled: true,
 };
 
 /** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
@@ -99,6 +100,20 @@ export async function isStaffPickerEnabled(
   return serviceCategory === 'Grooming'
     ? policy.staff_picker_enabled_grooming
     : policy.staff_picker_enabled_veterinary;
+}
+
+/**
+ * Whether the customer-facing "Pay" button (PayMongo checkout) should be
+ * usable for this branch. The button itself always renders on the customer
+ * side even when this is false - it's shown disabled with an explanatory
+ * tooltip rather than hidden, so customers aren't left wondering where
+ * payment went.
+ */
+export async function isOnlinePaymentsEnabled(
+  branchId: string
+): Promise<boolean> {
+  const policy = await resolveEffectivePolicy(branchId);
+  return policy.online_payments_enabled;
 }
 
 /**
@@ -262,6 +277,7 @@ export async function updatePolicyConfiguration({
     reschedule_free_allowance: resolved.reschedule_free_allowance,
     credit_expiry_enabled: resolved.credit_expiry_enabled,
     credit_expiry_days: resolved.credit_expiry_days,
+    online_payments_enabled: resolved.online_payments_enabled,
   };
 
   const { data, error } = await supabase

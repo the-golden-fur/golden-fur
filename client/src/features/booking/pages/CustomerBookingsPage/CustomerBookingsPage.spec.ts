@@ -23,6 +23,11 @@ vi.mock('../../api/booking.api', () => ({
   listBookings: vi.fn(),
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
+  payForBooking: vi.fn(),
+  getOnlinePaymentsStatus: vi.fn().mockResolvedValue({
+    data: { online_payments_enabled: true },
+    error: null,
+  }),
 }));
 
 // SlotPicker/StaffPickerList have their own dedicated specs; stub them here
@@ -107,6 +112,10 @@ describe('CustomerBookingsPage', () => {
     });
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
       data: [{ id: 'branch-1', name: 'Makati', is_vet_branch: true }],
+      error: null,
+    });
+    vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
+      data: { online_payments_enabled: true },
       error: null,
     });
   });
@@ -204,5 +213,77 @@ describe('CustomerBookingsPage', () => {
     );
     expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
+  });
+
+  it('does not show a Pay button once payment_stage is Paid', async () => {
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Pending')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Pay')).not.toBeInTheDocument();
+  });
+
+  it('disables the Pay button with an explanatory tooltip when online payments are off for the branch', async () => {
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Pending', payment_stage: 'Unpaid' })],
+      error: null,
+    });
+    vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
+      data: { online_payments_enabled: false },
+      error: null,
+    });
+
+    renderPage();
+
+    const payButton = await screen.findByText('Pay');
+    await waitFor(() => expect(payButton).toBeDisabled());
+    expect(payButton).toHaveAttribute(
+      'title',
+      expect.stringContaining('unavailable')
+    );
+  });
+
+  it('pays the downpayment amount when that choice is selected, and shows the PayMongo failure message on error', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          status: 'Pending',
+          payment_stage: 'Unpaid',
+          downpayment_required: true,
+          downpayment_amount: 250,
+          total_price: 500,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(bookingApi.payForBooking).mockResolvedValue({
+      data: null,
+      error:
+        'Payment service is currently unavailable - please try again later',
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByText('Pay'));
+    await user.click(screen.getByText(/Pay downpayment only/));
+    await user.click(screen.getByText('Continue to payment'));
+
+    await waitFor(() =>
+      expect(bookingApi.payForBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'token',
+        { payment_method: 'GCash', pay_in_full: false }
+      )
+    );
+    expect(
+      await screen.findByText(/payment service is currently unavailable/i)
+    ).toBeInTheDocument();
   });
 });

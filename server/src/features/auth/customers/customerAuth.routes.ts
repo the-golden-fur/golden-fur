@@ -14,6 +14,7 @@ import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENT_TYPES,
+  REMINDER_OFFSET_MINUTES_OPTIONS,
   type NotificationChannel,
   type NotificationEventType,
   type NotificationPreferences,
@@ -125,6 +126,12 @@ function isNotificationChannel(value: unknown): value is NotificationChannel {
  * event types relevant to its own role loaded (Settings > Preferences
  * filters by role), so a full-object PATCH would silently wipe out the
  * other role-irrelevant keys' stored values.
+ *
+ * Two mutually-exclusive request shapes: {channel, enabled} (every event
+ * type) or {reminder_offset_minutes} (appointment_reminder only, "how long
+ * before the appointment should the reminder fire" - see
+ * REMINDER_OFFSET_MINUTES_OPTIONS/appointmentReminder.job.ts). Both merge
+ * into the same per-event jsonb entry the same way.
  */
 export async function customerNotificationPreferencesController(
   req: AuthenticatedRequest,
@@ -135,16 +142,42 @@ export async function customerNotificationPreferencesController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { event_type: eventType, channel, enabled } = req.body ?? {};
+  const {
+    event_type: eventType,
+    channel,
+    enabled,
+    reminder_offset_minutes: reminderOffsetMinutes,
+  } = req.body ?? {};
 
   if (!isNotificationEventType(eventType)) {
     return res.status(400).json({ error: 'Invalid event type' });
   }
-  if (!isNotificationChannel(channel)) {
-    return res.status(400).json({ error: 'Invalid channel' });
+
+  const isChannelUpdate = channel !== undefined || enabled !== undefined;
+  const isOffsetUpdate = reminderOffsetMinutes !== undefined;
+
+  if (isChannelUpdate === isOffsetUpdate) {
+    return res.status(400).json({
+      error: 'Provide either {channel, enabled} or {reminder_offset_minutes}',
+    });
   }
-  if (typeof enabled !== 'boolean') {
-    return res.status(400).json({ error: 'Invalid enabled value' });
+
+  if (isChannelUpdate) {
+    if (!isNotificationChannel(channel)) {
+      return res.status(400).json({ error: 'Invalid channel' });
+    }
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value' });
+    }
+  } else {
+    if (
+      eventType !== 'appointment_reminder' ||
+      !(REMINDER_OFFSET_MINUTES_OPTIONS as readonly number[]).includes(
+        reminderOffsetMinutes
+      )
+    ) {
+      return res.status(400).json({ error: 'Invalid reminder offset' });
+    }
   }
 
   try {
@@ -169,7 +202,9 @@ export async function customerNotificationPreferencesController(
       ...current,
       [eventType]: {
         ...current?.[eventType],
-        [channel]: enabled,
+        ...(isChannelUpdate
+          ? { [channel]: enabled }
+          : { reminder_offset_minutes: reminderOffsetMinutes }),
       },
     } as NotificationPreferences;
 

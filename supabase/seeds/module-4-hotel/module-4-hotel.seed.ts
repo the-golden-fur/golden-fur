@@ -23,8 +23,11 @@
 //   npm run seed:module-4
 //
 // Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (read from
-// server/.env), and requires migration 20260727050 (cages table) plus
-// module-1's seed (branches) to have already run.
+// server/.env), and requires migration 20260727050 (cages table), module-1's
+// seed (branches), and module-2's seed (customer1@goldenfur.com) to have
+// already run - the food/medication catalog rows are now seeded as
+// customer1's own entries (see the comment above FOOD_CATALOG_PLAN) rather
+// than global staff-managed rows.
 
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
@@ -65,8 +68,14 @@ const MEDICATION_CATALOG_PLAN: Array<{ name: string; price: number }> = [
 
 /** Sprint 5 unification (#82): both plans insert into the shared
  * public.product_catalog table now (migration 20260731067), tagged with
- * category + service_scope instead of living in their own tables. */
+ * category + service_scope instead of living in their own tables.
+ *
+ * These used to seed as global (owner_customer_id null, "provided by the
+ * hotel") reference rows. Customers now own every food/medication type
+ * they see (no more hotel-provided concept), so this plan seeds them as
+ * customer1@goldenfur.com's own rows instead. */
 const HOTEL_SERVICE_SCOPE = 'hotel';
+const CATALOG_SEED_OWNER_EMAIL = 'customer1@goldenfur.com';
 
 function getClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -92,6 +101,27 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
   }
 
   return data as { id: string; name: string }[];
+}
+
+/** The customer id that owns the seeded food/medication catalog rows -
+ * mirrors resolveAssessorId's pattern in module-2-customers-pets.seed.ts. */
+async function resolveCatalogOwnerId(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('customer_profiles')
+    .select('id')
+    .eq('account_email', CATALOG_SEED_OWNER_EMAIL)
+    .maybeSingle();
+
+  if (!data?.id) {
+    console.error(
+      `skip: could not find ${CATALOG_SEED_OWNER_EMAIL} in customer_profiles - has module-2's seed run?`
+    );
+    return null;
+  }
+
+  return data.id as string;
 }
 
 /** 7 cages per branch (2xS, 2xM, 2xL, 1xXL), labeled `<Branch>-<Size>-<seq>`,
@@ -138,11 +168,12 @@ export async function seedCages(supabase: ReturnType<typeof createClient>) {
   );
 }
 
-/** Seeds public.product_catalog with category='food' - global (not
- * branch-scoped, unlike cages), one row per (name, category), guarded by a
- * per-name-and-category existence check. */
+/** Seeds public.product_catalog with category='food', owned by
+ * customer1@goldenfur.com - one row per (owner, name, category), guarded by
+ * a per-owner-name-and-category existence check. */
 export async function seedFoodCatalog(
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  ownerCustomerId: string
 ) {
   let created = 0;
 
@@ -150,6 +181,7 @@ export async function seedFoodCatalog(
     const { data: existing } = await supabase
       .from('product_catalog')
       .select('id')
+      .eq('owner_customer_id', ownerCustomerId)
       .eq('name', item.name)
       .eq('category', 'food')
       .maybeSingle();
@@ -160,6 +192,7 @@ export async function seedFoodCatalog(
       ...item,
       category: 'food',
       service_scope: HOTEL_SERVICE_SCOPE,
+      owner_customer_id: ownerCustomerId,
     });
 
     if (error) {
@@ -180,7 +213,8 @@ export async function seedFoodCatalog(
 /** Seeds public.product_catalog with category='medication' - same shape/
  * convention as seedFoodCatalog above. */
 export async function seedMedicationCatalog(
-  supabase: ReturnType<typeof createClient>
+  supabase: ReturnType<typeof createClient>,
+  ownerCustomerId: string
 ) {
   let created = 0;
 
@@ -188,6 +222,7 @@ export async function seedMedicationCatalog(
     const { data: existing } = await supabase
       .from('product_catalog')
       .select('id')
+      .eq('owner_customer_id', ownerCustomerId)
       .eq('name', item.name)
       .eq('category', 'medication')
       .maybeSingle();
@@ -198,6 +233,7 @@ export async function seedMedicationCatalog(
       ...item,
       category: 'medication',
       service_scope: HOTEL_SERVICE_SCOPE,
+      owner_customer_id: ownerCustomerId,
     });
 
     if (error) {
@@ -218,8 +254,12 @@ export async function seedMedicationCatalog(
 async function main() {
   const supabase = getClient();
   await seedCages(supabase);
-  await seedFoodCatalog(supabase);
-  await seedMedicationCatalog(supabase);
+
+  const ownerCustomerId = await resolveCatalogOwnerId(supabase);
+  if (ownerCustomerId) {
+    await seedFoodCatalog(supabase, ownerCustomerId);
+    await seedMedicationCatalog(supabase, ownerCustomerId);
+  }
 }
 
 if (process.env.VITEST === undefined) {

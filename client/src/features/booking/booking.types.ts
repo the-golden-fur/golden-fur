@@ -138,6 +138,14 @@ export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
 ];
 
+/** Mirrors the server's ACTIVE_BOOKING_STATUSES (booking.types.ts) - a
+ * Cancelled/No-show booking has nothing left to collect. */
+export const PAYABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+  'Completed',
+];
+
 /** STUB vocabulary mirroring M08's future payment_method enum (Sprint 5). */
 export const PAYMENT_METHODS = [
   'Cash',
@@ -342,6 +350,10 @@ export interface PolicyConfiguration {
   reschedule_free_allowance: number | null;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  /** Master toggle for the customer-facing PayMongo Pay button - when
+   * false, the button still renders (disabled, with an explanatory
+   * tooltip) rather than disappearing. */
+  online_payments_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -362,6 +374,7 @@ export type EffectivePolicy = Pick<
   | 'reschedule_free_allowance'
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
+  | 'online_payments_enabled'
 >;
 
 export interface UpdatePolicyPayload {
@@ -380,6 +393,7 @@ export interface UpdatePolicyPayload {
   reschedule_free_allowance?: number | null;
   credit_expiry_enabled?: boolean;
   credit_expiry_days?: number;
+  online_payments_enabled?: boolean;
 }
 
 export interface StaffPreferenceInput {
@@ -444,6 +458,27 @@ export interface CancellationResult {
   booking: Booking;
   notice_period_met: boolean;
   policy_violation: boolean;
+}
+
+/** Customer self-service Pay button (CustomerBookingsPage). */
+export interface PayForBookingPayload {
+  payment_method: 'GCash' | 'Maya';
+  pay_in_full: boolean;
+}
+
+export interface PayForBookingResult {
+  checkoutUrl: string;
+}
+
+/** Custom change: duplicate-booking prevention - a pet's earliest
+ * unresolved (Pending/In Progress) booking, any category. Disables that
+ * pet at the booking flow's pet-selection step and links to the existing
+ * booking instead of letting a duplicate be created. */
+export interface PetBookingConflict {
+  pet_id: string;
+  booking_id: string;
+  service_category: ServiceCategory;
+  scheduled_start: string;
 }
 
 /** #56/#60 supporting infra - server/src/features/booking/services/availability.service.ts. */

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import type { Booking } from '../../../booking/booking.types';
 import {
   checkInHotelStay,
@@ -6,7 +7,6 @@ import {
   getCurrentPrescriptionForPet,
 } from '../../api/hotel.api';
 import { CageStatusGrid } from '../../components/CageStatusGrid/CageStatusGrid';
-import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import {
   CatalogComboBox,
   type CatalogComboBoxValue,
@@ -46,10 +46,67 @@ const PART_OF_DAY_DEFAULT_TIME: Record<PartOfDay, string> = {
   Evening: '18:00',
 };
 
+// Pre-fills from whatever the customer/receptionist entered at booking time
+// (CustomerBookingFlowPage's "Care Instructions" step). Used as useState's
+// lazy initializer (not an effect) since the parent now remounts this panel
+// per booking (see HotelCheckInFormPage's key={booking.id}) - still just a
+// starting point, freely editable below before it becomes the authoritative
+// record.
+function initialFeeding(booking: Booking): FeedingUiState[] {
+  return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
+    mealTime: item.meal_time,
+    // Carries the booking flow's catalog match through when present (its
+    // Care Instructions step now uses the same catalog), instead of always
+    // discarding it as freetext.
+    foodType: {
+      catalogId: item.food_catalog_id ?? null,
+      text: item.food_type,
+    },
+    quantity: item.quantity,
+    specialInstructions: item.special_instructions ?? '',
+  }));
+}
+
+function initialWalking(booking: Booking): WalkBlockUi[] {
+  return (booking.hotel_preferences?.walking ?? []).map((item) => ({
+    mode: 'duration',
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    endTime: '',
+    durationMinutes: item.duration_minutes,
+    notes: item.notes ?? '',
+  }));
+}
+
+function initialPlaying(booking: Booking): WalkBlockUi[] {
+  return (booking.hotel_preferences?.playing ?? []).map((item) => ({
+    mode: 'duration',
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    endTime: '',
+    durationMinutes: item.duration_minutes,
+    notes: item.notes ?? '',
+  }));
+}
+
+function initialMedications(booking: Booking): MedicationUiState[] {
+  return (booking.hotel_preferences?.medications ?? []).map((item) => ({
+    name: {
+      catalogId: item.medication_catalog_id ?? null,
+      text: item.medication_name,
+    },
+    dose: item.dose,
+    scheduledTimes: item.scheduled_times,
+    administrationNotes: item.administration_notes ?? '',
+  }));
+}
+
 interface HotelCheckInPanelProps {
   accessToken: string;
   role: string;
-  branchId: string;
+  /** Custom change: routed check-in page - the booking picker now lives on
+   * HotelQueuePage's Check In tab (a real navigation, not local state), so
+   * this panel always has an already-selected booking to work with rather
+   * than owning its own picker/selection state. */
+  booking: Booking;
   /** Fires once a pet has been checked in, so the parent HotelQueuePage can
    * switch to the Check Out tab with this stay preselected. */
   onCheckedIn: (stayId: string) => void;
@@ -93,12 +150,12 @@ function minutesBetween(start: string, end: string): number {
 
 /**
  * Issue #79 revision: check-in form capturing structured feeding/walking/
- * medication instructions, the notification opt-in toggle, and cage size
- * suggestion. Cage assignment and Care Instructions load read-only (the
- * auto-suggested cage plus whatever the booking already captured) - the
- * single `isEditing` toggle (an "Edit"/"Done editing" button at the end of
- * the form) unlocks both together, so a receptionist correcting a customer's
- * mistake doesn't first have to know they need to click something.
+ * medication instructions and cage size suggestion. Cage assignment and
+ * Care Instructions load read-only (the auto-suggested cage plus whatever
+ * the booking already captured) - the single `isEditing` toggle (an "Edit"/
+ * "Done editing" button at the end of the form) unlocks both together, so a
+ * receptionist correcting a customer's mistake doesn't first have to know
+ * they need to click something.
  *
  * Food type and medication name use CatalogComboBox - a hybrid dropdown
  * (admin-managed product_catalog) or freetext fallback that is never
@@ -114,20 +171,20 @@ function minutesBetween(start: string, end: string): number {
  * Afternoon/Evening block on submit (#22 - care_walking_instructions/
  * care_playing_instructions no longer store a literal clock time).
  *
- * Queue redesign: extracted from the former standalone HotelCheckInPage so
- * it can render as a tab panel inside HotelQueuePage (alongside
- * HotelCheckoutPanel) instead of its own route - role gating and
- * accessToken/branchId now come from the parent's single role check rather
- * than being fetched again here.
+ * Custom change: this used to render inline (pop up at the bottom of the
+ * Check In tab) once a booking was picked from HotelBookingPicker - it's
+ * now a real routed page (HotelCheckInFormPage, /staff/hotel/queue/check-
+ * in/:bookingId) so editing a check-in has its own URL/back button instead
+ * of scrolling to a form appended below the picker. The picker itself still
+ * lives on HotelQueuePage's Check In tab; selecting a booking there
+ * navigates here instead of setting local state.
  */
 export function HotelCheckInPanel({
   accessToken,
   role,
-  branchId,
+  booking,
   onCheckedIn,
 }: HotelCheckInPanelProps) {
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-
   const [suggestedCages, setSuggestedCages] = useState<Cage[]>([]);
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
   const [selectedCageId, setSelectedCageId] = useState<string | null>(null);
@@ -137,11 +194,18 @@ export function HotelCheckInPanel({
     ProductCatalogItem[]
   >([]);
 
-  const [feeding, setFeeding] = useState<FeedingUiState[]>([]);
-  const [walking, setWalking] = useState<WalkBlockUi[]>([]);
-  const [playing, setPlaying] = useState<WalkBlockUi[]>([]);
-  const [medications, setMedications] = useState<MedicationUiState[]>([]);
-  const [notifyOptIn, setNotifyOptIn] = useState(false);
+  const [feeding, setFeeding] = useState<FeedingUiState[]>(() =>
+    initialFeeding(booking)
+  );
+  const [walking, setWalking] = useState<WalkBlockUi[]>(() =>
+    initialWalking(booking)
+  );
+  const [playing, setPlaying] = useState<WalkBlockUi[]>(() =>
+    initialPlaying(booking)
+  );
+  const [medications, setMedications] = useState<MedicationUiState[]>(() =>
+    initialMedications(booking)
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -154,18 +218,10 @@ export function HotelCheckInPanel({
   const [isEditing, setIsEditing] = useState(false);
 
   // A customer's own saved food/medication types (#22) - the booking being
-  // checked in already identifies the customer, so this is keyed off it
-  // (not fetched once on mount) and refetches whenever a different booking
-  // is selected. Never the old global staff Product Catalog. No selected
-  // booking means nothing to fetch - the catalogs are reset explicitly by
-  // whichever handler clears selectedBooking (see "Check in another pet"
-  // below), not synchronously here, per this codebase's own set-state-in-
-  // effect convention (state should be reset from an event handler or a
-  // fetch's resolution, not the effect body itself).
+  // checked in already identifies the customer, so this is keyed off it.
+  // Never the old global staff Product Catalog.
   useEffect(() => {
-    const customerId = selectedBooking?.customer_id;
-    if (!customerId) return;
-
+    const customerId = booking.customer_id;
     let isMounted = true;
 
     void listCustomerCatalogForStaff(customerId, accessToken, 'food').then(
@@ -188,80 +244,18 @@ export function HotelCheckInPanel({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, selectedBooking?.customer_id]);
+  }, [accessToken, booking.customer_id]);
 
-  function handleSelectBooking(booking: Booking) {
-    setSelectedBooking(booking);
-    setSelectedCageId(null);
-    setFeeding([]);
-    setWalking([]);
-    setPlaying([]);
-    setMedications([]);
-    setIsEditing(false);
-
-    // Pre-fills from whatever the customer/receptionist entered at booking
-    // time (CustomerBookingFlowPage's "Care Instructions" step), so this
-    // form doesn't start blank - still just a starting point, freely
-    // editable below before it becomes the authoritative record.
-    const preferences = booking.hotel_preferences;
-
-    if (preferences) {
-      if (preferences.feeding.length > 0) {
-        setFeeding(
-          preferences.feeding.map((item) => ({
-            mealTime: item.meal_time,
-            // Carries the booking flow's catalog match through when present
-            // (its Care Instructions step now uses the same catalog),
-            // instead of always discarding it as freetext.
-            foodType: {
-              catalogId: item.food_catalog_id ?? null,
-              text: item.food_type,
-            },
-            quantity: item.quantity,
-            specialInstructions: item.special_instructions ?? '',
-          }))
-        );
-      }
-
-      if (preferences.walking.length > 0) {
-        setWalking(
-          preferences.walking.map((item) => ({
-            mode: 'duration',
-            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
-            endTime: '',
-            durationMinutes: item.duration_minutes,
-            notes: item.notes ?? '',
-          }))
-        );
-      }
-
-      if (preferences.playing.length > 0) {
-        setPlaying(
-          preferences.playing.map((item) => ({
-            mode: 'duration',
-            startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
-            endTime: '',
-            durationMinutes: item.duration_minutes,
-            notes: item.notes ?? '',
-          }))
-        );
-      }
-
-      if (preferences.medications.length > 0) {
-        setMedications(
-          preferences.medications.map((item) => ({
-            name: {
-              catalogId: item.medication_catalog_id ?? null,
-              text: item.medication_name,
-            },
-            dose: item.dose,
-            scheduledTimes: item.scheduled_times,
-            administrationNotes: item.administration_notes ?? '',
-          }))
-        );
-      }
-    }
-
+  // Runs once for this page's one booking (mirrors the old picker
+  // onSelect's setup, now triggered by mount/booking-id-change - the parent
+  // HotelCheckInFormPage keys this panel by booking.id, so a different
+  // booking is a fresh mount, not a re-render of this one). The booking-time
+  // preferences themselves are read directly into useState's initializer
+  // above (initialFeeding/initialWalking/initialPlaying/initialMedications)
+  // rather than set here, since setState synchronously inside an effect body
+  // causes an extra cascading render for no benefit over initializing state
+  // once at mount.
+  useEffect(() => {
     void getCageSuggestion(booking.pet_id, accessToken).then((result) => {
       if (result.data) {
         setSuggestedSize(result.data.suggestedSize);
@@ -285,13 +279,18 @@ export function HotelCheckInPanel({
             })
           );
 
-          // Prepended, not replaced - a booking-time preference entered
-          // above (synchronously) must survive this later-resolving fetch.
+          // Prepended, not replaced - a booking-time preference already in
+          // state (from initialMedications at mount) must survive this
+          // later-resolving fetch.
           setMedications((prev) => [...prescriptionMedications, ...prev]);
         }
       }
     );
-  }
+    // Intentionally runs once per booking.id (mount/route change), not on
+    // every accessToken re-render - mirrors the old handler's "runs once
+    // per selection" semantics.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking.id]);
 
   function addFeeding() {
     setFeeding((prev) => [
@@ -496,7 +495,7 @@ export function HotelCheckInPanel({
   }
 
   async function submitCheckIn() {
-    if (!selectedBooking || !selectedCageId) return;
+    if (!selectedCageId) return;
 
     const validationError = validateForm();
     if (validationError) {
@@ -550,13 +549,16 @@ export function HotelCheckInPanel({
     );
 
     const result = await checkInHotelStay(accessToken, {
-      booking_id: selectedBooking.id,
+      booking_id: booking.id,
       cage_id: selectedCageId,
       feeding: feedingPayload,
       walking: walkingPayload,
       playing: playingPayload,
       medications: medicationsPayload,
-      notify_opt_in: notifyOptIn,
+      // Staff no longer set this per stay - whether a care-log-completed
+      // notification actually reaches the customer is now driven entirely
+      // by their own notification_preferences (see careLogCompletion.service.ts).
+      notify_opt_in: false,
     });
 
     setIsSubmitting(false);
@@ -583,23 +585,9 @@ export function HotelCheckInPanel({
           >
             Go to checkout
           </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => {
-              setCheckedInStayId(null);
-              setSelectedBooking(null);
-              setFoodCatalog([]);
-              setMedicationCatalog([]);
-              setFeeding([]);
-              setWalking([]);
-              setPlaying([]);
-              setMedications([]);
-              setNotifyOptIn(false);
-            }}
-          >
+          <Link className={styles.secondaryButton} to="/staff/hotel/queue">
             Check in another pet
-          </button>
+          </Link>
         </div>
       </>
     );
@@ -614,458 +602,423 @@ export function HotelCheckInPanel({
       ) : null}
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>1. Select a confirmed booking</h2>
-        <HotelBookingPicker
+        <h2 className={styles.sectionTitle}>1. Cage assignment</h2>
+        <p className={styles.copy}>
+          Suggested size: {suggestedSize ?? '...'} - the recommended cage is
+          highlighted below, or pick any other Available cage.
+        </p>
+        <CageStatusGrid
           accessToken={accessToken}
-          branchId={branchId}
-          onSelect={handleSelectBooking}
-          selectedBookingId={selectedBooking?.id ?? null}
+          viewerRole={role}
+          onSelectCage={
+            isEditing ? (cage) => setSelectedCageId(cage.id) : undefined
+          }
+          selectedCageId={selectedCageId}
+          suggestedCageIds={suggestedCages.map((cage) => cage.id)}
         />
       </section>
 
-      {selectedBooking ? (
-        <>
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>2. Cage assignment</h2>
-            <p className={styles.copy}>
-              Suggested size: {suggestedSize ?? '...'} - the recommended cage is
-              highlighted below, or pick any other Available cage.
-            </p>
-            <CageStatusGrid
-              accessToken={accessToken}
-              viewerRole={role}
-              onSelectCage={
-                isEditing ? (cage) => setSelectedCageId(cage.id) : undefined
-              }
-              selectedCageId={selectedCageId}
-              suggestedCageIds={suggestedCages.map((cage) => cage.id)}
-            />
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>3. Feeding instructions</h2>
-            {!isEditing ? (
-              <p className={styles.copy}>
-                Read-only - captured from the customer's booking. Click Edit
-                below to correct a mistake.
-              </p>
-            ) : null}
-            {feeding.map((state, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <select
-                    className={styles.input}
-                    aria-label="Meal time"
-                    value={state.mealTime}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      updateFeeding(index, {
-                        mealTime: event.target.value as MealTime,
-                      })
-                    }
-                  >
-                    {MEAL_TIMES.map((mealTime) => (
-                      <option key={mealTime} value={mealTime}>
-                        {mealTime}
-                      </option>
-                    ))}
-                  </select>
-                  <CatalogComboBox
-                    items={foodCatalog}
-                    hidePrice
-                    value={state.foodType}
-                    placeholder="Food type - search or type a custom value..."
-                    disabled={!isEditing}
-                    onChange={(next) =>
-                      updateFeeding(index, { foodType: next })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Quantity"
-                    value={state.quantity}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      updateFeeding(index, {
-                        quantity: event.target.value,
-                      })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Special instructions (optional)"
-                    value={state.specialInstructions}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      updateFeeding(index, {
-                        specialInstructions: event.target.value,
-                      })
-                    }
-                  />
-                  {isEditing ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeFeeding(index)}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-            {feeding.length === 0 ? (
-              <p className={styles.copy}>No feeding times were requested.</p>
-            ) : null}
-            {isEditing ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addFeeding}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>2. Feeding instructions</h2>
+        {!isEditing ? (
+          <p className={styles.copy}>
+            Read-only - captured from the customer's booking. Click Edit below
+            to correct a mistake.
+          </p>
+        ) : null}
+        {feeding.map((state, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <select
+                className={styles.input}
+                aria-label="Meal time"
+                value={state.mealTime}
+                disabled={!isEditing}
+                onChange={(event) =>
+                  updateFeeding(index, {
+                    mealTime: event.target.value as MealTime,
+                  })
+                }
               >
-                Add feeding time
-              </button>
-            ) : null}
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>4. Walking instructions</h2>
-            {walking.map((block, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.tabRow}>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'range' ? styles.tabActive : styles.tab
-                    }
-                    disabled={!isEditing}
-                    onClick={() => updateWalkBlock(index, { mode: 'range' })}
-                  >
-                    Time range
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'duration' ? styles.tabActive : styles.tab
-                    }
-                    disabled={!isEditing}
-                    onClick={() => updateWalkBlock(index, { mode: 'duration' })}
-                  >
-                    Start + duration
-                  </button>
-                </div>
-                <div className={styles.walkFieldsGrid}>
-                  <label className={styles.fieldGroup}>
-                    <span className={styles.fieldGroupLabel}>Start</span>
-                    <TimeInput
-                      aria-label="Walk start time"
-                      value={block.startTime}
-                      disabled={!isEditing}
-                      onChange={(value) =>
-                        updateWalkBlock(index, { startTime: value })
-                      }
-                    />
-                  </label>
-                  {block.mode === 'range' ? (
-                    <label className={styles.fieldGroup}>
-                      <span className={styles.fieldGroupLabel}>End</span>
-                      <TimeInput
-                        aria-label="Walk end time"
-                        value={block.endTime}
-                        disabled={!isEditing}
-                        onChange={(value) =>
-                          updateWalkBlock(index, { endTime: value })
-                        }
-                      />
-                    </label>
-                  ) : (
-                    <label className={styles.fieldGroup}>
-                      <span className={styles.fieldGroupLabel}>
-                        Duration (min)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        value={block.durationMinutes}
-                        disabled={!isEditing}
-                        onChange={(event) =>
-                          updateWalkBlock(index, {
-                            durationMinutes: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                  <label className={styles.fieldGroupWide}>
-                    <span className={styles.fieldGroupLabel}>
-                      Notes (optional)
-                    </span>
-                    <input
-                      className={styles.input}
-                      value={block.notes}
-                      disabled={!isEditing}
-                      onChange={(event) =>
-                        updateWalkBlock(index, { notes: event.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-                {isEditing ? (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeWalkBlock(index)}
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-            ))}
-            {walking.length === 0 ? (
-              <p className={styles.copy}>No walk times were requested.</p>
-            ) : null}
-            {isEditing ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addWalkBlock}
-              >
-                Add walk time
-              </button>
-            ) : null}
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>5. Playtime</h2>
-            {playing.map((block, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.tabRow}>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'range' ? styles.tabActive : styles.tab
-                    }
-                    disabled={!isEditing}
-                    onClick={() => updatePlayBlock(index, { mode: 'range' })}
-                  >
-                    Time range
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      block.mode === 'duration' ? styles.tabActive : styles.tab
-                    }
-                    disabled={!isEditing}
-                    onClick={() => updatePlayBlock(index, { mode: 'duration' })}
-                  >
-                    Start + duration
-                  </button>
-                </div>
-                <div className={styles.walkFieldsGrid}>
-                  <label className={styles.fieldGroup}>
-                    <span className={styles.fieldGroupLabel}>Start</span>
-                    <TimeInput
-                      aria-label="Playtime start"
-                      value={block.startTime}
-                      disabled={!isEditing}
-                      onChange={(value) =>
-                        updatePlayBlock(index, { startTime: value })
-                      }
-                    />
-                  </label>
-                  {block.mode === 'range' ? (
-                    <label className={styles.fieldGroup}>
-                      <span className={styles.fieldGroupLabel}>End</span>
-                      <TimeInput
-                        aria-label="Playtime end"
-                        value={block.endTime}
-                        disabled={!isEditing}
-                        onChange={(value) =>
-                          updatePlayBlock(index, { endTime: value })
-                        }
-                      />
-                    </label>
-                  ) : (
-                    <label className={styles.fieldGroup}>
-                      <span className={styles.fieldGroupLabel}>
-                        Duration (min)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        value={block.durationMinutes}
-                        disabled={!isEditing}
-                        onChange={(event) =>
-                          updatePlayBlock(index, {
-                            durationMinutes: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                  <label className={styles.fieldGroupWide}>
-                    <span className={styles.fieldGroupLabel}>
-                      Notes (optional)
-                    </span>
-                    <input
-                      className={styles.input}
-                      value={block.notes}
-                      disabled={!isEditing}
-                      onChange={(event) =>
-                        updatePlayBlock(index, { notes: event.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-                {isEditing ? (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removePlayBlock(index)}
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-            ))}
-            {playing.length === 0 ? (
-              <p className={styles.copy}>No playtimes were requested.</p>
-            ) : null}
-            {isEditing ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addPlayBlock}
-              >
-                Add playtime
-              </button>
-            ) : null}
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>6. Medications</h2>
-            {medications.map((medication, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <CatalogComboBox
-                    items={medicationCatalog}
-                    hidePrice
-                    value={medication.name}
-                    placeholder="Medication name - search or type a custom value..."
-                    disabled={!isEditing}
-                    onChange={(next) => updateMedication(index, { name: next })}
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Dose"
-                    value={medication.dose}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      updateMedication(index, { dose: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Notes (optional)"
-                    value={medication.administrationNotes}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      updateMedication(index, {
-                        administrationNotes: event.target.value,
-                      })
-                    }
-                  />
-                  {isEditing ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeMedication(index)}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className={styles.inlineFields}>
-                  <span className={styles.copy}>Scheduled times:</span>
-                  {medication.scheduledTimes.map((time, timeIndex) => (
-                    <div key={timeIndex} className={styles.timeChip}>
-                      <TimeInput
-                        aria-label={`Medication time ${timeIndex + 1}`}
-                        value={time}
-                        disabled={!isEditing}
-                        onChange={(value) =>
-                          updateMedicationTime(index, timeIndex, value)
-                        }
-                      />
-                      {isEditing ? (
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() => removeMedicationTime(index, timeIndex)}
-                        >
-                          &times;
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-                  {isEditing ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => addMedicationTime(index)}
-                    >
-                      Add time
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-            {medications.length === 0 ? (
-              <p className={styles.copy}>No medications were requested.</p>
-            ) : null}
-            {isEditing ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addMedication}
-              >
-                Add medication
-              </button>
-            ) : null}
-          </section>
-
-          <section className={styles.section}>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={notifyOptIn}
-                onChange={(event) => setNotifyOptIn(event.target.checked)}
+                {MEAL_TIMES.map((mealTime) => (
+                  <option key={mealTime} value={mealTime}>
+                    {mealTime}
+                  </option>
+                ))}
+              </select>
+              <CatalogComboBox
+                items={foodCatalog}
+                hidePrice
+                value={state.foodType}
+                placeholder="Food type - search or type a custom value..."
+                disabled={!isEditing}
+                onChange={(next) => updateFeeding(index, { foodType: next })}
               />
-              Owner opted in to pet status notifications for this stay
-            </label>
-          </section>
-
+              <input
+                className={styles.input}
+                placeholder="Quantity"
+                value={state.quantity}
+                disabled={!isEditing}
+                onChange={(event) =>
+                  updateFeeding(index, {
+                    quantity: event.target.value,
+                  })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Special instructions (optional)"
+                value={state.specialInstructions}
+                disabled={!isEditing}
+                onChange={(event) =>
+                  updateFeeding(index, {
+                    specialInstructions: event.target.value,
+                  })
+                }
+              />
+              {isEditing ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => removeFeeding(index)}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        {feeding.length === 0 ? (
+          <p className={styles.copy}>No feeding times were requested.</p>
+        ) : null}
+        {isEditing ? (
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={() => setIsEditing((prev) => !prev)}
+            onClick={addFeeding}
           >
-            {isEditing ? 'Done editing' : 'Edit'}
+            Add feeding time
           </button>
+        ) : null}
+      </section>
 
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>3. Walking instructions</h2>
+        {walking.map((block, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.tabRow}>
+              <button
+                type="button"
+                className={
+                  block.mode === 'range' ? styles.tabActive : styles.tab
+                }
+                disabled={!isEditing}
+                onClick={() => updateWalkBlock(index, { mode: 'range' })}
+              >
+                Time range
+              </button>
+              <button
+                type="button"
+                className={
+                  block.mode === 'duration' ? styles.tabActive : styles.tab
+                }
+                disabled={!isEditing}
+                onClick={() => updateWalkBlock(index, { mode: 'duration' })}
+              >
+                Start + duration
+              </button>
+            </div>
+            <div className={styles.walkFieldsGrid}>
+              <label className={styles.fieldGroup}>
+                <span className={styles.fieldGroupLabel}>Start</span>
+                <TimeInput
+                  aria-label="Walk start time"
+                  value={block.startTime}
+                  disabled={!isEditing}
+                  onChange={(value) =>
+                    updateWalkBlock(index, { startTime: value })
+                  }
+                />
+              </label>
+              {block.mode === 'range' ? (
+                <label className={styles.fieldGroup}>
+                  <span className={styles.fieldGroupLabel}>End</span>
+                  <TimeInput
+                    aria-label="Walk end time"
+                    value={block.endTime}
+                    disabled={!isEditing}
+                    onChange={(value) =>
+                      updateWalkBlock(index, { endTime: value })
+                    }
+                  />
+                </label>
+              ) : (
+                <label className={styles.fieldGroup}>
+                  <span className={styles.fieldGroupLabel}>Duration (min)</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    value={block.durationMinutes}
+                    disabled={!isEditing}
+                    onChange={(event) =>
+                      updateWalkBlock(index, {
+                        durationMinutes: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+              )}
+              <label className={styles.fieldGroupWide}>
+                <span className={styles.fieldGroupLabel}>Notes (optional)</span>
+                <input
+                  className={styles.input}
+                  value={block.notes}
+                  disabled={!isEditing}
+                  onChange={(event) =>
+                    updateWalkBlock(index, { notes: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            {isEditing ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeWalkBlock(index)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {walking.length === 0 ? (
+          <p className={styles.copy}>No walk times were requested.</p>
+        ) : null}
+        {isEditing ? (
           <button
             type="button"
-            className={styles.primaryButton}
-            disabled={!selectedCageId || isSubmitting}
-            onClick={() => void submitCheckIn()}
+            className={styles.secondaryButton}
+            onClick={addWalkBlock}
           >
-            {isSubmitting ? 'Checking in...' : 'Check in'}
+            Add walk time
           </button>
-        </>
-      ) : null}
+        ) : null}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>4. Playtime</h2>
+        {playing.map((block, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.tabRow}>
+              <button
+                type="button"
+                className={
+                  block.mode === 'range' ? styles.tabActive : styles.tab
+                }
+                disabled={!isEditing}
+                onClick={() => updatePlayBlock(index, { mode: 'range' })}
+              >
+                Time range
+              </button>
+              <button
+                type="button"
+                className={
+                  block.mode === 'duration' ? styles.tabActive : styles.tab
+                }
+                disabled={!isEditing}
+                onClick={() => updatePlayBlock(index, { mode: 'duration' })}
+              >
+                Start + duration
+              </button>
+            </div>
+            <div className={styles.walkFieldsGrid}>
+              <label className={styles.fieldGroup}>
+                <span className={styles.fieldGroupLabel}>Start</span>
+                <TimeInput
+                  aria-label="Playtime start"
+                  value={block.startTime}
+                  disabled={!isEditing}
+                  onChange={(value) =>
+                    updatePlayBlock(index, { startTime: value })
+                  }
+                />
+              </label>
+              {block.mode === 'range' ? (
+                <label className={styles.fieldGroup}>
+                  <span className={styles.fieldGroupLabel}>End</span>
+                  <TimeInput
+                    aria-label="Playtime end"
+                    value={block.endTime}
+                    disabled={!isEditing}
+                    onChange={(value) =>
+                      updatePlayBlock(index, { endTime: value })
+                    }
+                  />
+                </label>
+              ) : (
+                <label className={styles.fieldGroup}>
+                  <span className={styles.fieldGroupLabel}>Duration (min)</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    value={block.durationMinutes}
+                    disabled={!isEditing}
+                    onChange={(event) =>
+                      updatePlayBlock(index, {
+                        durationMinutes: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+              )}
+              <label className={styles.fieldGroupWide}>
+                <span className={styles.fieldGroupLabel}>Notes (optional)</span>
+                <input
+                  className={styles.input}
+                  value={block.notes}
+                  disabled={!isEditing}
+                  onChange={(event) =>
+                    updatePlayBlock(index, { notes: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            {isEditing ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removePlayBlock(index)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {playing.length === 0 ? (
+          <p className={styles.copy}>No playtimes were requested.</p>
+        ) : null}
+        {isEditing ? (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={addPlayBlock}
+          >
+            Add playtime
+          </button>
+        ) : null}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>5. Medications</h2>
+        {medications.map((medication, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <CatalogComboBox
+                items={medicationCatalog}
+                hidePrice
+                value={medication.name}
+                placeholder="Medication name - search or type a custom value..."
+                disabled={!isEditing}
+                onChange={(next) => updateMedication(index, { name: next })}
+              />
+              <input
+                className={styles.input}
+                placeholder="Dose"
+                value={medication.dose}
+                disabled={!isEditing}
+                onChange={(event) =>
+                  updateMedication(index, { dose: event.target.value })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Notes (optional)"
+                value={medication.administrationNotes}
+                disabled={!isEditing}
+                onChange={(event) =>
+                  updateMedication(index, {
+                    administrationNotes: event.target.value,
+                  })
+                }
+              />
+              {isEditing ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => removeMedication(index)}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+
+            <div className={styles.inlineFields}>
+              <span className={styles.copy}>Scheduled times:</span>
+              {medication.scheduledTimes.map((time, timeIndex) => (
+                <div key={timeIndex} className={styles.timeChip}>
+                  <TimeInput
+                    aria-label={`Medication time ${timeIndex + 1}`}
+                    value={time}
+                    disabled={!isEditing}
+                    onChange={(value) =>
+                      updateMedicationTime(index, timeIndex, value)
+                    }
+                  />
+                  {isEditing ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => removeMedicationTime(index, timeIndex)}
+                    >
+                      &times;
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+              {isEditing ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => addMedicationTime(index)}
+                >
+                  Add time
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        {medications.length === 0 ? (
+          <p className={styles.copy}>No medications were requested.</p>
+        ) : null}
+        {isEditing ? (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={addMedication}
+          >
+            Add medication
+          </button>
+        ) : null}
+      </section>
+
+      <button
+        type="button"
+        className={isEditing ? styles.secondaryButton : styles.primaryButton}
+        onClick={() => setIsEditing((prev) => !prev)}
+      >
+        {isEditing ? 'Done editing' : 'Edit'}
+      </button>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        disabled={!selectedCageId || isSubmitting}
+        onClick={() => void submitCheckIn()}
+      >
+        {isSubmitting ? 'Checking in...' : 'Check in'}
+      </button>
     </>
   );
 }

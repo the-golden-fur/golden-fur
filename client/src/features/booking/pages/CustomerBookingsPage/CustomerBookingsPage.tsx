@@ -10,11 +10,14 @@ import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
   cancelBooking,
+  getOnlinePaymentsStatus,
   listBookings,
+  payForBooking,
   rescheduleBooking,
 } from '../../api/booking.api';
 import {
   CANCELLABLE_BOOKING_STATUSES,
+  PAYABLE_BOOKING_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
   type Booking,
   type StaffPreferenceInput,
@@ -28,7 +31,14 @@ function formatDateTime(iso: string): string {
   });
 }
 
-type ActiveAction = { bookingId: string; type: 'reschedule' | 'cancel' };
+function formatPeso(amount: number): string {
+  return `PHP ${amount.toFixed(2)}`;
+}
+
+type ActiveAction = {
+  bookingId: string;
+  type: 'reschedule' | 'cancel' | 'pay';
+};
 
 /**
  * Issue #59: the customer's own bookings, with reschedule (re-entering the
@@ -58,6 +68,13 @@ export function CustomerBookingsPage() {
   // (#52). See StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
+  const [payPaymentMethod, setPayPaymentMethod] = useState<'GCash' | 'Maya'>(
+    'GCash'
+  );
+  const [payInFull, setPayInFull] = useState(true);
+  const [onlinePaymentsByBranch, setOnlinePaymentsByBranch] = useState<
+    Map<string, boolean>
+  >(new Map());
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
@@ -91,6 +108,34 @@ export function CustomerBookingsPage() {
     };
   }, [accessToken, user?.id]);
 
+  // One online-payments-status lookup per distinct branch a booking belongs
+  // to, so the Pay button can be disabled up front rather than only failing
+  // once clicked - branches rarely differ across a customer's own bookings,
+  // but nothing here assumes there's only one.
+  useEffect(() => {
+    if (!accessToken || bookings.length === 0) return;
+
+    let isMounted = true;
+    const branchIds = [
+      ...new Set(bookings.map((booking) => booking.branch_id)),
+    ];
+
+    void Promise.all(
+      branchIds.map((branchId) =>
+        getOnlinePaymentsStatus(branchId, accessToken).then(
+          (result) =>
+            [branchId, result.data?.online_payments_enabled ?? true] as const
+        )
+      )
+    ).then((entries) => {
+      if (isMounted) setOnlinePaymentsByBranch(new Map(entries));
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, bookings]);
+
   const petNameById = useMemo(
     () => new Map(pets.map((pet) => [pet.id, pet.name])),
     [pets]
@@ -122,8 +167,45 @@ export function CustomerBookingsPage() {
     setActionMessage(null);
   }
 
+  function openPay(booking: Booking) {
+    setActiveAction({ bookingId: booking.id, type: 'pay' });
+    setPayPaymentMethod('GCash');
+    // 'Paid in Advance' only ever has one thing left to pay (the
+    // remainder) - offering the downpayment/full choice again wouldn't
+    // mean anything, payForBooking always charges the remainder regardless
+    // of what's sent for that stage.
+    setPayInFull(
+      booking.payment_stage === 'Paid in Advance' ||
+        !booking.downpayment_required
+    );
+    setActionError(null);
+    setActionMessage(null);
+  }
+
   function closeAction() {
     setActiveAction(null);
+  }
+
+  async function confirmPay(booking: Booking) {
+    if (!accessToken) return;
+
+    setIsSubmittingAction(true);
+    setActionError(null);
+
+    const result = await payForBooking(booking.id, accessToken, {
+      payment_method: payPaymentMethod,
+      pay_in_full: payInFull,
+    });
+
+    if (result.error || !result.data) {
+      setIsSubmittingAction(false);
+      setActionError(result.error ?? 'Could not start this payment.');
+      return;
+    }
+
+    // Real PayMongo-hosted checkout - leaves the app entirely, same as the
+    // cashier "Customer portal" GCash/Maya channel's own redirect.
+    window.location.href = result.data.checkoutUrl;
   }
 
   async function confirmReschedule(booking: Booking) {
@@ -238,12 +320,20 @@ export function CustomerBookingsPage() {
             const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
               booking.status
             );
+            const canPay =
+              PAYABLE_BOOKING_STATUSES.includes(booking.status) &&
+              booking.payment_stage !== 'Paid';
+            const onlinePaymentsEnabled =
+              onlinePaymentsByBranch.get(booking.branch_id) ?? true;
             const isRescheduling =
               activeAction?.bookingId === booking.id &&
               activeAction.type === 'reschedule';
             const isCancelling =
               activeAction?.bookingId === booking.id &&
               activeAction.type === 'cancel';
+            const isPaying =
+              activeAction?.bookingId === booking.id &&
+              activeAction.type === 'pay';
 
             const durationMinutes = Math.round(
               (new Date(booking.scheduled_end).getTime() -
@@ -275,10 +365,26 @@ export function CustomerBookingsPage() {
                   <BookingStatusBadge status={booking.status} />
                 </div>
 
-                {(canReschedule || canCancel) &&
+                {(canReschedule || canCancel || canPay) &&
                 !isRescheduling &&
-                !isCancelling ? (
+                !isCancelling &&
+                !isPaying ? (
                   <div className={styles.bookingControls}>
+                    {canPay ? (
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={!onlinePaymentsEnabled}
+                        title={
+                          onlinePaymentsEnabled
+                            ? undefined
+                            : 'Online payments are currently unavailable for this branch - please pay at the branch instead.'
+                        }
+                        onClick={() => openPay(booking)}
+                      >
+                        Pay
+                      </button>
+                    ) : null}
                     {canReschedule ? (
                       <button
                         type="button"
@@ -297,6 +403,95 @@ export function CustomerBookingsPage() {
                         Cancel
                       </button>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {isPaying ? (
+                  <div className={styles.actionPanel}>
+                    {booking.payment_stage === 'Unpaid' &&
+                    booking.downpayment_required &&
+                    booking.downpayment_amount ? (
+                      <fieldset className={styles.field}>
+                        <legend className={styles.fieldLabel}>
+                          How much would you like to pay now?
+                        </legend>
+                        <label className={styles.checkboxField}>
+                          <input
+                            type="radio"
+                            name={`pay-choice-${booking.id}`}
+                            checked={payInFull}
+                            onChange={() => setPayInFull(true)}
+                          />
+                          <span>
+                            Pay in full ({formatPeso(booking.total_price)})
+                          </span>
+                        </label>
+                        <label className={styles.checkboxField}>
+                          <input
+                            type="radio"
+                            name={`pay-choice-${booking.id}`}
+                            checked={!payInFull}
+                            onChange={() => setPayInFull(false)}
+                          />
+                          <span>
+                            Pay downpayment only (
+                            {formatPeso(booking.downpayment_amount)})
+                          </span>
+                        </label>
+                      </fieldset>
+                    ) : (
+                      <p className={styles.copy}>
+                        Amount due:{' '}
+                        {formatPeso(
+                          booking.payment_stage === 'Paid in Advance'
+                            ? booking.total_price -
+                                (booking.downpayment_amount ?? 0)
+                            : booking.total_price
+                        )}
+                      </p>
+                    )}
+
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>Payment method</span>
+                      <select
+                        className={styles.input}
+                        value={payPaymentMethod}
+                        onChange={(event) =>
+                          setPayPaymentMethod(
+                            event.target.value as 'GCash' | 'Maya'
+                          )
+                        }
+                      >
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                      </select>
+                    </label>
+
+                    {actionError ? (
+                      <p className={styles.errorBanner} role="alert">
+                        {actionError}
+                      </p>
+                    ) : null}
+
+                    <div className={styles.bookingControls}>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={isSubmittingAction}
+                        onClick={() => void confirmPay(booking)}
+                      >
+                        {isSubmittingAction
+                          ? 'Redirecting...'
+                          : 'Continue to payment'}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={closeAction}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 

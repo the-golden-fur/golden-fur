@@ -2,26 +2,25 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import { CareLogChecklist } from '../../components/CareLogChecklist/CareLogChecklist';
+import { BoardingChecklistKanban } from '../../components/BoardingChecklistKanban/BoardingChecklistKanban';
 import { UncompletedCareFlagPanel } from '../../components/UncompletedCareFlagPanel/UncompletedCareFlagPanel';
-import styles from './HotelCareLogPage.module.css';
+import styles from './BoardingChecklistPage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Pet Assistant',
+  'Groomer',
   'Admin',
   'Supervisor',
   'Superadmin',
 ]);
 
-/**
- * Issue #80 route host: the Guide's Directory Structure lists
- * CareLogChecklist.tsx and UncompletedCareFlagPanel.tsx as components with
- * no page file of their own - both need a routed home to be reachable, so
- * this page fills that gap (see this issue's verification doc). Pet
- * Assistant sees the daily checklist; Admin/Supervisor/Superadmin see the
- * end-of-day flag panel - the two audiences never need both views at once.
- */
-export function HotelCareLogPage() {
+/** Custom change: renamed from Hotel Care Log - covers Hotel AND Daycare
+ * (both share the same `stays`/`care_log_entries` tables) via the Kanban
+ * board's own Hotel/Daycare subtabs, and is now also reachable by Groomer,
+ * not just Pet Assistant. Groomer/Pet Assistant see the Kanban checklist;
+ * Admin/Supervisor/Superadmin still see the end-of-day flag panel - the two
+ * audiences never need both views at once (unchanged from the old page). */
+export function BoardingChecklistPage() {
   const { user, accessToken } = useAuth();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
@@ -57,7 +56,7 @@ export function HotelCareLogPage() {
       <main className={styles.page}>
         <div className={styles.content}>
           <p className={styles.errorBanner} role="alert">
-            Unable to load the Care Log.
+            Unable to load the Boarding Checklist.
           </p>
         </div>
       </main>
@@ -81,9 +80,9 @@ export function HotelCareLogPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Hotel Care Log</h1>
-        {role === 'Pet Assistant' ? (
-          <CareLogChecklist accessToken={accessToken} />
+        <h1 className={styles.title}>Boarding Checklist</h1>
+        {role === 'Pet Assistant' || role === 'Groomer' ? (
+          <BoardingChecklistKanban accessToken={accessToken} />
         ) : (
           <UncompletedCareFlagPanel accessToken={accessToken} />
         )}

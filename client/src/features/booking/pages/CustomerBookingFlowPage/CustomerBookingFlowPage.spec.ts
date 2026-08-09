@@ -35,6 +35,9 @@ vi.mock('../../api/booking.api', () => ({
   // every existing test keeps seeing every ServiceCategory under its plain
   // literal label (today's behavior, unchanged).
   listServiceTypes: vi.fn().mockResolvedValue({ data: [], error: null }),
+  // Custom change: duplicate-booking prevention - default to no conflicts
+  // so every existing test's pet selection is unaffected.
+  getPetBookingConflicts: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -127,9 +130,6 @@ vi.mock('../../components/StaffPickerList/StaffPickerList', () => ({
           )
         : null
     ),
-}));
-vi.mock('../../components/CagePicker/CagePicker', () => ({
-  CagePicker: () => createElement('div', { 'data-testid': 'cage-picker' }),
 }));
 // Custom change: Cage Picker addendum - mocked the same way as
 // StaffPickerList above, so existing tests never hit the real
@@ -397,6 +397,79 @@ describe('CustomerBookingFlowPage', () => {
       data: [],
       error: null,
     });
+  });
+
+  it('Custom change (duplicate-booking prevention): a pet with an unresolved booking (any category) stays on the Pet step and never advances', async () => {
+    vi.mocked(bookingApi.getPetBookingConflicts).mockResolvedValue({
+      data: [
+        {
+          pet_id: 'pet-1',
+          booking_id: 'booking-existing',
+          service_category: 'Grooming',
+          scheduled_start: '2026-08-10T08:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    const petButton = screen.getByText('Max').closest('button')!;
+    expect(petButton).toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(screen.getByText('Max'));
+    await user.click(screen.getByText('Next'));
+
+    // Still stuck on the Pet step - Branch (the next step) never appeared.
+    expect(screen.queryByText('Makati')).not.toBeInTheDocument();
+  });
+
+  it('Custom change (duplicate-booking prevention): clicking a conflicted pet shows a prompt linking to the existing booking instead of selecting it', async () => {
+    vi.mocked(bookingApi.getPetBookingConflicts).mockResolvedValue({
+      data: [
+        {
+          pet_id: 'pet-1',
+          booking_id: 'booking-existing',
+          service_category: 'Grooming',
+          scheduled_start: '2026-08-10T08:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByText('Max'));
+
+    expect(
+      await screen.findByText(/Max already has a Grooming booking on/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Go to My Bookings' })
+    ).toBeInTheDocument();
+  });
+
+  it('Custom change (duplicate-booking prevention): a pet with no conflict remains selectable as normal', async () => {
+    vi.mocked(bookingApi.getPetBookingConflicts).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    const petButton = screen.getByText('Max').closest('button')!;
+    expect(petButton).not.toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(screen.getByText('Max'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
   });
 
   it('auto-selects Initial Assessment and hides other category tabs for an unassessed pet', async () => {

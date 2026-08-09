@@ -16,6 +16,11 @@ interface CagePickerListProps {
    * branch/service type, so the caller can treat this as "no preference"
    * and move on. */
   onUnavailable?: () => void;
+  /** Custom change: folded in from the now-removed standalone CagePicker
+   * (which only ever showed this, with no way to act on it) - the
+   * selected pet's own weight_class, so a same-size cage can carry a
+   * "Recommended" badge here too instead of losing that signal. */
+  recommendedSize?: string | null;
 }
 
 function getInitials(cageLabel: string): string {
@@ -45,6 +50,7 @@ export function CagePickerList({
   selected,
   onSelect,
   onUnavailable,
+  recommendedSize,
 }: CagePickerListProps) {
   const [options, setOptions] = useState<CagePickerOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -158,6 +164,11 @@ export function CagePickerList({
                     ? 'No preference'
                     : `${option.cage_label} (${option.size})`}
                 </span>
+                {option.type === 'specific' &&
+                recommendedSize &&
+                option.size === recommendedSize ? (
+                  <span className={styles.recommendedBadge}>Recommended</span>
+                ) : null}
               </button>
             );
           })}

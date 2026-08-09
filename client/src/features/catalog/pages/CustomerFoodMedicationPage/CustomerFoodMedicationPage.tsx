@@ -18,9 +18,9 @@ import styles from './CustomerFoodMedicationPage.module.css';
  * customer's behalf, so this moved from a staff-only check-in step to
  * customer-managed CRUD. Reachable standalone (this page, /portal/food-
  * medication) as well as from the hotel booking wizard's Care Instructions
- * step. Global (staff-managed) entries are shown read-only for reference;
- * only the customer's own rows (owner_customer_id = them) can be edited or
- * removed.
+ * step. `listCustomerCatalog` can still return global (owner_customer_id
+ * null) rows if any exist, but every row this page's own CRUD creates is
+ * always owned by the viewing customer, so all rows render as editable.
  */
 export function CustomerFoodMedicationPage() {
   const { user, accessToken } = useAuth();
@@ -148,29 +148,25 @@ export function CustomerFoodMedicationPage() {
                 ) : (
                   <>
                     <span className={styles.itemName}>{item.name}</span>
-                    {item.owner_customer_id === user.id ? (
-                      <div className={styles.itemActions}>
-                        <button
-                          type="button"
-                          className={styles.linkButton}
-                          onClick={() => {
-                            setEditingId(item.id);
-                            setEditingName(item.name);
-                          }}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.linkButton}
-                          onClick={() => void handleRemove(item.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <span className={styles.copy}>Provided by the hotel</span>
-                    )}
+                    <div className={styles.itemActions}>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        onClick={() => {
+                          setEditingId(item.id);
+                          setEditingName(item.name);
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        onClick={() => void handleRemove(item.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </>
                 )}
               </li>

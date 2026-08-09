@@ -143,6 +143,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Check pets in and out of daycare sessions.',
             to: '/staff/daycare/queue',
           },
+          {
+            title: 'Boarding Checklist',
+            description:
+              "Today's feeding, walking, playtime, and medication checklist for checked-in pets.",
+            to: '/staff/hotel/care-log',
+          },
         ],
       },
       {
@@ -180,7 +186,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: 'Pet Assistant',
         tiles: [
           {
-            title: 'Hotel Care Log',
+            title: 'Boarding Checklist',
             description: 'End-of-day uncompleted care log flags.',
             to: '/staff/hotel/care-log',
           },
@@ -266,7 +272,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/bookings/queue',
           },
           {
-            title: 'Hotel Care Log',
+            title: 'Boarding Checklist',
             description: 'End-of-day uncompleted care log flags.',
             to: '/staff/hotel/care-log',
           },
@@ -343,6 +349,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Check pets in and out of daycare sessions.',
             to: '/staff/daycare/queue',
           },
+          {
+            title: 'Boarding Checklist',
+            description:
+              "Today's feeding, walking, playtime, and medication checklist for checked-in pets.",
+            to: '/staff/hotel/care-log',
+          },
         ],
       },
     ],
@@ -410,8 +422,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
-            title: 'Care Log',
-            description: "Today's feeding, walking, and medication checklist.",
+            title: 'Boarding Checklist',
+            description:
+              "Today's feeding, walking, playtime, and medication checklist for checked-in pets.",
             to: '/staff/hotel/care-log',
           },
           {
@@ -461,8 +474,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Checkout & Billing': Wallet,
   'Payments Queue': Receipt,
   'Credit Management': Coins,
-  'Hotel Care Log': Heart,
-  'Care Log': Heart,
+  'Boarding Checklist': Heart,
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
   'Transaction History': Receipt,

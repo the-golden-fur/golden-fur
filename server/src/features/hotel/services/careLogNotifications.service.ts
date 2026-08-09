@@ -5,10 +5,12 @@ import type { CareLogEntry } from '../hotel.types.ts';
 
 /**
  * Issue #99: replaces the old fireCareLogCompletedEvent() console.info stub
- * with a real dispatch, called from careLogCompletion.service.ts - still
- * gated by the caller on hotel_stays.notify_opt_in (unchanged from today's
- * behavior: opted-out stays still record the care log entry internally but
- * fire no notification).
+ * with a real dispatch, called unconditionally from
+ * careLogCompletion.service.ts on every completion - the caller no longer
+ * gates this on a per-stay flag (the old hotel_stays.notify_opt_in
+ * checkbox was staff-only and has been removed); createNotification below
+ * consults the customer's own notification_preferences['care_log_completed']
+ * as the sole gate.
  *
  * Kept in its own module (not inline in careLogCompletion.service.ts) so the
  * existing completeCareLogEntry unit tests can mock this one function

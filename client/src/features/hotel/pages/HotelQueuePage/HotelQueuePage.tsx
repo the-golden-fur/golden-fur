@@ -1,18 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import { HotelCheckInPanel } from './HotelCheckInPanel';
+import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import { HotelCheckoutPanel } from './HotelCheckoutPanel';
+import { HOTEL_QUEUE_VIEWER_ROLES } from './hotelQueueRoles';
 import styles from './HotelQueuePage.module.css';
 
-const ALLOWED_VIEWER_ROLES = new Set([
-  'Admin',
-  'Supervisor',
-  'Superadmin',
-  'Groomer',
-  'Pet Assistant',
-]);
+const ALLOWED_VIEWER_ROLES = HOTEL_QUEUE_VIEWER_ROLES;
 
 type Tab = 'check-in' | 'check-out';
 
@@ -31,20 +26,22 @@ type Tab = 'check-in' | 'check-out';
  */
 export function HotelQueuePage() {
   const { user, accessToken } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
-  const [role, setRole] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
 
   const [tab, setTab] = useState<Tab>(
     searchParams.get('tab') === 'check-out' ? 'check-out' : 'check-in'
   );
-  const [checkoutStayId, setCheckoutStayId] = useState<string | null>(
-    searchParams.get('stayId')
-  );
+  // Custom change: no longer set from within this page (HotelCheckInPanel
+  // used to call back into a setter here) - a check-in now navigates
+  // straight to /staff/hotel/queue?tab=check-out&stayId=... instead, so
+  // this only ever needs its lazy initial value from the URL.
+  const [checkoutStayId] = useState<string | null>(searchParams.get('stayId'));
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -58,7 +55,6 @@ export function HotelQueuePage() {
         setRoleStatus(
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
-        setRole(result.data.role);
         setBranchId(result.data.branch_id);
       } else {
         setRoleStatus('denied');
@@ -69,11 +65,6 @@ export function HotelQueuePage() {
       isMounted = false;
     };
   }, [accessToken, user?.id]);
-
-  function handleCheckedIn(stayId: string) {
-    setCheckoutStayId(stayId);
-    setTab('check-out');
-  }
 
   if (!user?.id || !accessToken) {
     return (
@@ -127,13 +118,18 @@ export function HotelQueuePage() {
           </button>
         </div>
 
-        {tab === 'check-in' && role && branchId ? (
-          <HotelCheckInPanel
-            accessToken={accessToken}
-            role={role}
-            branchId={branchId}
-            onCheckedIn={handleCheckedIn}
-          />
+        {tab === 'check-in' && branchId ? (
+          <section>
+            <h2 className={styles.sectionTitle}>Select a confirmed booking</h2>
+            <HotelBookingPicker
+              accessToken={accessToken}
+              branchId={branchId}
+              onSelect={(booking) =>
+                navigate(`/staff/hotel/queue/check-in/${booking.id}`)
+              }
+              selectedBookingId={null}
+            />
+          </section>
         ) : null}
 
         {tab === 'check-out' ? (

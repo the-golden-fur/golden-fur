@@ -7,7 +7,10 @@ import type {
   CreateBookingPayload,
   ListBookingsFilters,
   OperatingWindow,
+  PayForBookingPayload,
+  PayForBookingResult,
   PaymentStage,
+  PetBookingConflict,
   PolicyConfiguration,
   RescheduleBookingPayload,
   RescheduleResult,
@@ -378,6 +381,65 @@ export async function cancelBooking(
   }
 
   return parseBody<CancellationResult>(response);
+}
+
+/** Customer self-service Pay button - initiates a real PayMongo checkout
+ * (GCash/Maya) for either the full remaining amount or just the catalog
+ * downpayment, returning a checkoutUrl to redirect the customer to. */
+export async function payForBooking(
+  bookingId: string,
+  accessToken: string,
+  payload: PayForBookingPayload
+): Promise<BookingApiResult<PayForBookingResult>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}/pay`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<PayForBookingResult>(response);
+}
+
+/** Custom change: duplicate-booking prevention - pet ids that currently
+ * have an unresolved Hotel/Daycare booking, so the booking flow's pet-
+ * selection step can disable them. */
+export async function getPetBookingConflicts(
+  customerId: string,
+  accessToken: string
+): Promise<BookingApiResult<PetBookingConflict[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/pet-conflicts?customer_id=${customerId}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ conflicts: PetBookingConflict[] }>(response);
+  return { data: result.data?.conflicts ?? null, error: result.error };
+}
+
+/** Whether the customer-facing Pay button should be enabled for a branch -
+ * see isOnlinePaymentsEnabled's own doc comment server-side. */
+export async function getOnlinePaymentsStatus(
+  branchId: string,
+  accessToken: string
+): Promise<BookingApiResult<{ online_payments_enabled: boolean }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/online-payments-status?branch_id=${branchId}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ online_payments_enabled: boolean }>(response);
 }
 
 /**

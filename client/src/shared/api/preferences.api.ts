@@ -55,12 +55,31 @@ export type NotificationChannel = 'email' | 'in_browser';
 export interface NotificationChannelPreference {
   email: boolean;
   in_browser: boolean;
+  /** Only ever set on the 'appointment_reminder' entry - see
+   * REMINDER_OFFSET_MINUTES_OPTIONS. */
+  reminder_offset_minutes?: number;
 }
 
 export type NotificationPreferences = Record<
   NotificationEventType,
   NotificationChannelPreference
 >;
+
+/** Mirrors the server's REMINDER_OFFSET_MINUTES_OPTIONS
+ * (notifications.types.ts) - "how long before the appointment should the
+ * reminder fire". 1440 (1 day before) is the pre-existing fixed default. */
+export const REMINDER_OFFSET_MINUTES_OPTIONS = [
+  15, 60, 180, 1440, 2880,
+] as const;
+export const DEFAULT_REMINDER_OFFSET_MINUTES = 1440;
+
+export const REMINDER_OFFSET_LABELS: Record<number, string> = {
+  15: '15 minutes before',
+  60: '1 hour before',
+  180: '3 hours before',
+  1440: '1 day before',
+  2880: '2 days before',
+};
 
 const NOTIFICATION_PREFERENCES_PATH_BY_ROLE: Record<ThemeRole, string> = {
   staff: '/staff/notification-preferences',
@@ -221,6 +240,43 @@ export async function updateNotificationPreference(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ event_type: eventType, channel, enabled }),
+    }
+  );
+
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+    notification_preferences?: NotificationPreferences;
+  } | null;
+
+  if (!response.ok || !body?.notification_preferences) {
+    return {
+      data: null,
+      error: body?.error ?? 'Request failed. Please try again.',
+    };
+  }
+
+  return { data: body.notification_preferences, error: null };
+}
+
+/** Customer-only (appointment_reminder is not a staff-facing event type) -
+ * see customerNotificationPreferencesController's {reminder_offset_minutes}
+ * request shape. */
+export async function updateReminderOffset(
+  accessToken: string,
+  reminderOffsetMinutes: number
+): Promise<PreferencesApiResult<NotificationPreferences>> {
+  const response = await fetch(
+    `${API_BASE_URL}${AUTH_PREFIX}${NOTIFICATION_PREFERENCES_PATH_BY_ROLE.customer}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        event_type: 'appointment_reminder',
+        reminder_offset_minutes: reminderOffsetMinutes,
+      }),
     }
   );
 

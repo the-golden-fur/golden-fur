@@ -3,6 +3,7 @@ import {
   completeBooking,
   createBooking,
   listBookings,
+  listPetBookingConflicts,
   overrideBookingStatus,
   resolvePackagePrice,
   resolveServicePrice,
@@ -1259,6 +1260,41 @@ describe('booking.service (#51)', () => {
       });
     });
 
+    it('regression: never carries requires_downpayment/downpayment_amount/downpayment_type onto the booking_items insert - that table has no such columns, only bookings does', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [{ service_id: 'service-groom-dp' }],
+        },
+      });
+
+      const itemsInsert = recordedWrites.find(
+        (write) => write.table === 'booking_items' && write.method === 'insert'
+      );
+
+      expect(itemsInsert?.payload).toEqual([
+        {
+          booking_id: 'booking-1',
+          service_id: 'service-groom-dp',
+          package_id: null,
+          price_at_booking: 350,
+          duration_minutes_at_booking: expect.any(Number),
+        },
+      ]);
+    });
+
     it('a percentage-type flagged service computes downpayment_amount as a percentage of price_at_booking, not base_price', async () => {
       vi.mocked(getServiceById).mockResolvedValue(
         PERCENTAGE_DOWNPAYMENT_GROOMING_SERVICE
@@ -1315,6 +1351,26 @@ describe('booking.service (#51)', () => {
         downpayment_required: false,
         downpayment_amount: null,
       });
+    });
+
+    it('rejects a multi-item booking where any item requires a downpayment - it must be booked on its own', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            items: [
+              { service_id: 'service-groom-dp' },
+              { service_id: 'service-groom-dp' },
+            ],
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(supabase.rpc).not.toHaveBeenCalled();
     });
 
     it('paying online with payment_choice "downpayment" sets payment_stage to Paid in Advance at creation', async () => {
@@ -1529,5 +1585,114 @@ describe('booking.service (#51)', () => {
       // 300 * (1 - 0.10) = 270
       expect(price).toBe(270);
     });
+  });
+});
+
+describe('listPetBookingConflicts (duplicate-booking prevention, custom change)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    recordedWrites.length = 0;
+  });
+
+  it("returns one conflict per pet - the earliest-scheduled unresolved booking, any category - from the customer's own Pending/In Progress bookings", async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+    queueFromResults({
+      // Already ordered by scheduled_start ascending, matching the real
+      // query's .order() - the service keeps only the first (earliest) row
+      // per pet_id.
+      data: [
+        {
+          id: 'booking-1',
+          pet_id: 'pet-1',
+          service_category: 'Grooming',
+          scheduled_start: '2026-08-10T00:00:00.000Z',
+        },
+        {
+          id: 'booking-2',
+          pet_id: 'pet-1',
+          service_category: 'Hotel',
+          scheduled_start: '2026-08-20T00:00:00.000Z',
+        },
+        {
+          id: 'booking-3',
+          pet_id: 'pet-2',
+          service_category: 'Veterinary',
+          scheduled_start: '2026-08-11T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const conflicts = await listPetBookingConflicts({
+      requesterId: CUSTOMER_ID,
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(conflicts).toEqual([
+      {
+        pet_id: 'pet-1',
+        booking_id: 'booking-1',
+        service_category: 'Grooming',
+        scheduled_start: '2026-08-10T00:00:00.000Z',
+      },
+      {
+        pet_id: 'pet-2',
+        booking_id: 'booking-3',
+        service_category: 'Veterinary',
+        scheduled_start: '2026-08-11T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('returns an empty list when nothing is unresolved', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+    queueFromResults({ data: [], error: null });
+
+    const conflicts = await listPetBookingConflicts({
+      requesterId: CUSTOMER_ID,
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(conflicts).toEqual([]);
+  });
+
+  it('allows a staff requester to query any customer', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+    queueFromResults({
+      data: [
+        {
+          id: 'booking-9',
+          pet_id: 'pet-9',
+          service_category: 'Daycare',
+          scheduled_start: '2026-08-12T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const conflicts = await listPetBookingConflicts({
+      requesterId: 'staff-1',
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(conflicts).toEqual([
+      {
+        pet_id: 'pet-9',
+        booking_id: 'booking-9',
+        service_category: 'Daycare',
+        scheduled_start: '2026-08-12T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('rejects a non-staff requester querying a different customer', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+
+    await expect(
+      listPetBookingConflicts({
+        requesterId: 'someone-else',
+        customerId: CUSTOMER_ID,
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 });

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import {
   checkInHotelStay,
@@ -7,7 +8,6 @@ import {
   getCurrentPrescriptionForPet,
 } from '../../api/hotel.api';
 import { listCustomerCatalogForStaff } from '../../../catalog/api/catalog.api';
-import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import { HotelCheckInPanel } from './HotelCheckInPanel';
 
 vi.mock('../../api/hotel.api', () => ({
@@ -21,12 +21,7 @@ vi.mock('../../../catalog/api/catalog.api', () => ({
 }));
 
 // Isolates this panel's own validation/pricing logic from
-// HotelBookingPicker's/CageStatusGrid's already-tested internals - each is
-// swapped for a minimal stub that exercises this panel's callback contract.
-vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
-  HotelBookingPicker: vi.fn(),
-}));
-
+// CageStatusGrid's already-tested internals - swapped for a minimal stub.
 vi.mock('../../components/CageStatusGrid/CageStatusGrid', () => ({
   CageStatusGrid: () => null,
 }));
@@ -78,7 +73,7 @@ const FOOD_ITEM = {
   is_active: true,
 };
 
-function setupMocks(booking: unknown = BOOKING) {
+function setupMocks() {
   vi.mocked(getCageSuggestion).mockResolvedValue({
     data: {
       suggestedSize: 'S',
@@ -100,33 +95,28 @@ function setupMocks(booking: unknown = BOOKING) {
           : { data: [], error: null }
       )
   );
-
-  vi.mocked(HotelBookingPicker).mockImplementation(({ onSelect }) =>
-    createElement(
-      'button',
-      { type: 'button', onClick: () => onSelect(booking as never) },
-      'Pick booking'
-    )
-  );
 }
 
-function renderPanel() {
+function renderPanel(booking: unknown = BOOKING) {
   return render(
-    createElement(HotelCheckInPanel, {
-      accessToken: 'token',
-      role: 'Receptionist',
-      branchId: 'branch-1',
-      onCheckedIn: vi.fn(),
-    })
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(HotelCheckInPanel, {
+        accessToken: 'token',
+        role: 'Receptionist',
+        booking: booking as never,
+        onCheckedIn: vi.fn(),
+      })
+    )
   );
 }
 
 describe('HotelCheckInPanel', () => {
   it('Care Instructions load read-only - every feeding field is disabled until Edit is clicked', async () => {
-    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPanel();
+    setupMocks();
+    renderPanel(BOOKING_WITH_CATALOG_FEEDING);
 
-    fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
     expect(screen.getByLabelText('Meal time')).toBeDisabled();
@@ -144,10 +134,9 @@ describe('HotelCheckInPanel', () => {
   });
 
   it('clicking Edit unlocks every care instruction field, in case the customer made a mistake', async () => {
-    setupMocks(BOOKING_WITH_CATALOG_FEEDING);
-    renderPanel();
+    setupMocks();
+    renderPanel(BOOKING_WITH_CATALOG_FEEDING);
 
-    fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -174,14 +163,13 @@ describe('HotelCheckInPanel', () => {
   });
 
   it('#22: a freetext food type from the booking (no catalog match) submits with no catalog id and no billing fields', async () => {
-    setupMocks(BOOKING_WITH_FREETEXT_FEEDING);
+    setupMocks();
     vi.mocked(checkInHotelStay).mockResolvedValue({
       data: { stay: { id: 'stay-1' } },
       error: null,
     } as never);
-    renderPanel();
+    renderPanel(BOOKING_WITH_FREETEXT_FEEDING);
 
-    fireEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: S/);
 
     fireEvent.click(screen.getByRole('button', { name: /Check in/ }));

@@ -102,16 +102,29 @@ export interface MedicationInstructionPayload {
   stay_date?: string;
 }
 
+/** Custom change (Boarding Checklist Kanban): Pending -> In Progress ->
+ * Completed - the Kanban board's column axis. */
+export type CareLogEntryStatus = 'Pending' | 'In Progress' | 'Completed';
+
 export interface CareLogEntry {
   id: string;
   stay_id: string;
   care_type: 'Feeding' | 'Walking' | 'Medication' | 'Playing';
   scheduled_date: string;
   description: string;
+  /** Morning/Noon/Afternoon/Evening - the Kanban board's most important
+   * group-by. Null only for a handful of legacy rows or an
+   * "as scheduled" medication with no real time to bucket. */
+  time_block: MealTime | null;
+  status: CareLogEntryStatus;
   completed_at: string | null;
   completed_by: string | null;
   created_at: string;
   completed_by_staff?: { display_name: string } | null;
+  /** Only populated by getTodayCareLogEntries's join - which pet/stay type
+   * this task belongs to, for the Hotel/Daycare subtabs and pet name
+   * display. */
+  stays?: { stay_type: 'Hotel' | 'Daycare'; pet_id: string } | null;
 }
 
 export interface CheckInPayload {

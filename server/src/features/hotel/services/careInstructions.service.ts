@@ -15,6 +15,7 @@ import type {
   CareWalkingInstruction,
   CheckInResult,
   HotelStay,
+  MealTime,
 } from '../hotel.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -314,6 +315,22 @@ function rowsForDate<T extends { stay_date: string | null }>(
   return rows.filter((row) => row.stay_date == null);
 }
 
+/** Buckets a medication's "HH:MM" scheduled time into the same Morning/
+ * Noon/Afternoon/Evening vocabulary feeding/walking/playing already use, so
+ * every care_type can be grouped by time-of-day consistently on the
+ * Boarding Checklist. `null` for the 'as scheduled' fallback (no real time
+ * to bucket). */
+function bucketMedicationTime(time: string): MealTime | null {
+  const [hourStr] = time.split(':');
+  const hour = Number(hourStr);
+  if (!Number.isFinite(hour)) return null;
+
+  if (hour < 11) return 'Morning';
+  if (hour < 13) return 'Noon';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
 export async function generateCareLogEntries(
   stayId: string,
   days: string[],
@@ -327,6 +344,7 @@ export async function generateCareLogEntries(
     care_type: 'Feeding' | 'Walking' | 'Playing' | 'Medication';
     scheduled_date: string;
     description: string;
+    time_block: MealTime | null;
   }> = [];
 
   for (const date of days) {
@@ -336,6 +354,7 @@ export async function generateCareLogEntries(
         care_type: 'Feeding',
         scheduled_date: date,
         description: `${meal.meal_time} meal — ${meal.quantity} ${meal.food_type}`,
+        time_block: meal.meal_time,
       });
     }
 
@@ -345,6 +364,7 @@ export async function generateCareLogEntries(
         care_type: 'Walking',
         scheduled_date: date,
         description: `${walk.time_block} walk — ${walk.duration_minutes} min`,
+        time_block: walk.time_block,
       });
     }
 
@@ -354,6 +374,7 @@ export async function generateCareLogEntries(
         care_type: 'Playing',
         scheduled_date: date,
         description: `${play.time_block} playtime — ${play.duration_minutes} min`,
+        time_block: play.time_block,
       });
     }
 
@@ -369,6 +390,7 @@ export async function generateCareLogEntries(
           care_type: 'Medication',
           scheduled_date: date,
           description: `${medication.medication_name} ${medication.dose} — ${time}`,
+          time_block: bucketMedicationTime(time),
         });
       }
     }
