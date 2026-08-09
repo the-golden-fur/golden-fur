@@ -183,6 +183,82 @@ describe('careInstructions.service (#75)', () => {
       ]);
     });
 
+    it('Custom change (Boarding Checklist): populates care_log_entries.time_block from each instruction type, bucketing medication by its scheduled clock time', async () => {
+      queueFromResults(
+        { data: CONFIRMED_HOTEL_BOOKING, error: null },
+        { data: null, error: null },
+        { data: { id: 'cage-1', status: 'Occupied' }, error: null },
+        { data: { id: 'stay-1', status: 'Active' }, error: null },
+        { data: { id: 'booking-1', status: 'Pending' }, error: null },
+        { data: { id: 'booking-1', status: 'In Progress' }, error: null },
+        {
+          data: [{ id: 'feed-1', meal_time: 'Noon', food_type: 'Kibble' }],
+          error: null,
+        }, // care_feeding_instructions insert
+        {
+          data: [{ id: 'walk-1', time_block: 'Morning', duration_minutes: 15 }],
+          error: null,
+        }, // care_walking_instructions insert
+        {
+          data: [{ id: 'play-1', time_block: 'Evening', duration_minutes: 10 }],
+          error: null,
+        }, // care_playing_instructions insert
+        {
+          data: [
+            {
+              id: 'med-1',
+              medication_name: 'Amoxicillin',
+              dose: '250mg',
+              scheduled_times: ['08:00'],
+            },
+          ],
+          error: null,
+        }, // care_medication_instructions insert
+        { data: [{ id: 'log-1' }], error: null } // care_log_entries insert
+      );
+
+      await checkInHotelStay({
+        requesterId: 'staff-1',
+        branchId: 'branch-1',
+        input: {
+          booking_id: 'booking-1',
+          cage_id: 'cage-1',
+          feeding: [
+            { meal_time: 'Noon', food_type: 'Kibble', quantity: '1 cup' },
+          ],
+          walking: [{ time_block: 'Morning', duration_minutes: 15 }],
+          playing: [{ time_block: 'Evening', duration_minutes: 10 }],
+          medications: [
+            {
+              medication_name: 'Amoxicillin',
+              dose: '250mg',
+              scheduled_times: ['08:00'],
+            },
+          ],
+          notify_opt_in: false,
+        },
+      });
+
+      const careLogInsert = recordedInserts.find(
+        (write) => write.table === 'care_log_entries'
+      );
+      const rows = careLogInsert?.payload as Array<Record<string, unknown>>;
+
+      expect(rows.find((row) => row.care_type === 'Feeding')).toMatchObject({
+        time_block: 'Noon',
+      });
+      expect(rows.find((row) => row.care_type === 'Walking')).toMatchObject({
+        time_block: 'Morning',
+      });
+      expect(rows.find((row) => row.care_type === 'Playing')).toMatchObject({
+        time_block: 'Evening',
+      });
+      // 08:00 -> before 11am -> Morning
+      expect(rows.find((row) => row.care_type === 'Medication')).toMatchObject({
+        time_block: 'Morning',
+      });
+    });
+
     it('#22: a per-night row carries its stay_date straight through to the insert', async () => {
       queueFromResults(
         { data: CONFIRMED_HOTEL_BOOKING, error: null },

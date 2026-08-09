@@ -7,7 +7,9 @@ import {
   HotelCheckoutRedirect,
   HotelCheckoutStayRedirect,
 } from './pages/HotelQueuePage/HotelLegacyRedirects';
-import { HotelCareLogPage } from './pages/HotelCareLogPage/HotelCareLogPage';
+import { HotelCheckInFormPage } from './pages/HotelCheckInFormPage/HotelCheckInFormPage';
+import { BoardingChecklistPage } from './pages/BoardingChecklistPage/BoardingChecklistPage';
+import { AdminCagesPage } from './pages/AdminCagesPage/AdminCagesPage';
 
 /**
  * Queue redesign: the former separate Hotel Check-in and Hotel Checkout
@@ -21,13 +23,18 @@ export const hotelRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
       <Route path="/staff/hotel/queue" element={<HotelQueuePage />} />
+      <Route
+        path="/staff/hotel/queue/check-in/:bookingId"
+        element={<HotelCheckInFormPage />}
+      />
       <Route path="/staff/hotel/check-in" element={<HotelCheckInRedirect />} />
       <Route path="/staff/hotel/checkout" element={<HotelCheckoutRedirect />} />
       <Route
         path="/staff/hotel/checkout/:stayId"
         element={<HotelCheckoutStayRedirect />}
       />
-      <Route path="/staff/hotel/care-log" element={<HotelCareLogPage />} />
+      <Route path="/staff/hotel/care-log" element={<BoardingChecklistPage />} />
+      <Route path="/staff/admin/hotel/cages" element={<AdminCagesPage />} />
     </Route>
   </Fragment>
 );

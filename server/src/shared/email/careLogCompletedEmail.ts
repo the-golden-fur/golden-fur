@@ -8,9 +8,9 @@ export interface CareLogCompletedEmailParams {
 
 /**
  * Issue #97/#99: replaces careLogCompletion.service.ts's
- * fireCareLogCompletedEvent() stub - still gated by the caller on
- * hotel_stays.notify_opt_in (unchanged from today's behavior), this template
- * itself has no opt-in logic of its own.
+ * fireCareLogCompletedEvent() stub - gated by the caller on the customer's
+ * notification_preferences (the old hotel_stays.notify_opt_in checkbox is
+ * gone), this template itself has no opt-in logic of its own.
  */
 export async function sendCareLogCompletedEmail({
   to,

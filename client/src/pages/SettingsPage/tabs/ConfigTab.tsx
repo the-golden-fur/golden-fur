@@ -45,6 +45,11 @@ const CONFIG_TILES: DashboardTileConfig[] = [
       'Reschedule notice period, Staff Picker visibility, and the fixed lunch break.',
     to: '/staff/admin/maintenance/policies',
   },
+  {
+    title: 'Cages',
+    description: 'Add, edit, delete, or mark a cage Under Maintenance.',
+    to: '/staff/admin/hotel/cages',
+  },
 ];
 
 const SYSTEM_CONFIG_TILE: DashboardTileConfig = {

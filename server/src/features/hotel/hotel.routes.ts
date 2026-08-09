@@ -9,11 +9,16 @@ import {
   checkInController,
   checkoutController,
   completeCareLogEntryController,
+  createCageController,
   currentPrescriptionController,
+  deleteCageController,
   flaggedCareLogEntriesController,
   listHotelStaysController,
+  reopenCareLogEntryController,
+  startCareLogEntryController,
   suggestCageController,
   todayCareLogEntriesController,
+  updateCageController,
   updateCageStatusController,
 } from './hotel.controller.ts';
 import {
@@ -68,6 +73,25 @@ router.patch(
   completeCareLogEntryController
 );
 
+// Custom change (Boarding Checklist Kanban)
+router.patch(
+  '/hotel/care-log-entry/:id/start',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_PET_ASSISTANT_ROLES]),
+  requireBranch,
+  startCareLogEntryController
+);
+
+router.patch(
+  '/hotel/care-log-entry/:id/reopen',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_PET_ASSISTANT_ROLES]),
+  requireBranch,
+  reopenCareLogEntryController
+);
+
 // Issue #80 (pet-assistant-facing daily checklist)
 router.get(
   '/hotel/care-log/today',
@@ -114,6 +138,34 @@ router.patch(
   requireRole([...HOTEL_ADMIN_ROLES]),
   requireBranch,
   updateCageStatusController
+);
+
+// Custom change (Cage CRUD, Settings > Config)
+router.post(
+  '/hotel/cages',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  createCageController
+);
+
+router.patch(
+  '/hotel/cage/:id',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  updateCageController
+);
+
+router.delete(
+  '/hotel/cage/:id',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  deleteCageController
 );
 
 // #79 revision: backs both HotelBookingPicker's "already checked in"

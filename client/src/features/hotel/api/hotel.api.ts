@@ -149,6 +149,61 @@ export async function setCageMaintenanceStatus(
   return { data: result.data?.cage ?? null, error: result.error };
 }
 
+/** Custom change (Cage CRUD, Settings > Config). */
+export async function createCage(
+  cageLabel: string,
+  size: CageSize,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cages`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify({ cage_label: cageLabel, size }),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+export async function updateCage(
+  cageId: string,
+  updates: { cage_label?: string; size?: CageSize },
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+export async function deleteCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<true>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: true, error: null };
+}
+
 export async function getTodayCareLogEntries(
   accessToken: string
 ): Promise<HotelApiResult<CareLogEntry[]>> {
@@ -185,6 +240,42 @@ export async function completeCareLogEntry(
 ): Promise<HotelApiResult<CareLogEntry>> {
   const response = await fetch(
     `${API_BASE_URL}/hotel/care-log-entry/${entryId}/complete`,
+    { method: 'PATCH', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ entry: CareLogEntry }>(response);
+  return { data: result.data?.entry ?? null, error: result.error };
+}
+
+/** Custom change (Boarding Checklist Kanban): Pending -> In Progress. */
+export async function startCareLogEntry(
+  entryId: string,
+  accessToken: string
+): Promise<HotelApiResult<CareLogEntry>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/care-log-entry/${entryId}/start`,
+    { method: 'PATCH', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ entry: CareLogEntry }>(response);
+  return { data: result.data?.entry ?? null, error: result.error };
+}
+
+/** Custom change (Boarding Checklist Kanban): back to Pending. */
+export async function reopenCareLogEntry(
+  entryId: string,
+  accessToken: string
+): Promise<HotelApiResult<CareLogEntry>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/care-log-entry/${entryId}/reopen`,
     { method: 'PATCH', headers: authHeaders(accessToken) }
   );
 

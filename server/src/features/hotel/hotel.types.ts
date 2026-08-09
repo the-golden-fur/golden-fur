@@ -1,8 +1,9 @@
 /**
  * Feature-local role lists (mirrors daycare.types.ts / grooming.types.ts).
  * Front-desk roles can check in, edit care instructions, and process
- * checkout; Pet Assistant may only mark Care Log entries complete
- * (enforced separately in hotel.routes.ts, not folded into this one list).
+ * checkout; Pet Assistant/Groomer may only mark Boarding Checklist entries
+ * Pending/In Progress/Completed (enforced separately in hotel.routes.ts,
+ * not folded into this one list).
  */
 export const HOTEL_FRONT_DESK_ROLES: readonly string[] = [
   'Receptionist',
@@ -11,7 +12,14 @@ export const HOTEL_FRONT_DESK_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
-export const HOTEL_PET_ASSISTANT_ROLES: readonly string[] = ['Pet Assistant'];
+/** Custom change (Boarding Checklist): Groomer added alongside Pet
+ * Assistant - "should be also visible on groomer role" (the checklist now
+ * covers Hotel and Daycare, not just the Pet Assistant's original Hotel-
+ * only scope). Name kept for now to avoid a wider rename ripple. */
+export const HOTEL_PET_ASSISTANT_ROLES: readonly string[] = [
+  'Pet Assistant',
+  'Groomer',
+];
 
 export const HOTEL_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
@@ -143,12 +151,22 @@ export interface CareLogEntry {
   care_type: CareType;
   scheduled_date: string;
   description: string;
+  /** Custom change (Boarding Checklist): the Morning/Noon/Afternoon/Evening
+   * block this task falls in - null only for a handful of pre-migration
+   * rows the backfill couldn't confidently parse (see migration
+   * 20260809120) or a Medication row with no real scheduled time
+   * ('as scheduled'). */
+  time_block: MealTime | null;
   completed_at: string | null;
   completed_by: string | null;
   created_at: string;
   /** Only populated by getTodayCareLogEntries's join (#80 AC-2) - other
    * queries in this feature don't need the completing staff member's name. */
   completed_by_staff?: { display_name: string } | null;
+  /** Custom change (Boarding Checklist): only populated by
+   * getTodayCareLogEntries's join - pet name + which kind of stay
+   * (Hotel/Daycare) this task belongs to, for display/subtab filtering. */
+  stays?: { stay_type: 'Hotel' | 'Daycare'; pet_id: string } | null;
 }
 
 export interface CheckInResult {

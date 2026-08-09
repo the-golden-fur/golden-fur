@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getCageGrid, setCageMaintenanceStatus } from '../../api/hotel.api';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import type { Cage, CageSize, CageStatus } from '../../hotel.types';
 import styles from './CageStatusGrid.module.css';
 
@@ -118,28 +119,26 @@ export function CageStatusGrid({
                         Recommended
                       </span>
                     ) : null}
+                    {isAdmin &&
+                    (cage.status === 'Available' ||
+                      cage.status === 'Under Maintenance') ? (
+                      <MoreOptionsMenu
+                        label={`More options for ${cage.cage_label}`}
+                        items={[
+                          {
+                            label:
+                              cage.status === 'Under Maintenance'
+                                ? 'Mark Available'
+                                : 'Mark Under Maintenance',
+                            onSelect: () => void toggleMaintenance(cage),
+                          },
+                        ]}
+                      />
+                    ) : null}
                   </div>
                   <span className={styles[STATUS_CLASSNAME[cage.status]]}>
                     {cage.status}
                   </span>
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      className={styles.maintenanceToggle}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void toggleMaintenance(cage);
-                      }}
-                      disabled={
-                        cage.status !== 'Available' &&
-                        cage.status !== 'Under Maintenance'
-                      }
-                    >
-                      {cage.status === 'Under Maintenance'
-                        ? 'Mark Available'
-                        : 'Mark Under Maintenance'}
-                    </button>
-                  ) : null}
                 </div>
               ))
             )}

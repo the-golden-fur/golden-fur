@@ -88,6 +88,29 @@ export const cageStatusUpdateValidator = z
 
 export type CageStatusUpdateInput = z.infer<typeof cageStatusUpdateValidator>;
 
+/** Custom change (Cage CRUD, Settings > Config). */
+export const createCageValidator = z
+  .object({
+    cage_label: z.string().trim().min(1),
+    size: z.enum(['S', 'M', 'L', 'XL']),
+  })
+  .strict();
+
+export type CreateCageInput = z.infer<typeof createCageValidator>;
+
+export const updateCageValidator = z
+  .object({
+    cage_label: z.string().trim().min(1).optional(),
+    size: z.enum(['S', 'M', 'L', 'XL']).optional(),
+  })
+  .strict()
+  .refine(
+    (input) => input.cage_label !== undefined || input.size !== undefined,
+    { message: 'At least one field must be provided' }
+  );
+
+export type UpdateCageInput = z.infer<typeof updateCageValidator>;
+
 // createCatalogItemValidator/updateCatalogItemValidator moved to
 // features/catalog/modules/validators/catalog.validator.ts (Sprint 5
 // unification, #82) as createProductValidator/updateProductValidator.
