@@ -5,16 +5,20 @@ import { listStaff } from '../../../staff/api/staff.api';
 import {
   archivePromo,
   createPromo,
+  listBranches,
   listPackages,
+  listPromoCapConfigurations,
   listPromos,
   listServices,
   updatePromo,
+  upsertPromoCapConfiguration,
 } from '../../api/maintenance.api';
 import {
   ServiceMultiSelect,
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PromoCard } from '../../components/PromoCard/PromoCard';
+import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
 import {
   PromoFilterBar,
   type PromoBranchScopeFilter,
@@ -23,10 +27,13 @@ import {
 } from '../../components/PromoFilterBar/PromoFilterBar';
 import { getPromoTiming } from '../../utils/promoTiming';
 import type {
+  BranchSummary,
+  CapType,
   DiscountValueType,
   Package,
   Promo,
   PromoBranchScope,
+  PromoCapConfiguration,
   PromoScopeInput,
   PromoScopeType,
   Service,
@@ -38,6 +45,7 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
 const BRANCH_SCOPES: PromoBranchScope[] = ['makati', 'southwoods', 'both'];
+const DEFAULT_CAP_SCOPE_KEY = 'default';
 
 const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
   makati: 'Makati',
@@ -113,6 +121,16 @@ export function AdminPromoConfigPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [capBranches, setCapBranches] = useState<BranchSummary[]>([]);
+  const [capConfigurations, setCapConfigurations] = useState<
+    PromoCapConfiguration[]
+  >([]);
+  const [capLoadError, setCapLoadError] = useState<string | null>(null);
+  const [savingCapScopeKey, setSavingCapScopeKey] = useState<string | null>(
+    null
+  );
+  const [capMessage, setCapMessage] = useState<string | null>(null);
+
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
   useEffect(() => {
@@ -174,6 +192,73 @@ export function AdminPromoConfigPage() {
       isMounted = false;
     };
   }, [accessToken, isAllowedViewer]);
+
+  useEffect(() => {
+    if (!accessToken || !isAllowedViewer) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void Promise.all([
+      listBranches(),
+      listPromoCapConfigurations(accessToken),
+    ]).then(([branchesResult, capResult]) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (capResult.error || !capResult.data) {
+        setCapLoadError(capResult.error ?? 'Could not load the promo cap.');
+        return;
+      }
+
+      setCapLoadError(null);
+      setCapBranches(branchesResult.data ?? []);
+      setCapConfigurations(capResult.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isAllowedViewer]);
+
+  const handleSaveCap = async (
+    branchId: string | null,
+    scopeKey: string,
+    input: { cap_type: CapType; cap_value: number }
+  ) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setSavingCapScopeKey(scopeKey);
+
+    const result = await upsertPromoCapConfiguration(accessToken, {
+      branch_id: branchId,
+      ...input,
+    });
+
+    setSavingCapScopeKey(null);
+
+    if (result.error || !result.data) {
+      setCapMessage(result.error ?? 'Could not update the promo cap.');
+      return;
+    }
+
+    const saved = result.data;
+    setCapConfigurations((prev) => {
+      const exists = prev.some(
+        (config) => config.branch_id === saved.branch_id
+      );
+      return exists
+        ? prev.map((config) =>
+            config.branch_id === saved.branch_id ? saved : config
+          )
+        : [...prev, saved];
+    });
+    setCapMessage('Promo cap updated.');
+  };
 
   const filteredPromos = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
@@ -663,6 +748,61 @@ export function AdminPromoConfigPage() {
             ))}
           </div>
         )}
+
+        <section aria-labelledby="promo-cap-heading">
+          <h2 className={styles.sectionTitle} id="promo-cap-heading">
+            Promo Cap Configuration
+          </h2>
+          <p className={styles.copy}>
+            Maximum total discount value that all combined, customer-activated
+            promos may contribute to one transaction. Each branch (and the
+            system-wide default) has its own cap, viewed and saved
+            independently.
+          </p>
+
+          {capMessage ? (
+            <p className={styles.successBanner} role="status">
+              {capMessage}
+            </p>
+          ) : null}
+
+          {capLoadError ? (
+            <p className={styles.errorBanner} role="alert">
+              {capLoadError}
+            </p>
+          ) : (
+            <div className={styles.promoGrid}>
+              <PromoCapCard
+                key={`default-${capConfigurations.find((config) => config.branch_id === null)?.id ?? 'unsaved'}`}
+                scopeLabel="Both branches (system-wide default)"
+                config={capConfigurations.find(
+                  (config) => config.branch_id === null
+                )}
+                onSave={(input) =>
+                  void handleSaveCap(null, DEFAULT_CAP_SCOPE_KEY, input)
+                }
+                isSaving={savingCapScopeKey === DEFAULT_CAP_SCOPE_KEY}
+              />
+              {capBranches.map((branch) => {
+                const config = capConfigurations.find(
+                  (candidate) => candidate.branch_id === branch.id
+                );
+
+                return (
+                  <PromoCapCard
+                    key={`${branch.id}-${config?.id ?? 'unsaved'}`}
+                    scopeLabel={branch.name}
+                    config={config}
+                    onSave={(input) =>
+                      void handleSaveCap(branch.id, branch.id, input)
+                    }
+                    isSaving={savingCapScopeKey === branch.id}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
