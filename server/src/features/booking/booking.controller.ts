@@ -15,6 +15,7 @@ import {
   listPolicyConfigurations,
   updatePolicyConfiguration,
 } from './services/staffPicker.service.ts';
+import { getCagePickerOptions } from './services/cagePicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
@@ -27,6 +28,7 @@ import { getBookingCatalog } from './services/catalog.service.ts';
 import {
   advancePaymentStageValidator,
   availabilityQueryValidator,
+  cagePickerQueryValidator,
   cancelBookingValidator,
   catalogQueryValidator,
   createBookingValidator,
@@ -309,6 +311,37 @@ export async function staffPickerOptionsController(
       scheduledStart: parsed.data.scheduled_start,
       scheduledEnd: parsed.data.scheduled_end,
     });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change: Cage Picker addendum - mirrors staffPickerOptionsController. */
+export async function cagePickerOptionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = cagePickerQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await getCagePickerOptions(
+      parsed.data.branch_id,
+      'Hotel'
+    );
 
     return res.status(200).json(result);
   } catch (error) {

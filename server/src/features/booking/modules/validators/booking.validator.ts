@@ -46,6 +46,31 @@ export const staffPreferenceValidator = z
     }
   });
 
+/** Custom change: Cage Picker addendum - mirrors staffPreferenceValidator. */
+export const cagePreferenceValidator = z
+  .object({
+    type: z.enum(['no_preference', 'specific']),
+    cage_id: z.uuid().optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.type === 'specific' && !input.cage_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cage_id'],
+        message: 'cage_id is required when preference type is "specific"',
+      });
+    }
+
+    if (input.type === 'no_preference' && input.cage_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cage_id'],
+        message: 'cage_id must be omitted for "no_preference"',
+      });
+    }
+  });
+
 /** Each selected item is exactly one of a service or a package (mirrors
  * booking_items' own CHECK constraint), and a booking must select at least
  * one item overall - multi-item bookings revision, replacing the old
@@ -181,6 +206,7 @@ export const createBookingValidator = z
     scheduled_start: isoDatetime,
     scheduled_end: isoDatetime,
     staff_preference: staffPreferenceValidator.optional(),
+    cage_preference: cagePreferenceValidator.optional(),
     payment_method: z.enum(PAYMENT_METHODS).optional(),
     payment_confirmed: z.boolean().optional(),
     // Custom change (P-1 roadmap item: generic downpayment) - only
@@ -323,6 +349,14 @@ export const staffPickerQueryValidator = z.object({
   scheduled_end: isoDatetime,
 });
 
+/** Custom change: Cage Picker addendum - branch-only, unlike the staff
+ * picker's time-window query, since cage availability is a live status
+ * snapshot (Available/Occupied/Reserved/Under Maintenance) rather than a
+ * time-window overlap check - see cagePicker.service.ts. */
+export const cagePickerQueryValidator = z.object({
+  branch_id: z.uuid(),
+});
+
 /**
  * #56/#60 supporting infra: neither the Slot Picker UI nor the Receptionist
  * Bookings Queue had a read endpoint to call against in the merged #51/#52
@@ -444,6 +478,7 @@ export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type StaffPickerQueryInput = z.infer<typeof staffPickerQueryValidator>;
+export type CagePickerQueryInput = z.infer<typeof cagePickerQueryValidator>;
 export type AvailabilityQueryInput = z.infer<typeof availabilityQueryValidator>;
 export type CatalogQueryInput = z.infer<typeof catalogQueryValidator>;
 export type ListBookingsQueryInput = z.infer<typeof listBookingsQueryValidator>;

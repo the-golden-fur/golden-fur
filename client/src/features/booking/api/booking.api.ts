@@ -1,6 +1,7 @@
 import type {
   Booking,
   BookingStatus,
+  CagePickerOptionsResult,
   CancelBookingPayload,
   CancellationResult,
   CreateBookingPayload,
@@ -17,7 +18,9 @@ import type {
   Package,
   Promo,
   Service,
+  ServiceType,
 } from '../../maintenance/maintenance.types';
+import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 
 interface BookingApiResult<T> {
   data: T | null;
@@ -287,6 +290,55 @@ export async function getStaffPickerOptions(
   }
 
   return parseBody<StaffPickerOptionsResult>(response);
+}
+
+/**
+ * Custom change: Service Types addendum - no Express endpoint here (unlike
+ * maintenance.api.ts's staff-only listServiceTypes CRUD surface), same
+ * pattern as that file's own listBranches/customer.api.ts's listBreeds:
+ * service_types RLS grants SELECT to every authenticated user, so both the
+ * customer flow and receptionist walk-in mode read it directly via the
+ * Supabase client. Used to drive the Service Type step's active/inactive
+ * filtering and customer-facing labels.
+ */
+export async function listServiceTypes(): Promise<
+  BookingApiResult<ServiceType[]>
+> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return { data: null, error: 'Supabase client is not configured.' };
+  }
+
+  const { data, error } = await supabase
+    .from('service_types')
+    .select('*')
+    .order('created_at');
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as ServiceType[], error: null };
+}
+
+/** Custom change: Cage Picker addendum - mirrors getStaffPickerOptions. */
+export async function getCagePickerOptions(
+  accessToken: string,
+  branchId: string
+): Promise<BookingApiResult<CagePickerOptionsResult>> {
+  const params = new URLSearchParams({ branch_id: branchId });
+
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/cage-picker?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<CagePickerOptionsResult>(response);
 }
 
 export async function rescheduleBooking(

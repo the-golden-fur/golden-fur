@@ -249,6 +249,10 @@ export interface Booking {
   promo_amount: number;
   special_instructions: string | null;
   hotel_preferences: HotelBookingPreferences | null;
+  /** Custom change: Cage Picker addendum - a Hotel booking's soft, booking-
+   * time cage preference. NULL = no preference. The real cage claim still
+   * only happens at check-in. */
+  preferred_cage_id: string | null;
   started_at: string | null;
   completed_at: string | null;
   paid_at: string | null;
@@ -298,6 +302,23 @@ export type StaffPickerOption =
 export interface StaffPickerOptionsResult {
   staff_picker_enabled: boolean;
   options: StaffPickerOption[];
+}
+
+/** Custom change: Cage Picker addendum - mirrors StaffPickerOption/
+ * StaffPickerOptionsResult. Only offered for Hotel bookings whose service
+ * type has cage_picker_enabled set (Admin Settings > Service Types). */
+export type CagePickerOption =
+  | { type: 'no_preference' }
+  | {
+      type: 'specific';
+      cage_id: string;
+      cage_label: string;
+      size: string;
+    };
+
+export interface CagePickerOptionsResult {
+  cage_picker_enabled: boolean;
+  options: CagePickerOption[];
 }
 
 export interface PolicyConfiguration {
@@ -366,6 +387,12 @@ export interface StaffPreferenceInput {
   staff_id?: string;
 }
 
+/** Custom change: Cage Picker addendum - mirrors StaffPreferenceInput. */
+export interface CagePreferenceInput {
+  type: 'no_preference' | 'specific';
+  cage_id?: string;
+}
+
 export type BookingItemInput = { service_id: string } | { package_id: string };
 
 export interface CreateBookingPayload {
@@ -377,6 +404,7 @@ export interface CreateBookingPayload {
   scheduled_start: string;
   scheduled_end: string;
   staff_preference?: StaffPreferenceInput;
+  cage_preference?: CagePreferenceInput;
   payment_method?: PaymentMethod;
   payment_confirmed?: boolean;
   /** Only meaningful when the selected items require a downpayment and
