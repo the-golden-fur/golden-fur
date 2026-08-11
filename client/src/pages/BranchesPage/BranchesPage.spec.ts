@@ -11,9 +11,10 @@ describe('BranchesPage', () => {
     expect(
       screen.getByRole('heading', { name: /branches/i })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /back to home/i })
-    ).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute(
+      'href',
+      '/'
+    );
   });
 
   it('renders a Get Directions link per branch pointing at Google Maps', () => {

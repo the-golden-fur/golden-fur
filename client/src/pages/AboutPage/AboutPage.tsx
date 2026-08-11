@@ -9,8 +9,8 @@ export function AboutPage() {
       <main className={styles.page}>
         <h1 className={styles.title}>About</h1>
         <p className={styles.copy}>
-          Placeholder content — replace with the About page design (our
-          story, mission, team, etc.).
+          Placeholder content — replace with the About page design (our story,
+          mission, team, etc.).
         </p>
         <Link to="/" className={styles.link}>
           Back to home

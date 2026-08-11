@@ -33,8 +33,8 @@ export function BranchesPage() {
       <main className={styles.page}>
         <h1 className={styles.title}>Branches</h1>
         <p className={styles.copy}>
-          Visit us at any of our branches below — tap "Get Directions" to
-          open turn-by-turn directions in Google Maps.
+          Visit us at any of our branches below — tap "Get Directions" to open
+          turn-by-turn directions in Google Maps.
         </p>
 
         <div className={styles.branchList}>

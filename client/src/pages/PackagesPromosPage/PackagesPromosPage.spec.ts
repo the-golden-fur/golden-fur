@@ -11,9 +11,7 @@ vi.mock('../../features/public/api/publicCatalog.api', () => ({
 }));
 
 function renderPage() {
-  render(
-    createElement(MemoryRouter, null, createElement(PackagesPromosPage))
-  );
+  render(createElement(MemoryRouter, null, createElement(PackagesPromosPage)));
 }
 
 describe('PackagesPromosPage', () => {
@@ -28,9 +26,10 @@ describe('PackagesPromosPage', () => {
     expect(
       screen.getByRole('heading', { name: /packages & promos/i })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /back to home/i })
-    ).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute(
+      'href',
+      '/'
+    );
 
     await waitFor(() =>
       expect(screen.getByText(/no packages available/i)).toBeInTheDocument()

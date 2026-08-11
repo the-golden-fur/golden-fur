@@ -75,7 +75,10 @@ export async function getPublicPackagesPromos(): Promise<PublicPackagesPromos> {
         }));
 
       const individualTotalPrice = round2(
-        includedServices.reduce((total, service) => total + service.base_price, 0)
+        includedServices.reduce(
+          (total, service) => total + service.base_price,
+          0
+        )
       );
 
       return {

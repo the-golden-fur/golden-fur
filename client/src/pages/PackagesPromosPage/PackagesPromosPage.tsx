@@ -59,7 +59,8 @@ export function PackagesPromosPage() {
 
       if (result.error || !result.data) {
         setError(
-          result.error ?? 'Failed to load packages and promos. Please try again.'
+          result.error ??
+            'Failed to load packages and promos. Please try again.'
         );
         setStatus('error');
         return;
@@ -81,8 +82,8 @@ export function PackagesPromosPage() {
       <main className={styles.page}>
         <h1 className={styles.title}>Packages &amp; Promos</h1>
         <p className={styles.copy}>
-          Bundled service packages and active promos from our branches,
-          updated live by our team.
+          Bundled service packages and active promos from our branches, updated
+          live by our team.
         </p>
 
         {status === 'loading' && (
@@ -96,9 +97,7 @@ export function PackagesPromosPage() {
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Packages</h2>
               {packages.length === 0 ? (
-                <p className={styles.copy}>
-                  No packages available right now.
-                </p>
+                <p className={styles.copy}>No packages available right now.</p>
               ) : (
                 <div className={styles.grid}>
                   {packages.map((pkg) => (
@@ -106,8 +105,7 @@ export function PackagesPromosPage() {
                       <summary className={styles.cardSummary}>
                         <span className={styles.cardTitle}>{pkg.name}</span>
                         <span className={styles.cardMeta}>
-                          {pkg.branch_name} ·{' '}
-                          {pkg.included_services.length}{' '}
+                          {pkg.branch_name} · {pkg.included_services.length}{' '}
                           service
                           {pkg.included_services.length === 1 ? '' : 's'}
                         </span>
@@ -129,7 +127,9 @@ export function PackagesPromosPage() {
                                 className={styles.serviceItem}
                               >
                                 <span>{service.name}</span>
-                                <span>{formatCurrency(service.base_price)}</span>
+                                <span>
+                                  {formatCurrency(service.base_price)}
+                                </span>
                               </li>
                             ))}
                           </ul>

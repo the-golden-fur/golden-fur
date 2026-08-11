@@ -33,9 +33,7 @@ async function parseError(response: Response): Promise<string> {
     error?: string;
   } | null;
 
-  return (
-    body?.error ?? 'Failed to load packages and promos. Please try again.'
-  );
+  return body?.error ?? 'Failed to load packages and promos. Please try again.';
 }
 
 /**

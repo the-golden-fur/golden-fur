@@ -12,7 +12,8 @@ export async function packagesPromosController(_req: Request, res: Response) {
     const result = await getPublicPackagesPromos();
     return res.status(200).json(result);
   } catch (error) {
-    const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
+    const statusCode =
+      (error as Error & { statusCode?: number }).statusCode ?? 500;
     const message =
       statusCode === 500
         ? 'Internal server error'
