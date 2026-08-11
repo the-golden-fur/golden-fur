@@ -15,6 +15,9 @@ import { billingRoutes } from './features/billing/billing.routes';
 import { creditsRoutes } from './features/credits/credits.routes';
 import { reportsRoutes } from './features/reports/reports.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
+import { BranchesPage } from './pages/BranchesPage/BranchesPage';
+import { PackagesPromosPage } from './pages/PackagesPromosPage/PackagesPromosPage';
+import { AboutPage } from './pages/AboutPage/AboutPage';
 import { ServerErrorPage } from './pages/ServerErrorPage/ServerErrorPage';
 import { NotFoundPage } from './pages/NotFoundPage/NotFoundPage';
 
@@ -37,6 +40,9 @@ export function AppRoutes() {
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />
+      <Route path="/branches" element={<BranchesPage />} />
+      <Route path="/packages" element={<PackagesPromosPage />} />
+      <Route path="/about" element={<AboutPage />} />
       <Route path="/error" element={<ServerErrorPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

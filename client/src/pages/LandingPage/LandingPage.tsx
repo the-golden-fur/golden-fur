@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router';
 import { LandingNavbar } from './components/LandingNavbar/LandingNavbar';
 import doggyGif from '../../assets/doggy.gif';
 import heroBg from '../../assets/herobg.png';
@@ -31,6 +32,20 @@ export default function GoldenFurLanding() {
 
     if (navToggle && primaryNavLinks) {
       navToggle.addEventListener('click', handleNavToggleClick);
+    }
+
+    // Scrolls to the target section when arriving via a link from another
+    // page (e.g. LandingNavbar's Services link on /branches, /packages, or
+    // /about is `/#featureStripSection`) - client-side navigation doesn't
+    // trigger the browser's native hash-scroll behavior the way a full page
+    // load does.
+    if (window.location.hash) {
+      const target = document.getElementById(window.location.hash.slice(1));
+      if (target) {
+        requestAnimationFrame(() => {
+          target.scrollIntoView({ behavior: 'smooth' });
+        });
+      }
     }
 
     function prepareStaggerText(el: HTMLElement) {
@@ -768,6 +783,7 @@ export default function GoldenFurLanding() {
 
       <section
         className="feature-strip-section"
+        id="featureStripSection"
         aria-label="More service highlights"
       >
         <div className="feature-strip">
@@ -1153,16 +1169,16 @@ export default function GoldenFurLanding() {
             <h4>Explore</h4>
             <ul>
               <li>
-                <a href="#">Services</a>
+                <a href="#featureStripSection">Services</a>
               </li>
               <li>
-                <a href="#">Branches</a>
+                <Link to="/branches">Branches</Link>
               </li>
               <li>
-                <a href="#">Packages &amp; Promos</a>
+                <Link to="/packages">Packages</Link>
               </li>
               <li>
-                <a href="#">About</a>
+                <Link to="/about">About</Link>
               </li>
             </ul>
           </div>

@@ -118,6 +118,13 @@ export default defineConfig(({ mode }) => {
         // surfaces client-side as a generic "Request failed" with nothing in
         // the Network tab looking obviously wrong).
         '/notifications': apiProxy,
+        // public.routes.ts (server) is mounted at the server root too - it
+        // has no client-side page route of its own (it's called from
+        // PackagesPromosPage, whose own route is '/packages'), so no bypass
+        // is needed here either. Without this entry, GET /public/... falls
+        // through to Vite's own dev server instead of reaching Express, same
+        // failure mode as the '/branches' entry above.
+        '/public': apiProxy,
       },
     },
   };
