@@ -17,8 +17,10 @@ interface AppShellProps {
   brandLabel: string;
   identity: AppShellIdentity | null;
   sidebarSections: SidebarSection[];
-  /** Issue #100: staff-only NotificationBell, passed through to Navbar. */
+  /** NotificationBell, passed through to Navbar. */
   notificationBell?: ReactNode;
+  /** ComposeEntryPoint (mail icon), passed through to Navbar. */
+  composeButton?: ReactNode;
   /** Rendered above the routed page content, below the navbar - e.g. the
    * staff-only UnavailabilityBlockBadge. */
   children?: ReactNode;
@@ -44,6 +46,7 @@ export function AppShell({
   identity,
   sidebarSections,
   notificationBell,
+  composeButton,
   children,
 }: AppShellProps) {
   const storageKey = `sidebar-collapsed-${role}`;
@@ -72,6 +75,7 @@ export function AppShell({
           brandLabel={brandLabel}
           identity={identity}
           notificationBell={notificationBell}
+          composeButton={composeButton}
         />
       </div>
       <div className={styles.body}>

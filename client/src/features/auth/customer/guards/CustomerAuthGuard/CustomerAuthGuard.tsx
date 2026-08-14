@@ -7,6 +7,8 @@ import { hasProfile } from '../../../../../shared/api/preferences.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
 import { getCustomerProfile } from '../../../../customers/api/customer.api';
 import { CUSTOMER_SIDEBAR_SECTIONS } from '../../../../customers/config/customerPortal.config';
+import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
+import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
@@ -128,6 +130,19 @@ export function CustomerAuthGuard() {
       brandLabel="Golden Fur"
       identity={fullName ? { primary: fullName } : null}
       sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+      notificationBell={
+        accessToken ? (
+          <NotificationBell
+            accessToken={accessToken}
+            notificationsHref="/portal/notifications"
+          />
+        ) : null
+      }
+      composeButton={
+        accessToken ? (
+          <ComposeEntryPoint accessToken={accessToken} viewerRole={null} />
+        ) : null
+      }
     />
   );
 }

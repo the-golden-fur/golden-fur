@@ -11,6 +11,11 @@ export const NOTIFICATION_EVENT_TYPES = [
   'appointment_reminder',
   'booking_cancelled',
   'care_log_completed',
+  /** Custom change (notifications page + admin announcements, migration
+   * 20260814124): covers both an announcement's initial delivery and every
+   * reply in its thread - related_thread_id (below) is what distinguishes
+   * "go read this thread," not the event type. */
+  'message_received',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -54,7 +59,14 @@ export interface Notification {
   title: string;
   message: string;
   related_booking_id: string | null;
+  /** Custom change (notifications page + admin announcements): set only for
+   * 'message_received' - points at the message_threads row to open. */
+  related_thread_id: string | null;
   is_read: boolean;
+  /** Custom change (Gmail-style messaging redesign): powers the merged
+   * Inbox's Starred folder / delete action for plain system notifications. */
+  is_starred: boolean;
+  is_deleted: boolean;
   created_at: string;
 }
 
@@ -65,6 +77,9 @@ export interface CreateNotificationParams {
   title: string;
   message: string;
   relatedBookingId?: string | null;
+  /** Custom change (notifications page + admin announcements): set only for
+   * 'message_received' events - see Notification.related_thread_id. */
+  relatedThreadId?: string | null;
   /**
    * Best-effort email leg - the caller builds the actual send call (each of
    * the 8 event types needs different template params, so notification.

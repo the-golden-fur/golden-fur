@@ -125,6 +125,19 @@ export default defineConfig(({ mode }) => {
         // through to Vite's own dev server instead of reaching Express, same
         // failure mode as the '/branches' entry above.
         '/public': apiProxy,
+        // messaging.routes.ts (server, Gmail-style messaging redesign) is
+        // mounted at the server root too - its client-side page routes are
+        // '/staff/notifications' and '/portal/notifications', not bare
+        // '/messages', so no bypass is needed here either. This entry was
+        // originally missed when messaging.routes.ts was added - every
+        // /messages/* call (thread list, directory search, star/delete,
+        // drafts, mail/announcement create) silently fell through to Vite's
+        // dev server instead of reaching Express, same failure mode as the
+        // '/branches'/'/catalog'/'/reports' entries above document: a
+        // non-JSON response, not a 404/403, surfacing client-side as a
+        // generic "Request failed" or (for the directory search) an
+        // empty-looking result list with no visible error at all.
+        '/messages': apiProxy,
       },
     },
   };

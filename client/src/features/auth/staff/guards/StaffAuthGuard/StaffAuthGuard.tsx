@@ -6,6 +6,7 @@ import type { SidebarSection } from '../../../../../shared/components/Sidebar/Si
 import { SessionExpiryModal } from '../../../../../shared/components/SessionExpiryModal/SessionExpiryModal';
 import { MfaSetupModal } from '../../../../../shared/components/MfaSetupModal/MfaSetupModal';
 import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
+import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
 import { useInactivityTimeout } from '../../../../../shared/hooks/useInactivityTimeout/useInactivityTimeout';
 import { getStaffProfile } from '../../../../staff/api/staff.api';
 import {
@@ -190,7 +191,17 @@ export function StaffAuthGuard() {
         }
         sidebarSections={buildSidebarSections(role)}
         notificationBell={
-          accessToken ? <NotificationBell accessToken={accessToken} /> : null
+          accessToken ? (
+            <NotificationBell
+              accessToken={accessToken}
+              notificationsHref="/staff/notifications"
+            />
+          ) : null
+        }
+        composeButton={
+          accessToken ? (
+            <ComposeEntryPoint accessToken={accessToken} viewerRole={role} />
+          ) : null
         }
       />
       <SessionExpiryModal

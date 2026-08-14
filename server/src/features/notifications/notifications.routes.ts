@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import {
+  deleteNotificationController,
   listNotificationsController,
   markAllNotificationsReadController,
   markNotificationReadController,
+  starNotificationController,
 } from './notifications.controller.ts';
 
 /**
@@ -25,6 +27,16 @@ router.patch(
   '/notifications/:id/read',
   jwtMiddleware,
   markNotificationReadController
+);
+router.patch(
+  '/notifications/:id/star',
+  jwtMiddleware,
+  starNotificationController
+);
+router.post(
+  '/notifications/:id/delete',
+  jwtMiddleware,
+  deleteNotificationController
 );
 
 export default router;

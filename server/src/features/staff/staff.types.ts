@@ -14,6 +14,18 @@ export type StaffRole = (typeof ALL_STAFF_ROLES)[number];
 export const ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
 /**
+ * Custom change (Gmail-style messaging redesign): who may send an
+ * Announcement-type message - wider than ADMIN_ROLES (which also gates
+ * unrelated staff-CRUD routes) on purpose, so widening this doesn't touch
+ * staff account management.
+ */
+export const ANNOUNCEMENT_SENDER_ROLES: readonly string[] = [
+  'Supervisor',
+  'Admin',
+  'Superadmin',
+];
+
+/**
  * Roles allowed to act on another staff member's unavailability block —
  * create/cancel/list on-behalf-of (#28) and review a pending request (#29).
  * Deliberately separate from ADMIN_ROLES: that constant also gates staff

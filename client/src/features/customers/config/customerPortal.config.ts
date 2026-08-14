@@ -1,4 +1,5 @@
 import {
+  Bell,
   CalendarPlus,
   ClipboardList,
   Home,
@@ -23,6 +24,7 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
     label: null,
     items: [
       { title: 'Home', to: '/portal', icon: Home },
+      { title: 'Notifications', to: '/portal/notifications', icon: Bell },
       { title: 'Book a Service', to: '/portal/book', icon: CalendarPlus },
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },
       { title: 'Transactions', to: '/portal/transactions', icon: Receipt },

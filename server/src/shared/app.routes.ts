@@ -15,6 +15,7 @@ import billingRoutes from '../features/billing/billing.routes.ts';
 import paymongoWebhookRoutes from '../features/billing/routes/paymongoWebhook.routes.ts';
 import creditsRoutes from '../features/credits/credits.routes.ts';
 import notificationsRoutes from '../features/notifications/notifications.routes.ts';
+import messagingRoutes from '../features/messaging/messaging.routes.ts';
 import reportsRoutes from '../features/reports/reports.routes.ts';
 import publicRoutes from '../features/public/public.routes.ts';
 
@@ -36,6 +37,7 @@ router.use(billingRoutes);
 router.use(paymongoWebhookRoutes);
 router.use(creditsRoutes);
 router.use(notificationsRoutes);
+router.use(messagingRoutes);
 router.use(reportsRoutes);
 router.use(publicRoutes);
 

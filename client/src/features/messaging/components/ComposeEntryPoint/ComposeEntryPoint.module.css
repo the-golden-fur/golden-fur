@@ -1,0 +1,10 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--space-1);
+}

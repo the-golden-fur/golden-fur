@@ -1,0 +1,102 @@
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.textarea {
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+}
+
+.checkboxGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-1) var(--space-3);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.button {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+  box-shadow: var(--shadow-sm);
+}
+
+.button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-accent-gold-primary);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+}
+
+.secondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}

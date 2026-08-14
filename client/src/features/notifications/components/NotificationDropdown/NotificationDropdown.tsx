@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import type { Notification } from '../../notifications.types';
 import { NotificationList } from '../NotificationList/NotificationList';
 import styles from './NotificationDropdown.module.css';
@@ -9,6 +10,9 @@ interface NotificationDropdownProps {
   unreadCount: number;
   onSelect: (notification: Notification) => void;
   onMarkAllRead: () => void;
+  /** Route to the full notifications page - "View all" navigates here. */
+  notificationsHref: string;
+  onViewAll: () => void;
 }
 
 /**
@@ -24,6 +28,8 @@ export function NotificationDropdown({
   unreadCount,
   onSelect,
   onMarkAllRead,
+  notificationsHref,
+  onViewAll,
 }: NotificationDropdownProps) {
   return (
     <div className={styles.panel} role="menu" aria-label="Notifications">
@@ -46,6 +52,13 @@ export function NotificationDropdown({
           onSelect={onSelect}
         />
       </div>
+      <Link
+        to={notificationsHref}
+        className={styles.viewAllLink}
+        onClick={onViewAll}
+      >
+        View all
+      </Link>
     </div>
   );
 }

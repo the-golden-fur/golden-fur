@@ -6,6 +6,8 @@ import {
   getInboxForStaff,
   markAllRead,
   markRead,
+  setNotificationDeleted,
+  setNotificationStarred,
 } from './services/notification.service.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
@@ -65,13 +67,69 @@ export async function markNotificationReadController(
 
   try {
     const staffRole = await getStaffRoleOrNull(requesterId);
+    const body = req.body as { read?: boolean };
     const notification = await markRead({
+      notificationId: paramId(req, 'id'),
+      recipientId: requesterId,
+      isStaff: Boolean(staffRole),
+      read: body?.read,
+    });
+
+    return res.status(200).json({ notification });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function starNotificationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const starred = (req.body as { starred?: boolean })?.starred;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (typeof starred !== 'boolean') {
+    return res.status(400).json({ error: 'starred must be a boolean' });
+  }
+
+  try {
+    const staffRole = await getStaffRoleOrNull(requesterId);
+    const notification = await setNotificationStarred({
+      notificationId: paramId(req, 'id'),
+      recipientId: requesterId,
+      isStaff: Boolean(staffRole),
+      starred,
+    });
+
+    return res.status(200).json({ notification });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deleteNotificationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const staffRole = await getStaffRoleOrNull(requesterId);
+    await setNotificationDeleted({
       notificationId: paramId(req, 'id'),
       recipientId: requesterId,
       isStaff: Boolean(staffRole),
     });
 
-    return res.status(200).json({ notification });
+    return res.status(200).json({ success: true });
   } catch (error) {
     return sendServiceError(res, error);
   }
