@@ -81,6 +81,7 @@ export async function createNotification(
         title: params.title,
         message: params.message,
         related_booking_id: params.relatedBookingId ?? null,
+        related_thread_id: params.relatedThreadId ?? null,
       })
       .select('*')
       .maybeSingle();
@@ -160,6 +161,7 @@ export async function getInboxForStaff({
     .from('notifications')
     .select('*')
     .eq('recipient_staff_id', recipientId)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false });
 
   if (error) throwWithStatus(400, error.message);
@@ -174,6 +176,7 @@ export async function getInboxForCustomer({
     .from('notifications')
     .select('*')
     .eq('recipient_customer_id', recipientId)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false });
 
   if (error) throwWithStatus(400, error.message);
@@ -185,6 +188,8 @@ interface MarkReadParams {
   notificationId: string;
   recipientId: string;
   isStaff: boolean;
+  /** Defaults true - pass false for an explicit "mark as unread". */
+  read?: boolean;
 }
 
 /**
@@ -198,6 +203,7 @@ export async function markRead({
   notificationId,
   recipientId,
   isStaff,
+  read = true,
 }: MarkReadParams): Promise<Notification> {
   const recipientColumn = isStaff
     ? 'recipient_staff_id'
@@ -205,7 +211,7 @@ export async function markRead({
 
   const { data, error } = await supabase
     .from('notifications')
-    .update({ is_read: true })
+    .update({ is_read: read })
     .eq('id', notificationId)
     .eq(recipientColumn, recipientId)
     .select('*')
@@ -215,6 +221,56 @@ export async function markRead({
   if (!data) throwWithStatus(404, 'Notification not found');
 
   return data as Notification;
+}
+
+interface SetNotificationStarredParams {
+  notificationId: string;
+  recipientId: string;
+  isStaff: boolean;
+  starred: boolean;
+}
+
+export async function setNotificationStarred({
+  notificationId,
+  recipientId,
+  isStaff,
+  starred,
+}: SetNotificationStarredParams): Promise<Notification> {
+  const recipientColumn = isStaff ? 'recipient_staff_id' : 'recipient_customer_id';
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .update({ is_starred: starred })
+    .eq('id', notificationId)
+    .eq(recipientColumn, recipientId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Notification not found');
+
+  return data as Notification;
+}
+
+/**
+ * One-way/soft, same convention as messaging.service.ts's setThreadDeleted -
+ * hides the row from getInboxForStaff/getInboxForCustomer going forward, no
+ * restore UI in this pass.
+ */
+export async function setNotificationDeleted({
+  notificationId,
+  recipientId,
+  isStaff,
+}: Omit<SetNotificationStarredParams, 'starred'>): Promise<void> {
+  const recipientColumn = isStaff ? 'recipient_staff_id' : 'recipient_customer_id';
+
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_deleted: true })
+    .eq('id', notificationId)
+    .eq(recipientColumn, recipientId);
+
+  if (error) throwWithStatus(400, error.message);
 }
 
 interface MarkAllReadParams {
