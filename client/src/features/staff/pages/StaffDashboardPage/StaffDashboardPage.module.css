@@ -35,3 +35,25 @@
   font-size: var(--text-sm);
   padding: var(--space-2);
 }
+
+.widgetsSection {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 0 var(--space-2) var(--space-4);
+}
+
+/* Masonry-like flex row: equal-grow columns from a 280px basis (not a rigid
+   grid), wrapping as needed, with align-items: flex-start so each card
+   keeps its own natural height instead of stretching to match its
+   row's tallest sibling. */
+.widgetsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.widgetsRow > * {
+  flex: 1 1 280px;
+}
