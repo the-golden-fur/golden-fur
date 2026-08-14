@@ -17,13 +17,13 @@
  * use either mode. data-theme (role) no longer carries any color tokens.
  */
 [data-color-mode='light'] {
-  --color-bg-primary: #f7f2e8;
+  --color-bg-primary: #fdf6e6;
   --color-bg-secondary: #fffdf7;
   --color-text-primary: #3d2b1f;
   --color-text-secondary: #6f5945;
   --color-text-muted: #8c745f;
   --color-border: #e8dcc7;
-  --color-surface: #fff8eb;
+  --color-surface: #fffefb;
   --color-accent: #8a5a1f;
   --color-accent-hover: #704517;
   --color-accent-fg: #fffaf0;
@@ -39,6 +39,20 @@
   --color-sidebar-footer-bg: #3a2612;
   --color-nav-active-bg: #f8e7c2;
   --color-nav-active-border: #b57a2b;
+  /* Design refresh (temp/design) - the in-app portal nav rail (Sidebar
+     component) reads as a light/cream rail in light mode, distinct from
+     --color-sidebar-grad-* above which stays a dark brand-gold gradient for
+     the login-page hero panel and marketing pages (AboutPage, LandingPage,
+     etc.) - those are brand moments, not navigation chrome, so they keep
+     their own look regardless of the app's light/dark toggle. */
+  --color-portal-nav-bg-start: #fffefb;
+  --color-portal-nav-bg-end: #fff9ea;
+  --color-portal-nav-text: #4a3728;
+  --color-portal-nav-hover-bg: rgba(178, 127, 27, 0.08);
+  --color-portal-nav-border: #eee0c8;
+  --color-portal-nav-active-bg: #f0c75e;
+  --color-portal-nav-active-border: #d4a72c;
+  --color-portal-nav-active-text: #3d2b1f;
   --color-brand-gold-logo: #b37f1b;
   --color-accent-gold-highlight: #d0a24d;
   --color-accent-gold-primary: #c88a1b;
@@ -47,13 +61,15 @@
   --color-badge-bg-gold: #f7e3b6;
   --color-text-on-sidebar: #f1e0bf;
   --color-text-on-accent: #fff8e8;
-  /* Customer login/signup hero panel (the paw-print side) - light mode
-     keeps the gold gradient brand moment; dark mode swaps it for a neutral
-     dark gradient instead of staying gold (a bright gold panel read as
-     "theme not applied" against an otherwise dark page). */
-  --color-hero-gradient-start: #d9b36b;
-  --color-hero-gradient-mid: #c88a1b;
-  --color-hero-gradient-end: #d0a24d;
+  /* Login hero panel (StaffLoginPage + CustomerLoginPage/CustomerSignupPage
+     "left" brand panel) - shared by both so they read as one login
+     experience: a warm gold gradient in light mode, a warm dark-brown
+     gradient in dark mode (matching --color-portal-nav-* dark, not a flat
+     near-black - a gold panel with no gradient warmth read as "theme
+     broken", not "dark mode"). */
+  --color-login-hero-bg-start: #d9b36b;
+  --color-login-hero-bg-mid: #c88a1b;
+  --color-login-hero-bg-end: #d0a24d;
   --color-text-on-heropanel: #fff8e8;
   --color-status-neutral-bg: #efe4cd;
   --color-status-neutral-text: #725a35;
@@ -188,6 +204,17 @@
   --color-sidebar-footer-bg: #24140a;
   --color-nav-active-bg: #3d2816;
   --color-nav-active-border: #e0a93b;
+  /* Portal nav rail (dark mode) - already the dark brand-gold gradient look,
+     so it just mirrors --color-sidebar-grad-* here (see the light-mode block
+     for why the two token sets are kept separate). */
+  --color-portal-nav-bg-start: #2a180c;
+  --color-portal-nav-bg-end: #4f2d17;
+  --color-portal-nav-text: #efe6d4;
+  --color-portal-nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --color-portal-nav-border: #4a3320;
+  --color-portal-nav-active-bg: #3d2816;
+  --color-portal-nav-active-border: #e0a93b;
+  --color-portal-nav-active-text: #f2c96d;
   --color-brand-gold-logo: #e4b85f;
   --color-accent-gold-highlight: #f2c96d;
   --color-accent-gold-primary: #d19a1b;
@@ -196,9 +223,9 @@
   --color-badge-bg-gold: #5c4218;
   --color-text-on-sidebar: #efe6d4;
   --color-text-on-accent: #24150a;
-  --color-hero-gradient-start: #33220f;
-  --color-hero-gradient-mid: #2c1d12;
-  --color-hero-gradient-end: #1f140b;
+  --color-login-hero-bg-start: #4f2d17;
+  --color-login-hero-bg-mid: #3a2010;
+  --color-login-hero-bg-end: #2a180c;
   --color-text-on-heropanel: #efe6d4;
   --color-status-neutral-bg: #4d3d28;
   --color-status-neutral-text: #f0dfbf;

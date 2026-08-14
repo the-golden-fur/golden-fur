@@ -20,7 +20,7 @@
 
 .title {
   margin: 0;
-  font-family: var(--font-main);
+  font-family: var(--font-heading);
   font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--color-text-primary);

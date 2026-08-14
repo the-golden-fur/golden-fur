@@ -8,49 +8,84 @@
 
 .left {
   position: relative;
+  overflow: hidden;
   flex: 1 1 50%;
   background: linear-gradient(
-    160deg,
-    var(--color-sidebar-grad-start),
-    var(--color-sidebar-grad-end)
+    135deg,
+    var(--color-login-hero-bg-start) 0%,
+    var(--color-login-hero-bg-mid) 55%,
+    var(--color-login-hero-bg-end) 100%
   );
-  color: var(--color-text-on-sidebar);
+  color: var(--color-text-on-heropanel);
   padding: 56px 64px;
   display: flex;
   flex-direction: column;
 }
 
+.paw {
+  position: absolute;
+  opacity: 0.16;
+}
+
+.p1 {
+  top: -40px;
+  right: -60px;
+  width: 260px;
+  height: 260px;
+}
+
+.p2 {
+  bottom: -30px;
+  left: 20px;
+  width: 200px;
+  height: 200px;
+  opacity: 0.14;
+}
+
+.p3 {
+  bottom: 60px;
+  right: 40px;
+  width: 120px;
+  height: 120px;
+}
+
 .logo {
-  font-family: var(--font-main);
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-heading);
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
-  color: var(--color-text-on-sidebar);
+  color: var(--color-text-on-heropanel);
 }
 
 .hero {
+  position: relative;
+  z-index: 1;
   margin-top: 96px;
   max-width: 380px;
 }
 
 .hero h2 {
   margin: 0;
-  font-family: var(--font-main);
+  font-family: var(--font-heading);
   font-size: var(--text-4xl);
   font-weight: var(--weight-bold);
   line-height: var(--lh-tight);
-  color: var(--color-text-on-sidebar);
+  color: var(--color-text-on-heropanel);
 }
 
 .hero p {
   margin: 20px 0 0;
   font-size: var(--text-sm);
   line-height: var(--lh-relaxed);
-  color: var(--color-text-on-sidebar);
+  color: var(--color-text-on-heropanel);
   opacity: 0.85;
 }
 
 .features {
+  position: relative;
+  z-index: 1;
   margin-top: 40px;
   display: flex;
   flex-direction: column;
@@ -78,7 +113,7 @@
 .feature .label {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--color-text-on-sidebar);
+  color: var(--color-text-on-heropanel);
 }
 
 .right {
@@ -104,7 +139,7 @@
 
 .card h1 {
   margin: 0;
-  font-family: var(--font-main);
+  font-family: var(--font-heading);
   font-size: var(--text-4xl);
   font-weight: var(--weight-bold);
   line-height: var(--lh-tight);
