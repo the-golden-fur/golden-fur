@@ -1,28 +1,7 @@
 import { Link } from 'react-router';
+import { PawWatermark } from '../../../../../shared/components/PawWatermark/PawWatermark';
 import { CustomerLoginForm } from '../../components/forms/CustomerLoginForm/CustomerLoginForm';
 import styles from './CustomerLoginPage.module.css';
-
-const pawEllipses = [
-  { cx: 50, cy: 35, rx: 14, ry: 18 },
-  { cx: 28, cy: 20, rx: 7, ry: 9 },
-  { cx: 72, cy: 20, rx: 7, ry: 9 },
-  { cx: 16, cy: 42, rx: 6, ry: 8 },
-  { cx: 84, cy: 42, rx: 6, ry: 8 },
-];
-
-function Paw({ className }: { className: string }) {
-  return (
-    <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
-      {pawEllipses.map((ellipse) => (
-        <ellipse
-          key={`${ellipse.cx}-${ellipse.cy}`}
-          {...ellipse}
-          fill="var(--color-text-on-heropanel)"
-        />
-      ))}
-    </svg>
-  );
-}
 
 const heroFeatures = [
   { icon: '📅', label: 'Book and manage appointments online' },
@@ -35,9 +14,9 @@ export function CustomerLoginPage() {
   return (
     <main className={styles.page}>
       <div className={styles.left}>
-        <Paw className={`${styles.paw} ${styles.p1}`} />
-        <Paw className={`${styles.paw} ${styles.p2}`} />
-        <Paw className={`${styles.paw} ${styles.p3}`} />
+        <PawWatermark className={`${styles.paw} ${styles.p1}`} />
+        <PawWatermark className={`${styles.paw} ${styles.p2}`} />
+        <PawWatermark className={`${styles.paw} ${styles.p3}`} />
 
         <div className={styles.logo}>Golden Fur</div>
 

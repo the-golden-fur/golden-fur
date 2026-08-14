@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { PawWatermark } from '../../../../../shared/components/PawWatermark/PawWatermark';
 import { StaffLoginForm } from '../../components/forms/StaffLoginForm/StaffLoginForm';
 import styles from './StaffLoginPage.module.css';
 
@@ -13,6 +14,10 @@ export function StaffLoginPage() {
   return (
     <main className={styles.page}>
       <div className={styles.left}>
+        <PawWatermark className={`${styles.paw} ${styles.p1}`} />
+        <PawWatermark className={`${styles.paw} ${styles.p2}`} />
+        <PawWatermark className={`${styles.paw} ${styles.p3}`} />
+
         <div className={styles.logo}>Golden Fur</div>
 
         <div className={styles.hero}>
