@@ -25,9 +25,7 @@ function formatTime(iso: string | undefined): string | null {
  * the same GET /grooming/queue endpoint GroomerDashboardPage itself calls
  * (scoped to the viewer's own branch server-side, same as that page).
  */
-export function GroomingQueueWidget({
-  accessToken,
-}: GroomingQueueWidgetProps) {
+export function GroomingQueueWidget({ accessToken }: GroomingQueueWidgetProps) {
   const [sessions, setSessions] = useState<GroomingSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

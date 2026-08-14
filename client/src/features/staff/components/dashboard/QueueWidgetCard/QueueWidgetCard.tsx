@@ -46,9 +46,7 @@ export function QueueWidgetCard({
           <p className={styles.count}>
             {count} {countLabel}
           </p>
-          {latestLabel ? (
-            <p className={styles.latest}>{latestLabel}</p>
-          ) : null}
+          {latestLabel ? <p className={styles.latest}>{latestLabel}</p> : null}
         </div>
       )}
     </Link>

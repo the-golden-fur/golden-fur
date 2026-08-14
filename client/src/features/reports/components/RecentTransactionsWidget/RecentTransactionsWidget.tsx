@@ -32,9 +32,9 @@ export function RecentTransactionsWidget({
   branches,
   accessToken,
 }: RecentTransactionsWidgetProps) {
-  const [transactions, setTransactions] = useState<
-    TransactionRecord[] | null
-  >(null);
+  const [transactions, setTransactions] = useState<TransactionRecord[] | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
