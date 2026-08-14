@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Paperclip } from 'lucide-react';
-import type { PendingAttachment, ThreadDetail as ThreadDetailType } from '../../messaging.types';
+import type {
+  PendingAttachment,
+  ThreadDetail as ThreadDetailType,
+} from '../../messaging.types';
 import { AttachmentPicker } from '../AttachmentPicker/AttachmentPicker';
 import styles from './ThreadDetail.module.css';
 
@@ -12,7 +15,10 @@ interface ThreadDetailProps {
   viewerId: string;
   accessToken: string;
   isSending: boolean;
-  onReply: (body: string, attachments?: PendingAttachment[]) => void | Promise<void>;
+  onReply: (
+    body: string,
+    attachments?: PendingAttachment[]
+  ) => void | Promise<void>;
 }
 
 function formatTimestamp(createdAt: string): string {
@@ -43,7 +49,9 @@ export function ThreadDetail({
   onReply,
 }: ThreadDetailProps) {
   const [draft, setDraft] = useState('');
-  const [replyAttachments, setReplyAttachments] = useState<PendingAttachment[]>([]);
+  const [replyAttachments, setReplyAttachments] = useState<PendingAttachment[]>(
+    []
+  );
 
   if (isLoading) {
     return <p className={styles.copy}>Loading thread...</p>;
@@ -58,9 +66,7 @@ export function ThreadDetail({
   }
 
   if (!thread) {
-    return (
-      <p className={styles.copy}>Select a message to read it here.</p>
-    );
+    return <p className={styles.copy}>Select a message to read it here.</p>;
   }
 
   const handleSend = () => {
@@ -81,7 +87,8 @@ export function ThreadDetail({
 
       <ul className={styles.messages}>
         {thread.messages.map((message) => {
-          const senderId = message.sender_staff_id ?? message.sender_customer_id;
+          const senderId =
+            message.sender_staff_id ?? message.sender_customer_id;
           const isMine = senderId === viewerId;
 
           return (
@@ -130,7 +137,9 @@ export function ThreadDetail({
           <button
             type="button"
             className={styles.sendButton}
-            disabled={isSending || (!draft.trim() && replyAttachments.length === 0)}
+            disabled={
+              isSending || (!draft.trim() && replyAttachments.length === 0)
+            }
             onClick={handleSend}
           >
             {isSending ? 'Sending...' : 'Send'}

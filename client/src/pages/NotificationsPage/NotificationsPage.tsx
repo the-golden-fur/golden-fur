@@ -121,9 +121,13 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
 
-  const [threadDetail, setThreadDetail] = useState<ThreadDetailType | null>(null);
+  const [threadDetail, setThreadDetail] = useState<ThreadDetailType | null>(
+    null
+  );
   const [threadDetailLoading, setThreadDetailLoading] = useState(false);
-  const [threadDetailError, setThreadDetailError] = useState<string | null>(null);
+  const [threadDetailError, setThreadDetailError] = useState<string | null>(
+    null
+  );
   const [isSendingReply, setIsSendingReply] = useState(false);
 
   const folder: FolderKey =
@@ -197,7 +201,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
   const systemItems = useMemo(
     () =>
       notifications
-        .filter((notification) => notification.event_type !== 'message_received')
+        .filter(
+          (notification) => notification.event_type !== 'message_received'
+        )
         .map(notificationToItem),
     [notifications]
   );
@@ -256,7 +262,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
     return sorted;
   }, [folderItems, searchQuery, filterKey, sortKey]);
 
-  const inboxUnreadCount = allItems.filter((item) => !item.isOwn && !item.isRead).length;
+  const inboxUnreadCount = allItems.filter(
+    (item) => !item.isOwn && !item.isRead
+  ).length;
   const systemUnreadCount = systemItems.filter((item) => !item.isRead).length;
   const folderCounts: Record<FolderKey, number> = {
     inbox: inboxUnreadCount,
@@ -329,12 +337,16 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
 
     if (item.kind === 'system') {
       setNotifications((current) =>
-        current.map((n) => (n.id === item.id ? { ...n, is_starred: nextStarred } : n))
+        current.map((n) =>
+          n.id === item.id ? { ...n, is_starred: nextStarred } : n
+        )
       );
       await starNotification(item.id, nextStarred, accessToken);
     } else {
       setThreads((current) =>
-        current.map((t) => (t.id === item.id ? { ...t, isStarred: nextStarred } : t))
+        current.map((t) =>
+          t.id === item.id ? { ...t, isStarred: nextStarred } : t
+        )
       );
       await starThread(item.id, nextStarred, accessToken);
     }
@@ -360,14 +372,18 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
 
     setNotifications((current) =>
       current.map((n) =>
-        unreadInFolder.some((item) => item.kind === 'system' && item.id === n.id)
+        unreadInFolder.some(
+          (item) => item.kind === 'system' && item.id === n.id
+        )
           ? { ...n, is_read: true }
           : n
       )
     );
     setThreads((current) =>
       current.map((t) =>
-        unreadInFolder.some((item) => item.kind !== 'system' && item.id === t.id)
+        unreadInFolder.some(
+          (item) => item.kind !== 'system' && item.id === t.id
+        )
           ? { ...t, unread: false }
           : t
       )
@@ -386,7 +402,12 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
     if (!accessToken || !selectedThreadId) return;
 
     setIsSendingReply(true);
-    const result = await replyToThread(selectedThreadId, body, accessToken, attachments);
+    const result = await replyToThread(
+      selectedThreadId,
+      body,
+      accessToken,
+      attachments
+    );
     setIsSendingReply(false);
 
     const newMessage = result.data;
@@ -454,7 +475,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
             <button
               key={key}
               type="button"
-              className={folder === key ? styles.folderButtonActive : styles.folderButton}
+              className={
+                folder === key ? styles.folderButtonActive : styles.folderButton
+              }
               onClick={() => setFolder(key)}
             >
               <Icon size={16} aria-hidden="true" />
@@ -479,7 +502,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
               <select
                 className={styles.select}
                 value={filterKey}
-                onChange={(event) => setFilterKey(event.target.value as FilterKey)}
+                onChange={(event) =>
+                  setFilterKey(event.target.value as FilterKey)
+                }
               >
                 <option value="all">All</option>
                 <option value="unread">Unread</option>
@@ -524,7 +549,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
                           <p className={styles.preview}>{draft.body || ''}</p>
                           <span className={styles.timestamp}>
                             {formatTimestamp(draft.updated_at)} ·{' '}
-                            {draft.message_type === 'mail' ? 'Mail' : 'Announcement'}
+                            {draft.message_type === 'mail'
+                              ? 'Mail'
+                              : 'Announcement'}
                           </span>
                         </div>
                         <div className={styles.draftActions}>
@@ -565,7 +592,9 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
                         onClick={() => void handleSelectItem(item)}
                       >
                         <div className={styles.itemMain}>
-                          <span className={styles.sender}>{item.senderLabel}</span>
+                          <span className={styles.sender}>
+                            {item.senderLabel}
+                          </span>
                           <span className={styles.subject}>{item.subject}</span>
                           <p className={styles.preview}>{item.preview}</p>
                         </div>
@@ -577,21 +606,27 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
                             <button
                               type="button"
                               className={styles.iconButton}
-                              onClick={(event) => void handleToggleStar(item, event)}
+                              onClick={(event) =>
+                                void handleToggleStar(item, event)
+                              }
                             >
                               {item.isStarred ? 'Unstar' : 'Star'}
                             </button>
                             <button
                               type="button"
                               className={styles.iconButton}
-                              onClick={(event) => void handleToggleRead(item, event)}
+                              onClick={(event) =>
+                                void handleToggleRead(item, event)
+                              }
                             >
                               {item.isRead ? 'Mark unread' : 'Mark read'}
                             </button>
                             <button
                               type="button"
                               className={styles.iconButton}
-                              onClick={(event) => void handleDeleteItem(item, event)}
+                              onClick={(event) =>
+                                void handleDeleteItem(item, event)
+                              }
                             >
                               Delete
                             </button>

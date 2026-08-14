@@ -49,7 +49,11 @@ router.post(
   createAnnouncementController
 );
 router.post('/messages/mail', jwtMiddleware, createMailThreadController);
-router.get('/messages/directory', jwtMiddleware, listMessagingDirectoryController);
+router.get(
+  '/messages/directory',
+  jwtMiddleware,
+  listMessagingDirectoryController
+);
 router.post(
   '/messages/attachments',
   jwtMiddleware,
@@ -70,11 +74,7 @@ router.patch(
   jwtMiddleware,
   markThreadReadController
 );
-router.patch(
-  '/messages/threads/:id/star',
-  jwtMiddleware,
-  starThreadController
-);
+router.patch('/messages/threads/:id/star', jwtMiddleware, starThreadController);
 router.post(
   '/messages/threads/:id/delete',
   jwtMiddleware,

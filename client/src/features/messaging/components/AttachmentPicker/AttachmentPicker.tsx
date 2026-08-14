@@ -57,7 +57,9 @@ export function AttachmentPicker({
   }
 
   function removeAttachment(fileUrl: string) {
-    onChange(attachments.filter((attachment) => attachment.fileUrl !== fileUrl));
+    onChange(
+      attachments.filter((attachment) => attachment.fileUrl !== fileUrl)
+    );
   }
 
   return (
@@ -90,7 +92,9 @@ export function AttachmentPicker({
           {attachments.map((attachment) => (
             <li key={attachment.fileUrl} className={styles.chip}>
               <span className={styles.chipName}>{attachment.fileName}</span>
-              <span className={styles.chipSize}>{formatFileSize(attachment.fileSize)}</span>
+              <span className={styles.chipSize}>
+                {formatFileSize(attachment.fileSize)}
+              </span>
               <button
                 type="button"
                 className={styles.chipRemove}

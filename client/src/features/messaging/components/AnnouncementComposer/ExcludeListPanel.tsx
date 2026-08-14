@@ -52,7 +52,9 @@ export function ExcludeListPanel<T>({
 
     if (query.trim()) {
       const needle = query.trim().toLowerCase();
-      next = next.filter((item) => getLabel(item).toLowerCase().includes(needle));
+      next = next.filter((item) =>
+        getLabel(item).toLowerCase().includes(needle)
+      );
     }
 
     const sorted = [...next];
@@ -61,13 +63,19 @@ export function ExcludeListPanel<T>({
     } else if (sortKey === 'name-desc') {
       sorted.sort((a, b) => getLabel(b).localeCompare(getLabel(a)));
     } else if (sortKey === 'role' && getRole) {
-      sorted.sort((a, b) => getRole(a).localeCompare(getRole(b)) || getLabel(a).localeCompare(getLabel(b)));
+      sorted.sort(
+        (a, b) =>
+          getRole(a).localeCompare(getRole(b)) ||
+          getLabel(a).localeCompare(getLabel(b))
+      );
     }
 
     return sorted;
   }, [items, query, roleFilter, sortKey, getRole, getLabel]);
 
-  const excludedCount = items.filter((item) => excludedIds.has(getId(item))).length;
+  const excludedCount = items.filter((item) =>
+    excludedIds.has(getId(item))
+  ).length;
 
   return (
     <div className={styles.panel}>
@@ -77,7 +85,11 @@ export function ExcludeListPanel<T>({
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
       >
-        {isOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+        {isOpen ? (
+          <ChevronDown size={14} aria-hidden="true" />
+        ) : (
+          <ChevronRight size={14} aria-hidden="true" />
+        )}
         <span>{title}</span>
         {excludedCount > 0 ? (
           <span className={styles.count}>{excludedCount} excluded</span>

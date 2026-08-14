@@ -70,10 +70,9 @@ export async function getThreadDetail(
   threadId: string,
   accessToken: string
 ): Promise<MessagingApiResult<ThreadDetail>> {
-  const response = await fetch(
-    `${API_BASE_URL}/messages/threads/${threadId}`,
-    { headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/messages/threads/${threadId}`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

@@ -6,7 +6,11 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:3000" },
-    { "key": "admin_identifier", "value": "", "description": "Admin or Superadmin username/email" },
+    {
+      "key": "admin_identifier",
+      "value": "",
+      "description": "Admin or Superadmin username/email"
+    },
     { "key": "admin_password", "value": "" },
     { "key": "admin_access_token", "value": "" },
     {
@@ -16,7 +20,11 @@
     },
     { "key": "staff_password", "value": "" },
     { "key": "staff_access_token", "value": "" },
-    { "key": "staff_role", "value": "", "description": "e.g. Receptionist - must match staff_identifier's actual role" },
+    {
+      "key": "staff_role",
+      "value": "",
+      "description": "e.g. Receptionist - must match staff_identifier's actual role"
+    },
     { "key": "thread_id", "value": "" }
   ],
   "item": [
@@ -241,9 +249,7 @@
         {
           "listen": "test",
           "script": {
-            "exec": [
-              "pm.test('ok', () => pm.response.to.have.status(200));"
-            ]
+            "exec": ["pm.test('ok', () => pm.response.to.have.status(200));"]
           }
         }
       ]

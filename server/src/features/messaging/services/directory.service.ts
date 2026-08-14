@@ -27,21 +27,23 @@ export async function searchMessagingDirectory({
     return [];
   }
 
-  const [{ data: staff, error: staffError }, { data: customers, error: customersError }] =
-    await Promise.all([
-      supabase
-        .from('staff_profiles')
-        .select('id, display_name, role')
-        .is('archived_at', null)
-        .or(`display_name.ilike.%${trimmed}%,username.ilike.%${trimmed}%`)
-        .limit(limit),
-      supabase
-        .from('customer_profiles')
-        .select('id, full_name')
-        .is('archived_at', null)
-        .ilike('full_name', `%${trimmed}%`)
-        .limit(limit),
-    ]);
+  const [
+    { data: staff, error: staffError },
+    { data: customers, error: customersError },
+  ] = await Promise.all([
+    supabase
+      .from('staff_profiles')
+      .select('id, display_name, role')
+      .is('archived_at', null)
+      .or(`display_name.ilike.%${trimmed}%,username.ilike.%${trimmed}%`)
+      .limit(limit),
+    supabase
+      .from('customer_profiles')
+      .select('id, full_name')
+      .is('archived_at', null)
+      .ilike('full_name', `%${trimmed}%`)
+      .limit(limit),
+  ]);
 
   if (staffError) {
     throw Object.assign(new Error(staffError.message), { statusCode: 400 });

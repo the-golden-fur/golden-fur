@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { createDraft } from '../../api/messaging.api';
-import type { DraftRecipients, MessageThread, MessageThreadType } from '../../messaging.types';
+import type {
+  DraftRecipients,
+  MessageThread,
+  MessageThreadType,
+} from '../../messaging.types';
 import { MailComposer } from '../MailComposer/MailComposer';
 import { AnnouncementComposer } from '../AnnouncementComposer/AnnouncementComposer';
 import styles from './ComposeModal.module.css';
@@ -95,12 +99,18 @@ export function ComposeModal({
         </div>
 
         {canSendAnnouncement ? (
-          <div className={styles.typeTabs} role="tablist" aria-label="Message type">
+          <div
+            className={styles.typeTabs}
+            role="tablist"
+            aria-label="Message type"
+          >
             <button
               type="button"
               role="tab"
               aria-selected={messageType === 'mail'}
-              className={messageType === 'mail' ? styles.typeTabActive : styles.typeTab}
+              className={
+                messageType === 'mail' ? styles.typeTabActive : styles.typeTab
+              }
               onClick={() => setMessageType('mail')}
             >
               Mail
@@ -110,7 +120,9 @@ export function ComposeModal({
               role="tab"
               aria-selected={messageType === 'announcement'}
               className={
-                messageType === 'announcement' ? styles.typeTabActive : styles.typeTab
+                messageType === 'announcement'
+                  ? styles.typeTabActive
+                  : styles.typeTab
               }
               onClick={() => setMessageType('announcement')}
             >

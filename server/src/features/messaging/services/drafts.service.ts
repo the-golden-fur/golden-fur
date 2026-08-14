@@ -22,7 +22,10 @@ interface AuthorParams {
   isStaff: boolean;
 }
 
-export async function listDrafts({ authorId, isStaff }: AuthorParams): Promise<MessageDraft[]> {
+export async function listDrafts({
+  authorId,
+  isStaff,
+}: AuthorParams): Promise<MessageDraft[]> {
   const { data, error } = await supabase
     .from('message_drafts')
     .select('*')
@@ -41,7 +44,11 @@ interface DraftIdentity extends AuthorParams {
 }
 
 /** 404s (not 403) on a draft the requester doesn't own - same "don't leak existence" convention as getThreadDetail. */
-export async function getDraft({ draftId, authorId, isStaff }: DraftIdentity): Promise<MessageDraft> {
+export async function getDraft({
+  draftId,
+  authorId,
+  isStaff,
+}: DraftIdentity): Promise<MessageDraft> {
   const { data, error } = await supabase
     .from('message_drafts')
     .select('*')
@@ -60,7 +67,9 @@ export async function getDraft({ draftId, authorId, isStaff }: DraftIdentity): P
   return data as MessageDraft;
 }
 
-export async function createDraft(params: SaveDraftParams): Promise<MessageDraft> {
+export async function createDraft(
+  params: SaveDraftParams
+): Promise<MessageDraft> {
   const { data, error } = await supabase
     .from('message_drafts')
     .insert({
@@ -87,8 +96,12 @@ interface UpdateDraftParams extends DraftIdentity {
   recipients?: SaveDraftParams['recipients'];
 }
 
-export async function updateDraft(params: UpdateDraftParams): Promise<MessageDraft> {
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+export async function updateDraft(
+  params: UpdateDraftParams
+): Promise<MessageDraft> {
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
 
   if (params.subject !== undefined) updates.subject = params.subject;
   if (params.body !== undefined) updates.body = params.body;
@@ -113,7 +126,11 @@ export async function updateDraft(params: UpdateDraftParams): Promise<MessageDra
   return data as MessageDraft;
 }
 
-export async function deleteDraft({ draftId, authorId, isStaff }: DraftIdentity): Promise<void> {
+export async function deleteDraft({
+  draftId,
+  authorId,
+  isStaff,
+}: DraftIdentity): Promise<void> {
   const { error } = await supabase
     .from('message_drafts')
     .delete()
@@ -138,7 +155,9 @@ interface SendDraftParams extends DraftIdentity {
  * blob, sends it, then deletes the draft row - a draft is a staging area,
  * not something that lingers alongside its own sent thread.
  */
-export async function sendDraft(params: SendDraftParams): Promise<MessageThread> {
+export async function sendDraft(
+  params: SendDraftParams
+): Promise<MessageThread> {
   const draft = await getDraft(params);
 
   if (!draft.subject?.trim() || !draft.body?.trim()) {
@@ -156,8 +175,14 @@ export async function sendDraft(params: SendDraftParams): Promise<MessageThread>
       recipients: draft.recipients.recipientIds,
     });
   } else {
-    if (!params.isStaff || !ANNOUNCEMENT_SENDER_ROLES.includes(params.staffRole ?? '')) {
-      throwWithStatus(403, 'Only Supervisor/Admin/Superadmin may send an announcement.');
+    if (
+      !params.isStaff ||
+      !ANNOUNCEMENT_SENDER_ROLES.includes(params.staffRole ?? '')
+    ) {
+      throwWithStatus(
+        403,
+        'Only Supervisor/Admin/Superadmin may send an announcement.'
+      );
     }
 
     thread = await createAnnouncement({

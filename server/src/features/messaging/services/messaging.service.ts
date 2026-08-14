@@ -107,9 +107,14 @@ interface CreateThreadParams {
  * recipient notification's failure is best-effort, same as
  * notifyStaffRoleAtBranch.
  */
-async function createThread(params: CreateThreadParams): Promise<MessageThread> {
+async function createThread(
+  params: CreateThreadParams
+): Promise<MessageThread> {
   if (params.recipients.length === 0) {
-    throwWithStatus(400, 'No recipients matched the selected targeting criteria.');
+    throwWithStatus(
+      400,
+      'No recipients matched the selected targeting criteria.'
+    );
   }
 
   const { data: thread, error: threadError } = await supabase
@@ -178,7 +183,10 @@ async function createThread(params: CreateThreadParams): Promise<MessageThread> 
         relatedThreadId: thread.id as string,
       });
     } catch (notifyError) {
-      console.error(`Failed to notify recipient of thread ${thread.id}:`, notifyError);
+      console.error(
+        `Failed to notify recipient of thread ${thread.id}:`,
+        notifyError
+      );
     }
   }
 
@@ -288,7 +296,10 @@ export async function replyToThread(
   }
 
   const attachments = params.attachments?.length
-    ? await insertAttachmentsForMessage(message.id as string, params.attachments)
+    ? await insertAttachmentsForMessage(
+        message.id as string,
+        params.attachments
+      )
     : [];
 
   const senderId = params.senderStaffId ?? params.senderCustomerId ?? '';
@@ -350,20 +361,32 @@ async function resolveSenderLabels(
   messages: Message[]
 ): Promise<Map<string, string>> {
   const staffIds = [
-    ...new Set(messages.map((m) => m.sender_staff_id).filter((id): id is string => Boolean(id))),
+    ...new Set(
+      messages
+        .map((m) => m.sender_staff_id)
+        .filter((id): id is string => Boolean(id))
+    ),
   ];
   const customerIds = [
     ...new Set(
-      messages.map((m) => m.sender_customer_id).filter((id): id is string => Boolean(id))
+      messages
+        .map((m) => m.sender_customer_id)
+        .filter((id): id is string => Boolean(id))
     ),
   ];
 
   const [{ data: staff }, { data: customers }] = await Promise.all([
     staffIds.length > 0
-      ? supabase.from('staff_profiles').select('id, display_name').in('id', staffIds)
+      ? supabase
+          .from('staff_profiles')
+          .select('id, display_name')
+          .in('id', staffIds)
       : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
     customerIds.length > 0
-      ? supabase.from('customer_profiles').select('id, full_name').in('id', customerIds)
+      ? supabase
+          .from('customer_profiles')
+          .select('id, full_name')
+          .in('id', customerIds)
       : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
   ]);
 
@@ -378,7 +401,10 @@ async function resolveSenderLabels(
   const labelByMessageId = new Map<string, string>();
   for (const message of messages) {
     const senderId = message.sender_staff_id ?? message.sender_customer_id;
-    labelByMessageId.set(message.id, (senderId && labelById.get(senderId)) || 'Unknown');
+    labelByMessageId.set(
+      message.id,
+      (senderId && labelById.get(senderId)) || 'Unknown'
+    );
   }
 
   return labelByMessageId;
@@ -413,14 +439,15 @@ export async function getThreadsForRecipient({
     (ownParticipantRows ?? []).map((row) => [row.thread_id, row])
   );
 
-  const [{ data: threads, error: threadsError }, { data: messages }] = await Promise.all([
-    supabase.from('message_threads').select('*').in('id', threadIds),
-    supabase
-      .from('messages')
-      .select('*')
-      .in('thread_id', threadIds)
-      .order('created_at', { ascending: false }),
-  ]);
+  const [{ data: threads, error: threadsError }, { data: messages }] =
+    await Promise.all([
+      supabase.from('message_threads').select('*').in('id', threadIds),
+      supabase
+        .from('messages')
+        .select('*')
+        .in('thread_id', threadIds)
+        .order('created_at', { ascending: false }),
+    ]);
 
   if (threadsError) {
     throwWithStatus(400, threadsError.message);
@@ -437,28 +464,30 @@ export async function getThreadsForRecipient({
     ...latestMessageByThreadId.values(),
   ]);
 
-  const summaries: ThreadSummary[] = ((threads ?? []) as MessageThread[]).map((thread) => {
-    const latestMessage = latestMessageByThreadId.get(thread.id);
-    const ownParticipant = ownParticipantByThreadId.get(thread.id);
-    const lastReadAt = ownParticipant?.last_read_at as string | null;
-    const isOwn = isStaff
-      ? thread.created_by_staff_id === recipientId
-      : thread.created_by_customer_id === recipientId;
+  const summaries: ThreadSummary[] = ((threads ?? []) as MessageThread[]).map(
+    (thread) => {
+      const latestMessage = latestMessageByThreadId.get(thread.id);
+      const ownParticipant = ownParticipantByThreadId.get(thread.id);
+      const lastReadAt = ownParticipant?.last_read_at as string | null;
+      const isOwn = isStaff
+        ? thread.created_by_staff_id === recipientId
+        : thread.created_by_customer_id === recipientId;
 
-    return {
-      ...thread,
-      lastMessageAt: latestMessage?.created_at ?? thread.created_at,
-      lastMessagePreview: latestMessage?.body ?? '',
-      lastSenderLabel: latestMessage
-        ? (senderLabelByMessageId.get(latestMessage.id) ?? 'Unknown')
-        : 'Unknown',
-      unread: lastReadAt
-        ? (latestMessage?.created_at ?? thread.created_at) > lastReadAt
-        : true,
-      isStarred: Boolean(ownParticipant?.is_starred),
-      isOwn,
-    };
-  });
+      return {
+        ...thread,
+        lastMessageAt: latestMessage?.created_at ?? thread.created_at,
+        lastMessagePreview: latestMessage?.body ?? '',
+        lastSenderLabel: latestMessage
+          ? (senderLabelByMessageId.get(latestMessage.id) ?? 'Unknown')
+          : 'Unknown',
+        unread: lastReadAt
+          ? (latestMessage?.created_at ?? thread.created_at) > lastReadAt
+          : true,
+        isStarred: Boolean(ownParticipant?.is_starred),
+        isOwn,
+      };
+    }
+  );
 
   return summaries.sort((a, b) => (a.lastMessageAt < b.lastMessageAt ? 1 : -1));
 }
@@ -490,20 +519,27 @@ export async function getThreadDetail({
     throwWithStatus(404, 'Thread not found');
   }
 
-  const [{ data: thread }, { data: participants }, { data: messages }] = await Promise.all([
-    supabase.from('message_threads').select('*').eq('id', threadId).single(),
-    supabase.from('message_thread_participants').select('*').eq('thread_id', threadId),
-    supabase
-      .from('messages')
-      .select('*')
-      .eq('thread_id', threadId)
-      .order('created_at', { ascending: true }),
-  ]);
+  const [{ data: thread }, { data: participants }, { data: messages }] =
+    await Promise.all([
+      supabase.from('message_threads').select('*').eq('id', threadId).single(),
+      supabase
+        .from('message_thread_participants')
+        .select('*')
+        .eq('thread_id', threadId),
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('thread_id', threadId)
+        .order('created_at', { ascending: true }),
+    ]);
 
   const messageIds = (messages ?? []).map((message) => message.id as string);
   const { data: attachments } =
     messageIds.length > 0
-      ? await supabase.from('message_attachments').select('*').in('message_id', messageIds)
+      ? await supabase
+          .from('message_attachments')
+          .select('*')
+          .in('message_id', messageIds)
       : { data: [] as MessageAttachment[] };
 
   const attachmentsByMessageId = new Map<string, MessageAttachment[]>();
@@ -541,7 +577,9 @@ export async function setThreadReadState({
   isStaff,
   read = true,
 }: SetThreadReadStateParams): Promise<void> {
-  const recipientColumn = isStaff ? 'recipient_staff_id' : 'recipient_customer_id';
+  const recipientColumn = isStaff
+    ? 'recipient_staff_id'
+    : 'recipient_customer_id';
 
   const [participantsResult, notificationsResult] = await Promise.all([
     supabase

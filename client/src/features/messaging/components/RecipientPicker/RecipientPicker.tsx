@@ -57,7 +57,13 @@ export function RecipientPicker({
 
   const availableRoles = useMemo(
     () =>
-      [...new Set(results.filter((entry) => entry.kind === 'staff').map((entry) => entry.role))]
+      [
+        ...new Set(
+          results
+            .filter((entry) => entry.kind === 'staff')
+            .map((entry) => entry.role)
+        ),
+      ]
         .filter((role): role is string => Boolean(role))
         .sort(),
     [results]
@@ -179,7 +185,9 @@ export function RecipientPicker({
                 onClick={() => addRecipient(entry)}
               >
                 {entry.displayName}
-                {entry.kind === 'staff' && entry.role ? ` (${entry.role})` : ' (Customer)'}
+                {entry.kind === 'staff' && entry.role
+                  ? ` (${entry.role})`
+                  : ' (Customer)'}
               </button>
             </li>
           ))}

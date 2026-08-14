@@ -58,7 +58,9 @@ export function MailComposer({
         subject: subject.trim(),
         body: body.trim(),
         recipients: recipients.map((entry) =>
-          entry.kind === 'staff' ? { staffId: entry.id } : { customerId: entry.id }
+          entry.kind === 'staff'
+            ? { staffId: entry.id }
+            : { customerId: entry.id }
         ),
         attachments,
       },
@@ -82,7 +84,9 @@ export function MailComposer({
       recipients: {
         type: 'mail',
         recipientIds: recipients.map((entry) =>
-          entry.kind === 'staff' ? { staffId: entry.id } : { customerId: entry.id }
+          entry.kind === 'staff'
+            ? { staffId: entry.id }
+            : { customerId: entry.id }
         ),
       },
     });

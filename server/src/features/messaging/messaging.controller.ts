@@ -195,7 +195,10 @@ export async function uploadMessageAttachmentController(
   }
 
   try {
-    const attachment = await uploadAttachment({ uploaderId: requesterId, file });
+    const attachment = await uploadAttachment({
+      uploaderId: requesterId,
+      file,
+    });
     return res.status(201).json({ attachment });
   } catch (error) {
     return sendServiceError(res, error);
@@ -379,7 +382,9 @@ export async function createMailThreadController(
   }
 
   if (!recipients?.length) {
-    return res.status(400).json({ error: 'At least one recipient is required' });
+    return res
+      .status(400)
+      .json({ error: 'At least one recipient is required' });
   }
 
   try {
@@ -491,7 +496,9 @@ export async function createDraftController(
   const { messageType, subject, body, recipients } = req.body as DraftBody;
 
   if (!messageType || !recipients) {
-    return res.status(400).json({ error: 'messageType and recipients are required' });
+    return res
+      .status(400)
+      .json({ error: 'messageType and recipients are required' });
   }
 
   try {

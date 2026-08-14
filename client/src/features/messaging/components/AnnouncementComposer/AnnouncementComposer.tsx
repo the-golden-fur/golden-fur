@@ -4,7 +4,11 @@ import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import { listCustomers } from '../../../customers/api/customer.api';
 import type { CustomerProfile } from '../../../customers/customer.types';
 import { createAnnouncement } from '../../api/messaging.api';
-import type { DraftRecipients, MessageThread, PendingAttachment } from '../../messaging.types';
+import type {
+  DraftRecipients,
+  MessageThread,
+  PendingAttachment,
+} from '../../messaging.types';
 import { ExcludeListPanel } from './ExcludeListPanel';
 import { AttachmentPicker } from '../AttachmentPicker/AttachmentPicker';
 import styles from './AnnouncementComposer.module.css';
@@ -68,9 +72,9 @@ export function AnnouncementComposer({
     new Set()
   );
   const [staffDirectory, setStaffDirectory] = useState<StaffProfile[]>([]);
-  const [customerDirectory, setCustomerDirectory] = useState<
-    CustomerProfile[]
-  >([]);
+  const [customerDirectory, setCustomerDirectory] = useState<CustomerProfile[]>(
+    []
+  );
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +205,9 @@ export function AnnouncementComposer({
           getLabel={(staff) => staff.display_name}
           getRole={(staff) => staff.role}
           excludedIds={excludedStaffIds}
-          onToggle={(id) => setExcludedStaffIds((current) => toggle(current, id))}
+          onToggle={(id) =>
+            setExcludedStaffIds((current) => toggle(current, id))
+          }
           emptyMessage="No staff match the selected roles."
         />
       ) : null}
@@ -213,7 +219,9 @@ export function AnnouncementComposer({
           getId={(customer) => customer.id}
           getLabel={(customer) => customer.full_name}
           excludedIds={excludedCustomerIds}
-          onToggle={(id) => setExcludedCustomerIds((current) => toggle(current, id))}
+          onToggle={(id) =>
+            setExcludedCustomerIds((current) => toggle(current, id))
+          }
           emptyMessage="No customers found."
         />
       ) : null}

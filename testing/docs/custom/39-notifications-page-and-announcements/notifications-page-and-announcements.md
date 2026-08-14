@@ -66,7 +66,7 @@ participant, writes the announcement body as the thread's first message,
 then best-effort notifies every recipient via the **existing**
 `createNotification` (extended with an optional `relatedThreadId`, not
 duplicated). `replyToThread` lets any participant reply, notifying every
-*other* participant the same way. `markThreadRead` marks both the
+_other_ participant the same way. `markThreadRead` marks both the
 participant's own read-state and any still-unread `notifications` row tied
 to that thread, so the bell badge and the thread's own unread state can't
 drift depending on which UI surface (bell dropdown vs. Messages tab) the
@@ -207,8 +207,7 @@ the Inbox-tab/Messages-tab split from round 1.
   full draft lifecycle - create, update, send, list) was smoke-tested
   against the real dev Supabase project with seeded Admin/Supervisor/
   Receptionist logins before the client was built on top of it, including
-  confirming Supervisor can send an announcement and a Receptionist gets
-  403.
+  confirming Supervisor can send an announcement and a Receptionist gets 403.
 
 ### 4. Database schema (round 2)
 
@@ -257,16 +256,16 @@ extended with a `read` param. `POST /messages/announcements`'s
    role). As a Receptionist, same request - confirm 403.
 2. As any staff member or customer, `GET /messages/directory?q=<2+ chars>`
    - confirm results include both staff and customers, excluding the
-   caller themselves, and that a 1-character query returns `[]`.
+     caller themselves, and that a 1-character query returns `[]`.
 3. `POST /messages/mail` from a staff member to a customer (or vice
    versa) - confirm 201 and the recipient sees it via `GET
-   /messages/threads`.
+/messages/threads`.
 4. `PATCH /messages/threads/:id/star` and `POST /messages/threads/:id/delete`
    - confirm the thread disappears from `GET /messages/threads` after
-   delete but is still reachable via `GET /messages/threads/:id` directly.
+     delete but is still reachable via `GET /messages/threads/:id` directly.
 5. `POST /messages/drafts` -> `PATCH /messages/drafts/:id` -> `POST
-   /messages/drafts/:id/send` - confirm the draft is gone from `GET
-   /messages/drafts` afterward and a real thread now exists.
+/messages/drafts/:id/send` - confirm the draft is gone from `GET
+/messages/drafts` afterward and a real thread now exists.
 
 ### 6. Client (round 2)
 

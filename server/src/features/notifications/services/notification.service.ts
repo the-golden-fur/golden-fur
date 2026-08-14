@@ -236,7 +236,9 @@ export async function setNotificationStarred({
   isStaff,
   starred,
 }: SetNotificationStarredParams): Promise<Notification> {
-  const recipientColumn = isStaff ? 'recipient_staff_id' : 'recipient_customer_id';
+  const recipientColumn = isStaff
+    ? 'recipient_staff_id'
+    : 'recipient_customer_id';
 
   const { data, error } = await supabase
     .from('notifications')
@@ -262,7 +264,9 @@ export async function setNotificationDeleted({
   recipientId,
   isStaff,
 }: Omit<SetNotificationStarredParams, 'starred'>): Promise<void> {
-  const recipientColumn = isStaff ? 'recipient_staff_id' : 'recipient_customer_id';
+  const recipientColumn = isStaff
+    ? 'recipient_staff_id'
+    : 'recipient_customer_id';
 
   const { error } = await supabase
     .from('notifications')
