@@ -63,7 +63,7 @@ export function Sidebar({
               className={styles.section}
               key={section.label ?? `section-${index}`}
             >
-              {section.label && !collapsed ? (
+              {section.label ? (
                 <h2 className={styles.sectionLabel}>{section.label}</h2>
               ) : null}
               <ul className={styles.itemList}>

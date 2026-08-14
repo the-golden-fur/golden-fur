@@ -82,7 +82,12 @@ describe('Sidebar', () => {
     expect(onToggleCollapse).toHaveBeenCalledTimes(1);
   });
 
-  it('hides section headings and exposes an expand label when collapsed', () => {
+  it('keeps section headings in the DOM (CSS-collapsed, not unmounted) and exposes an expand label when collapsed', () => {
+    // Headings used to be removed from the DOM entirely on collapse, which
+    // meant they could only pop in/out instantly on expand/collapse - kept
+    // in the DOM now (hidden via opacity/max-height in Sidebar.module.css)
+    // so the collapse can animate smoothly, and they stay in the
+    // accessibility tree either way.
     renderSidebar(
       [
         {
@@ -94,8 +99,8 @@ describe('Sidebar', () => {
     );
 
     expect(
-      screen.queryByRole('heading', { name: 'Management' })
-    ).not.toBeInTheDocument();
+      screen.getByRole('heading', { name: 'Management' })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Expand sidebar' })
     ).toBeInTheDocument();

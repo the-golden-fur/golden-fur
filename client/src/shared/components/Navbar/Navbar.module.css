@@ -10,8 +10,13 @@
 }
 
 .brand {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--color-text-primary);
-  font-family: var(--font-main);
+  font-family: var(--font-heading);
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
   text-decoration: none;
@@ -24,6 +29,7 @@
 
 .menuToggle {
   display: none;
+  flex-shrink: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -42,6 +48,7 @@
 .links,
 .linksOpen {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--space-3);
 }
