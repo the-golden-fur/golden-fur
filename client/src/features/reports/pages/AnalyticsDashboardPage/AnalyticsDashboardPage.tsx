@@ -9,6 +9,7 @@ import type {
   AnalyticsSummary,
   AnalyticsTimeFilter,
 } from '../../reports.types';
+import { BranchRevenueComparisonChart } from '../../components/BranchRevenueComparisonChart/BranchRevenueComparisonChart';
 import styles from './AnalyticsDashboardPage.module.css';
 
 const TIME_FILTERS: { value: AnalyticsTimeFilter; label: string }[] = [
@@ -160,6 +161,14 @@ export function AnalyticsDashboardPage() {
             </span>
           </div>
         </div>
+      ) : null}
+
+      {!isLoading && !error ? (
+        <BranchRevenueComparisonChart
+          branches={branches}
+          timeFilter={timeFilter}
+          accessToken={accessToken}
+        />
       ) : null}
     </main>
   );
