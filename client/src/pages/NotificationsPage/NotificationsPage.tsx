@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { Inbox, Send, FileText, Star, Bell as SystemIcon } from 'lucide-react';
 import { useAuth } from '../../shared/auth/providers/AuthProvider/useAuth';
-import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import {
   deleteNotification,
   listNotifications,
@@ -30,10 +29,6 @@ import type {
 } from '../../features/messaging/messaging.types';
 import { ThreadDetail } from '../../features/messaging/components/ThreadDetail/ThreadDetail';
 import styles from './NotificationsPage.module.css';
-
-interface NotificationsPageProps {
-  role: ThemeRole;
-}
 
 type FolderKey = 'inbox' | 'starred' | 'sent' | 'drafts' | 'system';
 type FilterKey = 'all' | 'unread' | 'mail' | 'announcement';
@@ -107,7 +102,7 @@ function formatTimestamp(value: string): string {
  * representation of that same event, so surfacing both would double-list
  * one conceptual item.
  */
-export function NotificationsPage({ role: _role }: NotificationsPageProps) {
+export function NotificationsPage() {
   const { user, accessToken } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -138,13 +133,20 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
     if (!accessToken) return;
 
     let isMounted = true;
-    setIsLoading(true);
 
-    void Promise.all([
-      listNotifications(accessToken),
-      listThreads(accessToken),
-      listDrafts(accessToken),
-    ]).then(([notificationsResult, threadsResult, draftsResult]) => {
+    // Wrapped in an async IIFE rather than a bare .then() chain so every
+    // setState call (including the initial "start loading" one) happens
+    // inside a callback, not as a direct statement in the effect body.
+    void (async () => {
+      setIsLoading(true);
+
+      const [notificationsResult, threadsResult, draftsResult] =
+        await Promise.all([
+          listNotifications(accessToken),
+          listThreads(accessToken),
+          listDrafts(accessToken),
+        ]);
+
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -158,24 +160,30 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
       setNotifications(notificationsResult.data ?? []);
       setThreads(threadsResult.data ?? []);
       setDrafts(draftsResult.data ?? []);
-    });
+    })();
 
     return () => {
       isMounted = false;
     };
   }, [accessToken]);
 
+  // No thread selected - displayedThreadDetail (below) derives the "nothing
+  // to show" state directly from selectedThreadId instead of this effect
+  // clearing threadDetail itself, so there's nothing to do here but skip
+  // the fetch.
   useEffect(() => {
     if (!accessToken || !selectedThreadId) {
-      setThreadDetail(null);
       return;
     }
 
     let isMounted = true;
-    setThreadDetailLoading(true);
-    setThreadDetailError(null);
 
-    void getThreadDetail(selectedThreadId, accessToken).then((result) => {
+    void (async () => {
+      setThreadDetailLoading(true);
+      setThreadDetailError(null);
+
+      const result = await getThreadDetail(selectedThreadId, accessToken);
+
       if (!isMounted) return;
       setThreadDetailLoading(false);
 
@@ -191,12 +199,14 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
           thread.id === selectedThreadId ? { ...thread, unread: false } : thread
         )
       );
-    });
+    })();
 
     return () => {
       isMounted = false;
     };
   }, [accessToken, selectedThreadId]);
+
+  const displayedThreadDetail = selectedThreadId ? threadDetail : null;
 
   const systemItems = useMemo(
     () =>
@@ -642,7 +652,7 @@ export function NotificationsPage({ role: _role }: NotificationsPageProps) {
             {folder !== 'drafts' && folder !== 'system' ? (
               <div className={styles.detailPane}>
                 <ThreadDetail
-                  thread={threadDetail}
+                  thread={displayedThreadDetail}
                   isLoading={threadDetailLoading}
                   error={threadDetailError}
                   viewerId={user.id}

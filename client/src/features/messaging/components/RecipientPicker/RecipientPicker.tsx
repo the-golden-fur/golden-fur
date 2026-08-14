@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { searchDirectory } from '../../api/messaging.api';
 import type { DirectoryEntry } from '../../messaging.types';
+import type { StaffRole } from '../../../staff/staff.types';
 import styles from './RecipientPicker.module.css';
 
 interface RecipientPickerProps {
@@ -38,12 +39,15 @@ export function RecipientPicker({
     }
 
     if (query.trim().length < 2) {
-      setResults([]);
       return;
     }
 
-    setIsSearching(true);
+    // Every setState call (including "start searching") happens inside the
+    // setTimeout callback, not as a direct statement in the effect body -
+    // also means "Searching..." only appears once the debounced request is
+    // actually about to fire, not during the debounce delay itself.
     debounceRef.current = setTimeout(() => {
+      setIsSearching(true);
       void searchDirectory(query, accessToken).then((result) => {
         setIsSearching(false);
         setResults(result.data ?? []);
@@ -55,22 +59,32 @@ export function RecipientPicker({
     };
   }, [query, accessToken]);
 
+  // A shrunk-below-2-chars query doesn't re-fetch (the effect above just
+  // returns early), so `results` can still hold a stale page - derived here
+  // (memoized so its reference is stable) rather than cleared via setState
+  // in the effect, since that's the one thing an effect body shouldn't do
+  // synchronously.
+  const effectiveResults = useMemo(
+    () => (query.trim().length < 2 ? [] : results),
+    [query, results]
+  );
+
   const availableRoles = useMemo(
     () =>
       [
         ...new Set(
-          results
+          effectiveResults
             .filter((entry) => entry.kind === 'staff')
             .map((entry) => entry.role)
         ),
       ]
-        .filter((role): role is string => Boolean(role))
+        .filter((role): role is StaffRole => Boolean(role))
         .sort(),
-    [results]
+    [effectiveResults]
   );
 
   const visibleResults = useMemo(() => {
-    let next = results;
+    let next = effectiveResults;
 
     if (kindFilter !== 'all') {
       next = next.filter((entry) => entry.kind === kindFilter);
@@ -88,7 +102,7 @@ export function RecipientPicker({
     }
 
     return sorted;
-  }, [results, kindFilter, roleFilter, sortKey]);
+  }, [effectiveResults, kindFilter, roleFilter, sortKey]);
 
   const selectedIds = new Set(selected.map((entry) => entry.id));
   const showControls = query.trim().length >= 2;

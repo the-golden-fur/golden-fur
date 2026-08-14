@@ -41,7 +41,7 @@ export const customerAuthRoutes = createElement(
     }),
     createElement(Route, {
       path: '/portal/notifications',
-      element: createElement(NotificationsPage, { role: 'customer' }),
+      element: createElement(NotificationsPage),
     })
   )
 );

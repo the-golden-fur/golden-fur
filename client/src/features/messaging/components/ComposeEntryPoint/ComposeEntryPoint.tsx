@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { PenSquare } from 'lucide-react';
 import { ComposeModal } from '../ComposeModal/ComposeModal';
-import type { MessageThread } from '../../messaging.types';
 import styles from './ComposeEntryPoint.module.css';
 
 interface ComposeEntryPointProps {
@@ -36,7 +35,7 @@ export function ComposeEntryPoint({
         onClose={() => setIsOpen(false)}
         accessToken={accessToken}
         viewerRole={viewerRole}
-        onSent={(_thread: MessageThread) => setIsOpen(false)}
+        onSent={() => setIsOpen(false)}
         onDraftSaved={() => setIsOpen(false)}
       />
     </>

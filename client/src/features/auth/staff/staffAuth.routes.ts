@@ -43,7 +43,7 @@ export const staffAuthRoutes = createElement(
     }),
     createElement(Route, {
       path: '/staff/notifications',
-      element: createElement(NotificationsPage, { role: 'staff' }),
+      element: createElement(NotificationsPage),
     }),
     createElement(Route, {
       // Custom change (Gmail-style messaging redesign): retired in favor of
