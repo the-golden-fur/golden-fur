@@ -1,0 +1,140 @@
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  height: 100%;
+}
+
+.subject {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.messages {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.bubble,
+.bubbleMine {
+  display: grid;
+  gap: var(--space-0-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  max-width: 32rem;
+}
+
+.bubble {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  justify-self: start;
+}
+
+.bubbleMine {
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  justify-self: end;
+}
+
+.body {
+  margin: 0;
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+.timestamp {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.bubbleMine .timestamp {
+  color: var(--color-text-on-accent);
+  opacity: 0.8;
+}
+
+.attachmentList {
+  display: grid;
+  gap: var(--space-0-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachmentLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline;
+}
+
+.attachmentSize {
+  opacity: 0.75;
+}
+
+.replyBox {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.replyRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.replyInput {
+  flex: 1;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.replyInput:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+}
+
+.sendButton {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: var(--shadow-sm);
+}
+
+.sendButton:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

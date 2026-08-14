@@ -6,6 +6,7 @@ import { CustomerSignupPage } from './pages/CustomerSignupPage/CustomerSignupPag
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage/OAuthCallbackPage';
 import { CustomerMfaChallengePage } from './pages/CustomerMfaChallengePage/CustomerMfaChallengePage';
 import { SettingsPage } from '../../../pages/SettingsPage/SettingsPage';
+import { NotificationsPage } from '../../../pages/NotificationsPage/NotificationsPage';
 import { CustomerPortalPage } from '../../customers/pages/CustomerPortalPage/CustomerPortalPage';
 
 export const customerAuthRoutes = createElement(
@@ -37,6 +38,10 @@ export const customerAuthRoutes = createElement(
     createElement(Route, {
       path: '/portal/settings',
       element: createElement(SettingsPage, { role: 'customer' }),
+    }),
+    createElement(Route, {
+      path: '/portal/notifications',
+      element: createElement(NotificationsPage, { role: 'customer' }),
     })
   )
 );

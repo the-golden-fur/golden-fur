@@ -33,6 +33,13 @@ function authHeaders(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
+function jsonAuthHeaders(accessToken: string): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+}
+
 /**
  * Issues #97/#100/#101: the one shared inbox endpoint - staff and customer
  * callers hit the same route, the server resolves which inbox to return.
@@ -54,11 +61,16 @@ export async function listNotifications(
 
 export async function markNotificationRead(
   notificationId: string,
-  accessToken: string
+  accessToken: string,
+  read = true
 ): Promise<NotificationsApiResult<Notification>> {
   const response = await fetch(
     `${API_BASE_URL}/notifications/${notificationId}/read`,
-    { method: 'PATCH', headers: authHeaders(accessToken) }
+    {
+      method: 'PATCH',
+      headers: jsonAuthHeaders(accessToken),
+      body: JSON.stringify({ read }),
+    }
   );
 
   if (!response.ok) {
@@ -76,6 +88,44 @@ export async function markAllNotificationsRead(
     method: 'PATCH',
     headers: authHeaders(accessToken),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function starNotification(
+  notificationId: string,
+  starred: boolean,
+  accessToken: string
+): Promise<NotificationsApiResult<Notification>> {
+  const response = await fetch(
+    `${API_BASE_URL}/notifications/${notificationId}/star`,
+    {
+      method: 'PATCH',
+      headers: jsonAuthHeaders(accessToken),
+      body: JSON.stringify({ starred }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ notification: Notification }>(response);
+  return { data: result.data?.notification ?? null, error: result.error };
+}
+
+export async function deleteNotification(
+  notificationId: string,
+  accessToken: string
+): Promise<NotificationsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/notifications/${notificationId}/delete`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

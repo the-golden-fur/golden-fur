@@ -21,6 +21,16 @@ vi.mock('../../../../customers/api/customer.api', () => ({
   getCustomerProfile: vi.fn(),
 }));
 
+// AppShell now renders a customer-facing NotificationBell too (Gmail-style
+// messaging redesign), which fetches on mount - mocked here for the same
+// reason StaffAuthGuard.spec.ts mocks it: these guard tests shouldn't hit a
+// real (relative, base-URL-less) fetch('/notifications') call.
+vi.mock('../../../../notifications/api/notifications.api', () => ({
+  listNotifications: vi.fn().mockResolvedValue({ data: [], error: null }),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+}));
+
 function createAuthValue(
   overrides: Partial<AuthContextValue>
 ): AuthContextValue {

@@ -43,3 +43,18 @@
   overflow-y: auto;
   padding: var(--space-2);
 }
+
+.viewAllLink {
+  display: block;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-accent);
+  text-align: center;
+  text-decoration: none;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2);
+}
+
+.viewAllLink:hover {
+  text-decoration: underline;
+}

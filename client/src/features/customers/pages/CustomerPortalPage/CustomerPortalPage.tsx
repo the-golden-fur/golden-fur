@@ -12,16 +12,7 @@ import type {
   CreditTransaction,
 } from '../../../credits/credits.types';
 import { CreditBalanceCard } from '../../../credits/components/CreditBalanceCard/CreditBalanceCard';
-import {
-  listNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '../../../notifications/api/notifications.api';
-import type { Notification } from '../../../notifications/notifications.types';
-import { NotificationList } from '../../../notifications/components/NotificationList/NotificationList';
 import styles from './CustomerPortalPage.module.css';
-
-type PortalTab = 'overview' | 'notifications';
 
 /**
  * The customer portal home (`/portal`, the Navbar brand link's destination)
@@ -33,10 +24,10 @@ type PortalTab = 'overview' | 'notifications';
  * resolves to the caller) - one card per branch with a nonzero balance,
  * since credit is branch-locked and there's no cross-branch total to show.
  *
- * Issue #101: gains a Notifications tab, rendering through the same
- * NotificationList component #100's staff dropdown uses - scoped to the
- * customer's own inbox automatically (the shared GET /notifications
- * endpoint resolves recipient by caller identity, not a query param).
+ * Custom change (notifications page + admin announcements): the inline
+ * Notifications tab this page used to have (#101) moved to its own routed
+ * page (/portal/notifications, NotificationsPage) reachable via the
+ * sidebar and the new customer navbar bell, so this is Overview-only now.
  */
 export function CustomerPortalPage() {
   const { user, accessToken } = useAuth();
@@ -46,12 +37,6 @@ export function CustomerPortalPage() {
   const [historyByBranch, setHistoryByBranch] = useState<
     Record<string, CreditTransaction[]>
   >({});
-  const [activeTab, setActiveTab] = useState<PortalTab>('overview');
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(true);
-  const [notificationsError, setNotificationsError] = useState<string | null>(
-    null
-  );
 
   useEffect(() => {
     if (!user?.id || !accessToken) {
@@ -94,61 +79,8 @@ export function CustomerPortalPage() {
     };
   }, [user?.id, accessToken]);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    let isMounted = true;
-
-    void listNotifications(accessToken).then((result) => {
-      if (!isMounted) return;
-
-      setNotificationsLoading(false);
-
-      if (result.error) {
-        setNotificationsError(result.error);
-        return;
-      }
-
-      setNotifications(result.data ?? []);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [accessToken]);
-
   const branchName = (branchId: string) =>
     branches.find((branch) => branch.id === branchId)?.name ?? 'Unknown branch';
-
-  async function handleSelectNotification(notification: Notification) {
-    if (notification.is_read || !accessToken) {
-      return;
-    }
-
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === notification.id ? { ...item, is_read: true } : item
-      )
-    );
-
-    await markNotificationRead(notification.id, accessToken);
-  }
-
-  async function handleMarkAllRead() {
-    if (!accessToken) {
-      return;
-    }
-
-    setNotifications((current) =>
-      current.map((item) => ({ ...item, is_read: true }))
-    );
-
-    await markAllNotificationsRead(accessToken);
-  }
-
-  const unreadCount = notifications.filter((item) => !item.is_read).length;
 
   return (
     <main className={styles.page}>
@@ -156,69 +88,20 @@ export function CustomerPortalPage() {
         Welcome back{fullName ? `, ${fullName}` : ''}!
       </h1>
 
-      <div className={styles.tabs} role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'overview'}
-          className={activeTab === 'overview' ? styles.tabActive : styles.tab}
-          onClick={() => setActiveTab('overview')}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'notifications'}
-          className={
-            activeTab === 'notifications' ? styles.tabActive : styles.tab
-          }
-          onClick={() => setActiveTab('notifications')}
-        >
-          Notifications
-          {unreadCount > 0 ? ` (${unreadCount})` : ''}
-        </button>
-      </div>
+      <p className={styles.copy}>Find everything you need in the sidebar.</p>
 
-      {activeTab === 'overview' ? (
-        <>
-          <p className={styles.copy}>
-            Find everything you need in the sidebar.
-          </p>
-
-          {balances.length > 0 ? (
-            <div className={styles.creditSection}>
-              {balances.map((balance) => (
-                <CreditBalanceCard
-                  key={balance.id}
-                  balance={balance}
-                  branchName={branchName(balance.branch_id)}
-                  history={historyByBranch[balance.branch_id] ?? []}
-                />
-              ))}
-            </div>
-          ) : null}
-        </>
-      ) : (
-        <div className={styles.notificationsSection}>
-          <button
-            type="button"
-            className={styles.markAllButton}
-            onClick={() => void handleMarkAllRead()}
-            disabled={unreadCount === 0}
-          >
-            Mark all as read
-          </button>
-          <NotificationList
-            notifications={notifications}
-            isLoading={notificationsLoading}
-            error={notificationsError}
-            onSelect={(notification) =>
-              void handleSelectNotification(notification)
-            }
-          />
+      {balances.length > 0 ? (
+        <div className={styles.creditSection}>
+          {balances.map((balance) => (
+            <CreditBalanceCard
+              key={balance.id}
+              balance={balance}
+              branchName={branchName(balance.branch_id)}
+              history={historyByBranch[balance.branch_id] ?? []}
+            />
+          ))}
         </div>
-      )}
+      ) : null}
     </main>
   );
 }

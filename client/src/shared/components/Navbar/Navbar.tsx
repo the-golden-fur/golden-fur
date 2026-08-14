@@ -17,9 +17,13 @@ interface NavbarProps {
   brandLabel: string;
   /** null while the profile fetch that supplies it is still in flight. */
   identity?: NavbarIdentity | null;
-  /** Issue #100: staff-only NotificationBell, rendered by StaffAuthGuard -
-   * the customer portal gets a sidebar tab instead (#101), not a bell. */
+  /** NotificationBell, rendered by StaffAuthGuard/CustomerAuthGuard - both
+   * roles get one, each pointed at their own /staff or /portal notifications
+   * page via NotificationBell's notificationsHref prop. */
   notificationBell?: ReactNode;
+  /** ComposeEntryPoint (mail/pencil icon), rendered next to notificationBell -
+   * both roles get one, opening the New message modal directly. */
+  composeButton?: ReactNode;
 }
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -51,6 +55,7 @@ export function Navbar({
   brandLabel,
   identity,
   notificationBell,
+  composeButton,
 }: NavbarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
@@ -95,6 +100,7 @@ export function Navbar({
             ) : null}
           </div>
         ) : null}
+        {composeButton}
         {notificationBell}
         <Link
           to={SETTINGS_PATH_BY_ROLE[role]}

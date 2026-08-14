@@ -11,15 +11,21 @@ import styles from './NotificationBell.module.css';
 
 interface NotificationBellProps {
   accessToken: string;
+  /** Route to the full notifications page - passed through to the dropdown's "View all" link. */
+  notificationsHref: string;
 }
 
 /**
- * Issue #100: staff-facing bell icon with an unread-count badge (aliasing
+ * Bell icon with an unread-count badge (aliasing
  * --color-notification-unread-*, not a new hue) - opens NotificationDropdown
  * on click. Owns the inbox fetch and optimistic read-state updates so the
- * dropdown itself stays a plain presentational panel.
+ * dropdown itself stays a plain presentational panel. Rendered for both
+ * staff and customers (StaffAuthGuard/CustomerAuthGuard).
  */
-export function NotificationBell({ accessToken }: NotificationBellProps) {
+export function NotificationBell({
+  accessToken,
+  notificationsHref,
+}: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +109,8 @@ export function NotificationBell({ accessToken }: NotificationBellProps) {
             unreadCount={unreadCount}
             onSelect={(notification) => void handleSelect(notification)}
             onMarkAllRead={() => void handleMarkAllRead()}
+            notificationsHref={notificationsHref}
+            onViewAll={() => setIsOpen(false)}
           />
         </div>
       ) : null}
