@@ -83,6 +83,7 @@ export function AppShell({
           sections={sidebarSections}
           collapsed={collapsed}
           onToggleCollapse={toggleCollapse}
+          role={role}
         />
         <main className={styles.main}>
           {children}

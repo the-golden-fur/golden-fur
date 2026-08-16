@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LayoutDashboard } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
@@ -71,6 +71,15 @@ export function StaffAuthGuard() {
   // staff_profiles.role has to come from the server, same as mfaEnrolled
   // below.
   const [role, setRole] = useState<string | null>(null);
+  // Custom change (fix): building this inline in JSX re-created every
+  // section/item array on *every* re-render, for any reason - including
+  // useInactivityTimeout's own once-a-second countdown tick. Sidebar's
+  // per-category FLIP-reorder animation reacts to that array's identity,
+  // so it was replaying (comparing stale vs fresh element positions) once
+  // a second regardless of any real interaction - visibly "twitching" any
+  // time those two measurements happened to straddle a scroll. Memoizing
+  // on `role` keeps the array reference stable across unrelated re-renders.
+  const sidebarSections = useMemo(() => buildSidebarSections(role), [role]);
   // Populated alongside role from the same getStaffProfile call, for the
   // Navbar identity chip (username · role).
   const [username, setUsername] = useState<string | null>(null);
@@ -189,7 +198,7 @@ export function StaffAuthGuard() {
         identity={
           username && role ? { primary: username, secondary: role } : null
         }
-        sidebarSections={buildSidebarSections(role)}
+        sidebarSections={sidebarSections}
         notificationBell={
           accessToken ? (
             <NotificationBell

@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { MoreVertical } from 'lucide-react';
+import { Check, MoreVertical } from 'lucide-react';
 import styles from './MoreOptionsMenu.module.css';
 
 export interface MoreOptionsMenuItem {
   label: string;
   onSelect: () => void;
+  /** Shows a checkmark next to this item - e.g. the currently active choice
+   * among a small set of mutually exclusive options (a sort mode). Purely
+   * decorative (aria-hidden), so it doesn't affect the item's accessible
+   * name for existing callers that don't set it. */
+  active?: boolean;
 }
 
 interface MoreOptionsMenuProps {
@@ -82,6 +87,15 @@ export function MoreOptionsMenu({
                 item.onSelect();
               }}
             >
+              {item.active ? (
+                <Check
+                  size={14}
+                  aria-hidden="true"
+                  className={styles.menuItemCheck}
+                />
+              ) : (
+                <span className={styles.menuItemCheckPlaceholder} />
+              )}
               {item.label}
             </button>
           ))}

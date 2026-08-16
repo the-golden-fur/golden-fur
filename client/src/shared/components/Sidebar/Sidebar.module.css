@@ -5,8 +5,14 @@
   gap: var(--space-3);
   flex-shrink: 0;
   align-self: stretch;
+  /* height: 100% (not min-height: 100vh) - AppShell now bounds .body to
+     exactly the viewport height minus the navbar, so this fills that
+     space exactly rather than growing taller than it. Growing taller used
+     to be harmless-looking (the sidebar's own overflow-y: auto absorbed
+     it) but meant the sidebar was never actually pinned - once .main's
+     content made the page taller than one screen, the whole page
+     (sidebar included) scrolled together at the document level. */
   height: 100%;
-  min-height: 100vh;
   background: linear-gradient(
     160deg,
     var(--color-portal-nav-bg-start),
@@ -98,7 +104,6 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 0 var(--space-2);
   transition:
     opacity 200ms ease,
     max-height 280ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -110,23 +115,146 @@
   pointer-events: none;
 }
 
-.itemList {
+.sectionHeader,
+.flatSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  /* Keeps the "..." sort trigger hidden until this row is hovered/focused -
+     see the matching --more-options-trigger-opacity comment in
+     MoreOptionsMenu.module.css. */
+  --more-options-trigger-opacity: 0;
+  transition:
+    opacity 200ms ease,
+    max-height 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sectionHeader:hover,
+.sectionHeader:focus-within,
+.flatSectionHeader:hover,
+.flatSectionHeader:focus-within {
+  --more-options-trigger-opacity: 1;
+}
+
+.flatSectionHeader {
+  /* No chevron/label to anchor to for a flat (unlabeled) section - just the
+     "..." sort menu, pinned to the same right edge the labeled version's
+     own menu ends up at. */
+  justify-content: flex-end;
+}
+
+.sidebarCollapsed .sectionHeader,
+.sidebarCollapsed .flatSectionHeader {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  text-align: left;
+}
+
+.sectionChevron,
+.sectionChevronCollapsed {
+  flex-shrink: 0;
+  color: var(--color-portal-nav-text);
+  opacity: 0.65;
+  transition: transform 200ms ease;
+}
+
+.sectionChevronCollapsed {
+  transform: rotate(-90deg);
+}
+
+.itemList,
+.itemListCollapsed {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: 60rem;
+  opacity: 1;
+  transition:
+    max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease;
 }
 
-.itemList > li {
+.itemListCollapsed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  gap: 0;
+}
+
+.sidebarCollapsed .itemList,
+.sidebarCollapsed .itemListCollapsed {
+  /* Icon-rail mode hides every item, labeled category or flat list alike -
+     the rail shows nothing but the expand toggle, not one icon per tile or
+     even one per category (both tried and reverted: one-per-tile piled up
+     into an undifferentiated wall of icons for a multi-category sidebar,
+     and one-per-category still needed guessing which page you wanted). */
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.itemList > li,
+.itemListCollapsed > li {
+  /* Must match on both classes - a rule scoped only to .itemList would
+     revert every li to the browser's default list-item layout the instant
+     a category collapses (display isn't animatable, so this flips
+     instantly, not over the max-height transition below it), visibly
+     "twitching" the grip handle/link before the height even finishes
+     shrinking. */
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
   min-width: 0;
+}
+
+.itemDragging {
+  opacity: 0.4;
+}
+
+.itemDropTarget {
+  outline: 2px dashed var(--color-portal-nav-active-border);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+}
+
+.dragHandle {
+  flex-shrink: 0;
+  color: var(--color-portal-nav-text);
+  opacity: 0.5;
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
 }
 
 .link {
   display: flex;
   align-items: center;
   width: 100%;
+  flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
   border: 1px solid transparent;
@@ -170,35 +298,25 @@
     margin-left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebarCollapsed .linkText {
-  /* white-space: nowrap + overflow: hidden here (on top of the max-width/
-     opacity transition above) matter for more than tidiness - without
-     them, a wrapped label shrinking toward max-width: 0 reflows word-by-
-     word (eventually letter-by-letter) into a tall single-character
-     column instead of just visually shrinking away, ballooning .link's
-     height for the whole collapse animation. */
-  opacity: 0;
-  max-width: 0;
-  max-height: 0;
-  margin-left: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.sidebarCollapsed .link {
-  /* The expanded state's horizontal padding (var(--space-2), 16px each
-     side = 32px) alone exceeds the ~28px actually available inside the
-     3.75rem collapsed rail once the sidebar's own padding is subtracted -
-     the icon was never being centered in the rail, it was being centered
-     in a padding box that no longer fit, forcing the whole row wider than
-     the rail and off-axis. Tighter, collapsed-specific padding is what
-     the icon actually needs. */
-  justify-content: center;
-  padding: var(--space-1) var(--space-0-5);
-}
-
 .link svg {
   flex-shrink: 0;
+}
+
+.categorySortRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+}
+
+.categorySortLabel {
+  color: var(--color-portal-nav-text);
+  opacity: 0.65;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 640px) {
