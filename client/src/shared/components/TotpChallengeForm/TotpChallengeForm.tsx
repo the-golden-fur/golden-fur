@@ -65,7 +65,12 @@ export function TotpChallengeForm({
     >
       <div className={styles.field}>
         <span className={styles.label}>6-digit code</span>
-        <OtpInput value={code} onChange={setCode} label="6-digit code" autoFocus />
+        <OtpInput
+          value={code}
+          onChange={setCode}
+          label="6-digit code"
+          autoFocus
+        />
       </div>
       {error ? (
         <p className={styles.error} role="alert">

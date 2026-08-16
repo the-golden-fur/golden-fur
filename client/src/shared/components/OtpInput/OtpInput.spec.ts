@@ -18,9 +18,17 @@ function Controlled({ onChange }: { onChange?: (value: string) => void }) {
 
 describe('OtpInput', () => {
   it('renders one box per digit, each with its own accessible label', () => {
-    render(createElement(OtpInput, { value: '', onChange: vi.fn(), label: '6-digit code' }));
+    render(
+      createElement(OtpInput, {
+        value: '',
+        onChange: vi.fn(),
+        label: '6-digit code',
+      })
+    );
 
-    expect(screen.getByRole('group', { name: '6-digit code' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', { name: '6-digit code' })
+    ).toBeInTheDocument();
     for (let index = 1; index <= 6; index += 1) {
       expect(screen.getByLabelText(`Digit ${index} of 6`)).toBeInTheDocument();
     }

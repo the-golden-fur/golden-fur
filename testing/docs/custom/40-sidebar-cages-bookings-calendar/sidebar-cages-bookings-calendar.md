@@ -274,7 +274,7 @@ visible inline "Custom order ⌄" `<select>`:
   (`sidebar-section-order-{role}-{label}`) and layered on top of the
   config's own tile order (new tiles not yet dragged fall in at the end in
   their config order; removed tiles drop out) - so "Custom order" now means
-  *your* custom order, not just "whatever order the config happened to list
+  _your_ custom order, not just "whatever order the config happened to list
   them in." Dragging is disabled (no grip handle, not `draggable`) whenever
   sort isn't Custom order, or the whole sidebar is in its icon-rail
   collapsed state.
@@ -399,7 +399,7 @@ feature addition. Client-only; no DB migration.
 ### 1. Fixed: sidebar items twitching on category collapse/expand
 
 `.itemList > li` (the flex row wrapping a category item's grip handle +
-link) was scoped only to the *expanded* `.itemList` class, not
+link) was scoped only to the _expanded_ `.itemList` class, not
 `.itemListCollapsed`. The instant a category collapsed, every item's `<li>`
 reverted to the browser's default `list-item` layout (`display` isn't
 animatable, so this happened instantly, not smoothly alongside the
@@ -425,7 +425,7 @@ the open menu itself.
 ### 3. Fixed: drag-and-drop "going crazy"
 
 Revision 2 reordered the underlying array (and therefore moved the
-*actively-dragged* `<li>` in the DOM) on every `dragenter` event, live,
+_actively-dragged_ `<li>` in the DOM) on every `dragenter` event, live,
 mid-gesture. Relocating a drag source's own DOM node while a native HTML5
 drag is still in progress is unreliable across browsers - some cancel or
 scramble the drag entirely, which is what "going crazy" was. Fixed by
@@ -480,7 +480,8 @@ npx vite build
 Expected: typecheck clean, **611/611 tests pass** (130 files - 6 new
 Sidebar tests replaced with updated drag semantics, 6 new
 `CageOccupancyReport` tests), lint clean, build clean (same pre-existing
->500kB chunk-size warning). Confirmed as of this writing.
+
+> 500kB chunk-size warning). Confirmed as of this writing.
 
 No server changes in this revision - server's own test suite (817/817,
 confirmed in Revision 1) is unaffected.
@@ -553,12 +554,12 @@ One more bug fix from live review. Client-only; no DB migration.
 
 `useRecentlyAccessed`'s returned map was recomputed (read fresh from
 localStorage) reactively on every route change, via a `useMemo` keyed on
-`location.pathname`. That `useMemo` runs *during render*, which happens
-*before* the sibling `useEffect` that actually writes the just-navigated-to
+`location.pathname`. That `useMemo` runs _during render_, which happens
+_before_ the sibling `useEffect` that actually writes the just-navigated-to
 page's timestamp to localStorage (effects run after commit). So on every
 navigation, the map returned for that render was always the map from
-*before* this click - the "Recently accessed" order only ever caught up on
-your *next* navigation, one click later, matching the reported symptom.
+_before_ this click - the "Recently accessed" order only ever caught up on
+your _next_ navigation, one click later, matching the reported symptom.
 
 Fixed along the lines suggested during review: visits are still recorded
 into localStorage on every navigation exactly as before (the effect is
@@ -621,7 +622,7 @@ looked jumpy. The actual remaining cause: `isDraggable` (which controls
 whether an item's grip handle renders) depended on `itemsHidden` (the
 category's own collapsed state), so the instant a category collapsed or
 expanded, every one of its items' grip handles mounted or unmounted
-*simultaneously* - each item's row reflowing (the link sliding over to
+_simultaneously_ - each item's row reflowing (the link sliding over to
 fill/give up the handle's space) at the same moment the height/opacity
 transition started, reading as the whole category "rearranging." Fixed by
 making `isDraggable` depend only on sort mode and the whole-sidebar
@@ -653,7 +654,7 @@ Once a sidebar has 2+ labeled categories (in practice, only Admin/
 Superadmin's grouped view), a new **"Categories"** row appears above them
 with its own "..." menu - the same three modes as a single category's own
 item sort (Custom order/Alphabetical/Recently accessed), but reordering the
-*categories themselves*. Recently accessed scores a category by whichever
+_categories themselves_. Recently accessed scores a category by whichever
 of its own items was most recently visited. Under Custom order, each
 category gets a grip handle (in its header, before the collapse chevron)
 and becomes drag-and-drop reorderable against its sibling categories - same
@@ -685,7 +686,8 @@ npx vite build
 Expected: typecheck clean, **616/616 tests pass** (130 files - one old rail-
 mode test rewritten for the new one-icon-per-category behavior, 4 new
 category-sort/drag tests), lint clean, build clean (same pre-existing
->500kB chunk-size warning). Confirmed as of this writing.
+
+> 500kB chunk-size warning). Confirmed as of this writing.
 
 ## Manual Verification (Revision 5)
 
@@ -730,7 +732,7 @@ category-sort/drag tests), lint clean, build clean (same pre-existing
 
 ## Revision 6 (same branch, live-review pass)
 
-Live review reported the twitching *also* happens on scroll, and asked for
+Live review reported the twitching _also_ happens on scroll, and asked for
 two more changes: a genuinely sticky sidebar, and a fully bare icon rail
 (no icons at all - not even the one-per-category from Revision 5, which
 this revision replaces). Client-only; no DB migration.
@@ -741,7 +743,7 @@ Two compounding bugs, both in code untouched by earlier revisions:
 
 - `StaffAuthGuard.tsx` built the sidebar's `sections`/`items` arrays inline
   in JSX (`sidebarSections={buildSidebarSections(role)}`), uncached. Every
-  re-render of `StaffAuthGuard` - for *any* reason - created brand new
+  re-render of `StaffAuthGuard` - for _any_ reason - created brand new
   array references. `useInactivityTimeout` (the session-timeout countdown)
   re-renders its owner once a second by design, and also resets on a
   window-level `scroll` event - so scrolling the page, or simply leaving it
@@ -751,7 +753,7 @@ Two compounding bugs, both in code untouched by earlier revisions:
   `buildSidebarSections(role)` on `role` in `StaffAuthGuard`, so the array
   reference is stable across unrelated re-renders.
 - Independently, the FLIP effect itself measured position with
-  `getBoundingClientRect().top`, which is relative to the *viewport* - and
+  `getBoundingClientRect().top`, which is relative to the _viewport_ - and
   the sidebar scrolls independently (`overflow-y: auto`). If the effect
   fired (per the bug above) while the sidebar's own scroll position had
   changed since the last measurement, the resulting "delta" was
@@ -790,7 +792,7 @@ moves regardless of how tall the page content next to it gets.
 
 Revision 5 replaced "one icon per tile" with "one icon per category" in
 the rail. Live review asked for something simpler: the rail now shows
-*only* the expand toggle - no icons of any kind, labeled category or flat
+_only_ the expand toggle - no icons of any kind, labeled category or flat
 list alike. `SidebarCategory`'s rail-mode single-icon-button branch (and
 its `onExpandSidebar` prop) were removed; a new
 `.sidebarCollapsed .itemList`/`.sidebarCollapsed .itemListCollapsed` CSS
@@ -850,8 +852,8 @@ calling this closed - see the manual steps below.
 3. Leave the page open and idle (don't touch anything) for several
    seconds - confirm nothing twitches on its own either (the once-a-second
    session-timeout tick used to be enough to trigger it by itself).
-4. Open a tall page (e.g. Staff Management with many rows) so the *main
-   content* is taller than the viewport, and scroll that. Confirm the
+4. Open a tall page (e.g. Staff Management with many rows) so the _main
+   content_ is taller than the viewport, and scroll that. Confirm the
    sidebar doesn't twitch from this either.
 
 ### 2. Sidebar is sticky
@@ -863,7 +865,7 @@ calling this closed - see the manual steps below.
    scroll away, or leave visible empty space above/below it.
 3. If the sidebar's own nav content is independently taller than the
    viewport (e.g. every category expanded on an Admin/Superadmin account),
-   confirm the sidebar scrolls *within itself* (its own scrollbar),
+   confirm the sidebar scrolls _within itself_ (its own scrollbar),
    independent of the main content's scroll position.
 4. Resize to a narrow/mobile width and confirm the existing mobile
    sidebar-as-overlay behavior (`position: fixed`) still works unchanged -

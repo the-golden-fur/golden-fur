@@ -163,7 +163,9 @@ function applyCategoryOrder<T extends { label: string }>(
 ): T[] {
   if (!order) return sections;
 
-  const remaining = new Map(sections.map((section) => [section.label, section]));
+  const remaining = new Map(
+    sections.map((section) => [section.label, section])
+  );
   const ordered: T[] = [];
   for (const label of order) {
     const section = remaining.get(label);
@@ -562,9 +564,7 @@ function SidebarCategory({
                 to={item.to}
                 draggable={false}
                 className={({ isActive }) =>
-                  isActive
-                    ? `${styles.link} ${styles.linkActive}`
-                    : styles.link
+                  isActive ? `${styles.link} ${styles.linkActive}` : styles.link
                 }
                 title={sidebarCollapsed ? item.title : undefined}
               >

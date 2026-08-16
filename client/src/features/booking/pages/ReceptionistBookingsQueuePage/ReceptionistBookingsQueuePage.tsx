@@ -134,7 +134,11 @@ function parseIsoDateLocal(iso: string): Date {
 }
 
 function startOfWeek(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - date.getDay()
+  );
 }
 
 function addDays(date: Date, amount: number): Date {
@@ -503,13 +507,17 @@ export function ReceptionistBookingsQueuePage() {
 
   function goToPrev() {
     setCalendarAnchor((current) =>
-      calendarGranularity === 'week' ? addDays(current, -7) : addMonths(current, -1)
+      calendarGranularity === 'week'
+        ? addDays(current, -7)
+        : addMonths(current, -1)
     );
   }
 
   function goToNext() {
     setCalendarAnchor((current) =>
-      calendarGranularity === 'week' ? addDays(current, 7) : addMonths(current, 1)
+      calendarGranularity === 'week'
+        ? addDays(current, 7)
+        : addMonths(current, 1)
     );
   }
 
@@ -690,7 +698,9 @@ export function ReceptionistBookingsQueuePage() {
           <button
             type="button"
             className={
-              view === 'list' ? styles.viewToggleButtonActive : styles.viewToggleButton
+              view === 'list'
+                ? styles.viewToggleButtonActive
+                : styles.viewToggleButton
             }
             onClick={() => setView('list')}
           >
@@ -732,7 +742,9 @@ export function ReceptionistBookingsQueuePage() {
                 className={styles.navButton}
                 onClick={goToPrev}
                 aria-label={
-                  calendarGranularity === 'week' ? 'Previous week' : 'Previous month'
+                  calendarGranularity === 'week'
+                    ? 'Previous week'
+                    : 'Previous month'
                 }
               >
                 &larr;
@@ -845,7 +857,10 @@ export function ReceptionistBookingsQueuePage() {
           </div>
         ) : null}
 
-        {!isLoading && !loadError && view === 'list' && filteredAndSorted.length > 0 ? (
+        {!isLoading &&
+        !loadError &&
+        view === 'list' &&
+        filteredAndSorted.length > 0 ? (
           <ul className={styles.bookingList}>
             {filteredAndSorted.map((booking) => {
               // Reschedule additionally requires the appointment itself to
