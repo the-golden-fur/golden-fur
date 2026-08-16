@@ -19,6 +19,16 @@ export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
   'Cashier',
 ];
 
+/** Custom change (occupied/vacant cages view for Receptionist): cage
+ * occupancy stays read-only and real-time either way, so opening it to
+ * Receptionist (who already reads the live cage grid via GET /hotel/cages
+ * for check-in) doesn't touch DSR/analytics, which stay REPORTS_READ_ROLES-
+ * only. */
+export const CAGE_OCCUPANCY_READ_ROLES: readonly string[] = [
+  ...REPORTS_READ_ROLES,
+  'Receptionist',
+];
+
 /** Modules-Features is explicit the analytics dashboard is Superadmin-only,
  * distinct from the DSR which Admin/Supervisor can also see for their own
  * branch (Issue #103 dev notes). */

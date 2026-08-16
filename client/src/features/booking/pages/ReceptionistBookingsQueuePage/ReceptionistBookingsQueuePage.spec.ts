@@ -261,6 +261,71 @@ describe('ReceptionistBookingsQueuePage', () => {
     await waitFor(() => expect(screen.getByText('Branch')).toBeInTheDocument());
   });
 
+  it('switches between the List and Calendar views', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Buddy/)).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'View details' }).length
+    ).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Calendar' }));
+
+    expect(
+      screen.queryByRole('button', { name: 'View details' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Previous month' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Next month' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Sun')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'List' }));
+
+    expect(
+      screen.getAllByRole('button', { name: 'View details' }).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('switches the Calendar view between Week and Month granularity', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Buddy/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Calendar' }));
+
+    // Defaults to Month.
+    expect(
+      screen.getByRole('button', { name: 'Previous month' })
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Week' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Previous week' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Previous month' })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Month' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Previous month' })
+    ).toBeInTheDocument();
+  });
+
   it('defaults the date filter to "Today" and requests a same-day range', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],

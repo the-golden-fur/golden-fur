@@ -69,6 +69,86 @@ function formatDateTime(iso: string): string {
   });
 }
 
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+type ViewMode = 'list' | 'calendar';
+type CalendarGranularity = 'week' | 'month';
+
+const WEEKDAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const STATUS_CHIP_CLASS: Record<BookingStatus, keyof typeof styles> = {
+  Pending: 'chipPending',
+  'In Progress': 'chipInProgress',
+  Completed: 'chipCompleted',
+  Cancelled: 'chipCancelled',
+  'No-show': 'chipNoshow',
+};
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** YYYY-MM-DD in local calendar terms - matches how the day cells below and
+ * formatDateTime/formatTime already read a booking's scheduled_start in the
+ * viewer's own timezone. */
+function dateKey(year: number, month: number, day: number): string {
+  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
+}
+
+function dateKeyFromIso(iso: string): string {
+  const date = new Date(iso);
+  return dateKey(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+/** Parses a plain YYYY-MM-DD (as returned by resolveDateRangePreset) into a
+ * local-midnight Date - avoids the classic `new Date('2026-08-03')` pitfall
+ * of parsing as UTC midnight, which can land on the previous calendar day
+ * once converted to a timezone behind UTC. */
+function parseIsoDateLocal(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function startOfWeek(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - date.getDay()
+  );
+}
+
+function addDays(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+function addMonths(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
 type ActiveAction = {
   bookingId: string;
   type: 'reschedule' | 'cancel';
@@ -119,6 +199,27 @@ export function ReceptionistBookingsQueuePage() {
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
     [dateRangePreset, customDate]
   );
+
+  const [view, setView] = useState<ViewMode>('list');
+  const [calendarGranularity, setCalendarGranularity] =
+    useState<CalendarGranularity>('month');
+  const [calendarAnchor, setCalendarAnchor] = useState(() => new Date());
+  // Tracks the last dateRange.from the calendar synced to, so the block
+  // below can tell "the Date filter changed" apart from "the user clicked
+  // Prev/Next" without an effect - adjusting state during render (React's
+  // own recommended pattern for this) instead of useEffect+setState avoids
+  // an extra cascading render on every filter change.
+  const [syncedDateFrom, setSyncedDateFrom] = useState(dateRange.from);
+
+  if (dateRange.from !== syncedDateFrom) {
+    setSyncedDateFrom(dateRange.from);
+    if (dateRange.from) {
+      setCalendarAnchor(parseIsoDateLocal(dateRange.from));
+    }
+  }
+
+  const calendarYear = calendarAnchor.getFullYear();
+  const calendarMonth = calendarAnchor.getMonth();
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pets, setPets] = useState<Record<string, Pet>>({});
@@ -360,6 +461,66 @@ export function ReceptionistBookingsQueuePage() {
     setSortKey,
   ]);
 
+  const bookingsByDate = useMemo(() => {
+    const map = new Map<string, Booking[]>();
+    for (const booking of filteredAndSorted) {
+      const key = dateKeyFromIso(booking.scheduled_start);
+      const bucket = map.get(key) ?? [];
+      bucket.push(booking);
+      map.set(key, bucket);
+    }
+    return map;
+  }, [filteredAndSorted]);
+
+  const monthCells = useMemo(() => {
+    const leadingBlanks = new Date(calendarYear, calendarMonth, 1).getDay();
+    const totalDays = daysInMonth(calendarYear, calendarMonth);
+    return [
+      ...Array.from({ length: leadingBlanks }, () => null),
+      ...Array.from(
+        { length: totalDays },
+        (_, index) => new Date(calendarYear, calendarMonth, index + 1)
+      ),
+    ] as Array<Date | null>;
+  }, [calendarYear, calendarMonth]);
+
+  const weekCells = useMemo(() => {
+    const start = startOfWeek(calendarAnchor);
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [calendarAnchor]);
+
+  const visibleCells = calendarGranularity === 'week' ? weekCells : monthCells;
+
+  const calendarLabel = useMemo(() => {
+    if (calendarGranularity === 'month') {
+      return `${MONTH_LABELS[calendarMonth]} ${calendarYear}`;
+    }
+    const start = weekCells[0];
+    const end = weekCells[6];
+    const startLabel = `${MONTH_LABELS[start.getMonth()].slice(0, 3)} ${start.getDate()}`;
+    const endLabel =
+      start.getMonth() === end.getMonth()
+        ? `${end.getDate()}`
+        : `${MONTH_LABELS[end.getMonth()].slice(0, 3)} ${end.getDate()}`;
+    return `${startLabel} - ${endLabel}, ${end.getFullYear()}`;
+  }, [calendarGranularity, calendarMonth, calendarYear, weekCells]);
+
+  function goToPrev() {
+    setCalendarAnchor((current) =>
+      calendarGranularity === 'week'
+        ? addDays(current, -7)
+        : addMonths(current, -1)
+    );
+  }
+
+  function goToNext() {
+    setCalendarAnchor((current) =>
+      calendarGranularity === 'week'
+        ? addDays(current, 7)
+        : addMonths(current, 1)
+    );
+  }
+
   function replaceBooking(updated: Booking) {
     setBookings((prev) =>
       prev.map((booking) => (booking.id === updated.id ? updated : booking))
@@ -529,6 +690,35 @@ export function ReceptionistBookingsQueuePage() {
 
         <ActiveFilterChips chips={filterChips} />
 
+        <div
+          className={styles.viewToggle}
+          role="group"
+          aria-label="Bookings view"
+        >
+          <button
+            type="button"
+            className={
+              view === 'list'
+                ? styles.viewToggleButtonActive
+                : styles.viewToggleButton
+            }
+            onClick={() => setView('list')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            className={
+              view === 'calendar'
+                ? styles.viewToggleButtonActive
+                : styles.viewToggleButton
+            }
+            onClick={() => setView('calendar')}
+          >
+            Calendar
+          </button>
+        </div>
+
         {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
 
         {loadError ? (
@@ -537,11 +727,140 @@ export function ReceptionistBookingsQueuePage() {
           </p>
         ) : null}
 
-        {!isLoading && !loadError && filteredAndSorted.length === 0 ? (
+        {!isLoading &&
+        !loadError &&
+        view === 'list' &&
+        filteredAndSorted.length === 0 ? (
           <p className={styles.copy}>No bookings match these filters.</p>
         ) : null}
 
-        {!isLoading && !loadError && filteredAndSorted.length > 0 ? (
+        {!isLoading && !loadError && view === 'calendar' ? (
+          <div className={styles.calendarPanel}>
+            <div className={styles.monthNav}>
+              <button
+                type="button"
+                className={styles.navButton}
+                onClick={goToPrev}
+                aria-label={
+                  calendarGranularity === 'week'
+                    ? 'Previous week'
+                    : 'Previous month'
+                }
+              >
+                &larr;
+              </button>
+              <span className={styles.monthLabel}>{calendarLabel}</span>
+              <button
+                type="button"
+                className={styles.navButton}
+                onClick={goToNext}
+                aria-label={
+                  calendarGranularity === 'week' ? 'Next week' : 'Next month'
+                }
+              >
+                &rarr;
+              </button>
+              <div
+                className={styles.viewToggle}
+                role="group"
+                aria-label="Calendar granularity"
+              >
+                <button
+                  type="button"
+                  className={
+                    calendarGranularity === 'week'
+                      ? styles.viewToggleButtonActive
+                      : styles.viewToggleButton
+                  }
+                  onClick={() => setCalendarGranularity('week')}
+                >
+                  Week
+                </button>
+                <button
+                  type="button"
+                  className={
+                    calendarGranularity === 'month'
+                      ? styles.viewToggleButtonActive
+                      : styles.viewToggleButton
+                  }
+                  onClick={() => setCalendarGranularity('month')}
+                >
+                  Month
+                </button>
+              </div>
+            </div>
+            <p className={styles.copy}>
+              Showing bookings that match the filters above - set Date to
+              &quot;This month&quot; to see a full month at once.
+            </p>
+            <div className={styles.calendar}>
+              {WEEKDAY_HEADERS.map((label) => (
+                <div key={label} className={styles.weekdayHeader}>
+                  {label}
+                </div>
+              ))}
+              {visibleCells.map((cellDate, index) => {
+                if (cellDate === null) {
+                  return (
+                    <div
+                      key={`blank-${index}`}
+                      className={styles.dayCellBlank}
+                    />
+                  );
+                }
+
+                const key = dateKey(
+                  cellDate.getFullYear(),
+                  cellDate.getMonth(),
+                  cellDate.getDate()
+                );
+                const dayBookings = bookingsByDate.get(key) ?? [];
+
+                return (
+                  <div
+                    key={key}
+                    className={
+                      calendarGranularity === 'week'
+                        ? `${styles.dayCell} ${styles.dayCellWeek}`
+                        : styles.dayCell
+                    }
+                  >
+                    <div className={styles.dayCellHeader}>
+                      <span>
+                        {calendarGranularity === 'week'
+                          ? `${MONTH_LABELS[cellDate.getMonth()].slice(0, 3)} ${cellDate.getDate()}`
+                          : cellDate.getDate()}
+                      </span>
+                    </div>
+                    <div className={styles.dayChips}>
+                      {dayBookings.map((booking) => (
+                        <button
+                          type="button"
+                          key={booking.id}
+                          className={`${styles.chip} ${
+                            styles[STATUS_CHIP_CLASS[booking.status]]
+                          }`}
+                          onClick={() =>
+                            navigate(`/staff/bookings/${booking.id}`)
+                          }
+                        >
+                          {formatTime(booking.scheduled_start)} -{' '}
+                          {pets[booking.pet_id]?.name ?? 'Pet'} (
+                          {booking.service_category})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {!isLoading &&
+        !loadError &&
+        view === 'list' &&
+        filteredAndSorted.length > 0 ? (
           <ul className={styles.bookingList}>
             {filteredAndSorted.map((booking) => {
               // Reschedule additionally requires the appointment itself to

@@ -4,6 +4,7 @@ import { setSessionPersistence } from '../../auth/api/auth.api';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import { totpCodeSchema } from '../../auth/mfa.validator';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
+import { OtpInput } from '../OtpInput/OtpInput';
 import styles from '../TotpEnrollPanel/TotpEnrollPanel.module.css';
 
 interface TotpChallengeFormProps {
@@ -62,16 +63,15 @@ export function TotpChallengeForm({
       className={styles.form}
       onSubmit={(event) => void handleSubmit(event)}
     >
-      <label className={styles.field}>
+      <div className={styles.field}>
         <span className={styles.label}>6-digit code</span>
-        <input
-          className={styles.input}
-          inputMode="numeric"
-          maxLength={6}
+        <OtpInput
           value={code}
-          onChange={(event) => setCode(event.target.value)}
+          onChange={setCode}
+          label="6-digit code"
+          autoFocus
         />
-      </label>
+      </div>
       {error ? (
         <p className={styles.error} role="alert">
           {error}

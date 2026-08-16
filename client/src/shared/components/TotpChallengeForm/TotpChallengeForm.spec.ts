@@ -50,7 +50,7 @@ describe('TotpChallengeForm', () => {
 
     renderForm(onVerified, applySession);
 
-    await userEvent.type(screen.getByLabelText(/6-digit code/i), '123456');
+    await userEvent.type(screen.getByLabelText('Digit 1 of 6'), '123456');
     await userEvent.click(screen.getByRole('button', { name: /verify code/i }));
 
     expect(mfaApi.verifyMfa).toHaveBeenCalledWith(
@@ -73,7 +73,7 @@ describe('TotpChallengeForm', () => {
 
     renderForm(onVerified);
 
-    await userEvent.type(screen.getByLabelText(/6-digit code/i), '000000');
+    await userEvent.type(screen.getByLabelText('Digit 1 of 6'), '000000');
     await userEvent.click(screen.getByRole('button', { name: /verify code/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid code');

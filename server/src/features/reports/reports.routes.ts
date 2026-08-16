@@ -12,15 +12,17 @@ import {
 } from './reports.controller.ts';
 import {
   ANALYTICS_READ_ROLES,
+  CAGE_OCCUPANCY_READ_ROLES,
   REPORTS_READ_ROLES,
   TRANSACTION_HISTORY_READ_ROLES,
 } from './reports.types.ts';
 
 /**
  * Issues #102/#103: staff-only, all four routes - Admin/Supervisor/
- * Superadmin for the DSR/cage-occupancy reads (Cashier added for
- * transaction-history only - TRANSACTION_HISTORY_READ_ROLES), Superadmin-only
- * for analytics (Modules-Features is explicit on that split). requireBranch
+ * Superadmin for the DSR read (Cashier added for transaction-history only -
+ * TRANSACTION_HISTORY_READ_ROLES; Receptionist added for cage-occupancy
+ * only - CAGE_OCCUPANCY_READ_ROLES, custom change), Superadmin-only for
+ * analytics (Modules-Features is explicit on that split). requireBranch
  * resolves req.user.branch_id, which every service needs even for a
  * Superadmin caller (as the "own branch" fallback whenever they don't pass
  * an explicit branch_id).
@@ -48,6 +50,13 @@ const transactionHistoryRead = [
   requireBranch,
 ];
 
+const cageOccupancyRead = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...CAGE_OCCUPANCY_READ_ROLES]),
+  requireBranch,
+];
+
 const myTransactionHistoryRead = [jwtMiddleware, sessionTimeoutMiddleware];
 
 const analyticsRead = [
@@ -59,7 +68,7 @@ const analyticsRead = [
 router.get('/reports/dsr', reportsRead, dailySalesReportController);
 router.get(
   '/reports/cage-occupancy',
-  reportsRead,
+  cageOccupancyRead,
   cageOccupancyReportController
 );
 router.get(

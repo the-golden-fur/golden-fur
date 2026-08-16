@@ -122,6 +122,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Branch-wide booking queue - view every status, reschedule, or cancel.',
             to: '/staff/bookings/queue',
           },
+          {
+            title: 'Cage Occupancy',
+            description: 'Real-time cage availability by size category.',
+            to: '/staff/reports/cage-occupancy',
+          },
         ],
       },
       {
@@ -317,6 +322,11 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Bookings Queue',
             description: "Today's confirmed bookings for the front desk.",
             to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Cage Occupancy',
+            description: 'Real-time cage availability by size category.',
+            to: '/staff/reports/cage-occupancy',
           },
         ],
       },

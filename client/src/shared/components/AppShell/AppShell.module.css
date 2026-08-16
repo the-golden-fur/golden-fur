@@ -1,13 +1,19 @@
 .shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  /* Fixed to exactly the viewport, not min-height: 100vh - the shell
+     itself never scrolls. .navbarWrapper takes whatever height it needs
+     and .body gets the rest (flex: 1; min-height: 0 below); within .body,
+     .main scrolls its own overflow independently. This is what makes the
+     sidebar "sticky" without fighting two separate position: sticky
+     elements for the same top-of-viewport space: it isn't in a scrolling
+     context at all, so it can't scroll away regardless of how tall the
+     page's main content gets. */
+  height: 100vh;
 }
 
 .navbarWrapper {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-navbar);
+  flex-shrink: 0;
 }
 
 .body {
@@ -19,7 +25,7 @@
 .main {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
+  overflow: auto;
 }
 
 @media (max-width: 640px) {

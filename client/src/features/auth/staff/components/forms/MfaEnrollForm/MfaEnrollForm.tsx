@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
+import { OtpInput } from '../../../../../../shared/components/OtpInput/OtpInput';
 import { mfaEnroll, mfaVerify } from '../../../api/staffAuth.api';
 import { totpCodeSchema } from '../../../modules/validators/staffAuth.validator';
 import styles from '../StaffLoginForm/StaffLoginForm.module.css';
@@ -75,16 +76,10 @@ export function MfaEnrollForm() {
     >
       {qrCode ? <img src={qrCode} alt="MFA enrollment QR code" /> : null}
       {manualUri ? <p className={styles.success}>{manualUri}</p> : null}
-      <label className={styles.field}>
+      <div className={styles.field}>
         <span className={styles.label}>6-digit code</span>
-        <input
-          className={styles.input}
-          inputMode="numeric"
-          maxLength={6}
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-        />
-      </label>
+        <OtpInput value={code} onChange={setCode} label="6-digit code" />
+      </div>
       {error ? (
         <p className={styles.error} role="alert">
           {error}

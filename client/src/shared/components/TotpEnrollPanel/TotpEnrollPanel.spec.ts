@@ -94,7 +94,7 @@ describe('TotpEnrollPanel', () => {
     renderPanel(onEnrolled, applySession);
 
     await screen.findByText('ABCD1234');
-    await userEvent.type(screen.getByLabelText(/6-digit code/i), '123456');
+    await userEvent.type(screen.getByLabelText('Digit 1 of 6'), '123456');
     await userEvent.click(screen.getByRole('button', { name: /confirm mfa/i }));
 
     await waitFor(() =>
