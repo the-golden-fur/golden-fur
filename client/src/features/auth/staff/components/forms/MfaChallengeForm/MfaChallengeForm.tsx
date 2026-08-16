@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
+import { OtpInput } from '../../../../../../shared/components/OtpInput/OtpInput';
 import { mfaVerify } from '../../../api/staffAuth.api';
 import { totpCodeSchema } from '../../../modules/validators/staffAuth.validator';
 import styles from '../StaffLoginForm/StaffLoginForm.module.css';
@@ -46,16 +47,10 @@ export function MfaChallengeForm() {
       className={styles.form}
       onSubmit={(event) => void handleSubmit(event)}
     >
-      <label className={styles.field}>
+      <div className={styles.field}>
         <span className={styles.label}>6-digit code</span>
-        <input
-          className={styles.input}
-          inputMode="numeric"
-          maxLength={6}
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-        />
-      </label>
+        <OtpInput value={code} onChange={setCode} label="6-digit code" autoFocus />
+      </div>
       {error ? (
         <p className={styles.error} role="alert">
           {error}
