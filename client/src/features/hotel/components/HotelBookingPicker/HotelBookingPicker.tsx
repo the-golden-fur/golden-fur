@@ -42,7 +42,7 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
 ];
 
 const STATUS_OPTIONS: QueueStatusOption[] = [
-  { value: 'Pending', label: 'Pending (checkinable)' },
+  { value: 'Pending', label: 'Pending' },
   { value: 'All', label: 'All statuses' },
   ...BOOKING_STATUSES.filter((status) => status !== 'Pending').map(
     (status) => ({ value: status, label: status })

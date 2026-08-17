@@ -2082,7 +2082,11 @@ export function CustomerBookingFlowPage() {
               UI - it had no onSelect and nothing it showed ever flowed
               into the booking; recommendedSize below folds its one useful
               signal, the pet's own weight-class "Recommended" hint, into
-              this picker instead of losing it.) */}
+              this picker instead of losing it.) Custom change (cage size
+              booking restriction): restrictToPetSize is on for a customer
+              booking their own pet (mismatched-size cages are shown but
+              disabled) and off in receptionist mode, so only staff can
+              knowingly book a walk-in into a differently-sized cage. */}
             {selectedSlot && category === 'Hotel' && !cagePickerUnavailable ? (
               <CagePickerList
                 accessToken={accessToken!}
@@ -2091,6 +2095,7 @@ export function CustomerBookingFlowPage() {
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
                 recommendedSize={selectedPet?.weight_class ?? null}
+                restrictToPetSize={!isReceptionistMode}
               />
             ) : null}
           </div>

@@ -878,13 +878,20 @@ export async function createBooking({
   // invalid/no-longer-available preference silently degrades to null rather
   // than rejecting the booking; check-in's own suggestCage/assignCage flow
   // re-validates and lets the receptionist re-pick regardless.
+  //
+  // Custom change (cage size booking restriction): a customer (no
+  // staffRole) can only ever have a preference honored when it matches
+  // their own pet's weight_class - mirrors CagePickerList's disabled tiles
+  // client-side, enforced here too so a direct API call can't bypass it. A
+  // staff-created (receptionist) booking passes no size restriction.
   const preferredCageId =
     input.service_category === 'Hotel' &&
     input.cage_preference?.type === 'specific' &&
     (await isCagePickerEnabled(input.service_category))
       ? await verifyCagePreference(
           input.cage_preference.cage_id!,
-          input.branch_id
+          input.branch_id,
+          staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined)
         )
       : null;
 

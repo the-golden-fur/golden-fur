@@ -287,11 +287,23 @@ export async function reopenCareLogEntry(
   return { data: result.data?.entry ?? null, error: result.error };
 }
 
+export interface ListHotelStaysFilters {
+  status?: HotelStayFilterStatus;
+  /** Inclusive YYYY-MM-DD bounds against scheduled_check_out_date. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export async function listHotelStays(
   accessToken: string,
-  status?: HotelStayFilterStatus
+  filters: ListHotelStaysFilters = {}
 ): Promise<HotelApiResult<HotelStayWithCage[]>> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
   const response = await fetch(`${API_BASE_URL}/hotel/stays${query}`, {
     headers: authHeaders(accessToken),
   });

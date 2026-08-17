@@ -18,7 +18,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'order']) {
+    for (const method of ['select', 'eq', 'order', 'gte', 'lte']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -58,6 +58,18 @@ describe('hotelStay.service (#79 revision)', () => {
     const stays = await listHotelStays({
       branchId: 'branch-1',
       status: 'Active',
+    });
+
+    expect(stays).toEqual([]);
+  });
+
+  it('supports filtering by an inclusive scheduled_check_out_date range (Custom change: hotel queue checkout list parity)', async () => {
+    queueFromResults({ data: [], error: null });
+
+    const stays = await listHotelStays({
+      branchId: 'branch-1',
+      dateFrom: '2026-08-01',
+      dateTo: '2026-08-07',
     });
 
     expect(stays).toEqual([]);

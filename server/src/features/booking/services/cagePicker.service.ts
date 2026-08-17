@@ -94,18 +94,31 @@ export async function getCagePickerOptions(
  * confirmation time (mirrors resolveStaffAssignment's re-verification of a
  * specific staff preference) - returns null (silently degrades to "no
  * preference") rather than rejecting the whole booking, since a cage
- * preference is advisory-only and check-in re-validates/re-picks anyway. */
+ * preference is advisory-only and check-in re-validates/re-picks anyway.
+ *
+ * requiredSize (Custom change: cage size booking restriction) - when given
+ * (a customer's own booking, never a staff-created one), the cage must also
+ * match the pet's own weight_class or this degrades to null exactly like an
+ * unavailable cage does, so a customer can't book a mismatched-size cage by
+ * calling the API directly, bypassing CagePickerList's disabled tiles.
+ * Receptionist/staff bookings pass no requiredSize and keep free choice. */
 export async function verifyCagePreference(
   cageId: string,
-  branchId: string
+  branchId: string,
+  requiredSize?: string
 ): Promise<string | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('cages')
     .select('id')
     .eq('id', cageId)
     .eq('branch_id', branchId)
-    .eq('status', 'Available')
-    .maybeSingle();
+    .eq('status', 'Available');
+
+  if (requiredSize) {
+    query = query.eq('size', requiredSize);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
 

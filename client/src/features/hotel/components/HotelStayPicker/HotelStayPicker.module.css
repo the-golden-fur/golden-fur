@@ -79,6 +79,21 @@
   box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
 }
 
+.disabledCard {
+  opacity: 0.75;
+}
+
+.checkedOutBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-active-bg);
+  color: var(--color-active-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-1);
+}
+
 .cardHeader {
   display: flex;
   align-items: center;

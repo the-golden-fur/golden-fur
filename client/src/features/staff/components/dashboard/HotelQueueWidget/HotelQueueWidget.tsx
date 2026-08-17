@@ -30,16 +30,18 @@ export function HotelQueueWidget({ accessToken }: HotelQueueWidgetProps) {
 
     let isMounted = true;
 
-    void listHotelStays(accessToken, 'In Progress').then((result) => {
-      if (!isMounted) return;
+    void listHotelStays(accessToken, { status: 'In Progress' }).then(
+      (result) => {
+        if (!isMounted) return;
 
-      if (result.error || !result.data) {
-        setError(result.error ?? 'Could not load the Hotel queue.');
-        return;
+        if (result.error || !result.data) {
+          setError(result.error ?? 'Could not load the Hotel queue.');
+          return;
+        }
+
+        setStays(result.data);
       }
-
-      setStays(result.data);
-    });
+    );
 
     return () => {
       isMounted = false;

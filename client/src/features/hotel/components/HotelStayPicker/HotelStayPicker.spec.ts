@@ -33,6 +33,7 @@ function stay(overrides: Partial<HotelStayWithCage> = {}): HotelStayWithCage {
     pet_id: 'pet-1',
     cage_id: 'cage-1',
     cage_label: 'Makati-S-01',
+    status: 'Active',
     check_in_at: '2026-07-27T01:00:00.000Z',
     scheduled_check_out_date: '2026-07-28',
     actual_check_out_at: null,
@@ -93,13 +94,47 @@ describe('HotelStayPicker', () => {
     expect(screen.getByText(/Ana Cruz/)).toBeInTheDocument();
   });
 
-  it('only ever requests In Progress stays', async () => {
+  it('defaults to requesting In Progress stays across all dates', async () => {
     setupMocks([stay()]);
 
     renderPicker({ accessToken: 'token', onSelect: vi.fn() });
 
     await screen.findByText('Mochi');
-    expect(listHotelStays).toHaveBeenCalledWith('token', 'In Progress');
+    expect(listHotelStays).toHaveBeenCalledWith('token', {
+      status: 'In Progress',
+      dateFrom: undefined,
+      dateTo: undefined,
+    });
+  });
+
+  it('widening the status filter to "All statuses" requests every status (Custom change: hotel queue checkout list parity)', async () => {
+    setupMocks([stay()]);
+
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
+
+    await screen.findByText('Mochi');
+
+    fireEvent.change(screen.getByLabelText('Status'), {
+      target: { value: 'All' },
+    });
+
+    expect(listHotelStays).toHaveBeenLastCalledWith('token', {
+      status: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+    });
+  });
+
+  it('an already-checked-out stay shows a badge instead of the Check out button', async () => {
+    setupMocks([stay({ status: 'Completed' })]);
+
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
+
+    expect(await screen.findByText('Mochi')).toBeInTheDocument();
+    expect(screen.getByText('Already checked out')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Check out' })
+    ).not.toBeInTheDocument();
   });
 
   it('clicking the Check out button calls onSelect with that stay', async () => {
@@ -131,7 +166,7 @@ describe('HotelStayPicker', () => {
     );
 
     expect(
-      await screen.findByText(/No active stays match your search/)
+      await screen.findByText(/No stays match these filters/)
     ).toBeInTheDocument();
   });
 });
