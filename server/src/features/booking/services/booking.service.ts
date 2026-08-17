@@ -1028,15 +1028,24 @@ export async function createBooking({
 }
 
 /** Custom change: duplicate-booking prevention at pet selection - "still
- * not resolved" means the booking hasn't finished yet, so this is
- * deliberately narrower than ACTIVE_BOOKING_STATUSES (which also includes
- * 'Completed', for the staff-availability overlap check's own different
- * purpose). A Completed booking means the service already happened and the
- * pet is free to be booked again. */
+ * not resolved" means either the booking hasn't finished yet (Pending/In
+ * Progress), or it finished but was never paid for (Completed with
+ * payment_stage still 'Unpaid' - see UNPAID_CONFLICT_STATUS below). This is
+ * still deliberately narrower than ACTIVE_BOOKING_STATUSES (which also
+ * includes 'Completed' unconditionally, for the staff-availability overlap
+ * check's own different purpose): a *paid* Completed booking means the
+ * service already happened and was settled, so the pet is free to be
+ * booked again. Cancelled/No-show bookings never block, regardless of
+ * payment_stage - no service was rendered on them and nothing is owed. */
 const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
   'In Progress',
 ];
+
+/** A Completed booking only conflicts when it's also still Unpaid - see
+ * UNRESOLVED_BOOKING_STATUSES above. Queried alongside those statuses so
+ * listPetBookingConflicts can apply the payment_stage check itself. */
+const UNPAID_CONFLICT_STATUS: Booking['status'] = 'Completed';
 
 interface PetBookingConflictsParams {
   requesterId: string;
@@ -1076,9 +1085,11 @@ export async function listPetBookingConflicts({
 
   const { data, error } = await supabase
     .from('bookings')
-    .select('id, pet_id, service_category, scheduled_start')
+    .select(
+      'id, pet_id, service_category, scheduled_start, status, payment_stage'
+    )
     .eq('customer_id', customerId)
-    .in('status', UNRESOLVED_BOOKING_STATUSES)
+    .in('status', [...UNRESOLVED_BOOKING_STATUSES, UNPAID_CONFLICT_STATUS])
     .order('scheduled_start', { ascending: true });
 
   if (error) throwWithStatus(400, error.message);
@@ -1090,7 +1101,13 @@ export async function listPetBookingConflicts({
     pet_id: string;
     service_category: Booking['service_category'];
     scheduled_start: string;
+    status: Booking['status'];
+    payment_stage: PaymentStage;
   }>) {
+    const isUnresolved =
+      UNRESOLVED_BOOKING_STATUSES.includes(row.status) ||
+      (row.status === UNPAID_CONFLICT_STATUS && row.payment_stage === 'Unpaid');
+    if (!isUnresolved) continue;
     if (conflictByPetId.has(row.pet_id)) continue;
     conflictByPetId.set(row.pet_id, {
       pet_id: row.pet_id,

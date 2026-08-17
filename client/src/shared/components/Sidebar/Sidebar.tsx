@@ -25,6 +25,16 @@ export interface SidebarItem {
   title: string;
   to: string;
   icon?: LucideIcon;
+  /** Passed straight through to NavLink's own `end` prop - opt in for an
+   * item whose `to` is a literal path-segment ancestor of every other page
+   * in its section (e.g. the customer portal's Home, `to: '/portal'`,
+   * which is a prefix of every other /portal/* route). Without this,
+   * NavLink's default non-exact matching keeps such an item highlighted no
+   * matter which page you're actually on. Leave unset (default: false,
+   * NavLink's own default) for an item like Pet Manager (`/portal/pets`)
+   * that legitimately has its own nested detail route
+   * (`/portal/pets/:petId`) it should stay highlighted on. */
+  end?: boolean;
 }
 
 export interface SidebarSection {
@@ -562,6 +572,7 @@ function SidebarCategory({
               ) : null}
               <NavLink
                 to={item.to}
+                end={item.end}
                 draggable={false}
                 className={({ isActive }) =>
                   isActive ? `${styles.link} ${styles.linkActive}` : styles.link

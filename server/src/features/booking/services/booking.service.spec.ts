@@ -1606,18 +1606,24 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           pet_id: 'pet-1',
           service_category: 'Grooming',
           scheduled_start: '2026-08-10T00:00:00.000Z',
+          status: 'Pending',
+          payment_stage: 'Unpaid',
         },
         {
           id: 'booking-2',
           pet_id: 'pet-1',
           service_category: 'Hotel',
           scheduled_start: '2026-08-20T00:00:00.000Z',
+          status: 'In Progress',
+          payment_stage: 'Paid',
         },
         {
           id: 'booking-3',
           pet_id: 'pet-2',
           service_category: 'Veterinary',
           scheduled_start: '2026-08-11T00:00:00.000Z',
+          status: 'Pending',
+          payment_stage: 'Unpaid',
         },
       ],
       error: null,
@@ -1644,6 +1650,69 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
     ]);
   });
 
+  it('flags a Completed booking that is still Unpaid as a conflict (the pet stays blocked until it is paid, even though the service already happened)', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+    queueFromResults({
+      data: [
+        {
+          id: 'booking-4',
+          pet_id: 'pet-4',
+          service_category: 'Hotel',
+          scheduled_start: '2026-08-05T00:00:00.000Z',
+          status: 'Completed',
+          payment_stage: 'Unpaid',
+        },
+      ],
+      error: null,
+    });
+
+    const conflicts = await listPetBookingConflicts({
+      requesterId: CUSTOMER_ID,
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(conflicts).toEqual([
+      {
+        pet_id: 'pet-4',
+        booking_id: 'booking-4',
+        service_category: 'Hotel',
+        scheduled_start: '2026-08-05T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('does not flag a Completed booking once it has been paid (in full or in advance)', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+    queueFromResults({
+      data: [
+        {
+          id: 'booking-5',
+          pet_id: 'pet-5',
+          service_category: 'Grooming',
+          scheduled_start: '2026-08-05T00:00:00.000Z',
+          status: 'Completed',
+          payment_stage: 'Paid',
+        },
+        {
+          id: 'booking-6',
+          pet_id: 'pet-6',
+          service_category: 'Daycare',
+          scheduled_start: '2026-08-06T00:00:00.000Z',
+          status: 'Completed',
+          payment_stage: 'Paid in Advance',
+        },
+      ],
+      error: null,
+    });
+
+    const conflicts = await listPetBookingConflicts({
+      requesterId: CUSTOMER_ID,
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(conflicts).toEqual([]);
+  });
+
   it('returns an empty list when nothing is unresolved', async () => {
     vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
     queueFromResults({ data: [], error: null });
@@ -1665,6 +1734,8 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           pet_id: 'pet-9',
           service_category: 'Daycare',
           scheduled_start: '2026-08-12T00:00:00.000Z',
+          status: 'Pending',
+          payment_stage: 'Unpaid',
         },
       ],
       error: null,

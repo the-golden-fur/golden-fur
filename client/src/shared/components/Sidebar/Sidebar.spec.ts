@@ -78,6 +78,56 @@ describe('Sidebar', () => {
     ).not.toHaveAttribute('aria-current');
   });
 
+  it("does not keep an `end` item active once the route has moved past it (bug: customer portal's Home stayed highlighted on every /portal/* page)", () => {
+    renderSidebar(
+      [
+        {
+          label: null,
+          items: [
+            { title: 'Home', to: '/portal', end: true },
+            { title: 'Transactions', to: '/portal/transactions' },
+          ],
+        },
+      ],
+      false,
+      vi.fn(),
+      '/portal/transactions'
+    );
+
+    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+      'aria-current'
+    );
+    expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+  });
+
+  it('keeps a non-`end` item active on its own nested detail route (e.g. Pet Manager while viewing one pet)', () => {
+    renderSidebar(
+      [
+        {
+          label: null,
+          items: [
+            { title: 'Home', to: '/portal', end: true },
+            { title: 'Pet Manager', to: '/portal/pets' },
+          ],
+        },
+      ],
+      false,
+      vi.fn(),
+      '/portal/pets/pet-123'
+    );
+
+    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+      'aria-current'
+    );
+    expect(screen.getByRole('link', { name: 'Pet Manager' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+  });
+
   it('calls onToggleCollapse when the collapse button is clicked', async () => {
     const onToggleCollapse = vi.fn();
     renderSidebar(
