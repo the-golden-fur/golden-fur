@@ -27,6 +27,12 @@ interface ListHotelStaysParams {
    * HotelBookingPicker to flag any booking that already has a stay (In
    * Progress or Completed), not just ones still checked in. */
   status?: HotelStayFilterStatus;
+  /** Inclusive YYYY-MM-DD bounds against scheduled_check_out_date - gives
+   * HotelStayPicker's checkout list the same date-range filtering
+   * HotelBookingPicker already has for check-in (Custom change: hotel queue
+   * checkout list parity). Either may be given alone. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**
@@ -40,6 +46,8 @@ interface ListHotelStaysParams {
 export async function listHotelStays({
   branchId,
   status,
+  dateFrom,
+  dateTo,
 }: ListHotelStaysParams): Promise<HotelStayWithCage[]> {
   let query = supabase
     .from('stays')
@@ -50,6 +58,14 @@ export async function listHotelStays({
 
   if (status) {
     query = query.eq('bookings.status', status);
+  }
+
+  if (dateFrom) {
+    query = query.gte('scheduled_check_out_date', dateFrom);
+  }
+
+  if (dateTo) {
+    query = query.lte('scheduled_check_out_date', dateTo);
   }
 
   const { data, error } = await query;

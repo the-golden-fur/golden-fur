@@ -111,6 +111,20 @@ export const updateCageValidator = z
 
 export type UpdateCageInput = z.infer<typeof updateCageValidator>;
 
+/** Custom change (hotel queue checkout list parity): gives GET /hotel/stays
+ * the same status + inclusive date-range query shape listBookingsQueryValidator
+ * already offers GET /bookings, so HotelStayPicker's checkout list can reuse
+ * the same QueueFilterBar HotelBookingPicker's check-in list uses. */
+export const listHotelStaysQueryValidator = z.object({
+  status: z.enum(['In Progress', 'Completed']).optional(),
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
+});
+
+export type ListHotelStaysQueryInput = z.infer<
+  typeof listHotelStaysQueryValidator
+>;
+
 // createCatalogItemValidator/updateCatalogItemValidator moved to
 // features/catalog/modules/validators/catalog.validator.ts (Sprint 5
 // unification, #82) as createProductValidator/updateProductValidator.

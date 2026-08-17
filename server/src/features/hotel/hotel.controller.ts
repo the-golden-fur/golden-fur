@@ -17,16 +17,14 @@ import {
   updateCage,
 } from './services/cageStatus.service.ts';
 import { checkOutHotelStay } from './services/checkout.service.ts';
-import {
-  listHotelStays,
-  type HotelStayFilterStatus,
-} from './services/hotelStay.service.ts';
+import { listHotelStays } from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
 import {
   cageStatusUpdateValidator,
   checkInValidator,
   createCageValidator,
+  listHotelStaysQueryValidator,
   updateCageValidator,
 } from './modules/validators/hotel.validator.ts';
 
@@ -366,8 +364,6 @@ export async function deleteCageController(
 // unification, #82) - see catalog.controller.ts's listProductsController/
 // createProductController/updateProductController/deleteProductController.
 
-const VALID_STAY_STATUSES = new Set(['In Progress', 'Completed']);
-
 export async function listHotelStaysController(
   req: AuthenticatedRequest,
   res: Response
@@ -378,14 +374,21 @@ export async function listHotelStaysController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const statusParam = req.query.status;
-  const status =
-    typeof statusParam === 'string' && VALID_STAY_STATUSES.has(statusParam)
-      ? (statusParam as HotelStayFilterStatus)
-      : undefined;
+  const parsed = listHotelStaysQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
 
   try {
-    const stays = await listHotelStays({ branchId, status });
+    const stays = await listHotelStays({
+      branchId,
+      status: parsed.data.status,
+      dateFrom: parsed.data.date_from,
+      dateTo: parsed.data.date_to,
+    });
     return res.status(200).json({ stays });
   } catch (error) {
     return sendServiceError(res, error);
