@@ -21,6 +21,15 @@ interface CagePickerListProps {
    * selected pet's own weight_class, so a same-size cage can carry a
    * "Recommended" badge here too instead of losing that signal. */
   recommendedSize?: string | null;
+  /** Custom change (cage size booking restriction): when true, a specific
+   * cage whose size doesn't match recommendedSize (the pet's own
+   * weight_class) is shown but not selectable - only "No preference" and
+   * same-size cages remain clickable. Set by the caller for a customer
+   * booking their own pet; a receptionist creating a walk-in booking passes
+   * false (the default) and keeps free choice of any cage size, matching
+   * the design intent that only staff can knowingly book a mismatched cage
+   * (e.g. temporarily, when the pet's own size is full). */
+  restrictToPetSize?: boolean;
 }
 
 function getInitials(cageLabel: string): string {
@@ -51,6 +60,7 @@ export function CagePickerList({
   onSelect,
   onUnavailable,
   recommendedSize,
+  restrictToPetSize = false,
 }: CagePickerListProps) {
   const [options, setOptions] = useState<CagePickerOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -136,12 +146,22 @@ export function CagePickerList({
                 ? 'no_preference'
                 : option.cage_id;
             const active = isSelected(option, selected);
+            const isSizeLocked =
+              restrictToPetSize &&
+              option.type === 'specific' &&
+              option.size !== recommendedSize;
 
             return (
               <button
                 key={key}
                 type="button"
-                className={`${styles.card} ${active ? styles.selected : ''}`}
+                disabled={isSizeLocked}
+                title={
+                  isSizeLocked
+                    ? "Only staff can book a cage size that doesn't match your pet"
+                    : undefined
+                }
+                className={`${styles.card} ${active ? styles.selected : ''} ${isSizeLocked ? styles.locked : ''}`}
                 onClick={() =>
                   onSelect(
                     option.type === 'no_preference'
@@ -168,6 +188,8 @@ export function CagePickerList({
                 recommendedSize &&
                 option.size === recommendedSize ? (
                   <span className={styles.recommendedBadge}>Recommended</span>
+                ) : isSizeLocked ? (
+                  <span className={styles.lockedBadge}>Staff only</span>
                 ) : null}
               </button>
             );

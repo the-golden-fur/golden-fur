@@ -55,6 +55,16 @@
   box-shadow: 0 0 0 2px var(--color-accent-gold-primary) inset;
 }
 
+.card.locked {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.card.locked:hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
+
 .avatarFallback,
 .noPreferenceIcon {
   width: var(--avatar-size-card);
@@ -82,6 +92,15 @@
 .recommendedBadge {
   background: var(--color-badge-bg-gold);
   color: var(--color-text-primary);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+}
+
+.lockedBadge {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
   border-radius: var(--radius-pill);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
