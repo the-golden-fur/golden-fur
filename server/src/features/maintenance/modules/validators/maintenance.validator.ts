@@ -83,6 +83,28 @@ function requireDownpaymentAmount(
   },
   ctx: z.RefinementCtx
 ) {
+  if (input.requires_downpayment === false) {
+    if (input.downpayment_amount != null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['downpayment_amount'],
+        message:
+          'downpayment_amount must be null when requires_downpayment is false',
+      });
+    }
+
+    if (input.downpayment_type != null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['downpayment_type'],
+        message:
+          'downpayment_type must be null when requires_downpayment is false',
+      });
+    }
+
+    return;
+  }
+
   if (!input.requires_downpayment) return;
 
   if (

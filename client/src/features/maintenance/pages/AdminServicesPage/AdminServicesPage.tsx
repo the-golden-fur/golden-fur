@@ -413,7 +413,7 @@ export function AdminServicesPage() {
           ? { daycare_overnight_fee: daycareOvernightFee }
           : {}),
         requires_downpayment: form.requiresDownpayment,
-        ...(downpaymentAmount !== undefined
+        ...(form.requiresDownpayment && downpaymentAmount !== undefined
           ? {
               downpayment_amount: downpaymentAmount,
               downpayment_type: form.downpaymentType,
@@ -446,7 +446,9 @@ export function AdminServicesPage() {
       succeeding_hour_fee: succeedingHourFee ?? null,
       daycare_overnight_fee: daycareOvernightFee ?? null,
       requires_downpayment: form.requiresDownpayment,
-      downpayment_amount: downpaymentAmount ?? null,
+      downpayment_amount: form.requiresDownpayment
+        ? (downpaymentAmount ?? null)
+        : null,
       downpayment_type: form.requiresDownpayment ? form.downpaymentType : null,
       ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
     };

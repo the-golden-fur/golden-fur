@@ -325,7 +325,7 @@ export function AdminPackageBuilderPage() {
         service_ids: selectedServiceIds,
         use_pricing_matrix: formUsePricingMatrix,
         requires_downpayment: formRequiresDownpayment,
-        ...(downpaymentAmount !== undefined
+        ...(formRequiresDownpayment && downpaymentAmount !== undefined
           ? {
               downpayment_amount: downpaymentAmount,
               downpayment_type: formDownpaymentType,
@@ -351,7 +351,9 @@ export function AdminPackageBuilderPage() {
       service_ids: selectedServiceIds,
       use_pricing_matrix: formUsePricingMatrix,
       requires_downpayment: formRequiresDownpayment,
-      downpayment_amount: downpaymentAmount ?? null,
+      downpayment_amount: formRequiresDownpayment
+        ? (downpaymentAmount ?? null)
+        : null,
       downpayment_type: formRequiresDownpayment ? formDownpaymentType : null,
     });
 
