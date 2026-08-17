@@ -52,11 +52,18 @@
 .logo {
   position: relative;
   z-index: 1;
+  align-self: flex-start;
   font-family: var(--font-heading);
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   letter-spacing: 0.02em;
   color: var(--color-text-on-heropanel);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.logo:hover {
+  color: var(--color-accent-gold-highlight);
 }
 
 .hero {

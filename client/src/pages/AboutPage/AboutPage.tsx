@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { LandingNavbar } from '../LandingPage/components/LandingNavbar/LandingNavbar';
+import { HelpMascot } from '../../shared/components/HelpMascot/HelpMascot';
 import styles from './AboutPage.module.css';
 
 export function AboutPage() {
@@ -16,6 +17,13 @@ export function AboutPage() {
           Back to home
         </Link>
       </main>
+
+      <HelpMascot
+        links={[
+          { label: 'Create an account', href: '#' },
+          { label: 'Create a ticket', href: '#' },
+        ]}
+      />
     </>
   );
 }
