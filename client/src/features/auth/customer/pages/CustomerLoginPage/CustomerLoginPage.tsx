@@ -18,7 +18,9 @@ export function CustomerLoginPage() {
         <PawWatermark className={`${styles.paw} ${styles.p2}`} />
         <PawWatermark className={`${styles.paw} ${styles.p3}`} />
 
-        <div className={styles.logo}>Golden Fur</div>
+        <Link className={styles.logo} to="/">
+          Golden Fur
+        </Link>
 
         <div className={styles.hero}>
           <h2>
