@@ -24,8 +24,8 @@ was left alone.
 The Check In tab (`HotelBookingPicker.tsx`) and Check Out tab
 (`HotelStayPicker.tsx`) are two independent components, not one shared list
 with different props - they query fundamentally different data (`Booking`s
-via `listBookings`, filtered by *booking* status, vs. `HotelStayWithCage`s
-via `listHotelStays`, filtered by the *stay's* own `Active`/`Completed`
+via `listBookings`, filtered by _booking_ status, vs. `HotelStayWithCage`s
+via `listHotelStays`, filtered by the _stay's_ own `Active`/`Completed`
 status and previously hardcoded to only ever fetch `'In Progress'`
 bookings' stays with no filter UI at all). Rather than merging them into
 one component (a much larger refactor that would blur two genuinely

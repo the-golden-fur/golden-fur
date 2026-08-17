@@ -110,11 +110,7 @@ describe('cagePicker.service', () => {
     it('returns the cage id when a requiredSize is given and the cage matches it (Custom change: cage size booking restriction)', async () => {
       queueFromResults({ data: { id: 'cage-1' }, error: null });
 
-      const result = await verifyCagePreference(
-        'cage-1',
-        'branch-1',
-        'S'
-      );
+      const result = await verifyCagePreference('cage-1', 'branch-1', 'S');
 
       expect(result).toBe('cage-1');
     });
@@ -122,11 +118,7 @@ describe('cagePicker.service', () => {
     it('degrades to null (same as an unavailable cage) when the cage does not match requiredSize', async () => {
       queueFromResults({ data: null, error: null });
 
-      const result = await verifyCagePreference(
-        'cage-1',
-        'branch-1',
-        'M'
-      );
+      const result = await verifyCagePreference('cage-1', 'branch-1', 'M');
 
       expect(result).toBeNull();
     });

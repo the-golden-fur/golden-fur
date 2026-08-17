@@ -47,9 +47,7 @@ describe('CagePickerList', () => {
       })
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('button')).toHaveLength(3)
-    );
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
 
     const mCage = screen.getByRole('button', { name: /Makati-M-01/ });
     expect(mCage).not.toBeDisabled();
@@ -76,9 +74,7 @@ describe('CagePickerList', () => {
       })
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('button')).toHaveLength(3)
-    );
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
 
     const sCage = screen.getByRole('button', { name: /Makati-S-01/ });
     const mCage = screen.getByRole('button', { name: /Makati-M-01/ });

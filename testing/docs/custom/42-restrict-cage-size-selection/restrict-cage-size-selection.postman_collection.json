@@ -22,7 +22,11 @@
       "value": "",
       "description": "Owned by the customer above, weight_class must be 'S'"
     },
-    { "key": "customer_id", "value": "", "description": "The pet owner's customer id" },
+    {
+      "key": "customer_id",
+      "value": "",
+      "description": "The pet owner's customer id"
+    },
     {
       "key": "hotel_service_id",
       "value": "",
@@ -30,7 +34,11 @@
     },
     { "key": "cage_id_s", "value": "" },
     { "key": "cage_id_m", "value": "" },
-    { "key": "scheduled_start_a", "value": "", "description": "Near-future ISO datetime, e.g. 2026-09-01T09:00:00+00:00" },
+    {
+      "key": "scheduled_start_a",
+      "value": "",
+      "description": "Near-future ISO datetime, e.g. 2026-09-01T09:00:00+00:00"
+    },
     { "key": "scheduled_end_a", "value": "" },
     { "key": "scheduled_start_b", "value": "" },
     { "key": "scheduled_end_b", "value": "" },
@@ -99,7 +107,10 @@
       "request": {
         "method": "GET",
         "header": [
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "url": {
           "raw": "{{base_url}}/bookings/cage-picker?branch_id={{branch_id}}",
@@ -132,7 +143,10 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -163,7 +177,10 @@
         "method": "POST",
         "header": [
           { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{customer_access_token}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{customer_access_token}}"
+          }
         ],
         "body": {
           "mode": "raw",

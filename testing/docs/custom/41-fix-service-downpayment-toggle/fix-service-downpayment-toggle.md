@@ -71,7 +71,7 @@ opaque failure.
     branch: when `requires_downpayment === false` is explicitly sent,
     `downpayment_amount`/`downpayment_type` must be `null` or absent -
     otherwise a `400` with a clear message is returned instead of the raw
-    DB error. (An *omitted* `requires_downpayment` on a partial `PATCH`
+    DB error. (An _omitted_ `requires_downpayment` on a partial `PATCH`
     that only touches other fields is untouched by this - only an explicit
     `false` triggers the new check, so a PATCH that doesn't mention
     downpayment at all still works as a no-op partial update.)
