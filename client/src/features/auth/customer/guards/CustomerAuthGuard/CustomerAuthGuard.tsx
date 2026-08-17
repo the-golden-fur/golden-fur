@@ -30,6 +30,9 @@ export function CustomerAuthGuard() {
   const [profileStatus, setProfileStatus] = useState<
     'loading' | 'ok' | 'denied'
   >('loading');
+  // Lifted out of ComposeEntryPoint (which normally owns it) so the
+  // HelpMascot's "Contact support" link can open the same compose modal.
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
 
   useEffect(() => {
     if (!session || !accessToken) {
@@ -140,8 +143,16 @@ export function CustomerAuthGuard() {
       }
       composeButton={
         accessToken ? (
-          <ComposeEntryPoint accessToken={accessToken} viewerRole={null} />
+          <ComposeEntryPoint
+            accessToken={accessToken}
+            viewerRole={null}
+            isOpen={isComposeOpen}
+            onOpenChange={setIsComposeOpen}
+          />
         ) : null
+      }
+      onContactSupport={
+        accessToken ? () => setIsComposeOpen(true) : undefined
       }
     />
   );

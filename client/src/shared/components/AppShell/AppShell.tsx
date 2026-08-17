@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Outlet } from 'react-router';
 import { Navbar } from '../Navbar/Navbar';
 import { Sidebar, type SidebarSection } from '../Sidebar/Sidebar';
+import { HelpMascot } from '../HelpMascot/HelpMascot';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './AppShell.module.css';
 
@@ -21,6 +22,9 @@ interface AppShellProps {
   notificationBell?: ReactNode;
   /** ComposeEntryPoint (mail icon), passed through to Navbar. */
   composeButton?: ReactNode;
+  /** Customer-only: opens the same compose modal as the Navbar's mail icon,
+   * wired to the HelpMascot's "Contact support" link. */
+  onContactSupport?: () => void;
   /** Rendered above the routed page content, below the navbar - e.g. the
    * staff-only UnavailabilityBlockBadge. */
   children?: ReactNode;
@@ -47,6 +51,7 @@ export function AppShell({
   sidebarSections,
   notificationBell,
   composeButton,
+  onContactSupport,
   children,
 }: AppShellProps) {
   const storageKey = `sidebar-collapsed-${role}`;
@@ -90,6 +95,17 @@ export function AppShell({
           <Outlet />
         </main>
       </div>
+
+      {role === 'customer' ? (
+        <HelpMascot
+          links={[
+            onContactSupport
+              ? { label: 'Contact support', onClick: onContactSupport }
+              : { label: 'Contact support', href: '#' },
+            { label: 'My Bookings', href: '/portal/bookings' },
+          ]}
+        />
+      ) : null}
     </div>
   );
 }
