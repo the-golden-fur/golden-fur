@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { LandingNavbar } from './components/LandingNavbar/LandingNavbar';
-import doggyGif from '../../assets/doggy.gif';
+import { HelpMascot } from '../../shared/components/HelpMascot/HelpMascot';
 import heroBg from '../../assets/herobg.png';
 import grooming from '../../assets/grooming.png';
 import vet from '../../assets/vet.png';
@@ -609,50 +609,6 @@ export default function GoldenFurLanding() {
       featureExpandCollapseObserver.observe(card);
     });
 
-    const helpMascotBubble = document.getElementById(
-      'helpMascotBubble'
-    ) as HTMLElement | null;
-    const mascotTips = [
-      'Welcome to Golden Fur!',
-      'Tip: Book grooming early — weekend slots fill up fast!',
-      'Tip: Regular vet checkups keep tails wagging longer.',
-      'Tip: Try our Day Care for social, supervised playtime.',
-      'Tip: Traveling? Reserve a Pet Hotel suite in advance.',
-      'Need help? Tap the chat bubble for FAQs and support.',
-    ];
-    let lastMascotTipIndex = -1;
-    let mascotHideTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    function getRandomMascotTipIndex() {
-      if (mascotTips.length <= 1) return 0;
-
-      let nextIndex: number;
-      do {
-        nextIndex = Math.floor(Math.random() * mascotTips.length);
-      } while (nextIndex === lastMascotTipIndex);
-
-      return nextIndex;
-    }
-
-    function showMascotTip() {
-      if (!helpMascotBubble) return;
-
-      const tipIndex = getRandomMascotTipIndex();
-      lastMascotTipIndex = tipIndex;
-      helpMascotBubble.textContent = mascotTips[tipIndex];
-
-      helpMascotBubble.classList.remove('is-visible');
-      void helpMascotBubble.offsetWidth;
-      helpMascotBubble.classList.add('is-visible');
-
-      if (mascotHideTimeoutId) {
-        clearTimeout(mascotHideTimeoutId);
-      }
-      mascotHideTimeoutId = setTimeout(() => {
-        helpMascotBubble.classList.remove('is-visible');
-      }, 5000);
-    }
-
     window.addEventListener('load', () => {
       document
         .querySelectorAll<HTMLElement>('[data-stagger]')
@@ -679,9 +635,6 @@ export default function GoldenFurLanding() {
           reveal.classList.add('is-done');
         }, totalDuration);
       }
-
-      setTimeout(showMascotTip, 900);
-      setInterval(showMascotTip, 15000);
     });
 
     return () => {
@@ -692,9 +645,6 @@ export default function GoldenFurLanding() {
       fadeReplayObserver.disconnect();
       featureRevealObserver.disconnect();
       featureExpandCollapseObserver.disconnect();
-      if (mascotHideTimeoutId) {
-        clearTimeout(mascotHideTimeoutId);
-      }
     };
   }, []);
 
@@ -1105,52 +1055,12 @@ export default function GoldenFurLanding() {
         </div>
       </section>
 
-      <aside className="help-mascot" aria-label="Quick help links">
-        <div
-          className="help-mascot-bubble"
-          id="helpMascotBubble"
-          aria-live="polite"
-        ></div>
-
-        <button
-          className="help-mascot-trigger"
-          type="button"
-          aria-label="Open quick help"
-        >
-          <img
-            className="help-mascot-image"
-            src={doggyGif}
-            alt="Dog mascot"
-            loading="eager"
-            decoding="async"
-            onLoad={(event) => {
-              event.currentTarget
-                .closest('.help-mascot-trigger')
-                ?.classList.remove('media-failed');
-            }}
-            onError={(event) => {
-              event.currentTarget
-                .closest('.help-mascot-trigger')
-                ?.classList.add('media-failed');
-            }}
-          />
-          <span className="help-mascot-fallback" aria-hidden="true">
-            🐶
-          </span>
-        </button>
-
-        <nav className="help-mascot-menu" aria-label="Support links">
-          <a href="#" className="help-mascot-link">
-            FAQs
-          </a>
-          <a href="#" className="help-mascot-link">
-            Create an account
-          </a>
-          <a href="#" className="help-mascot-link">
-            Create a ticket
-          </a>
-        </nav>
-      </aside>
+      <HelpMascot
+        links={[
+          { label: 'Create an account', href: '#' },
+          { label: 'Create a ticket', href: '#' },
+        ]}
+      />
 
       <footer className="site-footer">
         <div className="footer-top">
