@@ -151,9 +151,7 @@ export function CustomerAuthGuard() {
           />
         ) : null
       }
-      onContactSupport={
-        accessToken ? () => setIsComposeOpen(true) : undefined
-      }
+      onContactSupport={accessToken ? () => setIsComposeOpen(true) : undefined}
     />
   );
 }

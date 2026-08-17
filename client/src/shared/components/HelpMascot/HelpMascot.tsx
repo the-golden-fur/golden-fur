@@ -140,7 +140,9 @@ export function HelpMascot({ links }: HelpMascotProps) {
           alt="Dog mascot"
           loading="eager"
           decoding="async"
-          onLoad={() => triggerRef.current?.classList.remove(styles.mediaFailed)}
+          onLoad={() =>
+            triggerRef.current?.classList.remove(styles.mediaFailed)
+          }
           onError={() => triggerRef.current?.classList.add(styles.mediaFailed)}
         />
         <span className={styles.fallback} aria-hidden="true">
