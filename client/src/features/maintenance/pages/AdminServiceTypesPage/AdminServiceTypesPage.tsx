@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -9,22 +9,35 @@ import {
   setServiceTypeBranchAvailability,
   updateServiceType,
 } from '../../api/maintenance.api';
-import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import type { BranchSummary, ServiceType } from '../../maintenance.types';
 import styles from './AdminServiceTypesPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
+type ServiceTypeSortKey = 'name-asc' | 'name-desc';
+
+const SORT_OPTIONS: SortOption<ServiceTypeSortKey>[] = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+];
+
 interface CreateFormState {
   key: string;
   name: string;
   staffPickerEnabled: boolean;
   cagePickerEnabled: boolean;
+  branchIds: string[];
 }
 
 const EMPTY_CREATE_FORM: CreateFormState = {
@@ -32,12 +45,20 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   name: '',
   staffPickerEnabled: false,
   cagePickerEnabled: false,
+  branchIds: [],
 };
 
 interface EditFormState {
   name: string;
   staffPickerEnabled: boolean;
   cagePickerEnabled: boolean;
+  branchIds: string[];
+}
+
+function availableBranchIds(serviceType: ServiceType): string[] {
+  return (serviceType.service_type_branch_availability ?? [])
+    .filter((row) => row.is_available)
+    .map((row) => row.branch_id);
 }
 
 /**
@@ -61,6 +82,8 @@ export function AdminServiceTypesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [branchFilter, setBranchFilter] = useState('All');
+
   const [createForm, setCreateForm] =
     useState<CreateFormState>(EMPTY_CREATE_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -72,6 +95,7 @@ export function AdminServiceTypesPage() {
     name: '',
     staffPickerEnabled: false,
     cagePickerEnabled: false,
+    branchIds: [],
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -146,6 +170,51 @@ export function AdminServiceTypesPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
+  // The create form's branch multiselect defaults to every branch checked
+  // (matching what createServiceType already seeds server-side) once
+  // branches have loaded - only fires while the form is still untouched.
+  useEffect(() => {
+    if (branches.length === 0) return;
+
+    setCreateForm((prev) =>
+      prev.branchIds.length === 0
+        ? { ...prev, branchIds: branches.map((branch) => branch.id) }
+        : prev
+    );
+  }, [branches]);
+
+  const comparators = useMemo(
+    () => ({
+      'name-asc': (a: ServiceType, b: ServiceType) =>
+        a.name.localeCompare(b.name),
+      'name-desc': (a: ServiceType, b: ServiceType) =>
+        b.name.localeCompare(a.name),
+    }),
+    []
+  );
+
+  const { search, setSearch, sortKey, setSortKey, result } = useSearchAndSort<
+    ServiceType,
+    ServiceTypeSortKey
+  >({
+    items: serviceTypes,
+    matchesQuery: (serviceType, query) =>
+      serviceType.name.toLowerCase().includes(query) ||
+      serviceType.key.toLowerCase().includes(query),
+    comparators,
+    initialSortKey: 'name-asc',
+  });
+
+  const filteredServiceTypes = useMemo(() => {
+    if (branchFilter === 'All') {
+      return result;
+    }
+
+    return result.filter((serviceType) =>
+      availableBranchIds(serviceType).includes(branchFilter)
+    );
+  }, [result, branchFilter]);
+
   const availabilityServiceType = serviceTypes.find(
     (serviceType) => serviceType.id === availabilityServiceTypeId
   );
@@ -189,6 +258,63 @@ export function AdminServiceTypesPage() {
     });
   };
 
+  /**
+   * Applies a branch multiselect's final selection to a just-created/-edited
+   * service type by diffing it against the row's current availability and
+   * only calling setServiceTypeBranchAvailability for branches whose
+   * selection actually changed - avoids calling the single-toggle handler in
+   * a loop against a stale closure, which would lose updates when merging
+   * the resulting availability array back together.
+   */
+  async function applyBranchSelection(
+    serviceType: ServiceType,
+    selectedBranchIds: string[]
+  ): Promise<ServiceType> {
+    if (!accessToken) {
+      return serviceType;
+    }
+
+    const rows = serviceType.service_type_branch_availability ?? [];
+    const changedBranches = branches.filter((branch) => {
+      const current =
+        rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
+      const next = selectedBranchIds.includes(branch.id);
+      return current !== next;
+    });
+
+    if (changedBranches.length === 0) {
+      return serviceType;
+    }
+
+    const results = await Promise.all(
+      changedBranches.map((branch) =>
+        setServiceTypeBranchAvailability(serviceType.id, accessToken, {
+          branch_id: branch.id,
+          is_available: selectedBranchIds.includes(branch.id),
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changedBranches.forEach((branch, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return { ...serviceType, service_type_branch_availability: updatedRows };
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -207,15 +333,23 @@ export function AdminServiceTypesPage() {
       cage_picker_enabled: createForm.cagePickerEnabled,
     });
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setFormError(result.error ?? 'Could not add service type.');
       return;
     }
 
-    setServiceTypes((prev) => [...prev, result.data as ServiceType]);
-    setCreateForm(EMPTY_CREATE_FORM);
+    const finalServiceType = await applyBranchSelection(
+      result.data,
+      createForm.branchIds
+    );
+
+    setIsSubmitting(false);
+    setServiceTypes((prev) => [...prev, finalServiceType]);
+    setCreateForm({
+      ...EMPTY_CREATE_FORM,
+      branchIds: branches.map((branch) => branch.id),
+    });
     setMessage('Service type added.');
   }
 
@@ -225,6 +359,7 @@ export function AdminServiceTypesPage() {
       name: serviceType.name,
       staffPickerEnabled: serviceType.staff_picker_enabled,
       cagePickerEnabled: serviceType.cage_picker_enabled,
+      branchIds: availableBranchIds(serviceType),
     });
     setRowError(null);
   }
@@ -251,14 +386,19 @@ export function AdminServiceTypesPage() {
       cage_picker_enabled: editForm.cagePickerEnabled,
     });
 
-    setIsSavingEdit(false);
-
     if (result.error || !result.data) {
+      setIsSavingEdit(false);
       setRowError(result.error ?? 'Could not update service type.');
       return;
     }
 
-    replaceServiceType(result.data);
+    const finalServiceType = await applyBranchSelection(
+      result.data,
+      editForm.branchIds
+    );
+
+    setIsSavingEdit(false);
+    replaceServiceType(finalServiceType);
     setEditingServiceType(null);
     setMessage('Service type updated.');
   }
@@ -356,6 +496,15 @@ export function AdminServiceTypesPage() {
               <span>Cage picker enabled</span>
             </label>
 
+            <BranchMultiSelect
+              label="Available at"
+              branches={branches}
+              selectedBranchIds={createForm.branchIds}
+              onChange={(branchIds) =>
+                setCreateForm((prev) => ({ ...prev, branchIds }))
+              }
+            />
+
             {formError ? (
               <p className={styles.errorBanner} role="alert">
                 {formError}
@@ -379,31 +528,76 @@ export function AdminServiceTypesPage() {
             {loadError}
           </p>
         ) : (
-          <ul className={styles.list}>
-            {serviceTypes.map((serviceType) => (
-              <li className={styles.listItem} key={serviceType.id}>
-                <div className={styles.rowMain}>
-                  <span className={styles.typeName}>{serviceType.name}</span>
-                  <span className={styles.typeKey}>{serviceType.key}</span>
-                  <StatusBadge isActive={serviceType.is_active} />
-                  <MoreOptionsMenu
-                    label={`Actions for ${serviceType.name}`}
-                    items={[
-                      {
-                        label: 'Configure',
-                        onSelect: () => openEditModal(serviceType),
-                      },
-                      {
-                        label: 'Branch Availability',
-                        onSelect: () =>
-                          setAvailabilityServiceTypeId(serviceType.id),
-                      },
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className={styles.toolbar}>
+              <SearchSortBar
+                searchValue={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search service types..."
+                sortValue={sortKey}
+                onSortChange={setSortKey}
+                sortOptions={SORT_OPTIONS}
+              />
+              <label className={styles.filterField}>
+                <span className={styles.filterLabel}>Branch</span>
+                <select
+                  className={styles.filterSelect}
+                  value={branchFilter}
+                  onChange={(event) => setBranchFilter(event.target.value)}
+                >
+                  <option value="All">All branches</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {filteredServiceTypes.length === 0 ? (
+              <p className={styles.copy}>
+                No service types match the selected filters.
+              </p>
+            ) : (
+              <ul className={styles.list}>
+                {filteredServiceTypes.map((serviceType) => (
+                  <li className={styles.listItem} key={serviceType.id}>
+                    <div className={styles.rowMain}>
+                      <span className={styles.typeName}>
+                        {serviceType.name}
+                      </span>
+                      <span className={styles.typeKey}>{serviceType.key}</span>
+                      {serviceType.staff_picker_enabled ? (
+                        <span className={styles.pickerBadge}>
+                          Staff picker enabled
+                        </span>
+                      ) : null}
+                      {serviceType.cage_picker_enabled ? (
+                        <span className={styles.pickerBadge}>
+                          Cage picker enabled
+                        </span>
+                      ) : null}
+                      <MoreOptionsMenu
+                        label={`Actions for ${serviceType.name}`}
+                        items={[
+                          {
+                            label: 'Configure',
+                            onSelect: () => openEditModal(serviceType),
+                          },
+                          {
+                            label: 'Branch Availability',
+                            onSelect: () =>
+                              setAvailabilityServiceTypeId(serviceType.id),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
 
@@ -454,6 +648,15 @@ export function AdminServiceTypesPage() {
                   ...prev,
                   cagePickerEnabled: checked,
                 }))
+              }
+            />
+
+            <BranchMultiSelect
+              label="Available at"
+              branches={branches}
+              selectedBranchIds={editForm.branchIds}
+              onChange={(branchIds) =>
+                setEditForm((prev) => ({ ...prev, branchIds }))
               }
             />
 
