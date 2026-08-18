@@ -19,8 +19,7 @@ describe('publicCatalog.api', () => {
       packages: [
         {
           id: 'package-1',
-          branch_id: 'branch-1',
-          branch_name: 'Makati',
+          branch_names: ['Makati'],
           name: 'Spa Day',
           bundled_price: 999,
           is_active: true,

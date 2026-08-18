@@ -106,8 +106,8 @@ export function PackagesPromosPage() {
                       <summary className={styles.cardSummary}>
                         <span className={styles.cardTitle}>{pkg.name}</span>
                         <span className={styles.cardMeta}>
-                          {pkg.branch_name} · {pkg.included_services.length}{' '}
-                          service
+                          {pkg.branch_names.join(', ')} ·{' '}
+                          {pkg.included_services.length} service
                           {pkg.included_services.length === 1 ? '' : 's'}
                         </span>
                         <span className={styles.cardPrice}>

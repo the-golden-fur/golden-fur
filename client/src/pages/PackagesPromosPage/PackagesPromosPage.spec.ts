@@ -43,8 +43,7 @@ describe('PackagesPromosPage', () => {
         packages: [
           {
             id: 'package-1',
-            branch_id: 'branch-1',
-            branch_name: 'Makati',
+            branch_names: ['Makati'],
             name: 'Spa Day',
             bundled_price: 800,
             is_active: true,
@@ -112,8 +111,7 @@ describe('PackagesPromosPage', () => {
         packages: [
           {
             id: 'package-1',
-            branch_id: 'branch-1',
-            branch_name: 'Makati',
+            branch_names: ['Makati'],
             name: 'Spa Day',
             bundled_price: 800,
             is_active: true,

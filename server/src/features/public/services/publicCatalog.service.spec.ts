@@ -19,16 +19,27 @@ vi.mock('../../branches/services/branches.service.ts', () => ({
 }));
 
 describe('publicCatalog.service', () => {
-  it('returns active packages with a resolved branch_name, included services, and computed savings', async () => {
+  it('returns active packages with resolved branch_names, included services, and computed savings', async () => {
     vi.mocked(listPackages).mockResolvedValue([
       {
         id: 'package-1',
-        branch_id: 'branch-1',
         name: 'Spa Day',
         bundled_price: 800,
         package_services: [
           { service_id: 'service-1' },
           { service_id: 'service-2' },
+        ],
+        package_branch_availability: [
+          {
+            package_id: 'package-1',
+            branch_id: 'branch-1',
+            is_available: true,
+          },
+          {
+            package_id: 'package-1',
+            branch_id: 'branch-2',
+            is_available: false,
+          },
         ],
       } as never,
     ]);
@@ -62,14 +73,25 @@ describe('publicCatalog.service', () => {
     expect(result.packages).toEqual([
       {
         id: 'package-1',
-        branch_id: 'branch-1',
         name: 'Spa Day',
         bundled_price: 800,
         package_services: [
           { service_id: 'service-1' },
           { service_id: 'service-2' },
         ],
-        branch_name: 'Makati',
+        package_branch_availability: [
+          {
+            package_id: 'package-1',
+            branch_id: 'branch-1',
+            is_available: true,
+          },
+          {
+            package_id: 'package-1',
+            branch_id: 'branch-2',
+            is_available: false,
+          },
+        ],
+        branch_names: ['Makati'],
         included_services: [
           {
             id: 'service-1',
@@ -95,12 +117,18 @@ describe('publicCatalog.service', () => {
     vi.mocked(listPackages).mockResolvedValue([
       {
         id: 'package-1',
-        branch_id: 'missing-branch',
         name: 'Spa Day',
         bundled_price: 450,
         package_services: [
           { service_id: 'service-1' },
           { service_id: 'deleted-service' },
+        ],
+        package_branch_availability: [
+          {
+            package_id: 'package-1',
+            branch_id: 'missing-branch',
+            is_available: true,
+          },
         ],
       } as never,
     ]);
@@ -117,7 +145,7 @@ describe('publicCatalog.service', () => {
 
     const result = await getPublicPackagesPromos();
 
-    expect(result.packages[0].branch_name).toBe('Unknown branch');
+    expect(result.packages[0].branch_names).toEqual(['Unknown branch']);
     expect(result.packages[0].included_services).toEqual([
       {
         id: 'service-1',

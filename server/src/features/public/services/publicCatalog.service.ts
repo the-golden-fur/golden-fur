@@ -12,7 +12,10 @@ export interface PublicPackageService {
 }
 
 export interface PublicPackage extends Package {
-  branch_name: string;
+  /** Every branch this package is currently available at (custom change:
+   * packages are no longer scoped to exactly one branch_id - see
+   * package_branch_availability). */
+  branch_names: string[];
   included_services: PublicPackageService[];
   /** Sum of included_services' base_price - what booking them individually
    * would cost, for comparison against bundled_price. */
@@ -81,9 +84,13 @@ export async function getPublicPackagesPromos(): Promise<PublicPackagesPromos> {
         )
       );
 
+      const branchNames = (pkg.package_branch_availability ?? [])
+        .filter((row) => row.is_available)
+        .map((row) => branchNameById.get(row.branch_id) ?? 'Unknown branch');
+
       return {
         ...pkg,
-        branch_name: branchNameById.get(pkg.branch_id) ?? 'Unknown branch',
+        branch_names: branchNames,
         included_services: includedServices,
         individual_total_price: individualTotalPrice,
         savings: round2(Math.max(individualTotalPrice - pkg.bundled_price, 0)),
