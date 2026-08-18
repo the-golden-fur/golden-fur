@@ -138,12 +138,18 @@ export interface EvaluatedPromo {
  * Auto-applies every active, in-window, scope-matching promo (Issue #84
  * AC-2), then caps the combined contribution at promo_cap_configuration
  * (branch-specific row if one exists, else the system-wide default -
- * mirrors policy_configurations' own override pattern). When the uncapped
- * total exceeds the cap, promos are applied largest-value-first and the
- * last one that would cross the cap is trimmed to exactly fill the
- * remaining headroom; nothing beyond it is applied. This is a judgment call
- * (the Guide doesn't specify a tie-break order for which promos "win" under
- * a cap) - flagged here and in the verification doc.
+ * mirrors policy_configurations' own override pattern).
+ *
+ * A 'percentage'/'flat' cap trims by amount: promos are applied
+ * largest-value-first and the last one that would cross the cap is trimmed
+ * to exactly fill the remaining headroom; nothing beyond it is applied. This
+ * is a judgment call (the Guide doesn't specify a tie-break order for which
+ * promos "win" under a cap) - flagged here and in the verification doc.
+ *
+ * A 'count' cap instead limits how many promos may combine, at their full
+ * value - the largest-value cap_value promos are applied in full and the
+ * rest are dropped entirely (no partial-amount trimming, since a "count"
+ * has no notion of a fractional promo).
  */
 export async function evaluatePromos(
   booking: BookingForBilling,
@@ -177,10 +183,6 @@ export async function evaluatePromos(
   if (matched.length === 0) return [];
 
   const capRow = await getEffectivePromoCap(booking.branch_id);
-  const capAmount =
-    capRow.cap_type === 'percentage'
-      ? (subtotal * Number(capRow.cap_value)) / 100
-      : Number(capRow.cap_value);
 
   const withAmounts = matched
     .map((promo) => ({
@@ -193,6 +195,30 @@ export async function evaluatePromos(
     }))
     .sort((a, b) => b.amount - a.amount);
 
+  const toLine = (promo: PromoRow, appliedAmount: number): EvaluatedPromo => ({
+    promoId: promo.id,
+    line: {
+      line_item_type: 'promo',
+      reference_id: promo.id,
+      description: promo.name,
+      quantity: 1,
+      unit_price: -appliedAmount,
+      line_total: -appliedAmount,
+    },
+  });
+
+  if (capRow.cap_type === 'count') {
+    const maxCount = Math.max(0, Math.trunc(Number(capRow.cap_value)));
+    return withAmounts
+      .slice(0, maxCount)
+      .map(({ promo, amount }) => toLine(promo, amount));
+  }
+
+  const capAmount =
+    capRow.cap_type === 'percentage'
+      ? (subtotal * Number(capRow.cap_value)) / 100
+      : Number(capRow.cap_value);
+
   const applied: EvaluatedPromo[] = [];
   let remainingCap = capAmount;
 
@@ -202,24 +228,14 @@ export async function evaluatePromos(
     const appliedAmount = Math.min(amount, remainingCap);
     remainingCap = round2(remainingCap - appliedAmount);
 
-    applied.push({
-      promoId: promo.id,
-      line: {
-        line_item_type: 'promo',
-        reference_id: promo.id,
-        description: promo.name,
-        quantity: 1,
-        unit_price: -appliedAmount,
-        line_total: -appliedAmount,
-      },
-    });
+    applied.push(toLine(promo, appliedAmount));
   }
 
   return applied;
 }
 
 interface PromoCapRow {
-  cap_type: 'percentage' | 'flat';
+  cap_type: 'percentage' | 'flat' | 'count';
   cap_value: number;
 }
 

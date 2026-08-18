@@ -2,34 +2,41 @@ import { useState } from 'react';
 import type { CapType, PromoCapConfiguration } from '../../maintenance.types';
 import styles from './PromoCapCard.module.css';
 
-const CAP_TYPES: CapType[] = ['percentage', 'flat'];
+const CAP_TYPES: CapType[] = ['percentage', 'flat', 'count'];
+
+const CAP_TYPE_LABELS: Record<CapType, string> = {
+  percentage: 'Percentage',
+  flat: 'Flat',
+  count: 'Number of promos',
+};
 
 interface PromoCapCardProps {
-  scopeLabel: string;
   config?: PromoCapConfiguration;
   onSave: (input: { cap_type: CapType; cap_value: number }) => void;
   isSaving?: boolean;
 }
 
 /**
- * One independently-editable cap card per scope (the system-wide default or
- * a single branch) - each branch's promo cap is viewed and saved on its own,
- * not through a single form with a branch picker (the prior
- * PromoCapConfigForm design made it easy to edit one branch while believing
- * you were looking at another).
+ * The editable cap form for one scope (a single branch) - each branch's
+ * promo cap is viewed and saved on its own, not through a single form with a
+ * branch picker (the prior PromoCapConfigForm design made it easy to edit
+ * one branch while believing you were looking at another). Custom change
+ * (promo cap config actions menu revision): this used to render as an
+ * always-visible card of its own (with its own scope-name heading); now it's
+ * rendered as the body of a "Configure" modal that the parent (a branch-list
+ * row's "..." menu) owns, so the scope name lives in the modal's own title
+ * instead of being repeated here.
  *
  * Local state is seeded from `config` once, on mount, and never re-synced
  * via an effect - syncing derived state from a prop inside a plain effect
  * causes an extra render pass and is the exact anti-pattern
- * react-hooks/set-state-in-effect flags. Instead, the parent gives each
- * card a `key` that changes when `config` first resolves (e.g. from
- * undefined to a real row once the initial fetch completes, or once a
- * scope's first save creates its row) so React remounts this component
- * with a fresh initial state rather than this component reacting to the
- * prop change itself.
+ * react-hooks/set-state-in-effect flags. Instead, the parent gives this a
+ * `key` that changes when `config` first resolves (e.g. from undefined to a
+ * real row once the initial fetch completes, or once a scope's first save
+ * creates its row) so React remounts it with a fresh initial state rather
+ * than it reacting to the prop change itself.
  */
 export function PromoCapCard({
-  scopeLabel,
   config,
   onSave,
   isSaving = false,
@@ -46,13 +53,16 @@ export function PromoCapCard({
       return;
     }
 
+    // A 'count' cap has no notion of a fractional promo.
+    if (capType === 'count' && !Number.isInteger(value)) {
+      return;
+    }
+
     onSave({ cap_type: capType, cap_value: value });
   };
 
   return (
-    <article className={styles.card}>
-      <h3 className={styles.scopeName}>{scopeLabel}</h3>
-
+    <div className={styles.form}>
       {!config ? (
         <p className={styles.emptyState}>
           No cap saved yet for this scope - showing the default values below.
@@ -68,7 +78,7 @@ export function PromoCapCard({
         >
           {CAP_TYPES.map((type) => (
             <option key={type} value={type}>
-              {type === 'percentage' ? 'Percentage' : 'Flat'}
+              {CAP_TYPE_LABELS[type]}
             </option>
           ))}
         </select>
@@ -76,14 +86,19 @@ export function PromoCapCard({
 
       <label className={styles.field}>
         <span className={styles.fieldLabel}>
-          Cap value{capType === 'percentage' ? ' (%)' : ' (PHP)'}
+          Cap value
+          {capType === 'percentage'
+            ? ' (%)'
+            : capType === 'flat'
+              ? ' (PHP)'
+              : ' (promos)'}
         </span>
         <input
           className={styles.input}
           type="number"
           min="0"
-          step="0.01"
-          inputMode="decimal"
+          step={capType === 'count' ? '1' : '0.01'}
+          inputMode={capType === 'count' ? 'numeric' : 'decimal'}
           value={capValue}
           onChange={(event) => setCapValue(event.target.value)}
         />
@@ -97,6 +112,6 @@ export function PromoCapCard({
       >
         {isSaving ? 'Saving...' : 'Save'}
       </button>
-    </article>
+    </div>
   );
 }

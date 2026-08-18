@@ -96,7 +96,10 @@ export interface UpdatePackagePricingConfigurationPayload {
   bundle_discount_percentage: number;
 }
 
-export type CapType = 'percentage' | 'flat';
+/** 'count' caps how many promos may combine on one transaction (cap_value
+ * is then a whole number of promos), instead of capping their combined
+ * PHP/percentage amount. */
+export type CapType = 'percentage' | 'flat' | 'count';
 
 /** Epic B (#84): per-branch (NULL = both branches) promo cap. */
 export interface PromoCapConfiguration {
@@ -416,6 +419,14 @@ export interface CreateBreedPayload {
  * matching category-specific booking behavior until that's built in code -
  * see AdminServiceTypesPage's own copy.
  */
+/** Custom change: mirrors ServiceBranchAvailability - replaces the
+ * row-level Activate/Deactivate action on the admin Service Types page. */
+export interface ServiceTypeBranchAvailability {
+  service_type_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface ServiceType {
   id: string;
   key: string;
@@ -427,6 +438,7 @@ export interface ServiceType {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  service_type_branch_availability?: ServiceTypeBranchAvailability[];
 }
 
 export interface CreateServiceTypePayload {

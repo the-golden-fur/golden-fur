@@ -551,4 +551,22 @@ describe('upsertPromoCapConfigurationValidator (Epic B #84)', () => {
       }).success
     ).toBe(false);
   });
+
+  it('accepts a whole-number count cap', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        cap_type: 'count',
+        cap_value: 2,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a fractional count cap', () => {
+    expect(
+      upsertPromoCapConfigurationValidator.safeParse({
+        cap_type: 'count',
+        cap_value: 2.5,
+      }).success
+    ).toBe(false);
+  });
 });

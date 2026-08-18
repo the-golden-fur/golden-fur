@@ -10,7 +10,7 @@ const CATEGORIES = [
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
 const BRANCH_SCOPES = ['makati', 'southwoods', 'both'] as const;
-const CAP_TYPES = ['percentage', 'flat'] as const;
+const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 
@@ -293,7 +293,18 @@ export const upsertPromoCapConfigurationValidator = z
     cap_type: z.enum(CAP_TYPES),
     cap_value: z.number().nonnegative(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    // A 'count' cap limits how many promos may combine - a fractional promo
+    // makes no sense, unlike a percentage/flat monetary cap_value.
+    if (input.cap_type === 'count' && !Number.isInteger(input.cap_value)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cap_value'],
+        message: 'A count cap_value must be a whole number of promos',
+      });
+    }
+  });
 
 export const branchAvailabilityValidator = z
   .object({

@@ -25,6 +25,13 @@ import {
   type PromoStatusFilter,
   type PromoTimingFilter,
 } from '../../components/PromoFilterBar/PromoFilterBar';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { getPromoTiming } from '../../utils/promoTiming';
 import type {
   BranchSummary,
@@ -45,13 +52,38 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
 const BRANCH_SCOPES: PromoBranchScope[] = ['makati', 'southwoods', 'both'];
-const DEFAULT_CAP_SCOPE_KEY = 'default';
 
 const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
   makati: 'Makati',
   southwoods: 'Southwoods',
   both: 'Both branches',
 };
+
+type CapSortKey = 'name-asc' | 'name-desc';
+type CapTypeFilter = 'all' | CapType;
+
+const CAP_SORT_OPTIONS: SortOption<CapSortKey>[] = [
+  { value: 'name-asc', label: 'Branch (A-Z)' },
+  { value: 'name-desc', label: 'Branch (Z-A)' },
+];
+
+const CAP_TYPE_LABELS: Record<CapType, string> = {
+  percentage: 'Percentage',
+  flat: 'Flat',
+  count: 'Number of promos',
+};
+
+const CAP_VALUE_SUFFIX: Record<CapType, string> = {
+  percentage: '%',
+  flat: ' PHP',
+  count: ' promo(s)',
+};
+
+interface CapRow {
+  branchId: string;
+  branchName: string;
+  config?: PromoCapConfiguration;
+}
 
 /**
  * ServiceMultiSelect (#46) takes an opaque id/label list, so a service-vs-
@@ -130,6 +162,10 @@ export function AdminPromoConfigPage() {
     null
   );
   const [capMessage, setCapMessage] = useState<string | null>(null);
+  const [capTypeFilter, setCapTypeFilter] = useState<CapTypeFilter>('all');
+  const [configuringCapBranchId, setConfiguringCapBranchId] = useState<
+    string | null
+  >(null);
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -224,15 +260,14 @@ export function AdminPromoConfigPage() {
   }, [accessToken, isAllowedViewer]);
 
   const handleSaveCap = async (
-    branchId: string | null,
-    scopeKey: string,
+    branchId: string,
     input: { cap_type: CapType; cap_value: number }
   ) => {
     if (!accessToken) {
       return;
     }
 
-    setSavingCapScopeKey(scopeKey);
+    setSavingCapScopeKey(branchId);
 
     const result = await upsertPromoCapConfiguration(accessToken, {
       branch_id: branchId,
@@ -258,7 +293,45 @@ export function AdminPromoConfigPage() {
         : [...prev, saved];
     });
     setCapMessage('Promo cap updated.');
+    setConfiguringCapBranchId(null);
   };
+
+  const capRows: CapRow[] = capBranches.map((branch) => ({
+    branchId: branch.id,
+    branchName: branch.name,
+    config: capConfigurations.find((config) => config.branch_id === branch.id),
+  }));
+
+  const capComparators = useMemo(
+    () => ({
+      'name-asc': (a: CapRow, b: CapRow) =>
+        a.branchName.localeCompare(b.branchName),
+      'name-desc': (a: CapRow, b: CapRow) =>
+        b.branchName.localeCompare(a.branchName),
+    }),
+    []
+  );
+
+  const {
+    search: capSearch,
+    setSearch: setCapSearch,
+    sortKey: capSortKey,
+    setSortKey: setCapSortKey,
+    result: sortedCapRows,
+  } = useSearchAndSort<CapRow, CapSortKey>({
+    items: capRows,
+    matchesQuery: (row, query) => row.branchName.toLowerCase().includes(query),
+    comparators: capComparators,
+    initialSortKey: 'name-asc',
+  });
+
+  const filteredCapRows = sortedCapRows.filter(
+    (row) => capTypeFilter === 'all' || row.config?.cap_type === capTypeFilter
+  );
+
+  const configuringCapRow = capRows.find(
+    (row) => row.branchId === configuringCapBranchId
+  );
 
   const filteredPromos = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
@@ -754,9 +827,9 @@ export function AdminPromoConfigPage() {
             Promo Cap Configuration
           </h2>
           <p className={styles.copy}>
-            Maximum total discount value that all combined, customer-activated
-            promos may contribute to one transaction. Each branch (and the
-            system-wide default) has its own cap, viewed and saved
+            Maximum total discount value (or number of promos) that all
+            combined, customer-activated promos may contribute to one
+            transaction. Each branch has its own cap, viewed and saved
             independently.
           </p>
 
@@ -771,39 +844,96 @@ export function AdminPromoConfigPage() {
               {capLoadError}
             </p>
           ) : (
-            <div className={styles.promoGrid}>
-              <PromoCapCard
-                key={`default-${capConfigurations.find((config) => config.branch_id === null)?.id ?? 'unsaved'}`}
-                scopeLabel="Both branches (system-wide default)"
-                config={capConfigurations.find(
-                  (config) => config.branch_id === null
-                )}
-                onSave={(input) =>
-                  void handleSaveCap(null, DEFAULT_CAP_SCOPE_KEY, input)
-                }
-                isSaving={savingCapScopeKey === DEFAULT_CAP_SCOPE_KEY}
-              />
-              {capBranches.map((branch) => {
-                const config = capConfigurations.find(
-                  (candidate) => candidate.branch_id === branch.id
-                );
-
-                return (
-                  <PromoCapCard
-                    key={`${branch.id}-${config?.id ?? 'unsaved'}`}
-                    scopeLabel={branch.name}
-                    config={config}
-                    onSave={(input) =>
-                      void handleSaveCap(branch.id, branch.id, input)
+            <>
+              <div className={styles.toolbar}>
+                <SearchSortBar
+                  searchValue={capSearch}
+                  onSearchChange={setCapSearch}
+                  searchPlaceholder="Search branches..."
+                  sortValue={capSortKey}
+                  onSortChange={setCapSortKey}
+                  sortOptions={CAP_SORT_OPTIONS}
+                />
+                <label className={styles.filterField}>
+                  <span className={styles.filterLabel}>Cap type</span>
+                  <select
+                    className={styles.filterSelect}
+                    value={capTypeFilter}
+                    onChange={(event) =>
+                      setCapTypeFilter(event.target.value as CapTypeFilter)
                     }
-                    isSaving={savingCapScopeKey === branch.id}
-                  />
-                );
-              })}
-            </div>
+                  >
+                    <option value="all">All</option>
+                    {(['percentage', 'flat', 'count'] as CapType[]).map(
+                      (type) => (
+                        <option key={type} value={type}>
+                          {CAP_TYPE_LABELS[type]}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+              </div>
+
+              {filteredCapRows.length === 0 ? (
+                <p className={styles.copy}>
+                  No branches match the selected filters.
+                </p>
+              ) : (
+                <ul className={styles.capList}>
+                  {filteredCapRows.map((row) => (
+                    <li key={row.branchId} className={styles.capRow}>
+                      <div className={styles.capRowMain}>
+                        <span className={styles.capBranchName}>
+                          {row.branchName}
+                        </span>
+                        {row.config ? (
+                          <span className={styles.categoryBadge}>
+                            {CAP_TYPE_LABELS[row.config.cap_type]} -{' '}
+                            {row.config.cap_value}
+                            {CAP_VALUE_SUFFIX[row.config.cap_type]}
+                          </span>
+                        ) : (
+                          <span className={styles.capRowNote}>
+                            No cap saved yet
+                          </span>
+                        )}
+                      </div>
+                      <MoreOptionsMenu
+                        label={`Actions for ${row.branchName}`}
+                        items={[
+                          {
+                            label: 'Configure',
+                            onSelect: () =>
+                              setConfiguringCapBranchId(row.branchId),
+                          },
+                        ]}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </section>
       </div>
+
+      <Modal
+        isOpen={configuringCapRow !== undefined}
+        title={`Promo Cap - ${configuringCapRow?.branchName ?? ''}`}
+        onClose={() => setConfiguringCapBranchId(null)}
+      >
+        {configuringCapRow ? (
+          <PromoCapCard
+            key={`${configuringCapRow.branchId}-${configuringCapRow.config?.id ?? 'unsaved'}`}
+            config={configuringCapRow.config}
+            onSave={(input) =>
+              void handleSaveCap(configuringCapRow.branchId, input)
+            }
+            isSaving={savingCapScopeKey === configuringCapRow.branchId}
+          />
+        ) : null}
+      </Modal>
     </main>
   );
 }

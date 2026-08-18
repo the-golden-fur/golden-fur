@@ -18,13 +18,11 @@ describe('PromoCapCard', () => {
   it('shows the existing saved cap for its scope', () => {
     render(
       createElement(PromoCapCard, {
-        scopeLabel: 'Makati',
         config: CONFIG,
         onSave: vi.fn(),
       })
     );
 
-    expect(screen.getByText('Makati')).toBeInTheDocument();
     expect(screen.getByLabelText('Cap value (PHP)')).toHaveValue(150);
     expect(screen.queryByText(/No cap saved yet/)).not.toBeInTheDocument();
   });
@@ -32,7 +30,6 @@ describe('PromoCapCard', () => {
   it('shows the default values and an empty-state note when no cap is saved yet', () => {
     render(
       createElement(PromoCapCard, {
-        scopeLabel: 'Southwoods',
         config: undefined,
         onSave: vi.fn(),
       })
@@ -48,7 +45,6 @@ describe('PromoCapCard', () => {
 
     render(
       createElement(PromoCapCard, {
-        scopeLabel: 'Makati',
         config: CONFIG,
         onSave,
       })
@@ -62,10 +58,36 @@ describe('PromoCapCard', () => {
     expect(onSave).toHaveBeenCalledWith({ cap_type: 'flat', cap_value: 200 });
   });
 
+  it('switching to the count cap type relabels the value field and rejects a fractional value', async () => {
+    const onSave = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      createElement(PromoCapCard, {
+        config: CONFIG,
+        onSave,
+      })
+    );
+
+    await user.selectOptions(screen.getByLabelText('Cap type'), 'count');
+
+    const valueInput = screen.getByLabelText('Cap value (promos)');
+    await user.clear(valueInput);
+    await user.type(valueInput, '1.5');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.clear(valueInput);
+    await user.type(valueInput, '2');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSave).toHaveBeenCalledWith({ cap_type: 'count', cap_value: 2 });
+  });
+
   it('shows a Saving state and disables the button', () => {
     render(
       createElement(PromoCapCard, {
-        scopeLabel: 'Makati',
         config: CONFIG,
         onSave: vi.fn(),
         isSaving: true,

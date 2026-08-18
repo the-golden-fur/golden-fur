@@ -215,20 +215,25 @@ describe('AdminPromoConfigPage', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('the promo cap configuration is embedded on this page (no longer a separate subpage)', async () => {
+  it('the promo cap configuration is embedded on this page (no longer a separate subpage) and lists only real branches, not a "both branches" default card', async () => {
     renderPage();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(
-      screen.getByText('Both branches (system-wide default)')
-    ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Makati' })).toBeInTheDocument();
+      screen.queryByText('Both branches (system-wide default)')
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Southwoods' })
+      screen.getByText('Makati', { selector: 'span' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Southwoods', { selector: 'span' })
+    ).toBeInTheDocument();
+    // Makati's saved cap summarizes inline on the row itself.
+    expect(screen.getByText('Flat - 150 PHP')).toBeInTheDocument();
+    expect(screen.getByText('No cap saved yet')).toBeInTheDocument();
   });
 
-  it('saves a branch promo cap independently of the default cap', async () => {
+  it('Custom change (promo cap actions menu): "..." > Configure opens a modal to edit one branch\'s cap, saving it independently of any other branch', async () => {
     vi.mocked(maintenanceApi.upsertPromoCapConfiguration).mockResolvedValue({
       data: { ...CAP_CONFIGURATIONS[1], cap_value: 300 },
       error: null,
@@ -237,14 +242,19 @@ describe('AdminPromoConfigPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await screen.findByRole('heading', { name: 'Makati' });
-    const makatiCard = screen
-      .getByRole('heading', { name: 'Makati' })
-      .closest('article') as HTMLElement;
-    const valueInput = within(makatiCard).getByLabelText('Cap value (PHP)');
+    const row = (
+      await screen.findByText('Makati', { selector: 'span' })
+    ).closest('li') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Makati' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Promo Cap - Makati' });
+    const valueInput = within(dialog).getByLabelText('Cap value (PHP)');
     await user.clear(valueInput);
     await user.type(valueInput, '300');
-    await user.click(within(makatiCard).getByRole('button', { name: 'Save' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(maintenanceApi.upsertPromoCapConfiguration).toHaveBeenCalledWith(
@@ -254,6 +264,29 @@ describe('AdminPromoConfigPage', () => {
     });
 
     expect(await screen.findByText('Promo cap updated.')).toBeInTheDocument();
+    // Saving closes the modal.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a Cap type filter narrows the branch list to a specific cap type', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByText('Makati', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Southwoods', { selector: 'span' })
+    ).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Cap type'), 'flat');
+
+    expect(
+      screen.getByText('Makati', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Southwoods', { selector: 'span' })
+    ).not.toBeInTheDocument();
   });
 
   it('branch scope filter narrows the list without navigating', async () => {
