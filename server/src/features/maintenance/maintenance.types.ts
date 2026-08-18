@@ -116,10 +116,9 @@ export interface Service {
    * auto-awards free_package_name as a zero-priced booking_items row. NULL
    * = no free-package condition. See ...105_m13_hotel_fixed_price_service.sql. */
   min_nights_for_free_package: number | null;
-  /** Hotel-only: matched against packages.name at the booking's own
-   * branch_id when min_nights_for_free_package is met - not a direct FK,
-   * since packages are seeded one row per branch while this services row is
-   * branch-independent. */
+  /** Hotel-only: matched against packages.name (filtered to packages
+   * available at the booking's own branch via package_branch_availability)
+   * when min_nights_for_free_package is met - not a direct FK. */
   free_package_name: string | null;
   /** Custom change (pricing matrix fix): whether this service's price
    * varies by the pet's weight_class/coat_type (Grooming only -
@@ -171,9 +170,18 @@ export interface PackageServiceLink {
   service_id: string;
 }
 
+/** Custom change: mirrors ServiceBranchAvailability/
+ * ServiceTypeBranchAvailability - replaces the old MA22 "one branch_id per
+ * package row" model with a many-to-many join, same as services and service
+ * types. */
+export interface PackageBranchAvailability {
+  package_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface Package {
   id: string;
-  branch_id: string;
   name: string;
   /**
    * Epic B (#82/#83): derived on read from included services' base_price and
@@ -212,6 +220,7 @@ export interface Package {
   updated_at: string;
   archived_at: string | null;
   package_services?: Array<{ service_id: string }>;
+  package_branch_availability?: PackageBranchAvailability[];
 }
 
 /** Same vocabulary as M02 pets.pet_type. */

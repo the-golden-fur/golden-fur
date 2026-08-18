@@ -28,6 +28,7 @@ import {
   listServicesController,
   restorePackageController,
   restorePromoController,
+  setPackageBranchAvailabilityController,
   setServiceBranchAvailabilityController,
   setServiceTypeBranchAvailabilityController,
   updateBreedController,
@@ -85,6 +86,11 @@ router.get(
 router.post('/maintenance/packages', adminWrite, createPackageController);
 router.get('/maintenance/packages/:id', staffRead, getPackageController);
 router.patch('/maintenance/packages/:id', adminWrite, updatePackageController);
+router.patch(
+  '/maintenance/packages/:id/branch-availability',
+  adminWrite,
+  setPackageBranchAvailabilityController
+);
 // Archive is the "delete" a normal admin performs (soft, reversible, still
 // gated behind is_active === false via archivePackage's own guard).
 router.delete(

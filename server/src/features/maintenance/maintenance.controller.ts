@@ -15,6 +15,7 @@ import {
   listArchivedPackages,
   listPackages,
   restorePackage,
+  setPackageBranchAvailability,
   updatePackage,
 } from './services/packages.service.ts';
 import {
@@ -301,6 +302,37 @@ export async function updatePackageController(
     });
 
     return res.status(200).json({ package: pkg });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setPackageBranchAvailabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchAvailabilityValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setPackageBranchAvailability({
+      packageId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      isAvailable: parsed.data.is_available,
+    });
+
+    return res.status(200).json({ availability });
   } catch (error) {
     return sendServiceError(res, error);
   }

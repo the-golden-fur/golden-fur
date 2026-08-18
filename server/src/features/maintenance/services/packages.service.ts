@@ -3,7 +3,10 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
-import type { Package } from '../maintenance.types.ts';
+import type {
+  Package,
+  PackageBranchAvailability,
+} from '../maintenance.types.ts';
 import type {
   CreatePackageInput,
   UpdatePackageInput,
@@ -18,9 +21,12 @@ const FOREIGN_KEY_VIOLATION = '23503';
 // Epic B (#82/#83): pulls each included service's base_price in the same
 // query so bundled_price can be derived without an N+1 follow-up lookup.
 // duration_minutes rides along the same join for total_duration_minutes
-// (multi-item bookings revision).
+// (multi-item bookings revision). package_branch_availability(*) mirrors
+// service_branch_availability/service_type_branch_availability's own SELECT
+// shape (custom change: packages moved off the old MA22 single-branch_id
+// model onto the same many-to-many join).
 const PACKAGE_SELECT =
-  '*, package_services(service_id, services(base_price, duration_minutes))';
+  '*, package_services(service_id, services(base_price, duration_minutes)), package_branch_availability(*)';
 
 interface RawPackageServiceLink {
   service_id: string;
@@ -87,6 +93,12 @@ interface UpdatePackageParams {
   updates: UpdatePackageInput;
 }
 
+interface SetPackageBranchAvailabilityParams {
+  packageId: string;
+  branchId: string;
+  isAvailable: boolean;
+}
+
 /**
  * Every service id must (a) exist and (b) be is_active = true at the time
  * the package is created or its bundle edited (#41 Dev Notes). A service
@@ -114,7 +126,11 @@ async function assertServicesExistAndActive(serviceIds: string[]) {
   }
 }
 
-/** Active packages by default, filterable by branch (#41 AC-5). */
+/** Active packages by default, filterable by branch (#41 AC-5). Custom
+ * change: branchId now filters in-memory over the joined
+ * package_branch_availability array (packages moved off the old MA22
+ * single-branch_id column onto a many-to-many join), mirroring
+ * listServices' own branch filter exactly. */
 export async function listPackages({
   branchId,
   includeInactive,
@@ -128,18 +144,24 @@ export async function listPackages({
     query = query.eq('is_active', true);
   }
 
-  if (branchId) {
-    query = query.eq('branch_id', branchId);
-  }
-
   const { data, error } = await query.order('name');
 
   if (error) throwWithStatus(400, error.message);
 
   const pricingConfiguration = await getPackagePricingConfiguration();
 
-  return ((data ?? []) as RawPackage[]).map((pkg) =>
+  const packages = ((data ?? []) as RawPackage[]).map((pkg) =>
     attachBundledPrice(pkg, pricingConfiguration)
+  );
+
+  if (!branchId) {
+    return packages;
+  }
+
+  return packages.filter((pkg) =>
+    (pkg.package_branch_availability ?? []).some(
+      (row) => row.branch_id === branchId && row.is_available
+    )
   );
 }
 
@@ -159,16 +181,24 @@ export async function getPackageById(packageId: string): Promise<Package> {
 }
 
 /**
- * A package is always scoped to exactly one branch (MA22) - branch_id is a
- * required create field, and "the same" package at both branches means two
- * rows. Epic B (#83): bundled_price is no longer accepted as input - it is
+ * Custom change: packages are no longer scoped to exactly one branch (the
+ * old MA22 rule) - branch_ids seeds the initial
+ * package_branch_availability rows instead of a single required branch_id
+ * column. Unlike services/service types, a new package does NOT default to
+ * "available everywhere" - the admin picks the starting branches explicitly,
+ * since the whole point of this model is selective multi-branch offering.
+ * Epic B (#83): bundled_price is no longer accepted as input - it is
  * derived from the included services' base_price on read.
  */
 export async function createPackage({
   requesterId,
   input,
 }: CreatePackageParams): Promise<Package> {
-  const { service_ids: serviceIds, ...packageFields } = input;
+  const {
+    service_ids: serviceIds,
+    branch_ids: branchIds,
+    ...packageFields
+  } = input;
 
   await assertServicesExistAndActive(serviceIds);
 
@@ -194,6 +224,18 @@ export async function createPackage({
   );
 
   if (linkError) throwWithStatus(400, linkError.message);
+
+  const { error: availabilityError } = await supabase
+    .from('package_branch_availability')
+    .insert(
+      branchIds.map((branchId) => ({
+        package_id: created.id,
+        branch_id: branchId,
+        is_available: true,
+      }))
+    );
+
+  if (availabilityError) throwWithStatus(400, availabilityError.message);
 
   return getPackageById(created.id);
 }
@@ -256,6 +298,38 @@ export async function updatePackage({
   }
 
   return getPackageById(packageId);
+}
+
+/** Per-branch availability toggle via its own endpoint, mirroring
+ * setServiceBranchAvailability/setServiceTypeBranchAvailability exactly. */
+export async function setPackageBranchAvailability({
+  packageId,
+  branchId,
+  isAvailable,
+}: SetPackageBranchAvailabilityParams): Promise<PackageBranchAvailability> {
+  const { data: existing, error: lookupError } = await supabase
+    .from('packages')
+    .select('id')
+    .eq('id', packageId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (!existing) throwWithStatus(404, 'Package not found');
+
+  const { data, error } = await supabase
+    .from('package_branch_availability')
+    .upsert(
+      { package_id: packageId, branch_id: branchId, is_available: isAvailable },
+      { onConflict: 'package_id,branch_id' }
+    )
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to update availability');
+  }
+
+  return data as PackageBranchAvailability;
 }
 
 /**
