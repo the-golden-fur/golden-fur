@@ -29,6 +29,7 @@ import {
   restorePackageController,
   restorePromoController,
   setServiceBranchAvailabilityController,
+  setServiceTypeBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
   updatePackagePricingConfigurationController,
@@ -177,6 +178,11 @@ router.patch(
   '/maintenance/service-types/:id',
   adminWrite,
   updateServiceTypeController
+);
+router.patch(
+  '/maintenance/service-types/:id/branch-availability',
+  adminWrite,
+  setServiceTypeBranchAvailabilityController
 );
 
 export default router;

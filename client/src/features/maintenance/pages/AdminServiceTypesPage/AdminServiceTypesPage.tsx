@@ -4,12 +4,17 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createServiceType,
+  listBranches,
   listServiceTypes,
+  setServiceTypeBranchAvailability,
   updateServiceType,
 } from '../../api/maintenance.api';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
-import type { ServiceType } from '../../maintenance.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import type { BranchSummary, ServiceType } from '../../maintenance.types';
 import styles from './AdminServiceTypesPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -29,6 +34,12 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   cagePickerEnabled: false,
 };
 
+interface EditFormState {
+  name: string;
+  staffPickerEnabled: boolean;
+  cagePickerEnabled: boolean;
+}
+
 /**
  * Custom change: Service Types admin CRUD. Grooming/Hotel/Daycare/
  * Veterinary are still hardcoded ServiceCategory values everywhere they
@@ -46,6 +57,7 @@ export function AdminServiceTypesPage() {
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -54,9 +66,26 @@ export function AdminServiceTypesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
+  const [editingServiceType, setEditingServiceType] =
+    useState<ServiceType | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState>({
+    name: '',
+    staffPickerEnabled: false,
+    cagePickerEnabled: false,
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+
+  // Custom change (services/packages/service types actions menu): the
+  // row-level global Activate/Deactivate action is gone - per-branch
+  // availability (a new service_type_branch_availability table, mirroring
+  // services) is now the operative control, same precedent as the Services
+  // admin page. is_active stays a real column (still what the booking
+  // flow's service-type list ultimately reads) but is no longer settable
+  // from this page.
+  const [availabilityServiceTypeId, setAvailabilityServiceTypeId] = useState<
+    string | null
+  >(null);
 
   const [message, setMessage] = useState<string | null>(null);
 
@@ -92,30 +121,72 @@ export function AdminServiceTypesPage() {
 
     let isMounted = true;
 
-    void listServiceTypes(accessToken).then((result) => {
-      if (!isMounted) {
-        return;
+    void Promise.all([listServiceTypes(accessToken), listBranches()]).then(
+      ([typesResult, branchesResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLoading(false);
+
+        if (typesResult.error || !typesResult.data) {
+          setLoadError(typesResult.error ?? 'Could not load service types.');
+          return;
+        }
+
+        setServiceTypes(typesResult.data);
+        // Branch names are optional garnish - a failed lookup degrades the
+        // Branch Availability modal's labels, it doesn't block the page.
+        setBranches(branchesResult.data ?? []);
       }
-
-      setIsLoading(false);
-
-      if (result.error || !result.data) {
-        setLoadError(result.error ?? 'Could not load service types.');
-        return;
-      }
-
-      setServiceTypes(result.data);
-    });
+    );
 
     return () => {
       isMounted = false;
     };
   }, [accessToken, isAllowedViewer]);
 
+  const availabilityServiceType = serviceTypes.find(
+    (serviceType) => serviceType.id === availabilityServiceTypeId
+  );
+
   const replaceServiceType = (updated: ServiceType) => {
     setServiceTypes((prev) =>
       prev.map((type) => (type.id === updated.id ? updated : type))
     );
+  };
+
+  const handleBranchAvailabilityToggle = async (
+    serviceType: ServiceType,
+    branchId: string,
+    isAvailable: boolean
+  ) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await setServiceTypeBranchAvailability(
+      serviceType.id,
+      accessToken,
+      { branch_id: branchId, is_available: isAvailable }
+    );
+
+    if (result.error || !result.data) {
+      setRowError(result.error ?? 'Could not update branch availability.');
+      return;
+    }
+
+    const rows = serviceType.service_type_branch_availability ?? [];
+    const hasRow = rows.some((row) => row.branch_id === branchId);
+
+    replaceServiceType({
+      ...serviceType,
+      service_type_branch_availability: hasRow
+        ? rows.map((row) =>
+            row.branch_id === branchId ? { ...row, ...result.data } : row
+          )
+        : [...rows, result.data],
+    });
   };
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -148,48 +219,39 @@ export function AdminServiceTypesPage() {
     setMessage('Service type added.');
   }
 
-  function startEditing(serviceType: ServiceType) {
-    setEditingId(serviceType.id);
-    setEditingName(serviceType.name);
+  function openEditModal(serviceType: ServiceType) {
+    setEditingServiceType(serviceType);
+    setEditForm({
+      name: serviceType.name,
+      staffPickerEnabled: serviceType.staff_picker_enabled,
+      cagePickerEnabled: serviceType.cage_picker_enabled,
+    });
     setRowError(null);
   }
 
-  async function handleRename(serviceTypeId: string) {
-    if (!accessToken || !editingName.trim()) {
+  function closeEditModal() {
+    setEditingServiceType(null);
+    setRowError(null);
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!accessToken || !editingServiceType || !editForm.name.trim()) {
       setRowError('Name is required.');
       return;
     }
 
     setRowError(null);
+    setIsSavingEdit(true);
 
-    const result = await updateServiceType(serviceTypeId, accessToken, {
-      name: editingName.trim(),
+    const result = await updateServiceType(editingServiceType.id, accessToken, {
+      name: editForm.name.trim(),
+      staff_picker_enabled: editForm.staffPickerEnabled,
+      cage_picker_enabled: editForm.cagePickerEnabled,
     });
 
-    if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not rename service type.');
-      return;
-    }
-
-    replaceServiceType(result.data);
-    setEditingId(null);
-    setMessage('Service type renamed.');
-  }
-
-  async function handleToggle(
-    serviceType: ServiceType,
-    field: 'is_active' | 'staff_picker_enabled' | 'cage_picker_enabled',
-    value: boolean
-  ) {
-    if (!accessToken) {
-      return;
-    }
-
-    setRowError(null);
-
-    const result = await updateServiceType(serviceType.id, accessToken, {
-      [field]: value,
-    });
+    setIsSavingEdit(false);
 
     if (result.error || !result.data) {
       setRowError(result.error ?? 'Could not update service type.');
@@ -197,6 +259,8 @@ export function AdminServiceTypesPage() {
     }
 
     replaceServiceType(result.data);
+    setEditingServiceType(null);
+    setMessage('Service type updated.');
   }
 
   if (isRoleLoading) {
@@ -220,10 +284,10 @@ export function AdminServiceTypesPage() {
         <p className={styles.copy}>
           The service lines customers choose between at booking time (Grooming,
           Hotel, Daycare, Veterinary). Rename a type's customer-facing label,
-          deactivate it, or turn on the Staff Picker/Cage Picker step for it.
-          Adding a brand new type only makes it selectable here - real booking
-          behavior for it (availability, pricing, etc.) still needs to be built
-          separately.
+          manage which branches offer it, or turn on the Staff Picker/Cage
+          Picker step for it. Adding a brand new type only makes it selectable
+          here - real booking behavior for it (availability, pricing, etc.)
+          still needs to be built separately.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -319,94 +383,128 @@ export function AdminServiceTypesPage() {
             {serviceTypes.map((serviceType) => (
               <li className={styles.listItem} key={serviceType.id}>
                 <div className={styles.rowMain}>
-                  {editingId === serviceType.id ? (
-                    <>
-                      <input
-                        className={styles.input}
-                        value={editingName}
-                        onChange={(event) => setEditingName(event.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className={styles.smallButton}
-                        onClick={() => void handleRename(serviceType.id)}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className={styles.typeName}>
-                        {serviceType.name}
-                      </span>
-                      <span className={styles.typeKey}>{serviceType.key}</span>
-                      <StatusBadge isActive={serviceType.is_active} />
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => startEditing(serviceType)}
-                      >
-                        Rename
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <div className={styles.toggleRow}>
-                  <span className={styles.toggleLabel}>Active</span>
-                  <ToggleSwitch
-                    checked={serviceType.is_active}
-                    onChange={(checked) =>
-                      void handleToggle(serviceType, 'is_active', checked)
-                    }
-                    label={`${serviceType.is_active ? 'Deactivate' : 'Activate'} ${serviceType.name}`}
-                    hideLabel
-                  />
-                  <span className={styles.toggleLabel}>Staff picker</span>
-                  <ToggleSwitch
-                    checked={serviceType.staff_picker_enabled}
-                    onChange={(checked) =>
-                      void handleToggle(
-                        serviceType,
-                        'staff_picker_enabled',
-                        checked
-                      )
-                    }
-                    label={`Staff picker for ${serviceType.name}`}
-                    hideLabel
-                  />
-                  <span className={styles.toggleLabel}>Cage picker</span>
-                  <ToggleSwitch
-                    checked={serviceType.cage_picker_enabled}
-                    onChange={(checked) =>
-                      void handleToggle(
-                        serviceType,
-                        'cage_picker_enabled',
-                        checked
-                      )
-                    }
-                    label={`Cage picker for ${serviceType.name}`}
-                    hideLabel
+                  <span className={styles.typeName}>{serviceType.name}</span>
+                  <span className={styles.typeKey}>{serviceType.key}</span>
+                  <StatusBadge isActive={serviceType.is_active} />
+                  <MoreOptionsMenu
+                    label={`Actions for ${serviceType.name}`}
+                    items={[
+                      {
+                        label: 'Configure',
+                        onSelect: () => openEditModal(serviceType),
+                      },
+                      {
+                        label: 'Branch Availability',
+                        onSelect: () =>
+                          setAvailabilityServiceTypeId(serviceType.id),
+                      },
+                    ]}
                   />
                 </div>
               </li>
             ))}
           </ul>
         )}
-
-        {rowError ? (
-          <p className={styles.errorBanner} role="alert">
-            {rowError}
-          </p>
-        ) : null}
       </div>
+
+      <Modal
+        isOpen={editingServiceType !== null}
+        title={
+          editingServiceType
+            ? `Configure ${editingServiceType.name}`
+            : 'Configure service type'
+        }
+        onClose={closeEditModal}
+      >
+        {editingServiceType ? (
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleEditSubmit(event)}
+          >
+            <label className={styles.field}>
+              <span className={styles.label}>Name</span>
+              <input
+                className={styles.input}
+                value={editForm.name}
+                onChange={(event) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <ToggleSwitch
+              label="Staff picker enabled"
+              checked={editForm.staffPickerEnabled}
+              onChange={(checked) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  staffPickerEnabled: checked,
+                }))
+              }
+            />
+
+            <ToggleSwitch
+              label="Cage picker enabled"
+              checked={editForm.cagePickerEnabled}
+              onChange={(checked) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  cagePickerEnabled: checked,
+                }))
+              }
+            />
+
+            {rowError ? (
+              <p className={styles.errorBanner} role="alert">
+                {rowError}
+              </p>
+            ) : null}
+
+            <div className={styles.formActions}>
+              <button
+                className={styles.button}
+                type="submit"
+                disabled={isSavingEdit}
+              >
+                {isSavingEdit ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className={styles.smallButtonSecondary}
+                onClick={closeEditModal}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <BranchAvailabilityModal
+        isOpen={availabilityServiceType !== undefined}
+        itemName={availabilityServiceType?.name ?? ''}
+        rows={branches.map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          isAvailable:
+            (
+              availabilityServiceType?.service_type_branch_availability ?? []
+            ).find((row) => row.branch_id === branch.id)?.is_available ?? false,
+        }))}
+        onToggle={(branchId, isAvailable) => {
+          if (availabilityServiceType) {
+            void handleBranchAvailabilityToggle(
+              availabilityServiceType,
+              branchId,
+              isAvailable
+            );
+          }
+        }}
+        onClose={() => setAvailabilityServiceTypeId(null)}
+      />
     </main>
   );
 }

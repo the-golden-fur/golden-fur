@@ -48,6 +48,7 @@ import {
 import {
   createServiceType,
   listServiceTypes,
+  setServiceTypeBranchAvailability,
   updateServiceType,
 } from './services/serviceTypes.service.ts';
 import {
@@ -769,6 +770,37 @@ export async function updateServiceTypeController(
       requesterId
     );
     return res.status(200).json({ service_type: serviceType });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setServiceTypeBranchAvailabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchAvailabilityValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setServiceTypeBranchAvailability({
+      serviceTypeId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      isAvailable: parsed.data.is_available,
+    });
+
+    return res.status(200).json({ availability });
   } catch (error) {
     return sendServiceError(res, error);
   }

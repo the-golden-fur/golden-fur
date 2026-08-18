@@ -232,6 +232,14 @@ export interface Breed {
  * cage_picker_enabled gate whether those steps are offered in the booking
  * flow for this type - see staffPicker.service.ts/cagePicker.service.ts.
  */
+/** Custom change: mirrors ServiceBranchAvailability - replaces the
+ * row-level Activate/Deactivate action on the admin Service Types page. */
+export interface ServiceTypeBranchAvailability {
+  service_type_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface ServiceType {
   id: string;
   key: string;
@@ -243,6 +251,7 @@ export interface ServiceType {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  service_type_branch_availability?: ServiceTypeBranchAvailability[];
 }
 
 export type PromoScopeType = 'all_services' | 'specific';
