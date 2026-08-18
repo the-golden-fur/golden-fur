@@ -17,6 +17,7 @@ import type {
   Service,
   ServiceBranchAvailability,
   ServiceType,
+  ServiceTypeBranchAvailability,
   UpdateBreedPayload,
   UpdatePackagePayload,
   UpdatePackagePricingConfigurationPayload,
@@ -735,4 +736,28 @@ export async function updateServiceType(
 
   const result = await parseBody<{ service_type: ServiceType }>(response);
   return { data: result.data?.service_type ?? null, error: result.error };
+}
+
+export async function setServiceTypeBranchAvailability(
+  serviceTypeId: string,
+  accessToken: string,
+  payload: BranchAvailabilityPayload
+): Promise<MaintenanceApiResult<ServiceTypeBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/service-types/${serviceTypeId}/branch-availability`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    availability: ServiceTypeBranchAvailability;
+  }>(response);
+  return { data: result.data?.availability ?? null, error: result.error };
 }

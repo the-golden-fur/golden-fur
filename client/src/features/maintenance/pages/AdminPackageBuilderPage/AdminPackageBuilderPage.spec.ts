@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -309,6 +309,37 @@ describe('AdminPackageBuilderPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('Custom change (services/packages actions menu): a row exposes Configure, Branch Availability, and (once inactive) Archive behind a single "..." menu instead of separate always-visible buttons', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+
+    expect(
+      within(row).queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    ).toBeInTheDocument();
+    // The package starts Active, so Archive (inactive-only) isn't offered yet.
+    expect(
+      screen.queryByRole('menuitem', { name: 'Archive' })
+    ).not.toBeInTheDocument();
+  });
+
   it('AC-3: editing a package replaces its included services in place', async () => {
     vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
       data: buildPackage({
@@ -324,7 +355,13 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
     // Branch is locked when editing - a package belongs to one branch (MA22).
     expect(screen.getAllByLabelText('Branch')[1]).toBeDisabled();
@@ -365,7 +402,13 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
     const discountInput = screen.getByLabelText('Bundle discount (%)');
     await user.clear(discountInput);
@@ -383,7 +426,7 @@ describe('AdminPackageBuilderPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('AC-3: deactivating a package flips its badge without a reload', async () => {
+  it("Custom change (services/packages actions menu): Branch Availability opens a modal with the package's one branch, and its toggle deactivates the package without a reload", async () => {
     vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
       data: buildPackage({ is_active: false }),
       error: null,
@@ -394,7 +437,23 @@ describe('AdminPackageBuilderPage', () => {
 
     expect(await screen.findByText('Active')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Deactivate' }));
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Branch Availability - Golden Package',
+    });
+    const toggle = within(dialog).getByRole('switch', { name: 'Makati' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(toggle);
 
     await waitFor(() => {
       expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
@@ -405,5 +464,26 @@ describe('AdminPackageBuilderPage', () => {
     });
 
     expect(await screen.findByText('Inactive')).toBeInTheDocument();
+  });
+
+  it('Custom change (services/packages actions menu): Archive only appears once a package is inactive', async () => {
+    vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+      data: [buildPackage({ is_active: false })],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
   });
 });

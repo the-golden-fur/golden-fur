@@ -19,6 +19,9 @@ import {
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import type {
   BranchSummary,
   Package,
@@ -61,6 +64,9 @@ export function AdminPackageBuilderPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [availabilityPackageId, setAvailabilityPackageId] = useState<
+    string | null
+  >(null);
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -169,6 +175,10 @@ export function AdminPackageBuilderPage() {
       }));
   }, [services, formBranchId]);
 
+  const availabilityPackage = packages.find(
+    (pkg) => pkg.id === availabilityPackageId
+  );
+
   const replacePackage = (updated: Package) => {
     setPackages((prev) =>
       prev.map((pkg) => (pkg.id === updated.id ? updated : pkg))
@@ -233,13 +243,13 @@ export function AdminPackageBuilderPage() {
     setFormError(null);
   };
 
-  const handleActiveToggle = async (pkg: Package) => {
+  const handleActiveToggle = async (pkg: Package, isActive: boolean) => {
     if (!accessToken) {
       return;
     }
 
     const result = await updatePackage(pkg.id, accessToken, {
-      is_active: !pkg.is_active,
+      is_active: isActive,
     });
 
     if (result.error || !result.data) {
@@ -462,12 +472,12 @@ export function AdminPackageBuilderPage() {
           </p>
         ) : null}
 
-        {isFormOpen ? (
-          <section className={styles.formPanel} aria-labelledby="package-form">
-            <h2 className={styles.sectionTitle} id="package-form">
-              {editingPackageId === null ? 'Build package' : 'Edit package'}
-            </h2>
-
+        <Modal
+          isOpen={isFormOpen}
+          title={editingPackageId === null ? 'Build package' : 'Edit package'}
+          onClose={closeForm}
+        >
+          {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>Branch</span>
@@ -610,8 +620,8 @@ export function AdminPackageBuilderPage() {
                 </button>
               </div>
             </form>
-          </section>
-        ) : null}
+          ) : null}
+        </Modal>
 
         {filteredPackages.length === 0 ? (
           <p className={styles.copy}>No packages match the selected filter.</p>
@@ -644,35 +654,54 @@ export function AdminPackageBuilderPage() {
                 </div>
 
                 <div className={styles.packageControls}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => openEditForm(pkg)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => void handleActiveToggle(pkg)}
-                  >
-                    {pkg.is_active ? 'Deactivate' : 'Reactivate'}
-                  </button>
-                  {!pkg.is_active ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => void handleArchive(pkg)}
-                    >
-                      Archive
-                    </button>
-                  ) : null}
+                  <MoreOptionsMenu
+                    label={`Actions for ${pkg.name}`}
+                    items={[
+                      { label: 'Configure', onSelect: () => openEditForm(pkg) },
+                      {
+                        label: 'Branch Availability',
+                        onSelect: () => setAvailabilityPackageId(pkg.id),
+                      },
+                      ...(!pkg.is_active
+                        ? [
+                            {
+                              label: 'Archive',
+                              onSelect: () => void handleArchive(pkg),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <BranchAvailabilityModal
+        isOpen={availabilityPackage !== undefined}
+        itemName={availabilityPackage?.name ?? ''}
+        rows={
+          availabilityPackage
+            ? [
+                {
+                  branchId: availabilityPackage.branch_id,
+                  branchName:
+                    branchNameById.get(availabilityPackage.branch_id) ??
+                    `Branch ${availabilityPackage.branch_id.slice(0, 8)}`,
+                  isAvailable: availabilityPackage.is_active,
+                },
+              ]
+            : []
+        }
+        onToggle={(_branchId, isAvailable) => {
+          if (availabilityPackage) {
+            void handleActiveToggle(availabilityPackage, isAvailable);
+          }
+        }}
+        onClose={() => setAvailabilityPackageId(null)}
+      />
     </main>
   );
 }
