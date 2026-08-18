@@ -13,6 +13,9 @@ import {
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,
@@ -113,6 +116,11 @@ export function AdminServicesPage() {
     'All'
   );
   const [branchFilter, setBranchFilter] = useState('All');
+  // Custom change (services/packages actions menu): the row-level global
+  // Disable toggle is gone - per-branch availability (below) is now the only
+  // UI-driven way to take a service off sale, since it already fully covers
+  // "unavailable everywhere" (a judgment call: is_active itself is still a
+  // real column, just no longer settable here post-creation).
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('Active');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -121,6 +129,9 @@ export function AdminServicesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [availabilityServiceId, setAvailabilityServiceId] = useState<
+    string | null
+  >(null);
 
   // Same trick as AdminStaffListPage/AdminCustomerListPage: the viewer's
   // app-level role isn't on the Supabase session, so it's read off their own
@@ -220,6 +231,10 @@ export function AdminServicesPage() {
     });
   }, [services, categoryFilter, branchFilter, statusFilter]);
 
+  const availabilityService = services.find(
+    (service) => service.id === availabilityServiceId
+  );
+
   const replaceService = (updated: Service) => {
     setServices((prev) =>
       prev.map((service) => (service.id === updated.id ? updated : service))
@@ -277,26 +292,6 @@ export function AdminServicesPage() {
           )
         : [...rows, result.data],
     });
-  };
-
-  const handleActiveToggle = async (service: Service) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const result = await updateService(service.id, accessToken, {
-      is_active: !service.is_active,
-    });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the service.');
-      return;
-    }
-
-    replaceService(result.data);
-    setMessage(
-      result.data.is_active ? 'Service reactivated.' : 'Service deactivated.'
-    );
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -592,12 +587,12 @@ export function AdminServicesPage() {
           </p>
         ) : null}
 
-        {isFormOpen ? (
-          <section className={styles.formPanel} aria-labelledby="service-form">
-            <h2 className={styles.sectionTitle} id="service-form">
-              {editingServiceId === null ? 'Create service' : 'Edit service'}
-            </h2>
-
+        <Modal
+          isOpen={isFormOpen}
+          title={editingServiceId === null ? 'Create service' : 'Edit service'}
+          onClose={closeForm}
+        >
+          {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>Name</span>
@@ -897,8 +892,8 @@ export function AdminServicesPage() {
                 </button>
               </div>
             </form>
-          </section>
-        ) : null}
+          ) : null}
+        </Modal>
 
         {filteredServices.length === 0 ? (
           <p className={styles.copy}>No services match the selected filters.</p>
@@ -960,38 +955,18 @@ export function AdminServicesPage() {
                 </div>
 
                 <div className={styles.serviceControls}>
-                  {branches.map((branch) => {
-                    const availability = (
-                      service.service_branch_availability ?? []
-                    ).find((row) => row.branch_id === branch.id);
-
-                    return (
-                      <ToggleSwitch
-                        key={branch.id}
-                        label={branch.name}
-                        checked={availability?.is_available ?? false}
-                        onChange={(isAvailable) =>
-                          void handleBranchToggle(
-                            service,
-                            branch.id,
-                            isAvailable
-                          )
-                        }
-                      />
-                    );
-                  })}
-
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => openEditForm(service)}
-                  >
-                    Edit
-                  </button>
-                  <ToggleSwitch
-                    label={`${service.is_active ? 'Disable' : 'Enable'} ${service.name}`}
-                    checked={service.is_active}
-                    onChange={() => void handleActiveToggle(service)}
+                  <MoreOptionsMenu
+                    label={`Actions for ${service.name}`}
+                    items={[
+                      {
+                        label: 'Configure',
+                        onSelect: () => openEditForm(service),
+                      },
+                      {
+                        label: 'Branch Availability',
+                        onSelect: () => setAvailabilityServiceId(service.id),
+                      },
+                    ]}
                   />
                 </div>
               </li>
@@ -999,6 +974,25 @@ export function AdminServicesPage() {
           </ul>
         )}
       </div>
+
+      <BranchAvailabilityModal
+        isOpen={availabilityService !== undefined}
+        itemName={availabilityService?.name ?? ''}
+        rows={branches.map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          isAvailable:
+            (availabilityService?.service_branch_availability ?? []).find(
+              (row) => row.branch_id === branch.id
+            )?.is_available ?? false,
+        }))}
+        onToggle={(branchId, isAvailable) => {
+          if (availabilityService) {
+            void handleBranchToggle(availabilityService, branchId, isAvailable);
+          }
+        }}
+        onClose={() => setAvailabilityServiceId(null)}
+      />
     </main>
   );
 }

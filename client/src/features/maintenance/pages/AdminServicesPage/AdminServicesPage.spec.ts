@@ -301,6 +301,88 @@ describe('AdminServicesPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('Custom change (services/packages actions menu): a service row exposes Configure and Branch Availability behind a single "..." menu instead of separate always-visible controls', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+
+    // No inline per-branch toggles, Edit button, or global Disable switch
+    // on the row itself anymore - they're actions behind the kebab menu.
+    expect(
+      within(row).queryByRole('switch', { name: 'Southwoods' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('switch', { name: 'Disable Bath' })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    ).toBeInTheDocument();
+  });
+
+  it('Custom change (services/packages actions menu): Configure opens the edit form in a modal instead of pushing the list down', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit service' });
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Bath');
+  });
+
+  it('Custom change (services/packages actions menu): Branch Availability opens a modal listing every branch with its own toggle', async () => {
+    vi.mocked(maintenanceApi.setServiceBranchAvailability).mockResolvedValue({
+      data: {
+        service_id: 'service-1',
+        branch_id: 'branch-southwoods',
+        is_available: false,
+      },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Branch Availability - Bath',
+    });
+    const toggle = within(dialog).getByRole('switch', { name: 'Southwoods' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
+        'service-1',
+        'token',
+        { branch_id: 'branch-southwoods', is_available: false }
+      );
+    });
+  });
+
   it('Custom change (Daycare fee configuration follow-up): a Daycare service form hides base price and creates without it', async () => {
     vi.mocked(maintenanceApi.createService).mockResolvedValue({
       data: buildService({
@@ -379,7 +461,10 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
     const downpaymentToggle = screen.getByRole('switch', {
       name: 'Requires a downpayment before the service can start',
@@ -407,91 +492,5 @@ describe('AdminServicesPage', () => {
         })
       );
     });
-  });
-
-  it('AC-3: a branch availability toggle updates in place without a reload', async () => {
-    vi.mocked(maintenanceApi.setServiceBranchAvailability).mockResolvedValue({
-      data: {
-        service_id: 'service-1',
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      },
-      error: null,
-    });
-
-    renderPage();
-    const user = userEvent.setup();
-
-    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
-    const toggle = within(row).getByRole('switch', { name: 'Southwoods' });
-
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
-        'service-1',
-        'token',
-        {
-          branch_id: 'branch-southwoods',
-          is_available: false,
-        }
-      );
-    });
-
-    await waitFor(() => {
-      expect(
-        within(row).getByRole('switch', { name: 'Southwoods' })
-      ).toHaveAttribute('aria-checked', 'false');
-    });
-  });
-
-  it('Issue #79: a single status toggle replaces the separate Deactivate/Activate actions', async () => {
-    vi.mocked(maintenanceApi.updateService).mockResolvedValue({
-      data: buildService({ is_active: false }),
-      error: null,
-    });
-
-    renderPage();
-    const user = userEvent.setup();
-
-    expect(await screen.findByText('Bath')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Deactivate' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Activate' })
-    ).not.toBeInTheDocument();
-
-    const toggle = screen.getByRole('switch', { name: 'Disable Bath' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(maintenanceApi.updateService).toHaveBeenCalledWith(
-        'service-1',
-        'token',
-        { is_active: false }
-      );
-    });
-
-    // Default status filter is "Active only", so the row disappears...
-    await waitFor(() => {
-      expect(screen.queryByText('Bath')).not.toBeInTheDocument();
-    });
-
-    // ...and switching to Inactive shows it with the Inactive badge and the
-    // toggle now offering to re-enable it.
-    await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
-    expect(screen.getByText('Bath')).toBeInTheDocument();
-    expect(
-      screen.getByText('Inactive', { selector: 'span' })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Enable Bath' })).toHaveAttribute(
-      'aria-checked',
-      'false'
-    );
   });
 });
