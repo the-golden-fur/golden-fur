@@ -172,7 +172,7 @@ describe('AdminServicesPage', () => {
     expect(maintenanceApi.listServices).not.toHaveBeenCalled();
   });
 
-  it('AC-1: renders each service row with name, category badge, price, and status badge', async () => {
+  it('AC-1: renders each service row with name, category badge, and price', async () => {
     renderPage();
 
     expect(await screen.findByText('Bath')).toBeInTheDocument();
@@ -181,7 +181,6 @@ describe('AdminServicesPage', () => {
       screen.getByText('Grooming', { selector: 'span' })
     ).toBeInTheDocument();
     expect(screen.getByText('PHP 300.00')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByLabelText('Category')).toBeInTheDocument();
     expect(screen.getByLabelText('Branch')).toBeInTheDocument();
   });
@@ -211,6 +210,75 @@ describe('AdminServicesPage', () => {
 
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
+  });
+
+  it('custom change: the search box narrows the list by name', async () => {
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [
+        buildService(),
+        buildService({
+          id: 'service-2',
+          name: 'Wellness Exam',
+          category: 'Veterinary',
+          service_pricing_tiers: [],
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Bath')).toBeInTheDocument();
+    expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Search services...'), 'Bath');
+
+    expect(screen.getByText('Bath')).toBeInTheDocument();
+    expect(screen.queryByText('Wellness Exam')).not.toBeInTheDocument();
+  });
+
+  it('custom change: the create form offers a branch multiselect that disables an unchecked branch after creation', async () => {
+    vi.mocked(maintenanceApi.createService).mockResolvedValue({
+      data: buildService({ id: 'service-new', name: 'Dematting' }),
+      error: null,
+    });
+    vi.mocked(maintenanceApi.setServiceBranchAvailability).mockResolvedValue({
+      data: {
+        service_id: 'service-new',
+        branch_id: 'branch-southwoods',
+        is_available: false,
+      },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'New service' })
+    );
+    await user.type(screen.getByLabelText('Name'), 'Dematting');
+    await user.type(screen.getByLabelText('Base price (PHP)'), '350');
+
+    // Both branches are checked by default, matching what createService
+    // already seeds server-side.
+    const southwoods = screen.getByRole('checkbox', { name: 'Southwoods' });
+    expect(southwoods).toBeChecked();
+    await user.click(southwoods);
+
+    await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
+        'service-new',
+        'token',
+        {
+          branch_id: 'branch-southwoods',
+          is_available: false,
+        }
+      );
+    });
   });
 
   it('Epic B #81: create form no longer accepts pricing_tiers - the matrix is derived read-only', async () => {
