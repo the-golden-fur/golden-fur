@@ -9,6 +9,7 @@ import {
   listBranches,
   listPackages,
   listServices,
+  setPackageBranchAvailability,
   updatePackage,
   updatePackagePricingConfiguration,
 } from '../../api/maintenance.api';
@@ -17,21 +18,41 @@ import {
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
-import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
-import type {
-  BranchSummary,
-  Package,
-  PackagePricingConfiguration,
-  Service,
+import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
+import {
+  SERVICE_CATEGORIES,
+  type BranchSummary,
+  type Package,
+  type PackagePricingConfiguration,
+  type Service,
+  type ServiceCategory,
 } from '../../maintenance.types';
 import styles from './AdminPackageBuilderPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
+
+type ServiceSortKey = 'name-asc' | 'name-desc';
+
+const SERVICE_SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+];
+
+function availableBranchIds(pkg: Package): string[] {
+  return (pkg.package_branch_availability ?? [])
+    .filter((row) => row.is_available)
+    .map((row) => row.branch_id);
+}
 
 export function AdminPackageBuilderPage() {
   const { user, accessToken } = useAuth();
@@ -46,27 +67,31 @@ export function AdminPackageBuilderPage() {
     useState<PackagePricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [isSavingDiscount, setIsSavingDiscount] = useState(false);
 
   const [branchFilter, setBranchFilter] = useState('All');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
-  const [formBranchId, setFormBranchId] = useState('');
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [formName, setFormName] = useState('');
-  const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
-  const [formRequiresDownpayment, setFormRequiresDownpayment] = useState(false);
-  const [formDownpaymentAmount, setFormDownpaymentAmount] = useState('');
-  const [formDownpaymentType, setFormDownpaymentType] = useState<
-    'Flat' | 'Percentage'
-  >('Flat');
+  const [formIsActive, setFormIsActive] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [availabilityPackageId, setAvailabilityPackageId] = useState<
     string | null
   >(null);
+
+  // The service picker's own type filter - narrows which services are
+  // offered as pickable options without touching selectedServiceIds (an
+  // already-included service that scrolls out of view stays included; see
+  // ServiceMultiSelect's own hidden-selection guard). Search/sort for the
+  // same list is owned by useSearchAndSort below.
+  const [serviceTypeFilter, setServiceTypeFilter] = useState<
+    ServiceCategory | 'All'
+  >('All');
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -142,6 +167,17 @@ export function AdminPackageBuilderPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
+  // The bundle discount % input mirrors the singleton
+  // package_pricing_configuration row - re-derived whenever it (re)loads, so
+  // the form always starts from what's actually saved.
+  useEffect(() => {
+    if (packagePricingConfiguration) {
+      setDiscountPercentInput(
+        String(packagePricingConfiguration.bundle_discount_percentage * 100)
+      );
+    }
+  }, [packagePricingConfiguration]);
+
   const branchNameById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
     [branches]
@@ -152,20 +188,25 @@ export function AdminPackageBuilderPage() {
       return packages;
     }
 
-    return packages.filter((pkg) => pkg.branch_id === branchFilter);
+    return packages.filter((pkg) =>
+      availableBranchIds(pkg).includes(branchFilter)
+    );
   }, [packages, branchFilter]);
 
-  // Only services offered (available) at the form's selected branch are
-  // pickable - the service list stays hidden until a branch is chosen.
-  const serviceOptions: ServiceMultiSelectOption[] = useMemo(() => {
-    if (formBranchId === '') {
+  // Only services offered at every one of the form's selected branches are
+  // pickable - a package's bundled services must actually be deliverable
+  // everywhere the package itself is offered (intersection, not union).
+  const serviceOptionsForBranches: ServiceMultiSelectOption[] = useMemo(() => {
+    if (selectedBranchIds.length === 0) {
       return [];
     }
 
     return services
       .filter((service) =>
-        (service.service_branch_availability ?? []).some(
-          (row) => row.branch_id === formBranchId && row.is_available
+        selectedBranchIds.every((branchId) =>
+          (service.service_branch_availability ?? []).some(
+            (row) => row.branch_id === branchId && row.is_available
+          )
         )
       )
       .map((service) => ({
@@ -173,7 +214,46 @@ export function AdminPackageBuilderPage() {
         label: service.name,
         sublabel: `${service.category} - PHP ${service.base_price.toFixed(2)}`,
       }));
-  }, [services, formBranchId]);
+  }, [services, selectedBranchIds]);
+
+  const serviceComparators = useMemo(
+    () => ({
+      'name-asc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
+        a.label.localeCompare(b.label),
+      'name-desc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
+        b.label.localeCompare(a.label),
+    }),
+    []
+  );
+
+  const {
+    search: serviceSearch,
+    setSearch: setServiceSearch,
+    sortKey: serviceSortKey,
+    setSortKey: setServiceSortKey,
+    result: searchedServiceOptions,
+  } = useSearchAndSort<ServiceMultiSelectOption, ServiceSortKey>({
+    items: serviceOptionsForBranches,
+    matchesQuery: (option, query) => option.label.toLowerCase().includes(query),
+    comparators: serviceComparators,
+    initialSortKey: 'name-asc',
+  });
+
+  const visibleServiceOptions = useMemo(() => {
+    if (serviceTypeFilter === 'All') {
+      return searchedServiceOptions;
+    }
+
+    const idsInCategory = new Set(
+      services
+        .filter((service) => service.category === serviceTypeFilter)
+        .map((service) => service.id)
+    );
+
+    return searchedServiceOptions.filter((option) =>
+      idsInCategory.has(option.id)
+    );
+  }, [searchedServiceOptions, serviceTypeFilter, services]);
 
   const availabilityPackage = packages.find(
     (pkg) => pkg.id === availabilityPackageId
@@ -187,54 +267,28 @@ export function AdminPackageBuilderPage() {
 
   const openCreateForm = () => {
     setEditingPackageId(null);
-    setFormBranchId('');
+    setSelectedBranchIds([]);
     setFormName('');
-    setFormUsePricingMatrix(false);
-    setFormRequiresDownpayment(false);
-    setFormDownpaymentAmount('');
-    setFormDownpaymentType('Flat');
+    setFormIsActive(true);
     setSelectedServiceIds([]);
+    setServiceSearch('');
+    setServiceTypeFilter('All');
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const openEditForm = (pkg: Package) => {
     setEditingPackageId(pkg.id);
-    setFormBranchId(pkg.branch_id);
+    setSelectedBranchIds(availableBranchIds(pkg));
     setFormName(pkg.name);
-    setFormUsePricingMatrix(pkg.use_pricing_matrix);
-    setFormRequiresDownpayment(pkg.requires_downpayment ?? false);
-    setFormDownpaymentAmount(
-      pkg.downpayment_amount == null ? '' : String(pkg.downpayment_amount)
-    );
-    setFormDownpaymentType(pkg.downpayment_type ?? 'Flat');
+    setFormIsActive(pkg.is_active);
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
+    setServiceSearch('');
+    setServiceTypeFilter('All');
     setFormError(null);
     setIsFormOpen(true);
-  };
-
-  const handleSaveDiscount = async (bundleDiscountPercentage: number) => {
-    if (!accessToken) {
-      return;
-    }
-
-    setIsSavingDiscount(true);
-
-    const result = await updatePackagePricingConfiguration(accessToken, {
-      bundle_discount_percentage: bundleDiscountPercentage,
-    });
-
-    setIsSavingDiscount(false);
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the bundle discount.');
-      return;
-    }
-
-    setPackagePricingConfiguration(result.data);
-    setMessage('Bundle discount updated.');
   };
 
   const closeForm = () => {
@@ -243,25 +297,92 @@ export function AdminPackageBuilderPage() {
     setFormError(null);
   };
 
-  const handleActiveToggle = async (pkg: Package, isActive: boolean) => {
+  /** Diffs the form's branch multiselect against a package's current
+   * availability and calls setPackageBranchAvailability only for branches
+   * whose selection actually changed. */
+  async function applyBranchSelection(
+    pkg: Package,
+    nextSelectedBranchIds: string[]
+  ): Promise<Package> {
     if (!accessToken) {
-      return;
+      return pkg;
     }
 
-    const result = await updatePackage(pkg.id, accessToken, {
-      is_active: isActive,
+    const rows = pkg.package_branch_availability ?? [];
+    const changedBranches = branches.filter((branch) => {
+      const current =
+        rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
+      const next = nextSelectedBranchIds.includes(branch.id);
+      return current !== next;
+    });
+
+    if (changedBranches.length === 0) {
+      return pkg;
+    }
+
+    const results = await Promise.all(
+      changedBranches.map((branch) =>
+        setPackageBranchAvailability(pkg.id, accessToken, {
+          branch_id: branch.id,
+          is_available: nextSelectedBranchIds.includes(branch.id),
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changedBranches.forEach((branch, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return { ...pkg, package_branch_availability: updatedRows };
+  }
+
+  /** Saves the bundle discount % alongside the package itself, only if it
+   * actually changed - this used to be its own independent "Save discount %"
+   * action; it's a shared singleton config, not a per-package field, but the
+   * form now folds it into the single Save button per the request. */
+  async function maybeSaveDiscountPercent(): Promise<string | null> {
+    if (!accessToken || !packagePricingConfiguration) {
+      return null;
+    }
+
+    const percentage = Number(discountPercentInput);
+
+    if (!(percentage >= 0) || percentage > 100) {
+      return 'Bundle discount must be between 0 and 100.';
+    }
+
+    const nextFraction = percentage / 100;
+
+    if (
+      nextFraction === packagePricingConfiguration.bundle_discount_percentage
+    ) {
+      return null;
+    }
+
+    const result = await updatePackagePricingConfiguration(accessToken, {
+      bundle_discount_percentage: nextFraction,
     });
 
     if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the package.');
-      return;
+      return result.error ?? 'Could not update the bundle discount.';
     }
 
-    replacePackage(result.data);
-    setMessage(
-      result.data.is_active ? 'Package reactivated.' : 'Package deactivated.'
-    );
-  };
+    setPackagePricingConfiguration(result.data);
+    return null;
+  }
 
   const handleArchive = async (pkg: Package) => {
     if (!accessToken) {
@@ -291,56 +412,32 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    if (selectedBranchIds.length === 0) {
+      setFormError('Select at least one branch.');
+      return;
+    }
+
     if (selectedServiceIds.length < 2) {
       setFormError('A package bundles two or more services.');
-      return;
-    }
-
-    const downpaymentAmount =
-      formDownpaymentAmount === '' ? undefined : Number(formDownpaymentAmount);
-
-    if (
-      formRequiresDownpayment &&
-      (downpaymentAmount === undefined || downpaymentAmount <= 0)
-    ) {
-      setFormError(
-        'A positive downpayment amount is required when downpayment is required.'
-      );
-      return;
-    }
-
-    if (
-      formRequiresDownpayment &&
-      formDownpaymentType === 'Percentage' &&
-      downpaymentAmount !== undefined &&
-      downpaymentAmount > 100
-    ) {
-      setFormError('A percentage downpayment cannot exceed 100.');
       return;
     }
 
     setIsSubmitting(true);
     setFormError(null);
 
-    if (editingPackageId === null) {
-      if (formBranchId === '') {
-        setIsSubmitting(false);
-        setFormError('Select a branch first.');
-        return;
-      }
+    const discountError = await maybeSaveDiscountPercent();
 
+    if (discountError) {
+      setIsSubmitting(false);
+      setFormError(discountError);
+      return;
+    }
+
+    if (editingPackageId === null) {
       const result = await createPackage(accessToken, {
-        branch_id: formBranchId,
         name: formName.trim(),
         service_ids: selectedServiceIds,
-        use_pricing_matrix: formUsePricingMatrix,
-        requires_downpayment: formRequiresDownpayment,
-        ...(formRequiresDownpayment && downpaymentAmount !== undefined
-          ? {
-              downpayment_amount: downpaymentAmount,
-              downpayment_type: formDownpaymentType,
-            }
-          : {}),
+        branch_ids: selectedBranchIds,
       });
 
       setIsSubmitting(false);
@@ -359,22 +456,22 @@ export function AdminPackageBuilderPage() {
     const result = await updatePackage(editingPackageId, accessToken, {
       name: formName.trim(),
       service_ids: selectedServiceIds,
-      use_pricing_matrix: formUsePricingMatrix,
-      requires_downpayment: formRequiresDownpayment,
-      downpayment_amount: formRequiresDownpayment
-        ? (downpaymentAmount ?? null)
-        : null,
-      downpayment_type: formRequiresDownpayment ? formDownpaymentType : null,
+      is_active: formIsActive,
     });
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setFormError(result.error ?? 'Could not update the package.');
       return;
     }
 
-    replacePackage(result.data);
+    const finalPackage = await applyBranchSelection(
+      result.data,
+      selectedBranchIds
+    );
+
+    setIsSubmitting(false);
+    replacePackage(finalPackage);
     setMessage('Package updated.');
     closeForm();
   };
@@ -480,31 +577,6 @@ export function AdminPackageBuilderPage() {
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Branch</span>
-                <select
-                  className={styles.input}
-                  value={formBranchId}
-                  onChange={(event) => {
-                    setFormBranchId(event.target.value);
-                    // A different branch offers a different service list, so a
-                    // stale selection can't carry across.
-                    setSelectedServiceIds([]);
-                  }}
-                  // A package is one branch's row forever (MA22) - creating
-                  // "the same" package at the other branch is a second row.
-                  disabled={editingPackageId !== null}
-                  required
-                >
-                  <option value="">Select a branch...</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className={styles.field}>
                 <span className={styles.fieldLabel}>Package name</span>
                 <input
                   className={styles.input}
@@ -515,17 +587,64 @@ export function AdminPackageBuilderPage() {
                 />
               </label>
 
-              {formBranchId === '' ? (
+              <BranchMultiSelect
+                label="Available at"
+                branches={branches}
+                selectedBranchIds={selectedBranchIds}
+                onChange={setSelectedBranchIds}
+              />
+
+              {editingPackageId !== null ? (
+                <ToggleSwitch
+                  label="Active"
+                  checked={formIsActive}
+                  onChange={setFormIsActive}
+                />
+              ) : null}
+
+              {selectedBranchIds.length === 0 ? (
                 <p className={styles.copy}>
-                  Select a branch to pick its available services.
+                  Select at least one branch to pick its available services.
                 </p>
               ) : (
-                <ServiceMultiSelect
-                  label="Included services (pick two or more)"
-                  options={serviceOptions}
-                  selectedIds={selectedServiceIds}
-                  onChange={setSelectedServiceIds}
-                />
+                <>
+                  <div className={styles.toolbar}>
+                    <SearchSortBar
+                      searchValue={serviceSearch}
+                      onSearchChange={setServiceSearch}
+                      searchPlaceholder="Search services..."
+                      sortValue={serviceSortKey}
+                      onSortChange={setServiceSortKey}
+                      sortOptions={SERVICE_SORT_OPTIONS}
+                    />
+                    <label className={styles.filterField}>
+                      <span className={styles.filterLabel}>Service type</span>
+                      <select
+                        className={styles.filterSelect}
+                        value={serviceTypeFilter}
+                        onChange={(event) =>
+                          setServiceTypeFilter(
+                            event.target.value as ServiceCategory | 'All'
+                          )
+                        }
+                      >
+                        <option value="All">All service types</option>
+                        {SERVICE_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <ServiceMultiSelect
+                    label="Included services (pick two or more)"
+                    options={visibleServiceOptions}
+                    selectedIds={selectedServiceIds}
+                    onChange={setSelectedServiceIds}
+                  />
+                </>
               )}
 
               {packagePricingConfiguration ? (
@@ -536,65 +655,9 @@ export function AdminPackageBuilderPage() {
                         ?.base_price ?? 0
                   )}
                   configuration={packagePricingConfiguration}
-                  onSaveDiscount={(value) => void handleSaveDiscount(value)}
-                  isSavingDiscount={isSavingDiscount}
+                  discountPercentInput={discountPercentInput}
+                  onDiscountPercentInputChange={setDiscountPercentInput}
                 />
-              ) : null}
-
-              <ToggleSwitch
-                label="Derive price from weight/coat matrix (sum of included services' own per-pet price, bundle-discounted, instead of the flat estimate above; never applies to Cats either way)"
-                checked={formUsePricingMatrix}
-                onChange={setFormUsePricingMatrix}
-              />
-
-              <ToggleSwitch
-                label="Requires a downpayment before the service can start"
-                checked={formRequiresDownpayment}
-                onChange={setFormRequiresDownpayment}
-              />
-
-              {formRequiresDownpayment ? (
-                <>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>Downpayment type</span>
-                    <select
-                      className={styles.input}
-                      value={formDownpaymentType}
-                      onChange={(event) =>
-                        setFormDownpaymentType(
-                          event.target.value as 'Flat' | 'Percentage'
-                        )
-                      }
-                    >
-                      <option value="Flat">Flat amount (PHP)</option>
-                      <option value="Percentage">
-                        Percentage of bundled price
-                      </option>
-                    </select>
-                  </label>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>
-                      {formDownpaymentType === 'Percentage'
-                        ? 'Downpayment percentage (0-100)'
-                        : 'Downpayment amount (PHP)'}
-                    </span>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min="0.01"
-                      max={
-                        formDownpaymentType === 'Percentage' ? 100 : undefined
-                      }
-                      step="0.01"
-                      inputMode="decimal"
-                      value={formDownpaymentAmount}
-                      onChange={(event) =>
-                        setFormDownpaymentAmount(event.target.value)
-                      }
-                      required
-                    />
-                  </label>
-                </>
               ) : null}
 
               {formError ? (
@@ -631,10 +694,12 @@ export function AdminPackageBuilderPage() {
               <li key={pkg.id} className={styles.packageRow}>
                 <div className={styles.packageMain}>
                   <span className={styles.packageName}>{pkg.name}</span>
-                  <span className={styles.branchBadge}>
-                    {branchNameById.get(pkg.branch_id) ??
-                      `Branch ${pkg.branch_id.slice(0, 8)}`}
-                  </span>
+                  {availableBranchIds(pkg).map((branchId) => (
+                    <span key={branchId} className={styles.branchBadge}>
+                      {branchNameById.get(branchId) ??
+                        `Branch ${branchId.slice(0, 8)}`}
+                    </span>
+                  ))}
                   <span className={styles.packageMeta}>
                     {(pkg.package_services ?? []).length} services
                   </span>
@@ -650,7 +715,6 @@ export function AdminPackageBuilderPage() {
                         : `Requires PHP ${pkg.downpayment_amount.toFixed(2)} downpayment`}
                     </span>
                   ) : null}
-                  <StatusBadge isActive={pkg.is_active} />
                 </div>
 
                 <div className={styles.packageControls}>
@@ -682,23 +746,48 @@ export function AdminPackageBuilderPage() {
       <BranchAvailabilityModal
         isOpen={availabilityPackage !== undefined}
         itemName={availabilityPackage?.name ?? ''}
-        rows={
-          availabilityPackage
-            ? [
-                {
-                  branchId: availabilityPackage.branch_id,
-                  branchName:
-                    branchNameById.get(availabilityPackage.branch_id) ??
-                    `Branch ${availabilityPackage.branch_id.slice(0, 8)}`,
-                  isAvailable: availabilityPackage.is_active,
-                },
-              ]
-            : []
-        }
-        onToggle={(_branchId, isAvailable) => {
-          if (availabilityPackage) {
-            void handleActiveToggle(availabilityPackage, isAvailable);
+        rows={branches.map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          isAvailable:
+            (availabilityPackage?.package_branch_availability ?? []).find(
+              (row) => row.branch_id === branch.id
+            )?.is_available ?? false,
+        }))}
+        onToggle={(branchId, isAvailable) => {
+          if (!accessToken || !availabilityPackage) {
+            return;
           }
+
+          void setPackageBranchAvailability(
+            availabilityPackage.id,
+            accessToken,
+            {
+              branch_id: branchId,
+              is_available: isAvailable,
+            }
+          ).then((result) => {
+            if (result.error || !result.data || !availabilityPackage) {
+              setMessage(
+                result.error ?? 'Could not update branch availability.'
+              );
+              return;
+            }
+
+            const rows = availabilityPackage.package_branch_availability ?? [];
+            const hasRow = rows.some((row) => row.branch_id === branchId);
+
+            replacePackage({
+              ...availabilityPackage,
+              package_branch_availability: hasRow
+                ? rows.map((row) =>
+                    row.branch_id === branchId
+                      ? { ...row, ...result.data }
+                      : row
+                  )
+                : [...rows, result.data],
+            });
+          });
         }}
         onClose={() => setAvailabilityPackageId(null)}
       />
