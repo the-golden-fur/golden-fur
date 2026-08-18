@@ -139,6 +139,92 @@ describe('AdminServiceTypesPage', () => {
     expect(maintenanceApi.listServiceTypes).not.toHaveBeenCalled();
   });
 
+  it('custom change: shows staff/cage picker badges instead of an Active label, and the search box narrows the list', async () => {
+    vi.mocked(maintenanceApi.listServiceTypes).mockResolvedValue({
+      data: [
+        buildServiceType(),
+        buildServiceType({
+          id: 'type-2',
+          key: 'hotel',
+          name: 'Hotel',
+          staff_picker_enabled: false,
+          cage_picker_enabled: true,
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    const groomingRow = (await screen.findByText('Grooming')).closest(
+      'li'
+    ) as HTMLElement;
+    const hotelRow = screen.getByText('Hotel').closest('li') as HTMLElement;
+
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
+    expect(
+      within(groomingRow).getByText('Staff picker enabled')
+    ).toBeInTheDocument();
+    expect(
+      within(hotelRow).getByText('Cage picker enabled')
+    ).toBeInTheDocument();
+    expect(
+      within(hotelRow).queryByText('Staff picker enabled')
+    ).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByPlaceholderText('Search service types...'),
+      'Hotel'
+    );
+
+    expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+  });
+
+  it('custom change: the create form offers a branch multiselect that disables an unchecked branch after creation', async () => {
+    vi.mocked(maintenanceApi.createServiceType).mockResolvedValue({
+      data: buildServiceType({
+        id: 'type-new',
+        key: 'boarding',
+        name: 'Boarding',
+      }),
+      error: null,
+    });
+    vi.mocked(
+      maintenanceApi.setServiceTypeBranchAvailability
+    ).mockResolvedValue({
+      data: {
+        service_type_id: 'type-new',
+        branch_id: 'branch-southwoods',
+        is_available: false,
+      },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Grooming');
+    await user.type(screen.getByLabelText('Key'), 'boarding');
+    await user.type(screen.getByLabelText('Name'), 'Boarding');
+
+    const southwoods = screen.getByRole('checkbox', { name: 'Southwoods' });
+    expect(southwoods).toBeChecked();
+    await user.click(southwoods);
+
+    await user.click(screen.getByRole('button', { name: 'Add service type' }));
+
+    await waitFor(() => {
+      expect(
+        maintenanceApi.setServiceTypeBranchAvailability
+      ).toHaveBeenCalledWith('type-new', 'token', {
+        branch_id: 'branch-southwoods',
+        is_available: false,
+      });
+    });
+  });
+
   it('Custom change (services/packages/service types actions menu): a row exposes Configure and Branch Availability behind a single "..." menu instead of an always-visible Rename button and toggle row', async () => {
     renderPage();
     const user = userEvent.setup();

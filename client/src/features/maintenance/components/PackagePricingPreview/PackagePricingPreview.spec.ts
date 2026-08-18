@@ -1,5 +1,4 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PackagePricingPreview } from './PackagePricingPreview';
@@ -18,7 +17,8 @@ describe('PackagePricingPreview', () => {
       createElement(PackagePricingPreview, {
         includedServiceBasePrices: [300, 200, 200],
         configuration: CONFIGURATION,
-        onSaveDiscount: vi.fn(),
+        discountPercentInput: '10',
+        onDiscountPercentInputChange: vi.fn(),
       })
     );
 
@@ -30,7 +30,8 @@ describe('PackagePricingPreview', () => {
       createElement(PackagePricingPreview, {
         includedServiceBasePrices: [],
         configuration: CONFIGURATION,
-        onSaveDiscount: vi.fn(),
+        discountPercentInput: '10',
+        onDiscountPercentInputChange: vi.fn(),
       })
     );
 
@@ -39,23 +40,41 @@ describe('PackagePricingPreview', () => {
     ).toBeInTheDocument();
   });
 
-  it('submits the edited discount percentage as a fraction', async () => {
-    const onSaveDiscount = vi.fn();
-    const user = userEvent.setup();
+  it('recalculates the preview live as the discount input changes, without saving anything itself', () => {
+    const onDiscountPercentInputChange = vi.fn();
 
-    render(
+    const { rerender } = render(
       createElement(PackagePricingPreview, {
         includedServiceBasePrices: [300, 200],
         configuration: CONFIGURATION,
-        onSaveDiscount,
+        discountPercentInput: '10',
+        onDiscountPercentInputChange,
       })
     );
 
-    const input = screen.getByLabelText('Bundle discount (%)');
-    await user.clear(input);
-    await user.type(input, '20');
-    await user.click(screen.getByRole('button', { name: 'Save discount %' }));
+    expect(screen.getByText('PHP 450.00')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Save discount %' })
+    ).not.toBeInTheDocument();
 
-    expect(onSaveDiscount).toHaveBeenCalledWith(0.2);
+    // fireEvent.change fires a single change event with the full new value
+    // - this is a controlled input (value comes from the discountPercentInput
+    // prop), so simulating keystroke-by-keystroke typing against a prop this
+    // test doesn't update in between would type against a stale value.
+    const input = screen.getByLabelText('Bundle discount (%)');
+    fireEvent.change(input, { target: { value: '20' } });
+
+    expect(onDiscountPercentInputChange).toHaveBeenLastCalledWith('20');
+
+    rerender(
+      createElement(PackagePricingPreview, {
+        includedServiceBasePrices: [300, 200],
+        configuration: CONFIGURATION,
+        discountPercentInput: '20',
+        onDiscountPercentInputChange,
+      })
+    );
+
+    expect(screen.getByText('PHP 400.00')).toBeInTheDocument();
   });
 });

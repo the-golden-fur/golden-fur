@@ -197,15 +197,20 @@ export function AdminDiscountManagementPage() {
     [filteredDiscounts]
   );
 
-  // Only packages belonging to the form's selected branch are offered -
-  // packages are permanently one branch's row (MA22), same constraint as
-  // the package builder (#46).
+  // Only packages available at the form's selected branch are offered
+  // (custom change: packages are no longer scoped to exactly one branch_id -
+  // see package_branch_availability - so this checks the joined
+  // availability array instead of a single owning column).
   const packageOptionsForBranch = useMemo(() => {
     if (formBranchId === '') {
       return [];
     }
 
-    return packages.filter((pkg) => pkg.branch_id === formBranchId);
+    return packages.filter((pkg) =>
+      (pkg.package_branch_availability ?? []).some(
+        (row) => row.branch_id === formBranchId && row.is_available
+      )
+    );
   }, [packages, formBranchId]);
 
   const replaceDiscount = (updated: Discount) => {

@@ -129,73 +129,101 @@ export async function seedServiceBranchAvailability(
   );
 }
 
-/** The Golden Package as one row per branch, bundling the same three services. */
+/** The Golden Package as one shared row, available at every branch, bundling
+ * the same three services (custom change: packages moved off the old MA22
+ * one-row-per-branch model onto a many-to-many join, mirroring
+ * service_branch_availability - see migration
+ * 20260818134_custom_package_branch_availability.sql). */
 export async function seedGoldenPackage(
   supabase: ReturnType<typeof createClient>
 ) {
   const branches = await getBranches(supabase);
   if (branches.length === 0) return;
 
-  for (const branch of branches) {
-    const { data: existingPackage } = await supabase
+  const { data: existingPackage } = await supabase
+    .from('packages')
+    .select('id')
+    .eq('name', GOLDEN_PACKAGE_NAME)
+    .maybeSingle();
+
+  let packageId = (existingPackage?.id as string | undefined) ?? undefined;
+
+  if (packageId) {
+    console.log('skip: Golden Package already seeded');
+  } else {
+    const { data: created, error: createError } = await supabase
       .from('packages')
+      .insert({
+        name: GOLDEN_PACKAGE_NAME,
+        use_pricing_matrix: true,
+      })
       .select('id')
-      .eq('branch_id', branch.id)
-      .eq('name', GOLDEN_PACKAGE_NAME)
       .maybeSingle();
 
-    let packageId = (existingPackage?.id as string | undefined) ?? undefined;
-
-    if (packageId) {
-      console.log(`skip: Golden Package already seeded at ${branch.name}`);
-    } else {
-      const { data: created, error: createError } = await supabase
-        .from('packages')
-        .insert({
-          branch_id: branch.id,
-          name: GOLDEN_PACKAGE_NAME,
-          use_pricing_matrix: true,
-        })
-        .select('id')
-        .maybeSingle();
-
-      if (createError || !created) {
-        console.error(
-          `Golden Package insert failed at ${branch.name}: ${createError?.message ?? 'unknown error'}`
-        );
-        continue;
-      }
-
-      packageId = created.id as string;
-      console.log(`created Golden Package at ${branch.name}`);
+    if (createError || !created) {
+      console.error(
+        `Golden Package insert failed: ${createError?.message ?? 'unknown error'}`
+      );
+      return;
     }
 
-    const { data: existingLinks } = await supabase
-      .from('package_services')
-      .select('service_id')
-      .eq('package_id', packageId);
+    packageId = created.id as string;
+    console.log('created Golden Package');
+  }
 
-    const linkedIds = new Set(
-      (existingLinks ?? []).map((link) => link.service_id as string)
-    );
-    const missingIds = GOLDEN_PACKAGE_SERVICE_IDS.filter(
-      (id) => !linkedIds.has(id)
-    );
+  const { data: existingAvailability } = await supabase
+    .from('package_branch_availability')
+    .select('branch_id')
+    .eq('package_id', packageId);
 
-    if (missingIds.length === 0) continue;
+  const availableBranchIds = new Set(
+    (existingAvailability ?? []).map((row) => row.branch_id as string)
+  );
+  const missingBranches = branches.filter(
+    (branch) => !availableBranchIds.has(branch.id)
+  );
 
-    const { error: linkError } = await supabase.from('package_services').insert(
-      missingIds.map((serviceId) => ({
-        package_id: packageId,
-        service_id: serviceId,
-      }))
-    );
+  if (missingBranches.length > 0) {
+    const { error: availabilityError } = await supabase
+      .from('package_branch_availability')
+      .insert(
+        missingBranches.map((branch) => ({
+          package_id: packageId,
+          branch_id: branch.id,
+          is_available: true,
+        }))
+      );
 
-    if (linkError) {
+    if (availabilityError) {
       console.error(
-        `package_services insert failed at ${branch.name}: ${linkError.message}`
+        `package_branch_availability insert failed: ${availabilityError.message}`
       );
     }
+  }
+
+  const { data: existingLinks } = await supabase
+    .from('package_services')
+    .select('service_id')
+    .eq('package_id', packageId);
+
+  const linkedIds = new Set(
+    (existingLinks ?? []).map((link) => link.service_id as string)
+  );
+  const missingIds = GOLDEN_PACKAGE_SERVICE_IDS.filter(
+    (id) => !linkedIds.has(id)
+  );
+
+  if (missingIds.length === 0) return;
+
+  const { error: linkError } = await supabase.from('package_services').insert(
+    missingIds.map((serviceId) => ({
+      package_id: packageId,
+      service_id: serviceId,
+    }))
+  );
+
+  if (linkError) {
+    console.error(`package_services insert failed: ${linkError.message}`);
   }
 }
 

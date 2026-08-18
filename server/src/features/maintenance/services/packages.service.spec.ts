@@ -3,6 +3,7 @@ import {
   createPackage,
   getPackageById,
   listPackages,
+  setPackageBranchAvailability,
   updatePackage,
 } from './packages.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -28,6 +29,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.not = vi.fn(() => builder);
@@ -47,13 +49,19 @@ const PACKAGE_PRICING_CONFIGURATION = {
 
 const RAW_GOLDEN_PACKAGE = {
   id: 'package-1',
-  branch_id: 'branch-makati',
   name: 'Golden Package',
   is_active: true,
   package_services: [
     { service_id: 'service-bath', services: { base_price: 300 } },
     { service_id: 'service-blowdry', services: { base_price: 200 } },
     { service_id: 'service-brush', services: { base_price: 200 } },
+  ],
+  package_branch_availability: [
+    {
+      package_id: 'package-1',
+      branch_id: 'branch-makati',
+      is_available: true,
+    },
   ],
 };
 
@@ -75,6 +83,7 @@ describe('packages.service', () => {
         }, // active-services check
         { data: { id: 'package-1' }, error: null }, // insert package
         { data: null, error: null }, // insert package_services
+        { data: null, error: null }, // insert package_branch_availability
         { data: RAW_GOLDEN_PACKAGE, error: null }, // final fetch (getPackageById)
         { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
       );
@@ -82,7 +91,7 @@ describe('packages.service', () => {
       const result = await createPackage({
         requesterId: 'admin-1',
         input: {
-          branch_id: 'branch-makati',
+          branch_ids: ['branch-makati'],
           name: 'Golden Package',
           service_ids: ['service-bath', 'service-blowdry', 'service-brush'],
         },
@@ -103,7 +112,7 @@ describe('packages.service', () => {
         createPackage({
           requesterId: 'admin-1',
           input: {
-            branch_id: 'branch-makati',
+            branch_ids: ['branch-makati'],
             name: 'Golden Package',
             service_ids: ['service-bath', 'service-ghost'],
           },
@@ -179,7 +188,7 @@ describe('packages.service', () => {
   });
 
   describe('listPackages', () => {
-    it('AC-5: lists active packages filterable by branch', async () => {
+    it('AC-5: lists active packages filterable by branch, via the joined package_branch_availability array', async () => {
       queueFromResults(
         { data: [RAW_GOLDEN_PACKAGE], error: null },
         { data: PACKAGE_PRICING_CONFIGURATION, error: null }
@@ -191,6 +200,17 @@ describe('packages.service', () => {
       expect(result[0].name).toBe('Golden Package');
       expect(result[0].bundled_price).toBe(630);
     });
+
+    it('custom change: excludes a package that is not available at the requested branch', async () => {
+      queueFromResults(
+        { data: [RAW_GOLDEN_PACKAGE], error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await listPackages({ branchId: 'branch-southwoods' });
+
+      expect(result).toHaveLength(0);
+    });
   });
 
   describe('getPackageById', () => {
@@ -200,6 +220,43 @@ describe('packages.service', () => {
       await expect(getPackageById('missing')).rejects.toMatchObject({
         statusCode: 404,
       });
+    });
+  });
+
+  describe('setPackageBranchAvailability', () => {
+    it('toggles a single branch independently, mirroring setServiceBranchAvailability', async () => {
+      queueFromResults(
+        { data: { id: 'package-1' }, error: null },
+        {
+          data: {
+            package_id: 'package-1',
+            branch_id: 'branch-southwoods',
+            is_available: false,
+          },
+          error: null,
+        }
+      );
+
+      const result = await setPackageBranchAvailability({
+        packageId: 'package-1',
+        branchId: 'branch-southwoods',
+        isAvailable: false,
+      });
+
+      expect(result.is_available).toBe(false);
+      expect(result.branch_id).toBe('branch-southwoods');
+    });
+
+    it('returns 404 for an unknown package', async () => {
+      queueFromResults({ data: null, error: null });
+
+      await expect(
+        setPackageBranchAvailability({
+          packageId: 'missing',
+          branchId: 'branch-southwoods',
+          isAvailable: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 });

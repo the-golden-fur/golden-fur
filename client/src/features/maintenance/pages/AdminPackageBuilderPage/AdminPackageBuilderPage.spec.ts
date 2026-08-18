@@ -25,6 +25,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listPackages: vi.fn(),
   createPackage: vi.fn(),
   updatePackage: vi.fn(),
+  setPackageBranchAvailability: vi.fn(),
   getPackagePricingConfiguration: vi.fn(),
   updatePackagePricingConfiguration: vi.fn(),
 }));
@@ -73,7 +74,6 @@ function buildService(overrides: Partial<Service> = {}): Service {
 function buildPackage(overrides: Partial<Package> = {}): Package {
   return {
     id: 'package-1',
-    branch_id: 'branch-makati',
     name: 'Golden Package',
     bundled_price: 650,
     is_active: true,
@@ -85,6 +85,13 @@ function buildPackage(overrides: Partial<Package> = {}): Package {
       { service_id: 'service-1' },
       { service_id: 'service-2' },
       { service_id: 'service-3' },
+    ],
+    package_branch_availability: [
+      {
+        package_id: 'package-1',
+        branch_id: 'branch-makati',
+        is_available: true,
+      },
     ],
     ...overrides,
   };
@@ -197,7 +204,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(maintenanceApi.listPackages).not.toHaveBeenCalled();
   });
 
-  it('AC-1: renders each package row with name, branch, service count, price, and status badge', async () => {
+  it('AC-1: renders each package row with name, branch, service count, and price', async () => {
     renderPage();
 
     expect(await screen.findByText('Golden Package')).toBeInTheDocument();
@@ -207,7 +214,6 @@ describe('AdminPackageBuilderPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('3 services')).toBeInTheDocument();
     expect(screen.getByText('PHP 650.00')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
   it('AC-1: branch filter narrows the list without navigating', async () => {
@@ -216,8 +222,14 @@ describe('AdminPackageBuilderPage', () => {
         buildPackage(),
         buildPackage({
           id: 'package-2',
-          branch_id: 'branch-southwoods',
           name: 'Southwoods Combo',
+          package_branch_availability: [
+            {
+              package_id: 'package-2',
+              branch_id: 'branch-southwoods',
+              is_available: true,
+            },
+          ],
         }),
       ],
       error: null,
@@ -237,7 +249,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.getByText('Southwoods Combo')).toBeInTheDocument();
   });
 
-  it('Epic B #83: builder requires a branch before listing services, derives the bundled price live, and creates the package with no bundled_price field', async () => {
+  it('Epic B #83 / custom change: builder requires at least one branch before listing services, derives the bundled price live, and creates the package with branch_ids (no branch_id or bundled_price field)', async () => {
     vi.mocked(maintenanceApi.createPackage).mockResolvedValue({
       data: buildPackage({ id: 'package-new', name: 'Fresh Coat Bundle' }),
       error: null,
@@ -252,15 +264,17 @@ describe('AdminPackageBuilderPage', () => {
 
     // No branch chosen yet: the service list stays hidden.
     expect(
-      screen.getByText('Select a branch to pick its available services.')
+      screen.getByText(
+        'Select at least one branch to pick its available services.'
+      )
     ).toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: /Bath/ })
+    ).not.toBeInTheDocument();
 
-    // Two "Branch" selects exist (filter + form) - the form's is second.
-    await user.selectOptions(
-      screen.getAllByLabelText('Branch')[1],
-      'branch-southwoods'
-    );
+    // The branch multiselect (custom change: replaces the old single-branch
+    // <select> - a package is no longer scoped to exactly one branch/MA22).
+    await user.click(screen.getByRole('checkbox', { name: 'Southwoods' }));
 
     // Brushing is Makati-only, so it is not offered for a Southwoods package.
     expect(screen.getByText('Bath')).toBeInTheDocument();
@@ -281,11 +295,9 @@ describe('AdminPackageBuilderPage', () => {
 
     await waitFor(() => {
       expect(maintenanceApi.createPackage).toHaveBeenCalledWith('token', {
-        branch_id: 'branch-southwoods',
+        branch_ids: ['branch-southwoods'],
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
-        use_pricing_matrix: false,
-        requires_downpayment: false,
       });
     });
 
@@ -299,10 +311,7 @@ describe('AdminPackageBuilderPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'New package' })
     );
-    await user.selectOptions(
-      screen.getAllByLabelText('Branch')[1],
-      'branch-makati'
-    );
+    await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
 
     expect(
       screen.getByText('Add two or more services to see the bundled price.')
@@ -363,8 +372,10 @@ describe('AdminPackageBuilderPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    // Branch is locked when editing - a package belongs to one branch (MA22).
-    expect(screen.getAllByLabelText('Branch')[1]).toBeDisabled();
+    // Custom change: a package's branches are no longer locked once created
+    // (MA22 is gone) - editable the same as Services/Service Types.
+    expect(screen.getByRole('checkbox', { name: 'Makati' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Makati' })).toBeEnabled();
 
     // Drop Brushing (service-3) from the included set.
     await user.click(screen.getByRole('checkbox', { name: /Brushing/ }));
@@ -377,9 +388,7 @@ describe('AdminPackageBuilderPage', () => {
         {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
-          requires_downpayment: false,
-          downpayment_amount: null,
-          downpayment_type: null,
+          is_active: true,
         }
       );
     });
@@ -388,7 +397,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.getByText('2 services')).toBeInTheDocument();
   });
 
-  it('#83: editing the bundle discount % saves via package_pricing_configuration', async () => {
+  it('custom change: the bundle discount % has no separate "read-only"/Save button - it saves together with the package via the main Save button', async () => {
     vi.mocked(
       maintenanceApi.updatePackagePricingConfiguration
     ).mockResolvedValue({
@@ -396,6 +405,10 @@ describe('AdminPackageBuilderPage', () => {
         ...PACKAGE_PRICING_CONFIGURATION,
         bundle_discount_percentage: 0.2,
       },
+      error: null,
+    });
+    vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+      data: buildPackage(),
       error: null,
     });
 
@@ -410,10 +423,19 @@ describe('AdminPackageBuilderPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
+    expect(screen.getByText('Bundled price')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Bundled price (derived, read-only)')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Save discount %' })
+    ).not.toBeInTheDocument();
+
     const discountInput = screen.getByLabelText('Bundle discount (%)');
     await user.clear(discountInput);
     await user.type(discountInput, '20');
-    await user.click(screen.getByRole('button', { name: 'Save discount %' }));
+
+    await user.click(screen.getByRole('button', { name: 'Save package' }));
 
     await waitFor(() => {
       expect(
@@ -421,21 +443,21 @@ describe('AdminPackageBuilderPage', () => {
       ).toHaveBeenCalledWith('token', { bundle_discount_percentage: 0.2 });
     });
 
-    expect(
-      await screen.findByText('Bundle discount updated.')
-    ).toBeInTheDocument();
+    expect(maintenanceApi.updatePackage).toHaveBeenCalled();
   });
 
-  it("Custom change (services/packages actions menu): Branch Availability opens a modal with the package's one branch, and its toggle deactivates the package without a reload", async () => {
-    vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
-      data: buildPackage({ is_active: false }),
+  it("custom change: Branch Availability now lists every branch (not just the package's one), fixing the previous bug where only one branch ever showed", async () => {
+    vi.mocked(maintenanceApi.setPackageBranchAvailability).mockResolvedValue({
+      data: {
+        package_id: 'package-1',
+        branch_id: 'branch-southwoods',
+        is_available: true,
+      },
       error: null,
     });
 
     renderPage();
     const user = userEvent.setup();
-
-    expect(await screen.findByText('Active')).toBeInTheDocument();
 
     const row = (await screen.findByText('Golden Package')).closest(
       'li'
@@ -450,20 +472,67 @@ describe('AdminPackageBuilderPage', () => {
     const dialog = screen.getByRole('dialog', {
       name: 'Branch Availability - Golden Package',
     });
-    const toggle = within(dialog).getByRole('switch', { name: 'Makati' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
 
-    await user.click(toggle);
+    // Both branches show up now, not just the package's own one.
+    const makatiToggle = within(dialog).getByRole('switch', { name: 'Makati' });
+    const southwoodsToggle = within(dialog).getByRole('switch', {
+      name: 'Southwoods',
+    });
+    expect(makatiToggle).toHaveAttribute('aria-checked', 'true');
+    expect(southwoodsToggle).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(southwoodsToggle);
+
+    await waitFor(() => {
+      expect(maintenanceApi.setPackageBranchAvailability).toHaveBeenCalledWith(
+        'package-1',
+        'token',
+        {
+          branch_id: 'branch-southwoods',
+          is_available: true,
+        }
+      );
+    });
+
+    // Makati's own row is untouched - toggling Southwoods no longer flips
+    // the whole package's is_active (that's now a separate control).
+    expect(makatiToggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('custom change: the Configure modal has its own Active toggle, decoupled from branch availability, restoring the ability to deactivate a package before archiving it', async () => {
+    vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+      data: buildPackage({ is_active: false }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Golden Package')).closest(
+      'li'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const activeToggle = screen.getByRole('switch', { name: 'Active' });
+    expect(activeToggle).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(activeToggle);
+    await user.click(screen.getByRole('button', { name: 'Save package' }));
 
     await waitFor(() => {
       expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
         'package-1',
         'token',
-        { is_active: false }
+        {
+          name: 'Golden Package',
+          service_ids: ['service-1', 'service-2', 'service-3'],
+          is_active: false,
+        }
       );
     });
-
-    expect(await screen.findByText('Inactive')).toBeInTheDocument();
   });
 
   it('Custom change (services/packages actions menu): Archive only appears once a package is inactive', async () => {

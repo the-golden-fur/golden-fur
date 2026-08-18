@@ -11,11 +11,16 @@ import {
   updateService,
 } from '../../api/maintenance.api';
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
-import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,
@@ -25,6 +30,19 @@ import {
   type UpdateServicePayload,
 } from '../../maintenance.types';
 import styles from './AdminServicesPage.module.css';
+
+type ServiceSortKey = 'name-asc' | 'name-desc';
+
+const SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+];
+
+function availableBranchIds(service: Service): string[] {
+  return (service.service_branch_availability ?? [])
+    .filter((row) => row.is_available)
+    .map((row) => row.branch_id);
+}
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
@@ -47,6 +65,7 @@ interface ServiceFormState {
   requiresDownpayment: boolean;
   downpaymentAmount: string;
   downpaymentType: 'Flat' | 'Percentage';
+  branchIds: string[];
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -64,6 +83,7 @@ const EMPTY_FORM: ServiceFormState = {
   requiresDownpayment: false,
   downpaymentAmount: '',
   downpaymentType: 'Flat',
+  branchIds: [],
 };
 
 function formStateFromService(service: Service): ServiceFormState {
@@ -96,6 +116,7 @@ function formStateFromService(service: Service): ServiceFormState {
         ? ''
         : String(service.downpayment_amount),
     downpaymentType: service.downpayment_type ?? 'Flat',
+    branchIds: availableBranchIds(service),
   };
 }
 
@@ -203,8 +224,30 @@ export function AdminServicesPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
+  const searchSortComparators = useMemo(
+    () => ({
+      'name-asc': (a: Service, b: Service) => a.name.localeCompare(b.name),
+      'name-desc': (a: Service, b: Service) => b.name.localeCompare(a.name),
+    }),
+    []
+  );
+
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: searchedServices,
+  } = useSearchAndSort<Service, ServiceSortKey>({
+    items: services,
+    matchesQuery: (service, query) =>
+      service.name.toLowerCase().includes(query),
+    comparators: searchSortComparators,
+    initialSortKey: 'name-asc',
+  });
+
   const filteredServices = useMemo(() => {
-    return services.filter((service) => {
+    return searchedServices.filter((service) => {
       if (categoryFilter !== 'All' && service.category !== categoryFilter) {
         return false;
       }
@@ -229,7 +272,7 @@ export function AdminServicesPage() {
 
       return true;
     });
-  }, [services, categoryFilter, branchFilter, statusFilter]);
+  }, [searchedServices, categoryFilter, branchFilter, statusFilter]);
 
   const availabilityService = services.find(
     (service) => service.id === availabilityServiceId
@@ -243,7 +286,7 @@ export function AdminServicesPage() {
 
   const openCreateForm = () => {
     setEditingServiceId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, branchIds: branches.map((branch) => branch.id) });
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -293,6 +336,63 @@ export function AdminServicesPage() {
         : [...rows, result.data],
     });
   };
+
+  /**
+   * Applies the create/edit form's branch multiselect to a just-created/
+   * -updated service by diffing it against the row's current availability
+   * and only calling setServiceBranchAvailability for branches whose
+   * selection actually changed - avoids calling the single-toggle handler in
+   * a loop against a stale closure, which would lose updates when merging
+   * the resulting availability array back together.
+   */
+  async function applyBranchSelection(
+    service: Service,
+    selectedBranchIds: string[]
+  ): Promise<Service> {
+    if (!accessToken) {
+      return service;
+    }
+
+    const rows = service.service_branch_availability ?? [];
+    const changedBranches = branches.filter((branch) => {
+      const current =
+        rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
+      const next = selectedBranchIds.includes(branch.id);
+      return current !== next;
+    });
+
+    if (changedBranches.length === 0) {
+      return service;
+    }
+
+    const results = await Promise.all(
+      changedBranches.map((branch) =>
+        setServiceBranchAvailability(service.id, accessToken, {
+          branch_id: branch.id,
+          is_available: selectedBranchIds.includes(branch.id),
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changedBranches.forEach((branch, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return { ...service, service_branch_availability: updatedRows };
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -416,14 +516,19 @@ export function AdminServicesPage() {
           : {}),
       });
 
-      setIsSubmitting(false);
-
       if (result.error || !result.data) {
+        setIsSubmitting(false);
         setFormError(result.error ?? 'Could not create the service.');
         return;
       }
 
-      setServices((prev) => [...prev, result.data as Service]);
+      const finalService = await applyBranchSelection(
+        result.data,
+        form.branchIds
+      );
+
+      setIsSubmitting(false);
+      setServices((prev) => [...prev, finalService]);
       setMessage('Service created.');
       closeForm();
       return;
@@ -450,14 +555,19 @@ export function AdminServicesPage() {
 
     const result = await updateService(editingServiceId, accessToken, payload);
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setFormError(result.error ?? 'Could not update the service.');
       return;
     }
 
-    replaceService(result.data);
+    const finalService = await applyBranchSelection(
+      result.data,
+      form.branchIds
+    );
+
+    setIsSubmitting(false);
+    replaceService(finalService);
     setMessage('Service updated.');
     closeForm();
   };
@@ -520,6 +630,15 @@ export function AdminServicesPage() {
 
         <div className={styles.toolbar}>
           <div className={styles.filters}>
+            <SearchSortBar
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search services..."
+              sortValue={sortKey}
+              onSortChange={setSortKey}
+              sortOptions={SORT_OPTIONS}
+            />
+
             <label className={styles.filterField}>
               <span className={styles.filterLabel}>Category</span>
               <select
@@ -808,6 +927,15 @@ export function AdminServicesPage() {
                 }
               />
 
+              <BranchMultiSelect
+                label="Available at"
+                branches={branches}
+                selectedBranchIds={form.branchIds}
+                onChange={(branchIds) =>
+                  setForm((prev) => ({ ...prev, branchIds }))
+                }
+              />
+
               <ToggleSwitch
                 label="Requires a downpayment before the service can start"
                 checked={form.requiresDownpayment}
@@ -951,7 +1079,6 @@ export function AdminServicesPage() {
                         : `Requires PHP ${service.downpayment_amount.toFixed(2)} downpayment`}
                     </span>
                   ) : null}
-                  <StatusBadge isActive={service.is_active} />
                 </div>
 
                 <div className={styles.serviceControls}>

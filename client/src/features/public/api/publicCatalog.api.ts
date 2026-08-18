@@ -8,7 +8,7 @@ export interface PublicPackageService {
 }
 
 export interface PublicPackage extends Package {
-  branch_name: string;
+  branch_names: string[];
   included_services: PublicPackageService[];
   individual_total_price: number;
   savings: number;

@@ -55,7 +55,6 @@ function buildService(overrides: Partial<Service> = {}): Service {
 function buildPackage(overrides: Partial<Package> = {}): Package {
   return {
     id: 'package-1',
-    branch_id: 'branch-makati',
     name: 'Golden Package',
     bundled_price: 650,
     is_active: true,
@@ -64,6 +63,13 @@ function buildPackage(overrides: Partial<Package> = {}): Package {
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
     package_services: [],
+    package_branch_availability: [
+      {
+        package_id: 'package-1',
+        branch_id: 'branch-makati',
+        is_available: true,
+      },
+    ],
     ...overrides,
   };
 }

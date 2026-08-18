@@ -315,14 +315,17 @@ export const branchAvailabilityValidator = z
 
 /**
  * Packages bundle "two or more services" per the #41 user story, hence
- * min(2). branch_id is required on create - a package is always scoped to
- * exactly one branch (MA22); "the same" package at both branches is two rows.
- * Epic B (#83): bundled_price is no longer accepted - it is derived from the
- * included services' base_price and package_pricing_configuration.
+ * min(2). Custom change: packages are no longer scoped to exactly one branch
+ * (the old MA22 rule) - branch_ids picks which branches this package starts
+ * available at, mirroring service_branch_availability/
+ * service_type_branch_availability's per-branch model instead of a single
+ * owning branch_id column. Epic B (#83): bundled_price is no longer accepted
+ * - it is derived from the included services' base_price and
+ * package_pricing_configuration.
  */
 export const createPackageValidator = z
   .object({
-    branch_id: z.uuid(),
+    branch_ids: z.array(z.uuid()).min(1, 'Select at least one branch'),
     name: z.string().trim().min(1, 'Name is required'),
     service_ids: z
       .array(z.uuid())

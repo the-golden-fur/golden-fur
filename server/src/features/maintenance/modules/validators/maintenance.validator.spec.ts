@@ -15,6 +15,7 @@ import {
 } from './maintenance.validator.ts';
 
 const BRANCH_ID = '11111111-1111-4111-a111-111111111111';
+const BRANCH_ID_2 = '44444444-4444-4444-a444-444444444444';
 const SERVICE_ID = '22222222-2222-4222-a222-222222222222';
 const SERVICE_ID_2 = '33333333-3333-4333-a333-333333333333';
 const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
@@ -169,9 +170,9 @@ describe('branchAvailabilityValidator', () => {
 });
 
 describe('createPackageValidator', () => {
-  it('accepts a per-branch package bundling two or more services', () => {
+  it('accepts a package available at one or more branches, bundling two or more services', () => {
     const result = createPackageValidator.safeParse({
-      branch_id: BRANCH_ID,
+      branch_ids: [BRANCH_ID],
       name: 'Golden Package',
       service_ids: [SERVICE_ID, SERVICE_ID_2],
     });
@@ -181,7 +182,7 @@ describe('createPackageValidator', () => {
 
   it('rejects a single-service bundle (a package bundles two or more)', () => {
     const result = createPackageValidator.safeParse({
-      branch_id: BRANCH_ID,
+      branch_ids: [BRANCH_ID],
       name: 'Solo',
       service_ids: [SERVICE_ID],
     });
@@ -189,7 +190,7 @@ describe('createPackageValidator', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects a missing branch_id - packages are per-branch rows (MA22)', () => {
+  it('rejects a missing branch_ids - a package must start available at at least one branch', () => {
     const result = createPackageValidator.safeParse({
       name: 'Golden Package',
       service_ids: [SERVICE_ID, SERVICE_ID_2],
@@ -198,9 +199,29 @@ describe('createPackageValidator', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects an empty branch_ids array', () => {
+    const result = createPackageValidator.safeParse({
+      branch_ids: [],
+      name: 'Golden Package',
+      service_ids: [SERVICE_ID, SERVICE_ID_2],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a package available at multiple branches at once (custom change: packages are no longer scoped to exactly one branch)', () => {
+    const result = createPackageValidator.safeParse({
+      branch_ids: [BRANCH_ID, BRANCH_ID_2],
+      name: 'Golden Package',
+      service_ids: [SERVICE_ID, SERVICE_ID_2],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('rejects a bundled_price key (Epic B #83: the price is derived, not accepted as input)', () => {
     const result = createPackageValidator.safeParse({
-      branch_id: BRANCH_ID,
+      branch_ids: [BRANCH_ID],
       name: 'Golden Package',
       bundled_price: 600,
       service_ids: [SERVICE_ID, SERVICE_ID_2],

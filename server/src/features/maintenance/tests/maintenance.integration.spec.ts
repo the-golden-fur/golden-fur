@@ -198,7 +198,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
   });
 
   describe('packages (#41)', () => {
-    it('AC-1: an Admin creates a per-branch package', async () => {
+    it('AC-1: an Admin creates a package available at one or more branches', async () => {
       mockCaller('admin-1');
       queueFromResults(
         { data: { role: 'Admin' }, error: null },
@@ -211,10 +211,10 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         }, // active-services check
         { data: { id: 'package-1' }, error: null }, // insert
         { data: null, error: null }, // links
+        { data: null, error: null }, // branch availability
         {
           data: {
             id: 'package-1',
-            branch_id: BRANCH_ID,
             name: 'Golden Package',
             is_active: true,
             package_services: [
@@ -227,6 +227,13 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
                 services: { base_price: 400 },
               },
             ],
+            package_branch_availability: [
+              {
+                package_id: 'package-1',
+                branch_id: BRANCH_ID,
+                is_available: true,
+              },
+            ],
           },
           error: null,
         }, // final fetch
@@ -237,7 +244,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         .post('/maintenance/packages')
         .set('Authorization', 'Bearer token')
         .send({
-          branch_id: BRANCH_ID,
+          branch_ids: [BRANCH_ID],
           name: 'Golden Package',
           service_ids: [
             '22222222-2222-4222-a222-222222222222',
@@ -269,7 +276,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         .post('/maintenance/packages')
         .set('Authorization', 'Bearer token')
         .send({
-          branch_id: BRANCH_ID,
+          branch_ids: [BRANCH_ID],
           name: 'X',
           service_ids: [
             '22222222-2222-4222-a222-222222222222',
@@ -278,6 +285,30 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
         });
 
       expect(createRes.status).toBe(403);
+    });
+
+    it("custom change: an Admin toggles a package's branch availability", async () => {
+      mockCaller('admin-1');
+      queueFromResults(
+        { data: { role: 'Admin' }, error: null },
+        { data: { id: 'package-1' }, error: null }, // existence check
+        {
+          data: {
+            package_id: 'package-1',
+            branch_id: BRANCH_ID,
+            is_available: false,
+          },
+          error: null,
+        }
+      );
+
+      const res = await request(app)
+        .patch('/maintenance/packages/package-1/branch-availability')
+        .set('Authorization', 'Bearer token')
+        .send({ branch_id: BRANCH_ID, is_available: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.availability.is_available).toBe(false);
     });
   });
 

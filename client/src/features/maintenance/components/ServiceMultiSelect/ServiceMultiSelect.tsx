@@ -30,6 +30,7 @@ export function ServiceMultiSelect({
   disabled = false,
 }: ServiceMultiSelectProps) {
   const selected = new Set(selectedIds);
+  const optionIds = new Set(options.map((o) => o.id));
 
   const handleToggle = (id: string) => {
     const next = new Set(selected);
@@ -40,8 +41,17 @@ export function ServiceMultiSelect({
       next.add(id);
     }
 
-    // Preserve the options' display order in the emitted ids.
-    onChange(options.map((o) => o.id).filter((oid) => next.has(oid)));
+    // Preserve the visible options' display order for ids still among
+    // them, then append any previously-selected id a caller's own
+    // search/filter has merely hidden (not present in `options`) - a
+    // filtered-out selection must survive toggling an unrelated checkbox,
+    // not get silently dropped because it's absent from the current
+    // options list.
+    const visible = options.map((o) => o.id).filter((oid) => next.has(oid));
+    const hidden = selectedIds.filter(
+      (sid) => next.has(sid) && !optionIds.has(sid)
+    );
+    onChange([...visible, ...hidden]);
   };
 
   return (

@@ -225,7 +225,11 @@ async function resolveBookingItem(
     throwWithStatus(400, `Package "${pkg.name}" is inactive`);
   }
 
-  if (pkg.branch_id !== branchId) {
+  const isAvailableAtBranch = (pkg.package_branch_availability ?? []).some(
+    (row) => row.branch_id === branchId && row.is_available
+  );
+
+  if (!isAvailableAtBranch) {
     throwWithStatus(400, `Package "${pkg.name}" belongs to another branch`);
   }
 
@@ -385,10 +389,11 @@ interface FreePackageAward {
  * Package"). Hotel bookings are single-select (one service, per
  * CustomerBookingFlowPage), so the one Hotel service_id item in `items` (if
  * any) is checked against its own min_nights_for_free_package/
- * free_package_name. The package is resolved by (branch_id, name) rather
- * than a direct FK, since packages are seeded one row per branch while this
- * services row is branch-independent (see migration
- * 20260807105_m13_hotel_fixed_price_service.sql).
+ * free_package_name. The package is resolved by name (not a direct FK) and
+ * then checked against package_branch_availability for the booking's own
+ * branch - packages are no longer one row per branch (see migration
+ * 20260818134_custom_package_branch_availability.sql), so a name match alone
+ * isn't enough to confirm it's actually offered at this branch.
  */
 async function resolveFreePackageAward(
   input: CreateBookingInput
@@ -414,15 +419,36 @@ async function resolveFreePackageAward(
 
   if (nights < service.min_nights_for_free_package) return null;
 
-  const { data: pkg, error } = await supabase
+  // Custom change: a package name is no longer guaranteed unique to one
+  // branch (that guarantee came from the old MA22 one-row-per-branch model),
+  // so this can no longer assume at most one row matches by name alone -
+  // fetch every same-named active package and pick the one actually
+  // available at this booking's branch.
+  const { data: candidates, error } = await supabase
     .from('packages')
-    .select('id, name')
-    .eq('branch_id', input.branch_id)
+    .select('id, name, package_branch_availability(branch_id, is_available)')
     .eq('name', service.free_package_name)
     .eq('is_active', true)
-    .maybeSingle();
+    .returns<
+      Array<{
+        id: string;
+        name: string;
+        package_branch_availability: {
+          branch_id: string;
+          is_available: boolean;
+        }[];
+      }>
+    >();
 
-  if (error || !pkg) return null;
+  if (error || !candidates) return null;
+
+  const pkg = candidates.find((candidate) =>
+    (candidate.package_branch_availability ?? []).some(
+      (row) => row.branch_id === input.branch_id && row.is_available
+    )
+  );
+
+  if (!pkg) return null;
 
   return { packageId: pkg.id, packageName: pkg.name, nights };
 }

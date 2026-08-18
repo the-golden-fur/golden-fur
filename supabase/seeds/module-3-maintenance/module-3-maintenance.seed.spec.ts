@@ -19,10 +19,8 @@ function createMockSupabase() {
       { id: 'branch-southwoods', name: 'Southwoods' },
     ],
     availability: new Map<string, { is_available: boolean }>(),
-    packages: new Map<
-      string,
-      { id: string; branch_id: string; name: string }
-    >(),
+    packages: new Map<string, { id: string; name: string }>(),
+    packageBranchAvailability: new Map<string, Set<string>>(),
     packageServices: new Map<string, Set<string>>(),
     discounts: new Map<
       string,
@@ -86,18 +84,16 @@ function createMockSupabase() {
       if (table === 'packages') {
         return {
           select: () => ({
-            eq: (_c1: string, branchId: string) => ({
-              eq: (_c2: string, name: string) => ({
-                maybeSingle: () => {
-                  const found = [...state.packages.values()].find(
-                    (p) => p.branch_id === branchId && p.name === name
-                  );
-                  return Promise.resolve({ data: found ?? null, error: null });
-                },
-              }),
+            eq: (_c: string, name: string) => ({
+              maybeSingle: () => {
+                const found = [...state.packages.values()].find(
+                  (p) => p.name === name
+                );
+                return Promise.resolve({ data: found ?? null, error: null });
+              },
             }),
           }),
-          insert: (row: { branch_id: string; name: string }) => {
+          insert: (row: { name: string; use_pricing_matrix: boolean }) => {
             packageCounter += 1;
             const created = { id: `package-${packageCounter}`, ...row };
             state.packages.set(created.id, created);
@@ -107,6 +103,37 @@ function createMockSupabase() {
                   Promise.resolve({ data: created, error: null }),
               }),
             };
+          },
+        };
+      }
+
+      if (table === 'package_branch_availability') {
+        return {
+          select: () => ({
+            eq: (_c: string, packageId: string) =>
+              Promise.resolve({
+                data: [
+                  ...(state.packageBranchAvailability.get(packageId) ??
+                    new Set()),
+                ].map((branchId) => ({ branch_id: branchId })),
+                error: null,
+              }),
+          }),
+          insert: (
+            rows: {
+              package_id: string;
+              branch_id: string;
+              is_available: boolean;
+            }[]
+          ) => {
+            for (const row of rows) {
+              const set =
+                state.packageBranchAvailability.get(row.package_id) ??
+                new Set<string>();
+              set.add(row.branch_id);
+              state.packageBranchAvailability.set(row.package_id, set);
+            }
+            return Promise.resolve({ error: null });
           },
         };
       }
@@ -207,28 +234,35 @@ describe('module-3-maintenance seed', () => {
   });
 
   describe('seedGoldenPackage', () => {
-    it('AC-2: creates one Golden Package per branch bundling the three seed services', async () => {
+    it('creates one shared Golden Package available at every branch, bundling the three seed services', async () => {
       await seedGoldenPackage(supabase as never);
 
-      expect(supabase.state.packages.size).toBe(2);
+      // Custom change: packages moved off the old MA22 one-row-per-branch
+      // model onto a many-to-many join - the same-named package at Makati
+      // and Southwoods is one row, not two.
+      expect(supabase.state.packages.size).toBe(1);
 
       // bundled_price is no longer a seeded/stored value - Epic B (#82/#83)
       // derives it on read from the included services' base_price and the
       // shared package_pricing_configuration discount percentage.
-      for (const pkg of supabase.state.packages.values()) {
-        expect(pkg.name).toBe('Golden Package');
-        expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
-      }
+      const [pkg] = [...supabase.state.packages.values()];
+      expect(pkg.name).toBe('Golden Package');
+      expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
+      expect(supabase.state.packageBranchAvailability.get(pkg.id)?.size).toBe(
+        supabase.state.branches.length
+      );
     });
 
-    it('is idempotent: re-running does not duplicate packages or links', async () => {
+    it('is idempotent: re-running does not duplicate the package, its availability, or its links', async () => {
       await seedGoldenPackage(supabase as never);
       await seedGoldenPackage(supabase as never);
 
-      expect(supabase.state.packages.size).toBe(2);
-      for (const pkg of supabase.state.packages.values()) {
-        expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
-      }
+      expect(supabase.state.packages.size).toBe(1);
+      const [pkg] = [...supabase.state.packages.values()];
+      expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
+      expect(supabase.state.packageBranchAvailability.get(pkg.id)?.size).toBe(
+        supabase.state.branches.length
+      );
     });
   });
 

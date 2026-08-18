@@ -553,10 +553,12 @@ describe('booking.service (#51)', () => {
   it('books via a package with the bundled price and branch match', async () => {
     vi.mocked(getPackageById).mockResolvedValue({
       id: 'package-1',
-      branch_id: 'branch-1',
       name: 'Puppy Bundle',
       bundled_price: 999,
       is_active: true,
+      package_branch_availability: [
+        { package_id: 'package-1', branch_id: 'branch-1', is_available: true },
+      ],
     } as never);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -602,6 +604,41 @@ describe('booking.service (#51)', () => {
     expect(itemsInsert?.payload).toMatchObject([
       { package_id: 'package-1', service_id: null, price_at_booking: 999 },
     ]);
+  });
+
+  it("rejects a package that isn't available at the booking's branch (custom change: packages are no longer scoped to exactly one branch_id)", async () => {
+    vi.mocked(getPackageById).mockResolvedValue({
+      id: 'package-1',
+      name: 'Puppy Bundle',
+      bundled_price: 999,
+      is_active: true,
+      package_branch_availability: [
+        {
+          package_id: 'package-1',
+          branch_id: 'branch-southwoods',
+          is_available: true,
+        },
+      ],
+    } as never);
+    queueFromResults(
+      { data: PET, error: null }, // pet ownership
+      { data: [], error: null } // daycare overlap - empty
+    );
+
+    await expect(
+      createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          pet_id: PET.id,
+          branch_id: 'branch-1',
+          service_category: 'Daycare',
+          items: [{ package_id: 'package-1' }],
+          scheduled_start: BASE_INPUT.scheduled_start,
+          scheduled_end: BASE_INPUT.scheduled_end,
+          payment_confirmed: true,
+        },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   describe('listBookings (#59/#60 supporting infra)', () => {

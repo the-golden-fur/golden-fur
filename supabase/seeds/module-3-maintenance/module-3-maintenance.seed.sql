@@ -13,9 +13,13 @@
 --
 --   1. service_branch_availability - every base service available at every
 --      branch (#40's disable-a-branch-not-opt-in recommendation).
---   2. packages / package_services - the Golden Package (Shampoo/Bath,
---      Blow-dry, Brushing), one row per branch per Modules-Features/MA22.
---      No bundled_price here - Epic B (#82/#83, migration
+--   2. packages / package_services / package_branch_availability - the
+--      Golden Package (Shampoo/Bath, Blow-dry, Brushing), one shared row
+--      available at every branch (custom change: packages moved off the
+--      old MA22 one-row-per-branch model onto a many-to-many join, mirroring
+--      service_branch_availability - see migration
+--      20260818134_custom_package_branch_availability.sql). No bundled_price
+--      here - Epic B (#82/#83, migration
 --      20260726048_m13_package_pricing_configuration.sql) dropped that
 --      column; the price is now derived on read from the included
 --      services' base_price and the shared package_pricing_configuration
@@ -42,17 +46,22 @@ where s.id::text like 'a1300000-%'
 on conflict (service_id, branch_id) do nothing;
 
 -- ============================================================
--- 2. Golden Package - one row per branch, bundling the same three
--- Grooming services
+-- 2. Golden Package - one shared row, available at every branch, bundling
+-- the same three Grooming services
 -- ============================================================
 
-insert into public.packages (branch_id, name, use_pricing_matrix)
-select b.id, 'Golden Package', true
-from public.branches as b
+insert into public.packages (name, use_pricing_matrix)
+select 'Golden Package', true
 where not exists (
-  select 1 from public.packages as p
-  where p.branch_id = b.id and p.name = 'Golden Package'
+  select 1 from public.packages where name = 'Golden Package'
 );
+
+insert into public.package_branch_availability (package_id, branch_id, is_available)
+select p.id, b.id, true
+from public.packages as p
+cross join public.branches as b
+where p.name = 'Golden Package'
+on conflict (package_id, branch_id) do nothing;
 
 insert into public.package_services (package_id, service_id)
 select p.id, s.service_id
