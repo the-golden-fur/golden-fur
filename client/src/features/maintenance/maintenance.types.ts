@@ -173,9 +173,18 @@ export interface Service {
   service_branch_availability?: ServiceBranchAvailability[];
 }
 
+/** Custom change: mirrors ServiceBranchAvailability/
+ * ServiceTypeBranchAvailability - replaces the old MA22 "one branch_id per
+ * package row" model with a many-to-many join, same as services and service
+ * types. */
+export interface PackageBranchAvailability {
+  package_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface Package {
   id: string;
-  branch_id: string;
   name: string;
   bundled_price: number;
   /** Derived server-side from included services' duration_minutes - used to
@@ -197,6 +206,7 @@ export interface Package {
   updated_at: string;
   archived_at: string | null;
   package_services?: Array<{ service_id: string }>;
+  package_branch_availability?: PackageBranchAvailability[];
 }
 
 /** branches row subset the maintenance/booking pages need for labels/toggles.
@@ -308,9 +318,11 @@ export interface BranchAvailabilityPayload {
   is_available: boolean;
 }
 
-/** Epic B (#83): bundled_price is derived, not accepted as input. */
+/** Epic B (#83): bundled_price is derived, not accepted as input. Custom
+ * change: branch_ids replaces the old required single branch_id (MA22) -
+ * a package is no longer scoped to exactly one branch. */
 export interface CreatePackagePayload {
-  branch_id: string;
+  branch_ids: string[];
   name: string;
   service_ids: string[];
   use_pricing_matrix?: boolean;

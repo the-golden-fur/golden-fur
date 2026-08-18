@@ -63,6 +63,32 @@ describe('ServiceMultiSelect', () => {
     expect(onChange).toHaveBeenCalledWith(['service-1']);
   });
 
+  it('preserves an already-selected id hidden by a filtered options list when another checkbox is toggled', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+
+    // service-2 is selected but a caller-side search/filter has narrowed
+    // `options` down to service-1 and service-3 only - service-2 is no
+    // longer visible, but it must not be dropped just because some other
+    // checkbox gets clicked.
+    render(
+      createElement(ServiceMultiSelect, {
+        label: 'Included services',
+        options: [OPTIONS[0], OPTIONS[2]],
+        selectedIds: ['service-2', 'service-3'],
+        onChange,
+      })
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      'service-1',
+      'service-3',
+      'service-2',
+    ]);
+  });
+
   it('renders an empty state when there are no options', () => {
     render(
       createElement(ServiceMultiSelect, {

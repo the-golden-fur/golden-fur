@@ -9,6 +9,7 @@ import type {
   CreateServicePayload,
   CreateServiceTypePayload,
   Package,
+  PackageBranchAvailability,
   PackagePricingConfiguration,
   PetType,
   PricingConfiguration,
@@ -268,6 +269,30 @@ export async function updatePackage(
 /** Soft: moves the package to the archive. Server still requires
  * is_active === false first (see packages.service.ts's archivePackage
  * guard). */
+export async function setPackageBranchAvailability(
+  packageId: string,
+  accessToken: string,
+  payload: BranchAvailabilityPayload
+): Promise<MaintenanceApiResult<PackageBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/${packageId}/branch-availability`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ availability: PackageBranchAvailability }>(
+    response
+  );
+  return { data: result.data?.availability ?? null, error: result.error };
+}
+
 export async function archivePackage(
   packageId: string,
   accessToken: string

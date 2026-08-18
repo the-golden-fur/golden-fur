@@ -1,0 +1,63 @@
+.multiSelect {
+  display: grid;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  margin: 0;
+  padding: var(--space-2);
+}
+
+.legend {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-0-5);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.optionList {
+  display: grid;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.optionItem {
+  margin: 0;
+}
+
+.optionLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: var(--space-0-5);
+  transition: background-color 150ms ease;
+}
+
+.optionLabel:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-primary) 10%,
+    transparent
+  );
+}
