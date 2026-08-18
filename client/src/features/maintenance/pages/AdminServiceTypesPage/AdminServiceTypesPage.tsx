@@ -161,7 +161,18 @@ export function AdminServiceTypesPage() {
         setServiceTypes(typesResult.data);
         // Branch names are optional garnish - a failed lookup degrades the
         // Branch Availability modal's labels, it doesn't block the page.
-        setBranches(branchesResult.data ?? []);
+        const loadedBranches = branchesResult.data ?? [];
+        setBranches(loadedBranches);
+        // Seeds the create form's branch multiselect with every branch
+        // checked (matching what createServiceType already seeds
+        // server-side) - set here, not in a reactive effect keyed off
+        // branches, since this only needs to run once on initial load.
+        if (loadedBranches.length > 0) {
+          setCreateForm((prev) => ({
+            ...prev,
+            branchIds: loadedBranches.map((branch) => branch.id),
+          }));
+        }
       }
     );
 
@@ -169,19 +180,6 @@ export function AdminServiceTypesPage() {
       isMounted = false;
     };
   }, [accessToken, isAllowedViewer]);
-
-  // The create form's branch multiselect defaults to every branch checked
-  // (matching what createServiceType already seeds server-side) once
-  // branches have loaded - only fires while the form is still untouched.
-  useEffect(() => {
-    if (branches.length === 0) return;
-
-    setCreateForm((prev) =>
-      prev.branchIds.length === 0
-        ? { ...prev, branchIds: branches.map((branch) => branch.id) }
-        : prev
-    );
-  }, [branches]);
 
   const comparators = useMemo(
     () => ({

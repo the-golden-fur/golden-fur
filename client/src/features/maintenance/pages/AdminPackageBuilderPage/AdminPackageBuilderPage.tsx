@@ -159,6 +159,13 @@ export function AdminPackageBuilderPage() {
         setServices(servicesResult.data ?? []);
         setBranches(branchesResult.data ?? []);
         setPackagePricingConfiguration(pricingResult.data);
+        // Seeds the bundle discount % input from the singleton config on
+        // initial load - set here, not in a reactive effect keyed off
+        // packagePricingConfiguration, since maybeSaveDiscountPercent already
+        // keeps this input consistent with the config after every save.
+        setDiscountPercentInput(
+          String(pricingResult.data.bundle_discount_percentage * 100)
+        );
       }
     );
 
@@ -166,17 +173,6 @@ export function AdminPackageBuilderPage() {
       isMounted = false;
     };
   }, [accessToken, isAllowedViewer]);
-
-  // The bundle discount % input mirrors the singleton
-  // package_pricing_configuration row - re-derived whenever it (re)loads, so
-  // the form always starts from what's actually saved.
-  useEffect(() => {
-    if (packagePricingConfiguration) {
-      setDiscountPercentInput(
-        String(packagePricingConfiguration.bundle_discount_percentage * 100)
-      );
-    }
-  }, [packagePricingConfiguration]);
 
   const branchNameById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
