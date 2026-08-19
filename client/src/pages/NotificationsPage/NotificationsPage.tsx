@@ -519,6 +519,15 @@ export function NotificationsPage() {
   }
 
   function renderDetailContent(item: InboxItem) {
+    // TypeScript can't carry the top-level `!user?.id || !accessToken`
+    // guard's narrowing into this nested function declaration - this
+    // check is always true at runtime (renderDetailContent is only ever
+    // called after that guard), but keeps both props typed as non-null
+    // below without an `!` assertion.
+    if (!user?.id || !accessToken) {
+      return null;
+    }
+
     if (item.kind === 'system') {
       return (
         <div className={styles.notificationDetail}>
