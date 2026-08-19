@@ -148,6 +148,7 @@ export async function listBookingsController(
         dateTo: parsed.data.date_to,
         serviceCategory: parsed.data.service_category,
         status: parsed.data.status,
+        paymentStage: parsed.data.payment_stage,
         assignedStaffId: parsed.data.assigned_staff_id,
         excludeUnpaidDownpayment: parsed.data.exclude_unpaid_downpayment,
       },

@@ -1188,6 +1188,10 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: Booking['status'];
+  /** Custom change (bookings/payments queue paid/unpaid filter) - exact
+   * match against payment_stage, independent of `status` above (see
+   * PaymentStage's own dev note in booking.types.ts). */
+  paymentStage?: Booking['payment_stage'];
   /** A staff UUID (exact match), or the sentinel 'unassigned' for
    * assigned_staff_id IS NULL ("No preference" bookings that haven't been
    * auto-assigned yet). Bookings Queue's own "assigned to me / no
@@ -1239,6 +1243,10 @@ export async function listBookings({
 
   if (filters.status) {
     query = query.eq('status', filters.status);
+  }
+
+  if (filters.paymentStage) {
+    query = query.eq('payment_stage', filters.paymentStage);
   }
 
   if (filters.assignedStaffId === 'unassigned') {

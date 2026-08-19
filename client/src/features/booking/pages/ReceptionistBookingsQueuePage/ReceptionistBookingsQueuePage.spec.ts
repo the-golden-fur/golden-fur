@@ -261,6 +261,27 @@ describe('ReceptionistBookingsQueuePage', () => {
     await waitFor(() => expect(screen.getByText('Branch')).toBeInTheDocument());
   });
 
+  it('custom change (bookings/payments queue paid/unpaid filter): the Payment status filter requests bookings filtered by payment_stage', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+
+    await user.selectOptions(screen.getByLabelText('Payment status'), 'Unpaid');
+
+    await waitFor(() =>
+      expect(bookingApi.listBookings).toHaveBeenLastCalledWith(
+        'token',
+        expect.objectContaining({ paymentStage: 'Unpaid' })
+      )
+    );
+  });
+
   it('switches between the List and Calendar views', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],

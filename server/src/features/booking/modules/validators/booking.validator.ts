@@ -4,6 +4,7 @@ import {
   OVERRIDABLE_BOOKING_STATUSES,
   OVERRIDABLE_PAYMENT_STAGES,
   PAYMENT_METHODS,
+  PAYMENT_STAGES,
 } from '../../booking.types.ts';
 
 const CATEGORIES = [
@@ -457,6 +458,8 @@ export const listBookingsQueryValidator = z.object({
   date_to: z.iso.date().optional(),
   service_category: z.enum(CATEGORIES).optional(),
   status: z.enum(BOOKING_STATUSES).optional(),
+  // Custom change (bookings/payments queue paid/unpaid filter).
+  payment_stage: z.enum(PAYMENT_STAGES).optional(),
   // Bookings Queue's "assigned to me / no preference" filter - a staff
   // UUID, or the sentinel 'unassigned' for assigned_staff_id IS NULL.
   assigned_staff_id: z.union([z.uuid(), z.literal('unassigned')]).optional(),

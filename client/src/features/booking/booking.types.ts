@@ -512,6 +512,8 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: BookingStatus;
+  /** Custom change (bookings/payments queue paid/unpaid filter). */
+  paymentStage?: PaymentStage;
   /** "Assigned to me / no preference" filter - a staff UUID (pass the
    * viewer's own id for "assigned to me"), or the sentinel 'unassigned' for
    * bookings with no assigned staff yet. */

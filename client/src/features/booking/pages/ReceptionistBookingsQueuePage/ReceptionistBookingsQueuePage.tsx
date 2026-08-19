@@ -38,10 +38,12 @@ import {
 import {
   BOOKING_STATUSES,
   CANCELLABLE_BOOKING_STATUSES,
+  PAYMENT_STAGES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingStatus,
+  type PaymentStage,
   type PolicyConfiguration,
   type ServiceCategory,
   type StaffPreferenceInput,
@@ -194,6 +196,9 @@ export function ReceptionistBookingsQueuePage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'All'
   );
+  const [paymentStageFilter, setPaymentStageFilter] = useState<
+    PaymentStage | 'All'
+  >('All');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -299,6 +304,8 @@ export function ReceptionistBookingsQueuePage() {
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: statusFilter === 'All' ? undefined : statusFilter,
+      paymentStage:
+        paymentStageFilter === 'All' ? undefined : paymentStageFilter,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -355,6 +362,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRange.to,
     categoryFilter,
     statusFilter,
+    paymentStageFilter,
   ]);
 
   const branchNameById = useMemo(
@@ -423,6 +431,13 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setCategoryFilter('All'),
       });
     }
+    if (paymentStageFilter !== 'All') {
+      chips.push({
+        id: 'payment',
+        label: `Payment: ${paymentStageFilter}`,
+        onClear: () => setPaymentStageFilter('All'),
+      });
+    }
     if (isSuperadmin && branchFilter !== 'All') {
       chips.push({
         id: 'branch',
@@ -452,6 +467,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRangePreset,
     statusFilter,
     categoryFilter,
+    paymentStageFilter,
     isSuperadmin,
     branchFilter,
     branchNameById,
@@ -664,6 +680,26 @@ export function ReceptionistBookingsQueuePage() {
               {SERVICE_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
                   {category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Payment status</span>
+            <select
+              className={styles.filterSelect}
+              value={paymentStageFilter}
+              onChange={(event) =>
+                setPaymentStageFilter(
+                  event.target.value as PaymentStage | 'All'
+                )
+              }
+            >
+              <option value="All">All payment statuses</option>
+              {PAYMENT_STAGES.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
                 </option>
               ))}
             </select>
