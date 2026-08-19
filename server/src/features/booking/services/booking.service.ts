@@ -6,9 +6,7 @@ import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
-import { getPackagePricingConfiguration } from '../../maintenance/services/packagePricing.service.ts';
 import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
-import { deriveBundledPrice } from '../../maintenance/utils/deriveBundledPrice.ts';
 import {
   createNotification,
   notifyStaffRoleAtBranch,
@@ -242,14 +240,12 @@ async function resolveBookingItem(
     id: string;
     category: ServiceCategory;
     duration_minutes: number | null;
-    base_price: number;
-    use_pricing_matrix: boolean;
   }> = [];
 
   if (memberServiceIds.length > 0) {
     const { data: memberServices, error } = await supabase
       .from('services')
-      .select('id, category, duration_minutes, base_price, use_pricing_matrix')
+      .select('id, category, duration_minutes')
       .in('id', memberServiceIds);
 
     if (error) throwWithStatus(400, error.message);
@@ -280,7 +276,7 @@ async function resolveBookingItem(
     packageDurationMinutes
   );
 
-  const packagePrice = await resolvePackagePrice(pkg, memberRows, pet);
+  const packagePrice = await resolvePackagePrice(pkg, pet);
 
   return {
     service_id: null,
@@ -295,50 +291,42 @@ async function resolveBookingItem(
 }
 
 /**
- * Custom change (pricing matrix fix): packages never varied by pet before -
- * bundled_price was always a flat admin-configured figure (sum of members'
- * base_price, minus the bundle discount). A package can now opt in
- * (`use_pricing_matrix`) to instead sum each included service's own
- * per-pet price (respecting that service's own `use_pricing_matrix` flag
- * and the Cat flat-price rule - see resolveServicePrice), then apply the
- * same bundle-discount formula (deriveBundledPrice) on top of that
- * per-pet sum instead of the flat base_price sum. Falls back to the flat
- * `bundled_price` whenever the package isn't matrix-enabled.
+ * Custom change (package pricing redesign): matrix pricing now applies
+ * directly to the *package's own* bundled_price, the same way a standalone
+ * Grooming service's own base_price runs through deriveGroomingMatrix -
+ * not by re-aggregating each member service's own per-pet price. Member
+ * services' own `use_pricing_matrix`/`requires_downpayment` flags only
+ * govern that service when it's booked on its own; once bundled into a
+ * package, only the package's own flags apply. This replaced an earlier
+ * per-member-aggregation design that required a member's own matrix flag
+ * AND the package's own flag to agree before anything changed, which was
+ * confusing in the admin package builder (a plain member "diluted" the
+ * total, and toggling the package flag alone did nothing without a matrix
+ * member already selected). Falls back to the flat `bundled_price` whenever
+ * the package isn't matrix-enabled, and for a Cat pet regardless (mirrors
+ * resolveServicePrice's own Cat exemption - the S/M/L/XL matrix is a dog
+ * weight-class scale).
  */
 export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
     'bundled_price' | 'use_pricing_matrix'
   >,
-  memberRows: Array<{
-    category: ServiceCategory;
-    base_price: number;
-    use_pricing_matrix: boolean;
-  }>,
   pet: PetRow
 ): Promise<number> {
-  if (!pkg.use_pricing_matrix || memberRows.length === 0) {
+  if (!pkg.use_pricing_matrix || pet.pet_type === 'Cat') {
     return Number(pkg.bundled_price);
   }
 
   const pricingConfiguration = await getPricingConfiguration();
-  const memberPrices = memberRows.map((row) =>
-    resolveServicePrice(
-      {
-        category: row.category,
-        base_price: row.base_price,
-        use_pricing_matrix: row.use_pricing_matrix,
-        service_pricing_tiers:
-          row.category === 'Grooming' && row.use_pricing_matrix
-            ? deriveGroomingMatrix(Number(row.base_price), pricingConfiguration)
-            : [],
-      },
-      pet
-    )
+  const cell = deriveGroomingMatrix(
+    Number(pkg.bundled_price),
+    pricingConfiguration
+  ).find(
+    (row) => row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
   );
 
-  const packagePricingConfiguration = await getPackagePricingConfiguration();
-  return deriveBundledPrice(memberPrices, packagePricingConfiguration);
+  return cell?.price ?? Number(pkg.bundled_price);
 }
 
 async function resolveBookingItems(
