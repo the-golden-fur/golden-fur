@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Settings } from 'lucide-react';
+import { Home, Settings } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
@@ -49,6 +49,12 @@ const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
  * own explicit icon button instead of being an undiscoverable side effect of
  * clicking the username. Sign out stays a dedicated button (not folded into
  * Settings) since it's an account-wide action, not a setting.
+ *
+ * Custom change (live-review): Home also gets its own icon button here -
+ * neither the Sidebar (staff or customer) has its own Dashboard/Home tile
+ * any more, so this is now the only dedicated way back to it (the brand
+ * link at the far left already went to the same place, but wasn't visually
+ * an affordance for "go home").
  */
 export function Navbar({
   role,
@@ -103,13 +109,22 @@ export function Navbar({
         {composeButton}
         {notificationBell}
         <Link
+          to={HOME_PATH_BY_ROLE[role]}
+          className={styles.iconLink}
+          aria-label="Home"
+          onClick={() => setIsMenuOpen(false)}
+        >
+          <Home size={18} aria-hidden="true" />
+          <span className={styles.iconLabel}>Home</span>
+        </Link>
+        <Link
           to={SETTINGS_PATH_BY_ROLE[role]}
-          className={styles.settingsLink}
+          className={styles.iconLink}
           aria-label="Settings"
           onClick={() => setIsMenuOpen(false)}
         >
           <Settings size={18} aria-hidden="true" />
-          <span className={styles.settingsLabel}>Settings</span>
+          <span className={styles.iconLabel}>Settings</span>
         </Link>
         <button
           type="button"

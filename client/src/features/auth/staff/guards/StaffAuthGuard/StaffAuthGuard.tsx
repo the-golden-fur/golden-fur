@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
 import type { SidebarSection } from '../../../../../shared/components/Sidebar/Sidebar';
@@ -30,19 +29,11 @@ function buildSidebarSections(role: string | null): SidebarSection[] {
 
   const slug = ROLE_TO_DASHBOARD_SLUG[role];
 
-  return [
-    {
-      label: null,
-      items: [
-        {
-          title: 'Dashboard',
-          to: `/staff/dashboard/${slug}`,
-          icon: LayoutDashboard,
-        },
-      ],
-    },
-    ...toSidebarSections(STAFF_DASHBOARD_CONFIG[slug]),
-  ];
+  // Custom change (live-review): the sidebar's "Dashboard" tile is gone for
+  // every role - Home now lives in the Navbar instead, as a persistent icon
+  // button (mirrors the Navbar's own Settings icon), matching the customer
+  // portal's own Navbar-level Home affordance.
+  return toSidebarSections(STAFF_DASHBOARD_CONFIG[slug]);
 }
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {

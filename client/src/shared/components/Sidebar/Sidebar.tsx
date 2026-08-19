@@ -531,10 +531,19 @@ function SidebarCategory({
             <h2 className={styles.sectionLabel}>{section.label}</h2>
           </button>
         ) : null}
-        <MoreOptionsMenu
-          label={isCategory ? `Sort ${section.label}` : 'Sort'}
-          items={sortMenuItems}
-        />
+        {orderedItems.length > 1 ? (
+          <>
+            {!isCategory ? (
+              <span className={styles.categorySortLabel} aria-hidden="true">
+                Sort
+              </span>
+            ) : null}
+            <MoreOptionsMenu
+              label={isCategory ? `Sort ${section.label}` : 'Sort'}
+              items={sortMenuItems}
+            />
+          </>
+        ) : null}
       </div>
       <ul className={itemsHidden ? styles.itemListCollapsed : styles.itemList}>
         {orderedItems.map((item) => {
