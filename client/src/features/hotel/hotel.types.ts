@@ -103,8 +103,17 @@ export interface MedicationInstructionPayload {
 }
 
 /** Custom change (Boarding Checklist Kanban): Pending -> In Progress ->
- * Completed - the Kanban board's column axis. */
-export type CareLogEntryStatus = 'Pending' | 'In Progress' | 'Completed';
+ * Completed - the Kanban board's column axis. Missed and Backlog are both
+ * server-computed, read-time relabelings, never set directly by the client -
+ * Missed for a Pending/In Progress entry whose scheduled_date has passed,
+ * Backlog for a Pending entry whose scheduled_date hasn't arrived yet
+ * (unlike Missed, never persisted - it self-resolves once the date arrives). */
+export type CareLogEntryStatus =
+  | 'Backlog'
+  | 'Pending'
+  | 'In Progress'
+  | 'Completed'
+  | 'Missed';
 
 export interface CareLogEntry {
   id: string;
@@ -121,7 +130,7 @@ export interface CareLogEntry {
   completed_by: string | null;
   created_at: string;
   completed_by_staff?: { display_name: string } | null;
-  /** Only populated by getTodayCareLogEntries's join - which pet/stay type
+  /** Only populated by getCareLogEntries's join - which pet/stay type
    * this task belongs to, for the Hotel/Daycare subtabs and pet name
    * display. */
   stays?: { stay_type: 'Hotel' | 'Daycare'; pet_id: string } | null;
@@ -166,4 +175,27 @@ export interface CheckoutResult {
 
 export interface HotelStayWithCage extends HotelStay {
   cage_label: string;
+}
+
+/** Custom change: Hotel/Daycare activity logbook (#48 follow-up). */
+export type ActivityLogAction =
+  | 'check_in'
+  | 'check_out'
+  | 'task_started'
+  | 'task_completed'
+  | 'task_reopened'
+  | 'task_missed';
+
+export interface ActivityLogEntry {
+  id: string;
+  branch_id: string;
+  stay_id: string | null;
+  care_log_entry_id: string | null;
+  action: ActivityLogAction;
+  actor_staff_id: string | null;
+  description: string;
+  created_at: string;
+  /** Null for a system-driven entry (the lazy Missed transition - nobody
+   * clicked anything). */
+  actor_staff?: { display_name: string } | null;
 }

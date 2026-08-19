@@ -3,7 +3,6 @@ import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { BoardingChecklistKanban } from '../../components/BoardingChecklistKanban/BoardingChecklistKanban';
-import { UncompletedCareFlagPanel } from '../../components/UncompletedCareFlagPanel/UncompletedCareFlagPanel';
 import styles from './BoardingChecklistPage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -16,17 +15,18 @@ const ALLOWED_VIEWER_ROLES = new Set([
 
 /** Custom change: renamed from Hotel Care Log - covers Hotel AND Daycare
  * (both share the same `stays`/`care_log_entries` tables) via the Kanban
- * board's own Hotel/Daycare subtabs, and is now also reachable by Groomer,
- * not just Pet Assistant. Groomer/Pet Assistant see the Kanban checklist;
- * Admin/Supervisor/Superadmin still see the end-of-day flag panel - the two
- * audiences never need both views at once (unchanged from the old page). */
+ * board's own Hotel/Daycare subtabs. Boarding Checklist Kanban redesign:
+ * every allowed role now sees the same Kanban board (Pending/In Progress/
+ * Completed/Missed columns, filters, actionable checkboxes) - the old
+ * Admin/Supervisor/Superadmin-only end-of-day flag panel is retired, since
+ * the unified board's own Pending/Missed columns already surface the same
+ * "what's still outstanding" view, just with real actions attached. */
 export function BoardingChecklistPage() {
   const { user, accessToken } = useAuth();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
-  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -40,7 +40,6 @@ export function BoardingChecklistPage() {
         setRoleStatus(
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
-        setRole(result.data.role);
       } else {
         setRoleStatus('denied');
       }
@@ -81,11 +80,7 @@ export function BoardingChecklistPage() {
     <main className={styles.page}>
       <div className={styles.content}>
         <h1 className={styles.title}>Boarding Checklist</h1>
-        {role === 'Pet Assistant' || role === 'Groomer' ? (
-          <BoardingChecklistKanban accessToken={accessToken} />
-        ) : (
-          <UncompletedCareFlagPanel accessToken={accessToken} />
-        )}
+        <BoardingChecklistKanban accessToken={accessToken} />
       </div>
     </main>
   );

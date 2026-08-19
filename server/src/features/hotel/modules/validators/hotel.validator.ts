@@ -125,6 +125,31 @@ export type ListHotelStaysQueryInput = z.infer<
   typeof listHotelStaysQueryValidator
 >;
 
+/** Custom change (Boarding Checklist Kanban redesign): widens the old
+ * today-only /hotel/care-log/today endpoint to an optional inclusive date
+ * range, same shape as listHotelStaysQueryValidator above - Hotel stays
+ * span multiple days, so the checklist needs to show more than "today". */
+export const careLogEntriesQueryValidator = z.object({
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
+});
+
+export type CareLogEntriesQueryInput = z.infer<
+  typeof careLogEntriesQueryValidator
+>;
+
+/** Custom change: Hotel/Daycare activity logbook (#48 follow-up). `stay_id`
+ * narrows the logbook to one stay's history (e.g. a "what happened during
+ * this pet's visit" view); date_from/date_to bound it the same way the
+ * checklist's own date range does. */
+export const activityLogQueryValidator = z.object({
+  stay_id: z.uuid().optional(),
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
+});
+
+export type ActivityLogQueryInput = z.infer<typeof activityLogQueryValidator>;
+
 // createCatalogItemValidator/updateCatalogItemValidator moved to
 // features/catalog/modules/validators/catalog.validator.ts (Sprint 5
 // unification, #82) as createProductValidator/updateProductValidator.

@@ -2,6 +2,8 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { DaycareSession } from '../daycare.types.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { countOvernightNights } from '../../booking/services/availability.service.ts';
+import { assertChecklistComplete } from '../../hotel/services/careLogCompletion.service.ts';
+import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -101,6 +103,9 @@ async function resolveDaycareFeeSchedule(serviceId: string | null): Promise<{
 
 interface CheckOutParams {
   sessionId: string;
+  /** Custom change (activity logbook): who performed the checkout - optional
+   * so existing call sites/tests keep working unchanged. */
+  requesterId?: string;
 }
 
 /**
@@ -113,6 +118,7 @@ interface CheckOutParams {
  */
 export async function checkOutDaycareSession({
   sessionId,
+  requesterId,
 }: CheckOutParams): Promise<DaycareSession> {
   const { data: session, error } = await supabase
     .from('stays')
@@ -126,6 +132,12 @@ export async function checkOutDaycareSession({
   if (session.status === 'Completed') {
     throwWithStatus(409, 'This daycare session is already checked out');
   }
+
+  // Custom change (checkout gating): Daycare shares the same stays/
+  // care_log_entries tables as Hotel, so the same Boarding Checklist gate
+  // applies here - see checkout.service.ts's checkOutHotelStay and
+  // assertChecklistComplete's own docs.
+  await assertChecklistComplete(sessionId);
 
   const now = new Date();
   const { firstHourFee, succeedingHourFee, dailyOvernightFee } =
@@ -192,6 +204,14 @@ export async function checkOutDaycareSession({
       }
     }
   }
+
+  await recordActivity({
+    branchId: session.branch_id,
+    stayId: sessionId,
+    action: 'check_out',
+    actorStaffId: requesterId,
+    description: `Checked out of a Daycare session (₱${charge} charge)`,
+  });
 
   return updated as DaycareSession;
 }

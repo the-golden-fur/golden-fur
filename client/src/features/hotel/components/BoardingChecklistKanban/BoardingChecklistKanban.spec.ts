@@ -6,7 +6,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import { BoardingChecklistKanban } from './BoardingChecklistKanban';
 
 vi.mock('../../api/hotel.api', () => ({
-  getTodayCareLogEntries: vi.fn(),
+  getCareLogEntries: vi.fn(),
   completeCareLogEntry: vi.fn(),
   reopenCareLogEntry: vi.fn(),
   startCareLogEntry: vi.fn(),
@@ -39,6 +39,8 @@ function renderBoard() {
   );
 }
 
+const SEARCH_PLACEHOLDER = 'Search by pet name or task...';
+
 describe('BoardingChecklistKanban', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,7 +51,7 @@ describe('BoardingChecklistKanban', () => {
   });
 
   it('shows a task under its status column with the pet name, and only for the active Hotel/Daycare subtab', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [
         buildEntry({ id: 'hotel-1', description: 'Hotel task' }),
         buildEntry({
@@ -74,9 +76,101 @@ describe('BoardingChecklistKanban', () => {
     expect(screen.queryByText('Hotel task')).not.toBeInTheDocument();
   });
 
-  it('clicking the circular checkbox on a Pending task marks it complete', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+  it('renders a 4th Missed column alongside Pending/In Progress/Completed by default (grouped by status)', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [buildEntry()],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(
+      screen.getByRole('heading', { name: /^Pending/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /^In Progress/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /^Completed/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /^Missed/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /^Backlog/ })
+    ).toBeInTheDocument();
+  });
+
+  it('Custom change (Backlog status): a Backlog card has a disabled checkbox and cannot be acted on', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ status: 'Backlog' })],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    const checkbox = screen.getByRole('button', {
+      name: /Not due yet \(read-only\)/,
+    });
+    expect(checkbox).toBeDisabled();
+
+    fireEvent.click(checkbox);
+    expect(hotelApi.startCareLogEntry).not.toHaveBeenCalled();
+    expect(hotelApi.completeCareLogEntry).not.toHaveBeenCalled();
+    expect(hotelApi.reopenCareLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('a Missed card has a disabled checkbox and cannot be acted on', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ status: 'Missed' })],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    const checkbox = screen.getByRole('button', {
+      name: /Missed \(read-only\)/,
+    });
+    expect(checkbox).toBeDisabled();
+
+    fireEvent.click(checkbox);
+    expect(hotelApi.startCareLogEntry).not.toHaveBeenCalled();
+    expect(hotelApi.completeCareLogEntry).not.toHaveBeenCalled();
+    expect(hotelApi.reopenCareLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('clicking the checkbox on a Pending task starts it (advances to In Progress), not straight to Completed', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+    vi.mocked(hotelApi.startCareLogEntry).mockResolvedValue({
+      data: buildEntry({ status: 'In Progress' }),
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.click(
+      screen.getByRole('button', { name: /Start: Morning meal/ })
+    );
+
+    await waitFor(() =>
+      expect(hotelApi.startCareLogEntry).toHaveBeenCalledWith(
+        'entry-1',
+        'token'
+      )
+    );
+    expect(hotelApi.completeCareLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('clicking the checkbox on an In Progress task marks it complete', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ status: 'In Progress' })],
       error: null,
     });
     vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
@@ -88,9 +182,7 @@ describe('BoardingChecklistKanban', () => {
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     fireEvent.click(
-      screen.getByRole('button', {
-        name: /Mark complete: Morning meal/,
-      })
+      screen.getByRole('button', { name: /Mark complete: Morning meal/ })
     );
 
     await waitFor(() =>
@@ -101,8 +193,8 @@ describe('BoardingChecklistKanban', () => {
     );
   });
 
-  it('clicking the checkbox on a Completed task reopens it to Pending', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+  it('clicking the checkbox on a Completed task reopens it straight to Pending', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [
         buildEntry({
           status: 'Completed',
@@ -131,31 +223,82 @@ describe('BoardingChecklistKanban', () => {
     );
   });
 
-  it('the "Start" action on a Pending card moves it to In Progress', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+  it('regression: a mutation response missing the stays join no longer drops the task from the list (merges instead of replacing)', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [buildEntry()],
       error: null,
     });
+    // Simulates a server response shaped like the pre-fix mutation
+    // endpoints - no `stays` field at all.
     vi.mocked(hotelApi.startCareLogEntry).mockResolvedValue({
-      data: buildEntry({ status: 'In Progress' }),
+      data: {
+        id: 'entry-1',
+        status: 'In Progress',
+      } as never,
       error: null,
     });
 
     renderBoard();
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Start: Morning meal/ })
+    );
 
     await waitFor(() =>
-      expect(hotelApi.startCareLogEntry).toHaveBeenCalledWith(
-        'entry-1',
-        'token'
-      )
+      expect(
+        screen.getByRole('heading', { name: /^In Progress/ })
+      ).toBeInTheDocument()
+    );
+    // Still visible under the Hotel tab - not silently filtered out because
+    // the merged entry kept its original `stays` field.
+    expect(screen.getByText('Max')).toBeInTheDocument();
+    expect(screen.getByText('Morning meal')).toBeInTheDocument();
+  });
+
+  it('splits the description into a title line and a detail line (e.g. the exact time)', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({
+          care_type: 'Medication',
+          description: 'Amoxicillin 250mg 1 — 8:00 AM',
+        }),
+      ],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() =>
+      expect(screen.getByText('Amoxicillin 250mg 1')).toBeInTheDocument()
+    );
+    expect(screen.getByText('8:00 AM')).toBeInTheDocument();
+  });
+
+  it('clicking a task expands its details, and clicking again collapses them', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(screen.queryByText(/Scheduled:/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Morning meal'));
+    await waitFor(() =>
+      expect(screen.getByText(/Scheduled:/)).toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByText('Morning meal'));
+    await waitFor(() =>
+      expect(screen.queryByText(/Scheduled:/)).not.toBeInTheDocument()
     );
   });
 
   it('filters by search text matching the pet name', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [buildEntry()],
       error: null,
     });
@@ -164,7 +307,7 @@ describe('BoardingChecklistKanban', () => {
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Search the Boarding Checklist'), {
+    fireEvent.change(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), {
       target: { value: 'Nobody' },
     });
 
@@ -172,15 +315,45 @@ describe('BoardingChecklistKanban', () => {
       expect(screen.queryByText('Max')).not.toBeInTheDocument()
     );
 
-    fireEvent.change(screen.getByLabelText('Search the Boarding Checklist'), {
+    fireEvent.change(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), {
       target: { value: 'max' },
     });
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
   });
 
-  it('groups Pending-column cards by time-of-day when the toggle is on', async () => {
-    vi.mocked(hotelApi.getTodayCareLogEntries).mockResolvedValue({
+  it('filters by care-type category', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({ id: 'entry-feeding', description: 'Feeding task' }),
+        buildEntry({
+          id: 'entry-walking',
+          description: 'Walking task',
+          care_type: 'Walking',
+        }),
+      ],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() =>
+      expect(screen.getByText('Feeding task')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Walking task')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Category'), {
+      target: { value: 'Walking' },
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText('Feeding task')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('Walking task')).toBeInTheDocument();
+  });
+
+  it('Group by: Time of day replaces the status columns with time-block columns', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [
         buildEntry({ id: 'entry-morning', time_block: 'Morning' }),
         buildEntry({
@@ -196,15 +369,59 @@ describe('BoardingChecklistKanban', () => {
     renderBoard();
 
     await waitFor(() =>
+      expect(screen.getAllByText('Max').length).toBeGreaterThan(0)
+    );
+    expect(
+      screen.queryByRole('heading', { name: /^Pending/ })
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Group by'), {
+      target: { value: 'time' },
+    });
+
+    await waitFor(() =>
       expect(
-        screen.getByText('Morning meal — 1 cup kibble')
+        screen.getByRole('heading', { name: /^Morning/ })
       ).toBeInTheDocument()
     );
     expect(
-      screen.getByRole('heading', { name: 'Morning', level: 3 })
+      screen.getByRole('heading', { name: /^Evening/ })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Evening', level: 3 })
+      screen.queryByRole('heading', { name: /^Pending/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Group by: Instructions (category) replaces the status columns with category columns', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({ care_type: 'Feeding' }),
+        buildEntry({
+          id: 'entry-2',
+          care_type: 'Medication',
+          description: 'Amoxicillin 250mg 1 — 8:00 AM',
+        }),
+      ],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() =>
+      expect(screen.getAllByText('Max').length).toBeGreaterThan(0)
+    );
+
+    fireEvent.change(screen.getByLabelText('Group by'), {
+      target: { value: 'category' },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: /^Feeding/ })
+      ).toBeInTheDocument()
+    );
+    expect(
+      screen.getByRole('heading', { name: /^Medication/ })
     ).toBeInTheDocument();
   });
 });

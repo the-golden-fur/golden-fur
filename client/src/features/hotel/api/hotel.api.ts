@@ -1,5 +1,6 @@
 import type { BookingStatus } from '../../booking/booking.types';
 import type {
+  ActivityLogEntry,
   Cage,
   CageSize,
   CageStatus,
@@ -204,25 +205,27 @@ export async function deleteCage(
   return { data: true, error: null };
 }
 
-export async function getTodayCareLogEntries(
-  accessToken: string
-): Promise<HotelApiResult<CareLogEntry[]>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/care-log/today`, {
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ entries: CareLogEntry[] }>(response);
-  return { data: result.data?.entries ?? null, error: result.error };
+export interface CareLogEntriesFilters {
+  /** Inclusive YYYY-MM-DD bounds against scheduled_date. Both omitted =
+   * today only (server default); either supplied = a deliberate range
+   * (e.g. QueueFilterBar's "All dates" preset supplies neither). */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
-export async function getFlaggedCareLogEntries(
-  accessToken: string
+/** Custom change (Boarding Checklist Kanban redesign): widened from a
+ * today-only fetch to an optional date range - Hotel stays span multiple
+ * days, so the checklist needs to show more than "today". */
+export async function getCareLogEntries(
+  accessToken: string,
+  filters: CareLogEntriesFilters = {}
 ): Promise<HotelApiResult<CareLogEntry[]>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/care-log/flagged`, {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
+  const response = await fetch(`${API_BASE_URL}/hotel/care-log/today${query}`, {
     headers: authHeaders(accessToken),
   });
 
@@ -330,6 +333,36 @@ export async function checkOutHotelStay(
   }
 
   return parseBody<CheckoutResult>(response);
+}
+
+export interface ListActivityLogFilters {
+  stayId?: string;
+  /** Inclusive YYYY-MM-DD bounds against created_at. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** Custom change: Hotel/Daycare activity logbook (#48 follow-up). */
+export async function listActivityLog(
+  accessToken: string,
+  filters: ListActivityLogFilters = {}
+): Promise<HotelApiResult<ActivityLogEntry[]>> {
+  const params = new URLSearchParams();
+  if (filters.stayId) params.set('stay_id', filters.stayId);
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
+  const response = await fetch(`${API_BASE_URL}/hotel/activity-log${query}`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ entries: ActivityLogEntry[] }>(response);
+  return { data: result.data?.entries ?? null, error: result.error };
 }
 
 // Sprint 5 unification (#82): food_catalog/medication_catalog admin CRUD

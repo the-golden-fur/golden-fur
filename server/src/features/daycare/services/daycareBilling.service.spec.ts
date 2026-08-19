@@ -14,6 +14,15 @@ vi.mock('../../booking/services/booking.service.ts', () => ({
   completeBooking: vi.fn(),
 }));
 
+// Custom change (activity logbook): recordActivity is covered by its own
+// unit tests (activityLog.service.spec.ts) - mocked wholesale here so these
+// checkout tests don't need to account for its extra Supabase write in
+// their sequential mock queue below.
+vi.mock('../../hotel/services/activityLog.service.ts', () => ({
+  recordActivity: vi.fn().mockResolvedValue(undefined),
+  recordBulkActivity: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -34,7 +43,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq']) {
+    for (const method of ['select', 'eq', 'in']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -44,9 +53,20 @@ function queueFromResults(...results: QueryResult[]) {
     });
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+    // Custom change (checkout gating): assertChecklistComplete's
+    // care_log_entries lookup awaits the query builder directly (no
+    // .maybeSingle()), same as checkout.service.spec.ts's builder.
+    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
     return builder;
   }) as never);
+}
+
+/** assertChecklistComplete's own care_log_entries lookup, queued right
+ * after the session lookup - an empty array means no outstanding tasks, so
+ * checkout proceeds. */
+function noOutstandingTasksResult(): QueryResult {
+  return { data: [], error: null };
 }
 
 function minutesLater(start: Date, minutes: number): Date {
@@ -195,6 +215,7 @@ describe('daycareBilling.service (#65)', () => {
           },
           error: null,
         },
+        noOutstandingTasksResult(),
         BRANCH_NO_HOURS,
         {
           data: {
@@ -235,6 +256,7 @@ describe('daycareBilling.service (#65)', () => {
           },
           error: null,
         },
+        noOutstandingTasksResult(),
         {
           data: {
             first_hour_fee: 200,
@@ -279,6 +301,7 @@ describe('daycareBilling.service (#65)', () => {
           },
           error: null,
         },
+        noOutstandingTasksResult(),
         BRANCH_NO_HOURS,
         {
           data: {
@@ -309,6 +332,7 @@ describe('daycareBilling.service (#65)', () => {
           },
           error: null,
         },
+        noOutstandingTasksResult(),
         BRANCH_NO_HOURS,
         {
           data: {
@@ -344,6 +368,34 @@ describe('daycareBilling.service (#65)', () => {
       await expect(
         checkOutDaycareSession({ sessionId: 'session-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('Custom change (checkout gating): rejects checkout while the Boarding Checklist still has Pending/In Progress tasks', async () => {
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: null,
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        {
+          data: [
+            { id: 'entry-1', status: 'Pending', scheduled_date: '2026-07-19' },
+          ],
+          error: null,
+        }
+      );
+
+      await expect(
+        checkOutDaycareSession({ sessionId: 'session-1' })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: 'Boarding checklist has 1 incomplete task',
+      });
     });
   });
 });

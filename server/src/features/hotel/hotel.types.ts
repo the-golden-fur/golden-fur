@@ -1,9 +1,11 @@
 /**
  * Feature-local role lists (mirrors daycare.types.ts / grooming.types.ts).
  * Front-desk roles can check in, edit care instructions, and process
- * checkout; Pet Assistant/Groomer may only mark Boarding Checklist entries
- * Pending/In Progress/Completed (enforced separately in hotel.routes.ts,
- * not folded into this one list).
+ * checkout. Boarding Checklist Kanban redesign: every HOTEL_ADVANCE_ROLES
+ * member (not just Pet Assistant/Groomer) can now mark entries Pending/In
+ * Progress/Completed - the old Pet-Assistant-only write gate and the
+ * separate admin-only flagged list are both retired in favor of one shared
+ * Kanban board.
  */
 export const HOTEL_FRONT_DESK_ROLES: readonly string[] = [
   'Receptionist',
@@ -12,22 +14,12 @@ export const HOTEL_FRONT_DESK_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
-/** Custom change (Boarding Checklist): Groomer added alongside Pet
- * Assistant - "should be also visible on groomer role" (the checklist now
- * covers Hotel and Daycare, not just the Pet Assistant's original Hotel-
- * only scope). Name kept for now to avoid a wider rename ripple. */
-export const HOTEL_PET_ASSISTANT_ROLES: readonly string[] = [
-  'Pet Assistant',
-  'Groomer',
-];
-
 export const HOTEL_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
 /** Groomer/Pet Assistant advance rights: Hotel has no dedicated assigned-
  * staff role (unlike Grooming/Veterinary), so Groomer and Pet Assistant may
  * also check pets in/out and browse the stay/cage lists needed to do that -
- * everything else (cage maintenance status, the flagged Care Log view) stays
- * front-desk/admin only. */
+ * everything else (cage maintenance status) stays front-desk/admin only. */
 export const HOTEL_ADVANCE_ROLES: readonly string[] = [
   ...HOTEL_FRONT_DESK_ROLES,
   'Groomer',
@@ -43,6 +35,21 @@ export type CageStatus =
 export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 export type CareType = 'Feeding' | 'Walking' | 'Medication' | 'Playing';
+/** Custom change (Boarding Checklist Kanban redesign): Missed is a lazy,
+ * read-time transition (mirrors bookings.status='No-show') - a Pending/In
+ * Progress entry whose scheduled_date has passed flips to Missed the next
+ * time it's read, never written directly from a client request. Backlog
+ * (Custom change) is the same idea for the opposite direction - a Pending
+ * task scheduled for a day after today - but is never persisted at all
+ * (applyBacklogLabel in careLogCompletion.service.ts), since it self-
+ * resolves back to a real 'Pending' the moment its date arrives with no
+ * write needed. */
+export type CareLogEntryStatus =
+  | 'Backlog'
+  | 'Pending'
+  | 'In Progress'
+  | 'Completed'
+  | 'Missed';
 export type StayType = 'Hotel' | 'Daycare';
 export type StayStatus = 'Active' | 'Completed';
 
@@ -157,16 +164,23 @@ export interface CareLogEntry {
    * 20260809120) or a Medication row with no real scheduled time
    * ('as scheduled'). */
   time_block: MealTime | null;
+  status: CareLogEntryStatus;
   completed_at: string | null;
   completed_by: string | null;
   created_at: string;
-  /** Only populated by getTodayCareLogEntries's join (#80 AC-2) - other
+  /** Only populated by getCareLogEntries's join (#80 AC-2) - other
    * queries in this feature don't need the completing staff member's name. */
   completed_by_staff?: { display_name: string } | null;
   /** Custom change (Boarding Checklist): only populated by
-   * getTodayCareLogEntries's join - pet name + which kind of stay
-   * (Hotel/Daycare) this task belongs to, for display/subtab filtering. */
-  stays?: { stay_type: 'Hotel' | 'Daycare'; pet_id: string } | null;
+   * getCareLogEntries's join - pet name + which kind of stay
+   * (Hotel/Daycare) this task belongs to, for display/subtab filtering.
+   * branch_id (activity logbook) was always selected by the same join
+   * (CARE_LOG_ENTRY_SELECT), just never typed until a consumer needed it. */
+  stays?: {
+    branch_id: string;
+    stay_type: 'Hotel' | 'Daycare';
+    pet_id: string;
+  } | null;
 }
 
 export interface CheckInResult {

@@ -3,11 +3,10 @@ import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { checkInHotelStay } from './services/careInstructions.service.ts';
 import {
   completeCareLogEntry,
-  getTodayCareLogEntries,
+  getCareLogEntries,
   reopenCareLogEntry,
   startCareLogEntry,
 } from './services/careLogCompletion.service.ts';
-import { getFlaggedCareLogEntries } from './services/careLogFlagging.service.ts';
 import {
   createCage,
   deleteCage,
@@ -20,8 +19,11 @@ import { checkOutHotelStay } from './services/checkout.service.ts';
 import { listHotelStays } from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
+import { listActivityLog } from './services/activityLog.service.ts';
 import {
+  activityLogQueryValidator,
   cageStatusUpdateValidator,
+  careLogEntriesQueryValidator,
   checkInValidator,
   createCageValidator,
   listHotelStaysQueryValidator,
@@ -140,7 +142,10 @@ export async function startCareLogEntryController(
   }
 
   try {
-    const entry = await startCareLogEntry({ entryId: paramId(req, 'id') });
+    const entry = await startCareLogEntry({
+      entryId: paramId(req, 'id'),
+      actorStaffId: requesterId,
+    });
     return res.status(200).json({ entry });
   } catch (error) {
     return sendServiceError(res, error);
@@ -159,14 +164,20 @@ export async function reopenCareLogEntryController(
   }
 
   try {
-    const entry = await reopenCareLogEntry({ entryId: paramId(req, 'id') });
+    const entry = await reopenCareLogEntry({
+      entryId: paramId(req, 'id'),
+      actorStaffId: requesterId,
+    });
     return res.status(200).json({ entry });
   } catch (error) {
     return sendServiceError(res, error);
   }
 }
 
-export async function todayCareLogEntriesController(
+/** Custom change (Boarding Checklist Kanban redesign): still backs
+ * GET /hotel/care-log/today, but now accepts optional date_from/date_to
+ * query params (both omitted = today only, unchanged default behavior). */
+export async function careLogEntriesController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -176,10 +187,25 @@ export async function todayCareLogEntriesController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const parsed = careLogEntriesQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  // Both omitted = the original "today only" default; either one supplied
+  // means the caller is deliberately using a range (e.g. QueueFilterBar's
+  // "All dates" preset, which supplies neither bound at all).
+  const bothOmitted = !parsed.data.date_from && !parsed.data.date_to;
+  const today = new Date().toISOString().slice(0, 10);
+
   try {
-    const entries = await getTodayCareLogEntries({
+    const entries = await getCareLogEntries({
       branchId,
-      date: new Date().toISOString().slice(0, 10),
+      dateFrom: bothOmitted ? today : parsed.data.date_from,
+      dateTo: bothOmitted ? today : parsed.data.date_to,
     });
 
     return res.status(200).json({ entries });
@@ -188,7 +214,10 @@ export async function todayCareLogEntriesController(
   }
 }
 
-export async function flaggedCareLogEntriesController(
+/** Custom change: Hotel/Daycare activity logbook (#48 follow-up). Superadmin
+ * sees every branch (branchId: null), same convention as the now-removed
+ * flaggedCareLogEntriesController's cross-branch view. */
+export async function activityLogController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -199,10 +228,20 @@ export async function flaggedCareLogEntriesController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const parsed = activityLogQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
   try {
-    const entries = await getFlaggedCareLogEntries({
+    const entries = await listActivityLog({
       branchId: role === 'Superadmin' ? null : branchId,
-      today: new Date().toISOString().slice(0, 10),
+      stayId: parsed.data.stay_id,
+      dateFrom: parsed.data.date_from,
+      dateTo: parsed.data.date_to,
     });
 
     return res.status(200).json({ entries });
@@ -409,6 +448,7 @@ export async function checkoutController(
     const result = await checkOutHotelStay({
       stayId: paramId(req, 'id'),
       branchId,
+      requesterId: req.user?.sub,
     });
 
     return res.status(200).json(result);

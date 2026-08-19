@@ -6,6 +6,15 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
 }));
 
+// Custom change (activity logbook): recordActivity is covered by its own
+// unit tests (activityLog.service.spec.ts) - mocked wholesale here so these
+// checkout tests don't need to account for its extra Supabase write in
+// their sequential mock queue below.
+vi.mock('./activityLog.service.ts', () => ({
+  recordActivity: vi.fn().mockResolvedValue(undefined),
+  recordBulkActivity: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -18,7 +27,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'update', 'is']) {
+    for (const method of ['select', 'eq', 'update', 'is', 'in']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -37,6 +46,13 @@ function completeBookingQueue(bookingId = 'booking-1') {
     { data: { id: bookingId, status: 'In Progress' }, error: null }, // completeBooking: load
     { data: { id: bookingId, status: 'Completed' }, error: null }, // completeBooking: update
   ];
+}
+
+/** assertChecklistComplete's own care_log_entries lookup, queued right
+ * after the hotel_stays lookup and before completeBookingQueue - an empty
+ * array means no outstanding tasks, so checkout proceeds. */
+function noOutstandingTasksResult(): QueryResult {
+  return { data: [], error: null };
 }
 
 const ACTIVE_STAY = {
@@ -82,6 +98,7 @@ describe('checkout.service (#78)', () => {
 
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
         ...completeBookingQueue(),
         {
           data: { ...ACTIVE_STAY, extension_fee: null },
@@ -105,6 +122,7 @@ describe('checkout.service (#78)', () => {
 
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
         ...completeBookingQueue(),
         {
           data: { ...ACTIVE_STAY, extension_fee: 1000 },
@@ -125,6 +143,7 @@ describe('checkout.service (#78)', () => {
     it('AC-4: releases the cage back to Available in the same call', async () => {
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
         ...completeBookingQueue(),
         { data: { ...ACTIVE_STAY }, error: null },
         { data: {}, error: null }
@@ -166,6 +185,7 @@ describe('checkout.service (#78)', () => {
     it('rejects checkout when the race-safe conditional update loses (actual_check_out_at was already set by a concurrent call)', async () => {
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
         ...completeBookingQueue(),
         { data: null, error: null } // conditional update matched 0 rows - lost the race
       );
@@ -181,6 +201,57 @@ describe('checkout.service (#78)', () => {
       await expect(
         checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-2' })
       ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('Custom change (checkout gating): rejects checkout while the Boarding Checklist still has Pending/In Progress tasks', async () => {
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        {
+          data: [
+            { id: 'entry-1', status: 'Pending', scheduled_date: '2026-08-05' },
+            {
+              id: 'entry-2',
+              status: 'In Progress',
+              scheduled_date: '2026-08-05',
+            },
+          ],
+          error: null,
+        }
+      );
+
+      await expect(
+        checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: 'Boarding checklist has 2 incomplete tasks',
+      });
+    });
+
+    it('Custom change (checkout gating): a Completed/Missed-only checklist does not block checkout', async () => {
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        {
+          data: [
+            {
+              id: 'entry-1',
+              status: 'Completed',
+              scheduled_date: '2026-08-04',
+            },
+            { id: 'entry-2', status: 'Missed', scheduled_date: '2026-08-03' },
+          ],
+          error: null,
+        },
+        ...completeBookingQueue(),
+        { data: { ...ACTIVE_STAY }, error: null },
+        { data: {}, error: null }
+      );
+
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+      });
+
+      expect(result.stay).toBeDefined();
     });
   });
 });
