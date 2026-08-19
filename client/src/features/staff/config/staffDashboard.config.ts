@@ -8,6 +8,7 @@ import {
   Coins,
   DoorOpen,
   Heart,
+  History,
   LogIn,
   Receipt,
   Scissors,
@@ -154,6 +155,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               "Today's feeding, walking, playtime, and medication checklist for checked-in pets.",
             to: '/staff/hotel/care-log',
           },
+          {
+            title: 'Activity Log',
+            description:
+              'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
+            to: '/staff/hotel/activity-log',
+          },
         ],
       },
       {
@@ -194,6 +201,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Boarding Checklist',
             description: 'End-of-day uncompleted care log flags.',
             to: '/staff/hotel/care-log',
+          },
+          {
+            title: 'Activity Log',
+            description:
+              'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
+            to: '/staff/hotel/activity-log',
           },
           {
             title: 'Hotel Queue',
@@ -282,6 +295,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/hotel/care-log',
           },
           {
+            title: 'Activity Log',
+            description:
+              'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
+            to: '/staff/hotel/activity-log',
+          },
+          {
             title: 'Branch Reports',
             description:
               'Daily Sales Report - branch-wide performance reporting.',
@@ -365,6 +384,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               "Today's feeding, walking, playtime, and medication checklist for checked-in pets.",
             to: '/staff/hotel/care-log',
           },
+          {
+            title: 'Activity Log',
+            description:
+              'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
+            to: '/staff/hotel/activity-log',
+          },
         ],
       },
     ],
@@ -438,6 +463,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/hotel/care-log',
           },
           {
+            title: 'Activity Log',
+            description:
+              'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
+            to: '/staff/hotel/activity-log',
+          },
+          {
             title: 'Hotel Queue',
             description:
               'Check pets in and out, cage assignment, and billing handoff.',
@@ -485,6 +516,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Payments Queue': Receipt,
   'Credit Management': Coins,
   'Boarding Checklist': Heart,
+  'Activity Log': History,
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
   'Transaction History': Receipt,

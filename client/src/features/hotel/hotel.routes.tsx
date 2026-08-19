@@ -9,6 +9,7 @@ import {
 } from './pages/HotelQueuePage/HotelLegacyRedirects';
 import { HotelCheckInFormPage } from './pages/HotelCheckInFormPage/HotelCheckInFormPage';
 import { BoardingChecklistPage } from './pages/BoardingChecklistPage/BoardingChecklistPage';
+import { ActivityLogPage } from './pages/ActivityLogPage/ActivityLogPage';
 import { AdminCagesPage } from './pages/AdminCagesPage/AdminCagesPage';
 
 /**
@@ -34,6 +35,7 @@ export const hotelRoutes = (
         element={<HotelCheckoutStayRedirect />}
       />
       <Route path="/staff/hotel/care-log" element={<BoardingChecklistPage />} />
+      <Route path="/staff/hotel/activity-log" element={<ActivityLogPage />} />
       <Route path="/staff/admin/hotel/cages" element={<AdminCagesPage />} />
     </Route>
   </Fragment>
