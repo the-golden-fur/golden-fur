@@ -50,4 +50,28 @@ describe('Modal', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('does not close on backdrop click when closeOnBackdropClick is false, but the close button still works', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      createElement(
+        Modal,
+        {
+          isOpen: true,
+          title: 'Configure',
+          onClose,
+          closeOnBackdropClick: false,
+        },
+        'Body content'
+      )
+    );
+
+    await user.click(screen.getByRole('presentation'));
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
