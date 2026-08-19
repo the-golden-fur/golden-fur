@@ -9,6 +9,14 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
 }));
 
+// Custom change (activity logbook): recordActivity is covered by its own
+// unit tests (activityLog.service.spec.ts) - mocked wholesale here so these
+// check-in tests don't need to account for its extra Supabase write in
+// their sequential mock queue below.
+vi.mock('./activityLog.service.ts', () => ({
+  recordActivity: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

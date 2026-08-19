@@ -1,5 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
+import { assertChecklistComplete } from './careLogCompletion.service.ts';
+import { recordActivity } from './activityLog.service.ts';
 import type { CheckoutResult, HotelStay } from '../hotel.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -38,6 +40,10 @@ export function extensionDays(
 interface CheckoutParams {
   stayId: string;
   branchId: string;
+  /** Custom change (activity logbook): who performed the checkout, for the
+   * logbook entry - optional so existing call sites/tests that never had a
+   * reason to know the requester keep working unchanged. */
+  requesterId?: string;
 }
 
 /**
@@ -70,14 +76,15 @@ interface CheckoutParams {
  * was reintroduced (it originally lived on hotel_stays, then was dropped by
  * the booking-status revision, then came back once Daycare walk-ins - which
  * have no booking at all - needed to share this table). Hotel rows keep
- * setting it here for read-path consistency (careLogCompletion.service.ts /
- * careLogFlagging.service.ts now filter on `stays.status` directly instead
- * of joining through `bookings`), even though this function's own gating
+ * setting it here for read-path consistency (careLogCompletion.service.ts
+ * now filters on `stays.status` directly instead of joining through
+ * `bookings`), even though this function's own gating
  * still authoritatively reads the booking's status, not this column.
  */
 export async function checkOutHotelStay({
   stayId,
   branchId,
+  requesterId,
 }: CheckoutParams): Promise<CheckoutResult> {
   const { data: stay, error: stayError } = await supabase
     .from('stays')
@@ -102,6 +109,11 @@ export async function checkOutHotelStay({
   if (bookingStatus !== 'In Progress') {
     throwWithStatus(409, 'This hotel stay is already checked out');
   }
+
+  // Custom change (checkout gating): blocks checkout while the Boarding
+  // Checklist still has actionable (Pending/In Progress) tasks - Missed
+  // tasks don't block, see assertChecklistComplete's own docs.
+  await assertChecklistComplete(stayId);
 
   const now = new Date();
   const days = extensionDays(stay.scheduled_check_out_date, now);
@@ -136,6 +148,17 @@ export async function checkOutHotelStay({
     .from('cages')
     .update({ status: 'Available', updated_at: now.toISOString() })
     .eq('id', updated.cage_id);
+
+  await recordActivity({
+    branchId,
+    stayId,
+    action: 'check_out',
+    actorStaffId: requesterId,
+    description:
+      extensionFee != null
+        ? `Checked out of a Hotel stay (₱${extensionFee} extension fee)`
+        : 'Checked out of a Hotel stay',
+  });
 
   return {
     stay: updated as HotelStay,

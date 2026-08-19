@@ -5,10 +5,10 @@ import {
   listDaycareSessions,
 } from './services/daycareCheckIn.service.ts';
 import { checkOutDaycareSession } from './services/daycareBilling.service.ts';
-import { checkInValidator } from './modules/validators/daycare.validator.ts';
-import type { DaycareStatus } from './daycare.types.ts';
-
-const VALID_SESSION_STATUSES = new Set<DaycareStatus>(['Active', 'Completed']);
+import {
+  checkInValidator,
+  listDaycareSessionsQueryValidator,
+} from './modules/validators/daycare.validator.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
   const value = req.params[name];
@@ -66,15 +66,21 @@ export async function listDaycareSessionsController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const statusParam = req.query.status;
-  const status =
-    typeof statusParam === 'string' &&
-    VALID_SESSION_STATUSES.has(statusParam as DaycareStatus)
-      ? (statusParam as DaycareStatus)
-      : undefined;
+  const parsed = listDaycareSessionsQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
 
   try {
-    const sessions = await listDaycareSessions({ branchId, status });
+    const sessions = await listDaycareSessions({
+      branchId,
+      status: parsed.data.status,
+      dateFrom: parsed.data.date_from,
+      dateTo: parsed.data.date_to,
+    });
     return res.status(200).json({ sessions });
   } catch (error) {
     return sendServiceError(res, error);
@@ -94,6 +100,7 @@ export async function checkOutDaycareSessionController(
   try {
     const session = await checkOutDaycareSession({
       sessionId: paramId(req, 'id'),
+      requesterId,
     });
 
     return res.status(200).json({ session });

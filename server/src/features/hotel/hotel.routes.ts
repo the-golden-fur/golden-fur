@@ -4,29 +4,24 @@ import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  activityLogController,
   availableCageCountsController,
   cageGridController,
+  careLogEntriesController,
   checkInController,
   checkoutController,
   completeCareLogEntryController,
   createCageController,
   currentPrescriptionController,
   deleteCageController,
-  flaggedCareLogEntriesController,
   listHotelStaysController,
   reopenCareLogEntryController,
   startCareLogEntryController,
   suggestCageController,
-  todayCareLogEntriesController,
   updateCageController,
   updateCageStatusController,
 } from './hotel.controller.ts';
-import {
-  HOTEL_ADMIN_ROLES,
-  HOTEL_ADVANCE_ROLES,
-  HOTEL_FRONT_DESK_ROLES,
-  HOTEL_PET_ASSISTANT_ROLES,
-} from './hotel.types.ts';
+import { HOTEL_ADMIN_ROLES, HOTEL_ADVANCE_ROLES } from './hotel.types.ts';
 
 const router = Router();
 // Care-log-only browsing (today's checklist, the stays/cages lists needed to
@@ -63,12 +58,15 @@ router.get(
   currentPrescriptionController
 );
 
-// Issue #76
+// Issue #76. Custom change (Boarding Checklist Kanban redesign): widened
+// from HOTEL_PET_ASSISTANT_ROLES to HOTEL_ADVANCE_ROLES - the unified Kanban
+// (replacing the old admin-only flagged list, see #77 below) now shows
+// actionable checkboxes to front-desk/Admin/Supervisor/Superadmin too.
 router.patch(
   '/hotel/care-log-entry/:id/complete',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_PET_ASSISTANT_ROLES]),
+  requireRole(frontDeskAndAssistants),
   requireBranch,
   completeCareLogEntryController
 );
@@ -78,7 +76,7 @@ router.patch(
   '/hotel/care-log-entry/:id/start',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_PET_ASSISTANT_ROLES]),
+  requireRole(frontDeskAndAssistants),
   requireBranch,
   startCareLogEntryController
 );
@@ -87,29 +85,36 @@ router.patch(
   '/hotel/care-log-entry/:id/reopen',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_PET_ASSISTANT_ROLES]),
+  requireRole(frontDeskAndAssistants),
   requireBranch,
   reopenCareLogEntryController
 );
 
-// Issue #80 (pet-assistant-facing daily checklist)
+// Issue #80 (Boarding Checklist). Custom change (redesign): now accepts an
+// optional date_from/date_to range (see careLogEntriesQueryValidator) -
+// still defaults to today-only when neither is supplied.
 router.get(
   '/hotel/care-log/today',
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole(frontDeskAndAssistants),
   requireBranch,
-  todayCareLogEntriesController
+  careLogEntriesController
 );
 
-// Issue #77
+// Issue #77's admin-only flagged list is retired (Boarding Checklist Kanban
+// redesign) - the unified Kanban's Pending/Missed columns, now visible to
+// every role via the route above, replace it. See
+// careLogFlagging.service.ts's removal in the same change.
+
+// Custom change: Hotel/Daycare activity logbook (#48 follow-up).
 router.get(
-  '/hotel/care-log/flagged',
+  '/hotel/activity-log',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireRole(frontDeskAndAssistants),
   requireBranch,
-  flaggedCareLogEntriesController
+  activityLogController
 );
 
 // Issue #78

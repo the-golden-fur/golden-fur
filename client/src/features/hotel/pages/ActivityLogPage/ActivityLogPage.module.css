@@ -1,0 +1,126 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  min-height: 100vh;
+}
+
+.content {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.resultCount {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.errorBanner {
+  margin: 0;
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-2);
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.row:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.actionBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: 0.125rem var(--space-1);
+  white-space: nowrap;
+}
+
+.actionCheckIn {
+  background: var(--color-active-bg);
+  color: var(--color-active-text);
+}
+
+.actionCheckOut {
+  background: var(--color-status-neutral-bg);
+  color: var(--color-status-neutral-text);
+}
+
+.actionStarted {
+  background: var(--color-grooming-status-inprogress-bg);
+  color: var(--color-grooming-status-inprogress-text);
+}
+
+.actionCompleted {
+  background: var(--color-grooming-status-completed-bg);
+  color: var(--color-grooming-status-completed-text);
+}
+
+.actionReopened {
+  background: var(--color-daycare-status-active-bg);
+  color: var(--color-daycare-status-active-text);
+}
+
+.actionMissed {
+  background: var(--color-booking-noshow-bg);
+  color: var(--color-booking-noshow-text);
+}
+
+.description {
+  flex: 1;
+  min-width: 12rem;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.meta {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}

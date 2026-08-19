@@ -164,7 +164,22 @@
      the same semantic the amber tier already carries system-wide. */
   --color-notification-unread-bg: #fbefd2;
   --color-notification-unread-text: #8a6a1a;
+  /* Boarding Checklist Kanban redesign: care-type badge colors, one per
+     care_type (Feeding/Walking/Playing/Medication) - each aliases an
+     existing hue family rather than inventing a new one (Feeding/success,
+     Walking/daycare-active-blue, Playing/grooming-inprogress-amber,
+     Medication/health-flag-red), so a category badge's color carries the
+     same "how-serious-is-this" read the rest of the app already uses. */
+  --color-care-type-feeding-bg: #eaf6eb;
+  --color-care-type-feeding-text: #2f6f3b;
+  --color-care-type-walking-bg: #e3ecf5;
+  --color-care-type-walking-text: #2a4a6b;
+  --color-care-type-playing-bg: #fbefd2;
+  --color-care-type-playing-text: #8a6a1a;
+  --color-care-type-medication-bg: #fceeee;
+  --color-care-type-medication-text: #8a2a2a;
   --shadow-card: 0 14px 34px rgba(43, 24, 6, 0.12);
+  --shadow-card-hover: 0 18px 40px rgba(43, 24, 6, 0.18);
   /* LandingPage "glass card" panels (translucent cards floating over the
      hero photo/gradient) - RGB-only so each card can keep its own
      hand-tuned alpha via rgba(var(--color-landing-glass-bg-rgb), X) while
@@ -295,7 +310,18 @@
      as the customer-theme block above. */
   --color-notification-unread-bg: #4d3413;
   --color-notification-unread-text: #ffd27a;
+  /* Boarding Checklist Kanban redesign - dark-theme values, same aliasing
+     rationale as the light-theme block above. */
+  --color-care-type-feeding-bg: #20462d;
+  --color-care-type-feeding-text: #bde7c4;
+  --color-care-type-walking-bg: #22405c;
+  --color-care-type-walking-text: #b7d2ea;
+  --color-care-type-playing-bg: #4d3413;
+  --color-care-type-playing-text: #ffd27a;
+  --color-care-type-medication-bg: #8a2a2a;
+  --color-care-type-medication-text: #fceeee;
   --shadow-card: 0 16px 36px rgba(3, 1, 0, 0.28);
+  --shadow-card-hover: 0 20px 44px rgba(0, 0, 0, 0.38);
   /* LandingPage glass cards - dark mode swaps the translucent white panel
      for a translucent dark one (matches --color-surface/--color-border)
      instead of staying white, so text drawn on top (already mode-aware)

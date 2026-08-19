@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkInDaycareSession,
+  listDaycareSessions,
   resolveCutoffInstant,
 } from './daycareCheckIn.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -12,6 +13,14 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 
 vi.mock('../../booking/services/booking.service.ts', () => ({
   startBooking: vi.fn(),
+}));
+
+// Custom change (activity logbook): recordActivity is covered by its own
+// unit tests (activityLog.service.spec.ts) - mocked wholesale here so these
+// check-in tests don't need to account for its extra Supabase write in
+// their sequential mock queue below.
+vi.mock('../../hotel/services/activityLog.service.ts', () => ({
+  recordActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -34,7 +43,16 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'update', 'not', 'order', 'limit']) {
+    for (const method of [
+      'select',
+      'eq',
+      'update',
+      'not',
+      'order',
+      'limit',
+      'gte',
+      'lt',
+    ]) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -285,6 +303,53 @@ describe('daycareCheckIn.service (#65)', () => {
           input: { booking_id: 'booking-1' },
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  describe('listDaycareSessions (Custom change: Daycare checkout UI parity with Hotel)', () => {
+    it('filters by status when given', async () => {
+      queueFromResults({ data: [], error: null });
+
+      await listDaycareSessions({ branchId: 'branch-1', status: 'Active' });
+
+      const builder = vi.mocked(supabase.from).mock.results[0]!.value as {
+        eq: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.eq).toHaveBeenCalledWith('status', 'Active');
+    });
+
+    it('applies an inclusive date range against check_in_at, turning dateTo into an exclusive next-day bound', async () => {
+      queueFromResults({ data: [], error: null });
+
+      await listDaycareSessions({
+        branchId: 'branch-1',
+        dateFrom: '2026-08-05',
+        dateTo: '2026-08-05',
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0]!.value as {
+        gte: ReturnType<typeof vi.fn>;
+        lt: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.gte).toHaveBeenCalledWith(
+        'check_in_at',
+        '2026-08-05T00:00:00.000Z'
+      );
+      expect(builder.lt).toHaveBeenCalledWith(
+        'check_in_at',
+        '2026-08-06T00:00:00.000Z'
+      );
+    });
+
+    it('returns the sessions from the query with no filters applied when none are given', async () => {
+      queueFromResults({
+        data: [{ id: 'session-1', stay_type: 'Daycare' }],
+        error: null,
+      });
+
+      const sessions = await listDaycareSessions({ branchId: 'branch-1' });
+
+      expect(sessions).toHaveLength(1);
     });
   });
 });

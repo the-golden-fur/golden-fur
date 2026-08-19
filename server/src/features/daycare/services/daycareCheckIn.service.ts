@@ -11,6 +11,7 @@ import {
   generateCareLogEntries,
 } from '../../hotel/services/careInstructions.service.ts';
 import { releaseCage } from '../../hotel/services/cageAssignment.service.ts';
+import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 
 /** Fixed per Modules-Features - not read from branches.daycare_checkin_cutoff
  * even though the column exists on every branch (#62 migration note); only
@@ -271,6 +272,14 @@ export async function checkInDaycareSession({
       medications
     );
 
+    await recordActivity({
+      branchId,
+      stayId: inserted.id,
+      action: 'check_in',
+      actorStaffId: requesterId,
+      description: 'Checked in for a Daycare session',
+    });
+
     return inserted as DaycareSession;
   } catch (error) {
     await releaseCage(cage.id);
@@ -281,6 +290,14 @@ export async function checkInDaycareSession({
 interface ListDaycareSessionsParams {
   branchId: string;
   status?: DaycareStatus;
+  /** Inclusive YYYY-MM-DD bounds against check_in_at (a timestamptz, unlike
+   * Hotel's date-only scheduled_check_out_date) - Custom change (Daycare
+   * checkout UI parity with Hotel). Mirrors booking.service.ts's listBookings
+   * date-range handling: an inclusive dateTo is turned into an exclusive
+   * `< dateTo + 1 day` bound since a timestamp column can't be compared with
+   * a bare date string the way a date column can. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /** Mirrors hotelStay.service.ts's listHotelStays - backs Daycare Checkout's
@@ -289,6 +306,8 @@ interface ListDaycareSessionsParams {
 export async function listDaycareSessions({
   branchId,
   status,
+  dateFrom,
+  dateTo,
 }: ListDaycareSessionsParams): Promise<DaycareSession[]> {
   let query = supabase
     .from('stays')
@@ -299,6 +318,18 @@ export async function listDaycareSessions({
 
   if (status) {
     query = query.eq('status', status);
+  }
+
+  if (dateFrom) {
+    query = query.gte('check_in_at', `${dateFrom}T00:00:00.000Z`);
+  }
+
+  if (dateTo) {
+    const exclusiveEnd = new Date(
+      new Date(`${dateTo}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    query = query.lt('check_in_at', exclusiveEnd);
   }
 
   const { data, error } = await query;

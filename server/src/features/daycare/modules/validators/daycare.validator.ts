@@ -58,3 +58,18 @@ export const checkInValidator = z
   });
 
 export type CheckInInput = z.infer<typeof checkInValidator>;
+
+/** Custom change (Daycare checkout UI parity with Hotel): gives
+ * GET /daycare/sessions the same status + inclusive date-range query shape
+ * listHotelStaysQueryValidator already gives GET /hotel/stays, so
+ * DaycareSessionPicker can reuse the same QueueFilterBar HotelStayPicker's
+ * checkout list uses. */
+export const listDaycareSessionsQueryValidator = z.object({
+  status: z.enum(['Active', 'Completed']).optional(),
+  date_from: z.iso.date().optional(),
+  date_to: z.iso.date().optional(),
+});
+
+export type ListDaycareSessionsQueryInput = z.infer<
+  typeof listDaycareSessionsQueryValidator
+>;

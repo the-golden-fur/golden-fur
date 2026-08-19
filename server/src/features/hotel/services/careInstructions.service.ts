@@ -6,6 +6,7 @@ import {
   releaseCage,
   suggestCage,
 } from './cageAssignment.service.ts';
+import { recordActivity } from './activityLog.service.ts';
 import type { CheckInInput } from '../modules/validators/hotel.validator.ts';
 import type {
   CareFeedingInstruction,
@@ -149,6 +150,14 @@ export async function checkInHotelStay({
       playing,
       medications
     );
+
+    await recordActivity({
+      branchId,
+      stayId: stay.id,
+      action: 'check_in',
+      actorStaffId: requesterId,
+      description: 'Checked in for a Hotel stay',
+    });
 
     return {
       stay: stay as HotelStay,

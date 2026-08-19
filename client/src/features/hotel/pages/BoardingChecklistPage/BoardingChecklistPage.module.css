@@ -7,7 +7,7 @@
 .content {
   display: grid;
   gap: var(--space-3);
-  max-width: 72rem;
+  max-width: 80rem;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
