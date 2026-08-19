@@ -21,7 +21,11 @@
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   font: inherit;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  /* Icon sits at left: var(--space-2) (16px) and is 15px wide, so text needs
+     to start well past its 31px right edge - var(--space-5) alone (40px)
+     read as touching/overlapping the first character in practice. */
+  padding: var(--space-2) var(--space-2) var(--space-2)
+    calc(var(--space-5) + var(--space-1));
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
@@ -59,7 +63,8 @@
   background: var(--color-surface);
   color: var(--color-text-primary);
   font: inherit;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  padding: var(--space-2) var(--space-2) var(--space-2)
+    calc(var(--space-5) + var(--space-1));
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;

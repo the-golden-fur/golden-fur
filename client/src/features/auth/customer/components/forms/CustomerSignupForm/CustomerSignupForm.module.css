@@ -138,7 +138,10 @@
 }
 
 .iconField .input {
-  padding-left: 34px;
+  /* Glyph sits at left: 12px and is 20px wide (right edge at 32px) - 34px
+     of padding left read as touching/overlapping it in practice. 48px
+     matches StaffLoginForm's own icon field padding (same icon geometry). */
+  padding-left: 48px;
 }
 
 .glyph {

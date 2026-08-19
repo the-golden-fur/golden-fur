@@ -122,7 +122,7 @@ export function StaffLoginForm() {
             autoComplete="username"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
-            style={{ paddingLeft: '40px' }}
+            style={{ paddingLeft: '48px' }}
           />
         </div>
       </label>
@@ -150,7 +150,7 @@ export function StaffLoginForm() {
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            style={{ paddingLeft: '40px' }}
+            style={{ paddingLeft: '48px' }}
           />
         </div>
       </label>
