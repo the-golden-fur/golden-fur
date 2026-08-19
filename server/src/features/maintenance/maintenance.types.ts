@@ -199,14 +199,15 @@ export interface Package {
    * booking-creation time in booking.service.ts).
    */
   total_duration_minutes: number | null;
-  /** Custom change (pricing matrix fix): off by default (packages have
-   * never varied by pet before). When on, the booking-time price is
-   * derived as the sum of each included service's own per-pet price
-   * (respecting each member's own use_pricing_matrix flag and the Cat
-   * flat-price rule) with the bundle discount applied on top - see
-   * resolvePackagePrice in booking.service.ts - instead of this row's own
-   * flat bundled_price. bundled_price above still shows the flat estimate
-   * either way (an S/SC-equivalent reference figure for the admin list). */
+  /** Custom change (pricing matrix redesign): off by default (packages have
+   * never varied by pet before). When on, the booking-time price runs this
+   * row's own flat bundled_price through the same weight/coat rule engine a
+   * standalone Grooming service's base_price uses (deriveGroomingMatrix),
+   * independent of any included service's own use_pricing_matrix flag - see
+   * resolvePackagePrice in booking.service.ts. Also exempt for a Cat pet,
+   * same as a service's own matrix. bundled_price above still shows the
+   * flat estimate either way (an S/SC-equivalent reference figure for the
+   * admin list). */
   use_pricing_matrix: boolean;
   /** Custom change (P-1 roadmap item): same convention as
    * Service.requires_downpayment/downpayment_amount/downpayment_type above. */

@@ -6,6 +6,11 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Set false for a form-carrying modal where an accidental outside click
+   * shouldn't discard in-progress input - the explicit close button (and any
+   * Cancel button inside) still closes it either way. Defaults to true,
+   * preserving every existing consumer's behavior. */
+  closeOnBackdropClick?: boolean;
 }
 
 /**
@@ -15,7 +20,13 @@ interface ModalProps {
  * Services/Service Types/Packages admin pages so an edit form opens over the
  * list instead of pushing it down.
  */
-export function Modal({ isOpen, title, onClose, children }: ModalProps) {
+export function Modal({
+  isOpen,
+  title,
+  onClose,
+  children,
+  closeOnBackdropClick = true,
+}: ModalProps) {
   const titleId = useId();
 
   if (!isOpen) {
@@ -23,7 +34,11 @@ export function Modal({ isOpen, title, onClose, children }: ModalProps) {
   }
 
   return (
-    <div className={styles.backdrop} role="presentation" onClick={onClose}>
+    <div
+      className={styles.backdrop}
+      role="presentation"
+      onClick={closeOnBackdropClick ? onClose : undefined}
+    >
       <section
         className={styles.modal}
         role="dialog"

@@ -340,17 +340,13 @@ describe('AdminServicesPage', () => {
     });
     expect(matrixCheckbox).not.toBeChecked();
     expect(
-      screen.queryByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
-      )
+      screen.queryByText('Size & coat pricing matrix - derived, read-only')
     ).not.toBeInTheDocument();
 
     await user.click(matrixCheckbox);
 
     expect(
-      screen.getByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
-      )
+      screen.getByText('Size & coat pricing matrix - derived, read-only')
     ).toBeInTheDocument();
 
     // Two "Category" controls exist once the form is open (the list filter
@@ -363,9 +359,7 @@ describe('AdminServicesPage', () => {
       })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
-      )
+      screen.queryByText('Size & coat pricing matrix - derived, read-only')
     ).not.toBeInTheDocument();
   });
 

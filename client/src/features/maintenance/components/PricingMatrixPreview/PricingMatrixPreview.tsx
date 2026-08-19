@@ -26,10 +26,13 @@ interface PricingMatrixPreviewProps {
 }
 
 /**
- * Read-only S/M/L/XL x SC/LC grid, derived live from base_price and the
- * shared pricing_configuration (#81) - shown on both the Grooming service
- * form and the Pricing Configuration page's own illustrative preview, so the
- * two surfaces can never disagree (same deriveGroomingMatrix call).
+ * Read-only S/M/L/XL x SC/LC grid, derived live from a base price and the
+ * shared pricing_configuration (#81) - shown on the Grooming service form,
+ * the Pricing Configuration page's own illustrative preview, and (custom
+ * change: package pricing redesign) the package builder's own matrix
+ * toggle, so all three surfaces can never disagree (same deriveGroomingMatrix
+ * call). Generic on purpose - basePrice isn't always a Grooming service's own
+ * base_price, so the legend doesn't name a specific source.
  */
 export function PricingMatrixPreview({
   basePrice,
@@ -45,7 +48,7 @@ export function PricingMatrixPreview({
   return (
     <fieldset className={styles.preview}>
       <legend className={styles.legend}>
-        Size &amp; coat pricing matrix (Grooming) - derived, read-only
+        Size &amp; coat pricing matrix - derived, read-only
       </legend>
       <div className={styles.grid} role="grid">
         <span className={styles.cornerCell} aria-hidden="true" />

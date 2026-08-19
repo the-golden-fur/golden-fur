@@ -1539,13 +1539,6 @@ describe('booking.service (#51)', () => {
       updated_at: '2026-01-01T00:00:00.000Z',
     };
 
-    const PACKAGE_PRICING_CONFIG = {
-      id: 'package-pricing-config-1',
-      bundle_discount_percentage: 0.1,
-      updated_by_staff_id: null,
-      updated_at: '2026-01-01T00:00:00.000Z',
-    };
-
     it('resolveServicePrice: a matrix-enabled Grooming service returns the matching tier for a Dog', () => {
       const price = resolveServicePrice(
         {
@@ -1594,49 +1587,34 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(300);
     });
 
-    it('resolvePackagePrice: a non-matrix package uses the flat bundled_price regardless of members', async () => {
+    it('resolvePackagePrice: a non-matrix package uses the flat bundled_price', async () => {
       const price = await resolvePackagePrice(
         { bundled_price: 999, use_pricing_matrix: false },
-        [{ category: 'Grooming', base_price: 300, use_pricing_matrix: true }],
         PET as never
       );
 
       expect(price).toBe(999);
     });
 
-    it("resolvePackagePrice: a matrix-enabled package sums each member's own per-pet price, bundle-discounted", async () => {
-      queueFromResults(
-        { data: PRICING_CONFIG, error: null }, // getPricingConfiguration
-        { data: PACKAGE_PRICING_CONFIG, error: null } // getPackagePricingConfiguration
-      );
+    it("resolvePackagePrice: a matrix-enabled package derives from its own bundled_price via the matrix, independent of any member's own flag (custom change: package pricing redesign)", async () => {
+      queueFromResults({ data: PRICING_CONFIG, error: null }); // getPricingConfiguration
 
       const price = await resolvePackagePrice(
-        { bundled_price: 999, use_pricing_matrix: true },
-        [
-          { category: 'Grooming', base_price: 300, use_pricing_matrix: true }, // S multiplier 1.0 -> 300
-          { category: 'Grooming', base_price: 100, use_pricing_matrix: false }, // flat -> 100
-        ],
-        PET as never // S/SC
+        { bundled_price: 300, use_pricing_matrix: true },
+        { ...PET, weight_class: 'L', coat_type: 'SC' } as never // L multiplier 1.25
       );
 
-      // (300 + 100) * (1 - 0.10) = 360
-      expect(price).toBe(360);
+      // 300 * 1.25 = 375
+      expect(price).toBe(375);
     });
 
-    it("resolvePackagePrice: a Cat pet gets every member's flat base_price even when matrix-enabled", async () => {
-      queueFromResults(
-        { data: PRICING_CONFIG, error: null },
-        { data: PACKAGE_PRICING_CONFIG, error: null }
-      );
-
+    it('resolvePackagePrice: a Cat pet always gets the flat bundled_price even when matrix-enabled', async () => {
       const price = await resolvePackagePrice(
-        { bundled_price: 999, use_pricing_matrix: true },
-        [{ category: 'Grooming', base_price: 300, use_pricing_matrix: true }],
+        { bundled_price: 300, use_pricing_matrix: true },
         CAT_PET as never
       );
 
-      // 300 * (1 - 0.10) = 270
-      expect(price).toBe(270);
+      expect(price).toBe(300);
     });
   });
 });

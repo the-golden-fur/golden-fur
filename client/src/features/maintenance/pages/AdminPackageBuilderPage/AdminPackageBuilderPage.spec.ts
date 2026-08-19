@@ -11,6 +11,7 @@ import * as maintenanceApi from '../../api/maintenance.api';
 import type {
   Package,
   PackagePricingConfiguration,
+  PricingConfiguration,
   Service,
 } from '../../maintenance.types';
 import { AdminPackageBuilderPage } from './AdminPackageBuilderPage';
@@ -28,6 +29,7 @@ vi.mock('../../api/maintenance.api', () => ({
   setPackageBranchAvailability: vi.fn(),
   getPackagePricingConfiguration: vi.fn(),
   updatePackagePricingConfiguration: vi.fn(),
+  getPricingConfiguration: vi.fn(),
 }));
 
 const BRANCHES = [
@@ -38,6 +40,22 @@ const BRANCHES = [
 const PACKAGE_PRICING_CONFIGURATION: PackagePricingConfiguration = {
   id: 'package-pricing-1',
   bundle_discount_percentage: 0.1,
+  updated_by_staff_id: null,
+  updated_at: '2026-07-26T00:00:00.000Z',
+};
+
+const PRICING_CONFIGURATION: PricingConfiguration = {
+  id: 'pricing-config-1',
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.1,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.25,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 1.5,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -54,6 +72,10 @@ function buildService(overrides: Partial<Service> = {}): Service {
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
+    use_pricing_matrix: false,
+    requires_downpayment: false,
+    downpayment_amount: null,
+    downpayment_type: null,
     service_pricing_tiers: [],
     service_branch_availability: [
       {
@@ -81,6 +103,10 @@ function buildPackage(overrides: Partial<Package> = {}): Package {
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
+    use_pricing_matrix: false,
+    requires_downpayment: false,
+    downpayment_amount: null,
+    downpayment_type: null,
     package_services: [
       { service_id: 'service-1' },
       { service_id: 'service-2' },
@@ -188,6 +214,10 @@ describe('AdminPackageBuilderPage', () => {
     });
     vi.mocked(maintenanceApi.getPackagePricingConfiguration).mockResolvedValue({
       data: PACKAGE_PRICING_CONFIGURATION,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.getPricingConfiguration).mockResolvedValue({
+      data: PRICING_CONFIGURATION,
       error: null,
     });
   });
@@ -298,6 +328,8 @@ describe('AdminPackageBuilderPage', () => {
         branch_ids: ['branch-southwoods'],
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
+        use_pricing_matrix: false,
+        requires_downpayment: false,
       });
     });
 
@@ -389,6 +421,10 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
           is_active: true,
+          use_pricing_matrix: false,
+          requires_downpayment: false,
+          downpayment_amount: null,
+          downpayment_type: null,
         }
       );
     });
@@ -530,6 +566,10 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2', 'service-3'],
           is_active: false,
+          use_pricing_matrix: false,
+          requires_downpayment: false,
+          downpayment_amount: null,
+          downpayment_type: null,
         }
       );
     });
@@ -554,5 +594,184 @@ describe('AdminPackageBuilderPage', () => {
     expect(
       screen.getByRole('menuitem', { name: 'Archive' })
     ).toBeInTheDocument();
+  });
+
+  describe('package pricing matrix redesign (custom change)', () => {
+    it("applies the matrix directly to the package's own derived price, independent of any member's own flag - and any service is selectable regardless of its own matrix/downpayment flags", async () => {
+      // A member with its own matrix flag AND its own downpayment flag -
+      // neither should affect whether it's selectable, and neither flag
+      // should be consulted for the package's own price.
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [
+          buildService({
+            use_pricing_matrix: true,
+            service_pricing_tiers: [
+              { weight_class: 'S', coat_type: 'SC', price: 999 },
+            ],
+          }),
+          buildService({
+            id: 'service-2',
+            name: 'Blow-dry',
+            base_price: 200,
+            requires_downpayment: true,
+            downpayment_amount: 50,
+            downpayment_type: 'Flat',
+          }),
+        ],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.createPackage).mockResolvedValue({
+        data: buildPackage({ id: 'package-new', name: 'Fresh Coat Bundle' }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'New package' })
+      );
+      await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+
+      // Both members are pickable despite their own matrix/downpayment flags.
+      await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
+      await user.click(screen.getByRole('checkbox', { name: /Blow-dry/ }));
+
+      // Flat total: (300 + 200) * 0.9 = 450.
+      expect(screen.getByText('PHP 450.00')).toBeInTheDocument();
+
+      await user.type(
+        screen.getByLabelText('Package name'),
+        'Fresh Coat Bundle'
+      );
+
+      const matrixToggle = screen.getByRole('switch', {
+        name: 'Adjust price by pet size and coat',
+      });
+      expect(matrixToggle).toHaveAttribute('aria-checked', 'false');
+
+      await user.click(matrixToggle);
+      expect(matrixToggle).toHaveAttribute('aria-checked', 'true');
+
+      // The breakdown grid derives from the package's own 450 total, not
+      // from either member's own tier (999) - S/SC cell = 450 * 1.0 = 450.
+      expect(
+        screen.getByText('Size & coat pricing matrix - derived, read-only')
+      ).toBeInTheDocument();
+      expect(screen.getAllByText('PHP 450.00').length).toBeGreaterThan(1);
+
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.createPackage).toHaveBeenCalledWith('token', {
+          branch_ids: ['branch-makati'],
+          name: 'Fresh Coat Bundle',
+          service_ids: ['service-1', 'service-2'],
+          use_pricing_matrix: true,
+          requires_downpayment: false,
+        });
+      });
+    });
+
+    it('shows the package-level matrix/downpayment badges as separate pill tags in the package list, not appended text', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [
+          buildPackage({
+            use_pricing_matrix: true,
+            requires_downpayment: true,
+            downpayment_amount: 200,
+            downpayment_type: 'Flat',
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('PHP 650.00')).toBeInTheDocument();
+      expect(screen.getByText('Varies by weight/coat')).toBeInTheDocument();
+      expect(
+        screen.getByText('Requires PHP 200.00 downpayment')
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('service/package sort options (custom change)', () => {
+    it('offers a price sort alongside name for both packages and the service picker', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      // Package list's own SearchSortBar renders these once, before the
+      // builder is even open.
+      expect(await screen.findByText('Golden Package')).toBeInTheDocument();
+      expect(
+        screen.getByRole('option', { name: 'Price (low-high)' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('option', { name: 'Price (high-low)' })
+      ).toBeInTheDocument();
+
+      // The service picker's own SearchSortBar adds a second copy of each
+      // once the builder is open with a branch selected.
+      await user.click(screen.getByRole('button', { name: 'New package' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+
+      expect(
+        screen.getAllByRole('option', { name: 'Price (low-high)' })
+      ).toHaveLength(2);
+      expect(
+        screen.getAllByRole('option', { name: 'Price (high-low)' })
+      ).toHaveLength(2);
+    });
+  });
+
+  describe('builder draft persistence (custom change)', () => {
+    it('does not close on an outside/backdrop click', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'New package' })
+      );
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('presentation'));
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('resumes an in-progress new-package draft after Cancel, but starts fresh once a different package has been edited', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'New package' })
+      );
+      await user.type(screen.getByLabelText('Package name'), 'Draft Combo');
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'New package' }));
+      expect(screen.getByLabelText('Package name')).toHaveValue('Draft Combo');
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      const row = (await screen.findByText('Golden Package')).closest(
+        'li'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Golden Package' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+      expect(screen.getByLabelText('Package name')).toHaveValue(
+        'Golden Package'
+      );
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      // Editing Golden Package should have cleared the earlier draft.
+      await user.click(screen.getByRole('button', { name: 'New package' }));
+      expect(screen.getByLabelText('Package name')).toHaveValue('');
+    });
   });
 });
