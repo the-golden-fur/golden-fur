@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { Inbox, Send, FileText, Star, Bell as SystemIcon } from 'lucide-react';
+import {
+  Inbox,
+  Send,
+  FileText,
+  Star,
+  Bell as SystemIcon,
+  Maximize2,
+  ArrowLeft,
+} from 'lucide-react';
+import { Modal } from '../../shared/components/Modal/Modal';
 import { useAuth } from '../../shared/auth/providers/AuthProvider/useAuth';
 import {
   deleteNotification,
@@ -128,6 +137,9 @@ export function NotificationsPage() {
   const folder: FolderKey =
     (searchParams.get('folder') as FolderKey | null) ?? 'inbox';
   const selectedThreadId = searchParams.get('thread');
+  const openNotificationId = searchParams.get('open');
+  const openedItemId = selectedThreadId ?? openNotificationId;
+  const isFullPage = searchParams.get('view') === 'full';
 
   useEffect(() => {
     if (!accessToken) return;
@@ -222,6 +234,10 @@ export function NotificationsPage() {
     () => [...systemItems, ...threadItems],
     [systemItems, threadItems]
   );
+  const selectedItem = useMemo(
+    () => allItems.find((item) => item.id === openedItemId) ?? null,
+    [allItems, openedItemId]
+  );
 
   const folderItems = useMemo(() => {
     switch (folder) {
@@ -279,7 +295,7 @@ export function NotificationsPage() {
   const folderCounts: Record<FolderKey, number> = {
     inbox: inboxUnreadCount,
     starred: allItems.filter((item) => item.isStarred).length,
-    sent: threadItems.filter((item) => item.isOwn).length,
+    sent: threadItems.filter((item) => item.isOwn && !item.isRead).length,
     drafts: drafts.length,
     system: systemUnreadCount,
   };
@@ -292,6 +308,8 @@ export function NotificationsPage() {
       params.set('folder', next);
     }
     params.delete('thread');
+    params.delete('open');
+    params.delete('view');
     setSearchParams(params);
     setSearchQuery('');
     setFilterKey('all');
@@ -301,6 +319,36 @@ export function NotificationsPage() {
   function openThread(threadId: string) {
     const params = new URLSearchParams(searchParams);
     params.set('thread', threadId);
+    params.delete('open');
+    params.delete('view');
+    setSearchParams(params);
+  }
+
+  function openNotification(notificationId: string) {
+    const params = new URLSearchParams(searchParams);
+    params.set('open', notificationId);
+    params.delete('thread');
+    params.delete('view');
+    setSearchParams(params);
+  }
+
+  function closeDetail() {
+    const params = new URLSearchParams(searchParams);
+    params.delete('thread');
+    params.delete('open');
+    params.delete('view');
+    setSearchParams(params);
+  }
+
+  function openFullscreen() {
+    const params = new URLSearchParams(searchParams);
+    params.set('view', 'full');
+    setSearchParams(params);
+  }
+
+  function exitFullscreen() {
+    const params = new URLSearchParams(searchParams);
+    params.delete('view');
     setSearchParams(params);
   }
 
@@ -314,6 +362,7 @@ export function NotificationsPage() {
         );
         await markNotificationRead(item.id, accessToken, true);
       }
+      openNotification(item.id);
       return;
     }
 
@@ -469,6 +518,54 @@ export function NotificationsPage() {
     );
   }
 
+  function renderDetailContent(item: InboxItem) {
+    if (item.kind === 'system') {
+      return (
+        <div className={styles.notificationDetail}>
+          <div className={styles.notificationDetailMeta}>
+            <span className={styles.sender}>{item.senderLabel}</span>
+            <span className={styles.timestamp}>
+              {formatTimestamp(item.timestamp)}
+            </span>
+          </div>
+          <p className={styles.notificationDetailMessage}>{item.preview}</p>
+        </div>
+      );
+    }
+
+    return (
+      <ThreadDetail
+        thread={displayedThreadDetail}
+        isLoading={threadDetailLoading}
+        error={threadDetailError}
+        viewerId={user.id}
+        accessToken={accessToken}
+        isSending={isSendingReply}
+        onReply={handleReply}
+      />
+    );
+  }
+
+  if (isFullPage && selectedItem) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.fullPageHeader}>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={exitFullscreen}
+          >
+            <ArrowLeft size={16} aria-hidden="true" /> Back
+          </button>
+          <h1 className={styles.title}>{selectedItem.subject}</h1>
+        </div>
+        <div className={styles.fullPageBody}>
+          {renderDetailContent(selectedItem)}
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Notifications</h1>
@@ -593,7 +690,7 @@ export function NotificationsPage() {
                       <button
                         type="button"
                         className={
-                          item.id === selectedThreadId
+                          item.id === openedItemId
                             ? styles.itemActive
                             : item.isRead
                               ? styles.item
@@ -648,23 +745,24 @@ export function NotificationsPage() {
                 </ul>
               )}
             </div>
-
-            {folder !== 'drafts' && folder !== 'system' ? (
-              <div className={styles.detailPane}>
-                <ThreadDetail
-                  thread={displayedThreadDetail}
-                  isLoading={threadDetailLoading}
-                  error={threadDetailError}
-                  viewerId={user.id}
-                  accessToken={accessToken}
-                  isSending={isSendingReply}
-                  onReply={handleReply}
-                />
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
+
+      {selectedItem && !isFullPage ? (
+        <Modal isOpen title={selectedItem.subject} onClose={closeDetail}>
+          <div className={styles.modalToolbar}>
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              onClick={openFullscreen}
+            >
+              <Maximize2 size={16} aria-hidden="true" /> Fullscreen
+            </button>
+          </div>
+          {renderDetailContent(selectedItem)}
+        </Modal>
+      ) : null}
     </main>
   );
 }
