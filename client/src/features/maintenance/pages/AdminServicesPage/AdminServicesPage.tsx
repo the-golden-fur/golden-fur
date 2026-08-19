@@ -56,6 +56,7 @@ interface ServiceFormState {
   basePrice: string;
   durationMinutes: string;
   requiresAssessedPet: boolean;
+  capturesPetAssessment: boolean;
   minNightsForFreePackage: string;
   freePackageName: string;
   usePricingMatrix: boolean;
@@ -74,6 +75,7 @@ const EMPTY_FORM: ServiceFormState = {
   basePrice: '',
   durationMinutes: '',
   requiresAssessedPet: true,
+  capturesPetAssessment: false,
   minNightsForFreePackage: '',
   freePackageName: '',
   usePricingMatrix: false,
@@ -94,6 +96,7 @@ function formStateFromService(service: Service): ServiceFormState {
     durationMinutes:
       service.duration_minutes === null ? '' : String(service.duration_minutes),
     requiresAssessedPet: service.requires_assessed_pet,
+    capturesPetAssessment: service.captures_pet_assessment,
     minNightsForFreePackage:
       service.min_nights_for_free_package === null
         ? ''
@@ -489,6 +492,7 @@ export function AdminServicesPage() {
         name: form.name.trim(),
         category: form.category,
         requires_assessed_pet: form.requiresAssessedPet,
+        captures_pet_assessment: form.capturesPetAssessment,
         use_pricing_matrix: form.usePricingMatrix,
         ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
         ...(durationMinutes !== undefined
@@ -539,6 +543,7 @@ export function AdminServicesPage() {
       category: form.category,
       duration_minutes: durationMinutes ?? null,
       requires_assessed_pet: form.requiresAssessedPet,
+      captures_pet_assessment: form.capturesPetAssessment,
       min_nights_for_free_package: minNightsForFreePackage ?? null,
       free_package_name: freePackageName ?? null,
       use_pricing_matrix: form.usePricingMatrix,
@@ -924,6 +929,17 @@ export function AdminServicesPage() {
                 checked={form.requiresAssessedPet}
                 onChange={(checked) =>
                   setForm((prev) => ({ ...prev, requiresAssessedPet: checked }))
+                }
+              />
+
+              <ToggleSwitch
+                label="Capture pet weight/coat on Start (opens a modal to record/update the pet's assessment before the booking advances - for Initial Assessment/Reassessment-style services)"
+                checked={form.capturesPetAssessment}
+                onChange={(checked) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    capturesPetAssessment: checked,
+                  }))
                 }
               />
 

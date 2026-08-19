@@ -132,6 +132,52 @@ export async function sendBookingRescheduledNotification(
   }
 }
 
+/**
+ * Custom change (staff assignment alert): fires when a customer explicitly
+ * picked this staff member as their preferred groomer/vet for the booking
+ * (resolveStaffAssignment's preferenceType === 'specific', in
+ * booking.service.ts) - an auto-assigned ("no preference") booking doesn't
+ * notify the assignee, since every eligible staff member there is an
+ * equally arbitrary pick and the resulting alert volume would just be
+ * noise. Called from booking.service.ts's createBooking() right after
+ * sendBookingConfirmedNotification, same non-blocking try/catch shape.
+ */
+export async function sendStaffAssignedNotification(
+  booking: Booking
+): Promise<void> {
+  if (!booking.assigned_staff_id) return;
+
+  try {
+    const [{ data: customer }, { data: pet }] = await Promise.all([
+      supabase
+        .from('customer_profiles')
+        .select('full_name')
+        .eq('id', booking.customer_id)
+        .maybeSingle(),
+      supabase
+        .from('pets')
+        .select('name')
+        .eq('id', booking.pet_id)
+        .maybeSingle(),
+    ]);
+
+    const scheduledDate = formatDate(booking.scheduled_start);
+    const scheduledTime = formatTime(booking.scheduled_start);
+    const customerName = customer?.full_name ?? 'A customer';
+    const petPossessive = pet?.name ? `${pet.name}'s` : 'their';
+
+    await createNotification({
+      recipientStaffId: booking.assigned_staff_id,
+      eventType: 'staff_assigned',
+      title: 'You were selected as preferred staff',
+      message: `${customerName} selected you as their preferred staff for ${petPossessive} ${booking.service_category} booking on ${scheduledDate} at ${scheduledTime}.`,
+      relatedBookingId: booking.id,
+    });
+  } catch (error) {
+    console.error('Failed to send staff_assigned notification:', error);
+  }
+}
+
 export interface SendBookingCancelledNotificationParams {
   booking: Booking;
   noticePeriodMet: boolean;

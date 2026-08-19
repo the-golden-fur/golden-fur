@@ -1,6 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
-import { sendBookingConfirmedNotification } from './bookingNotifications.service.ts';
+import {
+  sendBookingConfirmedNotification,
+  sendStaffAssignedNotification,
+} from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
@@ -1013,6 +1016,10 @@ export async function createBooking({
   }
 
   await sendBookingConfirmedNotification(booking);
+
+  if (staffResolution.preferenceType === 'specific') {
+    await sendStaffAssignedNotification(booking);
+  }
 
   if (freePackageAward) {
     // Reuses the 'booking_confirmed' event type rather than adding a ninth

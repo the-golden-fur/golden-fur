@@ -8,7 +8,8 @@ export type NotificationEventType =
   | 'appointment_reminder'
   | 'booking_cancelled'
   | 'care_log_completed'
-  | 'message_received';
+  | 'message_received'
+  | 'staff_assigned';
 
 export interface Notification {
   id: string;

@@ -668,6 +668,33 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, effectiveCustomerId]);
 
+  // Custom change (fix stale assessment on the Pet step): weight_class/
+  // coat_type are staff-set from elsewhere in the app (PetDetailPanel), so a
+  // wizard tab left open across that edit - a very normal receptionist
+  // workflow, e.g. assessing/completing a walk-in's earlier booking in
+  // another tab while this one sits mid-flow - would otherwise keep showing
+  // "Not yet assessed" from the one-time mount fetch above until a full page
+  // reload. Re-fetching every time the Pet step is (re)entered, rather than
+  // only once on mount, keeps it current without needing a polling/realtime
+  // subscription. Deliberately doesn't touch isPetsLoading - this should
+  // silently refresh already-rendered cards, not flash "Loading pets..."
+  // every time you step back onto this page.
+  useEffect(() => {
+    if (!accessToken || !effectiveCustomerId || currentStepKey !== 'pet') {
+      return;
+    }
+
+    let isMounted = true;
+
+    void listCustomerPets(effectiveCustomerId, accessToken).then((result) => {
+      if (isMounted && result.data) setPets(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, effectiveCustomerId, currentStepKey]);
+
   useEffect(() => {
     if (!accessToken || !selectedBranchId) return;
 

@@ -122,7 +122,6 @@
 
 .body {
   display: grid;
-  grid-template-columns: minmax(240px, 380px) 1fr;
   gap: var(--space-3);
   min-height: 24rem;
 }
@@ -251,7 +250,50 @@
   align-items: flex-start;
 }
 
-.detailPane {
+.modalToolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-2);
+}
+
+.toolbarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 0;
+}
+
+.notificationDetail {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.notificationDetailMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.notificationDetailMessage {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+
+.fullPageHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fullPageBody {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-secondary);
@@ -266,9 +308,5 @@
   .folderRail {
     grid-auto-flow: column;
     overflow-x: auto;
-  }
-
-  .body {
-    grid-template-columns: 1fr;
   }
 }

@@ -152,6 +152,9 @@ export const createServiceValidator = z
     base_price: z.number().nonnegative().optional(),
     duration_minutes: z.number().int().positive().optional(),
     requires_assessed_pet: z.boolean().optional(),
+    // Custom change (payments-queue pet assessment capture) - not category-
+    // gated, same convention as requires_assessed_pet above.
+    captures_pet_assessment: z.boolean().optional(),
     // Hotel-only ("5+ nights -> free Golden Package" board condition) -
     // meaningless for other categories but not category-gated here, mirroring
     // duration_minutes' own "accepted, just unused elsewhere" convention.
@@ -187,6 +190,7 @@ export const updateServiceValidator = z
     duration_minutes: z.number().int().positive().nullable().optional(),
     is_active: z.boolean().optional(),
     requires_assessed_pet: z.boolean().optional(),
+    captures_pet_assessment: z.boolean().optional(),
     min_nights_for_free_package: z
       .number()
       .int()

@@ -21,17 +21,19 @@ interface NotificationPreferencesGridProps {
 }
 
 /**
- * The 8 notification_event_type values split by which recipient column
- * notification.service.ts actually writes to (server/src/features/.../
- * bookingNotifications.service.ts, careLogNotifications.service.ts,
- * checkoutAggregation.service.ts, appointmentReminder.job.ts use
- * recipientCustomerId; staffManagement.service.ts and staffAuth.controller.ts's
- * forgot-password handler use recipientStaffId) - there's no code path that
- * fires any of the 6 booking/payment/care-log events for a staff recipient,
- * or account_created/password_reset for a customer, so each role only ever
- * sees the subset it can actually receive. Every staff role (including Admin
- * and Superadmin) shares the same 2 staff-facing event types - the event
- * catalog has no admin-only event today.
+ * The customer/staff-facing notification_event_type values split by which
+ * recipient column notification.service.ts actually writes to
+ * (server/src/features/.../bookingNotifications.service.ts,
+ * careLogNotifications.service.ts, checkoutAggregation.service.ts,
+ * appointmentReminder.job.ts use recipientCustomerId; staffManagement.
+ * service.ts, staffAuth.controller.ts's forgot-password handler, and
+ * bookingNotifications.service.ts's sendStaffAssignedNotification use
+ * recipientStaffId) - there's no code path that fires any of the 6
+ * booking/payment/care-log events for a staff recipient, or
+ * account_created/password_reset/staff_assigned for a customer, so each role
+ * only ever sees the subset it can actually receive. Every staff role
+ * (including Admin and Superadmin) shares the same staff-facing event types -
+ * the event catalog has no admin-only event today.
  */
 const EVENT_TYPES_BY_ROLE: Record<
   ThemeRole,
@@ -40,6 +42,10 @@ const EVENT_TYPES_BY_ROLE: Record<
   staff: [
     { type: 'account_created', label: 'Account created' },
     { type: 'password_reset', label: 'Password reset requested' },
+    {
+      type: 'staff_assigned',
+      label: 'Customer selected you as preferred staff',
+    },
   ],
   customer: [
     { type: 'booking_confirmed', label: 'Booking made' },

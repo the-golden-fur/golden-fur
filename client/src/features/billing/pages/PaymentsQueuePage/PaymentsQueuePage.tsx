@@ -2,13 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
-import { listBranches } from '../../../maintenance/api/maintenance.api';
-import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import {
+  listBranches,
+  listServices,
+} from '../../../maintenance/api/maintenance.api';
+import type {
+  BranchSummary,
+  Service,
+} from '../../../maintenance/maintenance.types';
 import {
   getCustomerProfile,
   getPet,
+  updatePet,
 } from '../../../customers/api/customer.api';
-import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import type {
+  CustomerProfile,
+  Pet,
+  PetCoatType,
+  PetWeightClass,
+} from '../../../customers/customer.types';
 import {
   QueueFilterBar,
   type QueueStatusOption,
@@ -19,6 +31,7 @@ import {
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
@@ -45,6 +58,12 @@ import {
 } from '../../../booking/booking.types';
 import styles from './PaymentsQueuePage.module.css';
 
+// Same option lists/labels as PetDetailPanel's own staff-only assessment
+// fields - kept local rather than shared since PetDetailPanel's are scoped
+// to that component too.
+const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
@@ -66,10 +85,19 @@ function formatDateTime(iso: string): string {
   });
 }
 
-type ActiveAction = {
-  bookingId: string;
-  type: 'advance-payment';
-};
+type ActiveAction =
+  | {
+      bookingId: string;
+      type: 'advance-payment';
+    }
+  | {
+      bookingId: string;
+      // Custom change (payments-queue pet assessment capture): Starting a
+      // booking on a captures_pet_assessment-flagged service (Initial
+      // Assessment/Reassessment) prompts this instead of starting
+      // immediately - see confirmAssessment below.
+      type: 'assess-pet';
+    };
 
 /**
  * Custom change (bookings-queue-readonly-and-sidebar-reorg): the payment
@@ -151,6 +179,42 @@ export function PaymentsQueuePage() {
       if (result.data) setBranches(result.data);
     });
   }, []);
+
+  // Custom change (payments-queue pet assessment capture): Misc is the only
+  // category this queue advances status for, so only Misc services' flags
+  // are worth fetching. includeInactive covers a booking whose service was
+  // later deactivated but still needs its Start button gated correctly.
+  const [services, setServices] = useState<Service[]>([]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    void listServices(accessToken, {
+      category: 'Misc',
+      includeInactive: true,
+    }).then((result) => {
+      if (result.data) setServices(result.data);
+    });
+  }, [accessToken]);
+
+  const assessmentServiceIds = useMemo(
+    () =>
+      new Set(
+        services
+          .filter((service) => service.captures_pet_assessment)
+          .map((service) => service.id)
+      ),
+    [services]
+  );
+
+  function bookingNeedsAssessment(booking: Booking): boolean {
+    return (
+      booking.booking_items?.some(
+        (item) =>
+          item.service_id !== null && assessmentServiceIds.has(item.service_id)
+      ) ?? false
+    );
+  }
 
   const effectiveBranchId = isSuperadmin
     ? branchFilter === 'All'
@@ -406,6 +470,55 @@ export function PaymentsQueuePage() {
     );
   }
 
+  // Custom change (payments-queue pet assessment capture): pre-filled from
+  // the pet's current values (if any) so Reassessment can just confirm/
+  // adjust rather than starting blank every time.
+  const [assessWeightClass, setAssessWeightClass] = useState<
+    PetWeightClass | ''
+  >('');
+  const [assessCoatType, setAssessCoatType] = useState<PetCoatType | ''>('');
+
+  function openAssessment(booking: Booking) {
+    const pet = pets[booking.pet_id];
+    setAssessWeightClass(pet?.weight_class ?? '');
+    setAssessCoatType(pet?.coat_type ?? '');
+    setAdvanceError(null);
+    setActiveAction({ bookingId: booking.id, type: 'assess-pet' });
+  }
+
+  // Saves the pet's assessment first, then starts the booking - only on a
+  // successful save does it proceed to Start, so a rejected pet update
+  // (e.g. a role without pet-edit rights) never leaves the booking started
+  // with the assessment modal silently abandoned.
+  async function confirmAssessment(booking: Booking) {
+    if (!accessToken || !assessWeightClass || !assessCoatType) return;
+
+    setAdvancingBookingId(booking.id);
+    setAdvanceError(null);
+
+    const petResult = await updatePet(booking.pet_id, accessToken, {
+      weight_class: assessWeightClass,
+      coat_type: assessCoatType,
+    });
+
+    if (petResult.error || !petResult.data) {
+      setAdvancingBookingId(null);
+      setAdvanceError({
+        bookingId: booking.id,
+        message: petResult.error ?? "Could not save this pet's assessment.",
+      });
+      return;
+    }
+
+    const savedPet = petResult.data;
+    setPets((prev) => ({ ...prev, [savedPet.id]: savedPet }));
+
+    const started = await handleStart(booking);
+    if (started) {
+      setActiveAction(null);
+    }
+  }
+
   function handleOverrideStatus(booking: Booking, status: BookingStatus) {
     return runAdvanceAction(
       booking,
@@ -485,6 +598,15 @@ export function PaymentsQueuePage() {
       ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
         null)
       : null;
+
+  const assessmentModalBooking =
+    activeAction?.type === 'assess-pet'
+      ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
+        null)
+      : null;
+  const assessmentModalPet = assessmentModalBooking
+    ? (pets[assessmentModalBooking.pet_id] ?? null)
+    : null;
 
   return (
     <main className={styles.page}>
@@ -618,6 +740,16 @@ export function PaymentsQueuePage() {
                     <div className={styles.bookingBadges}>
                       <BookingStatusBadge status={booking.status} />
                       <PaymentStageBadge stage={booking.payment_stage} />
+                      <MoreOptionsMenu
+                        label={`More options for this ${booking.service_category} booking`}
+                        items={[
+                          {
+                            label: 'View details',
+                            onSelect: () =>
+                              navigate(`/staff/bookings/${booking.id}`),
+                          },
+                        ]}
+                      />
                     </div>
                   </div>
                   <span className={styles.bookingMeta}>
@@ -630,13 +762,6 @@ export function PaymentsQueuePage() {
                   </span>
 
                   <div className={styles.bookingControls}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => navigate(`/staff/bookings/${booking.id}`)}
-                    >
-                      View details
-                    </button>
                     {canOverrideStatus ? (
                       <label className={styles.statusOverrideField}>
                         <span className={styles.filterLabel}>Status</span>
@@ -664,7 +789,11 @@ export function PaymentsQueuePage() {
                         type="button"
                         className={styles.secondaryButton}
                         disabled={isAdvancing}
-                        onClick={() => void handleStart(booking)}
+                        onClick={() =>
+                          bookingNeedsAssessment(booking)
+                            ? openAssessment(booking)
+                            : void handleStart(booking)
+                        }
                       >
                         {isAdvancing ? 'Starting...' : 'Start'}
                       </button>
@@ -788,6 +917,95 @@ export function PaymentsQueuePage() {
                   {advancingBookingId === paymentAdvanceModalBooking.id
                     ? 'Marking paid...'
                     : 'Advance payment'}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {assessmentModalBooking ? (
+          <div className={styles.modalBackdrop} role="presentation">
+            <section
+              className={styles.modalDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="assess-pet-title"
+            >
+              <h2 id="assess-pet-title" className={styles.modalTitle}>
+                Record pet assessment
+              </h2>
+              <p className={styles.modalBody}>
+                {assessmentModalPet?.name ?? 'This pet'}&apos;s weight class and
+                coat type are recorded as part of starting this booking.
+                Starting will save the assessment first.
+              </p>
+
+              <label className={styles.filterField}>
+                <span className={styles.filterLabel}>Weight class</span>
+                <select
+                  className={styles.filterSelect}
+                  value={assessWeightClass}
+                  onChange={(event) =>
+                    setAssessWeightClass(
+                      event.target.value as PetWeightClass | ''
+                    )
+                  }
+                >
+                  <option value="">Select weight class</option>
+                  {WEIGHT_CLASS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.filterField}>
+                <span className={styles.filterLabel}>Coat type</span>
+                <select
+                  className={styles.filterSelect}
+                  value={assessCoatType}
+                  onChange={(event) =>
+                    setAssessCoatType(event.target.value as PetCoatType | '')
+                  }
+                >
+                  <option value="">Select coat type</option>
+                  {COAT_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {advanceError &&
+              advanceError.bookingId === assessmentModalBooking.id ? (
+                <p className={styles.errorBanner} role="alert">
+                  {advanceError.message}
+                </p>
+              ) : null}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAction(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={
+                    !assessWeightClass ||
+                    !assessCoatType ||
+                    advancingBookingId === assessmentModalBooking.id
+                  }
+                  onClick={() => void confirmAssessment(assessmentModalBooking)}
+                >
+                  {advancingBookingId === assessmentModalBooking.id
+                    ? 'Saving...'
+                    : 'Save & Start'}
                 </button>
               </div>
             </section>

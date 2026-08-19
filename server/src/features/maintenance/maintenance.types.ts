@@ -112,6 +112,13 @@ export interface Service {
    * assessed onsite) may book this service - false only for the seeded
    * "Initial Assessment" service. See ...073_m02_pets_assessment_lock.sql. */
   requires_assessed_pet: boolean;
+  /** Custom change (payments-queue pet assessment capture): whether
+   * starting a booking on this service opens a modal to record/update the
+   * pet's weight_class/coat_type before advancing status - distinct from
+   * requires_assessed_pet above (which gates booking access, not the Start
+   * action). Seeded true only for "Initial Assessment"/"Reassessment". See
+   * PaymentsQueuePage.tsx. */
+  captures_pet_assessment: boolean;
   /** Hotel-only: booking this service for this many nights or more
    * auto-awards free_package_name as a zero-priced booking_items row. NULL
    * = no free-package condition. See ...105_m13_hotel_fixed_price_service.sql. */
