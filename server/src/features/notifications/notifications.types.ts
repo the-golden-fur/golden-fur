@@ -16,6 +16,11 @@ export const NOTIFICATION_EVENT_TYPES = [
    * reply in its thread - related_thread_id (below) is what distinguishes
    * "go read this thread," not the event type. */
   'message_received',
+  /** Custom change (staff assignment alert, migration 20260819137): fires
+   * when a customer explicitly picks a staff member as their preferred
+   * groomer/vet for a booking - see bookingNotifications.service.ts's
+   * sendStaffAssignedNotification. */
+  'staff_assigned',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
