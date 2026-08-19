@@ -6,6 +6,7 @@ import {
   archivePackage,
   createPackage,
   getPackagePricingConfiguration,
+  getPricingConfiguration,
   listBranches,
   listPackages,
   listServices,
@@ -18,6 +19,8 @@ import {
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
+import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
+import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
@@ -33,6 +36,7 @@ import {
   type BranchSummary,
   type Package,
   type PackagePricingConfiguration,
+  type PricingConfiguration,
   type Service,
   type ServiceCategory,
 } from '../../maintenance.types';
@@ -41,18 +45,22 @@ import styles from './AdminPackageBuilderPage.module.css';
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
-type ServiceSortKey = 'name-asc' | 'name-desc';
+type ServiceSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
 
 const SERVICE_SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'price-asc', label: 'Price (low-high)' },
+  { value: 'price-desc', label: 'Price (high-low)' },
 ];
 
-type PackageSortKey = 'name-asc' | 'name-desc';
+type PackageSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
 
 const PACKAGE_SORT_OPTIONS: SortOption<PackageSortKey>[] = [
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'price-asc', label: 'Price (low-high)' },
+  { value: 'price-desc', label: 'Price (high-low)' },
 ];
 
 type PackageStatusFilter = 'All' | 'Active' | 'Inactive';
@@ -74,6 +82,12 @@ export function AdminPackageBuilderPage() {
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [packagePricingConfiguration, setPackagePricingConfiguration] =
     useState<PackagePricingConfiguration | null>(null);
+  // Grooming size/coat rules (#81) - reused here so a matrix-enabled
+  // package's own bundled_price can be run through the same rule engine a
+  // standalone Grooming service's base_price uses (custom change: package
+  // pricing redesign - see resolvePackagePrice in booking.service.ts).
+  const [pricingConfiguration, setPricingConfiguration] =
+    useState<PricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -91,6 +105,13 @@ export function AdminPackageBuilderPage() {
   const [formIsActive, setFormIsActive] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
+  const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  const [formRequiresDownpayment, setFormRequiresDownpayment] =
+    useState(false);
+  const [formDownpaymentAmount, setFormDownpaymentAmount] = useState('');
+  const [formDownpaymentType, setFormDownpaymentType] = useState<
+    'Flat' | 'Percentage'
+  >('Flat');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -148,8 +169,15 @@ export function AdminPackageBuilderPage() {
       listServices(accessToken),
       listBranches(),
       getPackagePricingConfiguration(accessToken),
+      getPricingConfiguration(accessToken),
     ]).then(
-      ([packagesResult, servicesResult, branchesResult, pricingResult]) => {
+      ([
+        packagesResult,
+        servicesResult,
+        branchesResult,
+        pricingResult,
+        groomingPricingResult,
+      ]) => {
         if (!isMounted) {
           return;
         }
@@ -173,6 +201,10 @@ export function AdminPackageBuilderPage() {
         setServices(servicesResult.data ?? []);
         setBranches(branchesResult.data ?? []);
         setPackagePricingConfiguration(pricingResult.data);
+        // Optional garnish, same as branch names above - a failed lookup
+        // just means the matrix breakdown preview stays hidden, it doesn't
+        // block the page.
+        setPricingConfiguration(groomingPricingResult.data ?? null);
         // Seeds the bundle discount % input from the singleton config on
         // initial load - set here, not in a reactive effect keyed off
         // packagePricingConfiguration, since maybeSaveDiscountPercent already
@@ -197,6 +229,8 @@ export function AdminPackageBuilderPage() {
     () => ({
       'name-asc': (a: Package, b: Package) => a.name.localeCompare(b.name),
       'name-desc': (a: Package, b: Package) => b.name.localeCompare(a.name),
+      'price-asc': (a: Package, b: Package) => a.bundled_price - b.bundled_price,
+      'price-desc': (a: Package, b: Package) => b.bundled_price - a.bundled_price,
     }),
     []
   );
@@ -236,8 +270,10 @@ export function AdminPackageBuilderPage() {
   }, [searchedPackages, statusFilter, branchFilter]);
 
   // Only services offered at every one of the form's selected branches are
-  // pickable - a package's bundled services must actually be deliverable
-  // everywhere the package itself is offered (intersection, not union).
+  // pickable. A member's own weight/coat matrix or downpayment flag has no
+  // bearing on this package (custom change: package pricing redesign -
+  // those flags only govern that service when it's booked on its own), so
+  // there is no exclusion here beyond branch availability.
   const serviceOptionsForBranches: ServiceMultiSelectOption[] = useMemo(() => {
     if (selectedBranchIds.length === 0) {
       return [];
@@ -258,14 +294,23 @@ export function AdminPackageBuilderPage() {
       }));
   }, [services, selectedBranchIds]);
 
+  const servicePriceById = useMemo(
+    () => new Map(services.map((service) => [service.id, service.base_price])),
+    [services]
+  );
+
   const serviceComparators = useMemo(
     () => ({
       'name-asc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
         a.label.localeCompare(b.label),
       'name-desc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
         b.label.localeCompare(a.label),
+      'price-asc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
+        (servicePriceById.get(a.id) ?? 0) - (servicePriceById.get(b.id) ?? 0),
+      'price-desc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
+        (servicePriceById.get(b.id) ?? 0) - (servicePriceById.get(a.id) ?? 0),
     }),
-    []
+    [servicePriceById]
   );
 
   const {
@@ -297,6 +342,41 @@ export function AdminPackageBuilderPage() {
     );
   }, [searchedServiceOptions, serviceTypeFilter, services]);
 
+  // Same live-preview total PackagePricingPreview shows, computed here too
+  // so it can feed the matrix breakdown below (PricingMatrixPreview takes a
+  // single basePrice, not a service list).
+  const derivedBundledPrice = useMemo(() => {
+    if (!packagePricingConfiguration) {
+      return 0;
+    }
+
+    const basePrices = selectedServiceIds.map(
+      (serviceId) =>
+        services.find((service) => service.id === serviceId)?.base_price ?? 0
+    );
+
+    const parsedPercent = Number(discountPercentInput);
+    const hasValidPercent =
+      discountPercentInput.trim() !== '' &&
+      Number.isFinite(parsedPercent) &&
+      parsedPercent >= 0 &&
+      parsedPercent <= 100;
+
+    const effectiveConfiguration = hasValidPercent
+      ? {
+          ...packagePricingConfiguration,
+          bundle_discount_percentage: parsedPercent / 100,
+        }
+      : packagePricingConfiguration;
+
+    return deriveBundledPrice(basePrices, effectiveConfiguration);
+  }, [
+    selectedServiceIds,
+    services,
+    packagePricingConfiguration,
+    discountPercentInput,
+  ]);
+
   const availabilityPackage = packages.find(
     (pkg) => pkg.id === availabilityPackageId
   );
@@ -307,14 +387,28 @@ export function AdminPackageBuilderPage() {
     );
   };
 
-  const openCreateForm = () => {
-    setEditingPackageId(null);
+  function resetFormFields() {
     setSelectedBranchIds([]);
     setFormName('');
     setFormIsActive(true);
     setSelectedServiceIds([]);
     setServiceSearch('');
     setServiceTypeFilter('All');
+    setFormUsePricingMatrix(false);
+    setFormRequiresDownpayment(false);
+    setFormDownpaymentAmount('');
+    setFormDownpaymentType('Flat');
+  }
+
+  const openCreateForm = () => {
+    // Only clear the form if it was showing a specific existing package -
+    // otherwise this resumes whatever "new package" draft was already in
+    // progress (see closeForm: dismissing the builder no longer discards
+    // it).
+    if (editingPackageId !== null) {
+      resetFormFields();
+    }
+    setEditingPackageId(null);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -329,13 +423,24 @@ export function AdminPackageBuilderPage() {
     );
     setServiceSearch('');
     setServiceTypeFilter('All');
+    setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormRequiresDownpayment(pkg.requires_downpayment);
+    setFormDownpaymentAmount(
+      pkg.downpayment_amount === null ? '' : String(pkg.downpayment_amount)
+    );
+    setFormDownpaymentType(pkg.downpayment_type ?? 'Flat');
     setFormError(null);
     setIsFormOpen(true);
   };
 
+  // Dismissing the builder (Cancel, the X button) no longer clears its
+  // fields - per UI feedback, an accidental close shouldn't throw away
+  // in-progress work. editingPackageId is deliberately left as-is too, so
+  // reopening "New package" afterward still recognizes it was mid-edit of an
+  // existing package (see openCreateForm) rather than treating stale fields
+  // from that package as a fresh draft.
   const closeForm = () => {
     setIsFormOpen(false);
-    setEditingPackageId(null);
     setFormError(null);
   };
 
@@ -464,6 +569,29 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    const downpaymentAmount =
+      formDownpaymentAmount === '' ? undefined : Number(formDownpaymentAmount);
+
+    if (
+      formRequiresDownpayment &&
+      (downpaymentAmount === undefined || downpaymentAmount <= 0)
+    ) {
+      setFormError(
+        'A positive downpayment amount is required when downpayment is required.'
+      );
+      return;
+    }
+
+    if (
+      formRequiresDownpayment &&
+      formDownpaymentType === 'Percentage' &&
+      downpaymentAmount !== undefined &&
+      downpaymentAmount > 100
+    ) {
+      setFormError('A percentage downpayment cannot exceed 100.');
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -480,6 +608,14 @@ export function AdminPackageBuilderPage() {
         name: formName.trim(),
         service_ids: selectedServiceIds,
         branch_ids: selectedBranchIds,
+        use_pricing_matrix: formUsePricingMatrix,
+        requires_downpayment: formRequiresDownpayment,
+        ...(formRequiresDownpayment && downpaymentAmount !== undefined
+          ? {
+              downpayment_amount: downpaymentAmount,
+              downpayment_type: formDownpaymentType,
+            }
+          : {}),
       });
 
       setIsSubmitting(false);
@@ -491,6 +627,9 @@ export function AdminPackageBuilderPage() {
 
       setPackages((prev) => [...prev, result.data as Package]);
       setMessage('Package created.');
+      // The draft is now saved - clear it so the next "New package" starts
+      // fresh instead of resuming these now-persisted values.
+      resetFormFields();
       closeForm();
       return;
     }
@@ -499,6 +638,12 @@ export function AdminPackageBuilderPage() {
       name: formName.trim(),
       service_ids: selectedServiceIds,
       is_active: formIsActive,
+      use_pricing_matrix: formUsePricingMatrix,
+      requires_downpayment: formRequiresDownpayment,
+      downpayment_amount: formRequiresDownpayment
+        ? (downpaymentAmount ?? null)
+        : null,
+      downpayment_type: formRequiresDownpayment ? formDownpaymentType : null,
     });
 
     if (result.error || !result.data) {
@@ -641,92 +786,182 @@ export function AdminPackageBuilderPage() {
           isOpen={isFormOpen}
           title={editingPackageId === null ? 'Build package' : 'Edit package'}
           onClose={closeForm}
+          closeOnBackdropClick={false}
         >
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Package name</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  value={formName}
-                  onChange={(event) => setFormName(event.target.value)}
-                  required
+              <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Details</h3>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Package name</span>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    value={formName}
+                    onChange={(event) => setFormName(event.target.value)}
+                    required
+                  />
+                </label>
+
+                {editingPackageId !== null ? (
+                  <ToggleSwitch
+                    label="Active"
+                    checked={formIsActive}
+                    onChange={setFormIsActive}
+                  />
+                ) : null}
+              </div>
+
+              <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Branches</h3>
+                <BranchMultiSelect
+                  label="Available at"
+                  branches={branches}
+                  selectedBranchIds={selectedBranchIds}
+                  onChange={setSelectedBranchIds}
                 />
-              </label>
+              </div>
 
-              <BranchMultiSelect
-                label="Available at"
-                branches={branches}
-                selectedBranchIds={selectedBranchIds}
-                onChange={setSelectedBranchIds}
-              />
+              <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Services</h3>
 
-              {editingPackageId !== null ? (
-                <ToggleSwitch
-                  label="Active"
-                  checked={formIsActive}
-                  onChange={setFormIsActive}
-                />
-              ) : null}
+                {selectedBranchIds.length === 0 ? (
+                  <p className={styles.copy}>
+                    Select at least one branch to pick its available services.
+                  </p>
+                ) : (
+                  <>
+                    <div className={styles.toolbar}>
+                      <SearchSortBar
+                        searchValue={serviceSearch}
+                        onSearchChange={setServiceSearch}
+                        searchPlaceholder="Search services..."
+                        sortValue={serviceSortKey}
+                        onSortChange={setServiceSortKey}
+                        sortOptions={SERVICE_SORT_OPTIONS}
+                      />
+                      <label className={styles.filterField}>
+                        <span className={styles.filterLabel}>
+                          Service type
+                        </span>
+                        <select
+                          className={styles.filterSelect}
+                          value={serviceTypeFilter}
+                          onChange={(event) =>
+                            setServiceTypeFilter(
+                              event.target.value as ServiceCategory | 'All'
+                            )
+                          }
+                        >
+                          <option value="All">All service types</option>
+                          {SERVICE_CATEGORIES.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
 
-              {selectedBranchIds.length === 0 ? (
-                <p className={styles.copy}>
-                  Select at least one branch to pick its available services.
-                </p>
-              ) : (
-                <>
-                  <div className={styles.toolbar}>
-                    <SearchSortBar
-                      searchValue={serviceSearch}
-                      onSearchChange={setServiceSearch}
-                      searchPlaceholder="Search services..."
-                      sortValue={serviceSortKey}
-                      onSortChange={setServiceSortKey}
-                      sortOptions={SERVICE_SORT_OPTIONS}
+                    <ServiceMultiSelect
+                      label="Included services (pick two or more)"
+                      options={visibleServiceOptions}
+                      selectedIds={selectedServiceIds}
+                      onChange={setSelectedServiceIds}
                     />
-                    <label className={styles.filterField}>
-                      <span className={styles.filterLabel}>Service type</span>
+                  </>
+                )}
+              </div>
+
+              <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Pricing</h3>
+
+                {packagePricingConfiguration ? (
+                  <PackagePricingPreview
+                    includedServiceBasePrices={selectedServiceIds.map(
+                      (serviceId) =>
+                        services.find((service) => service.id === serviceId)
+                          ?.base_price ?? 0
+                    )}
+                    configuration={packagePricingConfiguration}
+                    discountPercentInput={discountPercentInput}
+                    onDiscountPercentInputChange={setDiscountPercentInput}
+                  />
+                ) : null}
+
+                <ToggleSwitch
+                  label="Adjust price by pet size and coat"
+                  checked={formUsePricingMatrix}
+                  onChange={setFormUsePricingMatrix}
+                />
+                <p className={styles.copy}>
+                  Applies the same size/coat pricing rules used for grooming
+                  services to this package&apos;s own price above - not to
+                  its individual services.
+                </p>
+
+                {formUsePricingMatrix && pricingConfiguration ? (
+                  <PricingMatrixPreview
+                    basePrice={derivedBundledPrice}
+                    configuration={pricingConfiguration}
+                  />
+                ) : null}
+              </div>
+
+              <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Downpayment</h3>
+                <ToggleSwitch
+                  label="Requires a downpayment before the package can start"
+                  checked={formRequiresDownpayment}
+                  onChange={setFormRequiresDownpayment}
+                />
+
+                {formRequiresDownpayment ? (
+                  <>
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        Downpayment type
+                      </span>
                       <select
-                        className={styles.filterSelect}
-                        value={serviceTypeFilter}
+                        className={styles.input}
+                        value={formDownpaymentType}
                         onChange={(event) =>
-                          setServiceTypeFilter(
-                            event.target.value as ServiceCategory | 'All'
+                          setFormDownpaymentType(
+                            event.target.value as 'Flat' | 'Percentage'
                           )
                         }
                       >
-                        <option value="All">All service types</option>
-                        {SERVICE_CATEGORIES.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
+                        <option value="Flat">Flat amount (PHP)</option>
+                        <option value="Percentage">Percentage of price</option>
                       </select>
                     </label>
-                  </div>
-
-                  <ServiceMultiSelect
-                    label="Included services (pick two or more)"
-                    options={visibleServiceOptions}
-                    selectedIds={selectedServiceIds}
-                    onChange={setSelectedServiceIds}
-                  />
-                </>
-              )}
-
-              {packagePricingConfiguration ? (
-                <PackagePricingPreview
-                  includedServiceBasePrices={selectedServiceIds.map(
-                    (serviceId) =>
-                      services.find((service) => service.id === serviceId)
-                        ?.base_price ?? 0
-                  )}
-                  configuration={packagePricingConfiguration}
-                  discountPercentInput={discountPercentInput}
-                  onDiscountPercentInputChange={setDiscountPercentInput}
-                />
-              ) : null}
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        {formDownpaymentType === 'Percentage'
+                          ? 'Downpayment percentage (0-100)'
+                          : 'Downpayment amount (PHP)'}
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min="0.01"
+                        max={
+                          formDownpaymentType === 'Percentage'
+                            ? 100
+                            : undefined
+                        }
+                        step="0.01"
+                        inputMode="decimal"
+                        value={formDownpaymentAmount}
+                        onChange={(event) =>
+                          setFormDownpaymentAmount(event.target.value)
+                        }
+                        required
+                      />
+                    </label>
+                  </>
+                ) : null}
+              </div>
 
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
@@ -773,8 +1008,12 @@ export function AdminPackageBuilderPage() {
                   </span>
                   <span className={styles.packageMeta}>
                     PHP {pkg.bundled_price.toFixed(2)}
-                    {pkg.use_pricing_matrix ? ' (varies by weight/coat)' : ''}
                   </span>
+                  {pkg.use_pricing_matrix ? (
+                    <span className={styles.branchBadge}>
+                      Varies by weight/coat
+                    </span>
+                  ) : null}
                   {pkg.requires_downpayment &&
                   pkg.downpayment_amount !== null ? (
                     <span className={styles.branchBadge}>

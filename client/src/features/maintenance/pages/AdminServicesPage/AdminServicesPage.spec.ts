@@ -341,7 +341,7 @@ describe('AdminServicesPage', () => {
     expect(matrixCheckbox).not.toBeChecked();
     expect(
       screen.queryByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
+        'Size & coat pricing matrix - derived, read-only'
       )
     ).not.toBeInTheDocument();
 
@@ -349,7 +349,7 @@ describe('AdminServicesPage', () => {
 
     expect(
       screen.getByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
+        'Size & coat pricing matrix - derived, read-only'
       )
     ).toBeInTheDocument();
 
@@ -364,7 +364,7 @@ describe('AdminServicesPage', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(
-        'Size & coat pricing matrix (Grooming) - derived, read-only'
+        'Size & coat pricing matrix - derived, read-only'
       )
     ).not.toBeInTheDocument();
   });
