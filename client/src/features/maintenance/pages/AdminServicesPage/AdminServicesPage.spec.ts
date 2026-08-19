@@ -317,6 +317,7 @@ describe('AdminServicesPage', () => {
         category: 'Grooming',
         base_price: 350,
         requires_assessed_pet: true,
+        captures_pet_assessment: false,
         use_pricing_matrix: true,
         requires_downpayment: false,
       });

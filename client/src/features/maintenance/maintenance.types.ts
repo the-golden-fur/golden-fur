@@ -136,6 +136,12 @@ export interface Service {
    * couldn't be trusted to self-report weight/coat, so an unassessed pet
    * is locked out of every other service until staff records this. */
   requires_assessed_pet: boolean;
+  /** Custom change (payments-queue pet assessment capture): whether
+   * starting a booking on this service opens a modal to record/update the
+   * pet's weight_class/coat_type before advancing status - distinct from
+   * requires_assessed_pet above (which gates booking access, not the Start
+   * action). Seeded true only for "Initial Assessment"/"Reassessment". */
+  captures_pet_assessment: boolean;
   /** Hotel-only: booking this service for this many nights or more
    * auto-awards free_package_name as a zero-priced line item. NULL = no
    * free-package condition. */
@@ -284,6 +290,7 @@ export interface CreateServicePayload {
   base_price?: number;
   duration_minutes?: number;
   requires_assessed_pet?: boolean;
+  captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number;
   free_package_name?: string;
   use_pricing_matrix?: boolean;
@@ -302,6 +309,7 @@ export interface UpdateServicePayload {
   duration_minutes?: number | null;
   is_active?: boolean;
   requires_assessed_pet?: boolean;
+  captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number | null;
   free_package_name?: string | null;
   use_pricing_matrix?: boolean;
