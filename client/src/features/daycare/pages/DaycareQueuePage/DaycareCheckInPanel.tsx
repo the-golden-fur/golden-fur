@@ -1,10 +1,4 @@
 import { useState } from 'react';
-import {
-  listCustomerPets,
-  listCustomers,
-} from '../../../customers/api/customer.api';
-import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
-import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import type { Booking } from '../../../booking/booking.types';
 import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
 import { checkInDaycareSession } from '../../api/daycare.api';
@@ -35,8 +29,6 @@ interface DaycareCheckInPanelProps {
   onCheckedIn: (sessionId: string) => void;
 }
 
-type Mode = 'booking' | 'walkin';
-
 interface FeedingUiState {
   mealTime: MealTime;
   foodType: string;
@@ -58,30 +50,40 @@ interface MedicationUiState {
 }
 
 /**
- * Issue #69: check-in accepts either path (AC-1) - an existing confirmed
- * Daycare booking looked up for today, or a brand-new walk-in session
- * (existing pet from an M02 profile, or a freshly-registered one reusing
- * PetForm unmodified, per the dev notes).
+ * Issue #69: check-in against an existing confirmed Daycare booking looked
+ * up for today.
  *
  * Custom change (Daycare/Hotel parity): "make daycare the same as hotel...
  * it will also have cage config, as well as the feeding, medication, walk
- * and playtime (exactly like hotel)". Once a pet is identified (from either
- * path above), this panel now suggests/assigns a cage and captures the same
- * structured feeding/walking/playing/medication instructions Hotel's
- * check-in does - server-side, both write to the same `stays` +
- * care_*_instructions tables and generate the same Care Log entries
- * (see server/src/features/hotel/services/careInstructions.service.ts's
- * exported helpers, reused directly by daycareCheckIn.service.ts). The UI
- * here is intentionally simpler than HotelCheckInPanel's - plain text
- * inputs instead of the catalog-autocomplete CatalogComboBox, no M07
- * current-prescription pre-fill, and no time-range/duration toggle for
- * walk/play blocks (just a part-of-day select + a minutes field) - the
- * captured data shape is identical either way.
+ * and playtime (exactly like hotel)". Once a pet is identified, this panel
+ * suggests/assigns a cage and captures the same structured feeding/walking/
+ * playing/medication instructions Hotel's check-in does - server-side, both
+ * write to the same `stays` + care_*_instructions tables and generate the
+ * same Care Log entries (see server/src/features/hotel/services/
+ * careInstructions.service.ts's exported helpers, reused directly by
+ * daycareCheckIn.service.ts). The UI here is intentionally simpler than
+ * HotelCheckInPanel's - plain text inputs instead of the catalog-autocomplete
+ * CatalogComboBox, no M07 current-prescription pre-fill, and no time-range/
+ * duration toggle for walk/play blocks (just a part-of-day select + a
+ * minutes field) - the captured data shape is identical either way.
  *
- * Parity follow-up: a booking-linked check-in now also pre-fills these
- * fields from `booking.hotel_preferences` (CustomerBookingFlowPage's Care
- * Instructions step, extended to Daycare) exactly like HotelCheckInPanel
- * does - see handleSelectBooking.
+ * Parity follow-up: pre-fills these fields from `booking.hotel_preferences`
+ * (CustomerBookingFlowPage's Care Instructions step, extended to Daycare)
+ * exactly like HotelCheckInPanel does - see handleSelectBooking.
+ *
+ * Custom change (walk-in mode removed): this panel previously also offered
+ * a "Walk-in" mode - creating a brand-new Daycare session directly against a
+ * pet profile, with no booking at all (customer search + pet pick/register
+ * inline). Removed: Groomer/Pet Assistant (this page's own viewer roles,
+ * narrower than Receptionist's) are meant to physically check in a pet that
+ * already has a booking, mirroring Hotel Queue's Check-In tab exactly (which
+ * has no walk-in mode either). A genuine walk-in customer is still fully
+ * served today - Receptionist creates a same-day booking on their behalf
+ * through the normal booking flow (staff can book for a walk-in client),
+ * which then simply shows up here to be checked in like any other booking.
+ * The server's walk-in check-in path (checkInDaycareSession's pet_id +
+ * branch_id branch, no booking_id) is left intact, unused by this UI - see
+ * the request that removed this mode if that capability needs a home again.
  */
 export function DaycareCheckInPanel({
   accessToken,
@@ -89,17 +91,7 @@ export function DaycareCheckInPanel({
   branchId,
   onCheckedIn,
 }: DaycareCheckInPanelProps) {
-  const [mode, setMode] = useState<Mode>('booking');
-
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-
-  const [emailQuery, setEmailQuery] = useState('');
-  const [customers, setCustomers] = useState<CustomerProfile[]>([]);
-  const [selectedCustomer, setSelectedCustomer] =
-    useState<CustomerProfile | null>(null);
-  const [customerPets, setCustomerPets] = useState<Pet[]>([]);
-  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
-  const [isRegisteringPet, setIsRegisteringPet] = useState(false);
 
   const [suggestedCages, setSuggestedCages] = useState<Cage[]>([]);
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
@@ -118,7 +110,7 @@ export function DaycareCheckInPanel({
     null
   );
 
-  const petId = mode === 'booking' ? selectedBooking?.pet_id : selectedPetId;
+  const petId = selectedBooking?.pet_id;
 
   function resetCareFields() {
     setSuggestedCages([]);
@@ -195,37 +187,6 @@ export function DaycareCheckInPanel({
         }))
       );
     }
-  }
-
-  function handleSearchCustomers() {
-    void listCustomers(accessToken, emailQuery.trim() || undefined).then(
-      (result) => {
-        setCustomers(result.data ?? []);
-      }
-    );
-  }
-
-  function handleSelectCustomer(customer: CustomerProfile) {
-    setSelectedCustomer(customer);
-    setSelectedPetId(null);
-    setIsRegisteringPet(false);
-    resetCareFields();
-
-    void listCustomerPets(customer.id, accessToken).then((result) => {
-      setCustomerPets(result.data ?? []);
-    });
-  }
-
-  function handleSelectPet(pet: Pet) {
-    setSelectedPetId(pet.id);
-    resetCareFields();
-    loadCageSuggestion(pet.id);
-  }
-
-  function handlePetRegistered(pet: Pet) {
-    setCustomerPets((prev) => [...prev, pet]);
-    setIsRegisteringPet(false);
-    handleSelectPet(pet);
   }
 
   function addFeeding() {
@@ -407,28 +368,22 @@ export function DaycareCheckInPanel({
       })
     );
 
-    const basePayload = {
+    const result = await checkInDaycareSession(accessToken, {
+      booking_id: selectedBooking!.id,
       cage_id: selectedCageId ?? undefined,
       feeding: feedingPayload,
       walking: walkingPayload,
       playing: playingPayload,
       medications: medicationsPayload,
       notify_opt_in: notifyOptIn,
-    };
-
-    const payload =
-      mode === 'booking'
-        ? { booking_id: selectedBooking!.id, ...basePayload }
-        : { pet_id: selectedPetId!, branch_id: branchId, ...basePayload };
-
-    const result = await checkInDaycareSession(accessToken, payload);
+    });
 
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
       const message = result.error ?? 'Could not check in this pet.';
       // AC-3: a terminal state for the screen, not a retry loop - the
-      // message stays until the user picks a different booking/pet.
+      // message stays until the user picks a different booking.
       if (message.toLowerCase().includes('unavailable after')) {
         setBlockedMessage(message);
       } else {
@@ -460,8 +415,6 @@ export function DaycareCheckInPanel({
             onClick={() => {
               setCheckedInSessionId(null);
               setSelectedBooking(null);
-              setSelectedPetId(null);
-              setSelectedCustomer(null);
               resetCareFields();
             }}
           >
@@ -472,30 +425,10 @@ export function DaycareCheckInPanel({
     );
   }
 
-  const canSubmit =
-    ((mode === 'booking' && Boolean(selectedBooking)) ||
-      (mode === 'walkin' && Boolean(selectedPetId))) &&
-    Boolean(selectedCageId);
+  const canSubmit = Boolean(selectedBooking) && Boolean(selectedCageId);
 
   return (
     <>
-      <div className={styles.tabs}>
-        <button
-          type="button"
-          className={mode === 'booking' ? styles.tabActive : styles.tab}
-          onClick={() => setMode('booking')}
-        >
-          Existing booking
-        </button>
-        <button
-          type="button"
-          className={mode === 'walkin' ? styles.tabActive : styles.tab}
-          onClick={() => setMode('walkin')}
-        >
-          Walk-in
-        </button>
-      </div>
-
       {blockedMessage ? (
         <p className={styles.errorBanner} role="alert">
           {blockedMessage}
@@ -507,98 +440,14 @@ export function DaycareCheckInPanel({
         </p>
       ) : null}
 
-      {mode === 'booking' ? (
-        <div className={styles.section}>
-          <DaycareBookingPicker
-            accessToken={accessToken}
-            branchId={branchId}
-            onSelect={handleSelectBooking}
-            selectedBookingId={selectedBooking?.id ?? null}
-          />
-        </div>
-      ) : (
-        <div className={styles.section}>
-          <div className={styles.searchRow}>
-            <input
-              className={styles.input}
-              type="email"
-              placeholder="Customer email"
-              value={emailQuery}
-              onChange={(event) => setEmailQuery(event.target.value)}
-            />
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleSearchCustomers}
-            >
-              Search
-            </button>
-          </div>
-
-          {customers.length > 0 ? (
-            <ul className={styles.list}>
-              {customers.map((customer) => (
-                <li key={customer.id}>
-                  <button
-                    type="button"
-                    className={
-                      selectedCustomer?.id === customer.id
-                        ? styles.rowButtonActive
-                        : styles.rowButton
-                    }
-                    onClick={() => handleSelectCustomer(customer)}
-                  >
-                    {customer.full_name} ({customer.account_email})
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {selectedCustomer ? (
-            <div className={styles.section}>
-              {customerPets.length > 0 ? (
-                <ul className={styles.list}>
-                  {customerPets.map((pet) => (
-                    <li key={pet.id}>
-                      <label className={styles.radioRow}>
-                        <input
-                          type="radio"
-                          name="pet"
-                          checked={selectedPetId === pet.id}
-                          onChange={() => handleSelectPet(pet)}
-                        />
-                        {pet.name}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.copy}>
-                  This customer has no pets on file yet.
-                </p>
-              )}
-
-              {isRegisteringPet ? (
-                <PetForm
-                  customerId={selectedCustomer.id}
-                  accessToken={accessToken}
-                  onCreated={handlePetRegistered}
-                  isStaff
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => setIsRegisteringPet(true)}
-                >
-                  Register a new pet
-                </button>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
+      <div className={styles.section}>
+        <DaycareBookingPicker
+          accessToken={accessToken}
+          branchId={branchId}
+          onSelect={handleSelectBooking}
+          selectedBookingId={selectedBooking?.id ?? null}
+        />
+      </div>
 
       {petId ? (
         <>

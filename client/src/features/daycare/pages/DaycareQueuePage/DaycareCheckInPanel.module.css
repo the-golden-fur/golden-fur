@@ -22,56 +22,9 @@
   padding: var(--space-2);
 }
 
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tab,
-.tabActive {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  padding: var(--space-1) var(--space-2);
-  color: var(--color-text-secondary);
-  transition: color 0.15s ease;
-}
-
-.tab:hover {
-  color: var(--color-text-primary);
-}
-
-.tabActive {
-  color: var(--color-accent-gold-primary);
-  border-bottom: 2px solid var(--color-accent-gold-primary);
-}
-
 .section {
   display: grid;
   gap: var(--space-2);
-}
-
-.list {
-  display: grid;
-  gap: var(--space-1);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.radioRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--color-text-primary);
-}
-
-.searchRow {
-  display: flex;
-  gap: var(--space-1);
 }
 
 .input {
@@ -82,33 +35,6 @@
   font: inherit;
   padding: var(--space-2);
   flex: 1;
-}
-
-.rowButton,
-.rowButtonActive {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  cursor: pointer;
-  padding: var(--space-2);
-  box-shadow: var(--shadow-sm);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.rowButton:hover,
-.rowButtonActive:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.rowButtonActive {
-  border-color: var(--color-accent-gold-primary);
 }
 
 .primaryButton {
