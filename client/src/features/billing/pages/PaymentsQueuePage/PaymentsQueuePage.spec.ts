@@ -11,6 +11,7 @@ import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
+import type { Service } from '../../../maintenance/maintenance.types';
 import { PaymentsQueuePage } from './PaymentsQueuePage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -19,11 +20,13 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  listServices: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
+  updatePet: vi.fn(),
 }));
 
 vi.mock('../../../booking/api/booking.api', () => ({
@@ -101,6 +104,33 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
   };
 }
 
+function buildService(overrides: Partial<Service> = {}): Service {
+  return {
+    id: 'service-misc',
+    category: 'Misc',
+    name: 'Initial Assessment',
+    base_price: 0,
+    duration_minutes: 30,
+    is_active: true,
+    requires_assessed_pet: false,
+    captures_pet_assessment: false,
+    min_nights_for_free_package: null,
+    free_package_name: null,
+    use_pricing_matrix: false,
+    first_hour_fee: null,
+    succeeding_hour_fee: null,
+    daycare_overnight_fee: null,
+    requires_downpayment: false,
+    downpayment_amount: null,
+    downpayment_type: null,
+    created_by: null,
+    updated_by: null,
+    created_at: '2026-07-15T00:00:00.000Z',
+    updated_at: '2026-07-15T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function renderPage() {
   const authValue: AuthContextValue = {
     session: null,
@@ -140,6 +170,10 @@ describe('PaymentsQueuePage', () => {
         { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
         { id: 'branch-southwoods', name: 'Southwoods', is_vet_branch: false },
       ],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [],
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -391,7 +425,7 @@ describe('PaymentsQueuePage', () => {
     expect(screen.queryByText('Start')).not.toBeInTheDocument();
   });
 
-  it('"View details" navigates to the booking details page', async () => {
+  it('"View details" (behind the "..." menu) navigates to the booking details page', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
@@ -400,11 +434,98 @@ describe('PaymentsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByText('View details')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: 'More options for this Grooming booking',
+      })
     );
-    await user.click(screen.getByText('View details'));
+    await user.click(screen.getByRole('menuitem', { name: 'View details' }));
 
     expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/booking-1');
+  });
+
+  it('Custom change (payments-queue pet assessment capture): Starting a booking on a captures_pet_assessment service opens the assessment modal, and Save & Start saves the pet then starts the booking', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [
+        buildService({ id: 'service-assess', captures_pet_assessment: true }),
+      ],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          service_category: 'Misc',
+          status: 'Pending',
+          payment_stage: 'Paid',
+          booking_items: [
+            {
+              id: 'item-1',
+              booking_id: 'booking-1',
+              service_id: 'service-assess',
+              package_id: null,
+              price_at_booking: 0,
+              duration_minutes_at_booking: 30,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(customerApi.updatePet).mockResolvedValue({
+      data: {
+        id: 'pet-12345678',
+        customer_id: 'cust-12345678',
+        name: 'Buddy',
+        pet_type: 'Dog',
+        breed_id: 'breed-1',
+        photo_url: null,
+        gender: 'Male',
+        date_of_birth: null,
+        weight_class: 'L',
+        coat_type: 'SC',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(bookingApi.startBooking).mockResolvedValue({
+      data: buildBooking({
+        service_category: 'Misc',
+        status: 'In Progress',
+        payment_stage: 'Paid',
+      }),
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Start')).toBeInTheDocument());
+    await user.click(screen.getByText('Start'));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.selectOptions(
+      within(dialog).getByLabelText('Weight class'),
+      'L'
+    );
+    await user.selectOptions(within(dialog).getByLabelText('Coat type'), 'SC');
+    await user.click(within(dialog).getByText('Save & Start'));
+
+    await waitFor(() =>
+      expect(customerApi.updatePet).toHaveBeenCalledWith(
+        'pet-12345678',
+        'token',
+        { weight_class: 'L', coat_type: 'SC' }
+      )
+    );
+    await waitFor(() =>
+      expect(bookingApi.startBooking).toHaveBeenCalledWith('booking-1', 'token')
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
