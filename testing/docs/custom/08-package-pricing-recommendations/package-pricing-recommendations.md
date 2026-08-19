@@ -96,14 +96,16 @@ a working badge pattern for exactly this kind of label:
 <span className={styles.packageMeta}>
   PHP {pkg.bundled_price.toFixed(2)}
   {pkg.use_pricing_matrix ? ' (varies by weight/coat)' : ''}
-</span>
-{pkg.requires_downpayment && pkg.downpayment_amount !== null ? (
-  <span className={styles.branchBadge}>
-    {pkg.downpayment_type === 'Percentage'
-      ? `Requires ${pkg.downpayment_amount}% downpayment`
-      : `Requires PHP ${pkg.downpayment_amount.toFixed(2)} downpayment`}
-  </span>
-) : null}
+</span>;
+{
+  pkg.requires_downpayment && pkg.downpayment_amount !== null ? (
+    <span className={styles.branchBadge}>
+      {pkg.downpayment_type === 'Percentage'
+        ? `Requires ${pkg.downpayment_amount}% downpayment`
+        : `Requires PHP ${pkg.downpayment_amount.toFixed(2)} downpayment`}
+    </span>
+  ) : null;
+}
 ```
 
 **Recommendation:** reuse this exact `branchBadge`/`packageMeta` span
@@ -120,12 +122,12 @@ not an open question — but it's worth writing down explicitly since the
 package create/edit form doesn't currently let anyone act on it (see below):
 
 - **Pricing matrix → applies per service**, already implemented as described
-  in §1. A package's own `use_pricing_matrix` flag doesn't add a *second*
+  in §1. A package's own `use_pricing_matrix` flag doesn't add a _second_
   pricing scheme on top — it's a switch that decides whether to honor each
   member's own matrix flag at all, or ignore all of them and use the flat sum.
 - **Downpayment → applies at the package level, not decomposed from
   members.** [`createBooking`](server/src/features/booking/services/booking.service.ts#L836-L862)
-  computes downpayment purely from the *item's own* (service-or-package)
+  computes downpayment purely from the _item's own_ (service-or-package)
   `requires_downpayment`/`downpayment_amount`/`downpayment_type` — a
   package's downpayment is never summed from its member services' individual
   downpayment flags, and a downpayment-required item can't be combined with

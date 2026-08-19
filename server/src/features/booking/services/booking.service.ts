@@ -323,7 +323,8 @@ export async function resolvePackagePrice(
     Number(pkg.bundled_price),
     pricingConfiguration
   ).find(
-    (row) => row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
+    (row) =>
+      row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
   );
 
   return cell?.price ?? Number(pkg.bundled_price);

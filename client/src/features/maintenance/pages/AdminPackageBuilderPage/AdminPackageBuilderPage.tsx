@@ -106,8 +106,7 @@ export function AdminPackageBuilderPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
-  const [formRequiresDownpayment, setFormRequiresDownpayment] =
-    useState(false);
+  const [formRequiresDownpayment, setFormRequiresDownpayment] = useState(false);
   const [formDownpaymentAmount, setFormDownpaymentAmount] = useState('');
   const [formDownpaymentType, setFormDownpaymentType] = useState<
     'Flat' | 'Percentage'
@@ -229,8 +228,10 @@ export function AdminPackageBuilderPage() {
     () => ({
       'name-asc': (a: Package, b: Package) => a.name.localeCompare(b.name),
       'name-desc': (a: Package, b: Package) => b.name.localeCompare(a.name),
-      'price-asc': (a: Package, b: Package) => a.bundled_price - b.bundled_price,
-      'price-desc': (a: Package, b: Package) => b.bundled_price - a.bundled_price,
+      'price-asc': (a: Package, b: Package) =>
+        a.bundled_price - b.bundled_price,
+      'price-desc': (a: Package, b: Package) =>
+        b.bundled_price - a.bundled_price,
     }),
     []
   );
@@ -307,7 +308,10 @@ export function AdminPackageBuilderPage() {
         b.label.localeCompare(a.label),
       'price-asc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
         (servicePriceById.get(a.id) ?? 0) - (servicePriceById.get(b.id) ?? 0),
-      'price-desc': (a: ServiceMultiSelectOption, b: ServiceMultiSelectOption) =>
+      'price-desc': (
+        a: ServiceMultiSelectOption,
+        b: ServiceMultiSelectOption
+      ) =>
         (servicePriceById.get(b.id) ?? 0) - (servicePriceById.get(a.id) ?? 0),
     }),
     [servicePriceById]
@@ -841,9 +845,7 @@ export function AdminPackageBuilderPage() {
                         sortOptions={SERVICE_SORT_OPTIONS}
                       />
                       <label className={styles.filterField}>
-                        <span className={styles.filterLabel}>
-                          Service type
-                        </span>
+                        <span className={styles.filterLabel}>Service type</span>
                         <select
                           className={styles.filterSelect}
                           value={serviceTypeFilter}
@@ -896,8 +898,8 @@ export function AdminPackageBuilderPage() {
                 />
                 <p className={styles.copy}>
                   Applies the same size/coat pricing rules used for grooming
-                  services to this package&apos;s own price above - not to
-                  its individual services.
+                  services to this package&apos;s own price above - not to its
+                  individual services.
                 </p>
 
                 {formUsePricingMatrix && pricingConfiguration ? (
@@ -946,9 +948,7 @@ export function AdminPackageBuilderPage() {
                         type="number"
                         min="0.01"
                         max={
-                          formDownpaymentType === 'Percentage'
-                            ? 100
-                            : undefined
+                          formDownpaymentType === 'Percentage' ? 100 : undefined
                         }
                         step="0.01"
                         inputMode="decimal"

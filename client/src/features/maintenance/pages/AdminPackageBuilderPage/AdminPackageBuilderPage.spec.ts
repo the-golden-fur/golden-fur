@@ -597,7 +597,7 @@ describe('AdminPackageBuilderPage', () => {
   });
 
   describe('package pricing matrix redesign (custom change)', () => {
-    it('applies the matrix directly to the package\'s own derived price, independent of any member\'s own flag - and any service is selectable regardless of its own matrix/downpayment flags', async () => {
+    it("applies the matrix directly to the package's own derived price, independent of any member's own flag - and any service is selectable regardless of its own matrix/downpayment flags", async () => {
       // A member with its own matrix flag AND its own downpayment flag -
       // neither should affect whether it's selectable, and neither flag
       // should be consulted for the package's own price.
@@ -640,7 +640,10 @@ describe('AdminPackageBuilderPage', () => {
       // Flat total: (300 + 200) * 0.9 = 450.
       expect(screen.getByText('PHP 450.00')).toBeInTheDocument();
 
-      await user.type(screen.getByLabelText('Package name'), 'Fresh Coat Bundle');
+      await user.type(
+        screen.getByLabelText('Package name'),
+        'Fresh Coat Bundle'
+      );
 
       const matrixToggle = screen.getByRole('switch', {
         name: 'Adjust price by pet size and coat',
@@ -710,9 +713,7 @@ describe('AdminPackageBuilderPage', () => {
 
       // The service picker's own SearchSortBar adds a second copy of each
       // once the builder is open with a branch selected.
-      await user.click(
-        screen.getByRole('button', { name: 'New package' })
-      );
+      await user.click(screen.getByRole('button', { name: 'New package' }));
       await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
 
       expect(
