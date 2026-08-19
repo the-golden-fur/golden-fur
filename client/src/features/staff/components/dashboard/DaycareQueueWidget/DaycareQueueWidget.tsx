@@ -30,16 +30,18 @@ export function DaycareQueueWidget({ accessToken }: DaycareQueueWidgetProps) {
 
     let isMounted = true;
 
-    void listDaycareSessions(accessToken, 'Active').then((result) => {
-      if (!isMounted) return;
+    void listDaycareSessions(accessToken, { status: 'Active' }).then(
+      (result) => {
+        if (!isMounted) return;
 
-      if (result.error || !result.data) {
-        setError(result.error ?? 'Could not load the Daycare queue.');
-        return;
+        if (result.error || !result.data) {
+          setError(result.error ?? 'Could not load the Daycare queue.');
+          return;
+        }
+
+        setSessions(result.data);
       }
-
-      setSessions(result.data);
-    });
+    );
 
     return () => {
       isMounted = false;

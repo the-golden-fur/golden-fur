@@ -56,11 +56,27 @@ export async function checkInDaycareSession(
   return { data: result.data?.session ?? null, error: result.error };
 }
 
+export interface ListDaycareSessionsFilters {
+  status?: DaycareStatus;
+  /** Inclusive YYYY-MM-DD bounds against check_in_at. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** Custom change (Daycare checkout UI parity with Hotel): widened from a
+ * bare status string to the same filters-object shape listHotelStays
+ * already takes, so DaycareSessionPicker can offer the same QueueFilterBar
+ * (date range + status) HotelStayPicker's checkout list has. */
 export async function listDaycareSessions(
   accessToken: string,
-  status?: DaycareStatus
+  filters: ListDaycareSessionsFilters = {}
 ): Promise<DaycareApiResult<DaycareSession[]>> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
+  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
   const response = await fetch(`${API_BASE_URL}/daycare/sessions${query}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
