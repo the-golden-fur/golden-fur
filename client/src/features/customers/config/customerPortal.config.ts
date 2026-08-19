@@ -2,7 +2,6 @@ import {
   Bell,
   CalendarPlus,
   ClipboardList,
-  Home,
   PawPrint,
   Receipt,
   Salad,
@@ -18,12 +17,15 @@ import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar'
  * No Settings entry here - the Navbar's gear icon already links to
  * /portal/settings for every page (same as staff, whose sidebar config
  * never had one either), so a sidebar entry would just duplicate it.
+ *
+ * Custom change (live-review): no Home entry either, for the same reason -
+ * the Navbar now has its own persistent Home icon button (mirrors the
+ * Settings icon), so the sidebar doesn't need to duplicate that too.
  */
 export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     label: null,
     items: [
-      { title: 'Home', to: '/portal', end: true, icon: Home },
       { title: 'Notifications', to: '/portal/notifications', icon: Bell },
       { title: 'Book a Service', to: '/portal/book', icon: CalendarPlus },
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },

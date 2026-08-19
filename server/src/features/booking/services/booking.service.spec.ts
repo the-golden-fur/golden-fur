@@ -694,6 +694,22 @@ describe('booking.service (#51)', () => {
       expect(builder.eq).toHaveBeenCalledWith('status', 'Pending');
     });
 
+    it('custom change (bookings/payments queue paid/unpaid filter): applies a payment_stage filter independently of status', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: { paymentStage: 'Unpaid' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('payment_stage', 'Unpaid');
+    });
+
     it('re-filters out a row the lazy No-show transition flipped away from the requested status filter', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults(

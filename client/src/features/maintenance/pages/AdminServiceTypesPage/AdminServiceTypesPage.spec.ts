@@ -182,7 +182,7 @@ describe('AdminServiceTypesPage', () => {
     expect(screen.getByText('Hotel')).toBeInTheDocument();
   });
 
-  it('custom change: the create form offers a branch multiselect that disables an unchecked branch after creation', async () => {
+  it('custom change: "New service type" opens a modal whose create form offers a branch multiselect that disables an unchecked branch after creation', async () => {
     vi.mocked(maintenanceApi.createServiceType).mockResolvedValue({
       data: buildServiceType({
         id: 'type-new',
@@ -206,14 +206,23 @@ describe('AdminServiceTypesPage', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Grooming');
-    await user.type(screen.getByLabelText('Key'), 'boarding');
-    await user.type(screen.getByLabelText('Name'), 'Boarding');
+    expect(screen.queryByLabelText('Key')).not.toBeInTheDocument();
 
-    const southwoods = screen.getByRole('checkbox', { name: 'Southwoods' });
+    await user.click(screen.getByRole('button', { name: 'New service type' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add service type' });
+    await user.type(within(dialog).getByLabelText('Key'), 'boarding');
+    await user.type(within(dialog).getByLabelText('Name'), 'Boarding');
+
+    const southwoods = within(dialog).getByRole('checkbox', {
+      name: 'Southwoods',
+    });
     expect(southwoods).toBeChecked();
     await user.click(southwoods);
 
-    await user.click(screen.getByRole('button', { name: 'Add service type' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add service type' })
+    );
 
     await waitFor(() => {
       expect(
@@ -223,6 +232,9 @@ describe('AdminServiceTypesPage', () => {
         is_available: false,
       });
     });
+
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByLabelText('Key')).not.toBeInTheDocument();
   });
 
   it('Custom change (services/packages/service types actions menu): a row exposes Configure and Branch Availability behind a single "..." menu instead of an always-visible Rename button and toggle row', async () => {

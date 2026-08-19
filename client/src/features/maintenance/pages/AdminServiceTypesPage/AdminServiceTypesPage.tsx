@@ -84,6 +84,7 @@ export function AdminServiceTypesPage() {
 
   const [branchFilter, setBranchFilter] = useState('All');
 
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreateFormState>(EMPTY_CREATE_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -348,7 +349,18 @@ export function AdminServiceTypesPage() {
       ...EMPTY_CREATE_FORM,
       branchIds: branches.map((branch) => branch.id),
     });
+    setIsCreateModalOpen(false);
     setMessage('Service type added.');
+  }
+
+  function openCreateModal() {
+    setFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setFormError(null);
   }
 
   function openEditModal(serviceType: ServiceType) {
@@ -418,7 +430,16 @@ export function AdminServiceTypesPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Service Types</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Service Types</h1>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={openCreateModal}
+          >
+            New service type
+          </button>
+        </div>
         <p className={styles.copy}>
           The service lines customers choose between at booking time (Grooming,
           Hotel, Daycare, Veterinary). Rename a type's customer-facing label,
@@ -429,95 +450,6 @@ export function AdminServiceTypesPage() {
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="add-type-title">
-          <h2 className={styles.sectionTitle} id="add-type-title">
-            Add service type
-          </h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <label className={styles.field}>
-              <span className={styles.label}>Key</span>
-              <input
-                className={styles.input}
-                value={createForm.key}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    key: event.target.value,
-                  }))
-                }
-                placeholder="e.g. Boarding"
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Name</span>
-              <input
-                className={styles.input}
-                value={createForm.name}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    name: event.target.value,
-                  }))
-                }
-              />
-            </label>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={createForm.staffPickerEnabled}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    staffPickerEnabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Staff picker enabled</span>
-            </label>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={createForm.cagePickerEnabled}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    cagePickerEnabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Cage picker enabled</span>
-            </label>
-
-            <BranchMultiSelect
-              label="Available at"
-              branches={branches}
-              selectedBranchIds={createForm.branchIds}
-              onChange={(branchIds) =>
-                setCreateForm((prev) => ({ ...prev, branchIds }))
-              }
-            />
-
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding...' : 'Add service type'}
-            </button>
-          </form>
-        </section>
 
         {isLoading ? (
           <p className={styles.copy}>Loading service types...</p>
@@ -598,6 +530,105 @@ export function AdminServiceTypesPage() {
           </>
         )}
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Add service type"
+        onClose={closeCreateModal}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Key</span>
+            <input
+              className={styles.input}
+              value={createForm.key}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  key: event.target.value,
+                }))
+              }
+              placeholder="e.g. Boarding"
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Name</span>
+            <input
+              className={styles.input}
+              value={createForm.name}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={createForm.staffPickerEnabled}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  staffPickerEnabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Staff picker enabled</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={createForm.cagePickerEnabled}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  cagePickerEnabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Cage picker enabled</span>
+          </label>
+
+          <BranchMultiSelect
+            label="Available at"
+            branches={branches}
+            selectedBranchIds={createForm.branchIds}
+            onChange={(branchIds) =>
+              setCreateForm((prev) => ({ ...prev, branchIds }))
+            }
+          />
+
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+
+          <div className={styles.formActions}>
+            <button
+              className={styles.button}
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Adding...' : 'Add service type'}
+            </button>
+            <button
+              type="button"
+              className={styles.smallButtonSecondary}
+              onClick={closeCreateModal}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={editingServiceType !== null}

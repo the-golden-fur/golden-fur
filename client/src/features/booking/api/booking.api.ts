@@ -108,6 +108,7 @@ export async function listBookings(
     params.set('service_category', filters.serviceCategory);
   }
   if (filters.status) params.set('status', filters.status);
+  if (filters.paymentStage) params.set('payment_stage', filters.paymentStage);
   if (filters.assignedStaffId) {
     params.set('assigned_staff_id', filters.assignedStaffId);
   }

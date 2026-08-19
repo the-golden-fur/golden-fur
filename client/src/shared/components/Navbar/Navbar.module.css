@@ -83,7 +83,7 @@
   font-size: var(--text-xs);
 }
 
-.settingsLink {
+.iconLink {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -96,17 +96,17 @@
   transition: border-color 0.15s ease;
 }
 
-.settingsLink:hover {
+.iconLink:hover {
   border-color: var(--color-accent-gold-primary);
 }
 
-.settingsLabel {
+.iconLabel {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
 }
 
 @media (max-width: 480px) {
-  .settingsLabel {
+  .iconLabel {
     display: none;
   }
 }

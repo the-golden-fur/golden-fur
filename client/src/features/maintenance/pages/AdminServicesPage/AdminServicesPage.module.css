@@ -38,6 +38,11 @@
 .filters {
   display: flex;
   flex-wrap: wrap;
+  /* Without this, the default stretch cross-align makes .searchField (no
+     label row above its input, unlike the sibling filterFields) grow taller
+     than its own input - the icon then centers on that taller box instead
+     of the visible input, reading as floating below it. */
+  align-items: flex-end;
   gap: var(--space-3);
 }
 

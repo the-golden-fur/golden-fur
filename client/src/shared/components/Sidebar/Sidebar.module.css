@@ -121,27 +121,31 @@
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-1);
-  /* Keeps the "..." sort trigger hidden until this row is hovered/focused -
-     see the matching --more-options-trigger-opacity comment in
-     MoreOptionsMenu.module.css. */
-  --more-options-trigger-opacity: 0;
   transition:
     opacity 200ms ease,
     max-height 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.sectionHeader {
+  /* Admin/Superadmin's per-category (Cashier/Groomer/...) sort trigger stays
+     the old hover/focus-only reveal, icon-only (no visible "Sort" label) -
+     there are several of these stacked at once, and the chevron+label
+     button already anchors the row's left side. */
+  --more-options-trigger-opacity: 0;
+}
+
 .sectionHeader:hover,
-.sectionHeader:focus-within,
-.flatSectionHeader:hover,
-.flatSectionHeader:focus-within {
+.sectionHeader:focus-within {
   --more-options-trigger-opacity: 1;
 }
 
 .flatSectionHeader {
-  /* No chevron/label to anchor to for a flat (unlabeled) section - just the
-     "..." sort menu, pinned to the same right edge the labeled version's
-     own menu ends up at. */
-  justify-content: flex-end;
+  /* No chevron/label to anchor to for a flat (unlabeled) section - the
+     visible "Sort" label + "..." trigger sit at the row's near (left) edge
+     instead, always visible (never hover-gated): this is the sidebar's only
+     sort control for non-admin staff roles and the customer portal, who'd
+     otherwise have no other affordance to discover it by. */
+  justify-content: flex-start;
 }
 
 .sidebarCollapsed .sectionHeader,
@@ -311,6 +315,7 @@
 }
 
 .categorySortLabel {
+  flex-shrink: 0;
   color: var(--color-portal-nav-text);
   opacity: 0.65;
   font-size: var(--text-xs);

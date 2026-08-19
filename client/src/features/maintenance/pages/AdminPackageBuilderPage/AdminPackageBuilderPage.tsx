@@ -48,6 +48,15 @@ const SERVICE_SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
   { value: 'name-desc', label: 'Name (Z-A)' },
 ];
 
+type PackageSortKey = 'name-asc' | 'name-desc';
+
+const PACKAGE_SORT_OPTIONS: SortOption<PackageSortKey>[] = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+];
+
+type PackageStatusFilter = 'All' | 'Active' | 'Inactive';
+
 function availableBranchIds(pkg: Package): string[] {
   return (pkg.package_branch_availability ?? [])
     .filter((row) => row.is_available)
@@ -69,6 +78,11 @@ export function AdminPackageBuilderPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [branchFilter, setBranchFilter] = useState('All');
+  // Inactive packages stay visible by default (not just Active) - the
+  // Archive action only appears once a package is already Inactive, so
+  // hiding Inactive rows by default would hide the very rows that action is
+  // for.
+  const [statusFilter, setStatusFilter] = useState<PackageStatusFilter>('All');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
@@ -179,15 +193,47 @@ export function AdminPackageBuilderPage() {
     [branches]
   );
 
-  const filteredPackages = useMemo(() => {
-    if (branchFilter === 'All') {
-      return packages;
-    }
+  const packageComparators = useMemo(
+    () => ({
+      'name-asc': (a: Package, b: Package) => a.name.localeCompare(b.name),
+      'name-desc': (a: Package, b: Package) => b.name.localeCompare(a.name),
+    }),
+    []
+  );
 
-    return packages.filter((pkg) =>
-      availableBranchIds(pkg).includes(branchFilter)
-    );
-  }, [packages, branchFilter]);
+  const {
+    search: packageSearch,
+    setSearch: setPackageSearch,
+    sortKey: packageSortKey,
+    setSortKey: setPackageSortKey,
+    result: searchedPackages,
+  } = useSearchAndSort<Package, PackageSortKey>({
+    items: packages,
+    matchesQuery: (pkg, query) => pkg.name.toLowerCase().includes(query),
+    comparators: packageComparators,
+    initialSortKey: 'name-asc',
+  });
+
+  const filteredPackages = useMemo(() => {
+    return searchedPackages.filter((pkg) => {
+      if (statusFilter === 'Active' && !pkg.is_active) {
+        return false;
+      }
+
+      if (statusFilter === 'Inactive' && pkg.is_active) {
+        return false;
+      }
+
+      if (
+        branchFilter !== 'All' &&
+        !availableBranchIds(pkg).includes(branchFilter)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [searchedPackages, statusFilter, branchFilter]);
 
   // Only services offered at every one of the form's selected branches are
   // pickable - a package's bundled services must actually be deliverable
@@ -534,21 +580,47 @@ export function AdminPackageBuilderPage() {
         </div>
 
         <div className={styles.toolbar}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Branch</span>
-            <select
-              className={styles.filterSelect}
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
-            >
-              <option value="All">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className={styles.filters}>
+            <SearchSortBar
+              searchValue={packageSearch}
+              onSearchChange={setPackageSearch}
+              searchPlaceholder="Search packages..."
+              sortValue={packageSortKey}
+              onSortChange={setPackageSortKey}
+              sortOptions={PACKAGE_SORT_OPTIONS}
+            />
+
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Branch</span>
+              <select
+                className={styles.filterSelect}
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+              >
+                <option value="All">All branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Status</span>
+              <select
+                className={styles.filterSelect}
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as PackageStatusFilter)
+                }
+              >
+                <option value="All">All</option>
+                <option value="Active">Active only</option>
+                <option value="Inactive">Inactive only</option>
+              </select>
+            </label>
+          </div>
 
           <button
             type="button"
@@ -683,7 +755,7 @@ export function AdminPackageBuilderPage() {
         </Modal>
 
         {filteredPackages.length === 0 ? (
-          <p className={styles.copy}>No packages match the selected filter.</p>
+          <p className={styles.copy}>No packages match the selected filters.</p>
         ) : (
           <ul className={styles.packageList}>
             {filteredPackages.map((pkg) => (

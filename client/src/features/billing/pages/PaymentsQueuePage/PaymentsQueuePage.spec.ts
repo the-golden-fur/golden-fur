@@ -210,6 +210,27 @@ describe('PaymentsQueuePage', () => {
     expect(screen.queryByText('Branch')).not.toBeInTheDocument();
   });
 
+  it('custom change (bookings/payments queue paid/unpaid filter): the Payment status filter requests bookings filtered by payment_stage', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Cashier')],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+
+    await user.selectOptions(screen.getByLabelText('Payment status'), 'Unpaid');
+
+    await waitFor(() =>
+      expect(bookingApi.listBookings).toHaveBeenLastCalledWith(
+        'token',
+        expect.objectContaining({ paymentStage: 'Unpaid' })
+      )
+    );
+  });
+
   it('payment_stage: shows Mark as Paid for an Unpaid booking, prompts via modal, and advances via "Normal onsite payment"', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({

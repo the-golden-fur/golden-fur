@@ -21,6 +21,13 @@
   font-weight: var(--weight-bold);
 }
 
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .copy {
   margin: 0;
   color: var(--color-text-secondary);
@@ -43,23 +50,6 @@
 .successBanner {
   background: var(--color-success-bg);
   color: var(--color-success-text);
-}
-
-.panel {
-  display: grid;
-  gap: var(--space-2);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-4);
-}
-
-.sectionTitle {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: var(--text-heading-md);
-  font-weight: var(--weight-semibold);
 }
 
 .form {

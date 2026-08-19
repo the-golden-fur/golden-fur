@@ -218,12 +218,28 @@ describe('Sidebar', () => {
     renderSidebar([
       {
         label: null,
-        items: [{ title: 'Dashboard', to: '/staff/dashboard/admin' }],
+        items: [
+          { title: 'Dashboard', to: '/staff/dashboard/admin' },
+          { title: 'Days Off', to: '/staff/days-off' },
+        ],
       },
     ]);
 
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sort' })).toBeInTheDocument();
+  });
+
+  it('custom change: hides the sort menu for a section with only one item - nothing to sort', () => {
+    renderSidebar([
+      {
+        label: null,
+        items: [{ title: 'Dashboard', to: '/staff/dashboard/admin' }],
+      },
+    ]);
+
+    expect(
+      screen.queryByRole('button', { name: 'Sort' })
+    ).not.toBeInTheDocument();
   });
 
   it('sorts a category alphabetically via the "..." menu, persists it, and marks the active choice', async () => {

@@ -36,6 +36,7 @@ import {
   BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
   OVERRIDABLE_PAYMENT_STAGES,
+  PAYMENT_STAGES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingStatus,
@@ -101,6 +102,9 @@ export function PaymentsQueuePage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
     'All'
   );
+  const [paymentStageFilter, setPaymentStageFilter] = useState<
+    PaymentStage | 'All'
+  >('All');
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -166,6 +170,8 @@ export function PaymentsQueuePage() {
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: statusFilter === 'All' ? undefined : statusFilter,
+      paymentStage:
+        paymentStageFilter === 'All' ? undefined : paymentStageFilter,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -222,6 +228,7 @@ export function PaymentsQueuePage() {
     dateRange.to,
     categoryFilter,
     statusFilter,
+    paymentStageFilter,
   ]);
 
   const branchNameById = useMemo(
@@ -286,6 +293,13 @@ export function PaymentsQueuePage() {
         onClear: () => setCategoryFilter('All'),
       });
     }
+    if (paymentStageFilter !== 'All') {
+      chips.push({
+        id: 'payment',
+        label: `Payment: ${paymentStageFilter}`,
+        onClear: () => setPaymentStageFilter('All'),
+      });
+    }
     if (isSuperadmin && branchFilter !== 'All') {
       chips.push({
         id: 'branch',
@@ -315,6 +329,7 @@ export function PaymentsQueuePage() {
     dateRangePreset,
     statusFilter,
     categoryFilter,
+    paymentStageFilter,
     isSuperadmin,
     branchFilter,
     branchNameById,
@@ -511,6 +526,26 @@ export function PaymentsQueuePage() {
               {SERVICE_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
                   {category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Payment status</span>
+            <select
+              className={styles.filterSelect}
+              value={paymentStageFilter}
+              onChange={(event) =>
+                setPaymentStageFilter(
+                  event.target.value as PaymentStage | 'All'
+                )
+              }
+            >
+              <option value="All">All payment statuses</option>
+              {PAYMENT_STAGES.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
                 </option>
               ))}
             </select>
