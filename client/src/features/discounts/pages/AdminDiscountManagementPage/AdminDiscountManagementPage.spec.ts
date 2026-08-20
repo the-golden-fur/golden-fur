@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -27,6 +27,8 @@ vi.mock('../../api/discounts.api', () => ({
   listDiscounts: vi.fn(),
   createDiscount: vi.fn(),
   updateDiscount: vi.fn(),
+  setDiscountBranchAvailability: vi.fn(),
+  archiveDiscount: vi.fn(),
 }));
 
 const BRANCHES = [
@@ -77,7 +79,6 @@ function buildPackage(overrides: Partial<Package> = {}): Package {
 function buildDiscount(overrides: Partial<Discount> = {}): Discount {
   return {
     id: 'discount-1',
-    branch_id: 'branch-makati',
     name: 'Senior Citizen',
     is_mandated: true,
     discount_type: 'Percentage',
@@ -86,11 +87,22 @@ function buildDiscount(overrides: Partial<Discount> = {}): Discount {
     scope_service_id: null,
     scope_package_id: null,
     scope_category: 'Grooming',
-    is_active: false,
+    // Custom change (unify active/available): true, consistent with the
+    // default discount_branch_availability below (available at Makati) -
+    // is_active is derived from availability everywhere now.
+    is_active: true,
     created_by: null,
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
+    archived_at: null,
+    discount_branch_availability: [
+      {
+        discount_id: 'discount-1',
+        branch_id: 'branch-makati',
+        is_available: true,
+      },
+    ],
     ...overrides,
   };
 }
@@ -149,6 +161,15 @@ function renderPage() {
   );
 }
 
+async function openActionsMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string
+) {
+  await user.click(
+    (await screen.findAllByRole('button', { name: `Actions for ${name}` }))[0]
+  );
+}
+
 describe('AdminDiscountManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -193,44 +214,96 @@ describe('AdminDiscountManagementPage', () => {
     expect(discountsApi.listDiscounts).not.toHaveBeenCalled();
   });
 
-  it('AC-1: shows Senior Citizen and PWD in a distinct Government-Mandated section, both Inactive by default', async () => {
+  it('AC-1: shows Senior Citizen and PWD in a distinct Government-Mandated section', async () => {
     renderPage();
 
     expect(await screen.findByText('Government-Mandated')).toBeInTheDocument();
     expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
-    expect(screen.getAllByText('Inactive')).toHaveLength(2);
+    // Custom change (unify active/available): no row-level toggle and no
+    // Active/Inactive badge - Branch Availability is the only control, and
+    // is_active is purely derived from it.
+    expect(
+      screen.queryByRole('switch', { name: /^Enable/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
+    expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
     expect(screen.getByText('Custom Discounts')).toBeInTheDocument();
     expect(
       screen.getByText('No custom discounts match the selected filters.')
     ).toBeInTheDocument();
   });
 
-  it('AC-2: the enable/disable toggle activates a discount without a full page reload', async () => {
-    vi.mocked(discountsApi.updateDiscount).mockResolvedValue({
-      data: buildDiscount({ is_active: true }),
+  it("unify active/available: turning off a discount's only available branch makes Archive appear (is_active derives from availability, no Configure toggle needed)", async () => {
+    vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [
+        buildDiscount({
+          id: 'discount-custom',
+          name: 'Loyalty Discount',
+          is_mandated: false,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(discountsApi.setDiscountBranchAvailability).mockResolvedValue({
+      data: {
+        discount_id: 'discount-custom',
+        branch_id: 'branch-makati',
+        is_available: false,
+      },
       error: null,
     });
 
     renderPage();
     const user = userEvent.setup();
 
+    await openActionsMenu(user, 'Loyalty Discount');
     await user.click(
-      (await screen.findAllByRole('switch', { name: /Senior Citizen/ }))[0]
+      await screen.findByRole('menuitem', { name: 'Branch Availability' })
     );
 
+    // Before: available at Makati (its only branch) - Archive isn't offered
+    // yet (still effectively active).
+    await openActionsMenu(user, 'Loyalty Discount');
+    expect(
+      screen.queryByRole('menuitem', { name: 'Archive' })
+    ).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('switch', { name: 'Makati' }));
+
     await waitFor(() => {
-      expect(discountsApi.updateDiscount).toHaveBeenCalledWith(
-        'discount-1',
+      expect(discountsApi.setDiscountBranchAvailability).toHaveBeenCalledWith(
+        'discount-custom',
         'token',
-        { is_active: true }
+        { branch_id: 'branch-makati', is_available: false }
       );
     });
 
-    expect(await screen.findAllByText('Active')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await openActionsMenu(user, 'Loyalty Discount');
+
+    expect(
+      await screen.findByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
   });
 
-  it('AC-3: create-custom-discount form saves name, type, value, and category scope for a branch', async () => {
+  it('branch builder: New custom discount opens in a modal dialog, not an inline panel', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'New custom discount' })
+    );
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Create discount' })
+    ).toBeInTheDocument();
+  });
+
+  it('branch builder: create-custom-discount form saves name, type, value, scope, and a branch multiselect', async () => {
     vi.mocked(discountsApi.createDiscount).mockResolvedValue({
       data: buildDiscount({
         id: 'discount-new',
@@ -248,20 +321,26 @@ describe('AdminDiscountManagementPage', () => {
       await screen.findByRole('button', { name: 'New custom discount' })
     );
 
-    // Two "Branch" selects exist (filter + form) - the form's is second.
-    await user.selectOptions(
-      screen.getAllByLabelText('Branch')[1],
-      'branch-makati'
-    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Create discount',
+    });
+
     await user.type(screen.getByLabelText('Name'), 'Staff Appreciation');
     await user.type(screen.getByLabelText(/Discount value/), '10');
     await user.selectOptions(screen.getByLabelText('Scope'), 'category');
     await user.selectOptions(screen.getByLabelText('Category'), 'Grooming');
-    await user.click(screen.getByRole('button', { name: 'Save discount' }));
+    // Branch multiselect (custom change): a checkbox per branch inside the
+    // modal, not a single-select dropdown - picking more than one is the
+    // whole point of the feature.
+    await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Southwoods' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save discount' })
+    );
 
     await waitFor(() => {
       expect(discountsApi.createDiscount).toHaveBeenCalledWith('token', {
-        branch_id: 'branch-makati',
+        branch_ids: ['branch-makati', 'branch-southwoods'],
         name: 'Staff Appreciation',
         discount_type: 'Percentage',
         value: 10,
@@ -273,26 +352,53 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Discount created.')).toBeInTheDocument();
   });
 
-  it("AC-4: a mandated discount's name field is read-only in the edit form", async () => {
+  it("AC-4: a mandated discount's name field is read-only in the edit form, opened via the actions menu", async () => {
     renderPage();
     const user = userEvent.setup();
 
+    await openActionsMenu(user, 'Senior Citizen');
     await user.click(
-      (await screen.findAllByRole('button', { name: 'Edit' }))[0]
+      await screen.findByRole('menuitem', { name: 'Configure' })
     );
 
-    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(await screen.findByLabelText('Name')).toBeDisabled();
   });
 
-  it('Epic B #85 AC-1: renders discounts as cards, not table rows', async () => {
+  it('branch builder: the actions menu offers Branch Availability, which opens the per-branch toggle modal', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await openActionsMenu(user, 'Senior Citizen');
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Branch Availability' })
+    );
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: 'Branch Availability - Senior Citizen',
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Makati' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    expect(screen.getByRole('switch', { name: 'Southwoods' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
+  });
+
+  it('Epic B #85 (custom change): renders discounts as a list, not table rows or cards', async () => {
     renderPage();
 
     expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryAllByRole('row')).toHaveLength(0);
+    // Two mandated rows in one <ul>.
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('#85 AC-2: search narrows the visible cards by name', async () => {
+  it('#85 AC-2: search narrows the visible rows by name', async () => {
     renderPage();
     const user = userEvent.setup();
 

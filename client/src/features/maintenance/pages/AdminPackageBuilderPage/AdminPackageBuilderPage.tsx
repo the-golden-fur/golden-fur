@@ -71,6 +71,13 @@ function availableBranchIds(pkg: Package): string[] {
     .map((row) => row.branch_id);
 }
 
+/** Custom change (unify active/available): mirrors the server's own sync
+ * rule (packages.service.ts) so the client's optimistic local update
+ * matches what a refetch would show, without a round trip. */
+function deriveIsActive(availability: Package['package_branch_availability']) {
+  return (availability ?? []).some((row) => row.is_available);
+}
+
 export function AdminPackageBuilderPage() {
   const { user, accessToken } = useAuth();
 
@@ -102,7 +109,6 @@ export function AdminPackageBuilderPage() {
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [formName, setFormName] = useState('');
-  const [formIsActive, setFormIsActive] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
@@ -394,7 +400,6 @@ export function AdminPackageBuilderPage() {
   function resetFormFields() {
     setSelectedBranchIds([]);
     setFormName('');
-    setFormIsActive(true);
     setSelectedServiceIds([]);
     setServiceSearch('');
     setServiceTypeFilter('All');
@@ -421,7 +426,6 @@ export function AdminPackageBuilderPage() {
     setEditingPackageId(pkg.id);
     setSelectedBranchIds(availableBranchIds(pkg));
     setFormName(pkg.name);
-    setFormIsActive(pkg.is_active);
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
@@ -497,7 +501,11 @@ export function AdminPackageBuilderPage() {
       }
     });
 
-    return { ...pkg, package_branch_availability: updatedRows };
+    return {
+      ...pkg,
+      package_branch_availability: updatedRows,
+      is_active: deriveIsActive(updatedRows),
+    };
   }
 
   /** Saves the bundle discount % alongside the package itself, only if it
@@ -641,7 +649,6 @@ export function AdminPackageBuilderPage() {
     const result = await updatePackage(editingPackageId, accessToken, {
       name: formName.trim(),
       service_ids: selectedServiceIds,
-      is_active: formIsActive,
       use_pricing_matrix: formUsePricingMatrix,
       requires_downpayment: formRequiresDownpayment,
       downpayment_amount: formRequiresDownpayment
@@ -806,14 +813,6 @@ export function AdminPackageBuilderPage() {
                     required
                   />
                 </label>
-
-                {editingPackageId !== null ? (
-                  <ToggleSwitch
-                    label="Active"
-                    checked={formIsActive}
-                    onChange={setFormIsActive}
-                  />
-                ) : null}
               </div>
 
               <div className={styles.formSection}>
@@ -1083,16 +1082,16 @@ export function AdminPackageBuilderPage() {
 
             const rows = availabilityPackage.package_branch_availability ?? [];
             const hasRow = rows.some((row) => row.branch_id === branchId);
+            const nextRows = hasRow
+              ? rows.map((row) =>
+                  row.branch_id === branchId ? { ...row, ...result.data } : row
+                )
+              : [...rows, result.data];
 
             replacePackage({
               ...availabilityPackage,
-              package_branch_availability: hasRow
-                ? rows.map((row) =>
-                    row.branch_id === branchId
-                      ? { ...row, ...result.data }
-                      : row
-                  )
-                : [...rows, result.data],
+              package_branch_availability: nextRows,
+              is_active: deriveIsActive(nextRows),
             });
           });
         }}

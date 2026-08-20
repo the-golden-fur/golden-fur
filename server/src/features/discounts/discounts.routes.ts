@@ -10,6 +10,7 @@ import {
   listArchivedDiscountsController,
   listDiscountsController,
   restoreDiscountController,
+  setDiscountBranchAvailabilityController,
   updateDiscountController,
 } from './discounts.controller.ts';
 import {
@@ -41,6 +42,11 @@ router.get('/discounts/archived', adminWrite, listArchivedDiscountsController);
 router.post('/discounts', adminWrite, createDiscountController);
 router.get('/discounts/:id', staffRead, getDiscountController);
 router.patch('/discounts/:id', adminWrite, updateDiscountController);
+router.patch(
+  '/discounts/:id/branch-availability',
+  adminWrite,
+  setDiscountBranchAvailabilityController
+);
 // Archive is the "delete" a normal admin performs (soft, reversible, still
 // gated behind is_active === false via archiveDiscount's own guard).
 router.delete('/discounts/:id', adminWrite, archiveDiscountController);

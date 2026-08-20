@@ -3,13 +3,16 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
-import type { Promo } from '../maintenance.types.ts';
+import type { Promo, PromoBranchAvailability } from '../maintenance.types.ts';
 import type {
   CreatePromoInput,
   UpdatePromoInput,
 } from '../modules/validators/maintenance.validator.ts';
 
-const PROMO_SELECT = '*, promo_scope(*)';
+// promo_branch_availability(*) mirrors package_branch_availability's own
+// SELECT shape (custom change: promos moved off the old branch_scope enum
+// onto the same many-to-many join, migration 20260820141).
+const PROMO_SELECT = '*, promo_scope(*), promo_branch_availability(*)';
 
 /** Postgres foreign_key_violation. */
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -25,7 +28,7 @@ function todayDateString(): string {
 }
 
 interface ListPromosParams {
-  branchScope?: string;
+  branchId?: string;
   includeInactive?: boolean;
 }
 
@@ -40,14 +43,24 @@ interface UpdatePromoParams {
   updates: UpdatePromoInput;
 }
 
+interface SetPromoBranchAvailabilityParams {
+  promoId: string;
+  branchId: string;
+  isAvailable: boolean;
+}
+
 /**
  * The active list applies the defensive read-time expiry filter (#42 AC-5):
  * a promo whose end_date has passed is never returned as active, even if the
  * scheduled deactivation job hasn't run yet. includeInactive is the admin
  * management view (#47's list filter) and skips both filters.
+ *
+ * Custom change: branchId now filters on the joined availability rows
+ * (post-fetch, same as services.service.ts's listServices) rather than a
+ * DB-level eq against the old branch_scope enum.
  */
 export async function listPromos({
-  branchScope,
+  branchId,
   includeInactive,
 }: ListPromosParams): Promise<Promo[]> {
   let query = supabase
@@ -61,16 +74,21 @@ export async function listPromos({
       .or(`end_date.is.null,end_date.gte.${todayDateString()}`);
   }
 
-  if (branchScope && branchScope !== 'both') {
-    // A promo scoped to 'both' matches either branch filter.
-    query = query.in('branch_scope', [branchScope, 'both']);
-  }
-
   const { data, error } = await query.order('name');
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as Promo[];
+  const promos = (data ?? []) as Promo[];
+
+  if (!branchId) {
+    return promos;
+  }
+
+  return promos.filter((promo) =>
+    (promo.promo_branch_availability ?? []).some(
+      (row) => row.branch_id === branchId && row.is_available
+    )
+  );
 }
 
 export async function getPromoById(promoId: string): Promise<Promo> {
@@ -86,11 +104,14 @@ export async function getPromoById(promoId: string): Promise<Promo> {
   return data as Promo;
 }
 
+/** branch_ids (custom change) is inserted as its own set of
+ * promo_branch_availability rows in the same call, mirroring
+ * createPackage/createDiscount. */
 export async function createPromo({
   requesterId,
   input,
 }: CreatePromoParams): Promise<Promo> {
-  const { scope, ...promoFields } = input;
+  const { scope, branch_ids: branchIds, ...promoFields } = input;
 
   const { data: created, error } = await supabase
     .from('promos')
@@ -121,7 +142,53 @@ export async function createPromo({
     if (scopeError) throwWithStatus(400, scopeError.message);
   }
 
+  const { error: availabilityError } = await supabase
+    .from('promo_branch_availability')
+    .insert(
+      branchIds.map((branchId) => ({
+        promo_id: created.id,
+        branch_id: branchId,
+        is_available: true,
+      }))
+    );
+
+  if (availabilityError) throwWithStatus(400, availabilityError.message);
+
   return getPromoById(created.id);
+}
+
+/** Per-branch availability toggle via its own endpoint, mirroring
+ * setServiceBranchAvailability/setPackageBranchAvailability. Unlike those,
+ * this does NOT sync promos.is_active - see the Promo type's own doc
+ * comment on why is_active stays independent for promos. */
+export async function setPromoBranchAvailability({
+  promoId,
+  branchId,
+  isAvailable,
+}: SetPromoBranchAvailabilityParams): Promise<PromoBranchAvailability> {
+  const { data: existing, error: lookupError } = await supabase
+    .from('promos')
+    .select('id')
+    .eq('id', promoId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (!existing) throwWithStatus(404, 'Promo not found');
+
+  const { data, error } = await supabase
+    .from('promo_branch_availability')
+    .upsert(
+      { promo_id: promoId, branch_id: branchId, is_available: isAvailable },
+      { onConflict: 'promo_id,branch_id' }
+    )
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to update availability');
+  }
+
+  return data as PromoBranchAvailability;
 }
 
 /**

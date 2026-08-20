@@ -16,8 +16,15 @@ interface QueryResult {
   error: unknown;
 }
 
+interface BuilderRecord {
+  [method: string]: ReturnType<typeof vi.fn>;
+}
+
+const builders: BuilderRecord[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  builders.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
@@ -31,6 +38,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
+    builders.push(builder as BuilderRecord);
     return builder as never;
   });
 }
@@ -161,7 +169,8 @@ describe('serviceTypes.service', () => {
             is_available: false,
           },
           error: null,
-        } // upsert
+        }, // upsert
+        { data: [{ is_available: true }, { is_available: false }], error: null } // all-rows read for the is_active sync
       );
 
       const result = await setServiceTypeBranchAvailability({
@@ -172,6 +181,29 @@ describe('serviceTypes.service', () => {
 
       expect(result.is_available).toBe(false);
       expect(result.branch_id).toBe('branch-south');
+    });
+
+    it('custom change (unify active/available): syncs service_types.is_active to false once every branch is unavailable', async () => {
+      queueFromResults(
+        { data: { id: 'type-1' }, error: null },
+        {
+          data: {
+            service_type_id: 'type-1',
+            branch_id: 'branch-south',
+            is_available: false,
+          },
+          error: null,
+        },
+        { data: [{ is_available: false }], error: null }
+      );
+
+      await setServiceTypeBranchAvailability({
+        serviceTypeId: 'type-1',
+        branchId: 'branch-south',
+        isAvailable: false,
+      });
+
+      expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
     });
 
     it('returns 404 for an unknown service type', async () => {

@@ -1,14 +1,8 @@
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { getPromoTiming } from '../../utils/promoTiming';
-import type { Promo, PromoBranchScope } from '../../maintenance.types';
+import type { Promo } from '../../maintenance.types';
 import styles from './PromoCard.module.css';
-
-const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
-  makati: 'Makati',
-  southwoods: 'Southwoods',
-  both: 'Both branches',
-};
 
 const TIMING_LABELS = {
   Upcoming: 'Upcoming',
@@ -20,18 +14,28 @@ interface PromoCardProps {
   promo: Promo;
   onToggle: (isActive: boolean) => void;
   onEdit: () => void;
+  onManageBranches: () => void;
   onArchive: () => void;
 }
 
 /**
  * Card layout for the Promos subpage, matching the Discount Management
- * overhaul's DiscountCard - name, branch scope + timing badges, value,
- * window, and active/inactive status at a glance.
+ * overhaul's DiscountCard - name, timing badge, value, window, and
+ * active/inactive status at a glance.
+ *
+ * Custom change (unify active/available): the old single branch-scope badge
+ * ("Makati"/"Southwoods"/"Both branches") is gone now that a promo can span
+ * any subset of branches - Branch Availability (its own action below,
+ * mirroring Discounts/Services/Packages) is the source of truth for that,
+ * same as this app already does everywhere else multi-branch. is_active
+ * stays a real, separately-toggleable control here (unlike those four) -
+ * see the Promo type's own doc comment on why.
  */
 export function PromoCard({
   promo,
   onToggle,
   onEdit,
+  onManageBranches,
   onArchive,
 }: PromoCardProps) {
   const formattedValue =
@@ -55,9 +59,6 @@ export function PromoCard({
       </div>
 
       <div className={styles.badges}>
-        <span className={styles.branchBadge}>
-          {BRANCH_SCOPE_LABELS[promo.branch_scope]}
-        </span>
         <span className={styles.timingBadge}>{TIMING_LABELS[timing]}</span>
       </div>
 
@@ -76,6 +77,13 @@ export function PromoCard({
           onClick={onEdit}
         >
           Edit
+        </button>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={onManageBranches}
+        >
+          Branch Availability
         </button>
         {!promo.is_active ? (
           <button

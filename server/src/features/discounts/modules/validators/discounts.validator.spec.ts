@@ -10,7 +10,7 @@ const PACKAGE_ID = '33333333-3333-4333-a333-333333333333';
 
 describe('createDiscountValidator', () => {
   const base = {
-    branch_id: BRANCH_ID,
+    branch_ids: [BRANCH_ID],
     name: 'Loyalty Discount',
     discount_type: 'Percentage',
     value: 10,
@@ -87,6 +87,17 @@ describe('createDiscountValidator', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects an empty branch_ids array', () => {
+    const result = createDiscountValidator.safeParse({
+      ...base,
+      branch_ids: [],
+      scope_type: 'category',
+      scope_category: 'Grooming',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('AC-3 (shape): is_mandated is not an accepted create field', () => {
     const result = createDiscountValidator.safeParse({
       ...base,
@@ -100,9 +111,9 @@ describe('createDiscountValidator', () => {
 });
 
 describe('updateDiscountValidator', () => {
-  it('AC-3: accepts an is_active-only toggle', () => {
+  it('custom change (unify active/available): rejects is_active - it is derived from branch availability, not independently settable', () => {
     expect(updateDiscountValidator.safeParse({ is_active: true }).success).toBe(
-      true
+      false
     );
   });
 

@@ -302,12 +302,13 @@ export interface CreateServicePayload {
   downpayment_type?: 'Flat' | 'Percentage';
 }
 
+/** is_active is deliberately absent - derived from branch availability, not
+ * independently settable (see Service.is_active). */
 export interface UpdateServicePayload {
   name?: string;
   category?: ServiceCategory;
   base_price?: number;
   duration_minutes?: number | null;
-  is_active?: boolean;
   requires_assessed_pet?: boolean;
   captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number | null;
@@ -339,9 +340,10 @@ export interface CreatePackagePayload {
   downpayment_type?: 'Flat' | 'Percentage';
 }
 
+/** is_active is deliberately absent - derived from branch availability, not
+ * independently settable (see Package.is_active). */
 export interface UpdatePackagePayload {
   name?: string;
-  is_active?: boolean;
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
   use_pricing_matrix?: boolean;
@@ -366,6 +368,15 @@ export interface PromoScopeItem {
   package_id: string | null;
 }
 
+/** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability
+ * - replaces the promo's original branch_scope enum
+ * ('makati'/'southwoods'/'both'). */
+export interface PromoBranchAvailability {
+  promo_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface Promo {
   id: string;
   name: string;
@@ -375,7 +386,12 @@ export interface Promo {
   discount_type: DiscountValueType;
   value: number;
   scope_type: PromoScopeType;
-  branch_scope: PromoBranchScope;
+  /**
+   * Deliberately NOT derived from promo_branch_availability - unlike
+   * Discount/Service/Package/ServiceType, is_active also drives automatic
+   * date-based expiry, a temporal concern independent of which branches
+   * carry the promo. Still a manually-settable flag via updatePromo.
+   */
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -383,6 +399,7 @@ export interface Promo {
   updated_at: string;
   archived_at: string | null;
   promo_scope?: PromoScopeItem[];
+  promo_branch_availability?: PromoBranchAvailability[];
 }
 
 /** One promo_scope row as the API accepts it - exactly one of the two ids. */
@@ -391,6 +408,7 @@ export interface PromoScopeInput {
   package_id?: string;
 }
 
+/** branch_ids (custom change) replaces the old branch_scope enum. */
 export interface CreatePromoPayload {
   name: string;
   start_date?: string;
@@ -400,9 +418,12 @@ export interface CreatePromoPayload {
   value: number;
   scope_type: PromoScopeType;
   scope?: PromoScopeInput[];
-  branch_scope: PromoBranchScope;
+  branch_ids: string[];
 }
 
+/** branch_ids is deliberately absent - branch changes go through
+ * setPromoBranchAvailability, same as Discounts/Services/Packages/Service
+ * Types. is_active stays here (unlike those four) - see Promo.is_active. */
 export interface UpdatePromoPayload {
   name?: string;
   start_date?: string | null;
@@ -412,7 +433,6 @@ export interface UpdatePromoPayload {
   value?: number;
   scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
-  branch_scope?: PromoBranchScope;
   is_active?: boolean;
 }
 
@@ -468,9 +488,10 @@ export interface CreateServiceTypePayload {
   cage_picker_enabled?: boolean;
 }
 
+/** is_active is deliberately absent - derived from branch availability, not
+ * independently settable (see ServiceType.is_active). */
 export interface UpdateServiceTypePayload {
   name?: string;
-  is_active?: boolean;
   staff_picker_enabled?: boolean;
   cage_picker_enabled?: boolean;
 }

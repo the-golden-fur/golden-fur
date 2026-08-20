@@ -10,6 +10,7 @@ import {
   listPromoCapConfigurations,
   listPromos,
   listServices,
+  setPromoBranchAvailability,
   updatePromo,
   upsertPromoCapConfiguration,
 } from '../../api/maintenance.api';
@@ -21,7 +22,6 @@ import { PromoCard } from '../../components/PromoCard/PromoCard';
 import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
 import {
   PromoFilterBar,
-  type PromoBranchScopeFilter,
   type PromoStatusFilter,
   type PromoTimingFilter,
 } from '../../components/PromoFilterBar/PromoFilterBar';
@@ -32,6 +32,8 @@ import {
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { getPromoTiming } from '../../utils/promoTiming';
 import type {
   BranchSummary,
@@ -39,7 +41,6 @@ import type {
   DiscountValueType,
   Package,
   Promo,
-  PromoBranchScope,
   PromoCapConfiguration,
   PromoScopeInput,
   PromoScopeType,
@@ -51,13 +52,12 @@ import styles from './AdminPromoConfigPage.module.css';
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
-const BRANCH_SCOPES: PromoBranchScope[] = ['makati', 'southwoods', 'both'];
 
-const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
-  makati: 'Makati',
-  southwoods: 'Southwoods',
-  both: 'Both branches',
-};
+function availableBranchIds(promo: Promo): string[] {
+  return (promo.promo_branch_availability ?? [])
+    .filter((row) => row.is_available)
+    .map((row) => row.branch_id);
+}
 
 type CapSortKey = 'name-asc' | 'name-desc';
 type CapTypeFilter = 'all' | CapType;
@@ -131,8 +131,7 @@ export function AdminPromoConfigPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [branchScopeFilter, setBranchScopeFilter] =
-    useState<PromoBranchScopeFilter>('All');
+  const [branchFilter, setBranchFilter] = useState('All');
   const [timingFilter, setTimingFilter] = useState<PromoTimingFilter>('All');
   const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>('Active');
 
@@ -147,11 +146,13 @@ export function AdminPromoConfigPage() {
   const [formScopeType, setFormScopeType] =
     useState<PromoScopeType>('all_services');
   const [formScopeIds, setFormScopeIds] = useState<string[]>([]);
-  const [formBranchScope, setFormBranchScope] =
-    useState<PromoBranchScope>('both');
+  const [formBranchIds, setFormBranchIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [availabilityPromoId, setAvailabilityPromoId] = useState<string | null>(
+    null
+  );
 
   const [capBranches, setCapBranches] = useState<BranchSummary[]>([]);
   const [capConfigurations, setCapConfigurations] = useState<
@@ -333,13 +334,17 @@ export function AdminPromoConfigPage() {
     (row) => row.branchId === configuringCapBranchId
   );
 
+  const availabilityPromo = promos.find(
+    (promo) => promo.id === availabilityPromoId
+  );
+
   const filteredPromos = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
 
     return promos.filter((promo) => {
       if (
-        branchScopeFilter !== 'All' &&
-        promo.branch_scope !== branchScopeFilter
+        branchFilter !== 'All' &&
+        !availableBranchIds(promo).includes(branchFilter)
       ) {
         return false;
       }
@@ -362,7 +367,7 @@ export function AdminPromoConfigPage() {
 
       return true;
     });
-  }, [promos, branchScopeFilter, statusFilter, timingFilter, search]);
+  }, [promos, branchFilter, statusFilter, timingFilter, search]);
 
   // Existing scope selections (from an in-edit promo) stay offered even if
   // the referenced service/package has since gone inactive, so editing never
@@ -429,7 +434,7 @@ export function AdminPromoConfigPage() {
     setFormEndDate('');
     setFormScopeType('all_services');
     setFormScopeIds([]);
-    setFormBranchScope('both');
+    setFormBranchIds([]);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -443,7 +448,7 @@ export function AdminPromoConfigPage() {
     setFormEndDate(promo.end_date ?? '');
     setFormScopeType(promo.scope_type);
     setFormScopeIds(scopeToCompositeIds(promo));
-    setFormBranchScope(promo.branch_scope);
+    setFormBranchIds(availableBranchIds(promo));
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -471,6 +476,96 @@ export function AdminPromoConfigPage() {
     replacePromo(result.data);
     setMessage(isActive ? 'Promo reactivated.' : 'Promo deactivated.');
   };
+
+  const handleBranchToggle = async (
+    promo: Promo,
+    branchId: string,
+    isAvailable: boolean
+  ) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await setPromoBranchAvailability(promo.id, accessToken, {
+      branch_id: branchId,
+      is_available: isAvailable,
+    });
+
+    if (result.error || !result.data) {
+      setMessage(result.error ?? 'Could not update branch availability.');
+      return;
+    }
+
+    const rows = promo.promo_branch_availability ?? [];
+    const hasRow = rows.some((row) => row.branch_id === branchId);
+
+    replacePromo({
+      ...promo,
+      promo_branch_availability: hasRow
+        ? rows.map((row) =>
+            row.branch_id === branchId ? { ...row, ...result.data } : row
+          )
+        : [...rows, result.data],
+    });
+  };
+
+  /**
+   * Applies the edit form's branch multiselect to a just-updated promo by
+   * diffing it against the row's current availability and only calling
+   * setPromoBranchAvailability for branches whose selection actually
+   * changed - same approach as AdminServicesPage/AdminDiscountManagementPage's
+   * own applyBranchSelection. Create doesn't need this: branch_ids goes
+   * straight into the create payload and the server seeds the availability
+   * rows itself.
+   */
+  async function applyBranchSelection(
+    promo: Promo,
+    selectedBranchIds: string[]
+  ): Promise<Promo> {
+    if (!accessToken) {
+      return promo;
+    }
+
+    const rows = promo.promo_branch_availability ?? [];
+    const changedBranches = capBranches.filter((branch) => {
+      const current =
+        rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
+      const next = selectedBranchIds.includes(branch.id);
+      return current !== next;
+    });
+
+    if (changedBranches.length === 0) {
+      return promo;
+    }
+
+    const results = await Promise.all(
+      changedBranches.map((branch) =>
+        setPromoBranchAvailability(promo.id, accessToken, {
+          branch_id: branch.id,
+          is_available: selectedBranchIds.includes(branch.id),
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changedBranches.forEach((branch, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return { ...promo, promo_branch_availability: updatedRows };
+  }
 
   const handleArchive = async (promo: Promo) => {
     if (!accessToken) {
@@ -517,6 +612,11 @@ export function AdminPromoConfigPage() {
       return;
     }
 
+    if (formBranchIds.length === 0) {
+      setFormError('Select at least one branch.');
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -532,7 +632,7 @@ export function AdminPromoConfigPage() {
         value,
         scope_type: formScopeType,
         ...(formScopeType === 'specific' ? { scope } : {}),
-        branch_scope: formBranchScope,
+        branch_ids: formBranchIds,
       });
 
       setIsSubmitting(false);
@@ -560,17 +660,18 @@ export function AdminPromoConfigPage() {
       value,
       scope_type: formScopeType,
       scope,
-      branch_scope: formBranchScope,
     });
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setFormError(result.error ?? 'Could not update the promo.');
       return;
     }
 
-    replacePromo(result.data);
+    const finalPromo = await applyBranchSelection(result.data, formBranchIds);
+
+    setIsSubmitting(false);
+    replacePromo(finalPromo);
     setMessage('Promo updated.');
     closeForm();
   };
@@ -640,8 +741,9 @@ export function AdminPromoConfigPage() {
           <PromoFilterBar
             search={search}
             onSearchChange={setSearch}
-            branchScopeFilter={branchScopeFilter}
-            onBranchScopeFilterChange={setBranchScopeFilter}
+            branches={capBranches}
+            branchFilter={branchFilter}
+            onBranchFilterChange={setBranchFilter}
             timingFilter={timingFilter}
             onTimingFilterChange={setTimingFilter}
             statusFilter={statusFilter}
@@ -761,22 +863,12 @@ export function AdminPromoConfigPage() {
                 />
               ) : null}
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Branch scope</span>
-                <select
-                  className={styles.input}
-                  value={formBranchScope}
-                  onChange={(event) =>
-                    setFormBranchScope(event.target.value as PromoBranchScope)
-                  }
-                >
-                  {BRANCH_SCOPES.map((scope) => (
-                    <option key={scope} value={scope}>
-                      {BRANCH_SCOPE_LABELS[scope]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <BranchMultiSelect
+                label="Available at"
+                branches={capBranches}
+                selectedBranchIds={formBranchIds}
+                onChange={setFormBranchIds}
+              />
 
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
@@ -816,6 +908,7 @@ export function AdminPromoConfigPage() {
                   void handleActiveToggle(promo, isActive)
                 }
                 onEdit={() => openEditForm(promo)}
+                onManageBranches={() => setAvailabilityPromoId(promo.id)}
                 onArchive={() => void handleArchive(promo)}
               />
             ))}
@@ -934,6 +1027,25 @@ export function AdminPromoConfigPage() {
           />
         ) : null}
       </Modal>
+
+      <BranchAvailabilityModal
+        isOpen={availabilityPromo !== undefined}
+        itemName={availabilityPromo?.name ?? ''}
+        rows={capBranches.map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          isAvailable:
+            (availabilityPromo?.promo_branch_availability ?? []).find(
+              (row) => row.branch_id === branch.id
+            )?.is_available ?? false,
+        }))}
+        onToggle={(branchId, isAvailable) => {
+          if (availabilityPromo) {
+            void handleBranchToggle(availabilityPromo, branchId, isAvailable);
+          }
+        }}
+        onClose={() => setAvailabilityPromoId(null)}
+      />
     </main>
   );
 }

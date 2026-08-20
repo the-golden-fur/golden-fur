@@ -4,6 +4,8 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PromoFilterBar } from './PromoFilterBar';
 
+const BRANCHES = [{ id: 'branch-makati', name: 'Makati', is_vet_branch: true }];
+
 function renderBar(
   overrides: Partial<Parameters<typeof PromoFilterBar>[0]> = {}
 ) {
@@ -11,8 +13,9 @@ function renderBar(
     createElement(PromoFilterBar, {
       search: '',
       onSearchChange: vi.fn(),
-      branchScopeFilter: 'All',
-      onBranchScopeFilterChange: vi.fn(),
+      branches: BRANCHES,
+      branchFilter: 'All',
+      onBranchFilterChange: vi.fn(),
       timingFilter: 'All',
       onTimingFilterChange: vi.fn(),
       statusFilter: 'All',
@@ -35,15 +38,15 @@ describe('PromoFilterBar', () => {
     expect(onSearchChange).toHaveBeenLastCalledWith('e');
   });
 
-  it('emits the selected branch scope filter', async () => {
-    const onBranchScopeFilterChange = vi.fn();
+  it('emits the selected branch filter', async () => {
+    const onBranchFilterChange = vi.fn();
     const user = userEvent.setup();
 
-    renderBar({ onBranchScopeFilterChange });
+    renderBar({ onBranchFilterChange });
 
-    await user.selectOptions(screen.getByLabelText('Branch scope'), 'makati');
+    await user.selectOptions(screen.getByLabelText('Branch'), 'branch-makati');
 
-    expect(onBranchScopeFilterChange).toHaveBeenCalledWith('makati');
+    expect(onBranchFilterChange).toHaveBeenCalledWith('branch-makati');
   });
 
   it('emits the selected timing filter', async () => {

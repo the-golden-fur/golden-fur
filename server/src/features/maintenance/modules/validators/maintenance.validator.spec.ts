@@ -96,9 +96,9 @@ describe('createServiceValidator', () => {
 });
 
 describe('updateServiceValidator', () => {
-  it('accepts an is_active-only toggle', () => {
+  it('custom change (unify active/available): rejects is_active - it is derived from branch availability, not independently settable', () => {
     expect(updateServiceValidator.safeParse({ is_active: false }).success).toBe(
-      true
+      false
     );
   });
 
@@ -274,7 +274,7 @@ describe('createPromoValidator', () => {
     discount_type: 'Percentage',
     value: 15,
     scope_type: 'all_services',
-    branch_scope: 'both',
+    branch_ids: ['11111111-1111-4111-a111-111111111111'],
   };
 
   it('AC-1: accepts a date-bounded promo', () => {
@@ -294,6 +294,16 @@ describe('createPromoValidator', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('custom change (unify active/available): rejects an empty branch_ids array', () => {
+    const result = createPromoValidator.safeParse({
+      ...base,
+      branch_ids: [],
+      condition_note: 'First booking of the month',
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it('rejects a promo with both dates and a condition note', () => {

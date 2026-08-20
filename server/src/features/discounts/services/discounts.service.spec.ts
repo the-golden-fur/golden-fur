@@ -3,6 +3,7 @@ import {
   createDiscount,
   getDiscountById,
   listDiscounts,
+  setDiscountBranchAvailability,
   updateDiscount,
 } from './discounts.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -34,6 +35,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.not = vi.fn(() => builder);
@@ -48,7 +50,6 @@ function queueFromResults(...results: QueryResult[]) {
 
 const MANDATED_DISCOUNT = {
   id: 'discount-sc',
-  branch_id: 'branch-makati',
   name: 'Senior Citizen Discount',
   is_mandated: true,
   discount_type: 'Percentage',
@@ -58,6 +59,13 @@ const MANDATED_DISCOUNT = {
   scope_package_id: null,
   scope_category: 'Veterinary',
   is_active: false,
+  discount_branch_availability: [
+    {
+      discount_id: 'discount-sc',
+      branch_id: 'branch-makati',
+      is_available: true,
+    },
+  ],
 };
 
 const CUSTOM_DISCOUNT = {
@@ -74,13 +82,17 @@ describe('discounts.service', () => {
   });
 
   describe('createDiscount', () => {
-    it('AC-1: creates a custom discount, forced inactive and non-mandated', async () => {
-      queueFromResults({ data: CUSTOM_DISCOUNT, error: null });
+    it('AC-1: creates a custom discount, non-mandated and active (branch_ids is always non-empty), and inserts branch availability', async () => {
+      queueFromResults(
+        { data: CUSTOM_DISCOUNT, error: null }, // discount insert
+        { data: null, error: null }, // availability insert
+        { data: CUSTOM_DISCOUNT, error: null } // final getDiscountById
+      );
 
       const result = await createDiscount({
         requesterId: 'admin-1',
         input: {
-          branch_id: 'branch-makati',
+          branch_ids: ['branch-makati'],
           name: 'Loyalty Discount',
           discount_type: 'Percentage',
           value: 10,
@@ -93,7 +105,20 @@ describe('discounts.service', () => {
 
       const insertPayload = builders[0].insert.mock.calls[0][0];
       expect(insertPayload.is_mandated).toBe(false);
-      expect(insertPayload.is_active).toBe(false);
+      // Custom change (unify active/available): a new discount is always
+      // available somewhere (branch_ids requires >= 1), so it starts active -
+      // there is no longer a separate "created but switched off" state.
+      expect(insertPayload.is_active).toBe(true);
+      expect(insertPayload.branch_ids).toBeUndefined();
+
+      const availabilityPayload = builders[1].insert.mock.calls[0][0];
+      expect(availabilityPayload).toEqual([
+        {
+          discount_id: 'discount-custom',
+          branch_id: 'branch-makati',
+          is_available: true,
+        },
+      ]);
     });
 
     it('surfaces an insert failure (e.g. the scope CHECK constraint) as 400', async () => {
@@ -106,7 +131,7 @@ describe('discounts.service', () => {
         createDiscount({
           requesterId: 'admin-1',
           input: {
-            branch_id: 'branch-makati',
+            branch_ids: ['branch-makati'],
             name: 'Broken',
             discount_type: 'Flat',
             value: 50,
@@ -119,21 +144,6 @@ describe('discounts.service', () => {
   });
 
   describe('updateDiscount', () => {
-    it('AC-3: toggles is_active on a mandated discount', async () => {
-      queueFromResults(
-        { data: MANDATED_DISCOUNT, error: null },
-        { data: { ...MANDATED_DISCOUNT, is_active: true }, error: null }
-      );
-
-      const result = await updateDiscount({
-        requesterId: 'admin-1',
-        discountId: 'discount-sc',
-        updates: { is_active: true },
-      });
-
-      expect(result.is_active).toBe(true);
-    });
-
     it('AC-3: rejects renaming a mandated discount with 400', async () => {
       queueFromResults({ data: MANDATED_DISCOUNT, error: null });
 
@@ -151,7 +161,8 @@ describe('discounts.service', () => {
 
     it("AC-3: edits a custom discount's value and scope", async () => {
       queueFromResults(
-        { data: CUSTOM_DISCOUNT, error: null },
+        { data: CUSTOM_DISCOUNT, error: null }, // lookup
+        { data: null, error: null }, // update
         {
           data: {
             ...CUSTOM_DISCOUNT,
@@ -159,7 +170,7 @@ describe('discounts.service', () => {
             scope_category: 'Grooming',
           },
           error: null,
-        }
+        } // final getDiscountById
       );
 
       const result = await updateDiscount({
@@ -182,8 +193,9 @@ describe('discounts.service', () => {
 
     it('renaming a custom discount is allowed', async () => {
       queueFromResults(
-        { data: CUSTOM_DISCOUNT, error: null },
-        { data: { ...CUSTOM_DISCOUNT, name: 'VIP Discount' }, error: null }
+        { data: CUSTOM_DISCOUNT, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: { ...CUSTOM_DISCOUNT, name: 'VIP Discount' }, error: null } // final getDiscountById
       );
 
       const result = await updateDiscount({
@@ -202,14 +214,101 @@ describe('discounts.service', () => {
         updateDiscount({
           requesterId: 'admin-1',
           discountId: 'missing',
-          updates: { is_active: true },
+          updates: { value: 15 },
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('setDiscountBranchAvailability', () => {
+    it('upserts an availability row for an existing discount', async () => {
+      queueFromResults(
+        { data: { id: 'discount-custom' }, error: null }, // existence lookup
+        {
+          data: {
+            discount_id: 'discount-custom',
+            branch_id: 'branch-southwoods',
+            is_available: false,
+          },
+          error: null,
+        }, // upsert
+        {
+          data: [{ is_available: true }, { is_available: false }],
+          error: null,
+        }, // all-rows read for the is_active sync
+        { data: null, error: null } // is_active sync update
+      );
+
+      const result = await setDiscountBranchAvailability({
+        discountId: 'discount-custom',
+        branchId: 'branch-southwoods',
+        isAvailable: false,
+      });
+
+      expect(result.is_available).toBe(false);
+    });
+
+    it('unify active/available: syncs is_active to true when at least one branch stays available', async () => {
+      queueFromResults(
+        { data: { id: 'discount-custom' }, error: null },
+        {
+          data: { branch_id: 'branch-makati', is_available: true },
+          error: null,
+        },
+        {
+          data: [{ is_available: true }, { is_available: false }],
+          error: null,
+        },
+        { data: null, error: null }
+      );
+
+      await setDiscountBranchAvailability({
+        discountId: 'discount-custom',
+        branchId: 'branch-makati',
+        isAvailable: true,
+      });
+
+      expect(builders[3].update).toHaveBeenCalledWith({ is_active: true });
+    });
+
+    it('unify active/available: syncs is_active to false once every branch is unavailable', async () => {
+      queueFromResults(
+        { data: { id: 'discount-custom' }, error: null },
+        {
+          data: { branch_id: 'branch-makati', is_available: false },
+          error: null,
+        },
+        {
+          data: [{ is_available: false }, { is_available: false }],
+          error: null,
+        },
+        { data: null, error: null }
+      );
+
+      await setDiscountBranchAvailability({
+        discountId: 'discount-custom',
+        branchId: 'branch-makati',
+        isAvailable: false,
+      });
+
+      expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
+    });
+
+    it('returns 404 when the discount does not exist', async () => {
+      queueFromResults({ data: null, error: null });
+
+      await expect(
+        setDiscountBranchAvailability({
+          discountId: 'missing',
+          branchId: 'branch-makati',
+          isAvailable: true,
         })
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
   describe('listDiscounts', () => {
-    it('AC-4: returns all rows (including inactive) by default, filterable by branch', async () => {
+    it('AC-4: returns all rows (including inactive) by default, filterable by branch availability', async () => {
       queueFromResults({
         data: [MANDATED_DISCOUNT, CUSTOM_DISCOUNT],
         error: null,
@@ -217,9 +316,20 @@ describe('discounts.service', () => {
 
       const result = await listDiscounts({ branchId: 'branch-makati' });
 
+      // Both fixtures are only available at branch-makati.
       expect(result).toHaveLength(2);
-      expect(builders[0].eq).toHaveBeenCalledWith('branch_id', 'branch-makati');
       expect(builders[0].eq).not.toHaveBeenCalledWith('is_active', true);
+    });
+
+    it('filters out discounts with no available row at the requested branch', async () => {
+      queueFromResults({
+        data: [MANDATED_DISCOUNT, CUSTOM_DISCOUNT],
+        error: null,
+      });
+
+      const result = await listDiscounts({ branchId: 'branch-southwoods' });
+
+      expect(result).toHaveLength(0);
     });
 
     it('activeOnly narrows to enabled discounts', async () => {

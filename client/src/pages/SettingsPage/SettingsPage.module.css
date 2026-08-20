@@ -1,42 +1,241 @@
 .page {
-  composes: animate-fade-in from global;
-  display: grid;
-  gap: var(--space-4);
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-2);
+  display: contents;
 }
 
-.tabList {
+/* Custom change: VSCode-style settings modal. The route itself renders this
+   backdrop+panel shell rather than a plain page - Fullscreen (below) swaps
+   .modalPanel for .modalPanelFullscreen, which drops the backdrop dimming/
+   inset and lets the panel fill the viewport like a normal page. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
+  align-items: center;
+  justify-content: center;
+  background: rgb(17 24 39 / 55%);
+  padding: var(--space-4);
 }
 
-.tab {
+.modalPanel {
+  composes: animate-fade-in from global;
+  display: flex;
+  flex-direction: column;
+  width: min(64rem, 100%);
+  height: min(40rem, 100%);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* Custom change (fix): fullscreen is no longer just a bigger .modalPanel
+   inside the same dimmed .backdrop - it's its own fixed, full-viewport
+   element (no backdrop wrapper at all, see SettingsPage.tsx), so it reads
+   as "you're on a page" rather than "the modal got bigger". */
+.modalPanelFullscreen {
+  composes: modalPanel;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
   border: 0;
-  border-bottom: 2px solid transparent;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+}
+
+.panelHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  padding: var(--space-1);
+  transition: border-color 150ms ease;
+}
+
+.iconButton:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.panelBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-0-5);
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: var(--space-2);
+}
+
+/* Custom change: drag-to-resize, same mechanics as the dashboard Sidebar's
+   own handle (useResizableWidth). */
+.sidebarResizeHandle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  z-index: 1;
+}
+
+.sidebarResizeHandle:hover {
+  background: var(--color-accent-gold-primary);
+  opacity: 0.5;
+}
+
+.sidebarGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.sidebarItemRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+.sidebarChevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+.sidebarChevron:hover {
+  color: var(--color-text-primary);
+}
+
+.sidebarItem {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  padding: var(--space-2) var(--space-1);
+  text-align: left;
+  padding: var(--space-2);
   transition:
     color 150ms ease,
-    border-color 150ms ease;
+    background-color 150ms ease;
 }
 
-.tab:hover {
+.sidebarItem:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+}
+
+.sidebarItemActive {
+  color: var(--color-accent-gold-primary);
+  background: var(--color-badge-bg-gold);
+  font-weight: var(--weight-semibold);
+}
+
+/* Custom change (Settings > Config subtiles): VSCode-style nested tree -
+   every admin-config page listed directly under Config, indented, rather
+   than only reachable via the tile grid in the content pane. */
+.sidebarSubitems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding-left: var(--space-4);
+}
+
+.sidebarSubitem {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.sidebarSubitem:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+}
+
+.reorderButtons {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.reorderButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  line-height: 0;
+  padding: 1px;
+}
+
+.reorderButton:hover:not(:disabled) {
   color: var(--color-text-primary);
 }
 
-.tabActive {
-  color: var(--color-accent-gold-primary);
-  border-bottom-color: var(--color-accent-gold-primary);
-  font-weight: var(--weight-semibold);
+.reorderButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
 }
 
 .panel {

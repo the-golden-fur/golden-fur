@@ -26,6 +26,13 @@
   box-shadow: var(--shadow-md);
 }
 
+.tileButton {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  text-align: left;
+  font: inherit;
+}
+
 .tile[aria-disabled='true'] {
   opacity: 0.72;
 }

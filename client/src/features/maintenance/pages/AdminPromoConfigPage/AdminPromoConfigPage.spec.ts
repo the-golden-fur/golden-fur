@@ -26,6 +26,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listPromos: vi.fn(),
   createPromo: vi.fn(),
   updatePromo: vi.fn(),
+  setPromoBranchAvailability: vi.fn(),
   listBranches: vi.fn(),
   listPromoCapConfigurations: vi.fn(),
   upsertPromoCapConfiguration: vi.fn(),
@@ -105,13 +106,20 @@ function buildPromo(overrides: Partial<Promo> = {}): Promo {
     discount_type: 'Percentage',
     value: 15,
     scope_type: 'all_services',
-    branch_scope: 'both',
     is_active: true,
     created_by: null,
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
     promo_scope: [],
+    promo_branch_availability: [
+      { promo_id: 'promo-1', branch_id: 'branch-makati', is_available: true },
+      {
+        promo_id: 'promo-1',
+        branch_id: 'branch-southwoods',
+        is_available: true,
+      },
+    ],
     ...overrides,
   };
 }
@@ -295,14 +303,20 @@ describe('AdminPromoConfigPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('branch scope filter narrows the list without navigating', async () => {
+  it('branch filter narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         buildPromo(),
         buildPromo({
           id: 'promo-2',
           name: 'Makati Only Deal',
-          branch_scope: 'makati',
+          promo_branch_availability: [
+            {
+              promo_id: 'promo-2',
+              branch_id: 'branch-makati',
+              is_available: true,
+            },
+          ],
         }),
       ],
       error: null,
@@ -312,11 +326,15 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(await screen.findByText('Makati Only Deal')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Branch scope'), 'makati');
+    await user.selectOptions(
+      screen.getByLabelText('Branch'),
+      'branch-southwoods'
+    );
 
-    expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
-    expect(screen.getByText('Makati Only Deal')).toBeInTheDocument();
+    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.queryByText('Makati Only Deal')).not.toBeInTheDocument();
   });
 
   it('search narrows the visible cards by name', async () => {
@@ -391,6 +409,8 @@ describe('AdminPromoConfigPage', () => {
     await user.type(screen.getByLabelText(/Discount value/), '10');
     await user.type(screen.getByLabelText('Start date'), '2026-09-01');
     await user.type(screen.getByLabelText('End date'), '2026-09-30');
+    await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Southwoods' }));
     await user.click(screen.getByRole('button', { name: 'Save promo' }));
 
     await waitFor(() => {
@@ -401,7 +421,7 @@ describe('AdminPromoConfigPage', () => {
         discount_type: 'Percentage',
         value: 10,
         scope_type: 'all_services',
-        branch_scope: 'both',
+        branch_ids: ['branch-makati', 'branch-southwoods'],
       });
     });
 
@@ -414,7 +434,8 @@ describe('AdminPromoConfigPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'New promo' }));
 
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bath')).not.toBeInTheDocument();
+    expect(screen.queryByText('Golden Package')).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Scope'), 'specific');
 

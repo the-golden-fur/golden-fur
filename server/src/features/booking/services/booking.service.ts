@@ -445,21 +445,6 @@ async function resolveFreePackageAward(
   return { packageId: pkg.id, packageName: pkg.name, nights };
 }
 
-async function resolveBranchScope(
-  branchId: string
-): Promise<'makati' | 'southwoods'> {
-  const { data, error } = await supabase
-    .from('branches')
-    .select('name')
-    .eq('id', branchId)
-    .maybeSingle();
-
-  if (error) throwWithStatus(400, error.message);
-  if (!data) throwWithStatus(404, 'Branch not found');
-
-  return data.name.toLowerCase() === 'makati' ? 'makati' : 'southwoods';
-}
-
 interface PromoCapRow {
   cap_type: 'percentage' | 'flat';
   cap_value: number;
@@ -541,14 +526,18 @@ async function resolveDiscountAndPromo(
 
     const discount = await getDiscountById(input.discount_id);
 
-    if (!discount.is_active) {
-      throwWithStatus(400, `Discount "${discount.name}" is inactive`);
-    }
+    // Custom change (unify active/available): is_active is now fully
+    // derived from branch availability (discounts.service.ts), so checking
+    // it here would be redundant with the branch-specific check below -
+    // "available at this branch" already implies "active" by construction.
+    const isAvailableAtBranch = (
+      discount.discount_branch_availability ?? []
+    ).some((row) => row.branch_id === input.branch_id && row.is_available);
 
-    if (discount.branch_id !== input.branch_id) {
+    if (!isAvailableAtBranch) {
       throwWithStatus(
         400,
-        `Discount "${discount.name}" belongs to another branch`
+        `Discount "${discount.name}" is not available at this branch`
       );
     }
 
@@ -597,14 +586,15 @@ async function resolveDiscountAndPromo(
       throwWithStatus(400, `Promo "${promo.name}" has ended`);
     }
 
-    if (promo.branch_scope !== 'both') {
-      const branchScope = await resolveBranchScope(input.branch_id);
-      if (promo.branch_scope !== branchScope) {
-        throwWithStatus(
-          400,
-          `Promo "${promo.name}" is not available at this branch`
-        );
-      }
+    const isAvailableAtBranch = (promo.promo_branch_availability ?? []).some(
+      (row) => row.branch_id === input.branch_id && row.is_available
+    );
+
+    if (!isAvailableAtBranch) {
+      throwWithStatus(
+        400,
+        `Promo "${promo.name}" is not available at this branch`
+      );
     }
 
     const scopeMatches =

@@ -14,6 +14,7 @@ import type {
   PetType,
   PricingConfiguration,
   Promo,
+  PromoBranchAvailability,
   PromoCapConfiguration,
   Service,
   ServiceBranchAvailability,
@@ -360,7 +361,7 @@ export async function hardDeletePackage(
 }
 
 export interface ListPromosFilters {
-  branchScope?: string;
+  branchId?: string;
   includeInactive?: boolean;
 }
 
@@ -370,8 +371,8 @@ export async function listPromos(
 ): Promise<MaintenanceApiResult<Promo[]>> {
   const params = new URLSearchParams();
 
-  if (filters.branchScope) {
-    params.set('branch_scope', filters.branchScope);
+  if (filters.branchId) {
+    params.set('branch_id', filters.branchId);
   }
 
   if (filters.includeInactive) {
@@ -429,6 +430,30 @@ export async function updatePromo(
 
   const result = await parseBody<{ promo: Promo }>(response);
   return { data: result.data?.promo ?? null, error: result.error };
+}
+
+export async function setPromoBranchAvailability(
+  promoId: string,
+  accessToken: string,
+  payload: BranchAvailabilityPayload
+): Promise<MaintenanceApiResult<PromoBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/promos/${promoId}/branch-availability`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ availability: PromoBranchAvailability }>(
+    response
+  );
+  return { data: result.data?.availability ?? null, error: result.error };
 }
 
 /** Soft: moves the promo to the archive. Server still requires

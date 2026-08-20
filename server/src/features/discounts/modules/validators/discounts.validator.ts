@@ -67,10 +67,14 @@ function validateScopeShape(
  * is_mandated is deliberately not accepted on any payload - mandated rows
  * exist only via the #44 seed, and `.strict()` rejects attempts to set the
  * flag through the API (#43 AC-3).
+ *
+ * Custom change: branch_ids replaces the old single branch_id - mirrors
+ * createPackageValidator's branch_ids (many-to-many branch availability,
+ * see migration 20260820140).
  */
 export const createDiscountValidator = z
   .object({
-    branch_id: z.uuid(),
+    branch_ids: z.array(z.uuid()).min(1, 'Select at least one branch'),
     name: z.string().trim().min(1, 'Name is required'),
     discount_type: z.enum(DISCOUNT_TYPES),
     value: z.number().nonnegative(),
@@ -82,12 +86,17 @@ export const createDiscountValidator = z
   .strict()
   .superRefine(validateScopeShape);
 
+/**
+ * Custom change (unify active/available): is_active is deliberately not
+ * accepted here any more - it is derived from branch availability
+ * (setDiscountBranchAvailability keeps it in sync), the same way
+ * is_mandated is permanently out of reach on this endpoint.
+ */
 export const updateDiscountValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
     discount_type: z.enum(DISCOUNT_TYPES).optional(),
     value: z.number().nonnegative().optional(),
-    is_active: z.boolean().optional(),
     scope_type: z.enum(SCOPE_TYPES).optional(),
     scope_service_id: z.uuid().optional(),
     scope_package_id: z.uuid().optional(),
@@ -96,5 +105,17 @@ export const updateDiscountValidator = z
   .strict()
   .superRefine(validateScopeShape);
 
+/** Per-branch availability toggle, same shape as maintenance's
+ * branchAvailabilityValidator. */
+export const discountBranchAvailabilityValidator = z
+  .object({
+    branch_id: z.uuid(),
+    is_available: z.boolean(),
+  })
+  .strict();
+
 export type CreateDiscountInput = z.infer<typeof createDiscountValidator>;
 export type UpdateDiscountInput = z.infer<typeof updateDiscountValidator>;
+export type DiscountBranchAvailabilityInput = z.infer<
+  typeof discountBranchAvailabilityValidator
+>;

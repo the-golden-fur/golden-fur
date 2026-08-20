@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -79,7 +79,7 @@ describe('PackagesPromosPage', () => {
             discount_type: 'Percentage',
             value: 20,
             scope_type: 'all_services',
-            branch_scope: 'both',
+            branch_names: ['Makati', 'Southwoods'],
             is_active: true,
             created_by: null,
             updated_by: null,
@@ -93,8 +93,10 @@ describe('PackagesPromosPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Spa Day')).toBeInTheDocument();
-    expect(screen.getByText(/Makati/)).toBeInTheDocument();
+    const packageCard = (await screen.findByText('Spa Day')).closest(
+      'details'
+    ) as HTMLElement;
+    expect(within(packageCard).getByText(/Makati/)).toBeInTheDocument();
     expect(screen.getByText('PHP 800.00')).toBeInTheDocument();
 
     expect(screen.getByText('Grand Opening')).toBeInTheDocument();

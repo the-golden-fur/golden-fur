@@ -29,6 +29,7 @@ import {
   restorePackageController,
   restorePromoController,
   setPackageBranchAvailabilityController,
+  setPromoBranchAvailabilityController,
   setServiceBranchAvailabilityController,
   setServiceTypeBranchAvailabilityController,
   updateBreedController,
@@ -119,6 +120,11 @@ router.get(
 router.post('/maintenance/promos', adminWrite, createPromoController);
 router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
+router.patch(
+  '/maintenance/promos/:id/branch-availability',
+  adminWrite,
+  setPromoBranchAvailabilityController
+);
 router.delete('/maintenance/promos/:id', adminWrite, archivePromoController);
 router.post(
   '/maintenance/promos/:id/restore',

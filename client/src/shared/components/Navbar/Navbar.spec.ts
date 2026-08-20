@@ -10,7 +10,8 @@ import { Navbar } from './Navbar';
 function renderNavbar(
   role: 'staff' | 'customer',
   signOut = vi.fn(),
-  identity: { primary: string; secondary?: string } | null = null
+  identity: { primary: string; secondary?: string } | null = null,
+  initialPath?: string
 ) {
   const authValue: AuthContextValue = {
     session: null,
@@ -25,7 +26,7 @@ function renderNavbar(
   return render(
     createElement(
       MemoryRouter,
-      null,
+      initialPath ? { initialEntries: [initialPath] } : null,
       createElement(
         AuthContext.Provider,
         { value: authValue },
@@ -75,6 +76,37 @@ describe('Navbar', () => {
       'href',
       '/portal/settings'
     );
+  });
+
+  it('custom change: swaps in a minimal Settings navbar on the Settings route, dropping Home/Settings/identity', () => {
+    renderNavbar(
+      'staff',
+      vi.fn(),
+      { primary: 'jdoe', secondary: 'Admin' },
+      '/staff/settings'
+    );
+
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Home' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Settings' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('jdoe')).not.toBeInTheDocument();
+    // Sign out stays available - it's account-wide, not a dashboard shortcut.
+    expect(
+      screen.getByRole('button', { name: /sign out/i })
+    ).toBeInTheDocument();
+  });
+
+  it('custom change: the customer portal swaps to the Settings navbar on /portal/settings', () => {
+    renderNavbar('customer', vi.fn(), null, '/portal/settings');
+
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Home' })
+    ).not.toBeInTheDocument();
   });
 
   it('signs out and clears MFA pending flags when Sign out is clicked', async () => {
