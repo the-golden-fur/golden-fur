@@ -131,9 +131,17 @@ interface SetServiceTypeBranchAvailabilityParams {
   isAvailable: boolean;
 }
 
-/** Per-branch availability toggle via its own endpoint - mirrors
+/**
+ * Per-branch availability toggle via its own endpoint - mirrors
  * setServiceBranchAvailability (services.service.ts). Replaces the row-level
- * Activate/Deactivate action on the admin Service Types page. */
+ * Activate/Deactivate action on the admin Service Types page.
+ *
+ * Custom change (unify active/available): also keeps service_types.is_active
+ * in sync with the resulting availability set - active whenever at least
+ * one branch is available, inactive when none are. This is the only place
+ * is_active changes now that it is no longer independently settable via
+ * updateServiceType.
+ */
 export async function setServiceTypeBranchAvailability({
   serviceTypeId,
   branchId,
@@ -164,6 +172,20 @@ export async function setServiceTypeBranchAvailability({
   if (error || !data) {
     throwWithStatus(400, error?.message ?? 'Failed to update availability');
   }
+
+  const { data: allRows, error: allRowsError } = await supabase
+    .from('service_type_branch_availability')
+    .select('is_available')
+    .eq('service_type_id', serviceTypeId);
+
+  if (allRowsError) throwWithStatus(400, allRowsError.message);
+
+  const { error: syncError } = await supabase
+    .from('service_types')
+    .update({ is_active: (allRows ?? []).some((row) => row.is_available) })
+    .eq('id', serviceTypeId);
+
+  if (syncError) throwWithStatus(400, syncError.message);
 
   return data as ServiceTypeBranchAvailability;
 }

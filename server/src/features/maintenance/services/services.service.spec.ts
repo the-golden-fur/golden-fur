@@ -309,7 +309,8 @@ describe('services.service', () => {
             is_available: false,
           },
           error: null,
-        }
+        },
+        { data: [{ is_available: true }, { is_available: false }], error: null } // all-rows read for the is_active sync
       );
 
       const result = await setServiceBranchAvailability({
@@ -320,6 +321,32 @@ describe('services.service', () => {
 
       expect(result.is_available).toBe(false);
       expect(result.branch_id).toBe('branch-south');
+    });
+
+    it('custom change (unify active/available): syncs services.is_active to false once every branch is unavailable', async () => {
+      queueFromResults(
+        { data: { id: 'service-1' }, error: null },
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: false,
+          },
+          error: null,
+        },
+        { data: [{ is_available: false }], error: null }
+      );
+
+      await setServiceBranchAvailability({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        isAvailable: false,
+      });
+
+      const sync = recordedWrites.find(
+        (write) => write.table === 'services' && write.method === 'update'
+      );
+      expect(sync?.payload).toEqual({ is_active: false });
     });
 
     it('returns 404 for an unknown service', async () => {

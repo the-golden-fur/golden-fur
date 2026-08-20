@@ -17,8 +17,15 @@ interface QueryResult {
   error: unknown;
 }
 
+interface BuilderRecord {
+  [method: string]: ReturnType<typeof vi.fn>;
+}
+
+const builders: BuilderRecord[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  builders.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
@@ -37,6 +44,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.single = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
+    builders.push(builder as BuilderRecord);
     return builder as never;
   });
 }
@@ -234,7 +242,8 @@ describe('packages.service', () => {
             is_available: false,
           },
           error: null,
-        }
+        },
+        { data: [{ is_available: true }, { is_available: false }], error: null } // all-rows read for the is_active sync
       );
 
       const result = await setPackageBranchAvailability({
@@ -245,6 +254,29 @@ describe('packages.service', () => {
 
       expect(result.is_available).toBe(false);
       expect(result.branch_id).toBe('branch-southwoods');
+    });
+
+    it('custom change (unify active/available): syncs packages.is_active to false once every branch is unavailable', async () => {
+      queueFromResults(
+        { data: { id: 'package-1' }, error: null },
+        {
+          data: {
+            package_id: 'package-1',
+            branch_id: 'branch-southwoods',
+            is_available: false,
+          },
+          error: null,
+        },
+        { data: [{ is_available: false }], error: null }
+      );
+
+      await setPackageBranchAvailability({
+        packageId: 'package-1',
+        branchId: 'branch-southwoods',
+        isAvailable: false,
+      });
+
+      expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
     });
 
     it('returns 404 for an unknown package', async () => {

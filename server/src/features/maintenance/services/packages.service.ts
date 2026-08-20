@@ -300,8 +300,18 @@ export async function updatePackage({
   return getPackageById(packageId);
 }
 
-/** Per-branch availability toggle via its own endpoint, mirroring
- * setServiceBranchAvailability/setServiceTypeBranchAvailability exactly. */
+/**
+ * Per-branch availability toggle via its own endpoint, mirroring
+ * setServiceBranchAvailability/setServiceTypeBranchAvailability exactly.
+ *
+ * Custom change (unify active/available): also keeps packages.is_active in
+ * sync with the resulting availability set - active whenever at least one
+ * branch is available, inactive when none are (the archive guard below
+ * still requires is_active = false first, so a package must be unavailable
+ * everywhere before it can be archived). This is the only place is_active
+ * changes now that it is no longer independently settable via
+ * updatePackage.
+ */
 export async function setPackageBranchAvailability({
   packageId,
   branchId,
@@ -328,6 +338,20 @@ export async function setPackageBranchAvailability({
   if (error || !data) {
     throwWithStatus(400, error?.message ?? 'Failed to update availability');
   }
+
+  const { data: allRows, error: allRowsError } = await supabase
+    .from('package_branch_availability')
+    .select('is_available')
+    .eq('package_id', packageId);
+
+  if (allRowsError) throwWithStatus(400, allRowsError.message);
+
+  const { error: syncError } = await supabase
+    .from('packages')
+    .update({ is_active: (allRows ?? []).some((row) => row.is_available) })
+    .eq('id', packageId);
+
+  if (syncError) throwWithStatus(400, syncError.message);
 
   return data as PackageBranchAvailability;
 }

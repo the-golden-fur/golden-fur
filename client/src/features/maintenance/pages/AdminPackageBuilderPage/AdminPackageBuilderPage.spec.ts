@@ -420,7 +420,6 @@ describe('AdminPackageBuilderPage', () => {
         {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
-          is_active: true,
           use_pricing_matrix: false,
           requires_downpayment: false,
           downpayment_amount: null,
@@ -535,9 +534,13 @@ describe('AdminPackageBuilderPage', () => {
     expect(makatiToggle).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('custom change: the Configure modal has its own Active toggle, decoupled from branch availability, restoring the ability to deactivate a package before archiving it', async () => {
-    vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
-      data: buildPackage({ is_active: false }),
+  it("custom change (unify active/available): no Configure Active toggle any more - turning off a package's only available branch makes Archive appear", async () => {
+    vi.mocked(maintenanceApi.setPackageBranchAvailability).mockResolvedValue({
+      data: {
+        package_id: 'package-1',
+        branch_id: 'branch-makati',
+        is_available: false,
+      },
       error: null,
     });
 
@@ -552,27 +555,39 @@ describe('AdminPackageBuilderPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    const activeToggle = screen.getByRole('switch', { name: 'Active' });
-    expect(activeToggle).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.queryByRole('switch', { name: 'Active' })
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    await user.click(activeToggle);
-    await user.click(screen.getByRole('button', { name: 'Save package' }));
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+    expect(
+      screen.queryByRole('menuitem', { name: 'Archive' })
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    );
+
+    await user.click(screen.getByRole('switch', { name: 'Makati' }));
 
     await waitFor(() => {
-      expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+      expect(maintenanceApi.setPackageBranchAvailability).toHaveBeenCalledWith(
         'package-1',
         'token',
-        {
-          name: 'Golden Package',
-          service_ids: ['service-1', 'service-2', 'service-3'],
-          is_active: false,
-          use_pricing_matrix: false,
-          requires_downpayment: false,
-          downpayment_amount: null,
-          downpayment_type: null,
-        }
+        { branch_id: 'branch-makati', is_available: false }
       );
     });
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Golden Package' })
+    );
+
+    expect(
+      await screen.findByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
   });
 
   it('Custom change (services/packages actions menu): Archive only appears once a package is inactive', async () => {

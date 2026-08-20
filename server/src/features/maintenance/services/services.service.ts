@@ -238,7 +238,15 @@ export async function updateService({
   return getServiceById(serviceId);
 }
 
-/** Per-branch availability toggle via its own endpoint (#40 AC-4). */
+/**
+ * Per-branch availability toggle via its own endpoint (#40 AC-4).
+ *
+ * Custom change (unify active/available): also keeps services.is_active in
+ * sync with the resulting availability set - active whenever at least one
+ * branch is available, inactive when none are. This is the only place
+ * is_active changes now that it is no longer independently settable via
+ * updateService.
+ */
 export async function setServiceBranchAvailability({
   serviceId,
   branchId,
@@ -265,6 +273,20 @@ export async function setServiceBranchAvailability({
   if (error || !data) {
     throwWithStatus(400, error?.message ?? 'Failed to update availability');
   }
+
+  const { data: allRows, error: allRowsError } = await supabase
+    .from('service_branch_availability')
+    .select('is_available')
+    .eq('service_id', serviceId);
+
+  if (allRowsError) throwWithStatus(400, allRowsError.message);
+
+  const { error: syncError } = await supabase
+    .from('services')
+    .update({ is_active: (allRows ?? []).some((row) => row.is_available) })
+    .eq('id', serviceId);
+
+  if (syncError) throwWithStatus(400, syncError.message);
 
   return data as ServiceBranchAvailability;
 }
