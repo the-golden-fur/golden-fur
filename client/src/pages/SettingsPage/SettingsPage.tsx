@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronDown,
@@ -262,52 +262,63 @@ export function SettingsPage({ role }: SettingsPageProps) {
     (status?.role === 'Admin' || status?.role === 'Superadmin');
   const isSuperadmin = status?.role === 'Superadmin';
 
-  const configTiles = isSuperadmin
-    ? [...CONFIG_TILES, SYSTEM_CONFIG_TILE]
-    : CONFIG_TILES;
+  const configTiles = useMemo(
+    () => (isSuperadmin ? [...CONFIG_TILES, SYSTEM_CONFIG_TILE] : CONFIG_TILES),
+    [isSuperadmin]
+  );
 
-  const tabs: SettingsTab[] = isAdmin
-    ? ['profile', 'preferences', 'account', 'security', 'config']
-    : ['profile', 'preferences', 'account', 'security'];
+  const tabs: SettingsTab[] = useMemo(
+    () =>
+      isAdmin
+        ? ['profile', 'preferences', 'account', 'security', 'config']
+        : ['profile', 'preferences', 'account', 'security'],
+    [isAdmin]
+  );
 
   const activeConfigTile =
     activeTab === 'config' && configTarget
       ? configTiles.find((tile) => tile.to === configTarget)
       : undefined;
 
-  const setActiveTab = (tab: SettingsTab) => {
-    setActiveTabState(tab);
-    setConfigTarget(null);
+  const setActiveTab = useCallback(
+    (tab: SettingsTab) => {
+      setActiveTabState(tab);
+      setConfigTarget(null);
 
-    const nextRecent = { ...recentMap, [tab]: Date.now() };
-    setRecentMap(nextRecent);
-    try {
-      window.localStorage.setItem(
-        `settings-sidebar-recent-${role}`,
-        JSON.stringify(nextRecent)
-      );
-    } catch {
-      // best-effort only
-    }
-  };
-
-  const selectConfigTile = (to: string | null) => {
-    setActiveTabState('config');
-    setConfigTarget(to);
-
-    if (to) {
-      const nextRecent = { ...configRecentMap, [to]: Date.now() };
-      setConfigRecentMap(nextRecent);
+      const nextRecent = { ...recentMap, [tab]: Date.now() };
+      setRecentMap(nextRecent);
       try {
         window.localStorage.setItem(
-          `settings-config-recent-${role}`,
+          `settings-sidebar-recent-${role}`,
           JSON.stringify(nextRecent)
         );
       } catch {
         // best-effort only
       }
-    }
-  };
+    },
+    [recentMap, role]
+  );
+
+  const selectConfigTile = useCallback(
+    (to: string | null) => {
+      setActiveTabState('config');
+      setConfigTarget(to);
+
+      if (to) {
+        const nextRecent = { ...configRecentMap, [to]: Date.now() };
+        setConfigRecentMap(nextRecent);
+        try {
+          window.localStorage.setItem(
+            `settings-config-recent-${role}`,
+            JSON.stringify(nextRecent)
+          );
+        } catch {
+          // best-effort only
+        }
+      }
+    },
+    [configRecentMap, role]
+  );
 
   const toggleConfigExpanded = () => {
     setIsConfigExpanded((current) => {
