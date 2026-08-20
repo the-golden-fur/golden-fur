@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createElement } from 'react';
-import { MemoryRouter } from 'react-router';
+import { createElement, Fragment } from 'react';
+import { MemoryRouter, useLocation, useSearchParams } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../shared/auth/providers/AuthProvider/AuthContext';
@@ -34,6 +34,64 @@ vi.mock('../../shared/auth/api/auth.api', () => ({
   getSupabaseClient: vi.fn(),
 }));
 
+// Custom change (Config subtiles): stand-ins for the real admin-config
+// pages, which each own their own data-fetching/mocks in their own spec
+// files - this file tests SettingsPage's own embedding/fullscreen-navigate
+// logic, not whether e.g. AdminDiscountManagementPage itself renders
+// correctly.
+//
+// "Discounts" here specifically reproduces the shape of the real bug: real
+// pages like AdminServicesAndPackagesPage own their own `?section=` query
+// param and call `setSearchParams({...})` as a wholesale replace - which
+// used to wipe this page's own `?tab=`/`?target=` right out from under it.
+// This stub does the same wholesale replace (its own unrelated `?foo=`
+// param) so the regression test below can prove Settings' own selection
+// survives it.
+function EmbeddedDiscountsStub() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  return createElement(
+    Fragment,
+    null,
+    createElement('p', null, 'Embedded Discounts Page'),
+    createElement(
+      'button',
+      {
+        type: 'button',
+        onClick: () => setSearchParams({ foo: 'bar' }),
+      },
+      `Change own filter (foo=${searchParams.get('foo') ?? 'none'})`
+    )
+  );
+}
+
+vi.mock('./configTiles.config', () => ({
+  CONFIG_TILES: [
+    {
+      title: 'Discounts',
+      description: 'Manage discounts.',
+      to: '/staff/admin/discounts',
+      Component: EmbeddedDiscountsStub,
+    },
+    {
+      title: 'Cages',
+      description: 'Manage cages.',
+      to: '/staff/admin/hotel/cages',
+      Component: () => createElement('p', null, 'Embedded Cages Page'),
+    },
+  ],
+  SYSTEM_CONFIG_TILE: {
+    title: 'System Configuration',
+    description: 'Branch config.',
+    to: '/staff/admin/maintenance/system-configuration',
+    Component: () => createElement('p', null, 'Embedded System Config Page'),
+  },
+}));
+
+function LocationProbe() {
+  const location = useLocation();
+  return createElement('p', null, `NAVIGATED_TO:${location.pathname}`);
+}
+
 function renderPage(role: 'staff' | 'customer') {
   const authValue: AuthContextValue = {
     session: null,
@@ -52,7 +110,12 @@ function renderPage(role: 'staff' | 'customer') {
       createElement(
         AuthContext.Provider,
         { value: authValue },
-        createElement(SettingsPage, { role })
+        createElement(
+          Fragment,
+          null,
+          createElement(SettingsPage, { role }),
+          createElement(LocationProbe)
+        )
       )
     )
   );
@@ -77,6 +140,238 @@ describe('SettingsPage', () => {
 
   afterEach(() => {
     window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it('custom change: renders as a modal dialog with a fullscreen toggle and close button', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Settings' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Enter full screen' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close settings' })
+    ).toBeInTheDocument();
+  });
+
+  it('custom change: the fullscreen toggle flips into an exit-full-screen state', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Enter full screen' })
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Exit full screen' })
+    ).toBeInTheDocument();
+  });
+
+  it('custom change: the sort menu reorders the sidebar sections alphabetically', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await screen.findByRole('tab', { name: 'Profile' });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Sort settings sections' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Sort: Alphabetical' })
+    );
+
+    const tabLabels = screen.getAllByRole('tab').map((tab) => tab.textContent);
+
+    expect(tabLabels).toEqual([
+      'Account',
+      'Preferences',
+      'Profile',
+      'Security',
+    ]);
+  });
+
+  it('custom change: Config expands (VSCode-style) to list every admin-config page as its own sidebar subitem', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+
+    await screen.findByRole('tab', { name: 'Config' });
+
+    expect(screen.getByRole('tab', { name: 'Discounts' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Cages' })).toBeInTheDocument();
+  });
+
+  it('custom change: selecting a Config subitem embeds that page inline instead of navigating', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Discounts' }));
+
+    expect(
+      await screen.findByText('Embedded Discounts Page')
+    ).toBeInTheDocument();
+    // The tile grid (ConfigTab) is gone - only the embedded page shows.
+    expect(
+      screen.queryByRole('button', { name: /^discounts/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/^NAVIGATED_TO:/)).toHaveTextContent(
+      'NAVIGATED_TO:/'
+    );
+    expect(screen.getByRole('tab', { name: 'Discounts' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  it('custom change: Fullscreen navigates to the real page once a Config subitem is active, instead of resizing the panel', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Discounts' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Open as a full page' })
+    );
+
+    expect(screen.getByText(/^NAVIGATED_TO:/)).toHaveTextContent(
+      'NAVIGATED_TO:/staff/admin/discounts'
+    );
+  });
+
+  it('custom change: Fullscreen still just resizes the panel for a plain section (no Config subitem active)', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Enter full screen' })
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Exit full screen' })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^NAVIGATED_TO:/)).toHaveTextContent(
+      'NAVIGATED_TO:/'
+    );
+  });
+
+  it('fix: an embedded Config page changing its own query params does not knock Settings back to Profile', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Discounts' }));
+    await screen.findByText('Embedded Discounts Page');
+
+    // Simulates a real embedded page (e.g. AdminServicesAndPackagesPage)
+    // calling setSearchParams({...}) as a wholesale replace for its own,
+    // unrelated filter state.
+    await user.click(screen.getByRole('button', { name: /Change own filter/ }));
+
+    expect(screen.getByText('Embedded Discounts Page')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Discounts' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /foo=bar/ })).toBeInTheDocument();
+  });
+
+  it('fix: Fullscreen for a plain section drops the dimmed backdrop entirely (it is not just a bigger modal)', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    expect(screen.getByRole('presentation')).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Enter full screen' })
+    );
+
+    expect(screen.queryByRole('presentation')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Settings' })
+    ).toBeInTheDocument();
+  });
+
+  it('custom change: Config subitems get their own Custom/Alphabetical/Recent sort, independent of the top level', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    const user = userEvent.setup();
+
+    await screen.findByRole('tab', { name: 'Discounts' });
+
+    await user.click(screen.getByRole('button', { name: 'Sort Config' }));
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Sort: Alphabetical' })
+    );
+
+    const subitemLabels = screen
+      .getAllByRole('tab')
+      .filter((tab) => ['Discounts', 'Cages'].includes(tab.textContent ?? ''))
+      .map((tab) => tab.textContent);
+
+    // "Cages" < "Discounts" alphabetically, opposite of the mocked
+    // CONFIG_TILES' own (Discounts-then-Cages) order.
+    expect(subitemLabels).toEqual(['Cages', 'Discounts']);
+  });
+
+  it('custom change: the settings sidebar exposes a resize handle', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Groomer', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+
+    expect(
+      await screen.findByRole('separator', { name: 'Resize settings sidebar' })
+    ).toBeInTheDocument();
   });
 
   it('defaults to the Profile tab', async () => {

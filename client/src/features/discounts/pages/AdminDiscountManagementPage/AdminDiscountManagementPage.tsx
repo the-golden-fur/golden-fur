@@ -12,13 +12,17 @@ import type {
   Package,
   Service,
 } from '../../../maintenance/maintenance.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { BranchAvailabilityModal } from '../../../maintenance/components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { BranchMultiSelect } from '../../../maintenance/components/BranchMultiSelect/BranchMultiSelect';
 import {
   archiveDiscount,
   createDiscount,
   listDiscounts,
+  setDiscountBranchAvailability,
   updateDiscount,
 } from '../../api/discounts.api';
-import { DiscountCard } from '../../components/DiscountCard/DiscountCard';
 import {
   DiscountFilterBar,
   type DiscountScopeTypeFilter,
@@ -36,6 +40,21 @@ import styles from './AdminDiscountManagementPage.module.css';
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
+
+function availableBranchIds(discount: Discount): string[] {
+  return (discount.discount_branch_availability ?? [])
+    .filter((row) => row.is_available)
+    .map((row) => row.branch_id);
+}
+
+/** Custom change (unify active/available): mirrors the server's own sync
+ * rule (discounts.service.ts) so the client's optimistic local update
+ * matches what a refetch would show, without a round trip. */
+function deriveIsActive(
+  availability: Discount['discount_branch_availability']
+) {
+  return (availability ?? []).some((row) => row.is_available);
+}
 
 export function AdminDiscountManagementPage() {
   const { user, accessToken } = useAuth();
@@ -61,7 +80,7 @@ export function AdminDiscountManagementPage() {
     null
   );
   const [editingIsMandated, setEditingIsMandated] = useState(false);
-  const [formBranchId, setFormBranchId] = useState('');
+  const [formBranchIds, setFormBranchIds] = useState<string[]>([]);
   const [formName, setFormName] = useState('');
   const [formDiscountType, setFormDiscountType] =
     useState<DiscountValueType>('Percentage');
@@ -74,6 +93,9 @@ export function AdminDiscountManagementPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [availabilityDiscountId, setAvailabilityDiscountId] = useState<
+    string | null
+  >(null);
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -141,11 +163,6 @@ export function AdminDiscountManagementPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const branchNameById = useMemo(
-    () => new Map(branches.map((branch) => [branch.id, branch.name])),
-    [branches]
-  );
-
   const serviceNameById = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
     [services]
@@ -160,7 +177,10 @@ export function AdminDiscountManagementPage() {
     const searchTerm = search.trim().toLowerCase();
 
     return discounts.filter((discount) => {
-      if (branchFilter !== 'All' && discount.branch_id !== branchFilter) {
+      if (
+        branchFilter !== 'All' &&
+        !availableBranchIds(discount).includes(branchFilter)
+      ) {
         return false;
       }
 
@@ -197,21 +217,24 @@ export function AdminDiscountManagementPage() {
     [filteredDiscounts]
   );
 
-  // Only packages available at the form's selected branch are offered
-  // (custom change: packages are no longer scoped to exactly one branch_id -
-  // see package_branch_availability - so this checks the joined
-  // availability array instead of a single owning column).
-  const packageOptionsForBranch = useMemo(() => {
-    if (formBranchId === '') {
+  // A package is offered to the form's scope picker if it's available at
+  // ANY of the currently selected branches - a discount can span several
+  // branches, and its package scope only needs to exist at one of them.
+  const packageOptionsForBranches = useMemo(() => {
+    if (formBranchIds.length === 0) {
       return [];
     }
 
     return packages.filter((pkg) =>
       (pkg.package_branch_availability ?? []).some(
-        (row) => row.branch_id === formBranchId && row.is_available
+        (row) => formBranchIds.includes(row.branch_id) && row.is_available
       )
     );
-  }, [packages, formBranchId]);
+  }, [packages, formBranchIds]);
+
+  const availabilityDiscount = discounts.find(
+    (discount) => discount.id === availabilityDiscountId
+  );
 
   const replaceDiscount = (updated: Discount) => {
     setDiscounts((prev) =>
@@ -228,7 +251,7 @@ export function AdminDiscountManagementPage() {
   const openCreateForm = () => {
     setEditingDiscountId(null);
     setEditingIsMandated(false);
-    setFormBranchId('');
+    setFormBranchIds([]);
     setFormName('');
     setFormDiscountType('Percentage');
     setFormValue('');
@@ -241,7 +264,7 @@ export function AdminDiscountManagementPage() {
   const openEditForm = (discount: Discount) => {
     setEditingDiscountId(discount.id);
     setEditingIsMandated(discount.is_mandated);
-    setFormBranchId(discount.branch_id);
+    setFormBranchIds(availableBranchIds(discount));
     setFormName(discount.name);
     setFormDiscountType(discount.discount_type);
     setFormValue(String(discount.value));
@@ -260,22 +283,39 @@ export function AdminDiscountManagementPage() {
     setFormError(null);
   };
 
-  const handleActiveToggle = async (discount: Discount, isActive: boolean) => {
+  const handleBranchToggle = async (
+    discount: Discount,
+    branchId: string,
+    isAvailable: boolean
+  ) => {
     if (!accessToken) {
       return;
     }
 
-    const result = await updateDiscount(discount.id, accessToken, {
-      is_active: isActive,
-    });
+    const result = await setDiscountBranchAvailability(
+      discount.id,
+      accessToken,
+      { branch_id: branchId, is_available: isAvailable }
+    );
 
     if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the discount.');
+      setMessage(result.error ?? 'Could not update branch availability.');
       return;
     }
 
-    replaceDiscount(result.data);
-    setMessage(isActive ? 'Discount activated.' : 'Discount deactivated.');
+    const rows = discount.discount_branch_availability ?? [];
+    const hasRow = rows.some((row) => row.branch_id === branchId);
+    const nextRows = hasRow
+      ? rows.map((row) =>
+          row.branch_id === branchId ? { ...row, ...result.data } : row
+        )
+      : [...rows, result.data];
+
+    replaceDiscount({
+      ...discount,
+      discount_branch_availability: nextRows,
+      is_active: deriveIsActive(nextRows),
+    });
   };
 
   const handleArchive = async (discount: Discount) => {
@@ -294,6 +334,67 @@ export function AdminDiscountManagementPage() {
     setMessage('Discount archived.');
   };
 
+  /**
+   * Applies the edit form's branch multiselect to a just-updated discount by
+   * diffing it against the row's current availability and only calling
+   * setDiscountBranchAvailability for branches whose selection actually
+   * changed - same approach as AdminServicesPage's applyBranchSelection.
+   * Create doesn't need this: branch_ids goes straight into the create
+   * payload and the server seeds the availability rows itself.
+   */
+  async function applyBranchSelection(
+    discount: Discount,
+    selectedBranchIds: string[]
+  ): Promise<Discount> {
+    if (!accessToken) {
+      return discount;
+    }
+
+    const rows = discount.discount_branch_availability ?? [];
+    const changedBranches = branches.filter((branch) => {
+      const current =
+        rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
+      const next = selectedBranchIds.includes(branch.id);
+      return current !== next;
+    });
+
+    if (changedBranches.length === 0) {
+      return discount;
+    }
+
+    const results = await Promise.all(
+      changedBranches.map((branch) =>
+        setDiscountBranchAvailability(discount.id, accessToken, {
+          branch_id: branch.id,
+          is_available: selectedBranchIds.includes(branch.id),
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changedBranches.forEach((branch, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return {
+      ...discount,
+      discount_branch_availability: updatedRows,
+      is_active: deriveIsActive(updatedRows),
+    };
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -310,6 +411,11 @@ export function AdminDiscountManagementPage() {
 
     if (formDiscountType === 'Percentage' && value > 100) {
       setFormError('A percentage value cannot exceed 100.');
+      return;
+    }
+
+    if (formBranchIds.length === 0) {
+      setFormError('Select at least one branch.');
       return;
     }
 
@@ -343,14 +449,8 @@ export function AdminDiscountManagementPage() {
             };
 
     if (editingDiscountId === null) {
-      if (formBranchId === '') {
-        setIsSubmitting(false);
-        setFormError('Select a branch first.');
-        return;
-      }
-
       const result = await createDiscount(accessToken, {
-        branch_id: formBranchId,
+        branch_ids: formBranchIds,
         name: formName.trim(),
         discount_type: formDiscountType,
         value,
@@ -382,14 +482,19 @@ export function AdminDiscountManagementPage() {
       ...scopeFields,
     });
 
-    setIsSubmitting(false);
-
     if (result.error || !result.data) {
+      setIsSubmitting(false);
       setFormError(result.error ?? 'Could not update the discount.');
       return;
     }
 
-    replaceDiscount(result.data);
+    const finalDiscount = await applyBranchSelection(
+      result.data,
+      formBranchIds
+    );
+
+    setIsSubmitting(false);
+    replaceDiscount(finalDiscount);
     setMessage('Discount updated.');
     closeForm();
   };
@@ -458,19 +563,46 @@ export function AdminDiscountManagementPage() {
     );
   }
 
-  const renderDiscountCard = (discount: Discount) => (
-    <DiscountCard
-      key={discount.id}
-      discount={discount}
-      branchName={
-        branchNameById.get(discount.branch_id) ??
-        `Branch ${discount.branch_id.slice(0, 8)}`
-      }
-      scopeDescription={describeScope(discount)}
-      onToggle={(isActive) => void handleActiveToggle(discount, isActive)}
-      onEdit={() => openEditForm(discount)}
-      onArchive={() => void handleArchive(discount)}
-    />
+  const renderDiscountRow = (discount: Discount) => (
+    <li key={discount.id} className={styles.discountRow}>
+      <div className={styles.discountMain}>
+        <span className={styles.discountName}>{discount.name}</span>
+        <span className={styles.scopeBadge}>
+          {discount.scope_type === 'service'
+            ? 'Service'
+            : discount.scope_type === 'package'
+              ? 'Package'
+              : 'Category'}
+        </span>
+        <span className={styles.discountMeta}>
+          {discount.discount_type === 'Percentage'
+            ? `${discount.value}%`
+            : `PHP ${discount.value.toFixed(2)}`}
+        </span>
+        <span className={styles.discountMeta}>{describeScope(discount)}</span>
+      </div>
+
+      <div className={styles.discountControls}>
+        <MoreOptionsMenu
+          label={`Actions for ${discount.name}`}
+          items={[
+            { label: 'Configure', onSelect: () => openEditForm(discount) },
+            {
+              label: 'Branch Availability',
+              onSelect: () => setAvailabilityDiscountId(discount.id),
+            },
+            ...(!discount.is_active && !discount.is_mandated
+              ? [
+                  {
+                    label: 'Archive',
+                    onSelect: () => void handleArchive(discount),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      </div>
+    </li>
   );
 
   return (
@@ -486,8 +618,9 @@ export function AdminDiscountManagementPage() {
           </Link>
         </div>
         <p className={styles.copy}>
-          Discounts are switched off by default. Toggle a card to activate it
-          for checkout.
+          A discount is active wherever it&apos;s available - use a row&apos;s
+          &quot;...&quot; menu &gt; Branch Availability to turn it on or off per
+          branch.
         </p>
 
         <div className={styles.toolbar}>
@@ -518,34 +651,15 @@ export function AdminDiscountManagementPage() {
           </p>
         ) : null}
 
-        {isFormOpen ? (
-          <section className={styles.formPanel} aria-labelledby="discount-form">
-            <h2 className={styles.sectionTitle} id="discount-form">
-              {editingDiscountId === null ? 'Create discount' : 'Edit discount'}
-            </h2>
-
+        <Modal
+          isOpen={isFormOpen}
+          title={
+            editingDiscountId === null ? 'Create discount' : 'Edit discount'
+          }
+          onClose={closeForm}
+        >
+          {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Branch</span>
-                <select
-                  className={styles.input}
-                  value={formBranchId}
-                  onChange={(event) => {
-                    setFormBranchId(event.target.value);
-                    setFormScopePackageId('');
-                  }}
-                  disabled={editingDiscountId !== null}
-                  required
-                >
-                  <option value="">Select a branch...</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>Name</span>
                 <input
@@ -631,9 +745,9 @@ export function AdminDiscountManagementPage() {
               ) : null}
 
               {formScopeType === 'package' ? (
-                formBranchId === '' ? (
+                formBranchIds.length === 0 ? (
                   <p className={styles.copy}>
-                    Select a branch to pick its packages.
+                    Select at least one branch to pick its packages.
                   </p>
                 ) : (
                   <label className={styles.field}>
@@ -647,7 +761,7 @@ export function AdminDiscountManagementPage() {
                       required
                     >
                       <option value="">Select a package...</option>
-                      {packageOptionsForBranch.map((pkg) => (
+                      {packageOptionsForBranches.map((pkg) => (
                         <option key={pkg.id} value={pkg.id}>
                           {pkg.name}
                         </option>
@@ -663,6 +777,13 @@ export function AdminDiscountManagementPage() {
                   onChange={setFormScopeCategory}
                 />
               ) : null}
+
+              <BranchMultiSelect
+                label="Available at"
+                branches={branches}
+                selectedBranchIds={formBranchIds}
+                onChange={setFormBranchIds}
+              />
 
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
@@ -687,8 +808,8 @@ export function AdminDiscountManagementPage() {
                 </button>
               </div>
             </form>
-          </section>
-        ) : null}
+          ) : null}
+        </Modal>
 
         <section aria-labelledby="mandated-heading">
           <h2 className={styles.sectionTitle} id="mandated-heading">
@@ -700,9 +821,9 @@ export function AdminDiscountManagementPage() {
               No mandated discounts match the selected filters.
             </p>
           ) : (
-            <div className={styles.discountGrid}>
-              {mandatedDiscounts.map(renderDiscountCard)}
-            </div>
+            <ul className={styles.discountList}>
+              {mandatedDiscounts.map(renderDiscountRow)}
+            </ul>
           )}
         </section>
 
@@ -716,12 +837,35 @@ export function AdminDiscountManagementPage() {
               No custom discounts match the selected filters.
             </p>
           ) : (
-            <div className={styles.discountGrid}>
-              {customDiscounts.map(renderDiscountCard)}
-            </div>
+            <ul className={styles.discountList}>
+              {customDiscounts.map(renderDiscountRow)}
+            </ul>
           )}
         </section>
       </div>
+
+      <BranchAvailabilityModal
+        isOpen={availabilityDiscount !== undefined}
+        itemName={availabilityDiscount?.name ?? ''}
+        rows={branches.map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          isAvailable:
+            (availabilityDiscount?.discount_branch_availability ?? []).find(
+              (row) => row.branch_id === branch.id
+            )?.is_available ?? false,
+        }))}
+        onToggle={(branchId, isAvailable) => {
+          if (availabilityDiscount) {
+            void handleBranchToggle(
+              availabilityDiscount,
+              branchId,
+              isAvailable
+            );
+          }
+        }}
+        onClose={() => setAvailabilityDiscountId(null)}
+      />
     </main>
   );
 }

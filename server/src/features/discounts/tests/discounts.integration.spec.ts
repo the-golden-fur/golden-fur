@@ -28,6 +28,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.not = vi.fn(() => builder);
@@ -51,7 +52,6 @@ const BRANCH_ID = '11111111-1111-4111-a111-111111111111';
 
 const MANDATED_DISCOUNT = {
   id: 'discount-sc',
-  branch_id: BRANCH_ID,
   name: 'Senior Citizen Discount',
   is_mandated: true,
   discount_type: 'Percentage',
@@ -61,6 +61,9 @@ const MANDATED_DISCOUNT = {
   scope_package_id: null,
   scope_category: 'Veterinary',
   is_active: false,
+  discount_branch_availability: [
+    { discount_id: 'discount-sc', branch_id: BRANCH_ID, is_available: true },
+  ],
 };
 
 describe('discounts HTTP surface (Issue #43)', () => {
@@ -96,32 +99,32 @@ describe('discounts HTTP surface (Issue #43)', () => {
     const res = await request(app)
       .patch('/discounts/discount-sc')
       .set('Authorization', 'Bearer token')
-      .send({ is_active: true });
+      .send({ value: 25 });
 
     expect(res.status).toBe(403);
   });
 
   it('AC-1: an Admin creates a category-scoped custom discount', async () => {
     mockCaller('admin-1');
+    const created = {
+      ...MANDATED_DISCOUNT,
+      id: 'discount-custom',
+      name: 'Loyalty Discount',
+      is_mandated: false,
+      value: 10,
+    };
     queueFromResults(
       { data: { role: 'Admin' }, error: null },
-      {
-        data: {
-          ...MANDATED_DISCOUNT,
-          id: 'discount-custom',
-          name: 'Loyalty Discount',
-          is_mandated: false,
-          value: 10,
-        },
-        error: null,
-      }
+      { data: created, error: null }, // discount insert
+      { data: null, error: null }, // availability insert
+      { data: created, error: null } // final getDiscountById
     );
 
     const res = await request(app)
       .post('/discounts')
       .set('Authorization', 'Bearer token')
       .send({
-        branch_id: BRANCH_ID,
+        branch_ids: [BRANCH_ID],
         name: 'Loyalty Discount',
         discount_type: 'Percentage',
         value: 10,
@@ -133,21 +136,43 @@ describe('discounts HTTP surface (Issue #43)', () => {
     expect(res.body.discount.is_mandated).toBe(false);
   });
 
-  it('AC-3/AC-4: an Admin toggles a mandated (category-scoped) discount on', async () => {
+  it('unify active/available: an Admin activates a mandated (category-scoped) discount via branch availability, not PATCH /discounts/:id', async () => {
     mockCaller('admin-1');
     queueFromResults(
       { data: { role: 'Admin' }, error: null },
-      { data: MANDATED_DISCOUNT, error: null }, // lookup
-      { data: { ...MANDATED_DISCOUNT, is_active: true }, error: null } // update
+      { data: { id: 'discount-sc' }, error: null }, // existence lookup
+      {
+        data: {
+          discount_id: 'discount-sc',
+          branch_id: BRANCH_ID,
+          is_available: true,
+        },
+        error: null,
+      }, // upsert
+      { data: [{ is_available: true }], error: null }, // all-rows read for sync
+      { data: null, error: null } // is_active sync update
     );
+
+    const res = await request(app)
+      .patch('/discounts/discount-sc/branch-availability')
+      .set('Authorization', 'Bearer token')
+      .send({ branch_id: BRANCH_ID, is_available: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.availability.is_available).toBe(true);
+  });
+
+  it('unify active/available: PATCH /discounts/:id rejects is_active - it is no longer independently settable', async () => {
+    mockCaller('admin-1');
+    queueFromResults({ data: { role: 'Admin' }, error: null });
 
     const res = await request(app)
       .patch('/discounts/discount-sc')
       .set('Authorization', 'Bearer token')
       .send({ is_active: true });
 
-    expect(res.status).toBe(200);
-    expect(res.body.discount.is_active).toBe(true);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid payload');
   });
 
   it("AC-3: a PATCH changing a mandated discount's name is rejected", async () => {

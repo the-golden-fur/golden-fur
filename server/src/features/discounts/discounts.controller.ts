@@ -8,10 +8,12 @@ import {
   listArchivedDiscounts,
   listDiscounts,
   restoreDiscount,
+  setDiscountBranchAvailability,
   updateDiscount,
 } from './services/discounts.service.ts';
 import {
   createDiscountValidator,
+  discountBranchAvailabilityValidator,
   updateDiscountValidator,
 } from './modules/validators/discounts.validator.ts';
 
@@ -163,6 +165,37 @@ export async function updateDiscountController(
     });
 
     return res.status(200).json({ discount });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setDiscountBranchAvailabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = discountBranchAvailabilityValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setDiscountBranchAvailability({
+      discountId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      isAvailable: parsed.data.is_available,
+    });
+
+    return res.status(200).json({ availability });
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -1,6 +1,8 @@
 import type {
   CreateDiscountPayload,
   Discount,
+  DiscountBranchAvailability,
+  DiscountBranchAvailabilityPayload,
   UpdateDiscountPayload,
 } from '../discounts.types';
 
@@ -94,6 +96,32 @@ export async function createDiscount(
 
   const result = await parseBody<{ discount: Discount }>(response);
   return { data: result.data?.discount ?? null, error: result.error };
+}
+
+/** Per-branch availability toggle, mirroring
+ * setServiceBranchAvailability/setPackageBranchAvailability. */
+export async function setDiscountBranchAvailability(
+  discountId: string,
+  accessToken: string,
+  payload: DiscountBranchAvailabilityPayload
+): Promise<DiscountsApiResult<DiscountBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/discounts/${discountId}/branch-availability`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ availability: DiscountBranchAvailability }>(
+    response
+  );
+  return { data: result.data?.availability ?? null, error: result.error };
 }
 
 export async function updateDiscount(

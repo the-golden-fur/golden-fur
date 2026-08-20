@@ -228,9 +228,23 @@ export async function seedGoldenPackage(
 }
 
 /**
- * Senior Citizen + PWD, one row per branch per category (16 rows total),
- * inactive by default - see this folder's .md doc for why 16 rows rather
- * than one per branch.
+ * Senior Citizen + PWD, one row per category (8 rows total, custom change:
+ * down from the original 16 branch x type x category rows now that
+ * discounts moved off a single branch_id column onto the many-to-many
+ * discount_branch_availability table - migration 20260820140, mirroring
+ * package_branch_availability's own seedGoldenPackage above). Each row is
+ * made available at every branch so 'Senior Citizen - Veterinary' still
+ * toggles independently per branch (via Branch Availability), just no
+ * longer needs a whole separate discount row to do it.
+ *
+ * Custom change (unify active/available): is_active is no longer an
+ * independent switch anywhere in the Discounts model - it always equals
+ * "available at >= 1 branch" (discounts.service.ts keeps it in sync on
+ * every branch-availability write). Since every row here is seeded
+ * available at every branch, it is seeded active too - there is no longer
+ * a separate "seeded but a staff member must still switch it on" step for
+ * Senior Citizen/PWD; toggling a specific branch off in Branch Availability
+ * is what takes it out of service there.
  */
 export async function seedMandatedDiscounts(
   supabase: ReturnType<typeof createClient>
@@ -240,44 +254,61 @@ export async function seedMandatedDiscounts(
 
   let created = 0;
 
-  for (const branch of branches) {
-    for (const name of MANDATED_DISCOUNTS) {
-      for (const category of SERVICE_CATEGORIES) {
-        const { data: existing } = await supabase
-          .from('discounts')
-          .select('id')
-          .eq('branch_id', branch.id)
-          .eq('name', name)
-          .eq('scope_category', category)
-          .maybeSingle();
+  for (const name of MANDATED_DISCOUNTS) {
+    for (const category of SERVICE_CATEGORIES) {
+      const { data: existing } = await supabase
+        .from('discounts')
+        .select('id')
+        .eq('name', name)
+        .eq('scope_category', category)
+        .maybeSingle();
 
-        if (existing) continue;
+      if (existing) continue;
 
-        const { error } = await supabase.from('discounts').insert({
-          branch_id: branch.id,
+      const { data: inserted, error } = await supabase
+        .from('discounts')
+        .insert({
           name,
           is_mandated: true,
           discount_type: 'Percentage',
           value: 20,
           scope_type: 'category',
           scope_category: category,
-          is_active: false,
-        });
+          is_active: true,
+        })
+        .select('id')
+        .maybeSingle();
 
-        if (error) {
-          console.error(
-            `discount insert failed (${name} / ${category} / ${branch.name}): ${error.message}`
-          );
-          continue;
-        }
-
-        created += 1;
+      if (error || !inserted) {
+        console.error(
+          `discount insert failed (${name} / ${category}): ${error?.message}`
+        );
+        continue;
       }
+
+      const { error: availabilityError } = await supabase
+        .from('discount_branch_availability')
+        .insert(
+          branches.map((branch) => ({
+            discount_id: (inserted as { id: string }).id,
+            branch_id: branch.id,
+            is_available: true,
+          }))
+        );
+
+      if (availabilityError) {
+        console.error(
+          `discount branch availability insert failed (${name} / ${category}): ${availabilityError.message}`
+        );
+        continue;
+      }
+
+      created += 1;
     }
   }
 
   console.log(
-    `ensured mandated discounts exist for ${branches.length} branch(es) x ${MANDATED_DISCOUNTS.length} type(s) x ${SERVICE_CATEGORIES.length} categories (${created} row(s) created)`
+    `ensured mandated discounts exist for ${MANDATED_DISCOUNTS.length} type(s) x ${SERVICE_CATEGORIES.length} categories, available at ${branches.length} branch(es) (${created} row(s) created)`
   );
 }
 

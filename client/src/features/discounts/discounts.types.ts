@@ -24,9 +24,17 @@ export const DISCOUNT_CATEGORIES: DiscountCategory[] = [
   'Misc',
 ];
 
+/** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability
+ * - replaces the discount's original single branch_id column (admin
+ * settings > discount builder branch multiselect). */
+export interface DiscountBranchAvailability {
+  discount_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface Discount {
   id: string;
-  branch_id: string;
   name: string;
   /**
    * True only for the seeded Senior Citizen / PWD rows (#44). Their name and
@@ -40,17 +48,27 @@ export interface Discount {
   scope_service_id: string | null;
   scope_package_id: string | null;
   scope_category: DiscountCategory | null;
+  /**
+   * Custom change (unify active/available): derived from branch
+   * availability, not independently settable - true whenever at least one
+   * discount_branch_availability row for this discount has is_available
+   * true. The server keeps this in sync on every branch-availability write;
+   * it's still a real field to read (list filters, the archive guard), just
+   * never sent on create/update payloads any more.
+   */
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  discount_branch_availability?: DiscountBranchAvailability[];
 }
 
-/** is_mandated is deliberately absent - never settable via the API. */
+/** is_mandated is deliberately absent - never settable via the API.
+ * branch_ids (custom change) replaces the old single branch_id. */
 export interface CreateDiscountPayload {
-  branch_id: string;
+  branch_ids: string[];
   name: string;
   discount_type: DiscountValueType;
   value: number;
@@ -60,11 +78,17 @@ export interface CreateDiscountPayload {
   scope_category?: DiscountCategory;
 }
 
+export interface DiscountBranchAvailabilityPayload {
+  branch_id: string;
+  is_available: boolean;
+}
+
+/** is_active is deliberately absent - derived from branch availability, not
+ * independently settable (see Discount.is_active). */
 export interface UpdateDiscountPayload {
   name?: string;
   discount_type?: DiscountValueType;
   value?: number;
-  is_active?: boolean;
   scope_type?: DiscountScopeType;
   scope_service_id?: string;
   scope_package_id?: string;

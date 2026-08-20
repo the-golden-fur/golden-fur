@@ -28,9 +28,16 @@ export type DiscountCategory =
   | 'Veterinary'
   | 'Misc';
 
+/** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability
+ * - replaces the discount's original single branch_id column. */
+export interface DiscountBranchAvailability {
+  discount_id: string;
+  branch_id: string;
+  is_available: boolean;
+}
+
 export interface Discount {
   id: string;
-  branch_id: string;
   name: string;
   /**
    * True only for the seeded Senior Citizen / PWD rows (#44). Informational
@@ -50,4 +57,5 @@ export interface Discount {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  discount_branch_availability?: DiscountBranchAvailability[];
 }

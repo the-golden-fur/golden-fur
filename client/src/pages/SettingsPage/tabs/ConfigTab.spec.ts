@@ -1,33 +1,32 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigTab } from './ConfigTab';
 
-function renderTab(isSuperadmin: boolean) {
+function renderTab(isSuperadmin: boolean, onSelectTile = vi.fn()) {
   return render(
     createElement(
       MemoryRouter,
       null,
-      createElement(ConfigTab, { isSuperadmin })
+      createElement(ConfigTab, { isSuperadmin, onSelectTile })
     )
   );
 }
 
 describe('ConfigTab', () => {
-  it('links to every admin-config page for an Admin (no System Configuration)', () => {
+  it('renders every admin-config page as a selectable tile for an Admin (no System Configuration)', () => {
     renderTab(false);
 
-    expect(screen.getByRole('link', { name: /^services/i })).toHaveAttribute(
-      'href',
-      '/staff/admin/maintenance/services-and-packages'
-    );
-    expect(screen.getByRole('link', { name: /^discounts/i })).toHaveAttribute(
-      'href',
-      '/staff/admin/discounts'
-    );
     expect(
-      screen.queryByRole('link', { name: /system configuration/i })
+      screen.getByRole('button', { name: /^services/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^discounts/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /system configuration/i })
     ).not.toBeInTheDocument();
   });
 
@@ -35,7 +34,22 @@ describe('ConfigTab', () => {
     renderTab(true);
 
     expect(
-      screen.getByRole('link', { name: /system configuration/i })
-    ).toHaveAttribute('href', '/staff/admin/maintenance/system-configuration');
+      screen.getByRole('button', { name: /system configuration/i })
+    ).toBeInTheDocument();
+  });
+
+  it('custom change: selecting a tile calls onSelectTile with that tile instead of navigating', async () => {
+    const onSelectTile = vi.fn();
+    renderTab(false, onSelectTile);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /^discounts/i }));
+
+    expect(onSelectTile).toHaveBeenCalledTimes(1);
+    expect(onSelectTile.mock.calls[0][0]).toMatchObject({
+      title: 'Discounts',
+      to: '/staff/admin/discounts',
+    });
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });

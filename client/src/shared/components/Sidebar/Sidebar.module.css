@@ -1,5 +1,6 @@
 .sidebar,
 .sidebarCollapsed {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -31,6 +32,31 @@
 
 .sidebarCollapsed {
   width: 3.75rem;
+}
+
+/* Custom change: drag-to-resize. The CSS width transition (above) is nice
+   for the collapse/expand toggle but fights a live drag - every pointermove
+   would animate towards its target instead of tracking the cursor. */
+.sidebarResizing {
+  transition: none;
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  z-index: 1;
+}
+
+.resizeHandle:hover,
+.resizeHandleActive {
+  background: var(--color-accent-gold-primary);
+  opacity: 0.5;
 }
 
 .collapseToggle {

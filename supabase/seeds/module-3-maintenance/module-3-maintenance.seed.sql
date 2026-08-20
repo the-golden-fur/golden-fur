@@ -24,10 +24,15 @@
 --      column; the price is now derived on read from the included
 --      services' base_price and the shared package_pricing_configuration
 --      discount percentage.
---   3. discounts - Senior Citizen + PWD, one row per branch per category
---      (2 types x 2 branches x 4 categories = 16 rows), inactive by
---      default. See this folder's .md doc for why 16 rows instead of the
---      Guide's ambiguous "one row per branch".
+--   3. discounts / discount_branch_availability - Senior Citizen + PWD, one
+--      row per category (2 types x 4 categories = 8 rows), each available at
+--      every branch, inactive by default. Custom change: discounts moved off
+--      a single branch_id column onto the same many-to-many
+--      *_branch_availability join used by services/packages (see migration
+--      20260820140_custom_discount_branch_availability.sql) - down from the
+--      original 16 branch x type x category rows, since one discount row can
+--      now span every branch and still be toggled off per-branch via
+--      discount_branch_availability.is_available.
 --
 -- Runs automatically on `supabase db reset` (see supabase/config.toml
 -- [db.seed] sql_paths, ordered AFTER module-1's seed so branches.id values
@@ -76,34 +81,38 @@ where p.name = 'Golden Package'
 on conflict (package_id, service_id) do nothing;
 
 -- ============================================================
--- 3. Mandated discounts: Senior Citizen 20% and PWD 20%, inactive by
--- default (#43 AC-2 / #44 AC-3)
+-- 3. Mandated discounts: Senior Citizen 20% and PWD 20%
 --
 -- SCOPE DECISION (flagged, not a silent guess - see this folder's .md):
 -- the Guide's draft said "one row per branch" with scope_type = 'category'
 -- but named no category, and the schema's CHECK requires exactly one
 -- concrete scope per row. Since RA 9994/RA 10754 apply SC/PWD discounts
--- across all offerings, this seeds one row per type x branch x category
--- (2 x 2 x 4 = 16 rows) so toggling 'Senior Citizen - Veterinary' on at
--- Makati is independent per category and branch, exactly the MA29
--- concern. If the client instead wants a single all-categories switch per
--- branch, delete the extra rows or add an 'all' scope value - revisit at
--- sprint task 2-A confirmation.
+-- across all offerings, this seeds one row per type x category (2 x 4 = 8
+-- rows), each available at every branch via discount_branch_availability -
+-- 'Senior Citizen - Veterinary' still toggles independently at Makati vs
+-- Southwoods (the original MA29 concern), just through the availability
+-- table's per-branch is_available flag instead of a duplicate discount row.
+-- If the client instead wants a single all-categories switch, delete the
+-- extra rows or add an 'all' scope value - revisit at sprint task 2-A
+-- confirmation.
+--
+-- Custom change (unify active/available): is_active is derived from branch
+-- availability everywhere now (discounts.service.ts keeps it in sync on
+-- every write) - since every row here is seeded available at every branch,
+-- it is seeded active too, no separate manual activation step.
 -- ============================================================
 
 insert into public.discounts
-  (branch_id, name, is_mandated, discount_type, value, scope_type, scope_category, is_active)
+  (name, is_mandated, discount_type, value, scope_type, scope_category, is_active)
 select
-  b.id,
   d.name,
   true,
   'Percentage',
   20.00,
   'category',
   cat.category,
-  false
-from public.branches as b
-cross join (
+  true
+from (
   values ('Senior Citizen Discount'), ('PWD Discount')
 ) as d(name)
 cross join (
@@ -115,7 +124,14 @@ cross join (
 ) as cat(category)
 where not exists (
   select 1 from public.discounts as existing
-  where existing.branch_id = b.id
-    and existing.name = d.name
+  where existing.name = d.name
     and existing.scope_category = cat.category
 );
+
+insert into public.discount_branch_availability (discount_id, branch_id, is_available)
+select disc.id, b.id, true
+from public.discounts as disc
+cross join public.branches as b
+where disc.is_mandated
+  and disc.name in ('Senior Citizen Discount', 'PWD Discount')
+on conflict (discount_id, branch_id) do nothing;

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Home, Settings } from 'lucide-react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './Navbar.module.css';
@@ -65,6 +65,7 @@ export function Navbar({
 }: NavbarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -75,6 +76,38 @@ export function Navbar({
     window.sessionStorage.removeItem('customerMfaPending');
     navigate(LOGIN_PATH_BY_ROLE[role], { replace: true });
   };
+
+  // Custom change (VSCode-style settings modal): while the Settings page
+  // itself is open, the persistent Navbar swaps its usual dashboard
+  // shortcuts (Home/Settings icons, identity chip, notifications, compose)
+  // for a minimal "you're in Settings" bar - those shortcuts are redundant
+  // once the modal's own header (title, sort, fullscreen, close) already
+  // covers navigating around/out of it.
+  const isSettingsRoute = location.pathname.startsWith(
+    SETTINGS_PATH_BY_ROLE[role]
+  );
+
+  if (isSettingsRoute) {
+    return (
+      <nav className={styles.navbar} aria-label="Primary">
+        <Link to={HOME_PATH_BY_ROLE[role]} className={styles.brand}>
+          {brandLabel}
+        </Link>
+
+        <div className={styles.links}>
+          <span className={styles.settingsLabel}>Settings</span>
+          <button
+            type="button"
+            className={styles.signOutButton}
+            disabled={isSigningOut}
+            onClick={() => void handleSignOut()}
+          >
+            {isSigningOut ? 'Signing out...' : 'Sign out'}
+          </button>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className={styles.navbar} aria-label="Primary">

@@ -18,8 +18,13 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../MoreOptionsMenu/MoreOptionsMenu';
+import { useResizableWidth } from '../../hooks/useResizableWidth/useResizableWidth';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './Sidebar.module.css';
+
+const SIDEBAR_DEFAULT_WIDTH = 264; // 16.5rem at the default 16px root, matches .sidebar's own CSS width
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 420;
 
 export interface SidebarItem {
   title: string;
@@ -618,6 +623,17 @@ export function Sidebar({
   onToggleCollapse,
   role = 'staff',
 }: SidebarProps) {
+  const {
+    width: sidebarWidth,
+    isDragging: isResizingSidebar,
+    handleProps: sidebarResizeHandleProps,
+  } = useResizableWidth({
+    storageKey: `sidebar-width-${role}`,
+    defaultWidth: SIDEBAR_DEFAULT_WIDTH,
+    min: SIDEBAR_MIN_WIDTH,
+    max: SIDEBAR_MAX_WIDTH,
+  });
+
   const allItems = useMemo(
     () => sections.flatMap((section) => section.items),
     [sections]
@@ -749,8 +765,15 @@ export function Sidebar({
 
   return (
     <aside
-      className={collapsed ? styles.sidebarCollapsed : styles.sidebar}
+      className={
+        collapsed
+          ? styles.sidebarCollapsed
+          : isResizingSidebar
+            ? `${styles.sidebar} ${styles.sidebarResizing}`
+            : styles.sidebar
+      }
       aria-label="Dashboard navigation"
+      style={collapsed ? undefined : { width: sidebarWidth }}
     >
       <button
         type="button"
@@ -811,6 +834,18 @@ export function Sidebar({
           />
         ))}
       </nav>
+
+      {!collapsed ? (
+        <div
+          {...sidebarResizeHandleProps}
+          aria-label="Resize sidebar"
+          className={
+            isResizingSidebar
+              ? `${styles.resizeHandle} ${styles.resizeHandleActive}`
+              : styles.resizeHandle
+          }
+        />
+      ) : null}
     </aside>
   );
 }
