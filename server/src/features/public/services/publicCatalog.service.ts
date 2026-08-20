@@ -26,9 +26,16 @@ export interface PublicPackage extends Package {
   savings: number;
 }
 
+export interface PublicPromo extends Promo {
+  /** Every branch this promo is currently available at (custom change:
+   * promos moved off the branch_scope enum - see
+   * promo_branch_availability). */
+  branch_names: string[];
+}
+
 export interface PublicPackagesPromos {
   packages: PublicPackage[];
-  promos: Promo[];
+  promos: PublicPromo[];
 }
 
 function round2(value: number): number {
@@ -96,6 +103,11 @@ export async function getPublicPackagesPromos(): Promise<PublicPackagesPromos> {
         savings: round2(Math.max(individualTotalPrice - pkg.bundled_price, 0)),
       };
     }),
-    promos,
+    promos: promos.map((promo) => ({
+      ...promo,
+      branch_names: (promo.promo_branch_availability ?? [])
+        .filter((row) => row.is_available)
+        .map((row) => branchNameById.get(row.branch_id) ?? 'Unknown branch'),
+    })),
   };
 }

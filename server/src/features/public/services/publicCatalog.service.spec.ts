@@ -44,7 +44,18 @@ describe('publicCatalog.service', () => {
       } as never,
     ]);
     vi.mocked(listPromos).mockResolvedValue([
-      { id: 'promo-1', name: 'Grand Opening' } as never,
+      {
+        id: 'promo-1',
+        name: 'Grand Opening',
+        promo_branch_availability: [
+          { promo_id: 'promo-1', branch_id: 'branch-1', is_available: true },
+          {
+            promo_id: 'promo-1',
+            branch_id: 'branch-2',
+            is_available: false,
+          },
+        ],
+      } as never,
     ]);
     vi.mocked(listBranchesFull).mockResolvedValue([
       { id: 'branch-1', name: 'Makati' } as never,
@@ -110,7 +121,21 @@ describe('publicCatalog.service', () => {
         savings: 0,
       },
     ]);
-    expect(result.promos).toEqual([{ id: 'promo-1', name: 'Grand Opening' }]);
+    expect(result.promos).toEqual([
+      {
+        id: 'promo-1',
+        name: 'Grand Opening',
+        promo_branch_availability: [
+          { promo_id: 'promo-1', branch_id: 'branch-1', is_available: true },
+          {
+            promo_id: 'promo-1',
+            branch_id: 'branch-2',
+            is_available: false,
+          },
+        ],
+        branch_names: ['Makati'],
+      },
+    ]);
   });
 
   it('falls back to "Unknown branch" and drops unresolved service links', async () => {

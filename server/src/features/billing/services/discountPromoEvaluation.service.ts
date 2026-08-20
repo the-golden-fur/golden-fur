@@ -12,15 +12,6 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** Discounts/promos have no branch_id/name lookup table of their own for
- * 'makati'/'southwoods' - branches.name is 'Makati'/'Southwoods' (M01
- * account-creation copy), lowercased here to match promos.branch_scope's
- * vocabulary, mirroring how promos.service.ts's own branchScope filter is
- * already fed a lowercase string by its caller. */
-function branchScopeFromName(branchName: string): 'makati' | 'southwoods' {
-  return branchName.toLowerCase() === 'makati' ? 'makati' : 'southwoods';
-}
-
 interface DiscountRow {
   id: string;
   name: string;
@@ -31,6 +22,10 @@ interface DiscountRow {
   scope_service_id: string | null;
   scope_package_id: string | null;
   scope_category: string | null;
+  discount_branch_availability: Array<{
+    branch_id: string;
+    is_available: boolean;
+  }>;
 }
 
 export interface DiscountEligibility {
@@ -61,8 +56,7 @@ export async function evaluateDiscounts(
 
   const { data, error } = await supabase
     .from('discounts')
-    .select('*')
-    .eq('branch_id', booking.branch_id)
+    .select('*, discount_branch_availability(branch_id, is_available)')
     .eq('is_active', true);
 
   if (error) throwWithStatus(400, error.message);
@@ -70,6 +64,12 @@ export async function evaluateDiscounts(
   const lines: DraftLineItem[] = [];
 
   for (const discount of (data ?? []) as DiscountRow[]) {
+    const availableAtBranch = discount.discount_branch_availability.some(
+      (row) => row.branch_id === booking.branch_id && row.is_available
+    );
+
+    if (!availableAtBranch) continue;
+
     // Multi-item bookings revision: a discount scoped to a specific
     // service/package matches if ANY selected item matches - a booking with
     // several items can carry multiple applicable discounts (Sprint 5 M08's
@@ -127,6 +127,10 @@ interface PromoRow {
   value: number;
   scope_type: 'all_services' | 'specific';
   promo_scope: Array<{ service_id: string | null; package_id: string | null }>;
+  promo_branch_availability: Array<{
+    branch_id: string;
+    is_available: boolean;
+  }>;
 }
 
 export interface EvaluatedPromo {
@@ -155,18 +159,23 @@ export async function evaluatePromos(
   booking: BookingForBilling,
   subtotal: number
 ): Promise<EvaluatedPromo[]> {
-  const scope = branchScopeFromName(booking.branchName);
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: promos, error } = await supabase
     .from('promos')
-    .select('*, promo_scope(*)')
-    .eq('is_active', true)
-    .in('branch_scope', [scope, 'both']);
+    .select(
+      '*, promo_scope(*), promo_branch_availability(branch_id, is_available)'
+    )
+    .eq('is_active', true);
 
   if (error) throwWithStatus(400, error.message);
 
   const matched = ((promos ?? []) as PromoRow[]).filter((promo) => {
+    const availableAtBranch = promo.promo_branch_availability.some(
+      (row) => row.branch_id === booking.branch_id && row.is_available
+    );
+    if (!availableAtBranch) return false;
+
     if (promo.start_date && promo.start_date > today) return false;
     if (promo.end_date && promo.end_date < today) return false;
     if (promo.scope_type === 'all_services') return true;

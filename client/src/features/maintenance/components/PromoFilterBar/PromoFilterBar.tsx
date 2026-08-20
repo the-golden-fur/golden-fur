@@ -1,18 +1,9 @@
-import type { PromoBranchScope } from '../../maintenance.types';
+import type { BranchSummary } from '../../maintenance.types';
 import type { PromoTiming } from '../../utils/promoTiming';
 import styles from './PromoFilterBar.module.css';
 
-export type PromoBranchScopeFilter = 'All' | PromoBranchScope;
 export type PromoTimingFilter = 'All' | PromoTiming;
 export type PromoStatusFilter = 'All' | 'Active' | 'Inactive';
-
-const BRANCH_SCOPES: PromoBranchScope[] = ['makati', 'southwoods', 'both'];
-
-const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
-  makati: 'Makati',
-  southwoods: 'Southwoods',
-  both: 'Both branches',
-};
 
 const TIMING_FILTERS: PromoTiming[] = ['Upcoming', 'Active', 'Ended'];
 
@@ -25,8 +16,9 @@ const TIMING_FILTER_LABELS: Record<PromoTiming, string> = {
 interface PromoFilterBarProps {
   search: string;
   onSearchChange: (value: string) => void;
-  branchScopeFilter: PromoBranchScopeFilter;
-  onBranchScopeFilterChange: (value: PromoBranchScopeFilter) => void;
+  branches: BranchSummary[];
+  branchFilter: string;
+  onBranchFilterChange: (value: string) => void;
   timingFilter: PromoTimingFilter;
   onTimingFilterChange: (value: PromoTimingFilter) => void;
   statusFilter: PromoStatusFilter;
@@ -34,16 +26,22 @@ interface PromoFilterBarProps {
 }
 
 /**
- * Search + branch-scope/timing/status filter controls above the promo card
- * grid, matching the Discount Management overhaul's DiscountFilterBar.
- * Timing (Upcoming/Active now/Ended) is a promo-specific filter - discounts
- * have no date window to classify.
+ * Search + branch/timing/status filter controls above the promo card grid,
+ * matching the Discount Management overhaul's DiscountFilterBar. Timing
+ * (Upcoming/Active now/Ended) is a promo-specific filter - discounts have
+ * no date window to classify.
+ *
+ * Custom change (unify active/available): "Branch scope" (the old
+ * makati/southwoods/both enum) is now a real branch filter, same shape as
+ * DiscountFilterBar's own "Branch" dropdown - a promo can be available at
+ * any subset of branches, not just those three fixed combinations.
  */
 export function PromoFilterBar({
   search,
   onSearchChange,
-  branchScopeFilter,
-  onBranchScopeFilterChange,
+  branches,
+  branchFilter,
+  onBranchFilterChange,
   timingFilter,
   onTimingFilterChange,
   statusFilter,
@@ -63,20 +61,16 @@ export function PromoFilterBar({
       </label>
 
       <label className={styles.filterField}>
-        <span className={styles.filterLabel}>Branch scope</span>
+        <span className={styles.filterLabel}>Branch</span>
         <select
           className={styles.filterSelect}
-          value={branchScopeFilter}
-          onChange={(event) =>
-            onBranchScopeFilterChange(
-              event.target.value as PromoBranchScopeFilter
-            )
-          }
+          value={branchFilter}
+          onChange={(event) => onBranchFilterChange(event.target.value)}
         >
-          <option value="All">All</option>
-          {BRANCH_SCOPES.map((scope) => (
-            <option key={scope} value={scope}>
-              {BRANCH_SCOPE_LABELS[scope]}
+          <option value="All">All branches</option>
+          {branches.map((branch) => (
+            <option key={branch.id} value={branch.id}>
+              {branch.name}
             </option>
           ))}
         </select>

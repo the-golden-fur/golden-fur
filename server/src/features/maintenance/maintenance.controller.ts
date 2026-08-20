@@ -26,6 +26,7 @@ import {
   listArchivedPromos,
   listPromos,
   restorePromo,
+  setPromoBranchAvailability,
   updatePromo,
 } from './services/promos.service.ts';
 import {
@@ -396,7 +397,7 @@ export async function listPromosController(
 ) {
   try {
     const promos = await listPromos({
-      branchScope: queryString(req.query.branch_scope),
+      branchId: queryString(req.query.branch_id),
       includeInactive: req.query.include_inactive === 'true',
     });
 
@@ -470,6 +471,37 @@ export async function updatePromoController(
     });
 
     return res.status(200).json({ promo });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setPromoBranchAvailabilityController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchAvailabilityValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setPromoBranchAvailability({
+      promoId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      isAvailable: parsed.data.is_available,
+    });
+
+    return res.status(200).json({ availability });
   } catch (error) {
     return sendServiceError(res, error);
   }

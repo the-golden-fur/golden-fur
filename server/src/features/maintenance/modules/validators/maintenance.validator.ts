@@ -9,7 +9,6 @@ const CATEGORIES = [
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
-const BRANCH_SCOPES = ['makati', 'southwoods', 'both'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
@@ -182,13 +181,15 @@ export const createServiceValidator = z
   .superRefine(requireDaycareFeesOrBasePrice)
   .superRefine(requireDownpaymentAmount);
 
+/** Custom change (unify active/available): is_active is derived from branch
+ * availability (setServiceBranchAvailability keeps it in sync) and is
+ * deliberately not accepted here any more. */
 export const updateServiceValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
     category: z.enum(CATEGORIES).optional(),
     base_price: z.number().nonnegative().optional(),
     duration_minutes: z.number().int().positive().nullable().optional(),
-    is_active: z.boolean().optional(),
     requires_assessed_pet: z.boolean().optional(),
     captures_pet_assessment: z.boolean().optional(),
     min_nights_for_free_package: z
@@ -346,10 +347,12 @@ export const createPackageValidator = z
   .strict()
   .superRefine(requireDownpaymentAmount);
 
+/** Custom change (unify active/available): is_active is derived from branch
+ * availability (setPackageBranchAvailability keeps it in sync) and is
+ * deliberately not accepted here any more. */
 export const updatePackageValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
-    is_active: z.boolean().optional(),
     /** Full replacement of the included-services set when provided. */
     service_ids: z.array(z.uuid()).min(2).optional(),
     use_pricing_matrix: z.boolean().optional(),
@@ -453,6 +456,10 @@ function validatePromoShape(
  * Epic B (#84): is_exclusive is dropped - combinability is now governed
  * globally by promo_cap_configuration, not declared per promo.
  */
+/** Custom change: branch_ids replaces the old branch_scope enum
+ * ('makati'/'southwoods'/'both') - mirrors createPackageValidator/
+ * createDiscountValidator's own branch_ids (many-to-many branch
+ * availability, see migration 20260820141). */
 export const createPromoValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
@@ -463,7 +470,7 @@ export const createPromoValidator = z
     value: z.number().nonnegative(),
     scope_type: z.enum(PROMO_SCOPE_TYPES),
     scope: z.array(promoScopeItemValidator).optional(),
-    branch_scope: z.enum(BRANCH_SCOPES),
+    branch_ids: z.array(z.uuid()).min(1, 'Select at least one branch'),
   })
   .strict()
   .superRefine((input, ctx) =>
@@ -473,7 +480,12 @@ export const createPromoValidator = z
 /**
  * Partial update: pair rules are enforced on whatever is present (the
  * service layer validates the merged result against the existing row for
- * cross-field cases like scope_type changes).
+ * cross-field cases like scope_type changes). branch_ids is deliberately
+ * absent - branch changes go through the dedicated branch-availability
+ * endpoint, same as Discounts/Services/Packages/Service Types. is_active
+ * stays here (unlike those four) - a promo's is_active also drives
+ * automatic date-based expiry (promoExpiry.job.ts), independent of branch
+ * availability.
  */
 export const updatePromoValidator = z
   .object({
@@ -485,13 +497,15 @@ export const updatePromoValidator = z
     value: z.number().nonnegative().optional(),
     scope_type: z.enum(PROMO_SCOPE_TYPES).optional(),
     scope: z.array(promoScopeItemValidator).optional(),
-    branch_scope: z.enum(BRANCH_SCOPES).optional(),
     is_active: z.boolean().optional(),
   })
   .strict()
   .superRefine((input, ctx) =>
     validatePromoShape(input, ctx, { requireWindow: false })
   );
+
+// Per-branch availability toggle reuses the shared branchAvailabilityValidator
+// above (same shape already used by Services/Packages/Service Types).
 
 const PET_TYPES = ['Dog', 'Cat'] as const;
 
@@ -520,10 +534,12 @@ export const createServiceTypeValidator = z
   })
   .strict();
 
+/** Custom change (unify active/available): is_active is derived from branch
+ * availability (setServiceTypeBranchAvailability keeps it in sync) and is
+ * deliberately not accepted here any more. */
 export const updateServiceTypeValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
-    is_active: z.boolean().optional(),
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
   })

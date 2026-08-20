@@ -254,7 +254,7 @@ describe('BookingDetailsPage', () => {
           discount_type: 'fixed_amount',
           value: 25,
           scope_type: 'all',
-          branch_scope: 'all_branches',
+          promo_branch_availability: [],
           is_active: true,
           created_by: null,
           updated_by: null,

@@ -3,6 +3,7 @@ import {
   createPromo,
   getPromoById,
   listPromos,
+  setPromoBranchAvailability,
   updatePromo,
 } from './promos.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -36,6 +37,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.upsert = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.not = vi.fn(() => builder);
@@ -48,6 +50,9 @@ function queueFromResults(...results: QueryResult[]) {
   });
 }
 
+const BRANCH_MAKATI = 'branch-makati';
+const BRANCH_SOUTHWOODS = 'branch-southwoods';
+
 const DATE_PROMO = {
   id: 'promo-1',
   name: 'Summer Grooming Deal',
@@ -57,9 +62,12 @@ const DATE_PROMO = {
   discount_type: 'Percentage',
   value: 15,
   scope_type: 'all_services',
-  branch_scope: 'both',
   is_active: true,
   promo_scope: [],
+  promo_branch_availability: [
+    { promo_id: 'promo-1', branch_id: BRANCH_MAKATI, is_available: true },
+    { promo_id: 'promo-1', branch_id: BRANCH_SOUTHWOODS, is_available: true },
+  ],
 };
 
 describe('promos.service', () => {
@@ -68,9 +76,10 @@ describe('promos.service', () => {
   });
 
   describe('createPromo', () => {
-    it('AC-1: creates a date-bounded all-services promo', async () => {
+    it('AC-1: creates a date-bounded all-services promo, inserting branch availability', async () => {
       queueFromResults(
-        { data: { id: 'promo-1' }, error: null }, // insert
+        { data: { id: 'promo-1' }, error: null }, // insert promo
+        { data: null, error: null }, // insert availability
         { data: DATE_PROMO, error: null } // final fetch
       );
 
@@ -83,19 +92,31 @@ describe('promos.service', () => {
           discount_type: 'Percentage',
           value: 15,
           scope_type: 'all_services',
-          branch_scope: 'both',
+          branch_ids: [BRANCH_MAKATI, BRANCH_SOUTHWOODS],
         },
       });
 
       expect(result.name).toBe('Summer Grooming Deal');
-      // No scope rows for 'all_services' - only promos + the final fetch.
+      // No scope rows for 'all_services' - only promos + availability + the
+      // final fetch.
       expect(supabase.from).not.toHaveBeenCalledWith('promo_scope');
+
+      const availabilityPayload = builders[1].insert.mock.calls[0][0];
+      expect(availabilityPayload).toEqual([
+        { promo_id: 'promo-1', branch_id: BRANCH_MAKATI, is_available: true },
+        {
+          promo_id: 'promo-1',
+          branch_id: BRANCH_SOUTHWOODS,
+          is_available: true,
+        },
+      ]);
     });
 
     it("AC-1: creates a 'specific' promo with scope rows", async () => {
       queueFromResults(
         { data: { id: 'promo-2' }, error: null }, // insert promo
         { data: null, error: null }, // insert scope
+        { data: null, error: null }, // insert availability
         {
           data: {
             ...DATE_PROMO,
@@ -123,7 +144,7 @@ describe('promos.service', () => {
           value: 50,
           scope_type: 'specific',
           scope: [{ service_id: 'service-1' }],
-          branch_scope: 'makati',
+          branch_ids: [BRANCH_MAKATI],
         },
       });
 
@@ -155,16 +176,70 @@ describe('promos.service', () => {
       expect(builder.or).not.toHaveBeenCalled();
     });
 
-    it("matches 'both'-scoped promos when filtering by a single branch", async () => {
+    it('custom change: matches a promo available at the requested branch (post-fetch filter over promo_branch_availability)', async () => {
       queueFromResults({ data: [DATE_PROMO], error: null });
 
-      await listPromos({ branchScope: 'makati' });
+      const result = await listPromos({ branchId: BRANCH_MAKATI });
 
-      const builder = builders[0];
-      expect(builder.in).toHaveBeenCalledWith('branch_scope', [
-        'makati',
-        'both',
-      ]);
+      expect(result).toHaveLength(1);
+    });
+
+    it('custom change: filters out a promo with no available row at the requested branch', async () => {
+      const southwoodsOnlyPromo = {
+        ...DATE_PROMO,
+        id: 'promo-3',
+        promo_branch_availability: [
+          {
+            promo_id: 'promo-3',
+            branch_id: BRANCH_SOUTHWOODS,
+            is_available: true,
+          },
+        ],
+      };
+      queueFromResults({ data: [southwoodsOnlyPromo], error: null });
+
+      const result = await listPromos({ branchId: BRANCH_MAKATI });
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('setPromoBranchAvailability', () => {
+    it('custom change: upserts an availability row, without touching is_active (it stays independent for promos)', async () => {
+      queueFromResults(
+        { data: { id: 'promo-1' }, error: null }, // existence lookup
+        {
+          data: {
+            promo_id: 'promo-1',
+            branch_id: BRANCH_SOUTHWOODS,
+            is_available: false,
+          },
+          error: null,
+        } // upsert
+      );
+
+      const result = await setPromoBranchAvailability({
+        promoId: 'promo-1',
+        branchId: BRANCH_SOUTHWOODS,
+        isAvailable: false,
+      });
+
+      expect(result.is_available).toBe(false);
+      // Only the lookup + upsert - no third call syncing is_active, unlike
+      // discounts/services/packages/service types.
+      expect(builders).toHaveLength(2);
+    });
+
+    it('returns 404 when the promo does not exist', async () => {
+      queueFromResults({ data: null, error: null });
+
+      await expect(
+        setPromoBranchAvailability({
+          promoId: 'missing',
+          branchId: BRANCH_MAKATI,
+          isAvailable: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 

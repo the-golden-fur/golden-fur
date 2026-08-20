@@ -1089,14 +1089,14 @@ export function CustomerBookingFlowPage() {
   const applicablePromos = useMemo(() => {
     if (!selectedBranch) return [];
 
-    const branchKey = selectedBranch.name.trim().toLowerCase();
     const now = new Date();
 
     return promos.filter((promo) => {
       if (!promo.is_active) return false;
-      if (promo.branch_scope !== 'both' && promo.branch_scope !== branchKey) {
-        return false;
-      }
+      const availableAtBranch = (promo.promo_branch_availability ?? []).some(
+        (row) => row.branch_id === selectedBranch.id && row.is_available
+      );
+      if (!availableAtBranch) return false;
       if (promo.start_date && new Date(promo.start_date) > now) return false;
       if (promo.end_date && new Date(promo.end_date) < now) return false;
       if (promo.scope_type === 'all_services') return true;

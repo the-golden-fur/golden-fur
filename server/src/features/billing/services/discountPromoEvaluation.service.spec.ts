@@ -69,6 +69,9 @@ function buildPromoRow(overrides: Record<string, unknown> = {}) {
     value: 10,
     scope_type: 'all_services',
     promo_scope: [],
+    promo_branch_availability: [
+      { branch_id: 'branch-makati', is_available: true },
+    ],
     ...overrides,
   };
 }

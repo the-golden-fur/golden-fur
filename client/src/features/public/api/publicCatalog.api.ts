@@ -14,9 +14,13 @@ export interface PublicPackage extends Package {
   savings: number;
 }
 
+export interface PublicPromo extends Promo {
+  branch_names: string[];
+}
+
 export interface PublicPackagesPromos {
   packages: PublicPackage[];
-  promos: Promo[];
+  promos: PublicPromo[];
 }
 
 interface PublicCatalogApiResult {

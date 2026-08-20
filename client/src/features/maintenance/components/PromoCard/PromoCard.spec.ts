@@ -14,17 +14,19 @@ const PROMO: Promo = {
   discount_type: 'Percentage',
   value: 15,
   scope_type: 'all_services',
-  branch_scope: 'makati',
   is_active: true,
   created_by: null,
   updated_by: null,
   created_at: '2026-07-15T00:00:00.000Z',
   updated_at: '2026-07-15T00:00:00.000Z',
   promo_scope: [],
+  promo_branch_availability: [
+    { promo_id: 'promo-1', branch_id: 'branch-makati', is_available: true },
+  ],
 };
 
 describe('PromoCard', () => {
-  it('shows name, branch badge, timing badge, value, window, and status', () => {
+  it('shows name, timing badge, value, window, and status', () => {
     // Far enough in the past that this is "Ended" regardless of the real
     // system clock the test runs under.
     render(
@@ -32,11 +34,12 @@ describe('PromoCard', () => {
         promo: { ...PROMO, start_date: '2020-01-01', end_date: '2020-01-31' },
         onToggle: vi.fn(),
         onEdit: vi.fn(),
+        onManageBranches: vi.fn(),
+        onArchive: vi.fn(),
       })
     );
 
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
-    expect(screen.getByText('Makati')).toBeInTheDocument();
     expect(screen.getByText('Ended')).toBeInTheDocument();
     expect(screen.getByText('15% off')).toBeInTheDocument();
     expect(screen.getByText('2020-01-01 to 2020-01-31')).toBeInTheDocument();
@@ -54,6 +57,8 @@ describe('PromoCard', () => {
         },
         onToggle: vi.fn(),
         onEdit: vi.fn(),
+        onManageBranches: vi.fn(),
+        onArchive: vi.fn(),
       })
     );
 
@@ -66,7 +71,13 @@ describe('PromoCard', () => {
     const user = userEvent.setup();
 
     render(
-      createElement(PromoCard, { promo: PROMO, onToggle, onEdit: vi.fn() })
+      createElement(PromoCard, {
+        promo: PROMO,
+        onToggle,
+        onEdit: vi.fn(),
+        onManageBranches: vi.fn(),
+        onArchive: vi.fn(),
+      })
     );
 
     await user.click(
@@ -81,11 +92,38 @@ describe('PromoCard', () => {
     const user = userEvent.setup();
 
     render(
-      createElement(PromoCard, { promo: PROMO, onToggle: vi.fn(), onEdit })
+      createElement(PromoCard, {
+        promo: PROMO,
+        onToggle: vi.fn(),
+        onEdit,
+        onManageBranches: vi.fn(),
+        onArchive: vi.fn(),
+      })
     );
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(onEdit).toHaveBeenCalled();
+  });
+
+  it('calls onManageBranches when Branch Availability is clicked', async () => {
+    const onManageBranches = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      createElement(PromoCard, {
+        promo: PROMO,
+        onToggle: vi.fn(),
+        onEdit: vi.fn(),
+        onManageBranches,
+        onArchive: vi.fn(),
+      })
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Branch Availability' })
+    );
+
+    expect(onManageBranches).toHaveBeenCalled();
   });
 });

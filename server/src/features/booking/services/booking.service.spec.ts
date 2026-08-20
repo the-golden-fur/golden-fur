@@ -1031,7 +1031,6 @@ describe('booking.service (#51)', () => {
   describe('discount/promo application at booking creation', () => {
     const DAYCARE_DISCOUNT = {
       id: 'discount-1',
-      branch_id: 'branch-1',
       name: 'Custom Daycare Discount',
       is_mandated: false,
       discount_type: 'Flat',
@@ -1041,6 +1040,13 @@ describe('booking.service (#51)', () => {
       scope_package_id: null,
       scope_category: null,
       is_active: true,
+      discount_branch_availability: [
+        {
+          discount_id: 'discount-1',
+          branch_id: 'branch-1',
+          is_available: true,
+        },
+      ],
     } as never;
 
     const ALL_SERVICES_PROMO = {
@@ -1051,9 +1057,11 @@ describe('booking.service (#51)', () => {
       discount_type: 'Percentage',
       value: 10,
       scope_type: 'all_services',
-      branch_scope: 'both',
       is_active: true,
       promo_scope: [],
+      promo_branch_availability: [
+        { promo_id: 'promo-1', branch_id: 'branch-1', is_available: true },
+      ],
     } as never;
 
     it('applies a Cash discount for a money-handling staff role', async () => {

@@ -272,13 +272,21 @@ export interface ServiceType {
 }
 
 export type PromoScopeType = 'all_services' | 'specific';
-export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 
 export interface PromoScopeItem {
   id: string;
   promo_id: string;
   service_id: string | null;
   package_id: string | null;
+}
+
+/** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability
+ * - replaces the promo's original branch_scope enum
+ * ('makati'/'southwoods'/'both'). */
+export interface PromoBranchAvailability {
+  promo_id: string;
+  branch_id: string;
+  is_available: boolean;
 }
 
 export interface Promo {
@@ -290,7 +298,13 @@ export interface Promo {
   discount_type: DiscountValueType;
   value: number;
   scope_type: PromoScopeType;
-  branch_scope: PromoBranchScope;
+  /**
+   * Deliberately NOT derived from promo_branch_availability - unlike
+   * Discount/Service/Package/ServiceType, is_active also drives automatic
+   * date-based expiry (promoExpiry.job.ts), a temporal concern independent
+   * of which branches carry the promo. Still a manually-settable flag via
+   * updatePromo.
+   */
   is_active: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -298,4 +312,5 @@ export interface Promo {
   updated_at: string;
   archived_at: string | null;
   promo_scope?: PromoScopeItem[];
+  promo_branch_availability?: PromoBranchAvailability[];
 }

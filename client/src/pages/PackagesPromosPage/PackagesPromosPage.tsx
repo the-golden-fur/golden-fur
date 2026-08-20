@@ -5,31 +5,22 @@ import { HelpMascot } from '../../shared/components/HelpMascot/HelpMascot';
 import {
   fetchPublicPackagesPromos,
   type PublicPackage,
+  type PublicPromo,
 } from '../../features/public/api/publicCatalog.api';
-import type {
-  Promo,
-  PromoBranchScope,
-} from '../../features/maintenance/maintenance.types';
 import { getPromoTiming } from '../../features/maintenance/utils/promoTiming';
 import styles from './PackagesPromosPage.module.css';
-
-const BRANCH_SCOPE_LABELS: Record<PromoBranchScope, string> = {
-  makati: 'Makati',
-  southwoods: 'Southwoods',
-  both: 'Both branches',
-};
 
 function formatCurrency(amount: number): string {
   return `PHP ${amount.toFixed(2)}`;
 }
 
-function formatPromoValue(promo: Promo): string {
+function formatPromoValue(promo: PublicPromo): string {
   return promo.discount_type === 'Percentage'
     ? `${promo.value}% off`
     : `${formatCurrency(promo.value)} off`;
 }
 
-function formatPromoWindow(promo: Promo): string {
+function formatPromoWindow(promo: PublicPromo): string {
   if (promo.condition_note) return promo.condition_note;
   if (promo.start_date && promo.end_date) {
     return `${promo.start_date} to ${promo.end_date}`;
@@ -38,7 +29,7 @@ function formatPromoWindow(promo: Promo): string {
   return 'No expiry';
 }
 
-function formatPromoScope(promo: Promo): string {
+function formatPromoScope(promo: PublicPromo): string {
   return promo.scope_type === 'all_services'
     ? 'Applies to all services'
     : 'Applies to specific services/packages';
@@ -48,7 +39,7 @@ type LoadStatus = 'loading' | 'error' | 'ready';
 
 export function PackagesPromosPage() {
   const [packages, setPackages] = useState<PublicPackage[]>([]);
-  const [promos, setPromos] = useState<Promo[]>([]);
+  const [promos, setPromos] = useState<PublicPromo[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -160,7 +151,7 @@ export function PackagesPromosPage() {
                     <article key={promo.id} className={styles.card}>
                       <h3 className={styles.cardTitle}>{promo.name}</h3>
                       <p className={styles.cardMeta}>
-                        {BRANCH_SCOPE_LABELS[promo.branch_scope]} ·{' '}
+                        {promo.branch_names.join(', ') || 'No branches'} ·{' '}
                         {getPromoTiming(promo)}
                       </p>
                       <p className={styles.cardPrice}>

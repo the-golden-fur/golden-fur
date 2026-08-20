@@ -90,9 +90,11 @@ const PROMO = {
   discount_type: 'Percentage',
   value: 15,
   scope_type: 'all_services',
-  branch_scope: 'both',
   is_active: true,
   promo_scope: [],
+  promo_branch_availability: [
+    { promo_id: 'promo-1', branch_id: BRANCH_ID, is_available: true },
+  ],
 };
 
 describe('maintenance HTTP surface (Issues #40-#42)', () => {
@@ -318,6 +320,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       queueFromResults(
         { data: { role: 'Admin' }, error: null },
         { data: { id: 'promo-1' }, error: null }, // insert
+        { data: null, error: null }, // insert branch availability
         { data: PROMO, error: null } // final fetch
       );
 
@@ -331,7 +334,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
           discount_type: 'Percentage',
           value: 15,
           scope_type: 'all_services',
-          branch_scope: 'both',
+          branch_ids: [BRANCH_ID],
         });
 
       expect(res.status).toBe(201);
