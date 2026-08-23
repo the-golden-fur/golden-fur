@@ -1,5 +1,12 @@
 temp/
 
+# Temp/scratch files created while extracting, converting, or migrating content
+.tmp/
+_staging/
+_extract/
+*.tmp
+*.part
+
 # Logs
 logs
 *.log
