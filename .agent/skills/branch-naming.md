@@ -21,17 +21,17 @@
 
 ## Types
 
-| Type        | When to use                                      | Base branch |
-| ----------- | ------------------------------------------------- | ----------- |
-| `feat/`     | New feature or functionality                     | `dev`       |
-| `fix/`      | Bug fix                                          | `dev`       |
-| `hotfix/`   | Urgent fix for production                        | `main`      |
-| `chore/`    | Maintenance, dependencies, config, tooling       | `dev`       |
-| `refactor/` | Restructuring code without changing behavior     | `dev`       |
-| `docs/`     | Documentation changes only                       | `dev`       |
-| `test/`     | Adding or updating tests                         | `dev`       |
-| `perf/`     | Performance improvements                         | `dev`       |
-| `ci/`       | CI/CD pipeline or workflow changes               | `dev`       |
+| Type        | When to use                                  | Base branch |
+| ----------- | -------------------------------------------- | ----------- |
+| `feat/`     | New feature or functionality                 | `dev`       |
+| `fix/`      | Bug fix                                      | `dev`       |
+| `hotfix/`   | Urgent fix for production                    | `main`      |
+| `chore/`    | Maintenance, dependencies, config, tooling   | `dev`       |
+| `refactor/` | Restructuring code without changing behavior | `dev`       |
+| `docs/`     | Documentation changes only                   | `dev`       |
+| `test/`     | Adding or updating tests                     | `dev`       |
+| `perf/`     | Performance improvements                     | `dev`       |
+| `ci/`       | CI/CD pipeline or workflow changes           | `dev`       |
 
 ## Examples
 

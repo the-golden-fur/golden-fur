@@ -9,11 +9,11 @@ GitHub issue — a feature request, bug report, or task/chore.
    from context (feature request, bug report, task/chore).
 2. Fill every field using the rules below.
 3. Open it directly: `gh issue create --title "..." --body "..." --label
-   "..."`, matching the body structure of the repo's own
+"..."`, matching the body structure of the repo's own
    `.github/ISSUE_TEMPLATE/*.yml` (User Story / Acceptance Criteria for
    features, Expected vs Actual + Steps to Reproduce for bugs, Description
-   + Definition of Done for tasks). If a required field can't be confidently
-   inferred from the input, ask rather than guessing.
+   - Definition of Done for tasks). If a required field can't be confidently
+     inferred from the input, ask rather than guessing.
 
 ## Rules
 
@@ -32,7 +32,7 @@ from described impact. Sprint: default `Backlog` unless specified. Type
 ### Textarea fields
 
 - **User Story** (features) — strictly `As a [user type], I want [goal] so
-  that [reason].`, one sentence; infer user type from context.
+that [reason].`, one sentence; infer user type from context.
 - **Acceptance Criteria** (features) — 3–5 concrete, testable checkbox
   items (`- [ ] ...`); avoid vague language like "works well".
 - **Description** (bugs/tasks) — bugs: Expected vs Actual behavior; tasks:

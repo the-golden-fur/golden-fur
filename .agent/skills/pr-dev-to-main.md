@@ -13,7 +13,7 @@ skill instead — the two directions use different merge strategies.
    change. Sections: Summary, What Changed (notable features/fixes since
    the last dev → main promotion), Testing.
 3. Open it directly: `gh pr create --base main --head dev --title "..."
-   --body "..."`.
+--body "..."`.
 
 ## Merge strategy: rebase first, merge as fallback — never squash
 

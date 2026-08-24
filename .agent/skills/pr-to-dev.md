@@ -11,7 +11,7 @@ skill instead — the two directions use different merge strategies.
    (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
    Pre-Merge Checklist) — see field rules below.
 3. Open it directly: `gh pr create --base dev --head <branch> --title "..."
-   --body "..."`.
+--body "..."`.
 4. Recommend label(s) and note the Milestone / Development (linked issues)
    fields — these are GitHub sidebar fields, not part of the body; set them
    with `gh pr edit --add-label ...` or leave them for the user to set in
