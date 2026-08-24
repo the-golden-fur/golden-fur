@@ -31,21 +31,18 @@ schemas, seeds, and edge functions.
   anything a new developer needs to build/run/ship the project.
 - **Working notes, test logs, meeting notes, and per-issue/per-request
   verification docs belong in the sibling `../golden-fur-vault` repo**, under
-  `Projects/golden-fur/`, not in this repo. This repo doesn't write there
-  itself — see `../golden-fur-vault/prompts/workflow/document-changes.md`
-  (run from the vault repo) for the prompt that reads this repo's staged
-  changes and documents them into the vault.
-- **`prompts/`** holds this repo's own dev-workflow prompt templates:
-  `github/` (branch/commit-message/PR/issue templates) and
-  `workflow/commit-pr.md` (generate commit messages + PR details for
-  currently staged files).
+  `Projects/golden-fur/`, not in this repo.
 - **`temp/`** is scratch space (context files, design assets) used while
   working a request; it's gitignored.
-- **Reusable skills/agents** (`note-filing`, `vault-librarian`,
-  `weekly-reviewer`, usable by Claude Code, Gemini CLI, Codex CLI, etc.) live
-  in `../golden-fur-vault` (`.agent/`, `.claude/`, `.gemini/`, `.codex/`),
-  not here — they operate on vault content, so that's where they're
-  discovered. See [golden-fur-vault/AGENTS.md](../golden-fur-vault/AGENTS.md).
+- **Reusable skills (multi-tool)** — this repo's own git workflow
+  (`branch-naming`, `commit`, `pr-to-dev`, `pr-dev-to-main`, `fill-issue`)
+  lives here in `.agent/skills/`, with thin per-tool adapters in
+  `.claude/skills/`, `.gemini/commands/`, `.codex/prompts/`. The vault's own
+  skills/agents (`note-filing`, `vault-librarian`, `weekly-reviewer`) stay in
+  `../golden-fur-vault` since they operate on vault content — see
+  [golden-fur-vault/AGENTS.md](../golden-fur-vault/AGENTS.md). Details on
+  this repo's own skills, and why `pr-to-dev`/`pr-dev-to-main` are split, are
+  in the "Reusable skills" section below.
 
 ## Coding conventions
 
@@ -67,3 +64,41 @@ schemas, seeds, and edge functions.
   each have their own config). CI (`.github/workflows/ci.yml`) runs both
   test suites, both lints, a repo-wide Prettier check, and a client build on
   every PR into `main`/`dev`.
+
+## Reusable skills (multi-tool)
+
+`.agent/skills/` holds the canonical, tool-agnostic instructions for this
+repo's git workflow: `branch-naming` (name and create a branch),
+`commit` (write and create a conventional commit — performs the commit
+itself, not just a drafted message), `pr-to-dev` (open a PR into `dev`,
+squash merge only), `pr-dev-to-main` (open a `dev` → `main` release PR,
+rebase preferred/merge fallback, never squash), and `fill-issue` (turn a
+plain-text description into a filled, opened GitHub issue). Any AI coding
+tool working in this repo should read the relevant file under `.agent/`
+before doing that kind of task.
+
+Tool-specific directories are thin adapters over that same content, wired
+up per tool's own discovery mechanism:
+
+- **Claude Code** — `.claude/skills/<name>/SKILL.md` (auto-invoked skill),
+  each just pointing at the matching `.agent/` file.
+- **Gemini CLI** — `.gemini/commands/<name>.toml` (manually invoked as
+  `/<name>`).
+- **Codex CLI** — `.codex/prompts/<name>.md` (manually invoked as
+  `/<name>`; verify your Codex version picks up project-scoped prompts).
+- **Other tools** without a documented per-repo skill/command convention —
+  they should still pick this up by reading `.agent/` directly, or via
+  this file if they support an `AGENTS.md`-style root context file.
+
+When updating one of these workflows, edit the canonical file under
+`.agent/` — the adapters shouldn't need to change unless the tool's own
+discovery metadata (name/description) changes.
+
+### Why two PR skills instead of one
+
+`pr-to-dev` and `pr-dev-to-main` intentionally use different merge
+strategies (squash vs. rebase/merge). GitHub's squash/rebase/merge toggles
+in Settings → General are repo-wide, not per base branch, so the two
+directions can't be enforced by disabling strategies for one and not the
+other — enforcement is by which skill (and which `gh pr merge` flag) is
+actually used. Keep all three merge strategies enabled in repo settings.
