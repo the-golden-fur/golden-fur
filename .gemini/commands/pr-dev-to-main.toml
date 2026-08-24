@@ -1,0 +1,8 @@
+description = "Open a dev -> main promotion PR (rebase preferred, merge fallback, never squash)"
+prompt = """
+Read and follow the instructions in .agent/skills/pr-dev-to-main.md in
+this repo, then open the dev -> main promotion PR described below. Rebase
+merge preferred, plain merge as fallback, never squash.
+
+{{args}}
+"""

@@ -1,0 +1,35 @@
+# Commit
+
+**Use whenever** asked to commit changes — "commit this", "make a commit for
+X". This skill performs the actual commit; it does not just print a message
+for the user to paste. Only commit when explicitly asked, never as a side
+effect of another task.
+
+## Process
+
+1. Look at `git status --short` and `git diff` (staged and unstaged) to see
+   what changed, and `git log --oneline -10` to match this repo's style.
+2. Stage the relevant files. Review what a broad `git add` would pick up
+   (`git status` after) rather than blindly using `git add -A`. If anything
+   staged looks unrelated to the request or might contain a secret, flag it
+   before committing.
+3. Write the commit message following the format below.
+4. Create the commit directly (pass multi-line messages via a heredoc so
+   formatting survives), then run `git status` to confirm it succeeded.
+
+## Message format
+
+- Subject: `<type>(<scope>): <subject>` — imperative mood ("add" not
+  "added"), max 50 characters, no trailing period. Scope is optional but
+  recommended.
+- Types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `ci`,
+  `style`, `revert`.
+- Body — skip for trivial/self-explanatory changes. Add one when the reason
+  isn't obvious from the subject, a bug fix needs to describe the wrong
+  behavior, or a refactor needs to explain why. WHAT + WHY only (HOW is
+  already in the diff); one blank line after the subject; wrap at 72 chars;
+  prose, not bullets.
+- Footer — one blank line after the body: issue refs (`Closes #42`,
+  `Fixes #18`, `Refs #7`); breaking changes get `!` after type/scope
+  (`feat(api)!: ...`) plus a `BREAKING CHANGE: <what broke, what to do>`
+  footer.
