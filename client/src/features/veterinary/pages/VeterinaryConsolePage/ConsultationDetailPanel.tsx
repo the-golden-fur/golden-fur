@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
-import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   listMedicationCatalog,
   listProcedureCatalog,
@@ -97,7 +96,6 @@ export function ConsultationDetailPanel({
   const [vaccineName, setVaccineName] = useState('');
   const [vaccineDate, setVaccineDate] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
-  const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   const [medicationCatalog, setMedicationCatalog] = useState<
     VetMedicationCatalogItem[]
@@ -230,7 +228,7 @@ export function ConsultationDetailPanel({
             type="button"
             className={styles.primaryButton}
             disabled={isSaving || !canWrite}
-            onClick={() => setIsStartModalOpen(true)}
+            onClick={onStart}
           >
             Start Consultation
           </button>
@@ -514,37 +512,6 @@ export function ConsultationDetailPanel({
           </>
         )}
       </div>
-
-      <Modal
-        isOpen={isStartModalOpen}
-        title="Start Consultation"
-        onClose={() => setIsStartModalOpen(false)}
-      >
-        <p className={styles.reason}>
-          Start this consultation for {petName}? This moves the booking to In
-          Progress.
-        </p>
-        <div className={styles.formActions}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={isSaving}
-            onClick={() => {
-              setIsStartModalOpen(false);
-              onStart();
-            }}
-          >
-            {isSaving ? 'Starting...' : 'Start Consultation'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setIsStartModalOpen(false)}
-          >
-            Cancel
-          </button>
-        </div>
-      </Modal>
     </div>
   );
 }

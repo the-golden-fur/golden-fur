@@ -108,8 +108,8 @@
   gap: var(--space-1);
 }
 
-.rowButton,
-.rowButtonActive {
+.card,
+.cardActive {
   display: grid;
   gap: var(--space-0-5);
   flex: 1;
@@ -118,31 +118,22 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  cursor: pointer;
-  padding: var(--space-2);
+  padding: var(--space-3);
   box-shadow: var(--shadow-sm);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
 }
 
-.rowButton:hover,
-.rowButtonActive:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.rowButtonActive {
+.cardActive {
   border-color: var(--color-accent-gold-primary);
 }
 
 .rowPetName {
   color: var(--color-text-primary);
+  font-size: var(--text-base);
   font-weight: var(--weight-semibold);
 }
 
 .rowMeta {
+  display: block;
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }

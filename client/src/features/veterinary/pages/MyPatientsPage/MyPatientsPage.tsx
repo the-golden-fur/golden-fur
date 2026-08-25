@@ -287,21 +287,19 @@ export function MyPatientsPage() {
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => (
                     <li key={row.petId} className={styles.rowItem}>
-                      <button
-                        type="button"
+                      <div
                         className={
                           row.petId === selectedPetId
-                            ? styles.rowButtonActive
-                            : styles.rowButton
+                            ? styles.cardActive
+                            : styles.card
                         }
-                        onClick={() => selectPatient(row.petId)}
                       >
                         <span className={styles.rowPetName}>{row.petName}</span>
                         <span className={styles.rowMeta}>{row.ownerName}</span>
                         <span className={styles.rowMeta}>
                           Last visit: {formatDate(row.lastVisitAt)}
                         </span>
-                      </button>
+                      </div>
                       <MoreOptionsMenu
                         label={`More options for ${row.petName}`}
                         items={[
@@ -334,7 +332,7 @@ export function MyPatientsPage() {
                 </div>
               ) : (
                 <p className={styles.copy}>
-                  Select a patient to see their history.
+                  Use the ⋮ menu on a patient to view their history.
                 </p>
               )}
             </div>

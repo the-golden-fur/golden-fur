@@ -90,11 +90,6 @@
   min-width: 12rem;
 }
 
-.formActions {
-  display: flex;
-  gap: var(--space-2);
-}
-
 .primaryButton {
   border: none;
   border-radius: var(--radius-pill);

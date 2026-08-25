@@ -232,7 +232,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     ).toBeInTheDocument();
   });
 
-  it('starting a Pending consultation directly from its queue row skips the modal', async () => {
+  it('starting a Pending consultation from its queue row also requires confirming in the shared modal', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
       error: null,
@@ -249,8 +249,17 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     renderPage();
 
+    // Only the row's own quick-start button exists yet - nothing is
+    // selected, so the detail panel isn't rendered at all.
     await userEvent.click(
       await screen.findByRole('button', { name: /^start consultation$/i })
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /start consultation/i })
     );
 
     await waitFor(() =>

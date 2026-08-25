@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
@@ -67,6 +68,13 @@ const SORT_OPTIONS: SortOption<SortKey>[] = [
 // so the queue and the "follow-up scheduled" state both refresh via polling.
 const REFRESH_INTERVAL_MS = 15_000;
 
+function formatScheduledTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
 
@@ -90,6 +98,7 @@ export function VeterinaryConsolePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingStartId, setPendingStartId] = useState<string | null>(null);
 
   const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
@@ -281,6 +290,9 @@ export function VeterinaryConsolePage() {
   }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
+  const pendingStartRow = rows.find(
+    (row) => row.consultation.id === pendingStartId
+  );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
   // /Supervisor/Superadmin can view the console but any write PATCH/POST
@@ -291,6 +303,14 @@ export function VeterinaryConsolePage() {
     setSelectedId(id);
     setSaveError(null);
     setFollowUpError(null);
+  }
+
+  // Both the queue row's own quick-start button and the detail panel's
+  // "Start Consultation" button route through here, so there's exactly one
+  // confirmation modal regardless of which one was clicked.
+  function requestStart(consultationId: string) {
+    selectConsultation(consultationId);
+    setPendingStartId(consultationId);
   }
 
   async function handleStart(consultationId: string) {
@@ -476,13 +496,22 @@ export function VeterinaryConsolePage() {
                         }
                         onClick={() => selectConsultation(row.consultation.id)}
                       >
-                        <span className={styles.rowPetName}>{row.petName}</span>
-                        <span className={styles.rowMeta}>{row.ownerName}</span>
-                        {row.consultation.booking?.status ? (
-                          <BookingStatusBadge
-                            status={row.consultation.booking.status}
-                          />
-                        ) : null}
+                        <div className={styles.rowHeader}>
+                          <span className={styles.rowPetName}>
+                            {row.petName}
+                          </span>
+                          {row.consultation.booking?.status ? (
+                            <BookingStatusBadge
+                              status={row.consultation.booking.status}
+                            />
+                          ) : null}
+                        </div>
+                        <span className={styles.rowMeta}>
+                          Owner: {row.ownerName}
+                        </span>
+                        <span className={styles.rowMeta}>
+                          {formatScheduledTime(row.scheduledStart)}
+                        </span>
                       </button>
                       {canWrite &&
                       row.consultation.booking?.status === 'Pending' ? (
@@ -490,10 +519,7 @@ export function VeterinaryConsolePage() {
                           type="button"
                           className={styles.startButton}
                           disabled={isSaving}
-                          onClick={() => {
-                            selectConsultation(row.consultation.id);
-                            void handleStart(row.consultation.id);
-                          }}
+                          onClick={() => requestStart(row.consultation.id)}
                         >
                           Start Consultation
                         </button>
@@ -515,7 +541,7 @@ export function VeterinaryConsolePage() {
                   canWrite={canWrite}
                   isSaving={isSaving}
                   saveError={saveError}
-                  onStart={() => void handleStart(selectedRow.consultation.id)}
+                  onStart={() => requestStart(selectedRow.consultation.id)}
                   onComplete={(fields) => void handleComplete(fields)}
                   onScheduleFollowUp={(date) =>
                     void handleScheduleFollowUp(date)
@@ -530,6 +556,39 @@ export function VeterinaryConsolePage() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={pendingStartId !== null}
+        title="Start Consultation"
+        onClose={() => setPendingStartId(null)}
+      >
+        <p className={styles.copy}>
+          Start this consultation for {pendingStartRow?.petName ?? 'this pet'}?
+          This moves the booking to In Progress.
+        </p>
+        <div className={styles.modalActions}>
+          <button
+            type="button"
+            className={styles.startButton}
+            disabled={isSaving}
+            onClick={() => {
+              if (!pendingStartId) return;
+              const id = pendingStartId;
+              setPendingStartId(null);
+              void handleStart(id);
+            }}
+          >
+            {isSaving ? 'Starting...' : 'Start Consultation'}
+          </button>
+          <button
+            type="button"
+            className={styles.cancelButton}
+            onClick={() => setPendingStartId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }
