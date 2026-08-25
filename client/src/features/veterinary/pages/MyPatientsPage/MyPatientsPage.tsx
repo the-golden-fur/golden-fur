@@ -236,36 +236,38 @@ export function MyPatientsPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>My Patients</h1>
+        <div className={styles.pageHeader}>
+          <h1 className={styles.title}>My Patients</h1>
 
-        <div className={styles.toolbar}>
-          <div className={styles.filters}>
-            <SearchSortBar
-              searchValue={search}
-              onSearchChange={setSearch}
-              searchPlaceholder="Search by pet or owner..."
-              sortValue={sortKey}
-              onSortChange={setSortKey}
-              sortOptions={SORT_OPTIONS}
-            />
+          <div className={styles.toolbar}>
+            <div className={styles.filters}>
+              <SearchSortBar
+                searchValue={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search by pet or owner..."
+                sortValue={sortKey}
+                onSortChange={setSortKey}
+                sortOptions={SORT_OPTIONS}
+              />
 
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Pet Type</span>
-              <select
-                className={styles.filterSelect}
-                value={petTypeFilter}
-                onChange={(event) =>
-                  setPetTypeFilter(event.target.value as PetTypeFilter)
-                }
-              >
-                <option value="All">All types</option>
-                {PET_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className={styles.filterField}>
+                <span className={styles.filterLabel}>Pet Type</span>
+                <select
+                  className={styles.filterSelect}
+                  value={petTypeFilter}
+                  onChange={(event) =>
+                    setPetTypeFilter(event.target.value as PetTypeFilter)
+                  }
+                >
+                  <option value="All">All types</option>
+                  {PET_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 

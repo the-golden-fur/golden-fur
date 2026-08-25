@@ -439,26 +439,30 @@ export function VeterinaryConsolePage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Veterinary Console</h1>
+        <div className={styles.pageHeader}>
+          <h1 className={styles.title}>Veterinary Console</h1>
 
-        <QueueFilterBar
-          dateRangePreset={dateRangePreset}
-          onDateRangePresetChange={setDateRangePreset}
-          customDate={customDate}
-          onCustomDateChange={setCustomDate}
-          statusValue={statusFilter}
-          onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
-          statusOptions={STATUS_OPTIONS}
-        >
-          <SearchSortBar
-            searchValue={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Search by pet or owner..."
-            sortValue={sortKey}
-            onSortChange={setSortKey}
-            sortOptions={SORT_OPTIONS}
-          />
-        </QueueFilterBar>
+          <div className={styles.filterBarRow}>
+            <QueueFilterBar
+              dateRangePreset={dateRangePreset}
+              onDateRangePresetChange={setDateRangePreset}
+              customDate={customDate}
+              onCustomDateChange={setCustomDate}
+              statusValue={statusFilter}
+              onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
+              statusOptions={STATUS_OPTIONS}
+            >
+              <SearchSortBar
+                searchValue={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search by pet or owner..."
+                sortValue={sortKey}
+                onSortChange={setSortKey}
+                sortOptions={SORT_OPTIONS}
+              />
+            </QueueFilterBar>
+          </div>
+        </div>
 
         <ActiveFilterChips chips={filterChips} />
 
