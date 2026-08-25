@@ -16,6 +16,7 @@ export interface ConsultationDetailPanelProps {
   petName: string;
   ownerName: string;
   accessToken: string;
+  canWrite: boolean;
   isSaving: boolean;
   saveError: string | null;
   onStart: () => void;
@@ -57,6 +58,7 @@ export function ConsultationDetailPanel({
   petName,
   ownerName,
   accessToken,
+  canWrite,
   isSaving,
   saveError,
   onStart,
@@ -212,11 +214,17 @@ export function ConsultationDetailPanel({
             Reason: {consultation.reason_for_visit}
           </p>
 
+          {!canWrite ? (
+            <p className={styles.reason}>
+              View only — only a Veterinarian can update this consultation.
+            </p>
+          ) : null}
+
           {bookingStatus === 'Pending' ? (
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={isSaving}
+              disabled={isSaving || !canWrite}
               onClick={onStart}
             >
               {isSaving ? 'Starting...' : 'Start Consultation'}
@@ -230,7 +238,7 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     type="number"
                     value={temperature}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setTemperature(event.target.value)}
                   />
                 </label>
@@ -240,7 +248,7 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     type="number"
                     value={weight}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setWeight(event.target.value)}
                   />
                 </label>
@@ -250,7 +258,7 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     type="number"
                     value={heartRate}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setHeartRate(event.target.value)}
                   />
                 </label>
@@ -260,7 +268,7 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     type="number"
                     value={respiratoryRate}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setRespiratoryRate(event.target.value)}
                   />
                 </label>
@@ -271,7 +279,7 @@ export function ConsultationDetailPanel({
                 <textarea
                   className={styles.input}
                   value={diagnosis}
-                  disabled={isCompleted}
+                  disabled={isCompleted || !canWrite}
                   onChange={(event) => setDiagnosis(event.target.value)}
                 />
               </label>
@@ -279,7 +287,7 @@ export function ConsultationDetailPanel({
               <HealthConditionsField
                 petId={consultation.pet_id}
                 accessToken={accessToken}
-                disabled={isCompleted}
+                disabled={isCompleted || !canWrite}
               />
 
               <div className={styles.listSection}>
@@ -290,7 +298,7 @@ export function ConsultationDetailPanel({
                       className={styles.input}
                       placeholder="Name"
                       value={medication.name}
-                      disabled={isCompleted}
+                      disabled={isCompleted || !canWrite}
                       onChange={(event) =>
                         updateMedication(index, { name: event.target.value })
                       }
@@ -299,7 +307,7 @@ export function ConsultationDetailPanel({
                       className={styles.input}
                       placeholder="Dose"
                       value={medication.dose}
-                      disabled={isCompleted}
+                      disabled={isCompleted || !canWrite}
                       onChange={(event) =>
                         updateMedication(index, { dose: event.target.value })
                       }
@@ -309,14 +317,14 @@ export function ConsultationDetailPanel({
                       type="number"
                       placeholder="Amount (₱)"
                       value={medication.amount ?? ''}
-                      disabled={isCompleted}
+                      disabled={isCompleted || !canWrite}
                       onChange={(event) =>
                         updateMedication(index, {
                           amount: Number(event.target.value),
                         })
                       }
                     />
-                    {!isCompleted ? (
+                    {!isCompleted && canWrite ? (
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -327,7 +335,7 @@ export function ConsultationDetailPanel({
                     ) : null}
                   </div>
                 ))}
-                {!isCompleted ? (
+                {!isCompleted && canWrite ? (
                   <button
                     type="button"
                     className={styles.secondaryButton}
@@ -345,6 +353,7 @@ export function ConsultationDetailPanel({
                     <select
                       className={styles.input}
                       value={procedure.procedure_type}
+                      disabled={!canWrite}
                       onChange={(event) =>
                         updateProcedure(index, {
                           procedure_type: event.target
@@ -362,6 +371,7 @@ export function ConsultationDetailPanel({
                       className={styles.input}
                       placeholder="Description"
                       value={procedure.description}
+                      disabled={!canWrite}
                       onChange={(event) =>
                         updateProcedure(index, {
                           description: event.target.value,
@@ -373,28 +383,33 @@ export function ConsultationDetailPanel({
                       type="number"
                       placeholder="Amount (₱)"
                       value={procedure.amount}
+                      disabled={!canWrite}
                       onChange={(event) =>
                         updateProcedure(index, {
                           amount: Number(event.target.value),
                         })
                       }
                     />
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeProcedure(index)}
-                    >
-                      Remove
-                    </button>
+                    {canWrite ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeProcedure(index)}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
                 ))}
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={addProcedure}
-                >
-                  Add procedure
-                </button>
+                {canWrite ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={addProcedure}
+                  >
+                    Add procedure
+                  </button>
+                ) : null}
               </div>
 
               <div className={styles.listSection}>
@@ -406,14 +421,14 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     placeholder="Vaccine name"
                     value={vaccineName}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setVaccineName(event.target.value)}
                   />
                   <input
                     className={styles.input}
                     type="date"
                     value={vaccineDate}
-                    disabled={isCompleted}
+                    disabled={isCompleted || !canWrite}
                     onChange={(event) => setVaccineDate(event.target.value)}
                   />
                 </div>
@@ -428,6 +443,7 @@ export function ConsultationDetailPanel({
                     className={styles.input}
                     type="number"
                     value={professionalFee}
+                    disabled={!canWrite}
                     onChange={(event) => setProfessionalFee(event.target.value)}
                   />
                 </label>
@@ -443,7 +459,7 @@ export function ConsultationDetailPanel({
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={isSaving}
+                  disabled={isSaving || !canWrite}
                   onClick={handleComplete}
                 >
                   {isSaving ? 'Completing...' : 'Complete Consultation'}
@@ -466,6 +482,7 @@ export function ConsultationDetailPanel({
                         className={styles.input}
                         type="date"
                         value={followUpDate}
+                        disabled={!canWrite}
                         onChange={(event) =>
                           setFollowUpDate(event.target.value)
                         }
@@ -479,7 +496,7 @@ export function ConsultationDetailPanel({
                     <button
                       type="button"
                       className={styles.secondaryButton}
-                      disabled={!followUpDate || isSchedulingFollowUp}
+                      disabled={!followUpDate || isSchedulingFollowUp || !canWrite}
                       onClick={() => onScheduleFollowUp(followUpDate)}
                     >
                       {isSchedulingFollowUp

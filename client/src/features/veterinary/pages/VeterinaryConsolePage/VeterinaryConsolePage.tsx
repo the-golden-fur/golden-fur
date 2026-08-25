@@ -76,6 +76,7 @@ export function VeterinaryConsolePage() {
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
+  const [staffRole, setStaffRole] = useState<string | null>(null);
 
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [dateRangePreset, setDateRangePreset] =
@@ -114,6 +115,7 @@ export function VeterinaryConsolePage() {
       if (!isMounted) return;
 
       if (result.data) {
+        setStaffRole(result.data.role);
         setRoleStatus(
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
@@ -286,6 +288,11 @@ export function VeterinaryConsolePage() {
   }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
+
+  // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
+  // /Supervisor/Superadmin can view the console but any write PATCH/POST
+  // gets a 403, so those controls must be disabled here too.
+  const canWrite = staffRole === 'Veterinarian';
 
   function selectConsultation(id: string) {
     setSelectedId(id);
@@ -525,6 +532,7 @@ export function VeterinaryConsolePage() {
                   petName={selectedRow.petName}
                   ownerName={selectedRow.ownerName}
                   accessToken={accessToken}
+                  canWrite={canWrite}
                   isSaving={isSaving}
                   saveError={saveError}
                   onStart={() => void handleStart()}
