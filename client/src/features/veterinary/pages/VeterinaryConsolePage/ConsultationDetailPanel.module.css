@@ -27,33 +27,6 @@
   font-size: var(--text-sm);
 }
 
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tab,
-.tabActive {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  padding: var(--space-1) var(--space-2);
-  color: var(--color-text-secondary);
-  transition: color 0.15s ease;
-}
-
-.tab:hover {
-  color: var(--color-text-primary);
-}
-
-.tabActive {
-  color: var(--color-accent-gold-primary);
-  border-bottom: 2px solid var(--color-accent-gold-primary);
-}
-
 .form {
   display: grid;
   gap: var(--space-3);
@@ -101,6 +74,20 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr auto;
   gap: var(--space-1);
+  align-items: center;
+}
+
+.readOnlyField {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  padding: var(--space-2);
+}
+
+.catalogSelect {
+  width: 100%;
+  min-width: 12rem;
 }
 
 .primaryButton {

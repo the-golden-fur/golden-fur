@@ -111,6 +111,7 @@ describe('consultation.service (#66)', () => {
               branch_id: MAKATI.id,
               assigned_staff_id: VET_ID,
               special_instructions: 'Annual checkup',
+              status: 'Pending',
             },
           ],
           error: null,
@@ -160,6 +161,7 @@ describe('consultation.service (#66)', () => {
               branch_id: 'branch-south',
               assigned_staff_id: VET_ID,
               special_instructions: null,
+              status: 'Pending',
             },
           ],
           error: null,
@@ -178,6 +180,45 @@ describe('consultation.service (#66)', () => {
       await expect(listConsultationQueue()).rejects.toMatchObject({
         statusCode: 422,
       });
+    });
+
+    it("includes a Completed booking's existing consultation without vivifying a new row for it", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              pet_id: 'pet-1',
+              branch_id: MAKATI.id,
+              assigned_staff_id: VET_ID,
+              special_instructions: 'Annual checkup',
+              status: 'Completed',
+            },
+          ],
+          error: null,
+        }, // bookings
+        {
+          data: [{ booking_id: 'booking-1' }],
+          error: null,
+        }, // existing consultations - already vivified back when it was In Progress
+        {
+          data: [
+            {
+              ...consultationRow({ bookingStatus: 'Completed' }),
+            },
+          ],
+          error: null,
+        } // consultations select
+      );
+
+      const result = await listConsultationQueue();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].booking?.status).toBe('Completed');
+      const insert = recordedWrites.find(
+        (write) => write.table === 'consultations' && write.method === 'insert'
+      );
+      expect(insert).toBeUndefined();
     });
   });
 

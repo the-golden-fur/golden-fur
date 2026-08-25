@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
@@ -25,7 +26,6 @@ import {
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
-  getPetConsultationHistory,
   listConsultationQueue,
   scheduleFollowUp,
   updateConsultation,
@@ -45,14 +45,12 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-// Booking-status revision: the queue endpoint only ever returns
-// consultations whose booking hasn't finished yet (bookings.status IN
-// Pending/In Progress - see consultation.service.ts's merged
-// listConsultationQueue), so those are the only two meaningful values to
-// group/filter by here (mirrors GroomerDashboardPage's own
-// GROOMING_STATUSES). The old separate "Unconfirmed (awaiting payment)"
-// option is gone along with the server's now-merged two-function split.
-const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress'];
+// Booking-status revision: the queue endpoint returns the day's actionable
+// consultations (bookings.status Pending/In Progress) plus its Completed
+// ones (read-only) - see consultation.service.ts's listConsultationQueue.
+// Cancelled/No-show are omitted since those bookings frequently never had a
+// consultation row to begin with (see LIST_BOOKING_STATUSES server-side).
+const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress', 'Completed'];
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
@@ -69,6 +67,13 @@ const SORT_OPTIONS: SortOption<SortKey>[] = [
 // codebase yet (same gap noted in GroomerDashboardPage's own #68 dev note),
 // so the queue and the "follow-up scheduled" state both refresh via polling.
 const REFRESH_INTERVAL_MS = 15_000;
+
+function formatScheduledTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
@@ -93,10 +98,7 @@ export function VeterinaryConsolePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  const [petHistory, setPetHistory] = useState<Consultation[]>([]);
-  const [isPetHistoryLoading, setIsPetHistoryLoading] = useState(false);
-  const [petHistoryError, setPetHistoryError] = useState<string | null>(null);
+  const [pendingStartId, setPendingStartId] = useState<string | null>(null);
 
   const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
@@ -288,6 +290,9 @@ export function VeterinaryConsolePage() {
   }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
+  const pendingStartRow = rows.find(
+    (row) => row.consultation.id === pendingStartId
+  );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
   // /Supervisor/Superadmin can view the console but any write PATCH/POST
@@ -297,24 +302,26 @@ export function VeterinaryConsolePage() {
   function selectConsultation(id: string) {
     setSelectedId(id);
     setSaveError(null);
-    setPetHistory([]);
-    setPetHistoryError(null);
     setFollowUpError(null);
   }
 
-  async function handleStart() {
-    if (!accessToken || !selectedRow) return;
+  // Both the queue row's own quick-start button and the detail panel's
+  // "Start Consultation" button route through here, so there's exactly one
+  // confirmation modal regardless of which one was clicked.
+  function requestStart(consultationId: string) {
+    selectConsultation(consultationId);
+    setPendingStartId(consultationId);
+  }
+
+  async function handleStart(consultationId: string) {
+    if (!accessToken) return;
 
     setIsSaving(true);
     setSaveError(null);
 
-    const result = await updateConsultation(
-      selectedRow.consultation.id,
-      accessToken,
-      {
-        status: 'Ongoing',
-      }
-    );
+    const result = await updateConsultation(consultationId, accessToken, {
+      status: 'Ongoing',
+    });
 
     setIsSaving(false);
 
@@ -382,27 +389,6 @@ export function VeterinaryConsolePage() {
         consultation.id === updated.id ? updated : consultation
       )
     );
-  }
-
-  function handleOpenPetHistory() {
-    if (!accessToken || !selectedRow) return;
-
-    setIsPetHistoryLoading(true);
-    setPetHistoryError(null);
-
-    void getPetConsultationHistory(
-      selectedRow.consultation.pet_id,
-      accessToken
-    ).then((result) => {
-      setIsPetHistoryLoading(false);
-
-      if (result.error || !result.data) {
-        setPetHistoryError(result.error ?? 'Could not load pet history.');
-        return;
-      }
-
-      setPetHistory(result.data);
-    });
   }
 
   async function handleScheduleFollowUp(followUpDate: string) {
@@ -500,7 +486,7 @@ export function VeterinaryConsolePage() {
               ) : (
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => (
-                    <li key={row.consultation.id}>
+                    <li key={row.consultation.id} className={styles.rowItem}>
                       <button
                         type="button"
                         className={
@@ -510,14 +496,34 @@ export function VeterinaryConsolePage() {
                         }
                         onClick={() => selectConsultation(row.consultation.id)}
                       >
-                        <span className={styles.rowPetName}>{row.petName}</span>
-                        <span className={styles.rowMeta}>{row.ownerName}</span>
-                        {row.consultation.booking?.status ? (
-                          <BookingStatusBadge
-                            status={row.consultation.booking.status}
-                          />
-                        ) : null}
+                        <div className={styles.rowHeader}>
+                          <span className={styles.rowPetName}>
+                            {row.petName}
+                          </span>
+                          {row.consultation.booking?.status ? (
+                            <BookingStatusBadge
+                              status={row.consultation.booking.status}
+                            />
+                          ) : null}
+                        </div>
+                        <span className={styles.rowMeta}>
+                          Owner: {row.ownerName}
+                        </span>
+                        <span className={styles.rowMeta}>
+                          {formatScheduledTime(row.scheduledStart)}
+                        </span>
                       </button>
+                      {canWrite &&
+                      row.consultation.booking?.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.startButton}
+                          disabled={isSaving}
+                          onClick={() => requestStart(row.consultation.id)}
+                        >
+                          Start Consultation
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -535,12 +541,8 @@ export function VeterinaryConsolePage() {
                   canWrite={canWrite}
                   isSaving={isSaving}
                   saveError={saveError}
-                  onStart={() => void handleStart()}
+                  onStart={() => requestStart(selectedRow.consultation.id)}
                   onComplete={(fields) => void handleComplete(fields)}
-                  petHistory={petHistory}
-                  isPetHistoryLoading={isPetHistoryLoading}
-                  petHistoryError={petHistoryError}
-                  onOpenPetHistory={handleOpenPetHistory}
                   onScheduleFollowUp={(date) =>
                     void handleScheduleFollowUp(date)
                   }
@@ -554,6 +556,39 @@ export function VeterinaryConsolePage() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={pendingStartId !== null}
+        title="Start Consultation"
+        onClose={() => setPendingStartId(null)}
+      >
+        <p className={styles.copy}>
+          Start this consultation for {pendingStartRow?.petName ?? 'this pet'}?
+          This moves the booking to In Progress.
+        </p>
+        <div className={styles.modalActions}>
+          <button
+            type="button"
+            className={styles.startButton}
+            disabled={isSaving}
+            onClick={() => {
+              if (!pendingStartId) return;
+              const id = pendingStartId;
+              setPendingStartId(null);
+              void handleStart(id);
+            }}
+          >
+            {isSaving ? 'Starting...' : 'Start Consultation'}
+          </button>
+          <button
+            type="button"
+            className={styles.cancelButton}
+            onClick={() => setPendingStartId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }

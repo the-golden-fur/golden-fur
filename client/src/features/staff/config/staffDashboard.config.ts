@@ -9,7 +9,9 @@ import {
   DoorOpen,
   Heart,
   History,
+  ListChecks,
   LogIn,
+  PawPrint,
   Receipt,
   Scissors,
   Stethoscope,
@@ -410,6 +412,18 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: "Today's consultations and pet medical history.",
             to: '/staff/veterinary/console',
           },
+          {
+            title: 'My Patients',
+            description:
+              'Pets you have treated, with a reference to their owner.',
+            to: '/staff/veterinary/my-patients',
+          },
+          {
+            title: 'My Catalog',
+            description:
+              'Your saved medications and procedures, picked from a dropdown on the consultation form.',
+            to: '/staff/veterinary/catalog',
+          },
         ],
       },
     ],
@@ -512,6 +526,8 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Daycare Queue': LogIn,
   'Grooming Queue': Scissors,
   'Consultation Queue': Stethoscope,
+  'My Patients': PawPrint,
+  'My Catalog': ListChecks,
   'Checkout & Billing': Wallet,
   'Payments Queue': Receipt,
   'Credit Management': Coins,

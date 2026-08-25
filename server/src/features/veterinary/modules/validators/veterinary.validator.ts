@@ -110,3 +110,53 @@ export const upsertHealthConditionsValidator = z
 export type UpsertHealthConditionsInput = z.infer<
   typeof upsertHealthConditionsValidator
 >;
+
+/** A vet's personal medication catalog entry - picked from later on the
+ * consultation form's Medications rows instead of retyped every visit. */
+export const createMedicationCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1),
+    default_dose: z.string().trim().min(1).optional(),
+    default_price: z.number().nonnegative().optional(),
+  })
+  .strict();
+
+export type CreateMedicationCatalogItemInput = z.infer<
+  typeof createMedicationCatalogItemValidator
+>;
+
+export const updateMedicationCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    default_dose: z.string().trim().min(1).nullable().optional(),
+    default_price: z.number().nonnegative().nullable().optional(),
+  })
+  .strict();
+
+export type UpdateMedicationCatalogItemInput = z.infer<
+  typeof updateMedicationCatalogItemValidator
+>;
+
+export const createProcedureCatalogItemValidator = z
+  .object({
+    procedure_type: z.enum(PROCEDURE_TYPES),
+    description: z.string().trim().min(1),
+    default_price: z.number().nonnegative().optional(),
+  })
+  .strict();
+
+export type CreateProcedureCatalogItemInput = z.infer<
+  typeof createProcedureCatalogItemValidator
+>;
+
+export const updateProcedureCatalogItemValidator = z
+  .object({
+    procedure_type: z.enum(PROCEDURE_TYPES).optional(),
+    description: z.string().trim().min(1).optional(),
+    default_price: z.number().nonnegative().nullable().optional(),
+  })
+  .strict();
+
+export type UpdateProcedureCatalogItemInput = z.infer<
+  typeof updateProcedureCatalogItemValidator
+>;

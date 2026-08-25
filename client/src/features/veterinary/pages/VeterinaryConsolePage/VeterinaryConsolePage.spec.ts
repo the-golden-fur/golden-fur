@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -27,6 +27,8 @@ vi.mock('../../api/veterinary.api', () => ({
   scheduleFollowUp: vi.fn(),
   getPetConsultationHistory: vi.fn(),
   upsertPetHealthConditions: vi.fn(),
+  listMedicationCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
+  listProcedureCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
@@ -230,6 +232,88 @@ describe('VeterinaryConsolePage (#70)', () => {
     ).toBeInTheDocument();
   });
 
+  it('starting a Pending consultation from its queue row also requires confirming in the shared modal', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'Pending')] },
+      error: null,
+    });
+    stubPetAndOwner();
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'In Progress'),
+      error: null,
+    });
+
+    renderPage();
+
+    // Only the row's own quick-start button exists yet - nothing is
+    // selected, so the detail panel isn't rendered at all.
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^start consultation$/i })
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /start consultation/i })
+    );
+
+    await waitFor(() =>
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+        'consultation-1',
+        'token',
+        { status: 'Ongoing' }
+      )
+    );
+  });
+
+  it('starting a Pending consultation from the detail panel requires confirming in a modal', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'Pending')] },
+      error: null,
+    });
+    stubPetAndOwner();
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'In Progress'),
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(await screen.findByText('Whiskers'));
+
+    const startButtons = await screen.findAllByRole('button', {
+      name: /^start consultation$/i,
+    });
+    // Both the row's quick-start button and the detail panel's trigger are
+    // visible at this point - the panel's is the last one in document order
+    // (queue renders before the detail pane).
+    await userEvent.click(startButtons[startButtons.length - 1]);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /start consultation/i })
+    );
+
+    await waitFor(() =>
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+        'consultation-1',
+        'token',
+        { status: 'Ongoing' }
+      )
+    );
+  });
+
   it('AC-2: completing an In Progress consultation calls updateConsultation with status Completed', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
@@ -261,34 +345,6 @@ describe('VeterinaryConsolePage (#70)', () => {
         expect.objectContaining({ status: 'Completed' })
       )
     );
-  });
-
-  it('AC-3: the Pet History tab loads and shows prior consultations', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Veterinarian'),
-      error: null,
-    });
-    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: { consultations: [buildConsultation()] },
-      error: null,
-    });
-    stubPetAndOwner();
-    vi.mocked(veterinaryApi.getPetConsultationHistory).mockResolvedValue({
-      data: [
-        buildConsultation(
-          { id: 'prior-1', diagnosis: 'Old diagnosis' },
-          'Completed'
-        ),
-      ],
-      error: null,
-    });
-
-    renderPage();
-
-    await userEvent.click(await screen.findByText('Whiskers'));
-    await userEvent.click(screen.getByRole('tab', { name: /pet history/i }));
-
-    expect(await screen.findByText(/Old diagnosis/)).toBeInTheDocument();
   });
 
   it('AC-4: scheduling a follow-up shows the "Follow-up scheduled" indicator', async () => {

@@ -1,0 +1,266 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  min-height: 100vh;
+}
+
+.content {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 72rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab,
+.tabActive {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-secondary);
+  transition: color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
+}
+
+.tabActive {
+  color: var(--color-accent-gold-primary);
+  border-bottom: 2px solid var(--color-accent-gold-primary);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  /* Without this, the default stretch cross-align makes the search field (no
+     label row above its input, unlike the sibling filterFields) grow taller
+     than its own input - the icon then centers on that taller box instead
+     of the visible input, reading as floating below it. */
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.filterField {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.filterLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.filterSelect:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
+.primaryButton {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+  width: fit-content;
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.secondaryButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-sm);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.fieldLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.input:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
+.formActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.itemList {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.itemRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.itemRow:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+
+.itemMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.itemName {
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.itemDescription {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
+}
+
+.errorBanner,
+.successBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.errorBanner {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.successBanner {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}

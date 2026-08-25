@@ -36,8 +36,10 @@ schemas, seeds, and edge functions.
   working a request; it's gitignored.
 - **Reusable skills (multi-tool)** — this repo's own git workflow
   (`branch-naming`, `commit`, `pr-to-dev`, `pr-dev-to-main`, `fill-issue`)
-  lives here in `.agent/skills/`, with thin per-tool adapters in
-  `.claude/skills/`, `.gemini/commands/`, `.codex/prompts/`. The vault's own
+  plus a local dev-server pre-flight check (`dev-servers`) lives here in
+  `.agent/skills/`, with thin per-tool adapters in `.claude/skills/`,
+  `.gemini/commands/`,
+  `.codex/prompts/`. The vault's own
   skills/agents (`note-filing`, `vault-librarian`, `weekly-reviewer`) stay in
   `../golden-fur-vault` since they operate on vault content — see
   [golden-fur-vault/AGENTS.md](../golden-fur-vault/AGENTS.md). Details on
@@ -73,9 +75,15 @@ repo's git workflow: `branch-naming` (name and create a branch),
 itself, not just a drafted message), `pr-to-dev` (open a PR into `dev`,
 squash merge only), `pr-dev-to-main` (open a `dev` → `main` release PR,
 rebase preferred/merge fallback, never squash), and `fill-issue` (turn a
-plain-text description into a filled, opened GitHub issue). Any AI coding
-tool working in this repo should read the relevant file under `.agent/`
-before doing that kind of task.
+plain-text description into a filled, opened GitHub issue) — plus
+`dev-servers` (how to safely start/stop/troubleshoot the local
+`client`/`server` dev processes without starting a colliding second copy
+of one already running — deliberately not named `run`, so it doesn't
+shadow Claude Code's own built-in `run` skill, which drives the app in a
+browser; use `dev-servers` first to confirm the processes are up, then
+`run` to actually look at a page). Any AI coding tool working in this
+repo should read the relevant file under `.agent/` before doing that kind
+of task.
 
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:

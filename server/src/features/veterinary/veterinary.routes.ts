@@ -4,12 +4,21 @@ import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  createMedicationCatalogItemController,
+  createProcedureCatalogItemController,
+  deleteMedicationCatalogItemController,
+  deleteProcedureCatalogItemController,
   getConsultationController,
   getCurrentPrescriptionController,
   getPetConsultationHistoryController,
   listConsultationQueueController,
+  listMedicationCatalogController,
+  listMyPatientsController,
+  listProcedureCatalogController,
   scheduleFollowUpController,
   updateConsultationController,
+  updateMedicationCatalogItemController,
+  updateProcedureCatalogItemController,
   upsertHealthConditionsController,
 } from './veterinary.controller.ts';
 import {
@@ -70,6 +79,11 @@ router.get(
   getPetConsultationHistoryController
 );
 
+// "My Patients" is inherently self-scoped (the service always filters by
+// the requester's own id) - reusing vetWrite here for its role predicate
+// (Veterinarian only), not because this is a write.
+router.get('/veterinary/my-patients', vetWrite, listMyPatientsController);
+
 router.get(
   '/veterinary/pets/:petId/current-prescription',
   staffRead,
@@ -80,6 +94,52 @@ router.patch(
   '/veterinary/pets/:petId/health-conditions',
   vetWrite,
   upsertHealthConditionsController
+);
+
+// Personal medication/procedure catalog - owner-scoped (see
+// 20260825142_m07_create_vet_catalog_schema.sql), so vetWrite's
+// Veterinarian-only role check is used for reads here too, not just writes -
+// there's no "any Veterinarian may read" case like the rest of this feature.
+router.get(
+  '/veterinary/medication-catalog',
+  vetWrite,
+  listMedicationCatalogController
+);
+router.post(
+  '/veterinary/medication-catalog',
+  vetWrite,
+  createMedicationCatalogItemController
+);
+router.patch(
+  '/veterinary/medication-catalog/:id',
+  vetWrite,
+  updateMedicationCatalogItemController
+);
+router.delete(
+  '/veterinary/medication-catalog/:id',
+  vetWrite,
+  deleteMedicationCatalogItemController
+);
+
+router.get(
+  '/veterinary/procedure-catalog',
+  vetWrite,
+  listProcedureCatalogController
+);
+router.post(
+  '/veterinary/procedure-catalog',
+  vetWrite,
+  createProcedureCatalogItemController
+);
+router.patch(
+  '/veterinary/procedure-catalog/:id',
+  vetWrite,
+  updateProcedureCatalogItemController
+);
+router.delete(
+  '/veterinary/procedure-catalog/:id',
+  vetWrite,
+  deleteProcedureCatalogItemController
 );
 
 export default router;
