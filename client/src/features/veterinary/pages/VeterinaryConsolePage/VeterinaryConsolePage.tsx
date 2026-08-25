@@ -449,9 +449,7 @@ export function VeterinaryConsolePage() {
               customDate={customDate}
               onCustomDateChange={setCustomDate}
               statusValue={statusFilter}
-              onStatusChange={(value) =>
-                setStatusFilter(value as StatusFilter)
-              }
+              onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
               statusOptions={STATUS_OPTIONS}
             >
               <SearchSortBar
