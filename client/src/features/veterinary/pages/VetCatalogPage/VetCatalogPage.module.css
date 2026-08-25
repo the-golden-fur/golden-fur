@@ -6,6 +6,10 @@
 
 .content {
   display: grid;
+  /* .page stretches .content to fill min-height:100vh; without this, the
+     default align-content: stretch spreads .content's auto rows apart to
+     consume that leftover height instead of packing them at the top. */
+  align-content: start;
   gap: var(--space-4);
   max-width: 72rem;
   width: 100%;
