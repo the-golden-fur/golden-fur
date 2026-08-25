@@ -8,7 +8,7 @@ import {
   updateConsultation,
 } from './services/consultation.service.ts';
 import { getCurrentPrescription } from './services/currentPrescription.service.ts';
-import { scheduleFollowUp } from './services/followUp.service.ts';
+import { linkFollowUpBooking } from './services/followUp.service.ts';
 import { upsertPetHealthConditions } from './services/petHealthConditions.service.ts';
 import {
   createMedicationCatalogItem,
@@ -23,7 +23,7 @@ import {
 import {
   createMedicationCatalogItemValidator,
   createProcedureCatalogItemValidator,
-  scheduleFollowUpValidator,
+  linkFollowUpValidator,
   updateConsultationValidator,
   updateMedicationCatalogItemValidator,
   updateProcedureCatalogItemValidator,
@@ -112,7 +112,7 @@ export async function updateConsultationController(
   }
 }
 
-export async function scheduleFollowUpController(
+export async function linkFollowUpBookingController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -122,7 +122,7 @@ export async function scheduleFollowUpController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const parsed = scheduleFollowUpValidator.safeParse(req.body);
+  const parsed = linkFollowUpValidator.safeParse(req.body);
 
   if (!parsed.success) {
     return res
@@ -131,10 +131,9 @@ export async function scheduleFollowUpController(
   }
 
   try {
-    const result = await scheduleFollowUp({
-      requesterId,
+    const result = await linkFollowUpBooking({
       consultationId: paramId(req, 'id'),
-      followUpDate: parsed.data.follow_up_date,
+      bookingId: parsed.data.booking_id,
     });
 
     return res.status(201).json(result);

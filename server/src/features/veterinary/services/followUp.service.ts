@@ -12,50 +12,35 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-/** Anchor time for a follow-up's placeholder slot - #67 dev notes: "does not
- * set a specific time slot", so any fixed anchor is fine; the receptionist's
- * confirmation step is what actually assigns a real slot. */
-const PLACEHOLDER_HOUR_UTC = 9;
-
-export interface ScheduleFollowUpResult {
+export interface LinkFollowUpBookingResult {
   consultation: Consultation;
   booking: Booking;
 }
 
-interface ScheduleFollowUpParams {
-  requesterId: string;
+interface LinkFollowUpBookingParams {
   consultationId: string;
-  followUpDate: string;
+  bookingId: string;
 }
 
 /**
- * Issue #67: creates a Pending M03 booking from a completed or in-progress
- * consultation. Uses booking_status = 'Pending', the value Sprint 2 Epic B
- * reserved specifically for this - never a new status. Reviewer note: this
- * only creates the Pending booking (this issue's actual scope); the "normal
- * M03 confirmation flow" the Guide's AC-4 describes as promoting Pending ->
- * Confirmed is the Sprint 5 M08 cashier-confirmation flow that
- * booking.service.ts already stubs with its own `TODO(Sprint 5, M08)`
- * comment (line ~312) - that promotion path doesn't exist yet anywhere in
- * this codebase, staff or customer. What does exist and is verified here:
- * the booking is created Pending, visible in the Receptionist Bookings
- * Queue (#60 already reads off bookings.status with no change needed), and
- * reschedulable (reschedule.service.ts already allows Pending bookings) to
- * pick a real slot ahead of that future promotion.
+ * Issue #67 (revised for the ScheduleFollowUpModal flow): the follow-up
+ * booking is now created through the normal booking pipeline (POST
+ * /bookings, same as a receptionist walk-in - see ScheduleFollowUpModal on
+ * the client), which already runs pricing/capacity/staff checks and fires
+ * the customer's booking_confirmed notification. This endpoint's only
+ * remaining job is to link that already-created booking back onto the
+ * originating consultation, after re-validating the same business rules the
+ * old placeholder-creation version enforced (must be finished, only one
+ * follow-up per consultation) plus a new ownership check (the linked booking
+ * must actually be for the same pet).
  */
-export async function scheduleFollowUp({
-  requesterId,
+export async function linkFollowUpBooking({
   consultationId,
-  followUpDate,
-}: ScheduleFollowUpParams): Promise<ScheduleFollowUpResult> {
+  bookingId,
+}: LinkFollowUpBookingParams): Promise<LinkFollowUpBookingResult> {
   const consultation = await getConsultation(consultationId);
   const bookingStatus = consultation.booking?.status;
 
-  // Booking-status revision: consultation.status no longer exists - "has
-  // this consultation started" is now read off the joined booking's status.
-  // Per the booking-status revision brief, a follow-up now requires the
-  // booking to have actually finished (Completed/Paid), not merely started
-  // (In Progress) - tightened from the old Pending-only gate.
   if (!bookingStatus || !FINISHED_BOOKING_STATUSES.includes(bookingStatus)) {
     throwWithStatus(
       409,
@@ -70,80 +55,32 @@ export async function scheduleFollowUp({
     );
   }
 
-  const { data: originalBooking, error: bookingError } = await supabase
+  const { data: followUpBooking, error: bookingError } = await supabase
     .from('bookings')
     .select('*')
-    .eq('id', consultation.booking_id)
+    .eq('id', bookingId)
     .maybeSingle();
 
   if (bookingError) throwWithStatus(400, bookingError.message);
-  if (!originalBooking) throwWithStatus(404, 'Originating booking not found');
+  if (!followUpBooking) throwWithStatus(404, 'Follow-up booking not found');
 
-  const durationMs =
-    new Date(originalBooking.scheduled_end).getTime() -
-    new Date(originalBooking.scheduled_start).getTime();
-
-  const scheduledStart = new Date(
-    `${followUpDate}T${String(PLACEHOLDER_HOUR_UTC).padStart(2, '0')}:00:00.000Z`
-  );
-  const scheduledEnd = new Date(scheduledStart.getTime() + durationMs);
-
-  const { data: newBooking, error: insertError } = await supabase
-    .from('bookings')
-    .insert({
-      customer_id: originalBooking.customer_id,
-      pet_id: originalBooking.pet_id,
-      branch_id: originalBooking.branch_id,
-      created_by_staff_id: requesterId,
-      service_category: 'Veterinary',
-      scheduled_start: scheduledStart.toISOString(),
-      scheduled_end: scheduledEnd.toISOString(),
-      status: 'Pending',
-      total_price: originalBooking.total_price,
-    })
-    .select('*')
-    .maybeSingle();
-
-  if (insertError || !newBooking) {
+  if ((followUpBooking as Booking).pet_id !== consultation.pet_id) {
     throwWithStatus(
       400,
-      insertError?.message ?? 'Failed to create the follow-up booking'
+      'The follow-up booking must be for the same pet as this consultation'
     );
   }
 
-  // Multi-item bookings revision: mirror the original consultation's booking
-  // items onto the new follow-up booking (was a straight service_id/
-  // package_id column copy before booking_items existed).
-  const { data: originalItems, error: itemsFetchError } = await supabase
-    .from('booking_items')
-    .select(
-      'service_id, package_id, price_at_booking, duration_minutes_at_booking'
-    )
-    .eq('booking_id', consultation.booking_id);
-
-  if (itemsFetchError) throwWithStatus(400, itemsFetchError.message);
-
-  if (originalItems && originalItems.length > 0) {
-    const { error: itemsInsertError } = await supabase
-      .from('booking_items')
-      .insert(
-        originalItems.map((item) => ({
-          booking_id: newBooking.id,
-          ...item,
-        }))
-      );
-
-    if (itemsInsertError) {
-      await supabase.from('bookings').delete().eq('id', newBooking.id);
-      throwWithStatus(400, itemsInsertError.message);
-    }
-  }
+  const followUpDate = (followUpBooking as Booking).scheduled_start.slice(
+    0,
+    10
+  );
 
   const { data: updatedConsultation, error: updateError } = await supabase
     .from('consultations')
     .update({
       follow_up_date: followUpDate,
-      follow_up_booking_id: newBooking.id,
+      follow_up_booking_id: bookingId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', consultationId)
@@ -161,6 +98,6 @@ export async function scheduleFollowUp({
 
   return {
     consultation: updatedConsultation as Consultation,
-    booking: newBooking as Booking,
+    booking: followUpBooking as Booking,
   };
 }

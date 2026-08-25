@@ -24,12 +24,61 @@ vi.mock('../../../customers/api/customer.api', () => ({
 vi.mock('../../api/veterinary.api', () => ({
   listConsultationQueue: vi.fn(),
   updateConsultation: vi.fn(),
-  scheduleFollowUp: vi.fn(),
+  linkFollowUpBooking: vi.fn(),
   getPetConsultationHistory: vi.fn(),
   upsertPetHealthConditions: vi.fn(),
   listMedicationCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
   listProcedureCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
+
+// ScheduleFollowUpModal has its own spec covering its internal flow
+// (catalog/slot/staff picking, createBooking + linkFollowUpBooking,
+// redirect) - here it's stubbed to a minimal, test-drivable stand-in so this
+// file can focus on the console page's own responsibility: opening it with
+// the right locked-in context and reacting to onLinked/onClose.
+vi.mock(
+  '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal',
+  () => ({
+    ScheduleFollowUpModal: (props: {
+      consultationId: string;
+      petName: string;
+      ownerName: string;
+      onClose: () => void;
+      onLinked: (consultation: Consultation) => void;
+    }) =>
+      createElement(
+        'div',
+        { role: 'dialog', 'aria-label': 'Schedule Follow-up (mock)' },
+        createElement('span', null, `Pet: ${props.petName}`),
+        createElement('span', null, `Owner: ${props.ownerName}`),
+        createElement(
+          'button',
+          {
+            onClick: () =>
+              props.onLinked({
+                id: props.consultationId,
+                booking_id: 'booking-1',
+                pet_id: 'pet-1',
+                veterinarian_id: 'vet-1',
+                temperature: null,
+                weight: null,
+                heart_rate: null,
+                respiratory_rate: null,
+                diagnosis: null,
+                medications: null,
+                reason_for_visit: 'Annual checkup',
+                follow_up_date: '2026-08-01',
+                follow_up_booking_id: 'booking-2',
+                created_at: '2026-07-19T00:00:00.000Z',
+                updated_at: '2026-07-19T00:00:00.000Z',
+              }),
+          },
+          'Confirm mock follow-up'
+        ),
+        createElement('button', { onClick: props.onClose }, 'Cancel mock follow-up')
+      ),
+  })
+);
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   return {
@@ -347,7 +396,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
   });
 
-  it('AC-4: scheduling a follow-up shows the "Follow-up scheduled" indicator', async () => {
+  it('AC-4: the "..." kebab opens ScheduleFollowUpModal locked to this pet/owner, and a successful follow-up shows the "Follow-up scheduled" indicator', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
       error: null,
@@ -355,7 +404,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
       data: {
         // The queue endpoint only ever returns Pending/In Progress bookings
-        // (STATUS_GROUPS), so the follow-up form - only reachable once the
+        // (STATUS_GROUPS), so the follow-up kebab - only reachable once the
         // booking is finished (FINISHED_BOOKING_STATUSES) - has to be reached
         // by actually completing the consultation below, not by seeding an
         // already-Completed row here.
@@ -368,46 +417,6 @@ describe('VeterinaryConsolePage (#70)', () => {
       data: buildConsultation({}, 'Completed'),
       error: null,
     });
-    vi.mocked(veterinaryApi.scheduleFollowUp).mockResolvedValue({
-      data: {
-        consultation: buildConsultation(
-          {
-            follow_up_date: '2026-08-01',
-            follow_up_booking_id: 'booking-2',
-          },
-          'Completed'
-        ),
-        booking: {
-          id: 'booking-2',
-          customer_id: 'customer-1',
-          pet_id: 'pet-1',
-          branch_id: 'branch-makati',
-          created_by_staff_id: 'vet-1',
-          service_category: 'Veterinary',
-          service_id: 'service-1',
-          package_id: null,
-          scheduled_start: '2026-08-01T09:00:00.000Z',
-          scheduled_end: '2026-08-01T10:00:00.000Z',
-          assigned_staff_id: null,
-          status: 'Pending',
-          total_price: 800,
-          downpayment_amount: null,
-          payment_method: null,
-          payment_confirmed: false,
-          special_instructions: null,
-          hotel_preferences: null,
-          started_at: null,
-          completed_at: null,
-          paid_at: null,
-          cancelled_at: null,
-          cancellation_reason: null,
-          reschedule_count: 0,
-          created_at: '2026-07-19T00:00:00.000Z',
-          updated_at: '2026-07-19T00:00:00.000Z',
-        },
-      },
-      error: null,
-    });
 
     renderPage();
 
@@ -416,13 +425,75 @@ describe('VeterinaryConsolePage (#70)', () => {
       await screen.findByRole('button', { name: /complete consultation/i })
     );
 
-    const dateInput = await screen.findByLabelText(/follow-up date/i);
-    await userEvent.type(dateInput, '2026-08-01');
     await userEvent.click(
-      screen.getByRole('button', { name: /schedule follow-up/i })
+      await screen.findByRole('button', { name: 'Options for Whiskers' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Schedule Follow-up' })
+    );
+
+    const modal = await screen.findByRole('dialog', {
+      name: 'Schedule Follow-up (mock)',
+    });
+    expect(within(modal).getByText('Pet: Whiskers')).toBeInTheDocument();
+    expect(within(modal).getByText('Owner: Jane Doe')).toBeInTheDocument();
+
+    await userEvent.click(
+      within(modal).getByRole('button', { name: 'Confirm mock follow-up' })
     );
 
     expect(await screen.findByText(/follow-up scheduled/i)).toBeInTheDocument();
+  });
+
+  it('View Details shows a read-only vet-only snapshot (vitals/diagnosis/medications), not the booking-side receipt', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [
+          buildConsultation(
+            {
+              temperature: 38.5,
+              weight: 12,
+              heart_rate: 90,
+              respiratory_rate: 20,
+              diagnosis: 'Ear infection',
+              medications: [
+                { name: 'Amoxicillin', dose: '250mg', notes: 'Twice daily' },
+              ],
+            },
+            'Completed'
+          ),
+        ],
+      },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Options for Whiskers' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    );
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Consultation Details',
+    });
+    expect(within(dialog).getByText('38.5')).toBeInTheDocument();
+    expect(within(dialog).getByText('Ear infection')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Amoxicillin — 250mg (Twice daily)')
+    ).toBeInTheDocument();
+
+    // Read-only - no editable form controls in this view, unlike selecting
+    // the row (which opens ConsultationDetailPanel's input-based form).
+    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('spinbutton')).not.toBeInTheDocument();
   });
 
   it('AC-1: the status filter narrows the queue to just the selected booking status', async () => {

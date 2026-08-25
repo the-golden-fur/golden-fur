@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  linkFollowUpBooking,
   listConsultationQueue,
-  scheduleFollowUp,
   updateConsultation,
 } from './veterinary.api';
 
@@ -98,7 +98,7 @@ describe('veterinary.api', () => {
     });
   });
 
-  it('scheduleFollowUp POSTs the follow_up_date', async () => {
+  it('linkFollowUpBooking POSTs the booking_id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         consultation: { id: 'c-1', follow_up_booking_id: 'booking-2' },
@@ -107,13 +107,13 @@ describe('veterinary.api', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await scheduleFollowUp('c-1', 'token', '2026-08-01');
+    const result = await linkFollowUpBooking('c-1', 'token', 'booking-2');
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/veterinary/consultations/c-1/follow-up'),
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ follow_up_date: '2026-08-01' }),
+        body: JSON.stringify({ booking_id: 'booking-2' }),
       })
     );
     expect(result.data?.booking.id).toBe('booking-2');

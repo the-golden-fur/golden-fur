@@ -40,9 +40,6 @@ export interface ConsultationDetailPanelProps {
       notes?: string;
     };
   }) => void;
-  onScheduleFollowUp: (followUpDate: string) => void;
-  isSchedulingFollowUp: boolean;
-  followUpError: string | null;
 }
 
 /**
@@ -61,9 +58,6 @@ export function ConsultationDetailPanel({
   saveError,
   onStart,
   onComplete,
-  onScheduleFollowUp,
-  isSchedulingFollowUp,
-  followUpError,
 }: ConsultationDetailPanelProps) {
   // Lazy initial state seeded from the selected consultation. The parent
   // renders this component with key={consultation.id} (VeterinaryConsolePage),
@@ -95,7 +89,6 @@ export function ConsultationDetailPanel({
   const [professionalFee, setProfessionalFee] = useState('');
   const [vaccineName, setVaccineName] = useState('');
   const [vaccineDate, setVaccineDate] = useState('');
-  const [followUpDate, setFollowUpDate] = useState('');
 
   const [medicationCatalog, setMedicationCatalog] = useState<
     VetMedicationCatalogItem[]
@@ -469,46 +462,16 @@ export function ConsultationDetailPanel({
               </button>
             ) : null}
 
-            <div className={styles.followUpSection}>
-              {consultation.follow_up_booking_id ? (
+            {consultation.follow_up_booking_id ? (
+              <div className={styles.followUpSection}>
                 <span className={styles.followUpIndicator}>
                   Follow-up scheduled
                   {consultation.follow_up_date
                     ? ` for ${consultation.follow_up_date}`
                     : ''}
                 </span>
-              ) : isCompleted ? (
-                <>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>Follow-up date</span>
-                    <input
-                      className={styles.input}
-                      type="date"
-                      value={followUpDate}
-                      disabled={!canWrite}
-                      onChange={(event) => setFollowUpDate(event.target.value)}
-                    />
-                  </label>
-                  {followUpError ? (
-                    <p className={styles.errorBanner} role="alert">
-                      {followUpError}
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={
-                      !followUpDate || isSchedulingFollowUp || !canWrite
-                    }
-                    onClick={() => onScheduleFollowUp(followUpDate)}
-                  >
-                    {isSchedulingFollowUp
-                      ? 'Scheduling...'
-                      : 'Schedule follow-up'}
-                  </button>
-                </>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </>
         )}
       </div>
