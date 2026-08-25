@@ -10,7 +10,7 @@ import {
 import { assertVeterinaryBranchEligibility } from '../../booking/services/veterinaryEligibility.service.ts';
 import { createVaccinationRecord } from '../../customers/pets/services/vaccinationRecord.service.ts';
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
-import type { Consultation } from '../veterinary.types.ts';
+import type { Consultation, VeterinarianPatient } from '../veterinary.types.ts';
 
 // consultations has TWO foreign keys to bookings (booking_id and
 // follow_up_booking_id - see ...040_m07_create_veterinary_schema.sql), so
@@ -23,10 +23,25 @@ const CONSULTATION_SELECT = '*, booking:bookings!booking_id(*)';
  * status (#51 dev notes), so the old "Confirmed queue" vs "Pending awaiting
  * payment" split (listUnconfirmedVeterinaryBookings) no longer means
  * anything - both statuses are actionable today, so listConsultationQueue
- * alone now covers everything. */
+ * alone now covers everything. This is also the auto-vivify-eligible set -
+ * a consultations row only ever gets created for a booking while it's still
+ * actionable, never retroactively for one that's already Completed. */
 const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
   'In Progress',
+];
+
+/** Superset of QUEUE_BOOKING_STATUSES used for what the queue actually
+ * returns - Completed bookings are included (read-only, so the console can
+ * show the day's finished visits alongside the actionable ones) but are
+ * never auto-vivified, since a Completed Veterinary booking must have
+ * passed through In Progress already and picked up a consultations row
+ * then. Cancelled/No-show are deliberately excluded: those bookings often
+ * never became actionable, so there's frequently no consultation record to
+ * show at all. */
+const LIST_BOOKING_STATUSES: readonly BookingStatus[] = [
+  ...QUEUE_BOOKING_STATUSES,
+  'Completed',
 ];
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -84,7 +99,9 @@ interface ListConsultationQueueParams {
  * codebase; see grooming.service.ts's own dev note on why). Any
  * Veterinarian may see and open any row - no per-vet scoping, matching the
  * explicit "no per-pet assigned-vet restriction" carve-out - so unlike
- * listGroomingQueue, this never filters by requester.
+ * listGroomingQueue, this never filters by requester. Also returns the
+ * day's Completed visits (read-only, see LIST_BOOKING_STATUSES) so the
+ * console isn't limited to only-actionable rows.
  */
 export async function listConsultationQueue({
   dateFrom,
@@ -94,9 +111,11 @@ export async function listConsultationQueue({
 
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
-    .select('id, pet_id, branch_id, assigned_staff_id, special_instructions')
+    .select(
+      'id, pet_id, branch_id, assigned_staff_id, special_instructions, status'
+    )
     .eq('service_category', 'Veterinary')
-    .in('status', QUEUE_BOOKING_STATUSES)
+    .in('status', LIST_BOOKING_STATUSES)
     .gte('scheduled_start', dayStart)
     .lt('scheduled_start', dayEnd)
     // Custom change (P-1 roadmap item: generic downpayment): same gate as
@@ -111,6 +130,7 @@ export async function listConsultationQueue({
     branch_id: string;
     assigned_staff_id: string;
     special_instructions: string | null;
+    status: BookingStatus;
   }>;
 
   if (bookingRows.length === 0) return [];
@@ -127,7 +147,12 @@ export async function listConsultationQueue({
   const existingBookingIds = new Set(
     (existing ?? []).map((row) => row.booking_id as string)
   );
-  const missing = bookingRows.filter((row) => !existingBookingIds.has(row.id));
+  const vivifyEligible = bookingRows.filter((row) =>
+    QUEUE_BOOKING_STATUSES.includes(row.status)
+  );
+  const missing = vivifyEligible.filter(
+    (row) => !existingBookingIds.has(row.id)
+  );
 
   if (missing.length > 0) {
     // AC-5 defense-in-depth: booking creation (#53) already blocks a
@@ -204,6 +229,61 @@ export async function listPetConsultationHistory(
   if (error) throwWithStatus(400, error.message);
 
   return (data ?? []) as Consultation[];
+}
+
+/**
+ * "My Patients": every pet this veterinarian has actually finished a
+ * consultation for (booking status in FINISHED_BOOKING_STATUSES), deduped
+ * to one row per pet with its most recent finished visit. No
+ * "distinct"/aggregate query pattern exists anywhere else in this codebase
+ * (Supabase/PostgREST queries here are plain .select()/.eq(), dedup done in
+ * JS) - mirrors currentPrescription.service.ts's own `!inner` join +
+ * pick-most-recent-in-JS shape, adapted from "per pet" to "per pet for this
+ * veterinarian".
+ */
+export async function listVeterinarianPatients(
+  veterinarianId: string
+): Promise<VeterinarianPatient[]> {
+  const { data, error } = await supabase
+    .from('consultations')
+    .select(
+      'pet_id, booking:bookings!booking_id!inner(status, completed_at, scheduled_start)'
+    )
+    .eq('veterinarian_id', veterinarianId)
+    .in('booking.status', FINISHED_BOOKING_STATUSES);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as unknown as Array<{
+    pet_id: string;
+    booking: {
+      status: string;
+      completed_at: string | null;
+      scheduled_start: string;
+    };
+  }>;
+
+  const latestByPet = new Map<string, VeterinarianPatient>();
+
+  for (const row of rows) {
+    const visitAt = row.booking.completed_at ?? row.booking.scheduled_start;
+    const existing = latestByPet.get(row.pet_id);
+
+    if (
+      !existing ||
+      new Date(visitAt).getTime() > new Date(existing.last_visit_at).getTime()
+    ) {
+      latestByPet.set(row.pet_id, {
+        pet_id: row.pet_id,
+        last_visit_at: visitAt,
+      });
+    }
+  }
+
+  return Array.from(latestByPet.values()).sort(
+    (a, b) =>
+      new Date(b.last_visit_at).getTime() - new Date(a.last_visit_at).getTime()
+  );
 }
 
 interface UpdateConsultationParams {

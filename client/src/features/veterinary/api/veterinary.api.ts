@@ -1,8 +1,15 @@
 import type {
   Consultation,
+  CreateMedicationCatalogItemPayload,
+  CreateProcedureCatalogItemPayload,
   PetHealthCondition,
   ScheduleFollowUpResult,
   UpdateConsultationPayload,
+  UpdateMedicationCatalogItemPayload,
+  UpdateProcedureCatalogItemPayload,
+  VeterinarianPatient,
+  VetMedicationCatalogItem,
+  VetProcedureCatalogItem,
 } from '../veterinary.types';
 
 interface VeterinaryApiResult<T> {
@@ -159,6 +166,181 @@ export async function upsertPetHealthConditions(
     response
   );
   return { data: result.data?.health_conditions ?? null, error: result.error };
+}
+
+export async function listMyPatients(
+  accessToken: string
+): Promise<VeterinaryApiResult<VeterinarianPatient[]>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/my-patients`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ patients: VeterinarianPatient[] }>(response);
+  return { data: result.data?.patients ?? null, error: result.error };
+}
+
+export async function listMedicationCatalog(
+  accessToken: string
+): Promise<VeterinaryApiResult<VetMedicationCatalogItem[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/medication-catalog`,
+    {
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ medications: VetMedicationCatalogItem[] }>(
+    response
+  );
+  return { data: result.data?.medications ?? null, error: result.error };
+}
+
+export async function createMedicationCatalogItem(
+  accessToken: string,
+  payload: CreateMedicationCatalogItemPayload
+): Promise<VeterinaryApiResult<VetMedicationCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/medication-catalog`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ medication: VetMedicationCatalogItem }>(
+    response
+  );
+  return { data: result.data?.medication ?? null, error: result.error };
+}
+
+export async function updateMedicationCatalogItem(
+  itemId: string,
+  accessToken: string,
+  payload: UpdateMedicationCatalogItemPayload
+): Promise<VeterinaryApiResult<VetMedicationCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/medication-catalog/${itemId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ medication: VetMedicationCatalogItem }>(
+    response
+  );
+  return { data: result.data?.medication ?? null, error: result.error };
+}
+
+export async function deleteMedicationCatalogItem(
+  itemId: string,
+  accessToken: string
+): Promise<VeterinaryApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/medication-catalog/${itemId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listProcedureCatalog(
+  accessToken: string
+): Promise<VeterinaryApiResult<VetProcedureCatalogItem[]>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/procedure-catalog`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ procedures: VetProcedureCatalogItem[] }>(
+    response
+  );
+  return { data: result.data?.procedures ?? null, error: result.error };
+}
+
+export async function createProcedureCatalogItem(
+  accessToken: string,
+  payload: CreateProcedureCatalogItemPayload
+): Promise<VeterinaryApiResult<VetProcedureCatalogItem>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/procedure-catalog`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ procedure: VetProcedureCatalogItem }>(
+    response
+  );
+  return { data: result.data?.procedure ?? null, error: result.error };
+}
+
+export async function updateProcedureCatalogItem(
+  itemId: string,
+  accessToken: string,
+  payload: UpdateProcedureCatalogItemPayload
+): Promise<VeterinaryApiResult<VetProcedureCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/procedure-catalog/${itemId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ procedure: VetProcedureCatalogItem }>(
+    response
+  );
+  return { data: result.data?.procedure ?? null, error: result.error };
+}
+
+export async function deleteProcedureCatalogItem(
+  itemId: string,
+  accessToken: string
+): Promise<VeterinaryApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/procedure-catalog/${itemId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
 }
 
 export async function getPetConsultationHistory(

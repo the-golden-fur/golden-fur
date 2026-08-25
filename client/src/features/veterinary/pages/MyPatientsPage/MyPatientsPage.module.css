@@ -55,18 +55,11 @@
   padding: 0;
 }
 
-.rowItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
 .rowButton,
 .rowButtonActive {
   display: grid;
   gap: var(--space-0-5);
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   text-align: left;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -102,4 +95,31 @@
 
 .detail {
   min-width: 0;
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3);
+}
+
+.header {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.petName {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }

@@ -91,3 +91,57 @@ export interface PetHealthCondition {
   updated_by_staff_id: string;
   updated_at: string;
 }
+
+/** "My Patients": one row per distinct pet the requesting veterinarian has
+ * finished a consultation for, with that pet's most recent finished-visit
+ * date. */
+export interface VeterinarianPatient {
+  pet_id: string;
+  last_visit_at: string;
+}
+
+/** A veterinarian's personal medication/procedure catalog entry -
+ * owner-scoped, only the veterinarian who created it can see or edit it. */
+export interface VetMedicationCatalogItem {
+  id: string;
+  veterinarian_id: string;
+  name: string;
+  default_dose: string | null;
+  default_price: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMedicationCatalogItemPayload {
+  name: string;
+  default_dose?: string;
+  default_price?: number;
+}
+
+export interface UpdateMedicationCatalogItemPayload {
+  name?: string;
+  default_dose?: string | null;
+  default_price?: number | null;
+}
+
+export interface VetProcedureCatalogItem {
+  id: string;
+  veterinarian_id: string;
+  procedure_type: ProcedureType;
+  description: string;
+  default_price: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProcedureCatalogItemPayload {
+  procedure_type: ProcedureType;
+  description: string;
+  default_price?: number;
+}
+
+export interface UpdateProcedureCatalogItemPayload {
+  procedure_type?: ProcedureType;
+  description?: string;
+  default_price?: number | null;
+}

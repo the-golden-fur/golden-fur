@@ -103,6 +103,19 @@
   gap: var(--space-1);
 }
 
+.catalogRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.catalogRow select {
+  flex: 1;
+  min-width: 12rem;
+  width: auto;
+}
+
 .primaryButton {
   border: none;
   border-radius: var(--radius-pill);

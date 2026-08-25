@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
@@ -45,14 +46,12 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-// Booking-status revision: the queue endpoint only ever returns
-// consultations whose booking hasn't finished yet (bookings.status IN
-// Pending/In Progress - see consultation.service.ts's merged
-// listConsultationQueue), so those are the only two meaningful values to
-// group/filter by here (mirrors GroomerDashboardPage's own
-// GROOMING_STATUSES). The old separate "Unconfirmed (awaiting payment)"
-// option is gone along with the server's now-merged two-function split.
-const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress'];
+// Booking-status revision: the queue endpoint returns the day's actionable
+// consultations (bookings.status Pending/In Progress) plus its Completed
+// ones (read-only) - see consultation.service.ts's listConsultationQueue.
+// Cancelled/No-show are omitted since those bookings frequently never had a
+// consultation row to begin with (see LIST_BOOKING_STATUSES server-side).
+const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress', 'Completed'];
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
@@ -72,6 +71,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
+  const navigate = useNavigate();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
@@ -500,7 +500,7 @@ export function VeterinaryConsolePage() {
               ) : (
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => (
-                    <li key={row.consultation.id}>
+                    <li key={row.consultation.id} className={styles.rowItem}>
                       <button
                         type="button"
                         className={
@@ -518,6 +518,18 @@ export function VeterinaryConsolePage() {
                           />
                         ) : null}
                       </button>
+                      <MoreOptionsMenu
+                        label={`More options for ${row.petName}`}
+                        items={[
+                          {
+                            label: 'View booking details',
+                            onSelect: () =>
+                              navigate(
+                                `/staff/bookings/${row.consultation.booking_id}`
+                              ),
+                          },
+                        ]}
+                      />
                     </li>
                   ))}
                 </ul>

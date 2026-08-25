@@ -27,6 +27,8 @@ vi.mock('../../api/veterinary.api', () => ({
   scheduleFollowUp: vi.fn(),
   getPetConsultationHistory: vi.fn(),
   upsertPetHealthConditions: vi.fn(),
+  listMedicationCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
+  listProcedureCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {

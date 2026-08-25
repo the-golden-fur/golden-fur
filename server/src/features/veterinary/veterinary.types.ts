@@ -74,3 +74,33 @@ export interface CurrentPrescription {
   completed_at: string;
   medications: ConsultationMedication[];
 }
+
+/** "My Patients": one row per distinct pet a veterinarian has finished a
+ * consultation for, with that pet's most recent finished-visit date. */
+export interface VeterinarianPatient {
+  pet_id: string;
+  last_visit_at: string;
+}
+
+/** A veterinarian's personal medication catalog entry - owner-scoped
+ * (RLS: auth.uid() = veterinarian_id), unlike everything else in this
+ * feature which any Veterinarian may view/edit. */
+export interface VetMedicationCatalogItem {
+  id: string;
+  veterinarian_id: string;
+  name: string;
+  default_dose: string | null;
+  default_price: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VetProcedureCatalogItem {
+  id: string;
+  veterinarian_id: string;
+  procedure_type: ProcedureType;
+  description: string;
+  default_price: number | null;
+  created_at: string;
+  updated_at: string;
+}

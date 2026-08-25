@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
 import { PetHistoryTab } from '../../components/PetHistoryTab/PetHistoryTab';
+import {
+  listMedicationCatalog,
+  listProcedureCatalog,
+} from '../../api/veterinary.api';
 import type {
   Consultation,
   MedicationInput,
   ProcedureInput,
+  VetMedicationCatalogItem,
+  VetProcedureCatalogItem,
 } from '../../veterinary.types';
 import { PROCEDURE_TYPES } from '../../veterinary.types';
 import styles from './ConsultationDetailPanel.module.css';
@@ -103,6 +109,64 @@ export function ConsultationDetailPanel({
   const [vaccineName, setVaccineName] = useState('');
   const [vaccineDate, setVaccineDate] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
+
+  const [medicationCatalog, setMedicationCatalog] = useState<
+    VetMedicationCatalogItem[]
+  >([]);
+  const [procedureCatalog, setProcedureCatalog] = useState<
+    VetProcedureCatalogItem[]
+  >([]);
+
+  // The catalog read endpoints are Veterinarian-only (owner-scoped), same as
+  // the write actions this whole form already gates on `canWrite` - a
+  // non-Veterinarian viewer would just get a 403, so don't bother fetching.
+  useEffect(() => {
+    if (!canWrite) return;
+
+    let isMounted = true;
+
+    void Promise.all([
+      listMedicationCatalog(accessToken),
+      listProcedureCatalog(accessToken),
+    ]).then(([medicationResult, procedureResult]) => {
+      if (!isMounted) return;
+      if (medicationResult.data) setMedicationCatalog(medicationResult.data);
+      if (procedureResult.data) setProcedureCatalog(procedureResult.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, canWrite]);
+
+  function addMedicationFromCatalog(itemId: string) {
+    const item = medicationCatalog.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    setMedications((prev) => [
+      ...prev,
+      {
+        name: item.name,
+        dose: item.default_dose ?? '',
+        notes: '',
+        amount: item.default_price ?? undefined,
+      },
+    ]);
+  }
+
+  function addProcedureFromCatalog(itemId: string) {
+    const item = procedureCatalog.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    setProcedures((prev) => [
+      ...prev,
+      {
+        procedure_type: item.procedure_type,
+        description: item.description,
+        amount: item.default_price ?? 0,
+      },
+    ]);
+  }
 
   function handleTabChange(nextTab: PanelTab) {
     setTab(nextTab);
@@ -336,13 +400,35 @@ export function ConsultationDetailPanel({
                   </div>
                 ))}
                 {!isCompleted && canWrite ? (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={addMedication}
-                  >
-                    Add medication
-                  </button>
+                  <div className={styles.catalogRow}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={addMedication}
+                    >
+                      Add medication
+                    </button>
+                    {medicationCatalog.length > 0 ? (
+                      <select
+                        className={styles.input}
+                        aria-label="Add from your medication catalog"
+                        value=""
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            addMedicationFromCatalog(event.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">Add from your catalog...</option>
+                        {medicationCatalog.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                            {item.default_dose ? ` (${item.default_dose})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -402,13 +488,34 @@ export function ConsultationDetailPanel({
                   </div>
                 ))}
                 {canWrite ? (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={addProcedure}
-                  >
-                    Add procedure
-                  </button>
+                  <div className={styles.catalogRow}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={addProcedure}
+                    >
+                      Add procedure
+                    </button>
+                    {procedureCatalog.length > 0 ? (
+                      <select
+                        className={styles.input}
+                        aria-label="Add from your procedure catalog"
+                        value=""
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            addProcedureFromCatalog(event.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">Add from your catalog...</option>
+                        {procedureCatalog.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.procedure_type} — {item.description}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
