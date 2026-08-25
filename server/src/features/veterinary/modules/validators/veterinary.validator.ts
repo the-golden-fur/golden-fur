@@ -86,15 +86,17 @@ export type UpdateConsultationInput = z.infer<
   typeof updateConsultationValidator
 >;
 
-/** Issue #67: date only - no time slot (the receptionist's confirmation
- * step is what actually picks one, via the normal M03 flow). */
-export const scheduleFollowUpValidator = z
+/** Issue #67 (revised): the follow-up booking is created client-side through
+ * the normal booking pipeline (ScheduleFollowUpModal, same POST /bookings a
+ * receptionist walk-in uses) - this endpoint only links that already-created
+ * booking onto the consultation. */
+export const linkFollowUpValidator = z
   .object({
-    follow_up_date: z.iso.date(),
+    booking_id: z.uuid(),
   })
   .strict();
 
-export type ScheduleFollowUpInput = z.infer<typeof scheduleFollowUpValidator>;
+export type LinkFollowUpInput = z.infer<typeof linkFollowUpValidator>;
 
 /**
  * Issue #78: recorded/updated only from the consultation form, by a

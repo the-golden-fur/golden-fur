@@ -13,9 +13,9 @@ import {
   getPetConsultationHistoryController,
   listConsultationQueueController,
   listMedicationCatalogController,
+  linkFollowUpBookingController,
   listMyPatientsController,
   listProcedureCatalogController,
-  scheduleFollowUpController,
   updateConsultationController,
   updateMedicationCatalogItemController,
   updateProcedureCatalogItemController,
@@ -70,7 +70,7 @@ router.patch(
 router.post(
   '/veterinary/consultations/:id/follow-up',
   vetWrite,
-  scheduleFollowUpController
+  linkFollowUpBookingController
 );
 
 router.get(

@@ -78,7 +78,7 @@ export interface UpdateConsultationPayload {
   vaccination?: VaccinationInput;
 }
 
-export interface ScheduleFollowUpResult {
+export interface LinkFollowUpBookingResult {
   consultation: Consultation;
   booking: Booking;
 }

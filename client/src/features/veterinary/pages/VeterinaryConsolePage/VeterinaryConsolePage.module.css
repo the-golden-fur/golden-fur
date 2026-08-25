@@ -37,7 +37,7 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) 2fr;
+  grid-template-columns: minmax(420px, 1.3fr) 2fr;
   gap: var(--space-3);
   align-items: start;
 }
@@ -55,39 +55,48 @@
   padding: 0;
 }
 
+/* Custom change (kebab-inside-card fix): the border/background/shadow used
+   to live on .rowButton alone, so a flex sibling (Start Consultation button,
+   the "..." kebab) rendered visually outside the card's own box instead of
+   inside it. Moved onto .rowItem (the <li>, now the actual visual card) so
+   every sibling control shares the same bordered box - mirrors the
+   established list-row pattern elsewhere (e.g. AdminServicesPage's
+   .serviceRow), just with an inner clickable element instead of a plain div. */
 .rowItem {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-}
-
-.rowButton,
-.rowButtonActive {
-  display: grid;
-  gap: var(--space-0-5);
-  flex: 1;
-  min-width: 0;
-  text-align: left;
+  gap: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  cursor: pointer;
-  padding: var(--space-3);
   box-shadow: var(--shadow-sm);
+  padding: var(--space-3);
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease,
     border-color 0.15s ease;
 }
 
-.rowButton:hover,
-.rowButtonActive:hover {
+.rowItem:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.rowButtonActive {
+.rowItemActive {
+  composes: rowItem;
   border-color: var(--color-accent-gold-primary);
+}
+
+.rowButton {
+  display: grid;
+  gap: var(--space-0-5);
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
 }
 
 .rowHeader {
@@ -168,4 +177,68 @@
 
 .detail {
   min-width: 0;
+}
+
+/* Read-only "View Details" modal - vet-only consultation fields (vitals/
+   diagnosis/medications), distinct from BookingDetailsPage's booking-side
+   (payment/branch/items) receipt view. */
+.viewDetailsBody {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.viewDetailsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.viewDetailsName {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+.viewDetailsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+}
+
+.detailField {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.detailLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.detailValue {
+  color: var(--color-text-primary);
+}
+
+.medicationList {
+  display: grid;
+  gap: var(--space-0-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.followUpIndicator {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  background: var(--color-followup-indicator-bg);
+  color: var(--color-followup-indicator-text);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
 }

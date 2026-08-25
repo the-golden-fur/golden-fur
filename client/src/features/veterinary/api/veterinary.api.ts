@@ -2,8 +2,8 @@ import type {
   Consultation,
   CreateMedicationCatalogItemPayload,
   CreateProcedureCatalogItemPayload,
+  LinkFollowUpBookingResult,
   PetHealthCondition,
-  ScheduleFollowUpResult,
   UpdateConsultationPayload,
   UpdateMedicationCatalogItemPayload,
   UpdateProcedureCatalogItemPayload,
@@ -121,17 +121,19 @@ export async function updateConsultation(
   return { data: result.data?.consultation ?? null, error: result.error };
 }
 
-export async function scheduleFollowUp(
+/** Links a booking already created via the normal booking flow (see
+ * ScheduleFollowUpModal) onto this consultation as its follow-up. */
+export async function linkFollowUpBooking(
   consultationId: string,
   accessToken: string,
-  followUpDate: string
-): Promise<VeterinaryApiResult<ScheduleFollowUpResult>> {
+  bookingId: string
+): Promise<VeterinaryApiResult<LinkFollowUpBookingResult>> {
   const response = await fetch(
     `${API_BASE_URL}/veterinary/consultations/${consultationId}/follow-up`,
     {
       method: 'POST',
       headers: jsonHeaders(accessToken),
-      body: JSON.stringify({ follow_up_date: followUpDate }),
+      body: JSON.stringify({ booking_id: bookingId }),
     }
   );
 
@@ -139,7 +141,7 @@ export async function scheduleFollowUp(
     return { data: null, error: await parseError(response) };
   }
 
-  return parseBody<ScheduleFollowUpResult>(response);
+  return parseBody<LinkFollowUpBookingResult>(response);
 }
 
 /** Issue #78: upserts the pet's current known health conditions - Veterinary-

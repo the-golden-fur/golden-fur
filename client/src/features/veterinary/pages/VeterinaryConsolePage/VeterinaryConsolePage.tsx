@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { Modal } from '../../../../shared/components/Modal/Modal';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import type { BookingStatus } from '../../../booking/booking.types';
+import {
+  FINISHED_BOOKING_STATUSES,
+  type BookingStatus,
+} from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   getCustomerProfile,
@@ -27,7 +34,6 @@ import {
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listConsultationQueue,
-  scheduleFollowUp,
   updateConsultation,
 } from '../../api/veterinary.api';
 import type {
@@ -36,6 +42,7 @@ import type {
   ProcedureInput,
 } from '../../veterinary.types';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
+import { ScheduleFollowUpModal } from '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal';
 import styles from './VeterinaryConsolePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -99,9 +106,8 @@ export function VeterinaryConsolePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
-
-  const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
-  const [followUpError, setFollowUpError] = useState<string | null>(null);
+  const [followUpTargetId, setFollowUpTargetId] = useState<string | null>(null);
+  const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -293,6 +299,12 @@ export function VeterinaryConsolePage() {
   const pendingStartRow = rows.find(
     (row) => row.consultation.id === pendingStartId
   );
+  const followUpTargetRow = rows.find(
+    (row) => row.consultation.id === followUpTargetId
+  );
+  const viewDetailsRow = rows.find(
+    (row) => row.consultation.id === viewDetailsId
+  );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
   // /Supervisor/Superadmin can view the console but any write PATCH/POST
@@ -302,7 +314,6 @@ export function VeterinaryConsolePage() {
   function selectConsultation(id: string) {
     setSelectedId(id);
     setSaveError(null);
-    setFollowUpError(null);
   }
 
   // Both the queue row's own quick-start button and the detail panel's
@@ -391,26 +402,7 @@ export function VeterinaryConsolePage() {
     );
   }
 
-  async function handleScheduleFollowUp(followUpDate: string) {
-    if (!accessToken || !selectedRow) return;
-
-    setIsSchedulingFollowUp(true);
-    setFollowUpError(null);
-
-    const result = await scheduleFollowUp(
-      selectedRow.consultation.id,
-      accessToken,
-      followUpDate
-    );
-
-    setIsSchedulingFollowUp(false);
-
-    if (result.error || !result.data) {
-      setFollowUpError(result.error ?? 'Could not schedule the follow-up.');
-      return;
-    }
-
-    const updated = result.data.consultation;
+  function handleFollowUpLinked(updated: Consultation) {
     setConsultations((prev) =>
       prev.map((consultation) =>
         consultation.id === updated.id ? updated : consultation
@@ -485,47 +477,80 @@ export function VeterinaryConsolePage() {
                 </p>
               ) : (
                 <ul className={styles.rowList}>
-                  {visibleRows.map((row) => (
-                    <li key={row.consultation.id} className={styles.rowItem}>
-                      <button
-                        type="button"
+                  {visibleRows.map((row) => {
+                    const rowBookingStatus = row.consultation.booking?.status;
+                    const isRowCompleted = rowBookingStatus
+                      ? FINISHED_BOOKING_STATUSES.includes(rowBookingStatus)
+                      : false;
+                    const canScheduleFollowUp =
+                      canWrite &&
+                      isRowCompleted &&
+                      !row.consultation.follow_up_booking_id;
+
+                    const rowMenuItems: MoreOptionsMenuItem[] = [
+                      {
+                        label: 'View Details',
+                        onSelect: () => setViewDetailsId(row.consultation.id),
+                      },
+                    ];
+                    if (canScheduleFollowUp) {
+                      rowMenuItems.push({
+                        label: 'Schedule Follow-up',
+                        onSelect: () => {
+                          selectConsultation(row.consultation.id);
+                          setFollowUpTargetId(row.consultation.id);
+                        },
+                      });
+                    }
+
+                    return (
+                      <li
+                        key={row.consultation.id}
                         className={
                           row.consultation.id === selectedId
-                            ? styles.rowButtonActive
-                            : styles.rowButton
+                            ? styles.rowItemActive
+                            : styles.rowItem
                         }
-                        onClick={() => selectConsultation(row.consultation.id)}
                       >
-                        <div className={styles.rowHeader}>
-                          <span className={styles.rowPetName}>
-                            {row.petName}
-                          </span>
-                          {row.consultation.booking?.status ? (
-                            <BookingStatusBadge
-                              status={row.consultation.booking.status}
-                            />
-                          ) : null}
-                        </div>
-                        <span className={styles.rowMeta}>
-                          Owner: {row.ownerName}
-                        </span>
-                        <span className={styles.rowMeta}>
-                          {formatScheduledTime(row.scheduledStart)}
-                        </span>
-                      </button>
-                      {canWrite &&
-                      row.consultation.booking?.status === 'Pending' ? (
                         <button
                           type="button"
-                          className={styles.startButton}
-                          disabled={isSaving}
-                          onClick={() => requestStart(row.consultation.id)}
+                          className={styles.rowButton}
+                          onClick={() =>
+                            selectConsultation(row.consultation.id)
+                          }
                         >
-                          Start Consultation
+                          <div className={styles.rowHeader}>
+                            <span className={styles.rowPetName}>
+                              {row.petName}
+                            </span>
+                            {rowBookingStatus ? (
+                              <BookingStatusBadge status={rowBookingStatus} />
+                            ) : null}
+                          </div>
+                          <span className={styles.rowMeta}>
+                            Owner: {row.ownerName}
+                          </span>
+                          <span className={styles.rowMeta}>
+                            {formatScheduledTime(row.scheduledStart)}
+                          </span>
                         </button>
-                      ) : null}
-                    </li>
-                  ))}
+                        {canWrite && rowBookingStatus === 'Pending' ? (
+                          <button
+                            type="button"
+                            className={styles.startButton}
+                            disabled={isSaving}
+                            onClick={() => requestStart(row.consultation.id)}
+                          >
+                            Start Consultation
+                          </button>
+                        ) : null}
+                        <MoreOptionsMenu
+                          label={`Options for ${row.petName}`}
+                          items={rowMenuItems}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -543,11 +568,6 @@ export function VeterinaryConsolePage() {
                   saveError={saveError}
                   onStart={() => requestStart(selectedRow.consultation.id)}
                   onComplete={(fields) => void handleComplete(fields)}
-                  onScheduleFollowUp={(date) =>
-                    void handleScheduleFollowUp(date)
-                  }
-                  isSchedulingFollowUp={isSchedulingFollowUp}
-                  followUpError={followUpError}
                 />
               ) : (
                 <p className={styles.copy}>Select a consultation to begin.</p>
@@ -588,6 +608,117 @@ export function VeterinaryConsolePage() {
             Cancel
           </button>
         </div>
+      </Modal>
+
+      {followUpTargetRow?.consultation.booking ? (
+        <ScheduleFollowUpModal
+          accessToken={accessToken}
+          consultationId={followUpTargetRow.consultation.id}
+          petId={followUpTargetRow.consultation.pet_id}
+          petName={followUpTargetRow.petName}
+          customerId={followUpTargetRow.consultation.booking.customer_id}
+          ownerName={followUpTargetRow.ownerName}
+          branchId={followUpTargetRow.consultation.booking.branch_id}
+          originalSpecialInstructions={
+            followUpTargetRow.consultation.booking.special_instructions
+          }
+          onClose={() => setFollowUpTargetId(null)}
+          onLinked={handleFollowUpLinked}
+        />
+      ) : null}
+
+      <Modal
+        isOpen={viewDetailsRow !== undefined}
+        title="Consultation Details"
+        onClose={() => setViewDetailsId(null)}
+      >
+        {viewDetailsRow ? (
+          <div className={styles.viewDetailsBody}>
+            <div className={styles.viewDetailsHeader}>
+              <div>
+                <h3 className={styles.viewDetailsName}>
+                  {viewDetailsRow.petName}
+                </h3>
+                <span className={styles.copy}>
+                  Owner: {viewDetailsRow.ownerName}
+                </span>
+              </div>
+              {viewDetailsRow.consultation.booking?.status ? (
+                <BookingStatusBadge
+                  status={viewDetailsRow.consultation.booking.status}
+                />
+              ) : null}
+            </div>
+
+            <p className={styles.copy}>
+              Reason: {viewDetailsRow.consultation.reason_for_visit}
+            </p>
+
+            <div className={styles.viewDetailsGrid}>
+              <div className={styles.detailField}>
+                <span className={styles.detailLabel}>Temperature</span>
+                <span className={styles.detailValue}>
+                  {viewDetailsRow.consultation.temperature ?? '—'}
+                </span>
+              </div>
+              <div className={styles.detailField}>
+                <span className={styles.detailLabel}>Weight</span>
+                <span className={styles.detailValue}>
+                  {viewDetailsRow.consultation.weight ?? '—'}
+                </span>
+              </div>
+              <div className={styles.detailField}>
+                <span className={styles.detailLabel}>Heart Rate</span>
+                <span className={styles.detailValue}>
+                  {viewDetailsRow.consultation.heart_rate ?? '—'}
+                </span>
+              </div>
+              <div className={styles.detailField}>
+                <span className={styles.detailLabel}>Respiratory Rate</span>
+                <span className={styles.detailValue}>
+                  {viewDetailsRow.consultation.respiratory_rate ?? '—'}
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.detailField}>
+              <span className={styles.detailLabel}>Diagnosis</span>
+              <span className={styles.detailValue}>
+                {viewDetailsRow.consultation.diagnosis || '—'}
+              </span>
+            </div>
+
+            <div className={styles.detailField}>
+              <span className={styles.detailLabel}>Medications</span>
+              {viewDetailsRow.consultation.medications &&
+              viewDetailsRow.consultation.medications.length > 0 ? (
+                <ul className={styles.medicationList}>
+                  {viewDetailsRow.consultation.medications.map(
+                    (medication, index) => (
+                      <li key={index} className={styles.detailValue}>
+                        {medication.name} — {medication.dose}
+                        {medication.notes ? ` (${medication.notes})` : ''}
+                      </li>
+                    )
+                  )}
+                </ul>
+              ) : (
+                <span className={styles.detailValue}>
+                  No medications recorded.
+                </span>
+              )}
+            </div>
+
+            {viewDetailsRow.consultation.follow_up_booking_id ? (
+              <span className={styles.followUpIndicator}>
+                Follow-up scheduled
+                {viewDetailsRow.consultation.follow_up_date
+                  ? ` for ${viewDetailsRow.consultation.follow_up_date}`
+                  : ''}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </Modal>
     </main>
   );

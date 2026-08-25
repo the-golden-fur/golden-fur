@@ -286,14 +286,15 @@ export function MyPatientsPage() {
               ) : (
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => (
-                    <li key={row.petId} className={styles.rowItem}>
-                      <div
-                        className={
-                          row.petId === selectedPetId
-                            ? styles.cardActive
-                            : styles.card
-                        }
-                      >
+                    <li
+                      key={row.petId}
+                      className={
+                        row.petId === selectedPetId
+                          ? styles.rowItemActive
+                          : styles.rowItem
+                      }
+                    >
+                      <div className={styles.card}>
                         <span className={styles.rowPetName}>{row.petName}</span>
                         <span className={styles.rowMeta}>{row.ownerName}</span>
                         <span className={styles.rowMeta}>
