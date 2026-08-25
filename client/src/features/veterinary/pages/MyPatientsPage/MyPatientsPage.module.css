@@ -35,6 +35,53 @@
   padding: var(--space-2);
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  /* Without this, the default stretch cross-align makes the search field (no
+     label row above its input, unlike the sibling filterFields) grow taller
+     than its own input - the icon then centers on that taller box instead
+     of the visible input, reading as floating below it. */
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.filterField {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.filterLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.filterSelect:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) 2fr;
@@ -55,11 +102,18 @@
   padding: 0;
 }
 
+.rowItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .rowButton,
 .rowButtonActive {
   display: grid;
   gap: var(--space-0-5);
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

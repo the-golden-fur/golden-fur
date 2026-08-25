@@ -26,7 +26,6 @@ import {
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
-  getPetConsultationHistory,
   listConsultationQueue,
   scheduleFollowUp,
   updateConsultation,
@@ -93,10 +92,6 @@ export function VeterinaryConsolePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  const [petHistory, setPetHistory] = useState<Consultation[]>([]);
-  const [isPetHistoryLoading, setIsPetHistoryLoading] = useState(false);
-  const [petHistoryError, setPetHistoryError] = useState<string | null>(null);
 
   const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
@@ -297,8 +292,6 @@ export function VeterinaryConsolePage() {
   function selectConsultation(id: string) {
     setSelectedId(id);
     setSaveError(null);
-    setPetHistory([]);
-    setPetHistoryError(null);
     setFollowUpError(null);
   }
 
@@ -382,27 +375,6 @@ export function VeterinaryConsolePage() {
         consultation.id === updated.id ? updated : consultation
       )
     );
-  }
-
-  function handleOpenPetHistory() {
-    if (!accessToken || !selectedRow) return;
-
-    setIsPetHistoryLoading(true);
-    setPetHistoryError(null);
-
-    void getPetConsultationHistory(
-      selectedRow.consultation.pet_id,
-      accessToken
-    ).then((result) => {
-      setIsPetHistoryLoading(false);
-
-      if (result.error || !result.data) {
-        setPetHistoryError(result.error ?? 'Could not load pet history.');
-        return;
-      }
-
-      setPetHistory(result.data);
-    });
   }
 
   async function handleScheduleFollowUp(followUpDate: string) {
@@ -549,10 +521,6 @@ export function VeterinaryConsolePage() {
                   saveError={saveError}
                   onStart={() => void handleStart()}
                   onComplete={(fields) => void handleComplete(fields)}
-                  petHistory={petHistory}
-                  isPetHistoryLoading={isPetHistoryLoading}
-                  petHistoryError={petHistoryError}
-                  onOpenPetHistory={handleOpenPetHistory}
                   onScheduleFollowUp={(date) =>
                     void handleScheduleFollowUp(date)
                   }

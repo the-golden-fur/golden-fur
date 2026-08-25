@@ -265,34 +265,6 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
   });
 
-  it('AC-3: the Pet History tab loads and shows prior consultations', async () => {
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Veterinarian'),
-      error: null,
-    });
-    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
-      data: { consultations: [buildConsultation()] },
-      error: null,
-    });
-    stubPetAndOwner();
-    vi.mocked(veterinaryApi.getPetConsultationHistory).mockResolvedValue({
-      data: [
-        buildConsultation(
-          { id: 'prior-1', diagnosis: 'Old diagnosis' },
-          'Completed'
-        ),
-      ],
-      error: null,
-    });
-
-    renderPage();
-
-    await userEvent.click(await screen.findByText('Whiskers'));
-    await userEvent.click(screen.getByRole('tab', { name: /pet history/i }));
-
-    expect(await screen.findByText(/Old diagnosis/)).toBeInTheDocument();
-  });
-
   it('AC-4: scheduling a follow-up shows the "Follow-up scheduled" indicator', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),

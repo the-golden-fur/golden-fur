@@ -1,7 +1,14 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  SearchSortBar,
+  type SortOption,
+} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   createMedicationCatalogItem,
   createProcedureCatalogItem,
@@ -25,12 +32,54 @@ import styles from './VetCatalogPage.module.css';
  * their own catalog (server-enforced, see vetCatalog.service.ts). */
 const ALLOWED_VIEWER_ROLES = new Set(['Veterinarian']);
 
+type CatalogTab = 'medications' | 'procedures';
+
+type MedicationSortKey = 'name-asc' | 'name-desc';
+const MEDICATION_SORT_OPTIONS: SortOption<MedicationSortKey>[] = [
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+];
+
+type ProcedureSortKey = 'description-asc' | 'description-desc';
+const PROCEDURE_SORT_OPTIONS: SortOption<ProcedureSortKey>[] = [
+  { value: 'description-asc', label: 'Description (A-Z)' },
+  { value: 'description-desc', label: 'Description (Z-A)' },
+];
+
+type ProcedureTypeFilter = ProcedureType | 'All';
+
+interface MedicationFormState {
+  name: string;
+  dose: string;
+  price: string;
+}
+
+const EMPTY_MEDICATION_FORM: MedicationFormState = {
+  name: '',
+  dose: '',
+  price: '',
+};
+
+interface ProcedureFormState {
+  procedureType: ProcedureType;
+  description: string;
+  price: string;
+}
+
+const EMPTY_PROCEDURE_FORM: ProcedureFormState = {
+  procedureType: PROCEDURE_TYPES[0],
+  description: '',
+  price: '',
+};
+
 export function VetCatalogPage() {
   const { user, accessToken } = useAuth();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
+
+  const [activeTab, setActiveTab] = useState<CatalogTab>('medications');
 
   const [medications, setMedications] = useState<VetMedicationCatalogItem[]>(
     []
@@ -40,32 +89,19 @@ export function VetCatalogPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const [newMedName, setNewMedName] = useState('');
-  const [newMedDose, setNewMedDose] = useState('');
-  const [newMedPrice, setNewMedPrice] = useState('');
-  const [medFormError, setMedFormError] = useState<string | null>(null);
-  const [isSubmittingMed, setIsSubmittingMed] = useState(false);
+  const [procedureTypeFilter, setProcedureTypeFilter] =
+    useState<ProcedureTypeFilter>('All');
 
-  const [newProcType, setNewProcType] = useState<ProcedureType>(
-    PROCEDURE_TYPES[0]
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [formKind, setFormKind] = useState<CatalogTab | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [medicationForm, setMedicationForm] = useState<MedicationFormState>(
+    EMPTY_MEDICATION_FORM
   );
-  const [newProcDescription, setNewProcDescription] = useState('');
-  const [newProcPrice, setNewProcPrice] = useState('');
-  const [procFormError, setProcFormError] = useState<string | null>(null);
-  const [isSubmittingProc, setIsSubmittingProc] = useState(false);
-
-  const [editingMedId, setEditingMedId] = useState<string | null>(null);
-  const [editingMedName, setEditingMedName] = useState('');
-  const [editingMedDose, setEditingMedDose] = useState('');
-  const [editingMedPrice, setEditingMedPrice] = useState('');
-  const [medRowError, setMedRowError] = useState<string | null>(null);
-
-  const [editingProcId, setEditingProcId] = useState<string | null>(null);
-  const [editingProcType, setEditingProcType] =
-    useState<ProcedureType>('Lab test');
-  const [editingProcDescription, setEditingProcDescription] = useState('');
-  const [editingProcPrice, setEditingProcPrice] = useState('');
-  const [procRowError, setProcRowError] = useState<string | null>(null);
+  const [procedureForm, setProcedureForm] =
+    useState<ProcedureFormState>(EMPTY_PROCEDURE_FORM);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -119,85 +155,103 @@ export function VetCatalogPage() {
     };
   }, [roleStatus, accessToken]);
 
-  async function handleCreateMedication(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const {
+    search: medicationSearch,
+    setSearch: setMedicationSearch,
+    sortKey: medicationSortKey,
+    setSortKey: setMedicationSortKey,
+    result: visibleMedications,
+  } = useSearchAndSort<VetMedicationCatalogItem, MedicationSortKey>({
+    items: medications,
+    matchesQuery: (item, query) =>
+      item.name.toLowerCase().includes(query) ||
+      (item.default_dose ?? '').toLowerCase().includes(query),
+    comparators: {
+      'name-asc': (a, b) => a.name.localeCompare(b.name),
+      'name-desc': (a, b) => b.name.localeCompare(a.name),
+    },
+    initialSortKey: 'name-asc',
+  });
 
-    if (!accessToken || !newMedName.trim()) {
-      setMedFormError('Name is required.');
-      return;
-    }
+  const {
+    search: procedureSearch,
+    setSearch: setProcedureSearch,
+    sortKey: procedureSortKey,
+    setSortKey: setProcedureSortKey,
+    result: searchedProcedures,
+  } = useSearchAndSort<VetProcedureCatalogItem, ProcedureSortKey>({
+    items: procedures,
+    matchesQuery: (item, query) =>
+      item.description.toLowerCase().includes(query) ||
+      item.procedure_type.toLowerCase().includes(query),
+    comparators: {
+      'description-asc': (a, b) => a.description.localeCompare(b.description),
+      'description-desc': (a, b) => b.description.localeCompare(a.description),
+    },
+    initialSortKey: 'description-asc',
+  });
 
-    setMedFormError(null);
-    setIsSubmittingMed(true);
-
-    const result = await createMedicationCatalogItem(accessToken, {
-      name: newMedName.trim(),
-      default_dose: newMedDose.trim() || undefined,
-      default_price: newMedPrice ? Number(newMedPrice) : undefined,
-    });
-
-    setIsSubmittingMed(false);
-
-    if (result.error || !result.data) {
-      setMedFormError(result.error ?? 'Could not add medication.');
-      return;
-    }
-
-    setMedications((prev) => [
-      ...prev,
-      result.data as VetMedicationCatalogItem,
-    ]);
-    setNewMedName('');
-    setNewMedDose('');
-    setNewMedPrice('');
-    setMessage('Medication added.');
-  }
-
-  function startEditingMedication(item: VetMedicationCatalogItem) {
-    setEditingMedId(item.id);
-    setEditingMedName(item.name);
-    setEditingMedDose(item.default_dose ?? '');
-    setEditingMedPrice(item.default_price?.toString() ?? '');
-    setMedRowError(null);
-  }
-
-  async function handleSaveMedication(itemId: string) {
-    if (!accessToken || !editingMedName.trim()) {
-      setMedRowError('Name is required.');
-      return;
-    }
-
-    setMedRowError(null);
-
-    const result = await updateMedicationCatalogItem(itemId, accessToken, {
-      name: editingMedName.trim(),
-      default_dose: editingMedDose.trim() || null,
-      default_price: editingMedPrice ? Number(editingMedPrice) : null,
-    });
-
-    if (result.error || !result.data) {
-      setMedRowError(result.error ?? 'Could not update medication.');
-      return;
-    }
-
-    setMedications((prev) =>
-      prev.map((item) =>
-        item.id === itemId ? (result.data as VetMedicationCatalogItem) : item
-      )
+  const visibleProcedures = useMemo(() => {
+    if (procedureTypeFilter === 'All') return searchedProcedures;
+    return searchedProcedures.filter(
+      (item) => item.procedure_type === procedureTypeFilter
     );
-    setEditingMedId(null);
-    setMessage('Medication updated.');
+  }, [searchedProcedures, procedureTypeFilter]);
+
+  function openCreateMedication() {
+    setFormKind('medications');
+    setEditingId(null);
+    setMedicationForm(EMPTY_MEDICATION_FORM);
+    setFormError(null);
+    setIsFormOpen(true);
+  }
+
+  function openEditMedication(item: VetMedicationCatalogItem) {
+    setFormKind('medications');
+    setEditingId(item.id);
+    setMedicationForm({
+      name: item.name,
+      dose: item.default_dose ?? '',
+      price: item.default_price?.toString() ?? '',
+    });
+    setFormError(null);
+    setIsFormOpen(true);
+  }
+
+  function openCreateProcedure() {
+    setFormKind('procedures');
+    setEditingId(null);
+    setProcedureForm(EMPTY_PROCEDURE_FORM);
+    setFormError(null);
+    setIsFormOpen(true);
+  }
+
+  function openEditProcedure(item: VetProcedureCatalogItem) {
+    setFormKind('procedures');
+    setEditingId(item.id);
+    setProcedureForm({
+      procedureType: item.procedure_type,
+      description: item.description,
+      price: item.default_price?.toString() ?? '',
+    });
+    setFormError(null);
+    setIsFormOpen(true);
+  }
+
+  function closeForm() {
+    setIsFormOpen(false);
+    setFormKind(null);
+    setEditingId(null);
+    setFormError(null);
   }
 
   async function handleDeleteMedication(itemId: string) {
     if (!accessToken) return;
 
-    setMedRowError(null);
-
     const result = await deleteMedicationCatalogItem(itemId, accessToken);
 
     if (result.error) {
-      setMedRowError(result.error);
+      setMessage(result.error);
       return;
     }
 
@@ -205,86 +259,127 @@ export function VetCatalogPage() {
     setMessage('Medication deleted.');
   }
 
-  async function handleCreateProcedure(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!accessToken || !newProcDescription.trim()) {
-      setProcFormError('Description is required.');
-      return;
-    }
-
-    setProcFormError(null);
-    setIsSubmittingProc(true);
-
-    const result = await createProcedureCatalogItem(accessToken, {
-      procedure_type: newProcType,
-      description: newProcDescription.trim(),
-      default_price: newProcPrice ? Number(newProcPrice) : undefined,
-    });
-
-    setIsSubmittingProc(false);
-
-    if (result.error || !result.data) {
-      setProcFormError(result.error ?? 'Could not add procedure.');
-      return;
-    }
-
-    setProcedures((prev) => [...prev, result.data as VetProcedureCatalogItem]);
-    setNewProcDescription('');
-    setNewProcPrice('');
-    setMessage('Procedure added.');
-  }
-
-  function startEditingProcedure(item: VetProcedureCatalogItem) {
-    setEditingProcId(item.id);
-    setEditingProcType(item.procedure_type);
-    setEditingProcDescription(item.description);
-    setEditingProcPrice(item.default_price?.toString() ?? '');
-    setProcRowError(null);
-  }
-
-  async function handleSaveProcedure(itemId: string) {
-    if (!accessToken || !editingProcDescription.trim()) {
-      setProcRowError('Description is required.');
-      return;
-    }
-
-    setProcRowError(null);
-
-    const result = await updateProcedureCatalogItem(itemId, accessToken, {
-      procedure_type: editingProcType,
-      description: editingProcDescription.trim(),
-      default_price: editingProcPrice ? Number(editingProcPrice) : null,
-    });
-
-    if (result.error || !result.data) {
-      setProcRowError(result.error ?? 'Could not update procedure.');
-      return;
-    }
-
-    setProcedures((prev) =>
-      prev.map((item) =>
-        item.id === itemId ? (result.data as VetProcedureCatalogItem) : item
-      )
-    );
-    setEditingProcId(null);
-    setMessage('Procedure updated.');
-  }
-
   async function handleDeleteProcedure(itemId: string) {
     if (!accessToken) return;
-
-    setProcRowError(null);
 
     const result = await deleteProcedureCatalogItem(itemId, accessToken);
 
     if (result.error) {
-      setProcRowError(result.error);
+      setMessage(result.error);
       return;
     }
 
     setProcedures((prev) => prev.filter((item) => item.id !== itemId));
     setMessage('Procedure deleted.');
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!accessToken) return;
+
+    if (formKind === 'medications') {
+      if (!medicationForm.name.trim()) {
+        setFormError('Name is required.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setFormError(null);
+
+      const result =
+        editingId === null
+          ? await createMedicationCatalogItem(accessToken, {
+              name: medicationForm.name.trim(),
+              default_dose: medicationForm.dose.trim() || undefined,
+              default_price: medicationForm.price
+                ? Number(medicationForm.price)
+                : undefined,
+            })
+          : await updateMedicationCatalogItem(editingId, accessToken, {
+              name: medicationForm.name.trim(),
+              default_dose: medicationForm.dose.trim() || null,
+              default_price: medicationForm.price
+                ? Number(medicationForm.price)
+                : null,
+            });
+
+      setIsSubmitting(false);
+
+      if (result.error || !result.data) {
+        setFormError(result.error ?? 'Could not save medication.');
+        return;
+      }
+
+      const saved = result.data;
+      setMedications((prev) =>
+        editingId === null
+          ? [...prev, saved]
+          : prev.map((item) => (item.id === editingId ? saved : item))
+      );
+      setMessage(
+        editingId === null ? 'Medication added.' : 'Medication updated.'
+      );
+      closeForm();
+      return;
+    }
+
+    if (formKind === 'procedures') {
+      if (!procedureForm.description.trim()) {
+        setFormError('Description is required.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setFormError(null);
+
+      const result =
+        editingId === null
+          ? await createProcedureCatalogItem(accessToken, {
+              procedure_type: procedureForm.procedureType,
+              description: procedureForm.description.trim(),
+              default_price: procedureForm.price
+                ? Number(procedureForm.price)
+                : undefined,
+            })
+          : await updateProcedureCatalogItem(editingId, accessToken, {
+              procedure_type: procedureForm.procedureType,
+              description: procedureForm.description.trim(),
+              default_price: procedureForm.price
+                ? Number(procedureForm.price)
+                : null,
+            });
+
+      setIsSubmitting(false);
+
+      if (result.error || !result.data) {
+        setFormError(result.error ?? 'Could not save procedure.');
+        return;
+      }
+
+      const saved = result.data;
+      setProcedures((prev) =>
+        editingId === null
+          ? [...prev, saved]
+          : prev.map((item) => (item.id === editingId ? saved : item))
+      );
+      setMessage(
+        editingId === null ? 'Procedure added.' : 'Procedure updated.'
+      );
+      closeForm();
+    }
+  }
+
+  if (!user?.id || !accessToken) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.content}>
+          <p className={styles.errorBanner} role="alert">
+            Unable to load your catalog.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   if (roleStatus === 'loading') {
@@ -311,7 +406,36 @@ export function VetCatalogPage() {
           visit. Only you can see and edit your own catalog.
         </p>
 
-        {message ? <p className={styles.successBanner}>{message}</p> : null}
+        <div className={styles.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'medications'}
+            className={
+              activeTab === 'medications' ? styles.tabActive : styles.tab
+            }
+            onClick={() => setActiveTab('medications')}
+          >
+            Medications
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'procedures'}
+            className={
+              activeTab === 'procedures' ? styles.tabActive : styles.tab
+            }
+            onClick={() => setActiveTab('procedures')}
+          >
+            Procedures
+          </button>
+        </div>
+
+        {message ? (
+          <p className={styles.successBanner} role="status">
+            {message}
+          </p>
+        ) : null}
 
         {isLoading ? (
           <p className={styles.copy}>Loading your catalog...</p>
@@ -319,161 +443,89 @@ export function VetCatalogPage() {
           <p className={styles.errorBanner} role="alert">
             {loadError}
           </p>
+        ) : activeTab === 'medications' ? (
+          <>
+            <div className={styles.toolbar}>
+              <div className={styles.filters}>
+                <SearchSortBar
+                  searchValue={medicationSearch}
+                  onSearchChange={setMedicationSearch}
+                  searchPlaceholder="Search medications..."
+                  sortValue={medicationSortKey}
+                  onSortChange={setMedicationSortKey}
+                  sortOptions={MEDICATION_SORT_OPTIONS}
+                />
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={openCreateMedication}
+              >
+                Add medication
+              </button>
+            </div>
+
+            {visibleMedications.length === 0 ? (
+              <p className={styles.copy}>No medications match these filters.</p>
+            ) : (
+              <ul className={styles.itemList}>
+                {visibleMedications.map((item) => (
+                  <li key={item.id} className={styles.itemRow}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemName}>{item.name}</span>
+                      {item.default_dose ? (
+                        <span className={styles.badge}>
+                          {item.default_dose}
+                        </span>
+                      ) : null}
+                      {item.default_price != null ? (
+                        <span className={styles.badge}>
+                          ₱{item.default_price}
+                        </span>
+                      ) : null}
+                    </div>
+                    <MoreOptionsMenu
+                      label={`Actions for ${item.name}`}
+                      items={[
+                        {
+                          label: 'Edit',
+                          onSelect: () => openEditMedication(item),
+                        },
+                        {
+                          label: 'Delete',
+                          onSelect: () => void handleDeleteMedication(item.id),
+                        },
+                      ]}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         ) : (
           <>
-            <section className={styles.panel} aria-labelledby="add-med-title">
-              <h2 className={styles.sectionTitle} id="add-med-title">
-                Add medication
-              </h2>
-              <form
-                className={styles.form}
-                onSubmit={(event) => void handleCreateMedication(event)}
-              >
-                <label className={styles.field}>
-                  <span className={styles.label}>Name</span>
-                  <input
-                    className={styles.input}
-                    value={newMedName}
-                    onChange={(event) => setNewMedName(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span className={styles.label}>Default Dose</span>
-                  <input
-                    className={styles.input}
-                    value={newMedDose}
-                    onChange={(event) => setNewMedDose(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span className={styles.label}>Default Price (₱)</span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    value={newMedPrice}
-                    onChange={(event) => setNewMedPrice(event.target.value)}
-                  />
-                </label>
-                {medFormError ? (
-                  <p className={styles.errorBanner} role="alert">
-                    {medFormError}
-                  </p>
-                ) : null}
-                <button
-                  className={styles.button}
-                  type="submit"
-                  disabled={isSubmittingMed}
-                >
-                  {isSubmittingMed ? 'Adding...' : 'Add medication'}
-                </button>
-              </form>
-            </section>
-
-            <section className={styles.group}>
-              <h2 className={styles.groupTitle}>Medications</h2>
-              {medications.length === 0 ? (
-                <p className={styles.copy}>No medications saved yet.</p>
-              ) : (
-                <ul className={styles.list}>
-                  {medications.map((item) => (
-                    <li className={styles.listItem} key={item.id}>
-                      {editingMedId === item.id ? (
-                        <>
-                          <input
-                            className={styles.input}
-                            placeholder="Name"
-                            value={editingMedName}
-                            onChange={(event) =>
-                              setEditingMedName(event.target.value)
-                            }
-                          />
-                          <input
-                            className={styles.input}
-                            placeholder="Default Dose"
-                            value={editingMedDose}
-                            onChange={(event) =>
-                              setEditingMedDose(event.target.value)
-                            }
-                          />
-                          <input
-                            className={styles.input}
-                            type="number"
-                            placeholder="Default Price (₱)"
-                            value={editingMedPrice}
-                            onChange={(event) =>
-                              setEditingMedPrice(event.target.value)
-                            }
-                          />
-                          <button
-                            type="button"
-                            className={styles.smallButton}
-                            onClick={() => void handleSaveMedication(item.id)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => setEditingMedId(null)}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className={styles.itemName}>{item.name}</span>
-                          <span className={styles.itemMeta}>
-                            {item.default_dose ?? '—'}
-                          </span>
-                          <span className={styles.itemMeta}>
-                            {item.default_price != null
-                              ? `₱${item.default_price}`
-                              : '—'}
-                          </span>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => startEditingMedication(item)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => void handleDeleteMedication(item.id)}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {medRowError ? (
-                <p className={styles.errorBanner} role="alert">
-                  {medRowError}
-                </p>
-              ) : null}
-            </section>
-
-            <section className={styles.panel} aria-labelledby="add-proc-title">
-              <h2 className={styles.sectionTitle} id="add-proc-title">
-                Add procedure
-              </h2>
-              <form
-                className={styles.form}
-                onSubmit={(event) => void handleCreateProcedure(event)}
-              >
-                <label className={styles.field}>
-                  <span className={styles.label}>Procedure Type</span>
+            <div className={styles.toolbar}>
+              <div className={styles.filters}>
+                <SearchSortBar
+                  searchValue={procedureSearch}
+                  onSearchChange={setProcedureSearch}
+                  searchPlaceholder="Search procedures..."
+                  sortValue={procedureSortKey}
+                  onSortChange={setProcedureSortKey}
+                  sortOptions={PROCEDURE_SORT_OPTIONS}
+                />
+                <label className={styles.filterField}>
+                  <span className={styles.filterLabel}>Type</span>
                   <select
-                    className={styles.input}
-                    value={newProcType}
+                    className={styles.filterSelect}
+                    value={procedureTypeFilter}
                     onChange={(event) =>
-                      setNewProcType(event.target.value as ProcedureType)
+                      setProcedureTypeFilter(
+                        event.target.value as ProcedureTypeFilter
+                      )
                     }
                   >
+                    <option value="All">All types</option>
                     {PROCEDURE_TYPES.map((type) => (
                       <option key={type} value={type}>
                         {type}
@@ -481,139 +533,220 @@ export function VetCatalogPage() {
                     ))}
                   </select>
                 </label>
-                <label className={styles.field}>
-                  <span className={styles.label}>Description</span>
-                  <input
-                    className={styles.input}
-                    value={newProcDescription}
-                    onChange={(event) =>
-                      setNewProcDescription(event.target.value)
-                    }
-                  />
-                </label>
-                <label className={styles.field}>
-                  <span className={styles.label}>Default Price (₱)</span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    value={newProcPrice}
-                    onChange={(event) => setNewProcPrice(event.target.value)}
-                  />
-                </label>
-                {procFormError ? (
-                  <p className={styles.errorBanner} role="alert">
-                    {procFormError}
-                  </p>
-                ) : null}
-                <button
-                  className={styles.button}
-                  type="submit"
-                  disabled={isSubmittingProc}
-                >
-                  {isSubmittingProc ? 'Adding...' : 'Add procedure'}
-                </button>
-              </form>
-            </section>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={openCreateProcedure}
+              >
+                Add procedure
+              </button>
+            </div>
 
-            <section className={styles.group}>
-              <h2 className={styles.groupTitle}>Procedures</h2>
-              {procedures.length === 0 ? (
-                <p className={styles.copy}>No procedures saved yet.</p>
-              ) : (
-                <ul className={styles.list}>
-                  {procedures.map((item) => (
-                    <li className={styles.listItem} key={item.id}>
-                      {editingProcId === item.id ? (
-                        <>
-                          <select
-                            className={styles.input}
-                            value={editingProcType}
-                            onChange={(event) =>
-                              setEditingProcType(
-                                event.target.value as ProcedureType
-                              )
-                            }
-                          >
-                            {PROCEDURE_TYPES.map((type) => (
-                              <option key={type} value={type}>
-                                {type}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            className={styles.input}
-                            placeholder="Description"
-                            value={editingProcDescription}
-                            onChange={(event) =>
-                              setEditingProcDescription(event.target.value)
-                            }
-                          />
-                          <input
-                            className={styles.input}
-                            type="number"
-                            placeholder="Default Price (₱)"
-                            value={editingProcPrice}
-                            onChange={(event) =>
-                              setEditingProcPrice(event.target.value)
-                            }
-                          />
-                          <button
-                            type="button"
-                            className={styles.smallButton}
-                            onClick={() => void handleSaveProcedure(item.id)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => setEditingProcId(null)}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className={styles.itemName}>
-                            {item.procedure_type}
-                          </span>
-                          <span className={styles.itemMeta}>
-                            {item.description}
-                          </span>
-                          <span className={styles.itemMeta}>
-                            {item.default_price != null
-                              ? `₱${item.default_price}`
-                              : '—'}
-                          </span>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => startEditingProcedure(item)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.smallButtonSecondary}
-                            onClick={() => void handleDeleteProcedure(item.id)}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {procRowError ? (
-                <p className={styles.errorBanner} role="alert">
-                  {procRowError}
-                </p>
-              ) : null}
-            </section>
+            {visibleProcedures.length === 0 ? (
+              <p className={styles.copy}>No procedures match these filters.</p>
+            ) : (
+              <ul className={styles.itemList}>
+                {visibleProcedures.map((item) => (
+                  <li key={item.id} className={styles.itemRow}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemName}>
+                        {item.procedure_type}
+                      </span>
+                      <span className={styles.itemDescription}>
+                        {item.description}
+                      </span>
+                      {item.default_price != null ? (
+                        <span className={styles.badge}>
+                          ₱{item.default_price}
+                        </span>
+                      ) : null}
+                    </div>
+                    <MoreOptionsMenu
+                      label={`Actions for ${item.description}`}
+                      items={[
+                        {
+                          label: 'Edit',
+                          onSelect: () => openEditProcedure(item),
+                        },
+                        {
+                          label: 'Delete',
+                          onSelect: () => void handleDeleteProcedure(item.id),
+                        },
+                      ]}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>
+
+      <Modal
+        isOpen={isFormOpen}
+        title={
+          formKind === 'medications'
+            ? editingId === null
+              ? 'Add medication'
+              : 'Edit medication'
+            : editingId === null
+              ? 'Add procedure'
+              : 'Edit procedure'
+        }
+        onClose={closeForm}
+        closeOnBackdropClick={false}
+      >
+        {isFormOpen && formKind === 'medications' ? (
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Name</span>
+              <input
+                className={styles.input}
+                value={medicationForm.name}
+                onChange={(event) =>
+                  setMedicationForm((prev) => ({
+                    ...prev,
+                    name: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Default Dose</span>
+              <input
+                className={styles.input}
+                value={medicationForm.dose}
+                onChange={(event) =>
+                  setMedicationForm((prev) => ({
+                    ...prev,
+                    dose: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Default Price (₱)</span>
+              <input
+                className={styles.input}
+                type="number"
+                value={medicationForm.price}
+                onChange={(event) =>
+                  setMedicationForm((prev) => ({
+                    ...prev,
+                    price: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            {formError ? (
+              <p className={styles.errorBanner} role="alert">
+                {formError}
+              </p>
+            ) : null}
+
+            <div className={styles.formActions}>
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Saving...' : 'Save medication'}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={closeForm}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {isFormOpen && formKind === 'procedures' ? (
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Procedure Type</span>
+              <select
+                className={styles.input}
+                value={procedureForm.procedureType}
+                onChange={(event) =>
+                  setProcedureForm((prev) => ({
+                    ...prev,
+                    procedureType: event.target.value as ProcedureType,
+                  }))
+                }
+              >
+                {PROCEDURE_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Description</span>
+              <input
+                className={styles.input}
+                value={procedureForm.description}
+                onChange={(event) =>
+                  setProcedureForm((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Default Price (₱)</span>
+              <input
+                className={styles.input}
+                type="number"
+                value={procedureForm.price}
+                onChange={(event) =>
+                  setProcedureForm((prev) => ({
+                    ...prev,
+                    price: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            {formError ? (
+              <p className={styles.errorBanner} role="alert">
+                {formError}
+              </p>
+            ) : null}
+
+            <div className={styles.formActions}>
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Saving...' : 'Save procedure'}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={closeForm}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </main>
   );
 }

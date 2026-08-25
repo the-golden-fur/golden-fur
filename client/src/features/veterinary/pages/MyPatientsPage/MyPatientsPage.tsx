@@ -6,11 +6,16 @@ import {
   getCustomerProfile,
   getPet,
 } from '../../../customers/api/customer.api';
-import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import type {
+  CustomerProfile,
+  Pet,
+  PetType,
+} from '../../../customers/customer.types';
 import {
   SearchSortBar,
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   getPetConsultationHistory,
@@ -32,6 +37,9 @@ const SORT_OPTIONS: SortOption<SortKey>[] = [
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
 ];
 
+const PET_TYPES: PetType[] = ['Dog', 'Cat'];
+type PetTypeFilter = PetType | 'All';
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
@@ -50,6 +58,7 @@ export function MyPatientsPage() {
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [petTypeFilter, setPetTypeFilter] = useState<PetTypeFilter>('All');
 
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
   const [petHistory, setPetHistory] = useState<Consultation[]>([]);
@@ -145,6 +154,7 @@ export function MyPatientsPage() {
         lastVisitAt: patient.lastVisitAt,
         petName: pet?.name ?? 'Unknown pet',
         ownerName: owner?.full_name ?? 'Unknown owner',
+        petType: pet?.pet_type ?? null,
       };
     });
   }, [patients, pets, owners]);
@@ -156,7 +166,7 @@ export function MyPatientsPage() {
     setSearch,
     sortKey,
     setSortKey,
-    result: visibleRows,
+    result: searchedRows,
   } = useSearchAndSort<PatientRow, SortKey>({
     items: rows,
     matchesQuery: (row, query) =>
@@ -169,6 +179,11 @@ export function MyPatientsPage() {
     },
     initialSortKey: 'recent',
   });
+
+  const visibleRows = useMemo(() => {
+    if (petTypeFilter === 'All') return searchedRows;
+    return searchedRows.filter((row) => row.petType === petTypeFilter);
+  }, [searchedRows, petTypeFilter]);
 
   const selectedRow = rows.find((row) => row.petId === selectedPetId);
 
@@ -223,14 +238,36 @@ export function MyPatientsPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>My Patients</h1>
 
-        <SearchSortBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search by pet or owner..."
-          sortValue={sortKey}
-          onSortChange={setSortKey}
-          sortOptions={SORT_OPTIONS}
-        />
+        <div className={styles.toolbar}>
+          <div className={styles.filters}>
+            <SearchSortBar
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search by pet or owner..."
+              sortValue={sortKey}
+              onSortChange={setSortKey}
+              sortOptions={SORT_OPTIONS}
+            />
+
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Pet Type</span>
+              <select
+                className={styles.filterSelect}
+                value={petTypeFilter}
+                onChange={(event) =>
+                  setPetTypeFilter(event.target.value as PetTypeFilter)
+                }
+              >
+                <option value="All">All types</option>
+                {PET_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
 
         {isLoading ? (
           <p className={styles.copy}>Loading patients...</p>
@@ -249,7 +286,7 @@ export function MyPatientsPage() {
               ) : (
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => (
-                    <li key={row.petId}>
+                    <li key={row.petId} className={styles.rowItem}>
                       <button
                         type="button"
                         className={
@@ -265,6 +302,15 @@ export function MyPatientsPage() {
                           Last visit: {formatDate(row.lastVisitAt)}
                         </span>
                       </button>
+                      <MoreOptionsMenu
+                        label={`More options for ${row.petName}`}
+                        items={[
+                          {
+                            label: 'View History',
+                            onSelect: () => selectPatient(row.petId),
+                          },
+                        ]}
+                      />
                     </li>
                   ))}
                 </ul>
