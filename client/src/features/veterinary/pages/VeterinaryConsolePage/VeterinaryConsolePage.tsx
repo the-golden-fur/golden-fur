@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
@@ -70,7 +69,6 @@ const REFRESH_INTERVAL_MS = 15_000;
 
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
-  const navigate = useNavigate();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
@@ -295,19 +293,15 @@ export function VeterinaryConsolePage() {
     setFollowUpError(null);
   }
 
-  async function handleStart() {
-    if (!accessToken || !selectedRow) return;
+  async function handleStart(consultationId: string) {
+    if (!accessToken) return;
 
     setIsSaving(true);
     setSaveError(null);
 
-    const result = await updateConsultation(
-      selectedRow.consultation.id,
-      accessToken,
-      {
-        status: 'Ongoing',
-      }
-    );
+    const result = await updateConsultation(consultationId, accessToken, {
+      status: 'Ongoing',
+    });
 
     setIsSaving(false);
 
@@ -490,18 +484,20 @@ export function VeterinaryConsolePage() {
                           />
                         ) : null}
                       </button>
-                      <MoreOptionsMenu
-                        label={`More options for ${row.petName}`}
-                        items={[
-                          {
-                            label: 'View booking details',
-                            onSelect: () =>
-                              navigate(
-                                `/staff/bookings/${row.consultation.booking_id}`
-                              ),
-                          },
-                        ]}
-                      />
+                      {canWrite &&
+                      row.consultation.booking?.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.startButton}
+                          disabled={isSaving}
+                          onClick={() => {
+                            selectConsultation(row.consultation.id);
+                            void handleStart(row.consultation.id);
+                          }}
+                        >
+                          Start Consultation
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -519,7 +515,7 @@ export function VeterinaryConsolePage() {
                   canWrite={canWrite}
                   isSaving={isSaving}
                   saveError={saveError}
-                  onStart={() => void handleStart()}
+                  onStart={() => void handleStart(selectedRow.consultation.id)}
                   onComplete={(fields) => void handleComplete(fields)}
                   onScheduleFollowUp={(date) =>
                     void handleScheduleFollowUp(date)

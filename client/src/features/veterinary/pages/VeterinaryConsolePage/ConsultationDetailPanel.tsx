@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   listMedicationCatalog,
   listProcedureCatalog,
@@ -13,7 +14,6 @@ import type {
   VetMedicationCatalogItem,
   VetProcedureCatalogItem,
 } from '../../veterinary.types';
-import { PROCEDURE_TYPES } from '../../veterinary.types';
 import styles from './ConsultationDetailPanel.module.css';
 
 export interface ConsultationDetailPanelProps {
@@ -97,6 +97,7 @@ export function ConsultationDetailPanel({
   const [vaccineName, setVaccineName] = useState('');
   const [vaccineDate, setVaccineDate] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
+  const [isStartModalOpen, setIsStartModalOpen] = useState(false);
 
   const [medicationCatalog, setMedicationCatalog] = useState<
     VetMedicationCatalogItem[]
@@ -156,10 +157,6 @@ export function ConsultationDetailPanel({
     ]);
   }
 
-  function addMedication() {
-    setMedications((prev) => [...prev, { name: '', dose: '', notes: '' }]);
-  }
-
   function updateMedication(index: number, patch: Partial<MedicationInput>) {
     setMedications((prev) =>
       prev.map((medication, i) =>
@@ -170,13 +167,6 @@ export function ConsultationDetailPanel({
 
   function removeMedication(index: number) {
     setMedications((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addProcedure() {
-    setProcedures((prev) => [
-      ...prev,
-      { procedure_type: PROCEDURE_TYPES[0], description: '', amount: 0 },
-    ]);
   }
 
   function updateProcedure(index: number, patch: Partial<ProcedureInput>) {
@@ -240,9 +230,9 @@ export function ConsultationDetailPanel({
             type="button"
             className={styles.primaryButton}
             disabled={isSaving || !canWrite}
-            onClick={onStart}
+            onClick={() => setIsStartModalOpen(true)}
           >
-            {isSaving ? 'Starting...' : 'Start Consultation'}
+            Start Consultation
           </button>
         ) : (
           <>
@@ -309,24 +299,12 @@ export function ConsultationDetailPanel({
               <span className={styles.fieldLabel}>Medications</span>
               {medications.map((medication, index) => (
                 <div key={index} className={styles.listRow}>
-                  <input
-                    className={styles.input}
-                    placeholder="Name"
-                    value={medication.name}
-                    disabled={isCompleted || !canWrite}
-                    onChange={(event) =>
-                      updateMedication(index, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Dose"
-                    value={medication.dose}
-                    disabled={isCompleted || !canWrite}
-                    onChange={(event) =>
-                      updateMedication(index, { dose: event.target.value })
-                    }
-                  />
+                  <span className={styles.readOnlyField}>
+                    {medication.name}
+                  </span>
+                  <span className={styles.readOnlyField}>
+                    {medication.dose}
+                  </span>
                   <input
                     className={styles.input}
                     type="number"
@@ -351,35 +329,33 @@ export function ConsultationDetailPanel({
                 </div>
               ))}
               {!isCompleted && canWrite ? (
-                <div className={styles.catalogRow}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={addMedication}
+                medicationCatalog.length > 0 ? (
+                  <select
+                    className={styles.catalogSelect}
+                    aria-label="Add medication from your catalog"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        addMedicationFromCatalog(event.target.value);
+                      }
+                    }}
                   >
-                    Add medication
-                  </button>
-                  {medicationCatalog.length > 0 ? (
-                    <select
-                      className={styles.input}
-                      aria-label="Add from your medication catalog"
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          addMedicationFromCatalog(event.target.value);
-                        }
-                      }}
-                    >
-                      <option value="">Add from your catalog...</option>
-                      {medicationCatalog.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                          {item.default_dose ? ` (${item.default_dose})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                </div>
+                    <option value="">
+                      Add medication from your catalog...
+                    </option>
+                    {medicationCatalog.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                        {item.default_dose ? ` (${item.default_dose})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className={styles.reason}>
+                    No medications in your catalog yet. Add some from My
+                    Catalog.
+                  </p>
+                )
               ) : null}
             </div>
 
@@ -387,34 +363,12 @@ export function ConsultationDetailPanel({
               <span className={styles.fieldLabel}>Procedures</span>
               {procedures.map((procedure, index) => (
                 <div key={index} className={styles.listRow}>
-                  <select
-                    className={styles.input}
-                    value={procedure.procedure_type}
-                    disabled={!canWrite}
-                    onChange={(event) =>
-                      updateProcedure(index, {
-                        procedure_type: event.target
-                          .value as ProcedureInput['procedure_type'],
-                      })
-                    }
-                  >
-                    {PROCEDURE_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.input}
-                    placeholder="Description"
-                    value={procedure.description}
-                    disabled={!canWrite}
-                    onChange={(event) =>
-                      updateProcedure(index, {
-                        description: event.target.value,
-                      })
-                    }
-                  />
+                  <span className={styles.readOnlyField}>
+                    {procedure.procedure_type}
+                  </span>
+                  <span className={styles.readOnlyField}>
+                    {procedure.description}
+                  </span>
                   <input
                     className={styles.input}
                     type="number"
@@ -439,34 +393,29 @@ export function ConsultationDetailPanel({
                 </div>
               ))}
               {canWrite ? (
-                <div className={styles.catalogRow}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={addProcedure}
+                procedureCatalog.length > 0 ? (
+                  <select
+                    className={styles.catalogSelect}
+                    aria-label="Add procedure from your catalog"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        addProcedureFromCatalog(event.target.value);
+                      }
+                    }}
                   >
-                    Add procedure
-                  </button>
-                  {procedureCatalog.length > 0 ? (
-                    <select
-                      className={styles.input}
-                      aria-label="Add from your procedure catalog"
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          addProcedureFromCatalog(event.target.value);
-                        }
-                      }}
-                    >
-                      <option value="">Add from your catalog...</option>
-                      {procedureCatalog.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.procedure_type} — {item.description}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                </div>
+                    <option value="">Add procedure from your catalog...</option>
+                    {procedureCatalog.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.procedure_type} — {item.description}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className={styles.reason}>
+                    No procedures in your catalog yet. Add some from My Catalog.
+                  </p>
+                )
               ) : null}
             </div>
 
@@ -565,6 +514,37 @@ export function ConsultationDetailPanel({
           </>
         )}
       </div>
+
+      <Modal
+        isOpen={isStartModalOpen}
+        title="Start Consultation"
+        onClose={() => setIsStartModalOpen(false)}
+      >
+        <p className={styles.reason}>
+          Start this consultation for {petName}? This moves the booking to In
+          Progress.
+        </p>
+        <div className={styles.formActions}>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={isSaving}
+            onClick={() => {
+              setIsStartModalOpen(false);
+              onStart();
+            }}
+          >
+            {isSaving ? 'Starting...' : 'Start Consultation'}
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setIsStartModalOpen(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
