@@ -107,12 +107,18 @@ function stubCatalogAndBranches() {
     error: null,
   });
   vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
-    data: { services: [buildService()], packages: [buildPackage()], promos: [] },
+    data: {
+      services: [buildService()],
+      packages: [buildPackage()],
+      promos: [],
+    },
     error: null,
   });
 }
 
-function renderModal(overrides: Partial<Parameters<typeof ScheduleFollowUpModal>[0]> = {}) {
+function renderModal(
+  overrides: Partial<Parameters<typeof ScheduleFollowUpModal>[0]> = {}
+) {
   const onClose = vi.fn();
   const onLinked = vi.fn();
 

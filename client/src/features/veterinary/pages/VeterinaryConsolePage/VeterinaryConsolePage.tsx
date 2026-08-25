@@ -106,9 +106,7 @@ export function VeterinaryConsolePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
-  const [followUpTargetId, setFollowUpTargetId] = useState<string | null>(
-    null
-  );
+  const [followUpTargetId, setFollowUpTargetId] = useState<string | null>(null);
   const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
 
   const dateRange = useMemo(
@@ -517,7 +515,9 @@ export function VeterinaryConsolePage() {
                         <button
                           type="button"
                           className={styles.rowButton}
-                          onClick={() => selectConsultation(row.consultation.id)}
+                          onClick={() =>
+                            selectConsultation(row.consultation.id)
+                          }
                         >
                           <div className={styles.rowHeader}>
                             <span className={styles.rowPetName}>

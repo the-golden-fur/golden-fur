@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { SlotPicker } from '../../../booking/components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../../booking/components/StaffPickerList/StaffPickerList';
-import { createBooking, getBookingCatalog } from '../../../booking/api/booking.api';
+import {
+  createBooking,
+  getBookingCatalog,
+} from '../../../booking/api/booking.api';
 import type { StaffPreferenceInput } from '../../../booking/booking.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { Service } from '../../../maintenance/maintenance.types';

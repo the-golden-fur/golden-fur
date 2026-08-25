@@ -36,49 +36,50 @@ vi.mock('../../api/veterinary.api', () => ({
 // redirect) - here it's stubbed to a minimal, test-drivable stand-in so this
 // file can focus on the console page's own responsibility: opening it with
 // the right locked-in context and reacting to onLinked/onClose.
-vi.mock(
-  '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal',
-  () => ({
-    ScheduleFollowUpModal: (props: {
-      consultationId: string;
-      petName: string;
-      ownerName: string;
-      onClose: () => void;
-      onLinked: (consultation: Consultation) => void;
-    }) =>
+vi.mock('../../components/ScheduleFollowUpModal/ScheduleFollowUpModal', () => ({
+  ScheduleFollowUpModal: (props: {
+    consultationId: string;
+    petName: string;
+    ownerName: string;
+    onClose: () => void;
+    onLinked: (consultation: Consultation) => void;
+  }) =>
+    createElement(
+      'div',
+      { role: 'dialog', 'aria-label': 'Schedule Follow-up (mock)' },
+      createElement('span', null, `Pet: ${props.petName}`),
+      createElement('span', null, `Owner: ${props.ownerName}`),
       createElement(
-        'div',
-        { role: 'dialog', 'aria-label': 'Schedule Follow-up (mock)' },
-        createElement('span', null, `Pet: ${props.petName}`),
-        createElement('span', null, `Owner: ${props.ownerName}`),
-        createElement(
-          'button',
-          {
-            onClick: () =>
-              props.onLinked({
-                id: props.consultationId,
-                booking_id: 'booking-1',
-                pet_id: 'pet-1',
-                veterinarian_id: 'vet-1',
-                temperature: null,
-                weight: null,
-                heart_rate: null,
-                respiratory_rate: null,
-                diagnosis: null,
-                medications: null,
-                reason_for_visit: 'Annual checkup',
-                follow_up_date: '2026-08-01',
-                follow_up_booking_id: 'booking-2',
-                created_at: '2026-07-19T00:00:00.000Z',
-                updated_at: '2026-07-19T00:00:00.000Z',
-              }),
-          },
-          'Confirm mock follow-up'
-        ),
-        createElement('button', { onClick: props.onClose }, 'Cancel mock follow-up')
+        'button',
+        {
+          onClick: () =>
+            props.onLinked({
+              id: props.consultationId,
+              booking_id: 'booking-1',
+              pet_id: 'pet-1',
+              veterinarian_id: 'vet-1',
+              temperature: null,
+              weight: null,
+              heart_rate: null,
+              respiratory_rate: null,
+              diagnosis: null,
+              medications: null,
+              reason_for_visit: 'Annual checkup',
+              follow_up_date: '2026-08-01',
+              follow_up_booking_id: 'booking-2',
+              created_at: '2026-07-19T00:00:00.000Z',
+              updated_at: '2026-07-19T00:00:00.000Z',
+            }),
+        },
+        'Confirm mock follow-up'
       ),
-  })
-);
+      createElement(
+        'button',
+        { onClick: props.onClose },
+        'Cancel mock follow-up'
+      )
+    ),
+}));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   return {

@@ -163,7 +163,10 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
   it('rejects a booking that belongs to a different pet than the consultation', async () => {
     queueFromResults(
       { data: consultationRow(), error: null }, // getConsultation
-      { data: bookingRow({ id: 'booking-2', pet_id: 'pet-other' }), error: null } // follow-up booking lookup
+      {
+        data: bookingRow({ id: 'booking-2', pet_id: 'pet-other' }),
+        error: null,
+      } // follow-up booking lookup
     );
 
     await expect(
