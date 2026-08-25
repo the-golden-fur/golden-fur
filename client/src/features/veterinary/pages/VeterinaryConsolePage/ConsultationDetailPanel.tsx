@@ -496,7 +496,9 @@ export function ConsultationDetailPanel({
                     <button
                       type="button"
                       className={styles.secondaryButton}
-                      disabled={!followUpDate || isSchedulingFollowUp || !canWrite}
+                      disabled={
+                        !followUpDate || isSchedulingFollowUp || !canWrite
+                      }
                       onClick={() => onScheduleFollowUp(followUpDate)}
                     >
                       {isSchedulingFollowUp
