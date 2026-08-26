@@ -25,7 +25,7 @@ code.
 - A **Miscellaneous Sales total** — transactions with no booking record
   (`booking_id` NULL, `transaction_type = miscellaneous_sale`), used
   mainly for credit redemption against non-inventory retail items. This is
-  distinct from the *Misc* `service_category` (Initial
+  distinct from the _Misc_ `service_category` (Initial
   Assessment/Reassessment), which does have a booking record and flows
   through the normal Payments Queue.
 - Passing no `branch` returns a **Superadmin combined-branches view.**

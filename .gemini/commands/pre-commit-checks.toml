@@ -1,0 +1,7 @@
+description = "Run all check/fix VS Code tasks (lint, format) before committing"
+prompt = """
+Read and follow the instructions in .agent/skills/pre-commit-checks.md in
+this repo.
+
+{{args}}
+"""

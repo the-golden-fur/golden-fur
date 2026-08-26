@@ -88,9 +88,12 @@ plain-text description into a filled, opened GitHub issue) — plus
 of one already running — deliberately not named `run`, so it doesn't
 shadow Claude Code's own built-in `run` skill, which drives the app in a
 browser; use `dev-servers` first to confirm the processes are up, then
-`run` to actually look at a page). Any AI coding tool working in this
-repo should read the relevant file under `.agent/` before doing that kind
-of task.
+`run` to actually look at a page) and `pre-commit-checks` (run every
+`(check)`/`(fix)`-labeled VS Code task — lint and format, client and
+server — auto-fixing what it can; always runs as `commit`'s first step,
+also invocable standalone). Any AI coding tool working in this repo
+should read the relevant file under `.agent/` before doing that kind of
+task.
 
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:

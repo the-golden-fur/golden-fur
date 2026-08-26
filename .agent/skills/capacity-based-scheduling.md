@@ -14,12 +14,12 @@ assignment, per-category capacity, or overbooking logic.
 
 ## Per-category capacity model
 
-| Category   | Capacity basis                                              |
-| ---------- | ------------------------------------------------------------ |
-| Grooming   | Groomer-count — number of available groomers at that slot.   |
-| Hotel      | Cage-count — available cages, sized S/M/L/XL.                |
+| Category   | Capacity basis                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------- |
+| Grooming   | Groomer-count — number of available groomers at that slot.                                                    |
+| Hotel      | Cage-count — available cages, sized S/M/L/XL.                                                                 |
 | Daycare    | Session-count per branch. Shares Hotel's `stays` table (`stay_type` discriminator) rather than its own table. |
-| Veterinary | Staff-count. **Makati-only** — not offered at Southwoods.    |
+| Veterinary | Staff-count. **Makati-only** — not offered at Southwoods.                                                     |
 
 **Overbooking is blocked system-wide with no manual override, for every
 category.** This is a hard business rule, not a per-branch default that can

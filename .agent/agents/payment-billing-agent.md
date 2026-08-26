@@ -35,7 +35,7 @@ anything in this area.
    reduce a transaction total. If the task is to wire this up, that's a
    known, previously-flagged gap, not a design decision to make fresh.
 6. A customer-initiated online payment (`transactions.initiated_by =
-   'customer'`) auto-advances `payment_stage` on webhook confirmation; a
+'customer'`) auto-advances `payment_stage` on webhook confirmation; a
    staff-recorded payment advances it through the Payments Queue action
    instead. Don't let webhook code assume every payment came from a
    customer.

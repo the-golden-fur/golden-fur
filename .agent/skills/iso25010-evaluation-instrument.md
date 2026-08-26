@@ -48,10 +48,10 @@ For each characteristic, a short block:
 <1–2 sentence plain-language explanation of what this is asking about, for
 a non-technical respondent (e.g. branch staff, the client).>
 
-| # | Statement | 1 (Strongly Disagree) | 2 | 3 | 4 | 5 (Strongly Agree) |
-|---|-----------|:--:|:--:|:--:|:--:|:--:|
-| 1 | <statement tailored to this system, phrased as a positive claim> | | | | | |
-| 2 | ... | | | | | |
+| #   | Statement                                                        | 1 (Strongly Disagree) |  2  |  3  |  4  | 5 (Strongly Agree) |
+| --- | ---------------------------------------------------------------- | :-------------------: | :-: | :-: | :-: | :----------------: |
+| 1   | <statement tailored to this system, phrased as a positive claim> |                       |     |     |     |                    |
+| 2   | ...                                                              |                       |     |     |     |                    |
 ```
 
 - 3–5 statements per characteristic is typical — enough to triangulate,
