@@ -45,6 +45,13 @@ schemas, seeds, and edge functions.
   [golden-fur-vault/AGENTS.md](../golden-fur-vault/AGENTS.md). Details on
   this repo's own skills, and why `pr-to-dev`/`pr-dev-to-main` are split, are
   in the "Reusable skills" section below.
+- **Dev-time domain agents/skills** — subagents and reference material for
+  this project's own business logic (booking capacity, payments, RBAC,
+  reports, notifications, discounts, QA, schema) live in `.agent/agents/`
+  and `.agent/skills/`, with the same thin-adapter pattern per tool. See
+  "Domain agents & skills" below. These are developer tooling only — they
+  run locally while writing code and are never deployed or reachable by
+  end users; their output is ordinary source code you review and commit.
 
 ## Coding conventions
 
@@ -101,6 +108,45 @@ up per tool's own discovery mechanism:
 When updating one of these workflows, edit the canonical file under
 `.agent/` — the adapters shouldn't need to change unless the tool's own
 discovery metadata (name/description) changes.
+
+## Domain agents & skills
+
+Dev-time subagents and reference material for this project's own business
+logic — scaffolding, reviewing, and debugging domain code before it's
+committed, and a written spec Claude Code loads instead of re-deriving a
+business rule from scratch each session. Canonical files live in
+`.agent/agents/` and `.agent/skills/`; the same thin-adapter pattern as the
+git-workflow skills above applies (`.claude/agents/<name>.md` +
+`.claude/skills/<name>/SKILL.md`, `.gemini/commands/<name>.toml`,
+`.codex/prompts/<name>.md`).
+
+**Agents** (spawnable subagents, most with full dev tool access unless
+noted):
+
+- `booking-capacity-agent` — cage/session/groomer/staff capacity and
+  overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
+- `payment-billing-agent` — PayMongo webhook handling and the Credit
+  Balance ledger, sandbox only.
+- `auth-access-agent` — RBAC, TOTP MFA, OAuth account-merge. Read-mostly
+  (`Read`, `Grep`, `Glob`, `Edit` — no `Write`/`Bash`) so it can't touch
+  production config.
+- `report-generator-agent` — Daily Sales Report and related
+  report-generation code.
+- `notification-agent` — the transactional notification triggers/templates.
+- `discount-compliance-agent` — the (currently inactive) Discount Module,
+  including Senior/PWD statutory handling.
+- `qa-iso25010-agent` — test cases plus the ISO/IEC 25010 evaluation
+  questionnaire (the latter is a vault deliverable, not code).
+- `db-schema-agent` — Supabase migrations and multi-branch data isolation.
+
+**Skills** (auto-invoked reference material — each backs the matching
+agent above, and applies equally when working the same area without
+spawning a subagent):
+
+- `paymongo-webhook-handling`, `capacity-based-scheduling`,
+  `rbac-totp-setup`, `credit-balance-ledger`, `daily-sales-report-format`,
+  `email-notification-templates`, `discount-senior-pwd-compliance`,
+  `iso25010-evaluation-instrument`.
 
 ### Why two PR skills instead of one
 

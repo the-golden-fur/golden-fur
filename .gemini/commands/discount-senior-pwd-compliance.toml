@@ -1,0 +1,7 @@
+description = "Show the RA 9994 (Senior)/RA 10754 (PWD) discount compliance checklist"
+prompt = """
+Read and follow the instructions in
+.agent/skills/discount-senior-pwd-compliance.md in this repo.
+
+{{args}}
+"""

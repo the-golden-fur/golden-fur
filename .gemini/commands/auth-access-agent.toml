@@ -1,0 +1,7 @@
+description = "Write or review RBAC/TOTP MFA/OAuth account-merge code (read-mostly)"
+prompt = """
+Read and follow the role/process in .agent/agents/auth-access-agent.md in
+this repo. Read-mostly — no new files, no shell commands.
+
+{{args}}
+"""

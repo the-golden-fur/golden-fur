@@ -1,0 +1,7 @@
+description = "Show PayMongo webhook signature verification, idempotency, and sandbox testing reference"
+prompt = """
+Read and follow the instructions in .agent/skills/paymongo-webhook-handling.md
+in this repo.
+
+{{args}}
+"""

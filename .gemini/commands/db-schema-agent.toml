@@ -1,0 +1,7 @@
+description = "Design or write Supabase migration scripts and multi-branch data isolation"
+prompt = """
+Read and follow the role/process in .agent/agents/db-schema-agent.md in
+this repo.
+
+{{args}}
+"""
