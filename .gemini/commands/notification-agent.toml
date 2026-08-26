@@ -1,0 +1,7 @@
+description = "Write or test transactional notification trigger/template code"
+prompt = """
+Read and follow the role/process in .agent/agents/notification-agent.md in
+this repo.
+
+{{args}}
+"""

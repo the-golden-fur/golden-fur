@@ -1,0 +1,7 @@
+description = "Show the credit balance ledger rules (issuance, expiry, checkout stub)"
+prompt = """
+Read and follow the instructions in .agent/skills/credit-balance-ledger.md
+in this repo.
+
+{{args}}
+"""

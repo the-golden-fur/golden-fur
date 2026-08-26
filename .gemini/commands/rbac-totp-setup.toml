@@ -1,0 +1,7 @@
+description = "Show the RBAC/TOTP reference for scaffolding a new protected route"
+prompt = """
+Read and follow the instructions in .agent/skills/rbac-totp-setup.md in
+this repo.
+
+{{args}}
+"""

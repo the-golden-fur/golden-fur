@@ -1,0 +1,3 @@
+Read and follow the role/process in `.agent/agents/qa-iso25010-agent.md` in
+this repo. The evaluation questionnaire itself belongs in the vault, not
+this repo's docs/.

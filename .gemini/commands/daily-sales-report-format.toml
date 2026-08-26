@@ -1,0 +1,7 @@
+description = "Show the exact DSR/Cage Occupancy/Analytics report layouts"
+prompt = """
+Read and follow the instructions in .agent/skills/daily-sales-report-format.md
+in this repo.
+
+{{args}}
+"""

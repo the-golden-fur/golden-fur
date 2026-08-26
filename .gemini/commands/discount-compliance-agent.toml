@@ -1,0 +1,7 @@
+description = "Scaffold Discount Module code, including Senior/PWD statutory discounts"
+prompt = """
+Read and follow the role/process in .agent/agents/discount-compliance-agent.md
+in this repo.
+
+{{args}}
+"""

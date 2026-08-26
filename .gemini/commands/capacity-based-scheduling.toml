@@ -1,0 +1,7 @@
+description = "Show the capacity/overbooking-prevention rules for Grooming/Hotel/Daycare/Veterinary"
+prompt = """
+Read and follow the instructions in .agent/skills/capacity-based-scheduling.md
+in this repo.
+
+{{args}}
+"""
