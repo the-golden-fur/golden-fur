@@ -136,8 +136,10 @@ noted):
 - `report-generator-agent` — Daily Sales Report and related
   report-generation code.
 - `notification-agent` — the transactional notification triggers/templates.
-- `discount-compliance-agent` — the (currently inactive) Discount Module,
-  including Senior/PWD statutory handling.
+- `discount-compliance-agent` — the Discount Module (live end-to-end,
+  including Senior/PWD statutory handling), with an emphasis on
+  compliance readiness (ID-verification logging, statutory-rate
+  protection, test coverage) rather than basic scaffolding.
 - `qa-iso25010-agent` — test cases plus the ISO/IEC 25010 evaluation
   questionnaire (the latter is a vault deliverable, not code).
 - `db-schema-agent` — Supabase migrations and multi-branch data isolation.

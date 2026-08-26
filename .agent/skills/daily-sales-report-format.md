@@ -16,8 +16,10 @@ code.
 
 `get_daily_sales_report(branch, date)` returns:
 
-- A breakdown by **service category** and **payment method**.
-- **Individual transaction line items.**
+- A breakdown by **service category** and **payment method**, plus totals.
+  No individual transaction line-item array — the `DailySalesReport` TS
+  type has no such field; that granularity lives only in the separate
+  Transaction History report below.
 - A **credit-usage section** (from `credit_transactions` redemption rows)
   — reads zero until checkout's credit-redemption stub is replaced (see
   `credit-balance-ledger.md`); don't treat a zero here as a bug in the DSR

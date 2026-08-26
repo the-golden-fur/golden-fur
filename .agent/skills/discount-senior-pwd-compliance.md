@@ -1,9 +1,12 @@
 # Senior/PWD discount compliance
 
 **Purpose:** a checklist referencing Philippine Senior Citizen (RA 9994)
-and PWD (RA 10754) discount law, for when the Discount Module's statutory
-handling gets built out. The module is inactive by default today — this
-is the reference to have ready before that changes.
+and PWD (RA 10754) discount law for the Discount Module's statutory
+handling — live end-to-end today (routes mounted, booking-wizard picker,
+checkout attestation checkboxes), not scaffolding awaiting activation.
+Use this checklist when strengthening compliance readiness: ID-
+verification logging, statutory-rate protection, and Senior/PWD-specific
+test coverage are the open items, not "turning the module on."
 
 **Where this lives:** `server/src/features/discounts`,
 `client/src/features/discounts`; intersects `features/booking`
@@ -35,9 +38,9 @@ calculation logic, especially anything Senior/PWD-specific.
   carry legal compliance requirements (e.g. can't be disabled selectively
   the way a promo can, must apply the correct statutory rate, need ID
   verification logged).
-- The whole module is **inactive by default** and must be explicitly
-  enabled — don't assume it's live just because the code path exists in
-  the repo.
+- `is_active` is derived from per-branch availability and is always true
+  from the moment a discount is created (`branch_ids` is required
+  non-empty) — the module is live, not gated behind an activation step.
 
 ## Two application paths — one data model
 
@@ -57,11 +60,11 @@ Don't build a second, parallel discount record type for one path just
 because the trigger point differs — that's how the two paths silently
 diverge and reporting stops reconciling.
 
-## When this module actually gets activated
+## Compliance-readiness gaps (not "activation")
 
-Before turning it on for real use, confirm: ID-verification logging is in
-place for statutory discounts, the correct statutory rate is
-non-editable/protected from being configured incorrectly per branch, and
-both application paths are covered by tests exercising the
-Senior/PWD-specific eligibility rules, not just the generic
-percentage/flat discount math.
+The module runs live already, but before treating it as legally
+airtight, confirm: ID-verification logging is in place for statutory
+discounts, the correct statutory rate is non-editable/protected from
+being configured incorrectly per branch, and both application paths are
+covered by tests exercising the Senior/PWD-specific eligibility rules,
+not just the generic percentage/flat discount math.
