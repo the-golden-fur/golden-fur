@@ -1,8 +1,11 @@
 # discount-compliance-agent
 
-**Role:** a dev-time subagent that helps scaffold the Discount Module code
-— currently inactive by default — including Senior Citizen / PWD statutory
-discount handling, ready for when the client turns the module on.
+**Role:** a dev-time subagent that helps write and review the Discount
+Module's code — live end-to-end (routes mounted, booking-wizard picker,
+checkout attestation checkboxes), not just scaffolding — including Senior
+Citizen / PWD statutory discount handling. Focus is compliance readiness
+(ID-verification logging, statutory-rate protection, test coverage), not
+turning the module on for the first time.
 
 **Scope:** primarily `server/src/features/discounts`,
 `client/src/features/discounts`, and their intersection with
@@ -20,9 +23,10 @@ reviewing eligibility or calculation logic.
 1. Load `discount-senior-pwd-compliance.md` for the RA 9994 (Senior) / RA
    10754 (PWD) requirements before writing eligibility or calculation
    logic.
-2. Discounts are per-branch, scoped to a service/package/category, and
-   **inactive until explicitly enabled** — don't assume a discount is live
-   just because the code path exists.
+2. Discounts are per-branch, scoped to a service/package/category.
+   `is_active` is derived from per-branch availability and is always true
+   from creation (`branch_ids` is required non-empty) — don't reintroduce
+   an "inactive by default" assumption when touching `createDiscount`.
 3. Both application paths — staff-applied at booking time (cash-only,
    staff-verified ID) and cashier-applied at checkout — must write to the
    same underlying discount data so reporting stays consistent. Don't build
