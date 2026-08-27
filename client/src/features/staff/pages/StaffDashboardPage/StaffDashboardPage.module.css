@@ -1,6 +1,11 @@
 .page {
   composes: animate-fade-in from global;
   display: grid;
+  /* min-height:100vh stretches .content/.widgetsSection to fill the
+     viewport; without this, the default align-content: stretch spreads
+     those rows apart to consume the leftover height instead of packing
+     them at the top. */
+  align-content: start;
   min-height: 100vh;
 }
 
@@ -38,6 +43,7 @@
 
 .widgetsSection {
   display: grid;
+  align-content: start;
   gap: var(--space-3);
   width: 100%;
   padding: 0 var(--space-2) var(--space-4);
@@ -56,4 +62,26 @@
 
 .widgetsRow > * {
   flex: 1 1 280px;
+}
+
+/* Rigid 3-column grid (unlike .widgetsRow's flexible masonry): used where a
+   later row's widget (e.g. Days Off under the Veterinarian queue/patients/
+   catalog row) must match an earlier row's column width exactly rather than
+   stretch to fill the row - grid auto-placement drops the 4th item into
+   row 2, column 1 at that same column width, with columns 2-3 left empty. */
+.widgetsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* stretch (not start): row 1's three widgets (Queue/Patients/Catalog) get
+     equal height, matching the tallest card's content instead of each
+     sitting at its own natural height. Row 2 has only one item (Days Off),
+     so nothing there stretches - stretch sizing is per-row, not global. */
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .widgetsGrid {
+    grid-template-columns: 1fr;
+  }
 }

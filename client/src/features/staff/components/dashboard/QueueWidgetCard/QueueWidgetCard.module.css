@@ -1,5 +1,10 @@
 .card {
   display: grid;
+  /* A parent grid (e.g. StaffDashboardPage's .widgetsGrid) may stretch this
+     card taller than its own content to match a row sibling; without this,
+     the default align-content: stretch would spread .title/.summary apart
+     to fill that extra height instead of packing them at the top. */
+  align-content: start;
   gap: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
