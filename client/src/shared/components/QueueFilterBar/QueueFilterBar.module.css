@@ -21,12 +21,17 @@
 }
 
 .filterSelect {
+  /* Matches SearchSortBar's .searchInput/.sortSelect height exactly (this
+     bar's `children` slot) - native <select> chrome otherwise renders
+     taller/shorter than a same-padding <input> depending on browser,
+     leaving the row visibly uneven. */
+  height: 3rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text-primary);
   font: inherit;
-  padding: var(--space-2);
+  padding: 0 var(--space-2);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,

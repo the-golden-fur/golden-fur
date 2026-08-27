@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
@@ -64,6 +64,32 @@ export function MyPatientsPage() {
   const [petHistory, setPetHistory] = useState<Consultation[]>([]);
   const [isPetHistoryLoading, setIsPetHistoryLoading] = useState(false);
   const [petHistoryError, setPetHistoryError] = useState<string | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+
+  // Closes the pet history panel on an outside click or Escape, mirroring
+  // MoreOptionsMenu's own dismiss pattern - otherwise the only way back to
+  // the "Use the menu on a patient..." placeholder is selecting another
+  // patient.
+  useEffect(() => {
+    if (!selectedPetId) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!detailPanelRef.current?.contains(event.target as Node)) {
+        setSelectedPetId(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSelectedPetId(null);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedPetId]);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -320,7 +346,7 @@ export function MyPatientsPage() {
 
             <div className={styles.detail}>
               {selectedRow ? (
-                <div className={styles.panel}>
+                <div className={styles.panel} ref={detailPanelRef}>
                   <div className={styles.header}>
                     <h2 className={styles.petName}>{selectedRow.petName}</h2>
                     <span className={styles.subtitle}>

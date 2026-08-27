@@ -80,6 +80,17 @@
   gap: var(--space-0-5);
 }
 
+/* Pet Type (last in .filters) has a label above its select; Search/Sort
+   (SearchSortBar, always the first two children here) don't, so
+   top-aligning the row leaves their boxes sitting higher than Pet Type's
+   even though all three controls are the same height. Pushes them down by
+   that label's own line height + the gap below it, so all three land
+   level - pulling Pet Type up instead would shove its label into the
+   title above, which only has a 4px gap of its own (see .pageHeader). */
+.filters > *:nth-child(-n + 2) {
+  margin-top: calc(var(--text-label) * var(--lh-base) + var(--space-0-5));
+}
+
 .filterLabel {
   color: var(--color-text-secondary);
   font-size: var(--text-label);
@@ -88,12 +99,16 @@
 }
 
 .filterSelect {
+  /* Matches SearchSortBar's .searchInput/.sortSelect height exactly - native
+     <select> chrome otherwise renders taller/shorter than a same-padding
+     <input> depending on browser, leaving this row visibly uneven. */
+  height: 3rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text-primary);
   font: inherit;
-  padding: var(--space-2);
+  padding: 0 var(--space-2);
 }
 
 .filterSelect:focus {

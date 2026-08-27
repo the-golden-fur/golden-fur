@@ -546,6 +546,7 @@ function SidebarCategory({
             <MoreOptionsMenu
               label={isCategory ? `Sort ${section.label}` : 'Sort'}
               items={sortMenuItems}
+              menuAlign="left"
             />
           </>
         ) : null}
@@ -806,6 +807,7 @@ export function Sidebar({
             <MoreOptionsMenu
               label="Sort categories"
               items={categorySortMenuItems}
+              menuAlign="left"
             />
           </div>
         ) : null}

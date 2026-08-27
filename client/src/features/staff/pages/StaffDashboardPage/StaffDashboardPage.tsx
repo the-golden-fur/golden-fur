@@ -11,6 +11,9 @@ import { GroomingQueueWidget } from '../../components/dashboard/GroomingQueueWid
 import { HotelQueueWidget } from '../../components/dashboard/HotelQueueWidget/HotelQueueWidget';
 import { DaycareQueueWidget } from '../../components/dashboard/DaycareQueueWidget/DaycareQueueWidget';
 import { VeterinaryConsultationQueueWidget } from '../../components/dashboard/VeterinaryConsultationQueueWidget/VeterinaryConsultationQueueWidget';
+import { VeterinaryMyPatientsWidget } from '../../components/dashboard/VeterinaryMyPatientsWidget/VeterinaryMyPatientsWidget';
+import { VeterinaryCatalogWidget } from '../../components/dashboard/VeterinaryCatalogWidget/VeterinaryCatalogWidget';
+import { DaysOffWidget } from '../../components/dashboard/DaysOffWidget/DaysOffWidget';
 import {
   ROLE_TO_DASHBOARD_SLUG,
   STAFF_DASHBOARD_CONFIG,
@@ -76,6 +79,7 @@ export function StaffDashboardPage() {
   }, [accessToken, user?.id]);
 
   const isSuperadmin = role === 'Superadmin';
+  const isVeterinarian = role === 'Veterinarian';
 
   useEffect(() => {
     if (!isSuperadmin) return;
@@ -157,6 +161,15 @@ export function StaffDashboardPage() {
             <HotelQueueWidget accessToken={accessToken} />
             <DaycareQueueWidget accessToken={accessToken} />
             <VeterinaryConsultationQueueWidget accessToken={accessToken} />
+          </div>
+        </div>
+      ) : isVeterinarian ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.widgetsGrid}>
+            <VeterinaryConsultationQueueWidget accessToken={accessToken} />
+            <VeterinaryMyPatientsWidget accessToken={accessToken} />
+            <VeterinaryCatalogWidget accessToken={accessToken} />
+            <DaysOffWidget staffId={user.id} accessToken={accessToken} />
           </div>
         </div>
       ) : null}

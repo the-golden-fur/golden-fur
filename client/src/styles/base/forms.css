@@ -3,7 +3,12 @@
    wins over these bare-tag rules by specificity - this file only themes the
    native controls nothing else has styled yet (checkboxes/radios, and a
    sane fallback for any other bare input/select/textarea), so the app never
-   shows an unthemed browser-default control regardless of light/dark mode. */
+   shows an unthemed browser-default control regardless of light/dark mode.
+   The input rule below wraps its :not() chain in :where() specifically to
+   keep that invariant true: two chained :not([type=...]) selectors have the
+   specificity of two classes, which would otherwise beat any single-class
+   CSS-module override (e.g. SearchSortBar's .searchInput) on shared
+   properties like padding. */
 
 input[type='checkbox'],
 input[type='radio'] {
@@ -24,7 +29,7 @@ textarea:focus-visible {
 
 select,
 textarea,
-input:not([type='checkbox']):not([type='radio']) {
+input:where(:not([type='checkbox']):not([type='radio'])) {
   font: inherit;
   color: var(--color-text-primary);
   background: var(--color-surface);
