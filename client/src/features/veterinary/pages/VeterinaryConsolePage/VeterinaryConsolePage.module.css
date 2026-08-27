@@ -61,6 +61,28 @@
   align-items: flex-start;
 }
 
+/* Equal-width columns for Date/Status/Search/Sort (each a direct child of
+   that same toolbar div - QueueFilterBar's own filterFields plus
+   SearchSortBar's searchField/sortField, passed in as `children` and
+   rendered as siblings, not wrapped). Without this, Date/Status size to
+   their own content (narrow) while Search grows and Sort holds a fixed
+   16rem, leaving a visibly lopsided row even with equal control heights. */
+.filterBarRow > div > * {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+}
+
+/* Date/Status each have a label above their select (QueueFilterBar's own
+   .filterLabel); Search/Sort (SearchSortBar's `children`, always the last
+   two elements in this row regardless of whether the Custom date field is
+   present) don't, so top-aligning the row leaves their controls sitting
+   higher than Date/Status's. Pushes them down by that label's own line
+   height + the gap below it, so all four controls land level. */
+.filterBarRow > div > *:nth-last-child(-n + 2) {
+  margin-top: calc(var(--text-label) * var(--lh-base) + var(--space-0-5));
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(420px, 1.3fr) 2fr;

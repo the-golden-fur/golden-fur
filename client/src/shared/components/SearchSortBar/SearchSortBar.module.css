@@ -16,16 +16,21 @@
 
 .searchInput {
   width: 100%;
+  /* Browsers give <select> and <input> different intrinsic heights even
+     with identical padding (native <select> chrome reserves its own space
+     for the dropdown arrow) - an explicit height keeps this lined up with
+     .sortSelect and any sibling .filterSelect exactly, rather than relying
+     on padding+font to happen to match. */
+  height: 3rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   font: inherit;
   /* Icon sits at left: var(--space-2) (16px) and is 15px wide, so text needs
-     to start well past its 31px right edge - var(--space-5) alone (40px)
-     read as touching/overlapping the first character in practice. */
-  padding: var(--space-2) var(--space-2) var(--space-2)
-    calc(var(--space-5) + var(--space-1));
+     to start well past its 31px right edge - var(--space-6) alone (48px)
+     still read as crowding the placeholder text in practice. */
+  padding: 0 var(--space-2) 0 calc(var(--space-6) + var(--space-1));
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
@@ -58,13 +63,13 @@
 
 .sortSelect {
   width: 100%;
+  height: 3rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text-primary);
   font: inherit;
-  padding: var(--space-2) var(--space-2) var(--space-2)
-    calc(var(--space-5) + var(--space-1));
+  padding: 0 var(--space-2) 0 calc(var(--space-5) + var(--space-1));
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
