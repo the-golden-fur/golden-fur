@@ -55,6 +55,15 @@
   padding: var(--space-0-5);
 }
 
+/* menuAlign="left": pins the menu's left edge to the trigger instead,
+   expanding rightward - for a trigger near the left edge of a narrow
+   container, where the default right-pinned/left-expanding menu would
+   overflow off-screen. */
+.menuAlignLeft {
+  right: auto;
+  left: 0;
+}
+
 .menuItem {
   display: flex;
   align-items: center;

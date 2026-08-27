@@ -18,6 +18,12 @@ interface MoreOptionsMenuProps {
    * but callers embedding several of these on one page (e.g. one per row)
    * should pass something row-specific for screen reader users. */
   label?: string;
+  /** Which side of the trigger the menu expands toward. Defaults to 'right'
+   * (menu's right edge pins to the trigger, expanding leftward) - correct
+   * for the common case of a trigger near the right edge of a wide row/card.
+   * A trigger near the left edge of a narrow container (e.g. Sidebar's own
+   * "Sort" button) needs 'left' instead, or the menu overflows off-screen. */
+  menuAlign?: 'left' | 'right';
 }
 
 /**
@@ -32,6 +38,7 @@ interface MoreOptionsMenuProps {
 export function MoreOptionsMenu({
   items,
   label = 'More options',
+  menuAlign = 'right',
 }: MoreOptionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,7 +81,14 @@ export function MoreOptionsMenu({
       </button>
 
       {isOpen ? (
-        <div className={styles.menu} role="menu">
+        <div
+          className={
+            menuAlign === 'left'
+              ? `${styles.menu} ${styles.menuAlignLeft}`
+              : styles.menu
+          }
+          role="menu"
+        >
           {items.map((item) => (
             <button
               key={item.label}
