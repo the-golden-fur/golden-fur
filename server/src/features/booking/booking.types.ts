@@ -147,6 +147,19 @@ export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
  */
 export type PaymentStage = 'Unpaid' | 'Paid in Advance' | 'Paid';
 
+/** Walk-in booking flow (20260828145 migration): distinguishes a normal
+ * future/same-day booking ('Online', default - customer self-booked, or
+ * staff booking on someone's behalf for later) from a receptionist
+ * registering a customer/pet physically present at the branch right now
+ * ('Walk-in'). Drives two things in createBooking: 'Walk-in' skips
+ * resolveDownpaymentPolicy entirely (no slot-holding risk - they're already
+ * here) and starts at status 'In Progress' instead of 'Pending'. See
+ * .agent skill capacity-based-scheduling.md / the walk-in-booking-flow
+ * decision doc for full context. */
+export type BookingSource = 'Online' | 'Walk-in';
+
+export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
+
 export const PAYMENT_STAGES: readonly PaymentStage[] = [
   'Unpaid',
   'Paid in Advance',
@@ -266,6 +279,10 @@ export interface Booking {
   branch_id: string;
   created_by_staff_id: string | null;
   service_category: ServiceCategory;
+  /** Walk-in booking flow - see BookingSource's own dev note. Defaults to
+   * 'Online' at the DB level (20260828145 migration); every booking created
+   * before this feature backfills to 'Online'. */
+  booking_source: BookingSource;
   scheduled_start: string;
   scheduled_end: string;
   assigned_staff_id: string | null;

@@ -37,6 +37,31 @@ the fact.
 4. Only proceed to stage/commit once every check task passes clean, or the
    user explicitly says to commit anyway with known issues outstanding.
 
+## Windows CRLF false-diff — don't trust `git status` right after the fix tasks
+
+On Windows, `npm run format`/`lint:fix` can make `git status --short` briefly
+report dozens of files as modified that have nothing to do with the current
+change - pre-existing line-ending drift (`core.autocrlf`) that Prettier's
+write touches indirectly, not new content changes. It looks alarming (a huge
+unrelated diff right when you're about to commit) but is spurious: it clears
+up on its own once git recomputes, and doesn't survive being staged.
+
+**Countermeasure - stage, then unstage, before trusting the diff:**
+
+```sh
+git add -A
+git status --short   # now compare against this, not the pre-stage listing
+git restore --staged .
+```
+
+Staging normalizes the line-ending noise out of the comparison. Only files
+that still show as modified after this round-trip are real changes worth
+reviewing/including. If a `git status --short` immediately after the fix
+tasks shows far more files than you expect, don't stage that whole set and
+don't "fix" the unrelated ones as a drive-by - run the stage/unstage check
+above first, then proceed with `commit.md`'s own file-by-file review using
+the now-accurate list.
+
 ## Scope — deliberately narrow
 
 This runs only the tasks in `.vscode/tasks.json` whose label contains

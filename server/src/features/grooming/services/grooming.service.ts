@@ -59,15 +59,22 @@ interface ListGroomingQueueParams {
 }
 
 /**
- * Grooming bookings in the given date range (today by default) that haven't
- * finished yet (bookings.status IN Pending/In Progress), scoped by role (own
- * sessions for a Groomer; own branch for Admin/Supervisor; all branches for
- * Superadmin). Booking-status revision: there's no more separate
- * Pending-awaiting-payment split (every booking holds its slot from
- * 'Pending' onward - ACTIVE_BOOKING_STATUSES), so what used to be two
- * functions (this one for 'Confirmed' bookings, plus
- * listUnconfirmedGroomingBookings for 'Pending' ones shown read-only) is now
- * one: every not-yet-finished booking gets a vivified grooming_sessions row.
+ * Grooming bookings in the given date range (today by default) that are
+ * actively being worked (bookings.status = 'In Progress' only), scoped by
+ * role (own sessions for a Groomer; own branch for Admin/Supervisor; all
+ * branches for Superadmin).
+ *
+ * Walk-in booking flow change: this used to also include 'Pending'
+ * bookings, so a receptionist-confirmed appointment appeared here before
+ * the customer arrived. That's gone - a 'Pending' online booking now only
+ * shows here once a receptionist checks it in (Bookings Queue's Check In
+ * action, POST /bookings/:id/start) and it flips to 'In Progress'. Walk-in
+ * bookings (booking_source = 'Walk-in') are created directly at 'In
+ * Progress' (see createBooking in booking.service.ts) and so appear here
+ * immediately, same as a freshly checked-in appointment - the two are
+ * indistinguishable once they reach this queue, which is the point: this
+ * queue is "who's actually here to be serviced," not "who's booked."
+ *
  * Auto-vivifies a grooming_sessions row for any matching booking that
  * doesn't have one yet - #64's Affected Files list only
  * grooming.service.ts/grooming.routes.ts, so booking.service.ts (Sprint 2
@@ -87,7 +94,7 @@ export async function listGroomingQueue({
     .from('bookings')
     .select('id, assigned_staff_id, branch_id')
     .eq('service_category', 'Grooming')
-    .in('status', ['Pending', 'In Progress'])
+    .eq('status', 'In Progress')
     .gte('scheduled_start', dayStart)
     .lt('scheduled_start', dayEnd)
     // Custom change (P-1 roadmap item: generic downpayment): a booking

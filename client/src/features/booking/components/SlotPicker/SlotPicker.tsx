@@ -26,6 +26,15 @@ interface SlotPickerProps {
   viewerMode: 'customer' | 'staff';
   selectedSlot: SelectedSlot | null;
   onSelect: (slot: SelectedSlot) => void;
+  /** Walk-in booking flow: locks this picker to "today", auto-resolves and
+   * selects the earliest available slot via the same getDayAvailability
+   * fetch this component already runs (no separate slot-resolution logic),
+   * and renders the date/time controls as a non-interactive, visibly
+   * greyed-out banner instead of the normal calendar/time-grid - the
+   * receptionist can't browse dates/times for a walk-in, since the customer
+   * is already physically at the branch. StaffPickerList/CagePickerList
+   * rendered alongside this component are untouched and stay interactive. */
+  lockToNow?: boolean;
   /** #22 follow-up: fired every time this date's availability resolves, so a
    * caller can react to "the day currently being viewed has zero open
    * slots" (e.g. show a fully-booked warning) without duplicating this
@@ -77,6 +86,7 @@ export function SlotPicker({
   viewerMode,
   selectedSlot,
   onSelect,
+  lockToNow = false,
   onAvailabilityChange,
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
@@ -149,6 +159,40 @@ export function SlotPicker({
     [slots]
   );
 
+  // Walk-in booking flow: pinned to "today" the moment lockToNow turns on -
+  // guards against a stale non-today `date` left over from Online browsing
+  // before the receptionist switched to Walk-in on the same mounted picker.
+  // Deferred to a microtask (mirrors CustomerBookingFlowPage's own
+  // set-state-in-effect pattern) so this never runs synchronously inside
+  // the effect body itself.
+  useEffect(() => {
+    if (!lockToNow) return;
+
+    void Promise.resolve().then(() => {
+      setDate(todayIso());
+    });
+  }, [lockToNow]);
+
+  const earliestAvailableSlot = useMemo(
+    () => slots.find((slot) => slot.available) ?? null,
+    [slots]
+  );
+
+  // Walk-in booking flow: auto-resolves and selects the earliest available
+  // slot for today, reusing the fetch above rather than duplicating any
+  // slot-resolution logic - the receptionist never browses/picks manually
+  // while locked. Guarded against re-firing once the same slot is already
+  // selected, so this settles after one call per fetch instead of looping.
+  useEffect(() => {
+    if (!lockToNow || !earliestAvailableSlot) return;
+    if (selectedSlot?.start === earliestAvailableSlot.start) return;
+
+    onSelect({
+      start: earliestAvailableSlot.start,
+      end: earliestAvailableSlot.end,
+    });
+  }, [lockToNow, earliestAvailableSlot, selectedSlot, onSelect]);
+
   // A past date is never bookable (server-side: getDaySlots returns []
   // for any date before "today" in the branch's own timezone) - blocking
   // navigation to one here too is just the matching client-side guard, so
@@ -159,39 +203,66 @@ export function SlotPicker({
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.dateNav}>
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          disabled={isAtMinDate}
-          onClick={() => setDate((current) => shiftDate(current, -1))}
-        >
-          Previous day
-        </button>
-        <label className={styles.dateField}>
-          <span className={styles.dateLabel}>Date</span>
-          <input
-            className={styles.dateInput}
-            type="date"
-            min={minDate}
-            value={date}
-            onChange={(event) =>
-              setDate(
-                event.target.value < minDate ? minDate : event.target.value
-              )
-            }
-          />
-        </label>
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={() => setDate((current) => shiftDate(current, 1))}
-        >
-          Next day
-        </button>
-      </div>
+      {lockToNow ? (
+        <div className={styles.lockedBanner}>
+          <span className={styles.lockedBannerTitle}>
+            Walk-in — next available slot today
+          </span>
+          <span>
+            {isLoading
+              ? 'Resolving the next available slot...'
+              : earliestAvailableSlot
+                ? `${new Date(earliestAvailableSlot.start).toLocaleTimeString(
+                    [],
+                    { hour: 'numeric', minute: '2-digit' }
+                  )} - ${new Date(earliestAvailableSlot.end).toLocaleTimeString(
+                    [],
+                    { hour: 'numeric', minute: '2-digit' }
+                  )} today`
+                : 'No open slot today - the staff/cage picker below still runs, but there is nothing to hold right now.'}
+          </span>
+        </div>
+      ) : (
+        <div className={styles.dateNav}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            disabled={isAtMinDate}
+            onClick={() => setDate((current) => shiftDate(current, -1))}
+          >
+            Previous day
+          </button>
+          <label className={styles.dateField}>
+            <span className={styles.dateLabel}>Date</span>
+            <input
+              className={styles.dateInput}
+              type="date"
+              min={minDate}
+              value={date}
+              onChange={(event) =>
+                setDate(
+                  event.target.value < minDate ? minDate : event.target.value
+                )
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setDate((current) => shiftDate(current, 1))}
+          >
+            Next day
+          </button>
+        </div>
+      )}
 
-      {isLoading ? (
+      {/* Walk-in booking flow: the locked banner above already covers
+          loading/resolved/no-slot messaging, so the normal loading/error/
+          empty copy below (written for a browsable date) is suppressed
+          while locked to avoid redundant or confusing duplicate text. The
+          error state still surfaces, since "the availability fetch itself
+          failed" isn't something the banner's own copy communicates. */}
+      {isLoading && !lockToNow ? (
         <p className={styles.copy}>Loading available times...</p>
       ) : null}
 
@@ -201,13 +272,17 @@ export function SlotPicker({
         </p>
       ) : null}
 
-      {!isLoading && !error && slots.length === 0 ? (
+      {!isLoading && !error && !lockToNow && slots.length === 0 ? (
         <p className={styles.copy}>
           No availability on this date. Try another date above.
         </p>
       ) : null}
 
-      {!isLoading && !error && slots.length > 0 && availableCount === 0 ? (
+      {!isLoading &&
+      !error &&
+      !lockToNow &&
+      slots.length > 0 &&
+      availableCount === 0 ? (
         <p className={styles.copy}>
           No open slots on this date. Try another date above.
         </p>
@@ -227,7 +302,7 @@ export function SlotPicker({
         </p>
       ) : null}
 
-      {!isLoading && !error && slots.length > 0 ? (
+      {!lockToNow && !isLoading && !error && slots.length > 0 ? (
         <TimeSlotInput
           slots={slots}
           operatingWindow={operatingWindow}

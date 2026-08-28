@@ -101,7 +101,7 @@ describe('consultation.service (#66)', () => {
   });
 
   describe('listConsultationQueue', () => {
-    it('auto-vivifies a consultation for an actionable (Pending/In Progress) Veterinary booking without one yet', async () => {
+    it('auto-vivifies a consultation for an actionable (In Progress) Veterinary booking without one yet', async () => {
       queueFromResults(
         {
           data: [
@@ -111,7 +111,7 @@ describe('consultation.service (#66)', () => {
               branch_id: MAKATI.id,
               assigned_staff_id: VET_ID,
               special_instructions: 'Annual checkup',
-              status: 'Pending',
+              status: 'In Progress',
             },
           ],
           error: null,
@@ -161,7 +161,7 @@ describe('consultation.service (#66)', () => {
               branch_id: 'branch-south',
               assigned_staff_id: VET_ID,
               special_instructions: null,
-              status: 'Pending',
+              status: 'In Progress',
             },
           ],
           error: null,

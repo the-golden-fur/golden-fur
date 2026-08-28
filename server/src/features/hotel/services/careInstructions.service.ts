@@ -73,7 +73,13 @@ export async function checkInHotelStay({
   if (booking.service_category !== 'Hotel') {
     throwWithStatus(400, 'Booking is not a Hotel booking');
   }
-  if (booking.status !== 'Pending') {
+  // Walk-in booking flow: a walk-in Hotel booking is created already
+  // 'In Progress' (createBooking, booking_source = 'Walk-in') since there's
+  // no separate "arrival" event to wait for - the pet is already here. Still
+  // needs to go through this same check-in action for cage assignment/care
+  // instructions, so 'In Progress' is accepted alongside the normal Pending
+  // (online, first-time check-in) case.
+  if (booking.status !== 'Pending' && booking.status !== 'In Progress') {
     throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
   }
   if (booking.branch_id !== branchId) {
@@ -127,8 +133,13 @@ export async function checkInHotelStay({
     // the stays row (and the cage claim behind it) exist. Still inside
     // the try/catch above, so a failure here (e.g. an unexpected concurrent
     // status change) releases the cage exactly like any other failure past
-    // the claim - it never strands an Occupied cage.
-    await startBooking({ bookingId: booking.id });
+    // the claim - it never strands an Occupied cage. Walk-in booking flow: a
+    // walk-in booking is already 'In Progress' at this point (createBooking
+    // sets that directly), so startBooking - which only accepts a 'Pending'
+    // booking - is skipped rather than called redundantly.
+    if (booking.status === 'Pending') {
+      await startBooking({ bookingId: booking.id });
+    }
 
     const checkInDate = now.toISOString().slice(0, 10);
     const days = enumerateDates(checkInDate, scheduledCheckOutDate);

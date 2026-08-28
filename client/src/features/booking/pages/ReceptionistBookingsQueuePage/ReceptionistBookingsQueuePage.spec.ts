@@ -31,6 +31,7 @@ vi.mock('../../api/booking.api', () => ({
   listBookings: vi.fn(),
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
+  startBooking: vi.fn(),
 }));
 
 // Reschedule button gating (#24) reads policy_configurations - only the
@@ -92,6 +93,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     branch_id: 'branch-makati',
     created_by_staff_id: 'staff-1',
     service_category: 'Grooming',
+    booking_source: 'Online',
     service_id: 'service-1',
     package_id: null,
     scheduled_start: '2026-08-03T01:00:00.000Z',
@@ -688,5 +690,89 @@ describe('ReceptionistBookingsQueuePage', () => {
     await user.click(screen.getByText('View details'));
 
     expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/booking-1');
+  });
+
+  // Walk-in booking flow (custom change): "Check In" is back as a third
+  // sibling action alongside Reschedule/Cancel - see the page's own updated
+  // doc comment for why this doesn't contradict
+  // bookings-queue-readonly-and-sidebar-reorg.
+  describe('Check In (walk-in booking flow)', () => {
+    it('shows Check In only for a Pending booking, calls startBooking, and updates the row in place on success', async () => {
+      const user = userEvent.setup();
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [buildBooking({ status: 'Pending' })],
+        error: null,
+      });
+      vi.mocked(bookingApi.startBooking).mockResolvedValue({
+        data: buildBooking({ status: 'In Progress' }),
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Check In')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Check In'));
+
+      expect(bookingApi.startBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      );
+      await waitFor(() =>
+        expect(screen.queryByText('Check In')).not.toBeInTheDocument()
+      );
+    });
+
+    it('does not show Check In for a booking that is already past Pending', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [buildBooking({ status: 'In Progress' })],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+    });
+
+    it('shows an error scoped to the failing booking when Check In fails, without disturbing its status', async () => {
+      const user = userEvent.setup();
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [buildBooking({ status: 'Pending' })],
+        error: null,
+      });
+      vi.mocked(bookingApi.startBooking).mockResolvedValue({
+        data: null,
+        error: 'A Pending booking cannot be started',
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Check In')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Check In'));
+
+      expect(
+        await screen.findByText('A Pending booking cannot be started')
+      ).toBeInTheDocument();
+      // Still Pending, still offering Check In again.
+      expect(screen.getByText('Check In')).toBeInTheDocument();
+    });
   });
 });

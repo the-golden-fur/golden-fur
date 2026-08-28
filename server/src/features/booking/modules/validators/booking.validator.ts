@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  BOOKING_SOURCES,
   BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
   OVERRIDABLE_PAYMENT_STAGES,
@@ -202,6 +203,11 @@ export const createBookingValidator = z
     pet_id: z.uuid(),
     branch_id: z.uuid(),
     service_category: z.enum(CATEGORIES),
+    // Walk-in booking flow - defaults to 'Online' when omitted (unchanged
+    // behavior for every existing caller). 'Walk-in' is staff-only, same
+    // pattern as customer_id below; enforced in booking.service.ts where the
+    // requester's role is known.
+    booking_source: z.enum(BOOKING_SOURCES).optional(),
     items: z
       .array(bookingItemValidator)
       .min(1, 'At least one service or package must be selected'),

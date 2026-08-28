@@ -20,6 +20,7 @@ import {
   OVERRIDABLE_BOOKING_STATUSES,
   OVERRIDABLE_PAYMENT_STAGES,
   type Booking,
+  type BookingSource,
   type PaymentStage,
   type ServiceCategory,
 } from '../booking.types.ts';
@@ -698,6 +699,14 @@ async function resolveStaffAssignment(
  * ownership validation -> #53's Veterinary branch guard (fail fast, before
  * any capacity check) -> pricing snapshot -> payment gate -> authoritative
  * capacity check -> INSERT -> post-insert race re-verification (AC-5).
+ *
+ * Walk-in booking flow: `booking_source` ('Online', default, or 'Walk-in',
+ * staff-only) branches two things - the down payment policy is skipped
+ * entirely for a walk-in (no slot-holding risk, the customer/pet is already
+ * physically present) and its initial status is 'In Progress' rather than
+ * 'Pending'. The capacity/staff/cage assignment pipeline below is otherwise
+ * identical for both - a walk-in still needs a real free slot right now, it
+ * just isn't picked from a future calendar.
  */
 export async function createBooking({
   requesterId,
@@ -727,6 +736,16 @@ export async function createBooking({
     }
 
     customerId = requesterId;
+  }
+
+  // Walk-in booking flow: 'Walk-in' means the customer/pet is physically at
+  // the branch right now, being registered on the spot by a receptionist -
+  // mirrors the customer_id-requires-staff check above. Default is 'Online'
+  // (unchanged behavior for every existing caller).
+  const bookingSource: BookingSource = input.booking_source ?? 'Online';
+
+  if (bookingSource === 'Walk-in' && !staffRole) {
+    throwWithStatus(403, 'Only staff may create a walk-in booking');
   }
 
   const { data: pet, error: petError } = await supabase
@@ -784,15 +803,25 @@ export async function createBooking({
   // single per-transaction policy_configurations config, applied once
   // against the whole booking's totalPrice - see resolveDownpaymentPolicy
   // in staffPicker.service.ts.
-  const downpaymentPolicy = await resolveDownpaymentPolicy(input.branch_id);
-  const downpaymentRequired = downpaymentPolicy.downpayment_enabled;
-  const downpaymentAmount = downpaymentRequired
-    ? round2(
-        downpaymentPolicy.downpayment_type === 'Percentage'
-          ? totalPrice * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
-          : (downpaymentPolicy.downpayment_amount ?? 0)
-      )
-    : null;
+  //
+  // Walk-in booking flow: a walk-in never holds a slot on zero payment risk
+  // (the customer/pet is already physically present), so the down payment
+  // policy is skipped entirely rather than evaluated and then ignored -
+  // resolveDownpaymentPolicy is not even called.
+  let downpaymentRequired = false;
+  let downpaymentAmount: number | null = null;
+
+  if (bookingSource === 'Online') {
+    const downpaymentPolicy = await resolveDownpaymentPolicy(input.branch_id);
+    downpaymentRequired = downpaymentPolicy.downpayment_enabled;
+    downpaymentAmount = downpaymentRequired
+      ? round2(
+          downpaymentPolicy.downpayment_type === 'Percentage'
+            ? totalPrice * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
+            : (downpaymentPolicy.downpayment_amount ?? 0)
+        )
+      : null;
+  }
 
   const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
     await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
@@ -804,11 +833,18 @@ export async function createBooking({
   // drives the automatic Pending->...->Paid fast path once the service
   // completes - see completeBooking below), it just no longer gates status
   // at creation time.
+  //
+  // Walk-in booking flow: a walk-in starts already 'In Progress' instead of
+  // 'Pending' - the customer is physically here, so there's no separate
+  // "arrival"/check-in event left to wait for (applyNoShowTransition only
+  // ever acts on 'Pending' bookings, so a walk-in is never at risk of
+  // flipping to No-show).
   const paymentConfirmed =
     input.service_category === 'Veterinary'
       ? false
       : (input.payment_confirmed ?? false);
-  const status: Booking['status'] = 'Pending';
+  const status: Booking['status'] =
+    bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
   // Custom change (P-1 roadmap item: generic downpayment): only a
   // downpayment-required booking gets payment_stage set explicitly at
@@ -883,10 +919,18 @@ export async function createBooking({
       branch_id: input.branch_id,
       created_by_staff_id: createdByStaffId,
       service_category: input.service_category,
+      booking_source: bookingSource,
       scheduled_start: input.scheduled_start,
       scheduled_end: input.scheduled_end,
       assigned_staff_id: staffResolution.assignedStaffId,
       status,
+      // A walk-in is created directly at 'In Progress' (no separate Start
+      // action will ever fire for it) - set started_at up front to match,
+      // same as startBooking does for the online Pending -> In Progress
+      // transition.
+      ...(bookingSource === 'Walk-in'
+        ? { started_at: new Date().toISOString() }
+        : {}),
       total_price: totalPrice,
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,

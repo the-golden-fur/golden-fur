@@ -19,17 +19,20 @@ import type { Consultation, VeterinarianPatient } from '../veterinary.types.ts';
 // relationship was found for 'consultations' and 'bookings'").
 const CONSULTATION_SELECT = '*, booking:bookings!booking_id(*)';
 
-/** Booking-status revision: Veterinary never had a payment gate on initial
- * status (#51 dev notes), so the old "Confirmed queue" vs "Pending awaiting
- * payment" split (listUnconfirmedVeterinaryBookings) no longer means
- * anything - both statuses are actionable today, so listConsultationQueue
- * alone now covers everything. This is also the auto-vivify-eligible set -
- * a consultations row only ever gets created for a booking while it's still
- * actionable, never retroactively for one that's already Completed. */
-const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = [
-  'Pending',
-  'In Progress',
-];
+/** Walk-in booking flow change: this used to be ['Pending', 'In Progress']
+ * (Veterinary never had a payment gate on initial status - #51 dev notes -
+ * so both were considered actionable). Now only 'In Progress' is - a
+ * 'Pending' online booking doesn't show here until a receptionist checks
+ * it in (Bookings Queue's Check In action, POST /bookings/:id/start) and
+ * it flips to 'In Progress'. Walk-in bookings (booking_source = 'Walk-in')
+ * are created directly at 'In Progress' (see createBooking in
+ * booking.service.ts), so they appear immediately - indistinguishable
+ * here from a freshly checked-in appointment, which is the point: this is
+ * "who's actually here," not "who's booked." This is also the
+ * auto-vivify-eligible set - a consultations row only ever gets created
+ * for a booking while it's still actionable, never retroactively for one
+ * that's already Completed. */
+const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = ['In Progress'];
 
 /** Superset of QUEUE_BOOKING_STATUSES used for what the queue actually
  * returns - Completed bookings are included (read-only, so the console can
@@ -93,9 +96,10 @@ interface ListConsultationQueueParams {
 /**
  * Issue #66: the Makati Veterinary consultation queue for the given date
  * range (today by default). Auto-vivifies a 'Pending' consultations row for
- * any actionable Veterinary booking (bookings.status Pending or In
- * Progress - booking-status revision) that doesn't have one yet - mirrors
- * #64's grooming_sessions pattern (no DB trigger exists anywhere in this
+ * any actionable Veterinary booking (bookings.status = 'In Progress' -
+ * walk-in booking flow change, see QUEUE_BOOKING_STATUSES above) that
+ * doesn't have one yet - mirrors #64's grooming_sessions pattern (no DB
+ * trigger exists anywhere in this
  * codebase; see grooming.service.ts's own dev note on why). Any
  * Veterinarian may see and open any row - no per-vet scoping, matching the
  * explicit "no per-pet assigned-vet restriction" carve-out - so unlike

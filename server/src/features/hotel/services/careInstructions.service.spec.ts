@@ -446,6 +446,57 @@ describe('careInstructions.service (#75)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
+    // Walk-in booking flow (custom change): a walk-in Hotel booking is
+    // created already 'In Progress' (createBooking, booking_source =
+    // 'Walk-in') - it still needs to go through this same check-in action
+    // for cage assignment/care instructions, so 'In Progress' is now
+    // accepted alongside the normal Pending (online) case. startBooking is
+    // deliberately not re-called, since it only accepts a Pending booking.
+    it('accepts an already In Progress (walk-in) Hotel booking and does not re-call startBooking', async () => {
+      queueFromResults(
+        {
+          data: { ...CONFIRMED_HOTEL_BOOKING, status: 'In Progress' },
+          error: null,
+        }, // bookings lookup
+        { data: null, error: null }, // no existing stay
+        { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
+        { data: { id: 'stay-1', status: 'Active' }, error: null }, // hotel_stays insert
+        {
+          data: [
+            {
+              id: 'inst-1',
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1 cup',
+            },
+          ],
+          error: null,
+        },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null }
+      );
+
+      const result = await checkInHotelStay({
+        requesterId: 'staff-1',
+        branchId: 'branch-1',
+        input: {
+          booking_id: 'booking-1',
+          cage_id: 'cage-1',
+          feeding: [
+            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
+      });
+
+      expect(result.stay.status).toBe('Active');
+    });
+
     it('rejects a booking that already has a hotel_stays row', async () => {
       queueFromResults(
         { data: CONFIRMED_HOTEL_BOOKING, error: null },
