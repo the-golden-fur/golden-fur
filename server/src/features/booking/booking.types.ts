@@ -194,6 +194,11 @@ export type EnforcementMode = 'Strict' | 'Soft';
  * already existed (Sprint 2 #52) and is reused as-is. */
 export type RescheduleFeeType = 'Flat' | 'Percentage';
 
+/** Same 'Flat'|'Percentage' vocabulary as RescheduleFeeType - kept as a
+ * separate alias since it applies to a different column/concept
+ * (policy_configurations.downpayment_type). */
+export type DownpaymentType = 'Flat' | 'Percentage';
+
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
@@ -268,9 +273,11 @@ export interface Booking {
   payment_stage: PaymentStage;
   total_price: number;
   downpayment_amount: number | null;
-  /** True when at least one selected service/package was flagged
-   * requires_downpayment at creation. Drives queue gating (grooming/
-   * consultation/listBookings) - see 20260808111's dev notes. */
+  /** True when the effective policy_configurations downpayment config was
+   * enabled at creation time (see resolveDownpaymentPolicy in
+   * staffPicker.service.ts). Drives queue gating (grooming/consultation/
+   * listBookings) - see 20260808111's original dev notes (mechanism since
+   * moved from per-catalog-item to per-transaction by 20260828143/144). */
   downpayment_required: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
@@ -357,6 +364,15 @@ export interface PolicyConfiguration {
    * tooltip) rather than disappearing. See isOnlinePaymentsEnabled in
    * staffPicker.service.ts. */
   online_payments_enabled: boolean;
+  /** Per-transaction downpayment config, applied against a booking's whole
+   * total_price at creation time - see resolveDownpaymentPolicy in
+   * staffPicker.service.ts and createBooking in booking.service.ts.
+   * Supersedes the old per-catalog-item services/packages.
+   * requires_downpayment mechanism (removed by 20260828144). */
+  downpayment_enabled: boolean;
+  /** Populated only when downpayment_enabled is true. */
+  downpayment_type: DownpaymentType | null;
+  downpayment_amount: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -382,6 +398,9 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
   | 'online_payments_enabled'
+  | 'downpayment_enabled'
+  | 'downpayment_type'
+  | 'downpayment_amount'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

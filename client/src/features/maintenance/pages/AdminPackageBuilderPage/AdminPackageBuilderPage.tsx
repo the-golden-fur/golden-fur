@@ -112,11 +112,6 @@ export function AdminPackageBuilderPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
-  const [formRequiresDownpayment, setFormRequiresDownpayment] = useState(false);
-  const [formDownpaymentAmount, setFormDownpaymentAmount] = useState('');
-  const [formDownpaymentType, setFormDownpaymentType] = useState<
-    'Flat' | 'Percentage'
-  >('Flat');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -277,10 +272,10 @@ export function AdminPackageBuilderPage() {
   }, [searchedPackages, statusFilter, branchFilter]);
 
   // Only services offered at every one of the form's selected branches are
-  // pickable. A member's own weight/coat matrix or downpayment flag has no
-  // bearing on this package (custom change: package pricing redesign -
-  // those flags only govern that service when it's booked on its own), so
-  // there is no exclusion here beyond branch availability.
+  // pickable. A member's own weight/coat matrix flag has no bearing on this
+  // package (custom change: package pricing redesign - that flag only
+  // governs that service when it's booked on its own), so there is no
+  // exclusion here beyond branch availability.
   const serviceOptionsForBranches: ServiceMultiSelectOption[] = useMemo(() => {
     if (selectedBranchIds.length === 0) {
       return [];
@@ -404,9 +399,6 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
-    setFormRequiresDownpayment(false);
-    setFormDownpaymentAmount('');
-    setFormDownpaymentType('Flat');
   }
 
   const openCreateForm = () => {
@@ -432,11 +424,6 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
-    setFormRequiresDownpayment(pkg.requires_downpayment);
-    setFormDownpaymentAmount(
-      pkg.downpayment_amount === null ? '' : String(pkg.downpayment_amount)
-    );
-    setFormDownpaymentType(pkg.downpayment_type ?? 'Flat');
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -581,29 +568,6 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
-    const downpaymentAmount =
-      formDownpaymentAmount === '' ? undefined : Number(formDownpaymentAmount);
-
-    if (
-      formRequiresDownpayment &&
-      (downpaymentAmount === undefined || downpaymentAmount <= 0)
-    ) {
-      setFormError(
-        'A positive downpayment amount is required when downpayment is required.'
-      );
-      return;
-    }
-
-    if (
-      formRequiresDownpayment &&
-      formDownpaymentType === 'Percentage' &&
-      downpaymentAmount !== undefined &&
-      downpaymentAmount > 100
-    ) {
-      setFormError('A percentage downpayment cannot exceed 100.');
-      return;
-    }
-
     setIsSubmitting(true);
     setFormError(null);
 
@@ -621,13 +585,6 @@ export function AdminPackageBuilderPage() {
         service_ids: selectedServiceIds,
         branch_ids: selectedBranchIds,
         use_pricing_matrix: formUsePricingMatrix,
-        requires_downpayment: formRequiresDownpayment,
-        ...(formRequiresDownpayment && downpaymentAmount !== undefined
-          ? {
-              downpayment_amount: downpaymentAmount,
-              downpayment_type: formDownpaymentType,
-            }
-          : {}),
       });
 
       setIsSubmitting(false);
@@ -650,11 +607,6 @@ export function AdminPackageBuilderPage() {
       name: formName.trim(),
       service_ids: selectedServiceIds,
       use_pricing_matrix: formUsePricingMatrix,
-      requires_downpayment: formRequiresDownpayment,
-      downpayment_amount: formRequiresDownpayment
-        ? (downpaymentAmount ?? null)
-        : null,
-      downpayment_type: formRequiresDownpayment ? formDownpaymentType : null,
     });
 
     if (result.error || !result.data) {
@@ -909,59 +861,6 @@ export function AdminPackageBuilderPage() {
                 ) : null}
               </div>
 
-              <div className={styles.formSection}>
-                <h3 className={styles.formSectionTitle}>Downpayment</h3>
-                <ToggleSwitch
-                  label="Requires a downpayment before the package can start"
-                  checked={formRequiresDownpayment}
-                  onChange={setFormRequiresDownpayment}
-                />
-
-                {formRequiresDownpayment ? (
-                  <>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        Downpayment type
-                      </span>
-                      <select
-                        className={styles.input}
-                        value={formDownpaymentType}
-                        onChange={(event) =>
-                          setFormDownpaymentType(
-                            event.target.value as 'Flat' | 'Percentage'
-                          )
-                        }
-                      >
-                        <option value="Flat">Flat amount (PHP)</option>
-                        <option value="Percentage">Percentage of price</option>
-                      </select>
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        {formDownpaymentType === 'Percentage'
-                          ? 'Downpayment percentage (0-100)'
-                          : 'Downpayment amount (PHP)'}
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min="0.01"
-                        max={
-                          formDownpaymentType === 'Percentage' ? 100 : undefined
-                        }
-                        step="0.01"
-                        inputMode="decimal"
-                        value={formDownpaymentAmount}
-                        onChange={(event) =>
-                          setFormDownpaymentAmount(event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                  </>
-                ) : null}
-              </div>
-
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
                   {formError}
@@ -1011,14 +910,6 @@ export function AdminPackageBuilderPage() {
                   {pkg.use_pricing_matrix ? (
                     <span className={styles.branchBadge}>
                       Varies by weight/coat
-                    </span>
-                  ) : null}
-                  {pkg.requires_downpayment &&
-                  pkg.downpayment_amount !== null ? (
-                    <span className={styles.branchBadge}>
-                      {pkg.downpayment_type === 'Percentage'
-                        ? `Requires ${pkg.downpayment_amount}% downpayment`
-                        : `Requires PHP ${pkg.downpayment_amount.toFixed(2)} downpayment`}
                     </span>
                   ) : null}
                 </div>

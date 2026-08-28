@@ -132,6 +132,7 @@ const DEFAULT_POLICY = {
   notice_enforcement_enabled: true,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
+  downpayment_enabled: false,
 };
 
 const GROOMING_SERVICE = {
@@ -199,39 +200,6 @@ const VET_SERVICE = {
   service_pricing_tiers: [],
 } as never;
 
-// Custom change (P-1 roadmap item: generic downpayment) - a flat catalog
-// downpayment_amount, independent of the tiered base_price, so tests can
-// assert the two never get confused with each other.
-const DOWNPAYMENT_GROOMING_SERVICE = {
-  id: 'service-groom-dp',
-  category: 'Grooming',
-  name: 'Full Groom (downpayment)',
-  base_price: 300,
-  is_active: true,
-  requires_assessed_pet: true,
-  use_pricing_matrix: true,
-  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
-  requires_downpayment: true,
-  downpayment_amount: 150,
-  downpayment_type: 'Flat',
-} as never;
-
-// Custom change (follow-up: flat-or-percentage) - 20% of the S/SC tier
-// price (350), i.e. 70, not 20% of base_price (300).
-const PERCENTAGE_DOWNPAYMENT_GROOMING_SERVICE = {
-  id: 'service-groom-dp-pct',
-  category: 'Grooming',
-  name: 'Full Groom (percentage downpayment)',
-  base_price: 300,
-  is_active: true,
-  requires_assessed_pet: true,
-  use_pricing_matrix: true,
-  service_pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 350 }],
-  requires_downpayment: true,
-  downpayment_amount: 20,
-  downpayment_type: 'Percentage',
-} as never;
-
 const GROOMER = {
   staff_id: 'groomer-1',
   display_name: 'Ana',
@@ -276,6 +244,7 @@ describe('booking.service (#51)', () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // bookings insert
       { data: null, error: null }, // booking_items insert
@@ -307,6 +276,7 @@ describe('booking.service (#51)', () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [], error: null }, // pre-insert daycare overlap count - empty
       {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
@@ -355,6 +325,7 @@ describe('booking.service (#51)', () => {
         data: { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
         error: null,
       }, // #53 guard
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       {
         data: { ...INSERTED_BOOKING, service_category: 'Veterinary' },
@@ -460,6 +431,7 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(ASSESSMENT_SERVICE);
       queueFromResults(
         { data: UNASSESSED_PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         {
           data: { ...INSERTED_BOOKING, id: 'booking-4', total_price: 0 },
@@ -493,6 +465,7 @@ describe('booking.service (#51)', () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // insert
       { data: null, error: null }, // booking_items insert
@@ -527,6 +500,7 @@ describe('booking.service (#51)', () => {
     } as never);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [DEFAULT_POLICY], error: null } // staff picker toggle
     );
 
@@ -562,6 +536,7 @@ describe('booking.service (#51)', () => {
     } as never);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [], error: null }, // daycare overlap - empty
       {
         data: {
@@ -1070,6 +1045,7 @@ describe('booking.service (#51)', () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
       queueFromResults(
         { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
@@ -1150,6 +1126,7 @@ describe('booking.service (#51)', () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null); // a customer, not staff
       queueFromResults(
         { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo_cap_configuration (branch row)
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
@@ -1226,6 +1203,7 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
       queueFromResults(
         { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // Hotel overlap - empty (filterSameSizeRows then short-circuits, no query)
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
@@ -1262,6 +1240,7 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
       queueFromResults(
         { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null },
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
@@ -1290,11 +1269,68 @@ describe('booking.service (#51)', () => {
   // Custom change (P-1 roadmap item): "Add a 'requires downpayment'
   // checkbox (with a specified amount) when creating a service or package -
   // broader than the existing branch-level Hotel downpayment percentage."
+  // Follow-up redesign: downpayment is no longer a per-catalog-item flag
+  // (services.requires_downpayment/downpayment_amount/downpayment_type,
+  // summed per selected item and forcing a flagged item to be booked alone)
+  // but a single per-transaction policy_configurations config
+  // (downpayment_enabled/downpayment_type/downpayment_amount), resolved via
+  // resolveDownpaymentPolicy and applied once against the whole booking's
+  // totalPrice - see staffPicker.service.ts.
   describe('generic downpayment (custom change)', () => {
-    it('a flat-type flagged service snapshots downpayment_required/downpayment_amount from the catalog (this is Grooming, not Hotel - downpayment is no longer category-restricted at all)', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+    const FLAT_DOWNPAYMENT_POLICY = {
+      ...DEFAULT_POLICY,
+      downpayment_enabled: true,
+      downpayment_type: 'Flat',
+      downpayment_amount: 150,
+    };
+
+    it('snapshots downpayment_required/downpayment_amount from the resolved per-transaction policy, regardless of which service was picked (this is Grooming, not Hotel - downpayment is no longer category- or catalog-item-restricted at all)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null }, // pet ownership
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: BASE_INPUT,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        total_price: 350, // still the S/SC tier price - unaffected
+        downpayment_required: true,
+        downpayment_amount: 150, // the flat per-transaction amount, not derived from any item
+      });
+    });
+
+    it('a Percentage-type policy computes downpayment_amount as a percentage of the whole booking total_price (2-item booking), not any single item', async () => {
+      vi.mocked(getServiceById).mockImplementation(async (serviceId: string) =>
+        serviceId === 'service-flat-groom'
+          ? FLAT_GROOMING_SERVICE
+          : GROOMING_SERVICE
+      );
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        {
+          data: [
+            {
+              ...DEFAULT_POLICY,
+              downpayment_enabled: true,
+              downpayment_type: 'Percentage',
+              downpayment_amount: 20,
+            },
+          ],
+          error: null,
+        }, // resolveDownpaymentPolicy
         { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
@@ -1307,7 +1343,10 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp' }],
+          items: [
+            { service_id: 'service-groom' },
+            { service_id: 'service-flat-groom' },
+          ],
         },
       });
 
@@ -1315,84 +1354,21 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({
-        total_price: 350, // still the S/SC tier price - unaffected
+        total_price: 450, // 350 (tiered) + 100 (flat) - the whole transaction
         downpayment_required: true,
-        downpayment_amount: 150, // the flat catalog amount, not the tier price
+        downpayment_amount: 90, // 20% of 450, not 20% of either item alone (70 or 20)
       });
     });
 
-    it('regression: never carries requires_downpayment/downpayment_amount/downpayment_type onto the booking_items insert - that table has no such columns, only bookings does', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
-      queueFromResults(
-        { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
-        { data: INSERTED_BOOKING, error: null },
-        { data: null, error: null }, // booking_items insert
-        { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
-        { data: INSERTED_BOOKING, error: null }
-      );
-
-      await createBooking({
-        requesterId: CUSTOMER_ID,
-        input: {
-          ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp' }],
-        },
-      });
-
-      const itemsInsert = recordedWrites.find(
-        (write) => write.table === 'booking_items' && write.method === 'insert'
-      );
-
-      expect(itemsInsert?.payload).toEqual([
-        {
-          booking_id: 'booking-1',
-          service_id: 'service-groom-dp',
-          package_id: null,
-          price_at_booking: 350,
-          duration_minutes_at_booking: expect.any(Number),
-        },
-      ]);
-    });
-
-    it('a percentage-type flagged service computes downpayment_amount as a percentage of price_at_booking, not base_price', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(
-        PERCENTAGE_DOWNPAYMENT_GROOMING_SERVICE
-      );
-      queueFromResults(
-        { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
-        { data: INSERTED_BOOKING, error: null },
-        { data: null, error: null },
-        { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
-        { data: INSERTED_BOOKING, error: null }
-      );
-
-      await createBooking({
-        requesterId: CUSTOMER_ID,
-        input: {
-          ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp-pct' }],
-        },
-      });
-
-      const insert = recordedWrites.find(
-        (write) => write.table === 'bookings' && write.method === 'insert'
-      );
-      expect(insert?.payload).toMatchObject({
-        total_price: 350, // the S/SC tier price
-        downpayment_required: true,
-        downpayment_amount: 70, // 20% of 350 (price_at_booking), not 20% of base_price (300)
-      });
-    });
-
-    it('a non-flagged service leaves downpayment_required false and downpayment_amount null (unchanged pre-existing behavior)', async () => {
+    it('downpayment_enabled: false leaves downpayment_required false and downpayment_amount null', async () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
+        {
+          data: [{ ...DEFAULT_POLICY, downpayment_enabled: false }],
+          error: null,
+        }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1414,31 +1390,79 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('rejects a multi-item booking where any item requires a downpayment - it must be booked on its own', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
-      queueFromResults({ data: PET, error: null }); // pet ownership
+    it('falls back to DOCUMENTED_DEFAULTS (downpayment disabled) when no policy_configurations row exists at all', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [], error: null }, // resolveDownpaymentPolicy - no rows, falls back to DOCUMENTED_DEFAULTS
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
 
-      await expect(
-        createBooking({
-          requesterId: CUSTOMER_ID,
-          input: {
-            ...BASE_INPUT,
-            items: [
-              { service_id: 'service-groom-dp' },
-              { service_id: 'service-groom-dp' },
-            ],
-          },
-        })
-      ).rejects.toMatchObject({ statusCode: 400 });
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: BASE_INPUT,
+      });
 
-      expect(supabase.rpc).not.toHaveBeenCalled();
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        downpayment_required: false,
+        downpayment_amount: null,
+      });
+    });
+
+    it('a multi-item booking succeeds normally while downpayment is enabled - it is never rejected for combining items (the old "must be booked on its own" per-item rule no longer exists)', async () => {
+      vi.mocked(getServiceById).mockImplementation(async (serviceId: string) =>
+        serviceId === 'service-flat-groom'
+          ? FLAT_GROOMING_SERVICE
+          : GROOMING_SERVICE
+      );
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      const booking = await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          items: [
+            { service_id: 'service-groom' },
+            { service_id: 'service-flat-groom' },
+          ],
+        },
+      });
+
+      expect(booking.id).toBe('booking-1');
+      expect(supabase.rpc).toHaveBeenCalled();
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        total_price: 450,
+        downpayment_required: true,
+      });
     });
 
     it('paying online with payment_choice "downpayment" sets payment_stage to Paid in Advance at creation', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1450,7 +1474,6 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp' }],
           payment_method: 'GCash',
           payment_confirmed: true,
           payment_choice: 'downpayment',
@@ -1466,10 +1489,11 @@ describe('booking.service (#51)', () => {
     });
 
     it('paying online with payment_choice "full" sets payment_stage to Paid at creation', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1481,7 +1505,6 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp' }],
           payment_method: 'GCash',
           payment_confirmed: true,
           payment_choice: 'full',
@@ -1494,11 +1517,12 @@ describe('booking.service (#51)', () => {
       expect(insert?.payload).toMatchObject({ payment_stage: 'Paid' });
     });
 
-    it('a flagged service paid at the counter (payment_confirmed=false) leaves payment_stage unset (defaults to Unpaid), gating the queue until staff collect it', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DOWNPAYMENT_GROOMING_SERVICE);
+    it('a downpayment-required booking paid at the counter (payment_confirmed=false) leaves payment_stage unset (defaults to Unpaid), gating the queue until staff collect it', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
-        { data: [DEFAULT_POLICY], error: null },
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1510,7 +1534,6 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          items: [{ service_id: 'service-groom-dp' }],
           payment_method: 'Cash',
         },
       });

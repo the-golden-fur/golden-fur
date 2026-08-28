@@ -15,6 +15,7 @@ import {
   getStaffPickerOptions,
   isOnlinePaymentsEnabled,
   listPolicyConfigurations,
+  resolveDownpaymentPolicy,
   updatePolicyConfiguration,
 } from './services/staffPicker.service.ts';
 import { getCagePickerOptions } from './services/cagePicker.service.ts';
@@ -35,6 +36,7 @@ import {
   cancelBookingValidator,
   catalogQueryValidator,
   createBookingValidator,
+  downpaymentStatusQueryValidator,
   listBookingsQueryValidator,
   nextAvailableSlotQueryValidator,
   onlinePaymentsStatusQueryValidator,
@@ -472,6 +474,35 @@ export async function onlinePaymentsStatusController(
   try {
     const enabled = await isOnlinePaymentsEnabled(parsed.data.branch_id);
     return res.status(200).json({ online_payments_enabled: enabled });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change: per-transaction downpayment config for a branch, read by
+ * the customer booking flow to preview the amount before submitting - same
+ * shape/gating as onlinePaymentsStatusController above. */
+export async function downpaymentStatusController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = downpaymentStatusQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const policy = await resolveDownpaymentPolicy(parsed.data.branch_id);
+    return res.status(200).json(policy);
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -319,7 +319,6 @@ describe('AdminServicesPage', () => {
         requires_assessed_pet: true,
         captures_pet_assessment: false,
         use_pricing_matrix: true,
-        requires_downpayment: false,
       });
     });
 
@@ -499,61 +498,5 @@ describe('AdminServicesPage', () => {
     );
 
     expect(await screen.findByText('Service created.')).toBeInTheDocument();
-  });
-
-  it('bug fix: turning off "Requires a downpayment" during edit nulls the stale amount/type instead of resubmitting them (services_downpayment_amount_check)', async () => {
-    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
-      data: [
-        buildService({
-          requires_downpayment: true,
-          downpayment_amount: 500,
-          downpayment_type: 'Flat',
-        }),
-      ],
-      error: null,
-    });
-    vi.mocked(maintenanceApi.updateService).mockResolvedValue({
-      data: buildService({
-        requires_downpayment: false,
-        downpayment_amount: null,
-        downpayment_type: null,
-      }),
-      error: null,
-    });
-
-    renderPage();
-    const user = userEvent.setup();
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Actions for Bath' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
-
-    const downpaymentToggle = screen.getByRole('switch', {
-      name: 'Requires a downpayment before the service can start',
-    });
-    expect(downpaymentToggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(downpaymentToggle);
-
-    // The amount/type fields unmount once the toggle is off - their stale
-    // values must not leak into the submitted payload.
-    expect(
-      screen.queryByLabelText('Downpayment amount (PHP)')
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Save service' }));
-
-    await waitFor(() => {
-      expect(maintenanceApi.updateService).toHaveBeenCalledWith(
-        'service-1',
-        'token',
-        expect.objectContaining({
-          requires_downpayment: false,
-          downpayment_amount: null,
-          downpayment_type: null,
-        })
-      );
-    });
   });
 });

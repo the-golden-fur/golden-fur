@@ -308,6 +308,33 @@ describe('updatePolicyValidator', () => {
       }).success
     ).toBe(true);
   });
+
+  it('accepts enabling a per-transaction downpayment (Flat)', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        downpayment_enabled: true,
+        downpayment_type: 'Flat',
+        downpayment_amount: 500,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects downpayment_type without downpayment_amount (must be provided together)', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        downpayment_type: 'Flat',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a percentage downpayment over 100', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        downpayment_type: 'Percentage',
+        downpayment_amount: 150,
+      }).success
+    ).toBe(false);
+  });
 });
 
 describe('overrideBookingStatusValidator', () => {

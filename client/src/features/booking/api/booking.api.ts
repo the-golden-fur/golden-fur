@@ -5,6 +5,7 @@ import type {
   CancelBookingPayload,
   CancellationResult,
   CreateBookingPayload,
+  DownpaymentType,
   ListBookingsFilters,
   OperatingWindow,
   PayForBookingPayload,
@@ -441,6 +442,31 @@ export async function getOnlinePaymentsStatus(
   }
 
   return parseBody<{ online_payments_enabled: boolean }>(response);
+}
+
+export interface DownpaymentStatus {
+  downpayment_enabled: boolean;
+  downpayment_type: DownpaymentType | null;
+  downpayment_amount: number | null;
+}
+
+/** Per-transaction downpayment config for a branch - see
+ * resolveDownpaymentPolicy's own doc comment server-side. Used by the
+ * customer booking flow to preview the amount before submitting. */
+export async function getDownpaymentStatus(
+  branchId: string,
+  accessToken: string
+): Promise<BookingApiResult<DownpaymentStatus>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/downpayment-status?branch_id=${branchId}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<DownpaymentStatus>(response);
 }
 
 /**

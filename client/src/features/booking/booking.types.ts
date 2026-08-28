@@ -172,6 +172,11 @@ export type EnforcementMode = 'Strict' | 'Soft';
  * already existed and is reused as-is. */
 export type RescheduleFeeType = 'Flat' | 'Percentage';
 
+/** Same 'Flat'|'Percentage' vocabulary as RescheduleFeeType, kept as a
+ * separate alias since it applies to a different concept
+ * (policy_configurations.downpayment_type). */
+export type DownpaymentType = 'Flat' | 'Percentage';
+
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
@@ -243,8 +248,8 @@ export interface Booking {
   payment_stage: PaymentStage;
   total_price: number;
   downpayment_amount: number | null;
-  /** True when at least one selected service/package was flagged
-   * requires_downpayment at creation - drives staff queue gating. */
+  /** True when the effective policy_configurations downpayment config was
+   * enabled at creation time - drives staff queue gating. */
   downpayment_required: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
@@ -354,6 +359,14 @@ export interface PolicyConfiguration {
    * false, the button still renders (disabled, with an explanatory
    * tooltip) rather than disappearing. */
   online_payments_enabled: boolean;
+  /** Per-transaction downpayment config, applied against a booking's whole
+   * total_price at creation time - see createBooking server-side.
+   * Supersedes the old per-catalog-item Service/Package.
+   * requires_downpayment mechanism. */
+  downpayment_enabled: boolean;
+  /** Populated only when downpayment_enabled is true. */
+  downpayment_type: DownpaymentType | null;
+  downpayment_amount: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -375,6 +388,9 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
   | 'online_payments_enabled'
+  | 'downpayment_enabled'
+  | 'downpayment_type'
+  | 'downpayment_amount'
 >;
 
 export interface UpdatePolicyPayload {
@@ -394,6 +410,9 @@ export interface UpdatePolicyPayload {
   credit_expiry_enabled?: boolean;
   credit_expiry_days?: number;
   online_payments_enabled?: boolean;
+  downpayment_enabled?: boolean;
+  downpayment_type?: DownpaymentType | null;
+  downpayment_amount?: number | null;
 }
 
 export interface StaffPreferenceInput {

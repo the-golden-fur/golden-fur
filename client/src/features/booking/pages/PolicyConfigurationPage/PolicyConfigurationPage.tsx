@@ -10,6 +10,7 @@ import {
   updatePolicyConfiguration,
 } from '../../api/policy.api';
 import type {
+  DownpaymentType,
   EnforcementMode,
   PolicyConfiguration,
   RescheduleFeeType,
@@ -44,6 +45,9 @@ interface FormState {
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
   online_payments_enabled: boolean;
+  downpayment_enabled: boolean;
+  downpayment_type: DownpaymentType;
+  downpayment_amount: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -65,6 +69,9 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     credit_expiry_enabled: policy.credit_expiry_enabled,
     credit_expiry_days: policy.credit_expiry_days,
     online_payments_enabled: policy.online_payments_enabled,
+    downpayment_enabled: policy.downpayment_enabled,
+    downpayment_type: policy.downpayment_type ?? 'Flat',
+    downpayment_amount: policy.downpayment_amount ?? 0,
   };
 }
 
@@ -85,6 +92,9 @@ const DOCUMENTED_DEFAULTS: FormState = {
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
   online_payments_enabled: true,
+  downpayment_enabled: false,
+  downpayment_type: 'Flat',
+  downpayment_amount: 0,
 };
 
 /**
@@ -231,6 +241,11 @@ export function PolicyConfigurationPage() {
       credit_expiry_enabled: form.credit_expiry_enabled,
       credit_expiry_days: form.credit_expiry_days,
       online_payments_enabled: form.online_payments_enabled,
+      downpayment_enabled: form.downpayment_enabled,
+      downpayment_type: form.downpayment_enabled ? form.downpayment_type : null,
+      downpayment_amount: form.downpayment_enabled
+        ? form.downpayment_amount
+        : null,
     });
 
     setIsSubmitting(false);
@@ -579,6 +594,70 @@ export function PolicyConfigurationPage() {
               Bookings page, but is disabled with an explanation - it never
               disappears entirely.
             </p>
+          </section>
+
+          <section aria-labelledby="downpayment-heading">
+            <h2 className={styles.sectionTitle} id="downpayment-heading">
+              Downpayment
+            </h2>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.downpayment_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    downpayment_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Require a downpayment on the whole booking</span>
+            </label>
+            <p className={styles.copy}>
+              Applies once to a booking's total - across every service/ package
+              in it - not per individual service.
+            </p>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Downpayment type</span>
+              <select
+                className={styles.input}
+                value={form.downpayment_type}
+                disabled={!form.downpayment_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    downpayment_type: event.target.value as DownpaymentType,
+                  }))
+                }
+              >
+                <option value="Flat">Flat (pesos)</option>
+                <option value="Percentage">Percentage of booking total</option>
+              </select>
+            </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                {form.downpayment_type === 'Flat'
+                  ? 'Downpayment amount (PHP)'
+                  : 'Downpayment (%)'}
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                max={form.downpayment_type === 'Percentage' ? 100 : undefined}
+                value={form.downpayment_amount}
+                disabled={!form.downpayment_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    downpayment_amount: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
           </section>
 
           <section aria-labelledby="credit-expiry-heading">

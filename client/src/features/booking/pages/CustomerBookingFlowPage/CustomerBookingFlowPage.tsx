@@ -29,9 +29,11 @@ import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFe
 import {
   createBooking,
   getBookingCatalog,
+  getDownpaymentStatus,
   getNextAvailableSlot,
   getPetBookingConflicts,
   listServiceTypes,
+  type DownpaymentStatus,
   type NextAvailableSlot,
 } from '../../api/booking.api';
 import {
@@ -385,6 +387,8 @@ export function CustomerBookingFlowPage() {
   );
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  const [downpaymentStatus, setDownpaymentStatus] =
+    useState<DownpaymentStatus | null>(null);
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
   // selections in either accumulate into the same booking (multi-item
   // bookings revision, replacing the old single selectedServiceId/
@@ -714,6 +718,26 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId]);
 
+  // Custom change: per-transaction downpayment config for the selected
+  // branch (see resolveDownpaymentPolicy server-side) - drives the
+  // downpaymentAmount/showPaymentChoice calc below. Applies to the whole
+  // booking total, not per selected item, so it's fetched once per branch
+  // rather than per service/package selection.
+  useEffect(() => {
+    if (!accessToken || !selectedBranchId) return;
+
+    let isMounted = true;
+
+    void getDownpaymentStatus(selectedBranchId, accessToken).then((result) => {
+      if (!isMounted || !result.data) return;
+      setDownpaymentStatus(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, selectedBranchId]);
+
   useEffect(() => {
     // No setDiscounts([]) reset here (react-hooks/set-state-in-effect) -
     // applicableDiscounts below already returns [] whenever
@@ -1010,17 +1034,6 @@ export function CustomerBookingFlowPage() {
   // Grooming/Veterinary stay multi-select.
   const singleSelectCategory = category === 'Hotel' || category === 'Daycare';
 
-  /** A downpayment-required service (e.g. Surgery, Dental Cleaning) can't be
-   * combined with anything else - selecting one behaves like a
-   * singleSelectCategory pick (see toggleServiceSelect) and every other
-   * service option is disabled while it's selected, so the amount owed
-   * up-front is unambiguous. */
-  const lockedDownpaymentService = useMemo(
-    () =>
-      selectedServices.find((service) => service.requires_downpayment) ?? null,
-    [selectedServices]
-  );
-
   /** Union of every service already covered by a currently-selected
    * package's bundled price - those services are shown read-only in the
    * Individual service list (#22 follow-up), so a customer/receptionist
@@ -1165,40 +1178,16 @@ export function CustomerBookingFlowPage() {
 
   const requiresPayment = category !== 'Veterinary';
 
-  // Custom change (P-1 roadmap item: generic downpayment, later revised to
-  // flat-or-percentage and to fully replace the old Hotel-only branch-wide
-  // percentage - see resolveBookingItem/createBooking in booking.service.ts
-  // for the authoritative, server-side version of this same math): each
-  // flagged item's own contribution is either a flat PHP downpayment_amount,
-  // or that percentage of the item's own price (mirroring the price shown
-  // per item in the pricing summary below, i.e. base_price/bundled_price
-  // times hotelNightsMultiplier).
-  const catalogDownpaymentAmount =
-    selectedServices.reduce((sum, service) => {
-      if (!service.requires_downpayment) return sum;
-
-      const itemPrice = service.base_price * hotelNightsMultiplier;
-      const contribution =
-        service.downpayment_type === 'Percentage'
-          ? itemPrice * ((service.downpayment_amount ?? 0) / 100)
-          : (service.downpayment_amount ?? 0);
-
-      return sum + contribution;
-    }, 0) +
-    selectedPackages.reduce((sum, pkg) => {
-      if (!pkg.requires_downpayment) return sum;
-
-      const itemPrice = pkg.bundled_price * hotelNightsMultiplier;
-      const contribution =
-        pkg.downpayment_type === 'Percentage'
-          ? itemPrice * ((pkg.downpayment_amount ?? 0) / 100)
-          : (pkg.downpayment_amount ?? 0);
-
-      return sum + contribution;
-    }, 0);
-  const downpaymentRequired = catalogDownpaymentAmount > 0;
+  // Custom change: downpayment moved from a per-catalog-item flag to a
+  // single per-transaction policy_configurations config (see
+  // resolveDownpaymentPolicy/createBooking server-side for the
+  // authoritative version of this same math), applied once against the
+  // whole booking's subtotal rather than summed per selected item.
+  const downpaymentRequired = downpaymentStatus?.downpayment_enabled ?? false;
   const downpaymentAmount = downpaymentRequired
-    ? catalogDownpaymentAmount
+    ? downpaymentStatus?.downpayment_type === 'Percentage'
+      ? subtotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
+      : (downpaymentStatus?.downpayment_amount ?? 0)
     : null;
   // Only meaningful when paying online right now (GCash/Maya) - pay-at-
   // counter methods always defer the whole amount to later regardless, same
@@ -1476,12 +1465,6 @@ export function CustomerBookingFlowPage() {
     // (the option card's own onClick shouldn't even be reachable, but this
     // guards against it directly too).
     if (servicesCoveredByPackages.has(serviceId)) return;
-    // A different downpayment-required service is already locked in - the
-    // option card's own `disabled` attribute already blocks this click, but
-    // guard here too in case this is ever called from somewhere else.
-    if (lockedDownpaymentService && lockedDownpaymentService.id !== serviceId) {
-      return;
-    }
 
     // #22 follow-up: no longer resets selectedSlot/staffPreference here -
     // that made sense when items were picked BEFORE availability (the real
@@ -1497,11 +1480,7 @@ export function CustomerBookingFlowPage() {
         serviceIds: current.serviceIds.filter((id) => id !== serviceId),
       }));
     } else {
-      const service = allServices.find(
-        (candidate) => candidate.id === serviceId
-      );
-
-      if (singleSelectCategory || service?.requires_downpayment) {
+      if (singleSelectCategory) {
         updateCategorySelection(category, () => ({
           serviceIds: [serviceId],
           packageIds: [],
@@ -1517,11 +1496,6 @@ export function CustomerBookingFlowPage() {
 
   function togglePackageSelect(packageId: string) {
     if (!category) return;
-    // A downpayment-required service is locked in (see toggleServiceSelect)
-    // - packages can't be layered on top of it.
-    if (lockedDownpaymentService && !selectedPackageIds.includes(packageId)) {
-      return;
-    }
 
     // #22 follow-up: see toggleServiceSelect's comment above - the
     // selectedSlot/staffPreference reset was removed for the same reason.
@@ -2164,14 +2138,6 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
-            {!singleSelectCategory && lockedDownpaymentService ? (
-              <p className={styles.copy}>
-                {lockedDownpaymentService.name} requires a downpayment and must
-                be booked on its own - deselect it to choose a different
-                service.
-              </p>
-            ) : null}
-
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
@@ -2190,12 +2156,7 @@ export function CustomerBookingFlowPage() {
                   const coveredByPackageName = servicesCoveredByPackages.get(
                     service.id
                   );
-                  const isBlockedByDownpaymentLock =
-                    lockedDownpaymentService !== null &&
-                    lockedDownpaymentService.id !== service.id;
-                  const isDisabled =
-                    coveredByPackageName !== undefined ||
-                    isBlockedByDownpaymentLock;
+                  const isDisabled = coveredByPackageName !== undefined;
 
                   return (
                     <button
@@ -2235,11 +2196,6 @@ export function CustomerBookingFlowPage() {
                           /night if not picked up before closing
                         </span>
                       ) : null}
-                      {service.requires_downpayment ? (
-                        <span className={styles.optionMeta}>
-                          Requires a downpayment - booked on its own
-                        </span>
-                      ) : null}
                       {coveredByPackageName !== undefined ? (
                         <span className={styles.optionMeta}>
                           Included in {coveredByPackageName}
@@ -2255,19 +2211,15 @@ export function CustomerBookingFlowPage() {
               <div className={styles.optionGrid}>
                 {packagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
-                  const isDisabled =
-                    lockedDownpaymentService !== null && !isChecked;
 
                   return (
                     <button
                       key={pkg.id}
                       type="button"
                       aria-pressed={isChecked}
-                      aria-disabled={isDisabled}
-                      disabled={isDisabled}
                       className={`${styles.optionCard} ${
                         isChecked ? styles.selected : ''
-                      } ${isDisabled ? styles.readOnly : ''}`}
+                      }`}
                       onClick={() => togglePackageSelect(pkg.id)}
                     >
                       <span className={styles.optionTitle}>{pkg.name}</span>

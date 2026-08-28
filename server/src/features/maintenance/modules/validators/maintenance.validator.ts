@@ -11,7 +11,6 @@ const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
-const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 
 /** YYYY-MM-DD, matching the promos.start_date/end_date date columns. */
 const dateString = z
@@ -64,83 +63,6 @@ function requireDaycareFeesOrBasePrice(
   }
 }
 
-/**
- * Custom change (P-1 roadmap item: generic downpayment, later revised to
- * flat-or-percentage): mirrors the DB's own
- * services_downpayment_amount_check/packages_downpayment_amount_check
- * constraints (20260808110/20260808112) at the validator layer, same "not
- * category-gated" convention as every other optional service/package field
- * above. downpayment_type is required alongside the amount once
- * requires_downpayment is true; a 'Percentage' type additionally caps the
- * amount at 100.
- */
-function requireDownpaymentAmount(
-  input: {
-    requires_downpayment?: boolean;
-    downpayment_amount?: number | null;
-    downpayment_type?: (typeof DOWNPAYMENT_TYPES)[number] | null;
-  },
-  ctx: z.RefinementCtx
-) {
-  if (input.requires_downpayment === false) {
-    if (input.downpayment_amount != null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['downpayment_amount'],
-        message:
-          'downpayment_amount must be null when requires_downpayment is false',
-      });
-    }
-
-    if (input.downpayment_type != null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['downpayment_type'],
-        message:
-          'downpayment_type must be null when requires_downpayment is false',
-      });
-    }
-
-    return;
-  }
-
-  if (!input.requires_downpayment) return;
-
-  if (
-    input.downpayment_amount === undefined ||
-    input.downpayment_amount === null ||
-    input.downpayment_amount <= 0
-  ) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['downpayment_amount'],
-      message:
-        'A positive downpayment_amount is required when requires_downpayment is true',
-    });
-  }
-
-  if (!input.downpayment_type) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['downpayment_type'],
-      message:
-        'downpayment_type ("Flat" or "Percentage") is required when requires_downpayment is true',
-    });
-  }
-
-  if (
-    input.downpayment_type === 'Percentage' &&
-    input.downpayment_amount != null &&
-    input.downpayment_amount > 100
-  ) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['downpayment_amount'],
-      message: 'A percentage downpayment cannot exceed 100',
-    });
-  }
-}
-
 export const createServiceValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
@@ -171,15 +93,9 @@ export const createServiceValidator = z
     // Custom change (Daycare fee configuration follow-up): optional even
     // for Daycare - falls back to the documented ₱850 default when omitted.
     daycare_overnight_fee: z.number().nonnegative().optional(),
-    // Custom change (P-1 roadmap item: generic downpayment) - not category-
-    // gated, see requireDownpaymentAmount above.
-    requires_downpayment: z.boolean().optional(),
-    downpayment_amount: z.number().positive().optional(),
-    downpayment_type: z.enum(DOWNPAYMENT_TYPES).optional(),
   })
   .strict()
-  .superRefine(requireDaycareFeesOrBasePrice)
-  .superRefine(requireDownpaymentAmount);
+  .superRefine(requireDaycareFeesOrBasePrice);
 
 /** Custom change (unify active/available): is_active is derived from branch
  * availability (setServiceBranchAvailability keeps it in sync) and is
@@ -203,12 +119,8 @@ export const updateServiceValidator = z
     first_hour_fee: z.number().nonnegative().nullable().optional(),
     succeeding_hour_fee: z.number().nonnegative().nullable().optional(),
     daycare_overnight_fee: z.number().nonnegative().nullable().optional(),
-    requires_downpayment: z.boolean().optional(),
-    downpayment_amount: z.number().positive().nullable().optional(),
-    downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
   })
-  .strict()
-  .superRefine(requireDownpaymentAmount);
+  .strict();
 
 /**
  * Custom change (configurable pricing rules): every field optional - PATCH
@@ -339,13 +251,8 @@ export const createPackageValidator = z
     // pricing for this package (sum of included services' own per-pet
     // price, bundle-discounted) instead of the flat bundled_price.
     use_pricing_matrix: z.boolean().optional(),
-    // Custom change (P-1 roadmap item: generic downpayment).
-    requires_downpayment: z.boolean().optional(),
-    downpayment_amount: z.number().positive().optional(),
-    downpayment_type: z.enum(DOWNPAYMENT_TYPES).optional(),
   })
-  .strict()
-  .superRefine(requireDownpaymentAmount);
+  .strict();
 
 /** Custom change (unify active/available): is_active is derived from branch
  * availability (setPackageBranchAvailability keeps it in sync) and is
@@ -356,12 +263,8 @@ export const updatePackageValidator = z
     /** Full replacement of the included-services set when provided. */
     service_ids: z.array(z.uuid()).min(2).optional(),
     use_pricing_matrix: z.boolean().optional(),
-    requires_downpayment: z.boolean().optional(),
-    downpayment_amount: z.number().positive().nullable().optional(),
-    downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
   })
-  .strict()
-  .superRefine(requireDownpaymentAmount);
+  .strict();
 
 export const promoScopeItemValidator = z
   .object({

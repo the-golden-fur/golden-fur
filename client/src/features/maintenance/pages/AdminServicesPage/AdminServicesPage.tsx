@@ -63,9 +63,6 @@ interface ServiceFormState {
   firstHourFee: string;
   succeedingHourFee: string;
   daycareOvernightFee: string;
-  requiresDownpayment: boolean;
-  downpaymentAmount: string;
-  downpaymentType: 'Flat' | 'Percentage';
   branchIds: string[];
 }
 
@@ -82,9 +79,6 @@ const EMPTY_FORM: ServiceFormState = {
   firstHourFee: '',
   succeedingHourFee: '',
   daycareOvernightFee: '',
-  requiresDownpayment: false,
-  downpaymentAmount: '',
-  downpaymentType: 'Flat',
   branchIds: [],
 };
 
@@ -113,12 +107,6 @@ function formStateFromService(service: Service): ServiceFormState {
       service.daycare_overnight_fee === null
         ? ''
         : String(service.daycare_overnight_fee),
-    requiresDownpayment: service.requires_downpayment,
-    downpaymentAmount:
-      service.downpayment_amount === null
-        ? ''
-        : String(service.downpayment_amount),
-    downpaymentType: service.downpayment_type ?? 'Flat',
     branchIds: availableBranchIds(service),
   };
 }
@@ -448,31 +436,6 @@ export function AdminServicesPage() {
       return;
     }
 
-    const downpaymentAmount =
-      form.downpaymentAmount === ''
-        ? undefined
-        : Number(form.downpaymentAmount);
-
-    if (
-      form.requiresDownpayment &&
-      (downpaymentAmount === undefined || downpaymentAmount <= 0)
-    ) {
-      setFormError(
-        'A positive downpayment amount is required when downpayment is required.'
-      );
-      return;
-    }
-
-    if (
-      form.requiresDownpayment &&
-      form.downpaymentType === 'Percentage' &&
-      downpaymentAmount !== undefined &&
-      downpaymentAmount > 100
-    ) {
-      setFormError('A percentage downpayment cannot exceed 100.');
-      return;
-    }
-
     const durationMinutes =
       form.durationMinutes === '' ? undefined : Number(form.durationMinutes);
     const minNightsForFreePackage =
@@ -511,13 +474,6 @@ export function AdminServicesPage() {
         ...(daycareOvernightFee !== undefined
           ? { daycare_overnight_fee: daycareOvernightFee }
           : {}),
-        requires_downpayment: form.requiresDownpayment,
-        ...(form.requiresDownpayment && downpaymentAmount !== undefined
-          ? {
-              downpayment_amount: downpaymentAmount,
-              downpayment_type: form.downpaymentType,
-            }
-          : {}),
       });
 
       if (result.error || !result.data) {
@@ -550,11 +506,6 @@ export function AdminServicesPage() {
       first_hour_fee: firstHourFee ?? null,
       succeeding_hour_fee: succeedingHourFee ?? null,
       daycare_overnight_fee: daycareOvernightFee ?? null,
-      requires_downpayment: form.requiresDownpayment,
-      downpayment_amount: form.requiresDownpayment
-        ? (downpaymentAmount ?? null)
-        : null,
-      downpayment_type: form.requiresDownpayment ? form.downpaymentType : null,
       ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
     };
 
@@ -952,67 +903,6 @@ export function AdminServicesPage() {
                 }
               />
 
-              <ToggleSwitch
-                label="Requires a downpayment before the service can start"
-                checked={form.requiresDownpayment}
-                onChange={(checked) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    requiresDownpayment: checked,
-                  }))
-                }
-              />
-
-              {form.requiresDownpayment ? (
-                <>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>Downpayment type</span>
-                    <select
-                      className={styles.input}
-                      value={form.downpaymentType}
-                      onChange={(event) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          downpaymentType: event.target.value as
-                            | 'Flat'
-                            | 'Percentage',
-                        }))
-                      }
-                    >
-                      <option value="Flat">Flat amount (PHP)</option>
-                      <option value="Percentage">
-                        Percentage of base price
-                      </option>
-                    </select>
-                  </label>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>
-                      {form.downpaymentType === 'Percentage'
-                        ? 'Downpayment percentage (0-100)'
-                        : 'Downpayment amount (PHP)'}
-                    </span>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min="0.01"
-                      max={
-                        form.downpaymentType === 'Percentage' ? 100 : undefined
-                      }
-                      step="0.01"
-                      inputMode="decimal"
-                      value={form.downpaymentAmount}
-                      onChange={(event) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          downpaymentAmount: event.target.value,
-                        }))
-                      }
-                      required
-                    />
-                  </label>
-                </>
-              ) : null}
-
               {formError ? (
                 <p className={styles.errorBanner} role="alert">
                   {formError}
@@ -1085,14 +975,6 @@ export function AdminServicesPage() {
                     <span className={styles.categoryBadge}>
                       PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}
                       /night if not picked up
-                    </span>
-                  ) : null}
-                  {service.requires_downpayment &&
-                  service.downpayment_amount !== null ? (
-                    <span className={styles.categoryBadge}>
-                      {service.downpayment_type === 'Percentage'
-                        ? `Requires ${service.downpayment_amount}% downpayment`
-                        : `Requires PHP ${service.downpayment_amount.toFixed(2)} downpayment`}
                     </span>
                   ) : null}
                 </div>
