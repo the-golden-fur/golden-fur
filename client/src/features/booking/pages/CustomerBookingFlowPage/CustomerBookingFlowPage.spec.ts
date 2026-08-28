@@ -38,6 +38,16 @@ vi.mock('../../api/booking.api', () => ({
   // Custom change: duplicate-booking prevention - default to no conflicts
   // so every existing test's pet selection is unaffected.
   getPetBookingConflicts: vi.fn().mockResolvedValue({ data: [], error: null }),
+  // Custom change: per-transaction downpayment config - default to
+  // disabled so every existing test's pricing summary is unaffected.
+  getDownpaymentStatus: vi.fn().mockResolvedValue({
+    data: {
+      downpayment_enabled: false,
+      downpayment_type: null,
+      downpayment_amount: null,
+    },
+    error: null,
+  }),
 }));
 
 vi.mock('../../../staff/api/staff.api', () => ({

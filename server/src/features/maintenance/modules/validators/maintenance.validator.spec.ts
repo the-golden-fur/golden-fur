@@ -110,42 +110,14 @@ describe('updateServiceValidator', () => {
     expect(result.success).toBe(false);
   });
 
-  it('accepts turning requires_downpayment off alongside a nulled amount/type', () => {
-    const result = updateServiceValidator.safeParse({
-      requires_downpayment: false,
-      downpayment_amount: null,
-      downpayment_type: null,
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects turning requires_downpayment off while leaving a stale downpayment_amount (mirrors services_downpayment_amount_check)', () => {
-    const result = updateServiceValidator.safeParse({
-      requires_downpayment: false,
-      downpayment_amount: 500,
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects turning requires_downpayment off while leaving a stale downpayment_type', () => {
-    const result = updateServiceValidator.safeParse({
-      requires_downpayment: false,
-      downpayment_type: 'Flat',
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('accepts turning requires_downpayment on with a valid amount and type', () => {
+  it('rejects a requires_downpayment key (moved to policy_configurations - no longer a per-service field)', () => {
     const result = updateServiceValidator.safeParse({
       requires_downpayment: true,
       downpayment_amount: 500,
       downpayment_type: 'Flat',
     });
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 });
 
@@ -248,23 +220,13 @@ describe('updatePackageValidator', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects turning requires_downpayment off while leaving a stale downpayment_amount (mirrors packages_downpayment_amount_check)', () => {
+  it('rejects a requires_downpayment key (moved to policy_configurations - no longer a per-package field)', () => {
     const result = updatePackageValidator.safeParse({
       requires_downpayment: false,
       downpayment_amount: 500,
     });
 
     expect(result.success).toBe(false);
-  });
-
-  it('accepts turning requires_downpayment off alongside a nulled amount/type', () => {
-    const result = updatePackageValidator.safeParse({
-      requires_downpayment: false,
-      downpayment_amount: null,
-      downpayment_type: null,
-    });
-
-    expect(result.success).toBe(true);
   });
 });
 

@@ -33,6 +33,7 @@ import {
   autoAssignStaff,
   isStaffPickerEnabled,
   listAvailableStaff,
+  resolveDownpaymentPolicy,
 } from './staffPicker.service.ts';
 import {
   isCagePickerEnabled,
@@ -118,14 +119,6 @@ interface ResolvedBookingItem {
   package_id: string | null;
   price_at_booking: number;
   duration_minutes_at_booking: number;
-  /** Custom change (P-1 roadmap item: generic downpayment, later revised to
-   * flat-or-percentage) - carried through from the resolved service/
-   * package row so createBooking can sum every flagged item's catalog
-   * downpayment contribution (a flat PHP figure, or a percentage of this
-   * item's own price_at_booking). */
-  requires_downpayment: boolean;
-  downpayment_amount: number | null;
-  downpayment_type: 'Flat' | 'Percentage' | null;
 }
 
 /**
@@ -204,12 +197,6 @@ async function resolveBookingItem(
       package_id: null,
       price_at_booking: round2(resolveServicePrice(service, pet) * quantity),
       duration_minutes_at_booking: durationMinutes,
-      requires_downpayment: service.requires_downpayment,
-      downpayment_amount:
-        service.downpayment_amount === null
-          ? null
-          : Number(service.downpayment_amount),
-      downpayment_type: service.downpayment_type,
     };
   }
 
@@ -286,10 +273,6 @@ async function resolveBookingItem(
     package_id: pkg.id,
     price_at_booking: round2(packagePrice * packageQuantity),
     duration_minutes_at_booking: packageDurationMinutes,
-    requires_downpayment: pkg.requires_downpayment,
-    downpayment_amount:
-      pkg.downpayment_amount === null ? null : Number(pkg.downpayment_amount),
-    downpayment_type: pkg.downpayment_type,
   };
 }
 
@@ -297,10 +280,10 @@ async function resolveBookingItem(
  * Custom change (package pricing redesign): matrix pricing now applies
  * directly to the *package's own* bundled_price, the same way a standalone
  * Grooming service's own base_price runs through deriveGroomingMatrix -
- * not by re-aggregating each member service's own per-pet price. Member
- * services' own `use_pricing_matrix`/`requires_downpayment` flags only
- * govern that service when it's booked on its own; once bundled into a
- * package, only the package's own flags apply. This replaced an earlier
+ * not by re-aggregating each member service's own per-pet price. A member
+ * service's own `use_pricing_matrix` flag only governs that service when
+ * it's booked on its own; once bundled into a package, only the package's
+ * own flag applies. This replaced an earlier
  * per-member-aggregation design that required a member's own matrix flag
  * AND the package's own flag to agree before anything changed, which was
  * confusing in the admin package builder (a plain member "diluted" the
@@ -779,20 +762,6 @@ export async function createBooking({
     input.scheduled_end
   );
 
-  // A downpayment-required item (e.g. Surgery, Dental Cleaning, Overnight
-  // Stay) can't be combined with anything else - mirrors
-  // CustomerBookingFlowPage.tsx's client-side selection lock, enforced here
-  // too so a direct API call can't bypass it.
-  if (
-    resolvedItems.length > 1 &&
-    resolvedItems.some((item) => item.requires_downpayment)
-  ) {
-    throwWithStatus(
-      400,
-      'A service or package that requires a downpayment must be booked on its own'
-    );
-  }
-
   const freePackageAward = await resolveFreePackageAward(input);
 
   if (freePackageAward) {
@@ -801,12 +770,6 @@ export async function createBooking({
       package_id: freePackageAward.packageId,
       price_at_booking: 0,
       duration_minutes_at_booking: 0,
-      // An awarded freebie is never itself catalog-flagged for a
-      // downpayment - it's a zero-priced bonus item, not something the
-      // customer picked.
-      requires_downpayment: false,
-      downpayment_amount: null,
-      downpayment_type: null,
     });
   }
 
@@ -815,32 +778,20 @@ export async function createBooking({
     0
   );
 
-  // Custom change (P-1 roadmap item: generic downpayment, later revised to
-  // flat-or-percentage): downpayment is now driven exclusively by the
-  // catalog flag - the old Hotel-only branch-wide percentage fallback
-  // (policy_configurations.downpayment_percentage / the hardcoded
-  // HOTEL_DOWNPAYMENT_RATE constant) was removed as redundant once every
-  // service/package can carry its own downpayment (20260808112) - the
-  // seeded Hotel service is itself flagged requires_downpayment=true,
-  // downpayment_type='Percentage', downpayment_amount=50 to preserve its
-  // pre-existing 50%-of-total behavior. Each flagged item's own
-  // contribution is either its flat PHP downpayment_amount, or that
-  // percentage of the item's own price_at_booking.
-  const catalogDownpaymentAmount = round2(
-    resolvedItems.reduce((sum, item) => {
-      if (!item.requires_downpayment) return sum;
-
-      const contribution =
-        item.downpayment_type === 'Percentage'
-          ? item.price_at_booking * ((item.downpayment_amount ?? 0) / 100)
-          : (item.downpayment_amount ?? 0);
-
-      return sum + contribution;
-    }, 0)
-  );
-  const downpaymentRequired = catalogDownpaymentAmount > 0;
+  // Custom change: downpayment moved from a per-catalog-item flag (each
+  // service/package could independently require one, summed across
+  // selected items, and forcing a flagged item to be booked alone) to a
+  // single per-transaction policy_configurations config, applied once
+  // against the whole booking's totalPrice - see resolveDownpaymentPolicy
+  // in staffPicker.service.ts.
+  const downpaymentPolicy = await resolveDownpaymentPolicy(input.branch_id);
+  const downpaymentRequired = downpaymentPolicy.downpayment_enabled;
   const downpaymentAmount = downpaymentRequired
-    ? catalogDownpaymentAmount
+    ? round2(
+        downpaymentPolicy.downpayment_type === 'Percentage'
+          ? totalPrice * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
+          : (downpaymentPolicy.downpayment_amount ?? 0)
+      )
     : null;
 
   const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =

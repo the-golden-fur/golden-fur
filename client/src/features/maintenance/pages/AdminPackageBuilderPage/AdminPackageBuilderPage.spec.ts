@@ -73,9 +73,6 @@ function buildService(overrides: Partial<Service> = {}): Service {
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
     use_pricing_matrix: false,
-    requires_downpayment: false,
-    downpayment_amount: null,
-    downpayment_type: null,
     service_pricing_tiers: [],
     service_branch_availability: [
       {
@@ -104,9 +101,6 @@ function buildPackage(overrides: Partial<Package> = {}): Package {
     created_at: '2026-07-15T00:00:00.000Z',
     updated_at: '2026-07-15T00:00:00.000Z',
     use_pricing_matrix: false,
-    requires_downpayment: false,
-    downpayment_amount: null,
-    downpayment_type: null,
     package_services: [
       { service_id: 'service-1' },
       { service_id: 'service-2' },
@@ -329,7 +323,6 @@ describe('AdminPackageBuilderPage', () => {
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
         use_pricing_matrix: false,
-        requires_downpayment: false,
       });
     });
 
@@ -421,9 +414,6 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
           use_pricing_matrix: false,
-          requires_downpayment: false,
-          downpayment_amount: null,
-          downpayment_type: null,
         }
       );
     });
@@ -612,10 +602,9 @@ describe('AdminPackageBuilderPage', () => {
   });
 
   describe('package pricing matrix redesign (custom change)', () => {
-    it("applies the matrix directly to the package's own derived price, independent of any member's own flag - and any service is selectable regardless of its own matrix/downpayment flags", async () => {
-      // A member with its own matrix flag AND its own downpayment flag -
-      // neither should affect whether it's selectable, and neither flag
-      // should be consulted for the package's own price.
+    it("applies the matrix directly to the package's own derived price, independent of any member's own flag - and any service is selectable regardless of its own matrix flag", async () => {
+      // A member with its own matrix flag - it should not affect whether
+      // it's selectable, nor be consulted for the package's own price.
       vi.mocked(maintenanceApi.listServices).mockResolvedValue({
         data: [
           buildService({
@@ -628,9 +617,6 @@ describe('AdminPackageBuilderPage', () => {
             id: 'service-2',
             name: 'Blow-dry',
             base_price: 200,
-            requires_downpayment: true,
-            downpayment_amount: 50,
-            downpayment_type: 'Flat',
           }),
         ],
         error: null,
@@ -648,7 +634,7 @@ describe('AdminPackageBuilderPage', () => {
       );
       await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
 
-      // Both members are pickable despite their own matrix/downpayment flags.
+      // Both members are pickable despite the first one's own matrix flag.
       await user.click(screen.getByRole('checkbox', { name: /Bath/ }));
       await user.click(screen.getByRole('checkbox', { name: /Blow-dry/ }));
 
@@ -683,21 +669,13 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Fresh Coat Bundle',
           service_ids: ['service-1', 'service-2'],
           use_pricing_matrix: true,
-          requires_downpayment: false,
         });
       });
     });
 
-    it('shows the package-level matrix/downpayment badges as separate pill tags in the package list, not appended text', async () => {
+    it('shows the package-level matrix badge as a pill tag in the package list', async () => {
       vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
-        data: [
-          buildPackage({
-            use_pricing_matrix: true,
-            requires_downpayment: true,
-            downpayment_amount: 200,
-            downpayment_type: 'Flat',
-          }),
-        ],
+        data: [buildPackage({ use_pricing_matrix: true })],
         error: null,
       });
 
@@ -705,9 +683,6 @@ describe('AdminPackageBuilderPage', () => {
 
       expect(await screen.findByText('PHP 650.00')).toBeInTheDocument();
       expect(screen.getByText('Varies by weight/coat')).toBeInTheDocument();
-      expect(
-        screen.getByText('Requires PHP 200.00 downpayment')
-      ).toBeInTheDocument();
     });
   });
 

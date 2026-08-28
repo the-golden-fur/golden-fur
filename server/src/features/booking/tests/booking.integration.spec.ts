@@ -87,6 +87,7 @@ const DEFAULT_POLICY = {
   notice_enforcement_enabled: true,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
+  downpayment_enabled: false,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
 };
@@ -172,6 +173,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         },
         error: null,
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
+      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       { data: [], error: null }, // pre-insert daycare capacity overlap - empty
       { data: PENDING_BOOKING, error: null }, // insert
       { data: null, error: null }, // booking_items insert

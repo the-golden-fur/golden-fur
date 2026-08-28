@@ -16,6 +16,7 @@ const CATEGORIES = [
 ] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
+const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 /** Matches branches.validator.ts's TIME_PATTERN - "HH:MM" 24h. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -280,6 +281,13 @@ export const onlinePaymentsStatusQueryValidator = z.object({
   branch_id: z.uuid(),
 });
 
+/** Custom change: per-transaction downpayment config, read by the customer
+ * booking flow the same way onlinePaymentsStatusQueryValidator's endpoint
+ * exposes online_payments_enabled. */
+export const downpaymentStatusQueryValidator = z.object({
+  branch_id: z.uuid(),
+});
+
 /** Custom change: duplicate-booking prevention - which pets have an
  * unresolved Hotel/Daycare booking. */
 export const petBookingConflictsQueryValidator = z.object({
@@ -313,6 +321,9 @@ export const updatePolicyValidator = z
     credit_expiry_enabled: z.boolean().optional(),
     credit_expiry_days: z.number().int().min(1).optional(),
     online_payments_enabled: z.boolean().optional(),
+    downpayment_enabled: z.boolean().optional(),
+    downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
+    downpayment_amount: z.number().positive().nullable().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -358,6 +369,33 @@ export const updatePolicyValidator = z
         code: 'custom',
         message: 'A percentage reschedule fee cannot exceed 100',
         path: ['reschedule_fee_value'],
+      });
+    }
+
+    // Custom change: mirrors reschedule_fee_type/value's own pairing rule
+    // above - downpayment_type and downpayment_amount are only meaningful
+    // together, and a 'Percentage' amount is capped at 100.
+    if (
+      (input.downpayment_type !== undefined) !==
+      (input.downpayment_amount !== undefined)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'downpayment_type and downpayment_amount must be provided together',
+        path: ['downpayment_amount'],
+      });
+    }
+
+    if (
+      input.downpayment_type === 'Percentage' &&
+      input.downpayment_amount != null &&
+      input.downpayment_amount > 100
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A percentage downpayment cannot exceed 100',
+        path: ['downpayment_amount'],
       });
     }
   });
@@ -502,6 +540,9 @@ export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type PayBookingInput = z.infer<typeof payBookingValidator>;
 export type OnlinePaymentsStatusQueryInput = z.infer<
   typeof onlinePaymentsStatusQueryValidator
+>;
+export type DownpaymentStatusQueryInput = z.infer<
+  typeof downpaymentStatusQueryValidator
 >;
 export type PetBookingConflictsQueryInput = z.infer<
   typeof petBookingConflictsQueryValidator

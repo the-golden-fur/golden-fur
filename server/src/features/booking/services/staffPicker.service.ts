@@ -35,6 +35,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
   online_payments_enabled: true,
+  downpayment_enabled: false,
+  downpayment_type: null,
+  downpayment_amount: null,
 };
 
 /** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
@@ -114,6 +117,30 @@ export async function isOnlinePaymentsEnabled(
 ): Promise<boolean> {
   const policy = await resolveEffectivePolicy(branchId);
   return policy.online_payments_enabled;
+}
+
+export interface DownpaymentPolicy {
+  downpayment_enabled: boolean;
+  downpayment_type: EffectivePolicy['downpayment_type'];
+  downpayment_amount: EffectivePolicy['downpayment_amount'];
+}
+
+/**
+ * Per-transaction downpayment config for a branch (system-default + override,
+ * same resolution as every other policy field). Applied against a booking's
+ * whole total_price at creation time - see createBooking in
+ * booking.service.ts - rather than summed per selected catalog item (the
+ * old, now-removed services/packages.requires_downpayment mechanism).
+ */
+export async function resolveDownpaymentPolicy(
+  branchId: string
+): Promise<DownpaymentPolicy> {
+  const policy = await resolveEffectivePolicy(branchId);
+  return {
+    downpayment_enabled: policy.downpayment_enabled,
+    downpayment_type: policy.downpayment_type,
+    downpayment_amount: policy.downpayment_amount,
+  };
 }
 
 /**
@@ -278,6 +305,9 @@ export async function updatePolicyConfiguration({
     credit_expiry_enabled: resolved.credit_expiry_enabled,
     credit_expiry_days: resolved.credit_expiry_days,
     online_payments_enabled: resolved.online_payments_enabled,
+    downpayment_enabled: resolved.downpayment_enabled,
+    downpayment_type: resolved.downpayment_type,
+    downpayment_amount: resolved.downpayment_amount,
   };
 
   const { data, error } = await supabase

@@ -10,6 +10,7 @@ import {
   catalogController,
   completeBookingController,
   createBookingController,
+  downpaymentStatusController,
   getBookingController,
   listBookingsController,
   listPolicyConfigurationsController,
@@ -132,6 +133,15 @@ router.get(
   '/bookings/online-payments-status',
   jwtMiddleware,
   onlinePaymentsStatusController
+);
+
+// Custom change: per-transaction downpayment config for a branch - same
+// customer-readable shape as online-payments-status above, read by the
+// customer booking flow to preview the amount before submitting.
+router.get(
+  '/bookings/downpayment-status',
+  jwtMiddleware,
+  downpaymentStatusController
 );
 
 // Custom change: duplicate-booking prevention - pet ids with an unresolved
