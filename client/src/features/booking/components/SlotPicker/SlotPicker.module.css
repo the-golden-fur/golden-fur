@@ -57,3 +57,22 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
 }
+
+/* Walk-in booking flow: the locked/non-interactive stand-in for the normal
+   date-nav + TimeSlotInput grid - visibly greyed out, no calendar/time-grid
+   interaction, since the slot is auto-resolved rather than browsed. */
+.lockedBanner {
+  display: grid;
+  gap: var(--space-0-5);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted, var(--color-surface));
+  color: var(--color-text-secondary);
+  padding: var(--space-2);
+  opacity: 0.85;
+}
+
+.lockedBannerTitle {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}

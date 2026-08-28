@@ -616,6 +616,115 @@ describe('booking.service (#51)', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
+  // Walk-in booking flow (custom change): a receptionist registering a
+  // customer/pet physically at the branch right now skips the down payment
+  // policy entirely and starts already 'In Progress' - see the top-of-file
+  // dev note on createBooking and BookingSource in booking.types.ts.
+  describe('walk-in booking flow (custom change)', () => {
+    it('a staff-created Walk-in booking skips resolveDownpaymentPolicy entirely and starts In Progress', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        // NOTE: no resolveDownpaymentPolicy query here at all (skipped) -
+        // the very next query is the staff picker toggle.
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'In Progress',
+            booking_source: 'Walk-in',
+            downpayment_required: false,
+            downpayment_amount: null,
+          },
+          error: null,
+        }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: 'recept-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          booking_source: 'Walk-in',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+
+      expect(insert?.payload).toMatchObject({
+        booking_source: 'Walk-in',
+        status: 'In Progress',
+        downpayment_required: false,
+        downpayment_amount: null,
+      });
+      expect(
+        (insert?.payload as { started_at?: string }).started_at
+      ).toBeTruthy();
+
+      // resolveDownpaymentPolicy and the staff picker toggle both query
+      // 'policy_configurations' - exactly one such call means only the
+      // staff picker toggle ran, not resolveDownpaymentPolicy.
+      const policyQueries = vi
+        .mocked(supabase.from)
+        .mock.calls.filter(([table]) => table === 'policy_configurations');
+      expect(policyQueries).toHaveLength(1);
+    });
+
+    it('an Online booking (default, unaffected) still calls resolveDownpaymentPolicy and persists booking_source Online', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: { ...BASE_INPUT, payment_confirmed: true },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+
+      expect(insert?.payload).toMatchObject({
+        booking_source: 'Online',
+        status: 'Pending',
+      });
+
+      const policyQueries = vi
+        .mocked(supabase.from)
+        .mock.calls.filter(([table]) => table === 'policy_configurations');
+      expect(policyQueries).toHaveLength(2);
+    });
+
+    it('rejects booking_source Walk-in from a non-staff (customer) requester', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: { ...BASE_INPUT, booking_source: 'Walk-in' },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      // Rejected before any lookup runs at all - not just before the insert.
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listBookings (#59/#60 supporting infra)', () => {
     it('scopes a customer caller to their own rows regardless of branch/status filters', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);

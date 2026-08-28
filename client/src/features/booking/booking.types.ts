@@ -119,6 +119,19 @@ export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
  */
 export type PaymentStage = 'Unpaid' | 'Paid in Advance' | 'Paid';
 
+/** Walk-in booking flow: mirrors the server's BookingSource. 'Online'
+ * (default) is today's only path for a customer booking from home, or a
+ * receptionist booking a future/same-day appointment on someone's behalf -
+ * unchanged, still goes through the down payment policy. 'Walk-in' is a new
+ * receptionist-only path for a customer/pet physically at the branch right
+ * now - skips the down payment policy and starts at status 'In Progress'
+ * rather than 'Pending'. Only ever offered in CustomerBookingFlowPage's
+ * receptionist mode - a remote customer booking from home never sees the
+ * choice at all (always implicitly 'Online'). */
+export type BookingSource = 'Online' | 'Walk-in';
+
+export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
+
 export const PAYMENT_STAGES: readonly PaymentStage[] = [
   'Unpaid',
   'Paid in Advance',
@@ -241,6 +254,10 @@ export interface Booking {
   branch_id: string;
   created_by_staff_id: string | null;
   service_category: ServiceCategory;
+  /** Walk-in booking flow - see BookingSource's own dev note. Defaults to
+   * 'Online' at the DB level; every booking created before this feature
+   * backfills to 'Online'. */
+  booking_source: BookingSource;
   scheduled_start: string;
   scheduled_end: string;
   assigned_staff_id: string | null;
@@ -433,6 +450,10 @@ export interface CreateBookingPayload {
   pet_id: string;
   branch_id: string;
   service_category: ServiceCategory;
+  /** Walk-in booking flow - omitted/'Online' behaves exactly like every
+   * booking did before this field existed (the server defaults to 'Online'
+   * either way). 'Walk-in' is staff-only, rejected server-side otherwise. */
+  booking_source?: BookingSource;
   items: BookingItemInput[];
   scheduled_start: string;
   scheduled_end: string;

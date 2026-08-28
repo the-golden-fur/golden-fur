@@ -211,7 +211,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
   });
 
   describe('listGroomingQueue', () => {
-    it('auto-creates a grooming_sessions row for a Pending/In Progress booking without one yet', async () => {
+    it('auto-creates a grooming_sessions row for an In Progress booking without one yet', async () => {
       queueFromResults(
         {
           data: [{ id: 'booking-1', assigned_staff_id: GROOMER_ID }],
@@ -253,18 +253,18 @@ describe('grooming.service (#64, booking-status revision)', () => {
       ).not.toHaveProperty('status');
     });
 
-    it('queries bookings with status IN (Pending, In Progress) - no more separate Confirmed/Pending split', async () => {
-      const inSpy = vi.fn();
+    it('queries bookings with status = In Progress only - walk-in booking flow change, Pending no longer shows here until checked in', async () => {
+      const eqSpy = vi.fn();
 
       vi.mocked(supabase.from).mockImplementation(((table: string) => {
         const builder: Record<string, unknown> = {};
 
-        for (const method of ['select', 'eq', 'gte', 'lt', 'or']) {
+        for (const method of ['select', 'gte', 'lt', 'or', 'in']) {
           builder[method] = vi.fn(() => builder);
         }
 
-        builder.in = vi.fn((column: string, values: unknown) => {
-          if (table === 'bookings') inSpy(column, values);
+        builder.eq = vi.fn((column: string, value: unknown) => {
+          if (table === 'bookings') eqSpy(column, value);
           return builder;
         });
 
@@ -290,7 +290,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
         requesterBranchId: 'branch-1',
       });
 
-      expect(inSpy).toHaveBeenCalledWith('status', ['Pending', 'In Progress']);
+      expect(eqSpy).toHaveBeenCalledWith('status', 'In Progress');
     });
 
     it('sorts by queue_position when set, otherwise scheduled_start', async () => {

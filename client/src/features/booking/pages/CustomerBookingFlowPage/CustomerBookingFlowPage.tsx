@@ -41,6 +41,7 @@ import {
   PAYMENT_METHODS,
   SERVICE_CATEGORIES,
   type Booking,
+  type BookingSource,
   type CagePreferenceInput,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
@@ -119,6 +120,7 @@ interface StepDef {
     | 'pet'
     | 'branch'
     | 'category'
+    | 'bookingType'
     | 'availability'
     | 'items'
     | 'hotelDetails'
@@ -226,6 +228,9 @@ interface PersistedBookingDraft {
   selectionsByCategory: Partial<
     Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>
   >;
+  // Receptionist mode only (see the 'bookingType' step) - always 'Online'
+  // for a remote customer booking from home.
+  bookingSource: BookingSource;
   selectedSlot: { start: string; end: string } | null;
   hotelNights: number;
   selectedPromoId: string;
@@ -437,6 +442,12 @@ export function CustomerBookingFlowPage() {
       ),
     }));
   }
+
+  // Walk-in booking flow: receptionist-only choice (see the 'bookingType'
+  // step, inserted before 'availability' and only shown when
+  // isReceptionistMode). A remote customer booking from home never sees
+  // this step at all - always implicitly 'Online'.
+  const [bookingSource, setBookingSource] = useState<BookingSource>('Online');
 
   const [selectedSlot, setSelectedSlot] = useState<{
     start: string;
@@ -791,6 +802,9 @@ export function CustomerBookingFlowPage() {
       setCategory(draft.category);
       setSelectionMode(draft.selectionMode);
       setSelectionsByCategory(draft.selectionsByCategory);
+      if (isReceptionistMode && draft.bookingSource) {
+        setBookingSource(draft.bookingSource);
+      }
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
       setSelectedPromoId(draft.selectedPromoId);
@@ -827,6 +841,7 @@ export function CustomerBookingFlowPage() {
         category,
         selectionMode,
         selectionsByCategory,
+        bookingSource,
         selectedSlot,
         hotelNights,
         selectedPromoId,
@@ -853,6 +868,7 @@ export function CustomerBookingFlowPage() {
     category,
     selectionMode,
     selectionsByCategory,
+    bookingSource,
     selectedSlot,
     hotelNights,
     selectedPromoId,
@@ -883,6 +899,7 @@ export function CustomerBookingFlowPage() {
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});
+    setBookingSource('Online');
     setSelectedSlot(null);
     setHotelNights(1);
     setStaffPreference(null);
@@ -1183,7 +1200,17 @@ export function CustomerBookingFlowPage() {
   // resolveDownpaymentPolicy/createBooking server-side for the
   // authoritative version of this same math), applied once against the
   // whole booking's subtotal rather than summed per selected item.
-  const downpaymentRequired = downpaymentStatus?.downpayment_enabled ?? false;
+  //
+  // Walk-in booking flow: createBooking forces downpayment_required=false
+  // server-side for a Walk-in booking regardless of policy_configurations
+  // (no slot-holding risk - the customer/pet is already here), so this
+  // mirrors that here too - never true for a Walk-in booking, which also
+  // hides the downpayment breakdown/toggle UI below (showPaymentChoice) and
+  // keeps payment_choice out of the submitted payload, matching the
+  // server's own skip.
+  const downpaymentRequired =
+    bookingSource !== 'Walk-in' &&
+    (downpaymentStatus?.downpayment_enabled ?? false);
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
       ? subtotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
@@ -1219,6 +1246,13 @@ export function CustomerBookingFlowPage() {
     list.push({ key: 'pet', label: 'Pet' });
     list.push({ key: 'branch', label: 'Branch' });
     list.push({ key: 'category', label: 'Service Type' });
+
+    // Walk-in booking flow: receptionist-only, inserted right before Date &
+    // Time - a remote customer booking from home never sees this step at
+    // all (walk-in definitionally requires being on-site).
+    if (isReceptionistMode) {
+      list.push({ key: 'bookingType', label: 'Booking Type' });
+    }
 
     const availabilityLabel =
       category === 'Hotel'
@@ -1293,6 +1327,11 @@ export function CustomerBookingFlowPage() {
         return selectedBranchId !== '';
       case 'category':
         return category !== '';
+      case 'bookingType':
+        // Always valid - bookingSource defaults to 'Online' so the step is
+        // never a hard blocker, matching "Default wizard state: bookingSource:
+        // 'Online'".
+        return true;
       case 'availability':
         return (
           selectedSlot !== null &&
@@ -1447,6 +1486,26 @@ export function CustomerBookingFlowPage() {
     setStaffPickerUnavailable(false);
     setHotelNights(1);
     resetHotelPreferences();
+  }
+
+  /** Walk-in booking flow: switching Online<->Walk-in changes what the
+   * following 'availability' step's SlotPicker means (browsable calendar
+   * vs. locked-to-now auto-resolved slot), so a slot picked under the old
+   * mode is cleared rather than silently carried over as if it still meant
+   * the same thing. Staff/cage preference are deliberately left untouched -
+   * only the date/time portion is affected by this choice. */
+  function handleBookingSourceSelect(source: BookingSource) {
+    setBookingSource(source);
+    setSelectedSlot(null);
+    // Walk-in never offers an online (GCash/Maya) payment method - clears a
+    // stale online pick left over from browsing back from a later step
+    // rather than letting the payment step render with a selection that's
+    // no longer in its own option list.
+    setPaymentMethod((current) =>
+      source === 'Walk-in' && ONLINE_METHODS.has(current as PaymentMethod)
+        ? ''
+        : current
+    );
   }
 
   /** A package's bundled price already covers its member services - keeping
@@ -1726,6 +1785,11 @@ export function CustomerBookingFlowPage() {
         pet_id: selectedPetId,
         branch_id: selectedBranchId,
         service_category: category,
+        // Walk-in booking flow: always sent explicitly (matches the server
+        // default of 'Online' either way, but is simpler than omitting it
+        // only in receptionist mode - the customer portal never renders the
+        // 'bookingType' step, so bookingSource never leaves 'Online' there).
+        booking_source: bookingSource,
         items: [
           ...selectedServiceIds.map((service_id) => ({ service_id })),
           ...selectedPackageIds.map((package_id) => ({ package_id })),
@@ -1998,6 +2062,48 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
+      // Walk-in booking flow: receptionist-only (steps only ever include
+      // this key in receptionist mode). Mirrors the 'category' step's own
+      // single-choice card pattern above.
+      case 'bookingType':
+        return (
+          <div className={styles.serviceStep}>
+            <div className={styles.categoryGrid}>
+              <button
+                type="button"
+                aria-pressed={bookingSource === 'Online'}
+                className={`${styles.categoryCard} ${
+                  bookingSource === 'Online' ? styles.selected : ''
+                }`}
+                onClick={() => handleBookingSourceSelect('Online')}
+              >
+                <span className={styles.categoryLabel}>Online Booking</span>
+                <span className={styles.optionMeta}>
+                  A future or same-day appointment, booked on the
+                  customer&apos;s behalf. Goes through the usual down payment
+                  policy and a browsable date/time picker.
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={bookingSource === 'Walk-in'}
+                className={`${styles.categoryCard} ${
+                  bookingSource === 'Walk-in' ? styles.selected : ''
+                }`}
+                onClick={() => handleBookingSourceSelect('Walk-in')}
+              >
+                <span className={styles.categoryLabel}>Walk-in</span>
+                <span className={styles.optionMeta}>
+                  The customer and pet are physically here right now. No down
+                  payment, no online checkout - the date/time locks to the next
+                  available slot today, and the booking starts In Progress
+                  immediately.
+                </span>
+              </button>
+            </div>
+          </div>
+        );
+
       case 'availability':
         return (
           <div className={styles.slotStep}>
@@ -2054,6 +2160,7 @@ export function CustomerBookingFlowPage() {
               viewerMode={isReceptionistMode ? 'staff' : 'customer'}
               selectedSlot={selectedSlot}
               onSelect={(slot) => setSelectedSlot(slot)}
+              lockToNow={isReceptionistMode && bookingSource === 'Walk-in'}
               onAvailabilityChange={handleSlotAvailabilityChange}
             />
 
@@ -2732,7 +2839,15 @@ export function CustomerBookingFlowPage() {
                   }
                 >
                   <option value="">Select a payment method...</option>
-                  {PAYMENT_METHODS.map((method) => (
+                  {/* Walk-in booking flow: on-site/counter options only - no
+                      PayMongo/GCash/Maya online checkout, since the customer
+                      is already physically at the counter. */}
+                  {(bookingSource === 'Walk-in'
+                    ? PAYMENT_METHODS.filter(
+                        (method) => !ONLINE_METHODS.has(method)
+                      )
+                    : PAYMENT_METHODS
+                  ).map((method) => (
                     <option key={method} value={method}>
                       {method}
                     </option>
@@ -2865,7 +2980,13 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            <PayMongoFeeNotice paymentMethod={paymentMethod} />
+            {/* Walk-in booking flow: no PayMongo/GCash/Maya online checkout
+                UI at all - paymentMethod can never actually be an online
+                method here anyway (filtered out above), but this skips the
+                notice outright rather than relying on that indirectly. */}
+            {bookingSource !== 'Walk-in' ? (
+              <PayMongoFeeNotice paymentMethod={paymentMethod} />
+            ) : null}
 
             {submitError ? (
               <p className={styles.errorBanner} role="alert">

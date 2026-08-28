@@ -62,6 +62,7 @@ vi.mock('../../components/SlotPicker/SlotPicker', () => ({
   SlotPicker: ({
     onSelect,
     onAvailabilityChange,
+    lockToNow,
   }: {
     onSelect: (slot: { start: string; end: string }) => void;
     onAvailabilityChange?: (info: {
@@ -69,10 +70,22 @@ vi.mock('../../components/SlotPicker/SlotPicker', () => ({
       hasAnyAvailable: boolean;
       hasAnySlots: boolean;
     }) => void;
+    // Walk-in booking flow: surfaced by the mock so page-level tests can
+    // assert it's actually threaded through from bookingSource, without
+    // re-testing SlotPicker's own lockToNow behavior (covered by
+    // SlotPicker.spec.ts).
+    lockToNow?: boolean;
   }) =>
     createElement(
       'div',
       null,
+      lockToNow
+        ? createElement(
+            'span',
+            { 'data-testid': 'slot-picker-locked' },
+            'Walk-in — next available slot today'
+          )
+        : null,
       createElement(
         'button',
         {
@@ -627,6 +640,14 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
+    await user.click(screen.getByText('Next'));
+
+    // Walk-in booking flow: receptionist mode gets a Booking Type step
+    // before availability now - 'Online' is the default, so just advance
+    // past it without changing anything.
+    await waitFor(() =>
+      expect(screen.getByText('Online Booking')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
@@ -1277,5 +1298,182 @@ describe('CustomerBookingFlowPage', () => {
       screen.queryByText('We restored your in-progress booking.')
     ).not.toBeInTheDocument();
     expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
+  });
+
+  // Walk-in booking flow (custom change): new 'bookingType' step, gated to
+  // receptionist mode, with a lockToNow SlotPicker + restricted payment
+  // methods + hidden downpayment UI once 'Walk-in' is selected.
+  describe('walk-in booking flow (custom change)', () => {
+    /** Walks a fresh receptionist-mode render through customer/pet/branch/
+     * category to land on the new 'bookingType' step. */
+    async function goToBookingTypeStep(
+      user: ReturnType<typeof userEvent.setup>
+    ) {
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      await user.click(screen.getByText('Max'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Makati')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Makati'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Grooming')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Grooming'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Online Booking')).toBeInTheDocument()
+      );
+    }
+
+    it('never appears at all in customer self-service mode - always implicitly Online', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await goToCategoryStep(user);
+      await user.click(screen.getByText('Grooming'));
+      await user.click(screen.getByText('Next'));
+
+      // Lands straight on the availability step - no 'Booking Type'/'Online
+      // Booking'/'Walk-in' choice is ever shown for a remote customer.
+      await waitFor(() =>
+        expect(screen.getByText('Select slot')).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Online Booking')).not.toBeInTheDocument();
+      expect(screen.queryByText('Walk-in')).not.toBeInTheDocument();
+    });
+
+    it('defaults to Online: no lockToNow, every payment method offered, and booking_source "Online" is sent', async () => {
+      vi.mocked(bookingApi.createBooking).mockResolvedValue({
+        data: {
+          id: 'booking-1',
+          status: 'Pending',
+          scheduled_start: '2026-08-03T01:00:00.000Z',
+        } as never,
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+      await goToBookingTypeStep(user);
+
+      // Default selection, no explicit click needed.
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Select slot')).toBeInTheDocument()
+      );
+      expect(
+        screen.queryByTestId('slot-picker-locked')
+      ).not.toBeInTheDocument();
+      await user.click(screen.getByText('Select slot'));
+      await screen.findByTestId('staff-picker');
+      await user.click(screen.getByText('Pick no preference'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+      await user.click(screen.getByText('Bath'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+      );
+      // Every payment method is offered, including the online ones.
+      expect(screen.getByRole('option', { name: 'GCash' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Maya' })).toBeInTheDocument();
+
+      const select = screen.getByRole('combobox') as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'Cash' } });
+      await user.click(screen.getByText('Confirm booking'));
+
+      await waitFor(() =>
+        expect(bookingApi.createBooking).toHaveBeenCalledWith(
+          'token',
+          expect.objectContaining({ booking_source: 'Online' })
+        )
+      );
+    });
+
+    it('selecting Walk-in locks the date/time picker (staff picker stays interactive), restricts payment methods to on-site options, hides the downpayment breakdown, and sends booking_source "Walk-in"', async () => {
+      vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+        data: {
+          downpayment_enabled: true,
+          downpayment_type: 'Flat',
+          downpayment_amount: 100,
+        },
+        error: null,
+      });
+      vi.mocked(bookingApi.createBooking).mockResolvedValue({
+        data: {
+          id: 'booking-1',
+          status: 'In Progress',
+          scheduled_start: '2026-08-03T01:00:00.000Z',
+        } as never,
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+      await goToBookingTypeStep(user);
+
+      await user.click(screen.getByText('Walk-in'));
+      await user.click(screen.getByText('Next'));
+
+      // Date/time is locked; the staff picker alongside it is untouched -
+      // still fully interactive once a slot exists.
+      await waitFor(() =>
+        expect(screen.getByTestId('slot-picker-locked')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Select slot'));
+      await screen.findByTestId('staff-picker');
+      await user.click(screen.getByText('Pick no preference'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+      await user.click(screen.getByText('Bath'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+      );
+
+      // On-site/counter options only - no online (GCash/Maya) checkout UI.
+      expect(
+        screen.queryByRole('option', { name: 'GCash' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('option', { name: 'Maya' })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Cash' })).toBeInTheDocument();
+
+      // No downpayment breakdown/toggle shown, even though the branch policy
+      // has one enabled - it's forced off server-side for a walk-in.
+      expect(
+        screen.queryByText(/Downpayment required now/)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/requires a downpayment/)
+      ).not.toBeInTheDocument();
+
+      const select = screen.getByRole('combobox') as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'Cash' } });
+      await user.click(screen.getByText('Confirm booking'));
+
+      await waitFor(() =>
+        expect(bookingApi.createBooking).toHaveBeenCalledWith(
+          'token',
+          expect.objectContaining({ booking_source: 'Walk-in' })
+        )
+      );
+    });
   });
 });

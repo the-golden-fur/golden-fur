@@ -30,6 +30,7 @@ import {
   cancelBooking,
   listBookings,
   rescheduleBooking,
+  startBooking,
 } from '../../api/booking.api';
 import {
   listPolicyConfigurations,
@@ -169,9 +170,21 @@ type ActiveAction = {
  * every service category now advances status through its own dedicated
  * queue (Hotel/Daycare check-in-out, Grooming queue, Veterinary console),
  * and payment actions (plus the Misc-category start/complete that has no
- * dedicated queue of its own) moved to PaymentsQueuePage. This page is left
+ * dedicated queue of its own) moved to PaymentsQueuePage. This page was left
  * with only the actions that are genuinely a receptionist's own job: view
  * details, reschedule, cancel, and create a new booking.
+ *
+ * Custom change (walk-in booking flow): a "Check In" action is back,
+ * *without* contradicting the paragraph above - it's a direct consequence of
+ * this feature, not a reversion of it. Grooming/Veterinary's own queues are
+ * being changed elsewhere (in parallel) to only vivify a booking once it's
+ * already 'In Progress', so a 'Pending' online booking now has no path to
+ * 'In Progress' unless something on *this* page can do it - there's nowhere
+ * else left with a "the customer just walked in" trigger for an online
+ * appointment. Check In calls the same POST /bookings/:id/start endpoint the
+ * old Start action used, shown only for a 'Pending' booking; once checked
+ * in, it naturally starts showing up in its own category's queue like any
+ * fresh walk-in would.
  */
 export function ReceptionistBookingsQueuePage() {
   const { user, accessToken } = useAuth();
@@ -245,6 +258,19 @@ export function ReceptionistBookingsQueuePage() {
   const [cancellationReason, setCancellationReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  // Walk-in booking flow: Check In is a third sibling action alongside
+  // Reschedule/Cancel above, not a replacement for either - a direct
+  // one-click action (no confirm panel needed, unlike Reschedule/Cancel),
+  // so it gets its own small in-flight/error state scoped to whichever
+  // booking row is currently being checked in, rather than reusing
+  // activeAction/actionError (which assume a panel is open).
+  const [checkingInBookingId, setCheckingInBookingId] = useState<string | null>(
+    null
+  );
+  const [checkInError, setCheckInError] = useState<{
+    bookingId: string;
+    message: string;
+  } | null>(null);
 
   // Viewer role/branch via the requester's own row in GET /staff, same
   // recipe as every other admin-adjacent staff page (the JWT's user.role is
@@ -607,6 +633,31 @@ export function ReceptionistBookingsQueuePage() {
 
     replaceBooking(result.data.booking);
     setActiveAction(null);
+  }
+
+  /** Walk-in booking flow: Pending -> In Progress, the moment the customer
+   * physically arrives for their appointment. Calls the same POST
+   * /bookings/:id/start endpoint the old Start action used
+   * (startBookingController, unchanged server-side) - no new endpoint. */
+  async function handleCheckIn(booking: Booking) {
+    if (!accessToken) return;
+
+    setCheckingInBookingId(booking.id);
+    setCheckInError(null);
+
+    const result = await startBooking(booking.id, accessToken);
+
+    setCheckingInBookingId(null);
+
+    if (result.error || !result.data) {
+      setCheckInError({
+        bookingId: booking.id,
+        message: result.error ?? 'Could not check in this booking.',
+      });
+      return;
+    }
+
+    replaceBooking(result.data);
   }
 
   if (!user?.id || !accessToken) {
@@ -977,6 +1028,23 @@ export function ReceptionistBookingsQueuePage() {
                       >
                         View details
                       </button>
+                      {/* Walk-in booking flow: only a 'Pending' (online,
+                          not-yet-arrived) booking has anywhere to go here -
+                          an 'In Progress' booking (checked in already, or
+                          born there as a walk-in) shows up on its own
+                          category queue instead. */}
+                      {booking.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={checkingInBookingId === booking.id}
+                          onClick={() => void handleCheckIn(booking)}
+                        >
+                          {checkingInBookingId === booking.id
+                            ? 'Checking in...'
+                            : 'Check In'}
+                        </button>
+                      ) : null}
                       {canReschedule ? (
                         <button
                           type="button"
@@ -996,6 +1064,12 @@ export function ReceptionistBookingsQueuePage() {
                         </button>
                       ) : null}
                     </div>
+                  ) : null}
+
+                  {checkInError?.bookingId === booking.id ? (
+                    <p className={styles.errorBanner} role="alert">
+                      {checkInError.message}
+                    </p>
                   ) : null}
 
                   {isRescheduling ? (

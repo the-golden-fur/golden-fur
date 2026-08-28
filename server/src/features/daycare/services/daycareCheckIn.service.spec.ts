@@ -157,14 +157,14 @@ describe('daycareCheckIn.service (#65)', () => {
       vi.useRealTimers();
     });
 
-    it('rejects check-in for a booking that is not Pending', async () => {
+    it('rejects check-in for a booking that is neither Pending nor In Progress', async () => {
       queueFromResults({
         data: {
           id: 'booking-1',
           pet_id: 'pet-1',
           branch_id: 'branch-makati',
           service_category: 'Daycare',
-          status: 'In Progress',
+          status: 'Completed',
         },
         error: null,
       });
@@ -177,6 +177,60 @@ describe('daycareCheckIn.service (#65)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
 
       expect(startBooking).not.toHaveBeenCalled();
+    });
+
+    // Walk-in booking flow (custom change): a walk-in Daycare booking is
+    // created already 'In Progress' (createBooking, booking_source =
+    // 'Walk-in') - it still needs to go through this same check-in action
+    // for cage assignment/care instructions, so 'In Progress' is now
+    // accepted alongside the normal Pending (online) case. startBooking is
+    // deliberately not re-called, since it only accepts a Pending booking.
+    it('accepts an already In Progress (walk-in) Daycare booking and does not re-call startBooking', async () => {
+      const beforeCutoff = new Date('2026-07-19T01:00:00.000Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(beforeCutoff);
+
+      queueFromResults(
+        {
+          data: {
+            id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: 'branch-makati',
+            service_category: 'Daycare',
+            status: 'In Progress',
+          },
+          error: null,
+        },
+        { data: MAKATI_BRANCH, error: null },
+        { data: { weight_class: 'S' }, error: null },
+        {
+          data: [{ id: 'cage-1', size: 'S', status: 'Available' }],
+          error: null,
+        },
+        { data: { id: 'cage-1', size: 'S', status: 'Occupied' }, error: null },
+        { data: { service_id: 'service-daycare-1' }, error: null },
+        {
+          data: { id: 'session-1', booking_id: 'booking-1', status: 'Active' },
+          error: null,
+        }
+      );
+
+      const result = await checkInDaycareSession({
+        requesterId: 'staff-1',
+        input: {
+          booking_id: 'booking-1',
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
+      });
+
+      expect(result.status).toBe('Active');
+      expect(startBooking).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
 
     it('AC-1: a fresh walk-in with no booking succeeds', async () => {

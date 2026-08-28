@@ -154,6 +154,12 @@ export async function checkInDaycareSession({
   let petId: string;
   let branchId: string;
   let bookingId: string | null = null;
+  // Walk-in booking flow: a walk-in Daycare booking is born 'In Progress'
+  // (createBooking, booking_source = 'Walk-in') since there's no separate
+  // "arrival" event left to wait for - the pet is already here. Track the
+  // incoming status so the startBooking sync below only runs for the
+  // Pending (online, being checked in for the first time) case.
+  let bookingStatus: string | null = null;
 
   if (input.booking_id) {
     const { data: booking, error: bookingError } = await supabase
@@ -169,14 +175,19 @@ export async function checkInDaycareSession({
     }
     // Booking-status revision: there is no more separate Confirmed gate -
     // check-in itself is the "service started" event, so a booking may be
-    // checked in only while it's still Pending (hasn't started yet).
-    if (booking.status !== 'Pending') {
+    // checked in only while it's still Pending (hasn't started yet). Walk-in
+    // booking flow: also accept 'In Progress' - a walk-in Daycare booking is
+    // created already In Progress (no Pending state to pass through), and
+    // still needs to go through this same check-in action for cage
+    // assignment/care instructions.
+    if (booking.status !== 'Pending' && booking.status !== 'In Progress') {
       throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
     }
 
     petId = booking.pet_id;
     branchId = booking.branch_id;
     bookingId = booking.id;
+    bookingStatus = booking.status;
   } else {
     petId = input.pet_id!;
     branchId = input.branch_id!;
@@ -241,9 +252,13 @@ export async function checkInDaycareSession({
     }
 
     // Booking-status revision: sync the linked booking to In Progress now
-    // that the pet has physically checked in. Walk-ins (bookingId is null)
-    // have no booking row to sync at all.
-    if (bookingId) {
+    // that the pet has physically checked in. Walk-ins with no booking row
+    // (bookingId is null) have nothing to sync. Walk-in booking flow: a
+    // booking-linked walk-in is already 'In Progress' at this point
+    // (createBooking sets that directly), so startBooking - which only
+    // accepts a 'Pending' booking - is skipped rather than called
+    // redundantly.
+    if (bookingId && bookingStatus === 'Pending') {
       await startBooking({ bookingId });
     }
 

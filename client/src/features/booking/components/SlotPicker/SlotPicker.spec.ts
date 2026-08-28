@@ -320,6 +320,78 @@ describe('SlotPicker', () => {
     ).toBeInTheDocument();
   });
 
+  // Walk-in booking flow (custom change): lockToNow auto-resolves and
+  // selects the earliest available slot, and renders a non-interactive
+  // banner instead of the normal date-nav + TimeSlotInput grid.
+  describe('lockToNow (walk-in booking flow)', () => {
+    it('auto-selects the earliest available slot without any click, and hides the date-nav/time-grid controls', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: { slots: SLOTS, window: WINDOW },
+        error: null,
+      });
+      const onSelect = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect,
+          lockToNow: true,
+        })
+      );
+
+      await waitFor(() =>
+        expect(onSelect).toHaveBeenCalledWith({
+          start: SLOTS[0].start,
+          end: SLOTS[0].end,
+        })
+      );
+
+      expect(
+        screen.getByText('Walk-in — next available slot today')
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText('Date')).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Appointment time')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Previous day')).not.toBeInTheDocument();
+    });
+
+    it('shows a no-slot message and never calls onSelect when nothing is available today', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: {
+          slots: SLOTS.map((slot) => ({ ...slot, available: false })),
+          window: WINDOW,
+        },
+        error: null,
+      });
+      const onSelect = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect,
+          lockToNow: true,
+        })
+      );
+
+      await waitFor(() =>
+        expect(screen.getByText(/No open slot today/i)).toBeInTheDocument()
+      );
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onAvailabilityChange', () => {
     it('#22 follow-up: reports hasAnySlots=false for an empty day (branch closed, or today already past hours)', async () => {
       vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
