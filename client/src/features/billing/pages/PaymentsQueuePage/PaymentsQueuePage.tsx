@@ -916,8 +916,9 @@ export function PaymentsQueuePage() {
                         </p>
                       ) : null}
                       {transactionsLoadingId !== booking.id &&
-                      !transactionsError &&
-                      (transactionsByBooking[booking.id]?.length ?? 0) === 0 ? (
+                      transactionsError?.bookingId !== booking.id &&
+                      transactionsByBooking[booking.id] !== undefined &&
+                      transactionsByBooking[booking.id].length === 0 ? (
                         <p className={styles.copy}>
                           No payments recorded yet for this booking.
                         </p>
