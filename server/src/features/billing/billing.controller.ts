@@ -11,6 +11,7 @@ import {
   listMiscSales,
   updateMiscSale,
 } from './services/miscSale.service.ts';
+import { listBookingTransactions } from './services/bookingTransactions.service.ts';
 import { getPaymongoServiceFeeRate } from './services/paymongo.service.ts';
 import {
   checkoutValidator,
@@ -141,6 +142,21 @@ export async function getMiscSaleController(
   try {
     const result = await getMiscSale(paramId(req, 'id'));
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** §6: per-booking payment history for the Payments Queue drill-down. */
+export async function listBookingTransactionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const transactions = await listBookingTransactions(
+      paramId(req, 'bookingId')
+    );
+    return res.status(200).json({ transactions });
   } catch (error) {
     return sendServiceError(res, error);
   }

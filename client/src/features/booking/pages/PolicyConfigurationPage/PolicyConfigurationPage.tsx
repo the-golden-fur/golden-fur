@@ -48,6 +48,7 @@ interface FormState {
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType;
   downpayment_amount: number;
+  downpayment_hold_hours: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -72,6 +73,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type ?? 'Flat',
     downpayment_amount: policy.downpayment_amount ?? 0,
+    downpayment_hold_hours: policy.downpayment_hold_hours,
   };
 }
 
@@ -95,6 +97,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   downpayment_enabled: false,
   downpayment_type: 'Flat',
   downpayment_amount: 0,
+  downpayment_hold_hours: 24,
 };
 
 /**
@@ -246,6 +249,7 @@ export function PolicyConfigurationPage() {
       downpayment_amount: form.downpayment_enabled
         ? form.downpayment_amount
         : null,
+      downpayment_hold_hours: form.downpayment_hold_hours,
     });
 
     setIsSubmitting(false);
@@ -615,8 +619,9 @@ export function PolicyConfigurationPage() {
               <span>Require a downpayment on the whole booking</span>
             </label>
             <p className={styles.copy}>
-              Applies once to a booking's total - across every service/ package
-              in it - not per individual service.
+              Applies once to an online booking's total - across every
+              service/package in it, and after any discount or promo - not
+              per individual service. Walk-in bookings always pay in full.
             </p>
 
             <label className={styles.field}>
@@ -658,6 +663,31 @@ export function PolicyConfigurationPage() {
                 }
               />
             </label>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Reservation hold (hours)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                value={form.downpayment_hold_hours}
+                disabled={!form.downpayment_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    downpayment_hold_hours: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <p className={styles.copy}>
+              An online booking that still owes its downpayment does not hold
+              its slot - other customers can still book that time. If the
+              downpayment isn&apos;t paid within this many hours, the booking
+              is automatically cancelled. Default 24.
+            </p>
           </section>
 
           <section aria-labelledby="credit-expiry-heading">

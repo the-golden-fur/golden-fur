@@ -136,6 +136,26 @@ export async function listMiscSales(
   return { data: result.data?.transactions ?? null, error: result.error };
 }
 
+/** §6 (down-payment slot gate): every payment recorded against one
+ * booking, oldest first - powers the Payments Queue row's "View payments"
+ * panel (date, amount, method, status, full vs down payment). */
+export async function listBookingTransactions(
+  bookingId: string,
+  accessToken: string
+): Promise<BillingApiResult<Transaction[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/booking/${bookingId}/transactions`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ transactions: Transaction[] }>(response);
+  return { data: result.data?.transactions ?? null, error: result.error };
+}
+
 export async function getMiscSale(
   transactionId: string,
   accessToken: string

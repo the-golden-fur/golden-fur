@@ -1199,7 +1199,12 @@ export function CustomerBookingFlowPage() {
   // single per-transaction policy_configurations config (see
   // resolveDownpaymentPolicy/createBooking server-side for the
   // authoritative version of this same math), applied once against the
-  // whole booking's subtotal rather than summed per selected item.
+  // whole booking.
+  //
+  // Down-payment slot gate (§7 / advisor: "discounts and promos apply
+  // before downpayment is calculated"): the down payment is a percentage
+  // of / capped at the DISCOUNTED net total (estimatedTotal), not the
+  // gross subtotal - matching createBooking's own reordered math.
   //
   // Walk-in booking flow: createBooking forces downpayment_required=false
   // server-side for a Walk-in booking regardless of policy_configurations
@@ -1213,8 +1218,8 @@ export function CustomerBookingFlowPage() {
     (downpaymentStatus?.downpayment_enabled ?? false);
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
-      ? subtotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
-      : (downpaymentStatus?.downpayment_amount ?? 0)
+      ? estimatedTotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
+      : Math.min(downpaymentStatus?.downpayment_amount ?? 0, estimatedTotal)
     : null;
   // Only meaningful when paying online right now (GCash/Maya) - pay-at-
   // counter methods always defer the whole amount to later regardless, same
@@ -1871,6 +1876,23 @@ export function CustomerBookingFlowPage() {
               : 'Payment is due at the counter.'
             : "You're all set!"}
         </p>
+        {/* Down-payment slot gate: an unpaid down-payment booking holds no
+            slot and is released if the deadline passes - tell the customer
+            plainly so they pay in time. */}
+        {confirmedBooking.downpayment_required &&
+        confirmedBooking.payment_stage === 'Unpaid' &&
+        confirmedBooking.downpayment_due_at ? (
+          <p className={styles.errorBanner} role="alert">
+            This time slot is not reserved yet. Pay your down payment of PHP{' '}
+            {(confirmedBooking.downpayment_amount ?? 0).toFixed(2)} by{' '}
+            {new Date(confirmedBooking.downpayment_due_at).toLocaleString(
+              undefined,
+              { dateStyle: 'medium', timeStyle: 'short' }
+            )}{' '}
+            from “My bookings”, or the booking is automatically cancelled and
+            the slot released.
+          </p>
+        ) : null}
         <button
           type="button"
           className={styles.primaryButton}
