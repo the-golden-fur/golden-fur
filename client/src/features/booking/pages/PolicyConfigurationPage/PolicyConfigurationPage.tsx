@@ -620,8 +620,8 @@ export function PolicyConfigurationPage() {
             </label>
             <p className={styles.copy}>
               Applies once to an online booking's total - across every
-              service/package in it, and after any discount or promo - not
-              per individual service. Walk-in bookings always pay in full.
+              service/package in it, and after any discount or promo - not per
+              individual service. Walk-in bookings always pay in full.
             </p>
 
             <label className={styles.field}>
@@ -685,8 +685,8 @@ export function PolicyConfigurationPage() {
             <p className={styles.copy}>
               An online booking that still owes its downpayment does not hold
               its slot - other customers can still book that time. If the
-              downpayment isn&apos;t paid within this many hours, the booking
-              is automatically cancelled. Default 24.
+              downpayment isn&apos;t paid within this many hours, the booking is
+              automatically cancelled. Default 24.
             </p>
           </section>
 

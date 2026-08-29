@@ -881,7 +881,9 @@ export async function createBooking({
   // Only a down-payment-required Online booking sitting Unpaid gets one.
   const downpaymentDueAt = holdsSlot
     ? null
-    : new Date(Date.now() + downpaymentHoldHours * 60 * 60 * 1000).toISOString();
+    : new Date(
+        Date.now() + downpaymentHoldHours * 60 * 60 * 1000
+      ).toISOString();
 
   // Staff resolution (Grooming/Veterinary) happens before the generic
   // capacity check because for these categories staff availability IS the
@@ -911,8 +913,7 @@ export async function createBooking({
 
   if (
     holdsSlot &&
-    (input.service_category === 'Hotel' ||
-      input.service_category === 'Daycare')
+    (input.service_category === 'Hotel' || input.service_category === 'Daycare')
   ) {
     // The authoritative submission-time check - never skipped even though the
     // Slot Picker already ran the same check read-only (Guide #51). Hotel/
@@ -1326,9 +1327,7 @@ export async function listBookings({
  * was never held while the booking was unpaid, so this only tidies the
  * dead row + lets the customer be notified.
  */
-async function applyDownpaymentExpiry(
-  bookings: Booking[]
-): Promise<Booking[]> {
+async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
   const now = new Date();
   const expiredIds = bookings
     .filter(

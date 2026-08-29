@@ -902,9 +902,9 @@ describe('booking.service (#51)', () => {
       });
 
       expect(result[0].status).toBe('Pending');
-      expect(
-        recordedWrites.some((write) => write.table === 'bookings')
-      ).toBe(false);
+      expect(recordedWrites.some((write) => write.table === 'bookings')).toBe(
+        false
+      );
     });
 
     it('applies a date_from/date_to range as an inclusive [start, end+1day) window', async () => {
