@@ -133,6 +133,7 @@ const DEFAULT_POLICY = {
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,
+  downpayment_hold_hours: 24,
 };
 
 const GROOMING_SERVICE = {
@@ -830,6 +831,82 @@ describe('booking.service (#51)', () => {
       expect(result).toHaveLength(0);
     });
 
+    it('down-payment slot gate: auto-cancels an unpaid down-payment booking past its downpayment_due_at (lazy, read-time)', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-expired',
+              status: 'Pending',
+              downpayment_required: true,
+              payment_stage: 'Unpaid',
+              downpayment_due_at: '2020-01-01T00:00:00.000Z', // long past
+              scheduled_start: '2099-01-01T00:00:00.000Z', // still future - not a no-show
+            },
+          ],
+          error: null,
+        }, // list query
+        {
+          data: [
+            {
+              id: 'booking-expired',
+              status: 'Cancelled',
+              downpayment_required: true,
+              payment_stage: 'Unpaid',
+              downpayment_due_at: '2020-01-01T00:00:00.000Z',
+              scheduled_start: '2099-01-01T00:00:00.000Z',
+              cancellation_reason:
+                'Down payment not received before the reservation deadline',
+            },
+          ],
+          error: null,
+        } // the expiry bulk-update's own .select()
+      );
+
+      const result = await listBookings({
+        requesterId: 'staff-1',
+        filters: {},
+      });
+
+      expect(result[0]).toMatchObject({
+        id: 'booking-expired',
+        status: 'Cancelled',
+      });
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({ status: 'Cancelled' });
+    });
+
+    it('down-payment slot gate: leaves an unpaid down-payment booking alone before its deadline', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-pending',
+            status: 'Pending',
+            downpayment_required: true,
+            payment_stage: 'Unpaid',
+            downpayment_due_at: '2099-01-01T00:00:00.000Z', // still ahead
+            scheduled_start: '2099-01-02T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listBookings({
+        requesterId: 'staff-1',
+        filters: {},
+      });
+
+      expect(result[0].status).toBe('Pending');
+      expect(
+        recordedWrites.some((write) => write.table === 'bookings')
+      ).toBe(false);
+    });
+
     it('applies a date_from/date_to range as an inclusive [start, end+1day) window', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults({ data: [], error: null });
@@ -1235,8 +1312,11 @@ describe('booking.service (#51)', () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null); // a customer, not staff
       queueFromResults(
         { data: PET, error: null }, // pet ownership
-        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        // Discounts/promos are now resolved BEFORE the down payment
+        // (advisor: "discounts and promos apply before downpayment is
+        // calculated"), so the promo cap lookup comes first.
         { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo_cap_configuration (branch row)
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
@@ -1402,7 +1482,9 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
-        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        // NOTE: no post-insert re-count here - down-payment slot gate: an
+        // unpaid customer down-payment booking is a pencil booking, so it
+        // skips confirmCapacityAfterInsert (it holds no slot to race for).
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1444,7 +1526,7 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
-        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        // pencil booking (unpaid customer down payment) - skips the re-count
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1539,7 +1621,7 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
-        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        // pencil booking (unpaid customer down payment) - skips the re-count
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1566,7 +1648,13 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('paying online with payment_choice "downpayment" sets payment_stage to Paid in Advance at creation', async () => {
+    // Down-payment slot gate: payment_confirmed at creation is honored only
+    // for a STAFF-created booking (a receptionist collecting payment at the
+    // counter). A customer's own self-service booking is never trusted as
+    // pre-paid - it's a pencil booking until the Pay flow / a cashier
+    // settles it. These two cover the receptionist-collected case.
+    it('a receptionist collecting a down payment at creation (payment_choice "downpayment") sets payment_stage to Paid in Advance', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
@@ -1575,14 +1663,15 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count (holds a slot now - paid)
         { data: INSERTED_BOOKING, error: null }
       );
 
       await createBooking({
-        requesterId: CUSTOMER_ID,
+        requesterId: 'recept-1',
         input: {
           ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
           payment_method: 'GCash',
           payment_confirmed: true,
           payment_choice: 'downpayment',
@@ -1597,7 +1686,8 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('paying online with payment_choice "full" sets payment_stage to Paid at creation', async () => {
+    it('a receptionist collecting full payment at creation (payment_choice "full") sets payment_stage to Paid', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
@@ -1606,14 +1696,15 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count (holds a slot now - paid)
         { data: INSERTED_BOOKING, error: null }
       );
 
       await createBooking({
-        requesterId: CUSTOMER_ID,
+        requesterId: 'recept-1',
         input: {
           ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
           payment_method: 'GCash',
           payment_confirmed: true,
           payment_choice: 'full',
@@ -1626,7 +1717,7 @@ describe('booking.service (#51)', () => {
       expect(insert?.payload).toMatchObject({ payment_stage: 'Paid' });
     });
 
-    it('a downpayment-required booking paid at the counter (payment_confirmed=false) leaves payment_stage unset (defaults to Unpaid), gating the queue until staff collect it', async () => {
+    it('a downpayment-required customer booking is created Unpaid with a downpayment_due_at, and holds no slot until it pays (pencil booking)', async () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
@@ -1635,7 +1726,7 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
+        // NOTE: no post-insert re-count - pencil booking skips it
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1643,7 +1734,10 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          payment_method: 'Cash',
+          payment_method: 'GCash',
+          // A customer cannot self-declare payment - this is ignored for a
+          // non-staff requester (down-payment slot gate).
+          payment_confirmed: true,
         },
       });
 
@@ -1652,8 +1746,12 @@ describe('booking.service (#51)', () => {
       );
       expect(insert?.payload).toMatchObject({
         downpayment_required: true,
-        payment_stage: 'Unpaid', // same as the column's own default
+        payment_confirmed: false,
+        payment_stage: 'Unpaid', // same as the column default - gates the queue
       });
+      // The auto-cancel deadline is stamped for the unpaid pencil booking.
+      const payload = insert?.payload as Record<string, unknown>;
+      expect(payload.downpayment_due_at).toEqual(expect.any(String));
     });
   });
 

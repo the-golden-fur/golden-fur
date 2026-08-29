@@ -15,16 +15,32 @@ interface QueryResult {
   error: unknown;
 }
 
+const orCalls: string[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  orCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'neq', 'in', 'lt', 'gt', 'order']) {
+    for (const method of [
+      'select',
+      'eq',
+      'neq',
+      'in',
+      'lt',
+      'gt',
+      'order',
+    ]) {
       builder[method] = vi.fn(() => builder);
     }
+
+    builder.or = vi.fn((filter: string) => {
+      orCalls.push(filter);
+      return builder;
+    });
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
@@ -245,6 +261,28 @@ describe('capacity.service (#51)', () => {
       } as unknown as Booking;
 
       expect(await confirmCapacityAfterInsert(daycareBooking)).toBe(false);
+    });
+
+    it('excludes unpaid down-payment holds from the staff overlap re-count (down-payment slot gate)', async () => {
+      queueFromResults({ data: [{ id: 'booking-mine' }], error: null });
+
+      await confirmCapacityAfterInsert(GROOMING_BOOKING);
+
+      expect(orCalls).toContain(
+        'downpayment_required.eq.false,payment_stage.neq.Unpaid'
+      );
+    });
+  });
+
+  describe('down-payment slot gate', () => {
+    it('listOverlappingActiveBookings excludes unpaid down-payment holds from the overlap count', async () => {
+      queueFromResults({ data: [], error: null });
+
+      await checkCapacity({ ...WINDOW, serviceCategory: 'Daycare' });
+
+      expect(orCalls).toContain(
+        'downpayment_required.eq.false,payment_stage.neq.Unpaid'
+      );
     });
   });
 });

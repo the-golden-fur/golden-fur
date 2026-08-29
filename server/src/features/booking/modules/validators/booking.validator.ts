@@ -330,6 +330,10 @@ export const updatePolicyValidator = z
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
     downpayment_amount: z.number().positive().nullable().optional(),
+    // Down-payment slot gate (20260829146): hours from creation before an
+    // unpaid down-payment-required Online booking auto-cancels. NOT NULL in
+    // the DB (default 24), so no null here - just a positive integer.
+    downpayment_hold_hours: z.number().int().positive().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

@@ -38,6 +38,7 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   downpayment_enabled: false,
   downpayment_type: null,
   downpayment_amount: null,
+  downpayment_hold_hours: 24,
 };
 
 /** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
@@ -123,6 +124,9 @@ export interface DownpaymentPolicy {
   downpayment_enabled: boolean;
   downpayment_type: EffectivePolicy['downpayment_type'];
   downpayment_amount: EffectivePolicy['downpayment_amount'];
+  /** Down-payment slot gate: hours from creation before an unpaid
+   * down-payment-required Online booking auto-cancels (20260829146). */
+  downpayment_hold_hours: EffectivePolicy['downpayment_hold_hours'];
 }
 
 /**
@@ -140,6 +144,7 @@ export async function resolveDownpaymentPolicy(
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type,
     downpayment_amount: policy.downpayment_amount,
+    downpayment_hold_hours: policy.downpayment_hold_hours,
   };
 }
 
@@ -308,6 +313,7 @@ export async function updatePolicyConfiguration({
     downpayment_enabled: resolved.downpayment_enabled,
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,
+    downpayment_hold_hours: resolved.downpayment_hold_hours,
   };
 
   const { data, error } = await supabase
