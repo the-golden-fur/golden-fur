@@ -36,6 +36,8 @@ import { SearchSortBar } from '../../../../shared/components/SearchSortBar/Searc
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStageBadge } from '../../../booking/components/shared/PaymentStageBadge/PaymentStageBadge';
+import { listBookingTransactions } from '../../api/billing.api';
+import type { Transaction } from '../../billing.types';
 import {
   advancePaymentStage,
   completeBooking,
@@ -146,6 +148,51 @@ export function PaymentsQueuePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
+
+  // §6 (down-payment slot gate): per-booking payment history, lazily
+  // fetched the first time a row's "View payments" is opened.
+  const [openPaymentsBookingId, setOpenPaymentsBookingId] = useState<
+    string | null
+  >(null);
+  const [transactionsByBooking, setTransactionsByBooking] = useState<
+    Record<string, Transaction[]>
+  >({});
+  const [transactionsLoadingId, setTransactionsLoadingId] = useState<
+    string | null
+  >(null);
+  const [transactionsError, setTransactionsError] = useState<{
+    bookingId: string;
+    message: string;
+  } | null>(null);
+
+  async function togglePayments(bookingId: string) {
+    if (openPaymentsBookingId === bookingId) {
+      setOpenPaymentsBookingId(null);
+      return;
+    }
+
+    setOpenPaymentsBookingId(bookingId);
+    setTransactionsError(null);
+
+    if (transactionsByBooking[bookingId] || !accessToken) return;
+
+    setTransactionsLoadingId(bookingId);
+    const result = await listBookingTransactions(bookingId, accessToken);
+    setTransactionsLoadingId(null);
+
+    if (result.error || !result.data) {
+      setTransactionsError({
+        bookingId,
+        message: result.error ?? 'Could not load the payment history.',
+      });
+      return;
+    }
+
+    setTransactionsByBooking((prev) => ({
+      ...prev,
+      [bookingId]: result.data as Transaction[],
+    }));
+  }
 
   // Viewer role/branch via the requester's own row in GET /staff, same
   // recipe as ReceptionistBookingsQueuePage.
@@ -748,6 +795,13 @@ export function PaymentsQueuePage() {
                             onSelect: () =>
                               navigate(`/staff/bookings/${booking.id}`),
                           },
+                          {
+                            label:
+                              openPaymentsBookingId === booking.id
+                                ? 'Hide payments'
+                                : 'View payments',
+                            onSelect: () => void togglePayments(booking.id),
+                          },
                         ]}
                       />
                     </div>
@@ -846,6 +900,59 @@ export function PaymentsQueuePage() {
                     <p className={styles.errorBanner} role="alert">
                       {advanceError.message}
                     </p>
+                  ) : null}
+
+                  {openPaymentsBookingId === booking.id ? (
+                    <div className={styles.paymentsPanel}>
+                      <p className={styles.paymentsPanelTitle}>
+                        Payments for this booking
+                      </p>
+                      {transactionsLoadingId === booking.id ? (
+                        <p className={styles.copy}>Loading payments...</p>
+                      ) : null}
+                      {transactionsError?.bookingId === booking.id ? (
+                        <p className={styles.errorBanner} role="alert">
+                          {transactionsError.message}
+                        </p>
+                      ) : null}
+                      {transactionsLoadingId !== booking.id &&
+                      transactionsError?.bookingId !== booking.id &&
+                      transactionsByBooking[booking.id] !== undefined &&
+                      transactionsByBooking[booking.id].length === 0 ? (
+                        <p className={styles.copy}>
+                          No payments recorded yet for this booking.
+                        </p>
+                      ) : null}
+                      {(transactionsByBooking[booking.id] ?? []).length > 0 ? (
+                        <ul className={styles.paymentsList}>
+                          {transactionsByBooking[booking.id].map(
+                            (transaction) => (
+                              <li
+                                key={transaction.id}
+                                className={styles.paymentRow}
+                              >
+                                <span className={styles.paymentAmount}>
+                                  PHP {transaction.total_amount.toFixed(2)}
+                                </span>
+                                <span className={styles.paymentMeta}>
+                                  {transaction.payment_choice === 'downpayment'
+                                    ? 'Down payment'
+                                    : 'Full payment'}{' '}
+                                  · {transaction.payment_method} ·{' '}
+                                  {transaction.payment_status}
+                                </span>
+                                <span className={styles.paymentMeta}>
+                                  {formatDateTime(transaction.created_at)}
+                                  {transaction.payment_reference
+                                    ? ` · Ref ${transaction.payment_reference}`
+                                    : ''}
+                                </span>
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      ) : null}
+                    </div>
                   ) : null}
                 </li>
               );

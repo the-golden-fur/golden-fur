@@ -8,6 +8,7 @@ import {
   createMiscSaleController,
   deleteMiscSaleController,
   getMiscSaleController,
+  listBookingTransactionsController,
   listMiscSalesController,
   paymongoFeeRateController,
   previewCheckoutController,
@@ -62,6 +63,14 @@ router.post(
   ...staffAccess,
   requireBranch,
   createMiscSaleController
+);
+
+// §6 (down-payment slot gate): per-booking payment history for the
+// Payments Queue's "View payments" drill-down - staff-only, read-only.
+router.get(
+  '/billing/booking/:bookingId/transactions',
+  ...staffAccess,
+  listBookingTransactionsController
 );
 
 router.get('/billing/misc-sale', ...staffAccess, listMiscSalesController);

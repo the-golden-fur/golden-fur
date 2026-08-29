@@ -1,6 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   ACTIVE_BOOKING_STATUSES,
+  SLOT_HOLD_PAID_OR_FILTER,
   type AvailableStaff,
   type Booking,
   type ServiceCategory,
@@ -154,6 +155,10 @@ export async function listOverlappingActiveBookings({
     .eq('branch_id', branchId)
     .eq('service_category', serviceCategory)
     .in('status', ACTIVE_BOOKING_STATUSES)
+    // Down-payment slot gate: an unpaid down-payment-required booking sits
+    // Pending without holding its slot - exclude it from the overlap count
+    // so the slot stays bookable by others (advisor addendum A3).
+    .or(SLOT_HOLD_PAID_OR_FILTER)
     .lt('scheduled_start', scheduledEnd)
     .gt('scheduled_end', scheduledStart)
     .order('created_at', { ascending: true })
@@ -287,6 +292,9 @@ export async function confirmCapacityAfterInsert(
       .select('id, created_at')
       .eq('assigned_staff_id', booking.assigned_staff_id)
       .in('status', ACTIVE_BOOKING_STATUSES)
+      // Down-payment slot gate: unpaid down-payment holds don't reserve the
+      // slot (matches get_staff_availability's Check 2, 20260829148).
+      .or(SLOT_HOLD_PAID_OR_FILTER)
       .lt('scheduled_start', booking.scheduled_end)
       .gt('scheduled_end', booking.scheduled_start)
       .order('created_at', { ascending: true })

@@ -46,6 +46,11 @@ export interface Transaction {
   misc_sale_description: string | null;
   webhook_confirmed_at: string | null;
   processed_by_staff_id: string | null;
+  /** 'downpayment' when this payment only covered the booking's down
+   * payment (balance still due), 'full' otherwise. NULL for older rows /
+   * misc sales. Drives the "Down payment" vs "Full payment" label in the
+   * Payments Queue's per-booking payment history (§6). */
+  payment_choice: 'full' | 'downpayment' | null;
   created_at: string;
   updated_at: string;
 }

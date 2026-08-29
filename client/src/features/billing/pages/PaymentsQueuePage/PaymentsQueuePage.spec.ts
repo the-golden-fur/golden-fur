@@ -10,6 +10,7 @@ import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../../booking/api/booking.api';
+import * as billingApi from '../../api/billing.api';
 import type { Booking } from '../../../booking/booking.types';
 import type { Service } from '../../../maintenance/maintenance.types';
 import { PaymentsQueuePage } from './PaymentsQueuePage';
@@ -36,6 +37,10 @@ vi.mock('../../../booking/api/booking.api', () => ({
   advancePaymentStage: vi.fn(),
   overridePaymentStage: vi.fn(),
   overrideBookingStatus: vi.fn(),
+}));
+
+vi.mock('../../api/billing.api', () => ({
+  listBookingTransactions: vi.fn(),
 }));
 
 const navigateMock = vi.fn();
@@ -440,6 +445,63 @@ describe('PaymentsQueuePage', () => {
     await user.click(screen.getByRole('menuitem', { name: 'View details' }));
 
     expect(navigateMock).toHaveBeenCalledWith('/staff/bookings/booking-1');
+  });
+
+  it('"View payments" (behind the "..." menu) shows each recorded payment for the booking, labelling a down payment', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Cashier')],
+      error: null,
+    });
+    vi.mocked(billingApi.listBookingTransactions).mockResolvedValue({
+      data: [
+        {
+          id: 'txn-1',
+          booking_id: 'booking-1',
+          customer_id: 'cust-1',
+          branch_id: 'branch-makati',
+          transaction_type: 'booking_payment',
+          payment_method: 'GCash',
+          bank_name: null,
+          payment_status: 'Partially Paid',
+          subtotal_amount: 250,
+          discount_amount: 0,
+          promo_amount: 0,
+          credit_applied_amount: 0,
+          total_amount: 250,
+          payment_reference: 'src_abc',
+          misc_sale_description: null,
+          webhook_confirmed_at: null,
+          processed_by_staff_id: null,
+          payment_choice: 'downpayment',
+          created_at: '2026-08-29T02:00:00.000Z',
+          updated_at: '2026-08-29T02:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: 'More options for this Grooming booking',
+      })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'View payments' }));
+
+    expect(
+      await screen.findByText('Payments for this booking')
+    ).toBeInTheDocument();
+    expect(screen.getByText('PHP 250.00')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Down payment · GCash · Partially Paid/)
+    ).toBeInTheDocument();
+    expect(billingApi.listBookingTransactions).toHaveBeenCalledWith(
+      'booking-1',
+      'token'
+    );
   });
 
   it('Custom change (payments-queue pet assessment capture): Starting a booking on a captures_pet_assessment service opens the assessment modal, and Save & Start saves the pet then starts the booking', async () => {

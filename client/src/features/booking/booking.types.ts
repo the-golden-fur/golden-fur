@@ -268,6 +268,11 @@ export interface Booking {
   /** True when the effective policy_configurations downpayment config was
    * enabled at creation time - drives staff queue gating. */
   downpayment_required: boolean;
+  /** Down-payment slot gate: when an unpaid, down-payment-required Online
+   * booking auto-cancels if still unpaid (it holds no slot until it pays).
+   * NULL for walk-ins, already-paid bookings, and bookings with no
+   * down-payment requirement. */
+  downpayment_due_at: string | null;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only for the discount)
@@ -384,6 +389,10 @@ export interface PolicyConfiguration {
   /** Populated only when downpayment_enabled is true. */
   downpayment_type: DownpaymentType | null;
   downpayment_amount: number | null;
+  /** Down-payment slot gate: hours from creation before an unpaid
+   * down-payment-required Online booking auto-cancels and its (unheld)
+   * slot is released. NOT NULL, default 24. */
+  downpayment_hold_hours: number;
   created_at: string;
   updated_at: string;
 }
@@ -408,6 +417,7 @@ export type EffectivePolicy = Pick<
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
+  | 'downpayment_hold_hours'
 >;
 
 export interface UpdatePolicyPayload {
@@ -430,6 +440,7 @@ export interface UpdatePolicyPayload {
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;
+  downpayment_hold_hours?: number;
 }
 
 export interface StaffPreferenceInput {

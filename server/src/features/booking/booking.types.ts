@@ -112,12 +112,27 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
 /** Holds a real capacity/staff-time slot - mirrors the
  * bookings_staff_active_idx partial index predicate and
  * get_staff_availability()'s Check 2 (migrations 20260728058/...062/
- * ...083). */
+ * ...083). NOTE: down-payment slot gate (20260829146-148) adds a second
+ * condition on top of this status list - a booking only actually holds its
+ * slot when it ALSO passes SLOT_HOLD_PAID_OR_FILTER below. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
   'In Progress',
   'Completed',
 ];
+
+/**
+ * PostgREST `.or()` string for "this booking isn't a down-payment-required
+ * booking still sitting fully unpaid" - i.e. `NOT (downpayment_required AND
+ * payment_stage = 'Unpaid')`. A booking that fails this does NOT hold its
+ * capacity/staff-time slot (down-payment slot gate: advisor addendum A3 -
+ * an unpaid down payment must not lock the schedule). Applied alongside
+ * `.in('status', ACTIVE_BOOKING_STATUSES)` in capacity.service.ts and
+ * mirrored in get_staff_availability()'s Check 2 (20260829148) and the
+ * grooming/consultation queue vivification filters.
+ */
+export const SLOT_HOLD_PAID_OR_FILTER =
+  'downpayment_required.eq.false,payment_stage.neq.Unpaid';
 
 /** The service itself already happened, payment status aside - used by
  * currentPrescription.service.ts and similar "did this actually occur"
@@ -296,6 +311,12 @@ export interface Booking {
    * listBookings) - see 20260808111's original dev notes (mechanism since
    * moved from per-catalog-item to per-transaction by 20260828143/144). */
   downpayment_required: boolean;
+  /** Down-payment slot gate (20260829147): when an unpaid, down-payment-
+   * required Online booking auto-cancels if still unpaid. NULL for walk-ins,
+   * already-paid bookings, and bookings with no down-payment requirement.
+   * Snapshotted from the effective policy's downpayment_hold_hours at
+   * creation; enforced by applyDownpaymentExpiry (lazy, read-time). */
+  downpayment_due_at: string | null;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -390,6 +411,10 @@ export interface PolicyConfiguration {
   /** Populated only when downpayment_enabled is true. */
   downpayment_type: DownpaymentType | null;
   downpayment_amount: number | null;
+  /** Down-payment slot gate (20260829146): hours from creation before an
+   * unpaid down-payment-required Online booking auto-cancels. NOT NULL,
+   * default 24. Snapshotted onto bookings.downpayment_due_at at creation. */
+  downpayment_hold_hours: number;
   created_at: string;
   updated_at: string;
 }
@@ -418,6 +443,7 @@ export type EffectivePolicy = Pick<
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
+  | 'downpayment_hold_hours'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

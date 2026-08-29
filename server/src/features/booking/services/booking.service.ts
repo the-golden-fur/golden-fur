@@ -797,65 +797,70 @@ export async function createBooking({
     0
   );
 
-  // Custom change: downpayment moved from a per-catalog-item flag (each
-  // service/package could independently require one, summed across
-  // selected items, and forcing a flagged item to be booked alone) to a
-  // single per-transaction policy_configurations config, applied once
-  // against the whole booking's totalPrice - see resolveDownpaymentPolicy
-  // in staffPicker.service.ts.
+  // Discounts and promos are resolved BEFORE the down payment is computed
+  // (advisor addendum: "Discounts and promos apply before downpayment is
+  // calculated"). resolveDiscountAndPromo doesn't depend on the down
+  // payment, so it runs first and the down payment is taken against the
+  // discounted net total, not the gross sum of items.
+  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
+    await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
+
+  const netTotal = round2(totalPrice - discountAmount - promoAmount);
+
+  // Custom change: downpayment moved from a per-catalog-item flag to a
+  // single per-transaction policy_configurations config (20260828143),
+  // applied once against the whole booking's discounted netTotal - see
+  // resolveDownpaymentPolicy in staffPicker.service.ts.
   //
-  // Walk-in booking flow: a walk-in never holds a slot on zero payment risk
-  // (the customer/pet is already physically present), so the down payment
-  // policy is skipped entirely rather than evaluated and then ignored -
-  // resolveDownpaymentPolicy is not even called.
+  // Down-payment slot gate (20260829146-148 + advisor addendum A1-A4): an
+  // Online booking that requires a down payment and hasn't paid any of it
+  // is a "pencil booking" - it sits Pending, holds NO slot (the capacity
+  // filters exclude it), and auto-cancels after downpayment_hold_hours if
+  // still unpaid (applyDownpaymentExpiry). An actual payment is what turns
+  // it into a real, slot-holding reservation.
+  //
+  // Walk-in booking flow: a walk-in never touches the down payment policy -
+  // resolveDownpaymentPolicy is not even called (the customer/pet is
+  // physically present, paying in full at the counter, #122).
   let downpaymentRequired = false;
   let downpaymentAmount: number | null = null;
+  let downpaymentHoldHours = 24;
 
   if (bookingSource === 'Online') {
     const downpaymentPolicy = await resolveDownpaymentPolicy(input.branch_id);
     downpaymentRequired = downpaymentPolicy.downpayment_enabled;
+    downpaymentHoldHours = downpaymentPolicy.downpayment_hold_hours ?? 24;
     downpaymentAmount = downpaymentRequired
       ? round2(
           downpaymentPolicy.downpayment_type === 'Percentage'
-            ? totalPrice * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
-            : (downpaymentPolicy.downpayment_amount ?? 0)
+            ? netTotal * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
+            : Math.min(downpaymentPolicy.downpayment_amount ?? 0, netTotal)
         )
       : null;
   }
 
-  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
-    await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
-
-  // Booking-status revision: there is no more payment gate on the initial
-  // status - every booking starts 'Pending' and holds its capacity/staff-
-  // time slot immediately (ACTIVE_BOOKING_STATUSES), regardless of category
-  // or payment method. payment_confirmed is still recorded as data (it
-  // drives the automatic Pending->...->Paid fast path once the service
-  // completes - see completeBooking below), it just no longer gates status
-  // at creation time.
-  //
-  // Walk-in booking flow: a walk-in starts already 'In Progress' instead of
-  // 'Pending' - the customer is physically here, so there's no separate
-  // "arrival"/check-in event left to wait for (applyNoShowTransition only
-  // ever acts on 'Pending' bookings, so a walk-in is never at risk of
-  // flipping to No-show).
+  // payment_confirmed is trusted only for a STAFF-created booking (a
+  // receptionist collecting payment at the counter - a walk-in, or an
+  // Online booking made on someone's behalf). A customer's own
+  // self-service Online booking is never created pre-paid: they pay
+  // afterward through the Pay flow (customerBookingPayment.service.ts), or
+  // a cashier marks it paid on arrival. This is the down-payment slot
+  // gate's enforcement point - an unpaid customer booking that requires a
+  // down payment holds no slot (advisor addendum A1: no zero-payment slot
+  // reservation).
   const paymentConfirmed =
     input.service_category === 'Veterinary'
       ? false
-      : (input.payment_confirmed ?? false);
+      : staffRole
+        ? (input.payment_confirmed ?? false)
+        : false;
   const status: Booking['status'] =
     bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
-  // Custom change (P-1 roadmap item: generic downpayment): only a
-  // downpayment-required booking gets payment_stage set explicitly at
-  // creation time - every other booking keeps today's behavior (defaults to
-  // 'Unpaid', only ever bumped by completeBooking's own onlinePrepaid fast
-  // path or a staff Mark as Paid action). When required and paid online now,
-  // 'downpayment' lands on 'Paid in Advance' (balance settled later at the
-  // counter, same as every other Paid in Advance booking); 'full' (or the
-  // choice omitted) lands straight on 'Paid'. See completeBooking below for
-  // why its own onlinePrepaid fast path must not blindly re-advance a
-  // 'Paid in Advance' booking straight to 'Paid'.
+  // Only a downpayment-required booking gets payment_stage set explicitly
+  // at creation - everything else defaults to 'Unpaid'. When required and
+  // paid now (staff-collected), 'downpayment' lands on 'Paid in Advance'
+  // (balance settled later at the counter); 'full'/omitted lands on 'Paid'.
   const paymentStage: Booking['payment_stage'] | undefined = downpaymentRequired
     ? paymentConfirmed
       ? input.payment_choice === 'downpayment'
@@ -863,6 +868,22 @@ export async function createBooking({
         : 'Paid'
       : 'Unpaid'
     : undefined;
+
+  // Whether this booking actually reserves its capacity/staff-time slot. A
+  // down-payment-required Online booking still sitting fully Unpaid does
+  // not - the capacity checks below are skipped for it, and it stays out
+  // of every other booking's overlap count (capacity.service.ts /
+  // get_staff_availability Check 2).
+  const holdsSlot = !(downpaymentRequired && paymentStage === 'Unpaid');
+
+  // Down-payment slot gate: the auto-cancel deadline, snapshotted from the
+  // effective policy so a later policy change never moves an existing one.
+  // Only a down-payment-required Online booking sitting Unpaid gets one.
+  const downpaymentDueAt = holdsSlot
+    ? null
+    : new Date(
+        Date.now() + downpaymentHoldHours * 60 * 60 * 1000
+      ).toISOString();
 
   // Staff resolution (Grooming/Veterinary) happens before the generic
   // capacity check because for these categories staff availability IS the
@@ -891,13 +912,19 @@ export async function createBooking({
       : null;
 
   if (
-    input.service_category === 'Hotel' ||
-    input.service_category === 'Daycare'
+    holdsSlot &&
+    (input.service_category === 'Hotel' || input.service_category === 'Daycare')
   ) {
     // The authoritative submission-time check - never skipped even though the
     // Slot Picker already ran the same check read-only (Guide #51). Hotel/
     // Daycare services are never assessment-exempt, so the petAssessed gate
     // above already guarantees weight_class is non-null here.
+    //
+    // Down-payment slot gate: skipped when !holdsSlot - an unpaid pencil
+    // booking reserves nothing, so it neither consumes capacity nor is
+    // blocked by a full slot (multiple customers may pencil-book the same
+    // slot; whoever pays first reserves it - re-checked in
+    // advancePaymentStage).
     const capacity = await checkCapacity({
       branchId: input.branch_id,
       serviceCategory: input.service_category,
@@ -934,6 +961,7 @@ export async function createBooking({
       total_price: totalPrice,
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
+      downpayment_due_at: downpaymentDueAt,
       ...(paymentStage ? { payment_stage: paymentStage } : {}),
       payment_method: input.payment_method ?? null,
       payment_confirmed: paymentConfirmed,
@@ -987,17 +1015,23 @@ export async function createBooking({
 
   // AC-5: with no client-side transaction, the post-insert re-count decides
   // races deterministically - the loser's row is removed and the caller gets
-  // the same capacity-taken error the flow diagram describes. Every booking
-  // holds capacity from 'Pending' onward now (booking-status revision), so
-  // this always runs, not just for a payment-confirmed booking.
-  const won = await confirmCapacityAfterInsert(booking);
+  // the same capacity-taken error the flow diagram describes.
+  //
+  // Down-payment slot gate: skipped for a pencil booking (!holdsSlot) - it
+  // reserves nothing, so it neither wins nor loses this race, and it would
+  // in fact always "lose" here since the capacity queries now exclude it
+  // (SLOT_HOLD_PAID_OR_FILTER). Its capacity is re-verified when it pays
+  // (advancePaymentStage).
+  if (holdsSlot) {
+    const won = await confirmCapacityAfterInsert(booking);
 
-  if (!won) {
-    await supabase.from('bookings').delete().eq('id', booking.id);
-    throwWithStatus(
-      409,
-      'Capacity was taken between slot selection and payment — please select another slot'
-    );
+    if (!won) {
+      await supabase.from('bookings').delete().eq('id', booking.id);
+      throwWithStatus(
+        409,
+        'Capacity was taken between slot selection and payment — please select another slot'
+      );
+    }
   }
 
   await sendBookingConfirmedNotification(booking);
@@ -1155,7 +1189,8 @@ export async function getBookingById({
     }
   }
 
-  const [withNoShow] = await applyNoShowTransition([booking]);
+  const [withExpiry] = await applyDownpaymentExpiry([booking]);
+  const [withNoShow] = await applyNoShowTransition([withExpiry]);
   return withNoShow;
 }
 
@@ -1270,14 +1305,62 @@ export async function listBookings({
 
   if (error) throwWithStatus(400, error.message);
 
-  const withNoShow = await applyNoShowTransition((data ?? []) as Booking[]);
+  const withExpiry = await applyDownpaymentExpiry((data ?? []) as Booking[]);
+  const withNoShow = await applyNoShowTransition(withExpiry);
 
-  // A row flipped to No-show by the lazy transition above may no longer
-  // match an explicit status filter the caller asked for (e.g. "show me
-  // Pending bookings") - re-filter rather than return a stale match.
+  // A row flipped to No-show / Cancelled by a lazy transition above may no
+  // longer match an explicit status filter the caller asked for (e.g.
+  // "show me Pending bookings") - re-filter rather than return a stale
+  // match.
   return filters.status
     ? withNoShow.filter((booking) => booking.status === filters.status)
     : withNoShow;
+}
+
+/**
+ * Down-payment slot gate (advisor addendum A4): an unpaid,
+ * down-payment-required Online booking auto-cancels once its
+ * `downpayment_due_at` passes. Lazy, read-time - same rationale and bulk-
+ * update shape as applyNoShowTransition (no cron infra exists in this app).
+ * Runs BEFORE the no-show pass so an expired-and-never-paid booking reads
+ * as Cancelled ("down payment not received"), not No-show. The slot itself
+ * was never held while the booking was unpaid, so this only tidies the
+ * dead row + lets the customer be notified.
+ */
+async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
+  const now = new Date();
+  const expiredIds = bookings
+    .filter(
+      (booking) =>
+        booking.status === 'Pending' &&
+        booking.downpayment_required &&
+        booking.payment_stage === 'Unpaid' &&
+        booking.downpayment_due_at !== null &&
+        new Date(booking.downpayment_due_at).getTime() < now.getTime()
+    )
+    .map((booking) => booking.id);
+
+  if (expiredIds.length === 0) return bookings;
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({
+      status: 'Cancelled',
+      cancelled_at: now.toISOString(),
+      cancellation_reason:
+        'Down payment not received before the reservation deadline',
+      updated_at: now.toISOString(),
+    })
+    .in('id', expiredIds)
+    .select(BOOKING_SELECT);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const updatedById = new Map(
+    ((data ?? []) as Booking[]).map((row) => [row.id, row])
+  );
+
+  return bookings.map((booking) => updatedById.get(booking.id) ?? booking);
 }
 
 /**
@@ -1494,10 +1577,35 @@ export async function advancePaymentStage({
     );
   }
 
-  return updateBookingRow(bookingId, {
+  const updated = await updateBookingRow(bookingId, {
     payment_stage: nextStage,
     updated_at: new Date().toISOString(),
   });
+
+  // Down-payment slot gate: a down-payment-required booking that was still
+  // Unpaid held NO slot (capacity.service.ts / get_staff_availability
+  // exclude it). Paying it now turns it into a real reservation - so
+  // re-verify capacity, exactly as createBooking does post-insert. If the
+  // slot filled with paid bookings while this one sat unpaid, revert the
+  // payment stage and reject: the money hasn't actually been taken here
+  // (the cashier/webhook is about to), and the customer must reschedule.
+  if (
+    booking.payment_stage === 'Unpaid' &&
+    booking.downpayment_required &&
+    (updated.status === 'Pending' || updated.status === 'In Progress') &&
+    !(await confirmCapacityAfterInsert(updated))
+  ) {
+    await updateBookingRow(bookingId, {
+      payment_stage: 'Unpaid',
+      updated_at: new Date().toISOString(),
+    });
+    throwWithStatus(
+      409,
+      'That time slot filled up before this payment - please reschedule the booking to an open slot'
+    );
+  }
+
+  return updated;
 }
 
 interface OverridePaymentStageParams {
