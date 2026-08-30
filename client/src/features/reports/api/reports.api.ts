@@ -85,6 +85,8 @@ export interface TransactionHistoryFilters {
   dateFrom?: string;
   dateTo?: string;
   serviceCategory?: string;
+  transactionType?: string;
+  paymentChoice?: string;
 }
 
 export async function getTransactionHistory(
@@ -99,6 +101,10 @@ export async function getTransactionHistory(
   if (filters.dateTo) params.set('date_to', filters.dateTo);
   if (filters.serviceCategory)
     params.set('service_category', filters.serviceCategory);
+  if (filters.transactionType)
+    params.set('transaction_type', filters.transactionType);
+  if (filters.paymentChoice)
+    params.set('payment_choice', filters.paymentChoice);
   const query = params.toString() ? `?${params.toString()}` : '';
 
   const response = await fetch(
@@ -122,7 +128,7 @@ export async function getTransactionHistory(
 export async function getMyTransactionHistory(
   filters: Pick<
     TransactionHistoryFilters,
-    'petId' | 'dateFrom' | 'dateTo' | 'serviceCategory'
+    'petId' | 'dateFrom' | 'dateTo' | 'serviceCategory' | 'paymentChoice'
   >,
   accessToken: string
 ): Promise<ReportsApiResult<TransactionRecord[]>> {
@@ -132,6 +138,8 @@ export async function getMyTransactionHistory(
   if (filters.dateTo) params.set('date_to', filters.dateTo);
   if (filters.serviceCategory)
     params.set('service_category', filters.serviceCategory);
+  if (filters.paymentChoice)
+    params.set('payment_choice', filters.paymentChoice);
   const query = params.toString() ? `?${params.toString()}` : '';
 
   const response = await fetch(

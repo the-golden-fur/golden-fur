@@ -58,6 +58,14 @@ export async function listTransactionHistory(
     query = query.eq('bookings.service_category', filters.serviceCategory);
   }
 
+  if (filters.transactionType) {
+    query = query.eq('transaction_type', filters.transactionType);
+  }
+
+  if (filters.paymentChoice) {
+    query = query.eq('payment_choice', filters.paymentChoice);
+  }
+
   const { data, error } = await query.order('created_at', {
     ascending: false,
   });

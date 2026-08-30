@@ -134,6 +134,16 @@ export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
 export const SLOT_HOLD_PAID_OR_FILTER =
   'downpayment_required.eq.false,payment_stage.neq.Unpaid';
 
+/**
+ * `bookings.cancellation_reason` written by applyDownpaymentExpiry when an
+ * unpaid down-payment-required Online booking is swept past its
+ * `downpayment_due_at`. Exported so the receptionist queue can tell a real
+ * cancellation apart from an expired pencil booking (it shows the latter as
+ * "Expired" rather than "Cancelled") without re-hardcoding the string.
+ */
+export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
+  'Down payment not received before the reservation deadline';
+
 /** The service itself already happened, payment status aside - used by
  * currentPrescription.service.ts and similar "did this actually occur"
  * reads that used to filter a per-module status = 'Completed'. */

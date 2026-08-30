@@ -267,7 +267,7 @@ describe('PaymentsQueuePage', () => {
     );
   });
 
-  it('payment_stage: shows Mark as Paid for an Unpaid booking, prompts via modal, and advances via "Normal onsite payment"', async () => {
+  it('payment_stage: a booking with no down payment goes straight to Paid on "Mark as Paid" (no modal)', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
@@ -289,9 +289,6 @@ describe('PaymentsQueuePage', () => {
     );
     await user.click(screen.getByText('Mark as Paid'));
 
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByText('Normal onsite payment'));
-
     await waitFor(() =>
       expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
         'booking-1',
@@ -299,11 +296,12 @@ describe('PaymentsQueuePage', () => {
         'onsite'
       )
     );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const row = screen.getByRole('listitem');
-    expect(await within(row).findByText('Payment: Paid')).toBeInTheDocument();
+    expect(await within(row).findByText('Fully Paid')).toBeInTheDocument();
   });
 
-  it('payment_stage: a Paid in Advance booking advances straight to Paid with one click, no modal', async () => {
+  it('payment_stage: a down-payment booking prompts "Partially Paid" vs "Fully Paid" and advances via the chosen one', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
@@ -311,7 +309,60 @@ describe('PaymentsQueuePage', () => {
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [
-        buildBooking({ status: 'Completed', payment_stage: 'Paid in Advance' }),
+        buildBooking({
+          status: 'Pending',
+          payment_stage: 'Unpaid',
+          downpayment_required: true,
+          downpayment_amount: 250,
+          total_price: 500,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(bookingApi.advancePaymentStage).mockResolvedValue({
+      data: buildBooking({
+        status: 'Pending',
+        payment_stage: 'Paid in Advance',
+      }),
+      error: null,
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByText('Mark as Paid'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(/Down payment for this booking is PHP 250\.00/)
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByText('Down payment only (Partially Paid)')
+    );
+
+    await waitFor(() =>
+      expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
+        'booking-1',
+        'token',
+        'advance'
+      )
+    );
+  });
+
+  it('payment_stage: a Partially Paid booking confirms the remaining balance in a modal, then advances to Paid', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Cashier')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          status: 'Completed',
+          payment_stage: 'Paid in Advance',
+          downpayment_required: true,
+          downpayment_amount: 250,
+          total_price: 500,
+        }),
       ],
       error: null,
     });
@@ -322,17 +373,19 @@ describe('PaymentsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getByText('Mark as Paid')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Mark as Paid'));
+    await user.click(await screen.findByText('Mark as Paid'));
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(/remaining balance of PHP 250\.00/)
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByText('Record balance (Fully Paid)'));
+
     await waitFor(() =>
       expect(bookingApi.advancePaymentStage).toHaveBeenCalledWith(
         'booking-1',
         'token',
-        undefined
+        'onsite'
       )
     );
   });

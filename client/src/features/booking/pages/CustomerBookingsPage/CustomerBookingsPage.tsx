@@ -5,7 +5,7 @@ import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
-import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
+import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
@@ -362,7 +362,7 @@ export function CustomerBookingsPage() {
                     {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
                     {formatDateTime(booking.scheduled_start)}
                   </span>
-                  <BookingStatusBadge status={booking.status} />
+                  <BookingConfirmationBadge booking={booking} />
                 </div>
 
                 {(canReschedule || canCancel || canPay) &&

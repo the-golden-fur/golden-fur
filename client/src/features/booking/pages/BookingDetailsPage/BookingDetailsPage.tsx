@@ -24,6 +24,7 @@ import { getBooking } from '../../api/booking.api';
 import type { Booking } from '../../booking.types';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
+import { BookingPaymentsPanel } from '../../../billing/components/BookingPaymentsPanel/BookingPaymentsPanel';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './BookingDetailsPage.module.css';
@@ -459,6 +460,10 @@ export function BookingDetailsPage() {
               <dd>{booking.payment_confirmed ? 'Yes' : 'No'}</dd>
             </div>
           </dl>
+          <BookingPaymentsPanel
+            bookingId={booking.id}
+            accessToken={accessToken}
+          />
         </section>
 
         <section className={styles.section}>

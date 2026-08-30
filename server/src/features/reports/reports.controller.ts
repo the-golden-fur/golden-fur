@@ -105,6 +105,8 @@ export async function transactionHistoryController(
       dateFrom: queryParam(req, 'date_from'),
       dateTo: queryParam(req, 'date_to'),
       serviceCategory: queryParam(req, 'service_category'),
+      transactionType: queryParam(req, 'transaction_type'),
+      paymentChoice: queryParam(req, 'payment_choice'),
     });
 
     return res.status(200).json({ transactions });
@@ -138,6 +140,8 @@ export async function customerTransactionHistoryController(
       dateFrom: queryParam(req, 'date_from'),
       dateTo: queryParam(req, 'date_to'),
       serviceCategory: queryParam(req, 'service_category'),
+      transactionType: queryParam(req, 'transaction_type'),
+      paymentChoice: queryParam(req, 'payment_choice'),
     });
 
     return res.status(200).json({ transactions });

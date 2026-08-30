@@ -273,6 +273,24 @@
   color: var(--color-accent-gold-primary);
 }
 
+/* Booking Type step: the ⓘ popover sits in the card's top-right corner as a
+   sibling of the card <button> (a button can't nest inside a button). */
+.bookingTypeCardWrap {
+  position: relative;
+  display: flex;
+}
+
+.bookingTypeCardWrap .categoryCard {
+  flex: 1;
+}
+
+.bookingTypeInfo {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  z-index: 1;
+}
+
 .categoryLabel {
   color: var(--color-text-primary);
   font-size: var(--text-heading-sm);
@@ -398,6 +416,22 @@
   font-weight: var(--weight-semibold);
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-1);
+}
+
+/* Online-booking down payment split, shown as its own emphasised block
+   under Estimated total (not dim helper text). */
+.downpaymentDueNow {
+  display: flex;
+  justify-content: space-between;
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent-gold-primary);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.pricingRowMuted {
+  color: var(--color-text-secondary);
 }
 
 .field {

@@ -16,6 +16,7 @@ import {
 } from '../../notifications/services/notification.service.ts';
 import {
   BOOKING_MARK_PAID_ROLES,
+  DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   ONLINE_PAYMENT_METHODS,
   OVERRIDABLE_BOOKING_STATUSES,
   OVERRIDABLE_PAYMENT_STAGES,
@@ -857,17 +858,21 @@ export async function createBooking({
   const status: Booking['status'] =
     bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
-  // Only a downpayment-required booking gets payment_stage set explicitly
-  // at creation - everything else defaults to 'Unpaid'. When required and
-  // paid now (staff-collected), 'downpayment' lands on 'Paid in Advance'
-  // (balance settled later at the counter); 'full'/omitted lands on 'Paid'.
-  const paymentStage: Booking['payment_stage'] | undefined = downpaymentRequired
-    ? paymentConfirmed
-      ? input.payment_choice === 'downpayment'
-        ? 'Paid in Advance'
-        : 'Paid'
-      : 'Unpaid'
-    : undefined;
+  // payment_stage at creation. A confirmed payment (staff collected it at
+  // the counter, or an online method was actually charged) lands on 'Paid'
+  // - or 'Paid in Advance' when only the down payment was taken. Everything
+  // else falls through to the column default 'Unpaid', which is what makes
+  // an unpaid Online booking read as "Unconfirmed" in the queue (see
+  // deriveBookingConfirmationState) - no staff alert, not checkinable, until
+  // a payment is recorded. Walk-ins and Veterinary (priced during the
+  // visit) are never gated this way.
+  const paymentStage: Booking['payment_stage'] | undefined = paymentConfirmed
+    ? downpaymentRequired && input.payment_choice === 'downpayment'
+      ? 'Paid in Advance'
+      : 'Paid'
+    : downpaymentRequired
+      ? 'Unpaid'
+      : undefined;
 
   // Whether this booking actually reserves its capacity/staff-time slot. A
   // down-payment-required Online booking still sitting fully Unpaid does
@@ -1034,10 +1039,23 @@ export async function createBooking({
     }
   }
 
-  await sendBookingConfirmedNotification(booking);
+  // An unpaid Online booking is "Unconfirmed" (see
+  // deriveBookingConfirmationState) - it isn't a secured appointment yet, so
+  // neither the customer's "booking confirmed" alert nor the assigned
+  // staff's "you were picked" alert fires here. Both are sent instead when a
+  // payment is recorded (advancePaymentStage). Walk-ins and Veterinary
+  // (priced during the visit) are confirmed on creation as before.
+  const isConfirmedAtCreation =
+    bookingSource === 'Walk-in' ||
+    input.service_category === 'Veterinary' ||
+    paymentConfirmed;
 
-  if (staffResolution.preferenceType === 'specific') {
-    await sendStaffAssignedNotification(booking);
+  if (isConfirmedAtCreation) {
+    await sendBookingConfirmedNotification(booking);
+
+    if (staffResolution.preferenceType === 'specific') {
+      await sendStaffAssignedNotification(booking);
+    }
   }
 
   if (freePackageAward) {
@@ -1347,8 +1365,7 @@ async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
     .update({
       status: 'Cancelled',
       cancelled_at: now.toISOString(),
-      cancellation_reason:
-        'Down payment not received before the reservation deadline',
+      cancellation_reason: DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
       updated_at: now.toISOString(),
     })
     .in('id', expiredIds)
@@ -1439,6 +1456,13 @@ async function updateBookingRow(
  * is in a startable state, so it's also safely callable internally by a
  * category's own "the service physically began" trigger (Hotel/Daycare
  * check-in) without a second HTTP round-trip.
+ *
+ * Confirmation-status gate: an unpaid Online booking is "Unconfirmed" - not
+ * a secured appointment. Checking it in would strand it In Progress,
+ * invisible to its own module queue (which excludes unpaid rows) and no
+ * longer swept by applyDownpaymentExpiry. Record the payment first
+ * (Payments Queue). Veterinary is exempt - it's priced during the visit,
+ * so there's nothing to collect before the consultation starts.
  */
 export async function startBooking({
   bookingId,
@@ -1447,6 +1471,17 @@ export async function startBooking({
 
   if (booking.status !== 'Pending') {
     throwWithStatus(409, `A ${booking.status} booking cannot be started`);
+  }
+
+  if (
+    booking.booking_source === 'Online' &&
+    booking.service_category !== 'Veterinary' &&
+    booking.payment_stage === 'Unpaid'
+  ) {
+    throwWithStatus(
+      409,
+      "This booking hasn't been paid yet, so it can't be checked in. Record the payment on the Payments Queue first."
+    );
   }
 
   const now = new Date().toISOString();
@@ -1540,6 +1575,87 @@ export async function overrideBookingStatus({
 interface AdvancePaymentStageParams {
   bookingId: string;
   choice?: 'advance' | 'onsite';
+  /** The staff member recording the payment at the counter. Set for the
+   * Payments Queue "Mark as Paid" action - a transactions row is written for
+   * that payment. Omitted for the PayMongo webhook path, which already has
+   * its own transactions row from payForBooking. */
+  processedByStaffId?: string | null;
+}
+
+/**
+ * Records one payment against a booking - a transactions row plus a single
+ * matching line item (keeping SUM(line_total) = total_amount). One row per
+ * payment event so the Payments Queue and Transaction History show the
+ * down payment, the balance, or a full payment separately, each linked to
+ * the booking. Best-effort: a failure here is logged by the caller, never
+ * blocks the payment-stage advance.
+ */
+async function recordBookingPaymentTransaction(params: {
+  booking: Booking;
+  fromStage: PaymentStage;
+  toStage: PaymentStage;
+  processedByStaffId: string | null;
+}): Promise<void> {
+  const { booking, fromStage, toStage, processedByStaffId } = params;
+
+  const netTotal = round2(
+    booking.total_price - booking.discount_amount - booking.promo_amount
+  );
+  const downpayment = round2(booking.downpayment_amount ?? 0);
+
+  let amount: number;
+  let paymentChoice: 'downpayment' | 'full';
+  let description: string;
+
+  if (fromStage === 'Unpaid' && toStage === 'Paid in Advance') {
+    amount = downpayment;
+    paymentChoice = 'downpayment';
+    description = 'Down payment';
+  } else if (fromStage === 'Paid in Advance' && toStage === 'Paid') {
+    amount = round2(netTotal - downpayment);
+    paymentChoice = 'full';
+    description = 'Remaining balance';
+  } else {
+    amount = netTotal;
+    paymentChoice = 'full';
+    description = 'Full payment';
+  }
+
+  if (amount <= 0) return;
+
+  const { data: transaction, error } = await supabase
+    .from('transactions')
+    .insert({
+      booking_id: booking.id,
+      customer_id: booking.customer_id,
+      branch_id: booking.branch_id,
+      transaction_type: 'booking_payment',
+      payment_method: booking.payment_method ?? 'Cash',
+      payment_status: toStage === 'Paid' ? 'Fully Paid' : 'Partially Paid',
+      subtotal_amount: amount,
+      total_amount: amount,
+      payment_choice: paymentChoice,
+      processed_by_staff_id: processedByStaffId,
+    })
+    .select('id')
+    .single();
+
+  if (error || !transaction) {
+    throw new Error(error?.message ?? 'Failed to record the payment');
+  }
+
+  const { error: lineError } = await supabase
+    .from('transaction_line_items')
+    .insert({
+      transaction_id: transaction.id,
+      line_item_type: 'service',
+      description,
+      quantity: 1,
+      unit_price: amount,
+      line_total: amount,
+    });
+
+  if (lineError) throw new Error(lineError.message);
 }
 
 /**
@@ -1555,6 +1671,7 @@ interface AdvancePaymentStageParams {
 export async function advancePaymentStage({
   bookingId,
   choice,
+  processedByStaffId,
 }: AdvancePaymentStageParams): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
@@ -1577,9 +1694,11 @@ export async function advancePaymentStage({
     );
   }
 
+  const nowIso = new Date().toISOString();
   const updated = await updateBookingRow(bookingId, {
     payment_stage: nextStage,
-    updated_at: new Date().toISOString(),
+    ...(nextStage === 'Paid' ? { paid_at: nowIso } : {}),
+    updated_at: nowIso,
   });
 
   // Down-payment slot gate: a down-payment-required booking that was still
@@ -1602,6 +1721,51 @@ export async function advancePaymentStage({
     throwWithStatus(
       409,
       'That time slot filled up before this payment - please reschedule the booking to an open slot'
+    );
+  }
+
+  // Best-effort payment record + confirmation alerts - neither should ever
+  // undo a payment the cashier just took, so a failure is logged, not
+  // thrown. The transaction row is only written for the staff "Mark as
+  // Paid" path (processedByStaffId set); the webhook path already has one.
+  try {
+    if (processedByStaffId != null) {
+      await recordBookingPaymentTransaction({
+        booking: updated,
+        fromStage: booking.payment_stage,
+        toStage: nextStage,
+        processedByStaffId,
+      });
+    }
+
+    // The first payment on a still-Pending Online booking is what
+    // "confirms" it - fire the alerts createBooking held back while it was
+    // Unconfirmed (customer "booking confirmed", plus the assigned staff's
+    // "you were picked" when the customer chose them specifically).
+    if (
+      booking.payment_stage === 'Unpaid' &&
+      updated.status === 'Pending' &&
+      updated.booking_source === 'Online'
+    ) {
+      await sendBookingConfirmedNotification(updated);
+
+      const preferences = Array.isArray(updated.staff_picker_preferences)
+        ? updated.staff_picker_preferences
+        : updated.staff_picker_preferences
+          ? [updated.staff_picker_preferences]
+          : [];
+      if (
+        preferences.some(
+          (preference) => preference?.preference_type === 'specific'
+        )
+      ) {
+        await sendStaffAssignedNotification(updated);
+      }
+    }
+  } catch (error) {
+    console.error(
+      'advancePaymentStage post-update side effects failed:',
+      error
     );
   }
 

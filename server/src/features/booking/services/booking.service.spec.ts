@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  advancePaymentStage,
   completeBooking,
   createBooking,
   listBookings,
@@ -986,6 +987,71 @@ describe('booking.service (#51)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
+    it('startBooking: rejects an unpaid Online booking (Unconfirmed - checking it in would strand it)', async () => {
+      queueFromResults({
+        data: {
+          ...INSERTED_BOOKING,
+          status: 'Pending',
+          booking_source: 'Online',
+          service_category: 'Grooming',
+          payment_stage: 'Unpaid',
+        },
+        error: null,
+      });
+
+      await expect(
+        startBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(recordedWrites.find((write) => write.method === 'update')).toBe(
+        undefined
+      );
+    });
+
+    it('startBooking: allows a Veterinary Online booking with no payment yet (priced during the visit)', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Pending',
+            booking_source: 'Online',
+            service_category: 'Veterinary',
+            payment_stage: 'Unpaid',
+          },
+          error: null,
+        }, // load
+        {
+          data: { ...INSERTED_BOOKING, status: 'In Progress' },
+          error: null,
+        } // update
+      );
+
+      expect((await startBooking({ bookingId: 'booking-1' })).status).toBe(
+        'In Progress'
+      );
+    });
+
+    it('startBooking: allows an Online booking once a payment is recorded (payment_stage past Unpaid)', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...INSERTED_BOOKING,
+            status: 'Pending',
+            booking_source: 'Online',
+            payment_stage: 'Paid in Advance',
+          },
+          error: null,
+        }, // load
+        {
+          data: { ...INSERTED_BOOKING, status: 'In Progress' },
+          error: null,
+        } // update
+      );
+
+      const booking = await startBooking({ bookingId: 'booking-1' });
+
+      expect(booking.status).toBe('In Progress');
+    });
+
     it('completeBooking: In Progress -> Completed for a pay-at-counter booking (payment_stage untouched)', async () => {
       queueFromResults(
         {
@@ -1099,6 +1165,98 @@ describe('booking.service (#51)', () => {
       await expect(
         completeBooking({ bookingId: 'booking-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+  });
+
+  describe('advancePaymentStage records a transaction (Payments Queue "Mark as Paid")', () => {
+    const BASE = {
+      ...INSERTED_BOOKING,
+      status: 'Pending',
+      payment_stage: 'Unpaid',
+      total_price: 500,
+      discount_amount: 0,
+      promo_amount: 0,
+      downpayment_amount: 250,
+      payment_method: 'Cash',
+    };
+
+    it('full payment: one Fully Paid booking_payment transaction for the net total, tagged with the cashier', async () => {
+      queueFromResults(
+        { data: BASE, error: null }, // load
+        { data: { ...BASE, payment_stage: 'Paid' }, error: null }, // update
+        { data: { id: 'txn-1' }, error: null }, // transactions insert
+        { data: null, error: null } // line items insert
+      );
+
+      await advancePaymentStage({
+        bookingId: 'booking-1',
+        choice: 'onsite',
+        processedByStaffId: 'cashier-1',
+      });
+
+      const txn = recordedWrites.find(
+        (write) => write.table === 'transactions' && write.method === 'insert'
+      );
+      expect(txn?.payload).toMatchObject({
+        booking_id: 'booking-1',
+        transaction_type: 'booking_payment',
+        payment_status: 'Fully Paid',
+        payment_choice: 'full',
+        total_amount: 500,
+        processed_by_staff_id: 'cashier-1',
+      });
+    });
+
+    it('down payment then balance: two transactions summing to the net total', async () => {
+      queueFromResults(
+        { data: BASE, error: null },
+        { data: { ...BASE, payment_stage: 'Paid in Advance' }, error: null },
+        { data: { id: 'txn-1' }, error: null },
+        { data: null, error: null }
+      );
+      await advancePaymentStage({
+        bookingId: 'booking-1',
+        choice: 'advance',
+        processedByStaffId: 'cashier-1',
+      });
+      const first = recordedWrites.find(
+        (write) => write.table === 'transactions' && write.method === 'insert'
+      );
+      expect(first?.payload).toMatchObject({
+        payment_status: 'Partially Paid',
+        payment_choice: 'downpayment',
+        total_amount: 250,
+      });
+
+      recordedWrites.length = 0;
+      queueFromResults(
+        { data: { ...BASE, payment_stage: 'Paid in Advance' }, error: null },
+        { data: { ...BASE, payment_stage: 'Paid' }, error: null },
+        { data: { id: 'txn-2' }, error: null },
+        { data: null, error: null }
+      );
+      await advancePaymentStage({
+        bookingId: 'booking-1',
+        processedByStaffId: 'cashier-1',
+      });
+      const second = recordedWrites.find(
+        (write) => write.table === 'transactions' && write.method === 'insert'
+      );
+      expect(second?.payload).toMatchObject({
+        payment_status: 'Fully Paid',
+        total_amount: 250,
+      });
+    });
+
+    it('no transaction on the webhook path (no staff id - payForBooking already wrote one)', async () => {
+      queueFromResults(
+        { data: BASE, error: null },
+        { data: { ...BASE, payment_stage: 'Paid' }, error: null }
+      );
+      await advancePaymentStage({ bookingId: 'booking-1', choice: 'onsite' });
+      expect(
+        recordedWrites.find((write) => write.table === 'transactions')
+      ).toBe(undefined);
     });
   });
 

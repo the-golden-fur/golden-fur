@@ -22,7 +22,7 @@ import {
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
-import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
+import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
@@ -37,24 +37,57 @@ import {
   resolveEffectivePolicy,
 } from '../../api/policy.api';
 import {
-  BOOKING_STATUSES,
+  BOOKING_CONFIRMATION_STATES,
   CANCELLABLE_BOOKING_STATUSES,
   PAYMENT_STAGES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
+  type BookingConfirmationState,
   type BookingStatus,
   type PaymentStage,
   type PolicyConfiguration,
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
+import {
+  BOOKING_CONFIRMATION_HINT,
+  deriveBookingConfirmationState,
+} from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
 
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
-  ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
+  ...BOOKING_CONFIRMATION_STATES.map((state) => ({
+    value: state,
+    label: state,
+  })),
 ];
+
+/** The confirmation vocabulary the queue filters on maps to a coarser set
+ * of real `status` values server-side; Unconfirmed/Confirmed (both Pending)
+ * and Expired/Cancelled (both Cancelled) are then split client-side by
+ * deriveBookingConfirmationState. */
+function confirmationToStatusParam(
+  filter: BookingConfirmationState | 'All'
+): BookingStatus | undefined {
+  switch (filter) {
+    case 'Unconfirmed':
+    case 'Confirmed':
+      return 'Pending';
+    case 'In service':
+      return 'In Progress';
+    case 'Completed':
+      return 'Completed';
+    case 'Expired':
+    case 'Cancelled':
+      return 'Cancelled';
+    case 'No-show':
+      return 'No-show';
+    default:
+      return undefined;
+  }
+}
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
 
@@ -206,9 +239,9 @@ export function ReceptionistBookingsQueuePage() {
   const [categoryFilter, setCategoryFilter] = useState<ServiceCategory | 'All'>(
     'All'
   );
-  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
-    'All'
-  );
+  const [confirmationFilter, setConfirmationFilter] = useState<
+    BookingConfirmationState | 'All'
+  >('All');
   const [paymentStageFilter, setPaymentStageFilter] = useState<
     PaymentStage | 'All'
   >('All');
@@ -329,7 +362,7 @@ export function ReceptionistBookingsQueuePage() {
       dateFrom: dateRange.from ?? undefined,
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
-      status: statusFilter === 'All' ? undefined : statusFilter,
+      status: confirmationToStatusParam(confirmationFilter),
       paymentStage:
         paymentStageFilter === 'All' ? undefined : paymentStageFilter,
     }).then((result) => {
@@ -387,9 +420,23 @@ export function ReceptionistBookingsQueuePage() {
     dateRange.from,
     dateRange.to,
     categoryFilter,
-    statusFilter,
+    confirmationFilter,
     paymentStageFilter,
   ]);
+
+  // Unconfirmed/Confirmed and Expired/Cancelled share a `status` value, so
+  // the server query above can only narrow to the coarse status - the final
+  // split happens here, before search/sort.
+  const confirmationFilteredBookings = useMemo(
+    () =>
+      confirmationFilter === 'All'
+        ? bookings
+        : bookings.filter(
+            (booking) =>
+              deriveBookingConfirmationState(booking) === confirmationFilter
+          ),
+    [bookings, confirmationFilter]
+  );
 
   const branchNameById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
@@ -407,7 +454,7 @@ export function ReceptionistBookingsQueuePage() {
     setSortKey,
     result: filteredAndSorted,
   } = useSearchAndSort<Booking, SortKey>({
-    items: bookings,
+    items: confirmationFilteredBookings,
     matchesQuery: (booking, query) => {
       const petName = pets[booking.pet_id]?.name ?? '';
       const ownerName = owners[booking.customer_id]?.full_name ?? '';
@@ -443,11 +490,11 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setDateRangePreset('today'),
       });
     }
-    if (statusFilter !== 'All') {
+    if (confirmationFilter !== 'All') {
       chips.push({
         id: 'status',
-        label: `Status: ${statusFilter}`,
-        onClear: () => setStatusFilter('All'),
+        label: `Status: ${confirmationFilter}`,
+        onClear: () => setConfirmationFilter('All'),
       });
     }
     if (categoryFilter !== 'All') {
@@ -491,7 +538,7 @@ export function ReceptionistBookingsQueuePage() {
     return chips;
   }, [
     dateRangePreset,
-    statusFilter,
+    confirmationFilter,
     categoryFilter,
     paymentStageFilter,
     isSuperadmin,
@@ -703,9 +750,9 @@ export function ReceptionistBookingsQueuePage() {
           onDateRangePresetChange={setDateRangePreset}
           customDate={customDate}
           onCustomDateChange={setCustomDate}
-          statusValue={statusFilter}
+          statusValue={confirmationFilter}
           onStatusChange={(value) =>
-            setStatusFilter(value as BookingStatus | 'All')
+            setConfirmationFilter(value as BookingConfirmationState | 'All')
           }
           statusOptions={STATUS_OPTIONS}
         >
@@ -979,6 +1026,7 @@ export function ReceptionistBookingsQueuePage() {
               const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
                 booking.status
               );
+              const confirmationState = deriveBookingConfirmationState(booking);
               const isRescheduling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'reschedule';
@@ -1004,7 +1052,7 @@ export function ReceptionistBookingsQueuePage() {
                       {booking.service_category}
                     </span>
                     <div className={styles.bookingBadges}>
-                      <BookingStatusBadge status={booking.status} />
+                      <BookingConfirmationBadge booking={booking} />
                       <PaymentStageBadge stage={booking.payment_stage} />
                     </div>
                   </div>
@@ -1016,6 +1064,15 @@ export function ReceptionistBookingsQueuePage() {
                     {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
                     {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
+
+                  {confirmationState === 'Unconfirmed' ? (
+                    <p className={styles.unconfirmedHint}>
+                      {BOOKING_CONFIRMATION_HINT.Unconfirmed}
+                      {booking.downpayment_due_at
+                        ? ` Due ${formatDateTime(booking.downpayment_due_at)}.`
+                        : ''}
+                    </p>
+                  ) : null}
 
                   {!isRescheduling && !isCancelling ? (
                     <div className={styles.bookingControls}>
@@ -1032,8 +1089,11 @@ export function ReceptionistBookingsQueuePage() {
                           not-yet-arrived) booking has anywhere to go here -
                           an 'In Progress' booking (checked in already, or
                           born there as a walk-in) shows up on its own
-                          category queue instead. */}
-                      {booking.status === 'Pending' ? (
+                          category queue instead. Confirmation gate: an
+                          'Unconfirmed' booking still owes its down payment,
+                          holds no slot, and is refused by startBooking -
+                          collect payment first (Payments Queue). */}
+                      {confirmationState === 'Confirmed' ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}

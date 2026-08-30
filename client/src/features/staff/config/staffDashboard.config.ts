@@ -189,6 +189,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/billing/payments-queue',
           },
           {
+            title: 'Transaction History',
+            description:
+              'Search past transactions by customer, pet, date, service, or full/down payment.',
+            to: '/staff/reports/transaction-history',
+          },
+          {
             title: 'Credit Management',
             description:
               "Look up a customer's branch credit balance, history, and expiry.",
@@ -448,6 +454,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Mark completed bookings as paid, or override a payment stage.',
             to: '/staff/billing/payments-queue',
+          },
+          {
+            title: 'Transaction History',
+            description:
+              'Search past transactions by customer, pet, date, service, or full/down payment.',
+            to: '/staff/reports/transaction-history',
           },
           {
             title: 'Credit Management',

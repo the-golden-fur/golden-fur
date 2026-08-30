@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   listCustomerPets,
@@ -27,10 +29,49 @@ const SERVICE_CATEGORIES = [
   'Misc',
 ];
 
+const TRANSACTION_TYPE_OPTIONS = [
+  { value: '', label: 'All types' },
+  { value: 'booking_payment', label: 'Booking payment' },
+  { value: 'miscellaneous_sale', label: 'Miscellaneous sale' },
+];
+
+const PAYMENT_CHOICE_OPTIONS = [
+  { value: '', label: 'Full & down payments' },
+  { value: 'full', label: 'Full payment' },
+  { value: 'downpayment', label: 'Down payment' },
+];
+
+type SortKey = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
+
+const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  { value: 'newest', label: 'Sort: Date (newest)' },
+  { value: 'oldest', label: 'Sort: Date (oldest)' },
+  { value: 'amount-high', label: 'Sort: Amount (high to low)' },
+  { value: 'amount-low', label: 'Sort: Amount (low to high)' },
+];
+
+function paymentChoiceLabel(record: TransactionRecord): string {
+  if (record.payment_choice === 'downpayment') return 'Down payment';
+  if (record.payment_choice === 'full') return 'Full payment';
+  return '-';
+}
+
+/** DB stores 'Pending' for an unsettled online payment - "Due payment"
+ * reads better next to "Partially Paid" / "Fully Paid". */
+function paymentStatusLabel(status: string): string {
+  return status === 'Pending' ? 'Due payment' : status;
+}
+
 /**
  * Issue #105: filterable transaction history - customer, pet, date range,
  * and service type (AC-2), all composable client-side form state driving
  * server-side query params against transactionHistory.service.ts (#102).
+ *
+ * Advisory follow-up ("search, filter and sort all customer transactions,
+ * e.g. downpayment, full"): adds a transaction-type / payment-choice filter
+ * (server-side), a free-text search + date/amount sort (client-side, via the
+ * shared useSearchAndSort), and a link from each booking-payment row to the
+ * booking it belongs to.
  */
 export function TransactionHistoryTable() {
   const { user, accessToken } = useAuth();
@@ -45,6 +86,8 @@ export function TransactionHistoryTable() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [serviceCategory, setServiceCategory] = useState('');
+  const [transactionType, setTransactionType] = useState('');
+  const [paymentChoice, setPaymentChoice] = useState('');
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +153,8 @@ export function TransactionHistoryTable() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         serviceCategory: serviceCategory || undefined,
+        transactionType: transactionType || undefined,
+        paymentChoice: paymentChoice || undefined,
       },
       accessToken
     ).then((result) => {
@@ -136,7 +181,33 @@ export function TransactionHistoryTable() {
     dateFrom,
     dateTo,
     serviceCategory,
+    transactionType,
+    paymentChoice,
   ]);
+
+  const {
+    search,
+    setSearch,
+    sortKey,
+    setSortKey,
+    result: visibleTransactions,
+  } = useSearchAndSort<TransactionRecord, SortKey>({
+    items: transactions,
+    matchesQuery: (record, query) =>
+      (record.misc_sale_description ?? '').toLowerCase().includes(query) ||
+      record.payment_method.toLowerCase().includes(query) ||
+      record.payment_status.toLowerCase().includes(query) ||
+      (record.bookings?.service_category ?? '').toLowerCase().includes(query),
+    comparators: {
+      newest: (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      oldest: (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      'amount-high': (a, b) => b.total_amount - a.total_amount,
+      'amount-low': (a, b) => a.total_amount - b.total_amount,
+    },
+    initialSortKey: 'newest',
+  });
 
   if (isRoleLoading) {
     return <p>Loading...</p>;
@@ -219,6 +290,47 @@ export function TransactionHistoryTable() {
             ))}
           </select>
         </label>
+
+        <label className={styles.field}>
+          Transaction type
+          <select
+            className={styles.control}
+            value={transactionType}
+            onChange={(event) => setTransactionType(event.target.value)}
+          >
+            {TRANSACTION_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.field}>
+          Payment
+          <select
+            className={styles.control}
+            value={paymentChoice}
+            onChange={(event) => setPaymentChoice(event.target.value)}
+          >
+            {PAYMENT_CHOICE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className={styles.filters}>
+        <SearchSortBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by method, status, service..."
+          sortValue={sortKey}
+          onSortChange={setSortKey}
+          sortOptions={SORT_OPTIONS}
+        />
       </div>
 
       {isLoading ? (
@@ -227,7 +339,7 @@ export function TransactionHistoryTable() {
         <p className={styles.errorBanner} role="alert">
           {error}
         </p>
-      ) : transactions.length === 0 ? (
+      ) : visibleTransactions.length === 0 ? (
         <p className={styles.copy}>No transactions match these filters.</p>
       ) : (
         <table className={styles.table}>
@@ -236,13 +348,15 @@ export function TransactionHistoryTable() {
               <th>Date</th>
               <th>Type</th>
               <th>Service</th>
-              <th>Payment Method</th>
+              <th>Payment</th>
+              <th>Method</th>
               <th>Status</th>
               <th>Amount</th>
+              <th>Booking</th>
             </tr>
           </thead>
           <tbody>
-            {transactions.map((transaction) => (
+            {visibleTransactions.map((transaction) => (
               <tr key={transaction.id}>
                 <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
                 <td>
@@ -251,9 +365,19 @@ export function TransactionHistoryTable() {
                     : 'Booking payment'}
                 </td>
                 <td>{transaction.bookings?.service_category ?? '-'}</td>
+                <td>{paymentChoiceLabel(transaction)}</td>
                 <td>{transaction.payment_method}</td>
-                <td>{transaction.payment_status}</td>
-                <td>₱{transaction.total_amount.toFixed(2)}</td>
+                <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                <td>
+                  {transaction.booking_id ? (
+                    <Link to={`/staff/bookings/${transaction.booking_id}`}>
+                      View booking
+                    </Link>
+                  ) : (
+                    '-'
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -83,7 +83,7 @@ vi.mock('../../components/SlotPicker/SlotPicker', () => ({
         ? createElement(
             'span',
             { 'data-testid': 'slot-picker-locked' },
-            'Walk-in — next available slot today'
+            'Walk-in — starting now'
           )
         : null,
       createElement(
@@ -1285,6 +1285,37 @@ describe('CustomerBookingFlowPage', () => {
     expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
   });
 
+  it('Review & Pay shows the down-payment split (due now / balance later) for an online booking when the branch policy is enabled', async () => {
+    vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+      data: {
+        downpayment_enabled: true,
+        downpayment_type: 'Flat',
+        downpayment_amount: 100,
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath')); // base_price 300
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+
+    // Own emphasised rows in the pricing box, not the old grey helper line.
+    expect(screen.getByText('Downpayment due now')).toBeInTheDocument();
+    expect(screen.getByText('PHP 100.00')).toBeInTheDocument();
+    expect(screen.getByText('Balance due later')).toBeInTheDocument();
+    expect(screen.getByText('PHP 200.00')).toBeInTheDocument();
+  });
+
   it('does not restore (or show a banner for) a draft older than 24 hours', async () => {
     seedDraft({ savedAt: Date.now() - 25 * 60 * 60 * 1000 });
 
@@ -1457,9 +1488,7 @@ describe('CustomerBookingFlowPage', () => {
 
       // No downpayment breakdown/toggle shown, even though the branch policy
       // has one enabled - it's forced off server-side for a walk-in.
-      expect(
-        screen.queryByText(/Downpayment required now/)
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Downpayment due now')).not.toBeInTheDocument();
       expect(
         screen.queryByText(/requires a downpayment/)
       ).not.toBeInTheDocument();

@@ -644,6 +644,7 @@ export async function advancePaymentStageController(
     const booking = await advancePaymentStage({
       bookingId: paramId(req, 'id'),
       choice: parsed.data.choice,
+      processedByStaffId: req.user?.sub ?? null,
     });
     return res.status(200).json({ booking });
   } catch (error) {
