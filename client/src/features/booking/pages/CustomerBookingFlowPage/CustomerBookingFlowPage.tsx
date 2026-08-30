@@ -3,11 +3,14 @@ import { useLocation, useNavigate } from 'react-router';
 import {
   BedDouble,
   ClipboardList,
+  Footprints,
+  Globe,
   Scissors,
   Stethoscope,
   Sun,
   type LucideIcon,
 } from 'lucide-react';
+import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
@@ -52,6 +55,7 @@ import {
   type ServiceCategory,
   type StaffPreferenceInput,
 } from '../../booking.types';
+import { friendlyBookingError } from '../../bookingErrors';
 import { listStaff } from '../../../staff/api/staff.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
 import type { Discount } from '../../../discounts/discounts.types';
@@ -1821,15 +1825,7 @@ export function CustomerBookingFlowPage() {
       });
 
       if (result.error || !result.data) {
-        // #22 follow-up: the availability step checks capacity/staff against
-        // a placeholder duration (real service/package duration isn't known
-        // until the later Services step) - a longer real duration than that
-        // placeholder is the most likely reason a submission gets rejected
-        // here despite the slot having looked open earlier, so say so
-        // instead of leaving a bare server error message.
-        setSubmitError(
-          `${result.error ?? 'Could not create the booking.'} This can happen when the actual service/package duration no longer fits the time you picked - try choosing a different time.`
-        );
+        setSubmitError(friendlyBookingError(result.error));
         return;
       }
 
@@ -2091,37 +2087,49 @@ export function CustomerBookingFlowPage() {
         return (
           <div className={styles.serviceStep}>
             <div className={styles.categoryGrid}>
-              <button
-                type="button"
-                aria-pressed={bookingSource === 'Online'}
-                className={`${styles.categoryCard} ${
-                  bookingSource === 'Online' ? styles.selected : ''
-                }`}
-                onClick={() => handleBookingSourceSelect('Online')}
-              >
-                <span className={styles.categoryLabel}>Online Booking</span>
-                <span className={styles.optionMeta}>
-                  A future or same-day appointment, booked on the
-                  customer&apos;s behalf. Goes through the usual down payment
-                  policy and a browsable date/time picker.
+              <div className={styles.bookingTypeCardWrap}>
+                <button
+                  type="button"
+                  aria-pressed={bookingSource === 'Online'}
+                  className={`${styles.categoryCard} ${
+                    bookingSource === 'Online' ? styles.selected : ''
+                  }`}
+                  onClick={() => handleBookingSourceSelect('Online')}
+                >
+                  <Globe className={styles.categoryIcon} aria-hidden="true" />
+                  <span className={styles.categoryLabel}>Online Booking</span>
+                </button>
+                <span className={styles.bookingTypeInfo}>
+                  <InfoPopover label="About online bookings">
+                    A future or same-day appointment, booked on the
+                    customer&apos;s behalf. Goes through the usual down payment
+                    policy and a browsable date/time picker.
+                  </InfoPopover>
                 </span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={bookingSource === 'Walk-in'}
-                className={`${styles.categoryCard} ${
-                  bookingSource === 'Walk-in' ? styles.selected : ''
-                }`}
-                onClick={() => handleBookingSourceSelect('Walk-in')}
-              >
-                <span className={styles.categoryLabel}>Walk-in</span>
-                <span className={styles.optionMeta}>
-                  The customer and pet are physically here right now. No down
-                  payment, no online checkout - the date/time locks to the next
-                  available slot today, and the booking starts In Progress
-                  immediately.
+              </div>
+              <div className={styles.bookingTypeCardWrap}>
+                <button
+                  type="button"
+                  aria-pressed={bookingSource === 'Walk-in'}
+                  className={`${styles.categoryCard} ${
+                    bookingSource === 'Walk-in' ? styles.selected : ''
+                  }`}
+                  onClick={() => handleBookingSourceSelect('Walk-in')}
+                >
+                  <Footprints
+                    className={styles.categoryIcon}
+                    aria-hidden="true"
+                  />
+                  <span className={styles.categoryLabel}>Walk-in</span>
+                </button>
+                <span className={styles.bookingTypeInfo}>
+                  <InfoPopover label="About walk-in bookings">
+                    The customer and pet are physically here right now. No down
+                    payment, no online checkout - the date and time are set to
+                    now, and the booking starts In Progress immediately.
+                  </InfoPopover>
                 </span>
-              </button>
+              </div>
             </div>
           </div>
         );
@@ -2844,9 +2852,23 @@ export function CustomerBookingFlowPage() {
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
               </div>
               {downpaymentAmount !== null ? (
-                <p className={styles.copy}>
-                  Downpayment required now: PHP {downpaymentAmount.toFixed(2)}
-                </p>
+                <>
+                  <div className={styles.downpaymentDueNow}>
+                    <span>Downpayment due now</span>
+                    <span>PHP {downpaymentAmount.toFixed(2)}</span>
+                  </div>
+                  <div
+                    className={`${styles.pricingRow} ${styles.pricingRowMuted}`}
+                  >
+                    <span>Balance due later</span>
+                    <span>
+                      PHP{' '}
+                      {Math.max(0, estimatedTotal - downpaymentAmount).toFixed(
+                        2
+                      )}
+                    </span>
+                  </div>
+                </>
               ) : null}
             </section>
 

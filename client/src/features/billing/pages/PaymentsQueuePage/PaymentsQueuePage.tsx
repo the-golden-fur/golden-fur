@@ -34,10 +34,8 @@ import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChi
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
-import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStageBadge } from '../../../booking/components/shared/PaymentStageBadge/PaymentStageBadge';
-import { listBookingTransactions } from '../../api/billing.api';
-import type { Transaction } from '../../billing.types';
+import { BookingPaymentsPanel } from '../../components/BookingPaymentsPanel/BookingPaymentsPanel';
 import {
   advancePaymentStage,
   completeBooking,
@@ -91,6 +89,12 @@ type ActiveAction =
   | {
       bookingId: string;
       type: 'advance-payment';
+    }
+  | {
+      bookingId: string;
+      // A "Partially Paid" booking has only its balance left - Mark as Paid
+      // opens a plain "record the remaining balance" confirmation.
+      type: 'settle-balance';
     }
   | {
       bookingId: string;
@@ -149,49 +153,17 @@ export function PaymentsQueuePage() {
 
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
 
-  // §6 (down-payment slot gate): per-booking payment history, lazily
-  // fetched the first time a row's "View payments" is opened.
+  // §6 (down-payment slot gate): per-booking payment history drill-down.
+  // The panel itself (BookingPaymentsPanel) self-fetches when mounted, so
+  // this only tracks which row is currently expanded.
   const [openPaymentsBookingId, setOpenPaymentsBookingId] = useState<
     string | null
   >(null);
-  const [transactionsByBooking, setTransactionsByBooking] = useState<
-    Record<string, Transaction[]>
-  >({});
-  const [transactionsLoadingId, setTransactionsLoadingId] = useState<
-    string | null
-  >(null);
-  const [transactionsError, setTransactionsError] = useState<{
-    bookingId: string;
-    message: string;
-  } | null>(null);
 
-  async function togglePayments(bookingId: string) {
-    if (openPaymentsBookingId === bookingId) {
-      setOpenPaymentsBookingId(null);
-      return;
-    }
-
-    setOpenPaymentsBookingId(bookingId);
-    setTransactionsError(null);
-
-    if (transactionsByBooking[bookingId] || !accessToken) return;
-
-    setTransactionsLoadingId(bookingId);
-    const result = await listBookingTransactions(bookingId, accessToken);
-    setTransactionsLoadingId(null);
-
-    if (result.error || !result.data) {
-      setTransactionsError({
-        bookingId,
-        message: result.error ?? 'Could not load the payment history.',
-      });
-      return;
-    }
-
-    setTransactionsByBooking((prev) => ({
-      ...prev,
-      [bookingId]: result.data as Transaction[],
-    }));
+  function togglePayments(bookingId: string) {
+    setOpenPaymentsBookingId((current) =>
+      current === bookingId ? null : bookingId
+    );
   }
 
   // Viewer role/branch via the requester's own row in GET /staff, same
@@ -593,10 +565,22 @@ export function PaymentsQueuePage() {
 
   function openAdvancePayment(booking: Booking) {
     if (booking.payment_stage === 'Paid in Advance') {
-      void handleAdvancePayment(booking);
+      // Only the balance is left - a plain confirmation, no down-payment
+      // vs full choice.
+      setActiveAction({ bookingId: booking.id, type: 'settle-balance' });
+      return;
+    }
+    if (!booking.downpayment_required) {
+      // Nothing to split out - straight to Fully Paid.
+      void handleAdvancePayment(booking, 'onsite');
       return;
     }
     setActiveAction({ bookingId: booking.id, type: 'advance-payment' });
+  }
+
+  async function confirmSettleBalance(booking: Booking) {
+    const succeeded = await handleAdvancePayment(booking, 'onsite');
+    if (succeeded) setActiveAction(null);
   }
 
   async function confirmAdvancePayment(
@@ -642,6 +626,12 @@ export function PaymentsQueuePage() {
   // single-valued).
   const paymentAdvanceModalBooking =
     activeAction?.type === 'advance-payment'
+      ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
+        null)
+      : null;
+
+  const settleBalanceModalBooking =
+    activeAction?.type === 'settle-balance'
       ? (bookings.find((booking) => booking.id === activeAction.bookingId) ??
         null)
       : null;
@@ -785,8 +775,14 @@ export function PaymentsQueuePage() {
                       {booking.service_category}
                     </span>
                     <div className={styles.bookingBadges}>
-                      <BookingStatusBadge status={booking.status} />
-                      <PaymentStageBadge stage={booking.payment_stage} />
+                      {/* The Payments Queue is about money, not the service
+                          lifecycle - one payment-status pill per row (the
+                          booking's own Pending/In Progress/etc. is the
+                          Bookings Queue's concern). */}
+                      <PaymentStageBadge
+                        stage={booking.payment_stage}
+                        context="billing"
+                      />
                       <MoreOptionsMenu
                         label={`More options for this ${booking.service_category} booking`}
                         items={[
@@ -800,7 +796,7 @@ export function PaymentsQueuePage() {
                               openPaymentsBookingId === booking.id
                                 ? 'Hide payments'
                                 : 'View payments',
-                            onSelect: () => void togglePayments(booking.id),
+                            onSelect: () => togglePayments(booking.id),
                           },
                         ]}
                       />
@@ -903,56 +899,10 @@ export function PaymentsQueuePage() {
                   ) : null}
 
                   {openPaymentsBookingId === booking.id ? (
-                    <div className={styles.paymentsPanel}>
-                      <p className={styles.paymentsPanelTitle}>
-                        Payments for this booking
-                      </p>
-                      {transactionsLoadingId === booking.id ? (
-                        <p className={styles.copy}>Loading payments...</p>
-                      ) : null}
-                      {transactionsError?.bookingId === booking.id ? (
-                        <p className={styles.errorBanner} role="alert">
-                          {transactionsError.message}
-                        </p>
-                      ) : null}
-                      {transactionsLoadingId !== booking.id &&
-                      transactionsError?.bookingId !== booking.id &&
-                      transactionsByBooking[booking.id] !== undefined &&
-                      transactionsByBooking[booking.id].length === 0 ? (
-                        <p className={styles.copy}>
-                          No payments recorded yet for this booking.
-                        </p>
-                      ) : null}
-                      {(transactionsByBooking[booking.id] ?? []).length > 0 ? (
-                        <ul className={styles.paymentsList}>
-                          {transactionsByBooking[booking.id].map(
-                            (transaction) => (
-                              <li
-                                key={transaction.id}
-                                className={styles.paymentRow}
-                              >
-                                <span className={styles.paymentAmount}>
-                                  PHP {transaction.total_amount.toFixed(2)}
-                                </span>
-                                <span className={styles.paymentMeta}>
-                                  {transaction.payment_choice === 'downpayment'
-                                    ? 'Down payment'
-                                    : 'Full payment'}{' '}
-                                  · {transaction.payment_method} ·{' '}
-                                  {transaction.payment_status}
-                                </span>
-                                <span className={styles.paymentMeta}>
-                                  {formatDateTime(transaction.created_at)}
-                                  {transaction.payment_reference
-                                    ? ` · Ref ${transaction.payment_reference}`
-                                    : ''}
-                                </span>
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      ) : null}
-                    </div>
+                    <BookingPaymentsPanel
+                      bookingId={booking.id}
+                      accessToken={accessToken}
+                    />
                   ) : null}
                 </li>
               );
@@ -969,11 +919,13 @@ export function PaymentsQueuePage() {
               aria-labelledby="mark-as-paid-title"
             >
               <h2 id="mark-as-paid-title" className={styles.modalTitle}>
-                Mark as Paid
+                Record payment
               </h2>
               <p className={styles.modalBody}>
-                Was this payment collected in advance (before the service
-                happens), or is this a normal onsite payment?
+                How much did the customer pay?
+                {paymentAdvanceModalBooking.downpayment_amount
+                  ? ` Down payment for this booking is PHP ${paymentAdvanceModalBooking.downpayment_amount.toFixed(2)} of PHP ${paymentAdvanceModalBooking.total_price.toFixed(2)}.`
+                  : ''}
               </p>
 
               {advanceError &&
@@ -1000,13 +952,13 @@ export function PaymentsQueuePage() {
                   onClick={() =>
                     void confirmAdvancePayment(
                       paymentAdvanceModalBooking,
-                      'onsite'
+                      'advance'
                     )
                   }
                 >
                   {advancingBookingId === paymentAdvanceModalBooking.id
-                    ? 'Marking paid...'
-                    : 'Normal onsite payment'}
+                    ? 'Recording...'
+                    : 'Down payment only (Partially Paid)'}
                 </button>
                 <button
                   type="button"
@@ -1017,13 +969,68 @@ export function PaymentsQueuePage() {
                   onClick={() =>
                     void confirmAdvancePayment(
                       paymentAdvanceModalBooking,
-                      'advance'
+                      'onsite'
                     )
                   }
                 >
                   {advancingBookingId === paymentAdvanceModalBooking.id
-                    ? 'Marking paid...'
-                    : 'Advance payment'}
+                    ? 'Recording...'
+                    : 'Full amount (Fully Paid)'}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {settleBalanceModalBooking ? (
+          <div className={styles.modalBackdrop} role="presentation">
+            <section
+              className={styles.modalDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="settle-balance-title"
+            >
+              <h2 id="settle-balance-title" className={styles.modalTitle}>
+                Record remaining balance
+              </h2>
+              <p className={styles.modalBody}>
+                The down payment is in. Record the remaining balance of PHP{' '}
+                {Math.max(
+                  0,
+                  settleBalanceModalBooking.total_price -
+                    settleBalanceModalBooking.discount_amount -
+                    settleBalanceModalBooking.promo_amount -
+                    (settleBalanceModalBooking.downpayment_amount ?? 0)
+                ).toFixed(2)}{' '}
+                as paid? This marks the booking Fully Paid.
+              </p>
+
+              {advanceError &&
+              advanceError.bookingId === settleBalanceModalBooking.id ? (
+                <p className={styles.errorBanner} role="alert">
+                  {advanceError.message}
+                </p>
+              ) : null}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAction(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={advancingBookingId === settleBalanceModalBooking.id}
+                  onClick={() =>
+                    void confirmSettleBalance(settleBalanceModalBooking)
+                  }
+                >
+                  {advancingBookingId === settleBalanceModalBooking.id
+                    ? 'Recording...'
+                    : 'Record balance (Fully Paid)'}
                 </button>
               </div>
             </section>

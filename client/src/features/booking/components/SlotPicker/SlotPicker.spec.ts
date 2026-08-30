@@ -320,15 +320,13 @@ describe('SlotPicker', () => {
     ).toBeInTheDocument();
   });
 
-  // Walk-in booking flow (custom change): lockToNow auto-resolves and
-  // selects the earliest available slot, and renders a non-interactive
-  // banner instead of the normal date-nav + TimeSlotInput grid.
+  // Walk-in booking flow (custom change): lockToNow selects a slot that
+  // STARTS AT THE CURRENT TIME (not a browsed availability slot) and renders
+  // a non-interactive banner instead of the date-nav + TimeSlotInput grid.
   describe('lockToNow (walk-in booking flow)', () => {
-    it('auto-selects the earliest available slot without any click, and hides the date-nav/time-grid controls', async () => {
-      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-        data: { slots: SLOTS, window: WINDOW },
-        error: null,
-      });
+    it('auto-selects a slot starting at the current minute (no click), and hides the date-nav/time-grid controls', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-30T07:51:23.456Z'));
       const onSelect = vi.fn();
 
       render(
@@ -344,31 +342,23 @@ describe('SlotPicker', () => {
         })
       );
 
-      await waitFor(() =>
-        expect(onSelect).toHaveBeenCalledWith({
-          start: SLOTS[0].start,
-          end: SLOTS[0].end,
-        })
-      );
+      // Seconds/ms zeroed; end is start + the service duration.
+      expect(onSelect).toHaveBeenCalledWith({
+        start: '2026-08-30T07:51:00.000Z',
+        end: '2026-08-30T08:51:00.000Z',
+      });
 
-      expect(
-        screen.getByText('Walk-in — next available slot today')
-      ).toBeInTheDocument();
+      expect(screen.getByText('Walk-in — starting now')).toBeInTheDocument();
       expect(screen.queryByLabelText('Date')).not.toBeInTheDocument();
       expect(
         screen.queryByLabelText('Appointment time')
       ).not.toBeInTheDocument();
       expect(screen.queryByText('Previous day')).not.toBeInTheDocument();
+
+      vi.useRealTimers();
     });
 
-    it('shows a no-slot message and never calls onSelect when nothing is available today', async () => {
-      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-        data: {
-          slots: SLOTS.map((slot) => ({ ...slot, available: false })),
-          window: WINDOW,
-        },
-        error: null,
-      });
+    it('never fetches day availability while locked (the slot is "now", not browsed)', async () => {
       const onSelect = vi.fn();
 
       render(
@@ -384,11 +374,8 @@ describe('SlotPicker', () => {
         })
       );
 
-      await waitFor(() =>
-        expect(screen.getByText(/No open slot today/i)).toBeInTheDocument()
-      );
-
-      expect(onSelect).not.toHaveBeenCalled();
+      await waitFor(() => expect(onSelect).toHaveBeenCalled());
+      expect(bookingApi.getDayAvailability).not.toHaveBeenCalled();
     });
   });
 

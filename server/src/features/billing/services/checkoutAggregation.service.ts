@@ -174,17 +174,20 @@ export async function checkoutBooking(
   requesterId: string,
   input: CheckoutInput
 ): Promise<CheckoutResult> {
-  const { data: existingTransaction, error: existingError } = await supabase
+  // A booking can now carry more than one payment record (the Payments
+  // Queue's "Mark as Paid" writes one per payment - down payment, then
+  // balance), so this is a list check, not .maybeSingle().
+  const { data: existingTransactions, error: existingError } = await supabase
     .from('transactions')
     .select('id, payment_status')
     .eq('booking_id', input.booking_id)
-    .maybeSingle();
+    .limit(1);
 
   if (existingError) throwWithStatus(400, existingError.message);
-  if (existingTransaction) {
+  if (existingTransactions && existingTransactions.length > 0) {
     throwWithStatus(
       409,
-      `This booking already has a transaction (${existingTransaction.payment_status})`
+      `This booking already has a payment record (${existingTransactions[0].payment_status})`
     );
   }
 

@@ -26,14 +26,13 @@ interface SlotPickerProps {
   viewerMode: 'customer' | 'staff';
   selectedSlot: SelectedSlot | null;
   onSelect: (slot: SelectedSlot) => void;
-  /** Walk-in booking flow: locks this picker to "today", auto-resolves and
-   * selects the earliest available slot via the same getDayAvailability
-   * fetch this component already runs (no separate slot-resolution logic),
-   * and renders the date/time controls as a non-interactive, visibly
-   * greyed-out banner instead of the normal calendar/time-grid - the
-   * receptionist can't browse dates/times for a walk-in, since the customer
-   * is already physically at the branch. StaffPickerList/CagePickerList
-   * rendered alongside this component are untouched and stay interactive. */
+  /** Walk-in booking flow: the customer/pet is physically at the branch
+   * right now, so this picker stops browsing entirely - it selects a slot
+   * that STARTS AT THE CURRENT TIME (rounded down to the minute) for the
+   * service's own duration, and renders a non-interactive banner instead of
+   * the calendar/time-grid. No availability fetch runs while locked; whether
+   * staff are actually free right now is the StaffPickerList's job (it stays
+   * interactive alongside this component). */
   lockToNow?: boolean;
   /** #22 follow-up: fired every time this date's availability resolves, so a
    * caller can react to "the day currently being viewed has zero open
@@ -104,6 +103,13 @@ export function SlotPicker({
   }, [onAvailabilityChange]);
 
   useEffect(() => {
+    // Walk-in: nothing to fetch - the slot is "now", not something browsed
+    // out of a day's availability. (isLoading is left as-is; every element
+    // it gates is also gated on !lockToNow, so it never shows here.)
+    if (lockToNow) {
+      return;
+    }
+
     if (serviceCategory === 'Hotel' && !petWeightClass) {
       return;
     }
@@ -152,6 +158,7 @@ export function SlotPicker({
     date,
     slotDurationMinutes,
     petWeightClass,
+    lockToNow,
   ]);
 
   const availableCount = useMemo(
@@ -159,39 +166,24 @@ export function SlotPicker({
     [slots]
   );
 
-  // Walk-in booking flow: pinned to "today" the moment lockToNow turns on -
-  // guards against a stale non-today `date` left over from Online browsing
-  // before the receptionist switched to Walk-in on the same mounted picker.
-  // Deferred to a microtask (mirrors CustomerBookingFlowPage's own
-  // set-state-in-effect pattern) so this never runs synchronously inside
-  // the effect body itself.
+  // Walk-in booking flow: the slot IS the current moment - start at now
+  // (seconds/ms zeroed for a clean scheduled_start) and run for the
+  // service's own duration. Computed once per lock so it stays stable while
+  // the receptionist works through the rest of the wizard.
+  const nowSlot = useMemo(() => {
+    if (!lockToNow) return null;
+    const start = new Date();
+    start.setSeconds(0, 0);
+    const end = new Date(start.getTime() + slotDurationMinutes * 60_000);
+    return { start: start.toISOString(), end: end.toISOString() };
+  }, [lockToNow, slotDurationMinutes]);
+
+  // Auto-select it with no click - the receptionist never picks a time for a
+  // walk-in. Guarded so it settles after one call instead of looping.
   useEffect(() => {
-    if (!lockToNow) return;
-
-    void Promise.resolve().then(() => {
-      setDate(todayIso());
-    });
-  }, [lockToNow]);
-
-  const earliestAvailableSlot = useMemo(
-    () => slots.find((slot) => slot.available) ?? null,
-    [slots]
-  );
-
-  // Walk-in booking flow: auto-resolves and selects the earliest available
-  // slot for today, reusing the fetch above rather than duplicating any
-  // slot-resolution logic - the receptionist never browses/picks manually
-  // while locked. Guarded against re-firing once the same slot is already
-  // selected, so this settles after one call per fetch instead of looping.
-  useEffect(() => {
-    if (!lockToNow || !earliestAvailableSlot) return;
-    if (selectedSlot?.start === earliestAvailableSlot.start) return;
-
-    onSelect({
-      start: earliestAvailableSlot.start,
-      end: earliestAvailableSlot.end,
-    });
-  }, [lockToNow, earliestAvailableSlot, selectedSlot, onSelect]);
+    if (!nowSlot || selectedSlot?.start === nowSlot.start) return;
+    onSelect(nowSlot);
+  }, [nowSlot, selectedSlot, onSelect]);
 
   // A past date is never bookable (server-side: getDaySlots returns []
   // for any date before "today" in the branch's own timezone) - blocking
@@ -206,20 +198,18 @@ export function SlotPicker({
       {lockToNow ? (
         <div className={styles.lockedBanner}>
           <span className={styles.lockedBannerTitle}>
-            Walk-in — next available slot today
+            Walk-in — starting now
           </span>
           <span>
-            {isLoading
-              ? 'Resolving the next available slot...'
-              : earliestAvailableSlot
-                ? `${new Date(earliestAvailableSlot.start).toLocaleTimeString(
-                    [],
-                    { hour: 'numeric', minute: '2-digit' }
-                  )} - ${new Date(earliestAvailableSlot.end).toLocaleTimeString(
-                    [],
-                    { hour: 'numeric', minute: '2-digit' }
-                  )} today`
-                : 'No open slot today - the staff/cage picker below still runs, but there is nothing to hold right now.'}
+            {nowSlot
+              ? `${new Date(nowSlot.start).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })} - ${new Date(nowSlot.end).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })} today`
+              : ''}
           </span>
         </div>
       ) : (

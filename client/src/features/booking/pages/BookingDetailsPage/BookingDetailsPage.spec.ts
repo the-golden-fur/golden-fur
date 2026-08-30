@@ -31,6 +31,14 @@ vi.mock('../../../discounts/api/discounts.api', () => ({
   listDiscounts: vi.fn(),
 }));
 
+vi.mock(
+  '../../../billing/components/BookingPaymentsPanel/BookingPaymentsPanel',
+  () => ({
+    BookingPaymentsPanel: ({ bookingId }: { bookingId: string }) =>
+      createElement('div', null, `payments-panel:${bookingId}`),
+  })
+);
+
 function buildBooking(overrides: Partial<Booking> = {}): Booking {
   return {
     id: 'booking-1',
@@ -213,6 +221,8 @@ describe('BookingDetailsPage', () => {
     expect(screen.getByText('Haircut')).toBeInTheDocument();
     // Subtotal and Total both read PHP 800.00 (no discount/promo applied).
     expect(screen.getAllByText('PHP 800.00')).toHaveLength(2);
+    // The per-booking payments panel is mounted for this booking.
+    expect(screen.getByText('payments-panel:booking-1')).toBeInTheDocument();
   });
 
   it('resolves and shows the applied discount and promo names with their amounts', async () => {

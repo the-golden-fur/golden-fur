@@ -122,6 +122,15 @@
   font-size: var(--text-sm);
 }
 
+.unconfirmedHint {
+  margin: 0;
+  background: var(--color-booking-pending-bg);
+  color: var(--color-booking-pending-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
 .bookingControls {
   display: flex;
   flex-wrap: wrap;

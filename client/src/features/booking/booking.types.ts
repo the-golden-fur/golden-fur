@@ -132,6 +132,42 @@ export type BookingSource = 'Online' | 'Walk-in';
 
 export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 
+/** Mirrors the server's DOWNPAYMENT_EXPIRED_CANCELLATION_REASON - the
+ * `cancellation_reason` applyDownpaymentExpiry writes when it sweeps an
+ * unpaid pencil booking. Lets deriveBookingConfirmationState show that case
+ * as "Expired" rather than a plain "Cancelled". */
+export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
+  'Down payment not received before the reservation deadline';
+
+/**
+ * Receptionist-facing lifecycle vocabulary (bookings queue only). NOT a DB
+ * enum and NOT a second axis on the booking - a pure display derivation over
+ * `status` + `payment_stage` + `downpayment_required` + `cancellation_reason`
+ * (see deriveBookingConfirmationState). An online booking that still owes its
+ * down payment reads as "Unconfirmed" (it holds no slot and can expire);
+ * paying it, or a walk-in / no-down-payment booking, reads as "Confirmed";
+ * from there it follows the real status through In service -> Completed.
+ */
+export type BookingConfirmationState =
+  | 'Unconfirmed'
+  | 'Confirmed'
+  | 'In service'
+  | 'Completed'
+  | 'Expired'
+  | 'Cancelled'
+  | 'No-show';
+
+export const BOOKING_CONFIRMATION_STATES: readonly BookingConfirmationState[] =
+  [
+    'Unconfirmed',
+    'Confirmed',
+    'In service',
+    'Completed',
+    'Expired',
+    'Cancelled',
+    'No-show',
+  ];
+
 export const PAYMENT_STAGES: readonly PaymentStage[] = [
   'Unpaid',
   'Paid in Advance',

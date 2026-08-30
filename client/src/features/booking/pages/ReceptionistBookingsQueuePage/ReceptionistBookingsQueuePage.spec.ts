@@ -704,7 +704,7 @@ describe('ReceptionistBookingsQueuePage', () => {
         error: null,
       });
       vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [buildBooking({ status: 'Pending' })],
+        data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
         error: null,
       });
       vi.mocked(bookingApi.startBooking).mockResolvedValue({
@@ -753,7 +753,7 @@ describe('ReceptionistBookingsQueuePage', () => {
         error: null,
       });
       vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [buildBooking({ status: 'Pending' })],
+        data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
         error: null,
       });
       vi.mocked(bookingApi.startBooking).mockResolvedValue({
@@ -773,6 +773,111 @@ describe('ReceptionistBookingsQueuePage', () => {
       ).toBeInTheDocument();
       // Still Pending, still offering Check In again.
       expect(screen.getByText('Check In')).toBeInTheDocument();
+    });
+  });
+
+  // Confirmation status (advisory: the receptionist queue speaks
+  // Unconfirmed -> Confirmed -> In service -> Completed, derived from
+  // status + payment_stage rather than a new DB enum).
+  describe('confirmation status', () => {
+    it('shows an unpaid online booking as Unconfirmed, with a hint and no Check In', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            status: 'Pending',
+            booking_source: 'Online',
+            payment_stage: 'Unpaid',
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(
+          screen.getByText('Unconfirmed', { selector: 'span' })
+        ).toBeInTheDocument()
+      );
+      expect(screen.getByText(/isn't secured/i)).toBeInTheDocument();
+      expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+    });
+
+    it('shows a paid Pending booking as Confirmed and offers Check In', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            status: 'Pending',
+            payment_stage: 'Paid in Advance',
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(
+          screen.getByText('Confirmed', { selector: 'span' })
+        ).toBeInTheDocument()
+      );
+      expect(screen.getByText('Check In')).toBeInTheDocument();
+    });
+
+    it('translates the Unconfirmed filter to a Pending status query and splits client-side', async () => {
+      const user = userEvent.setup();
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            id: 'b-unconfirmed',
+            pet_id: 'pet-a',
+            status: 'Pending',
+            payment_stage: 'Unpaid',
+            downpayment_required: true,
+          }),
+          buildBooking({
+            id: 'b-confirmed',
+            pet_id: 'pet-b',
+            status: 'Pending',
+            payment_stage: 'Paid',
+            downpayment_required: true,
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getAllByRole('listitem')).toHaveLength(2)
+      );
+
+      await user.selectOptions(screen.getByLabelText('Status'), 'Unconfirmed');
+
+      await waitFor(() =>
+        expect(bookingApi.listBookings).toHaveBeenLastCalledWith(
+          'token',
+          expect.objectContaining({ status: 'Pending' })
+        )
+      );
+      await waitFor(() =>
+        expect(screen.getAllByRole('listitem')).toHaveLength(1)
+      );
+      expect(screen.getAllByRole('listitem')[0].textContent).toContain(
+        'Unconfirmed'
+      );
     });
   });
 });

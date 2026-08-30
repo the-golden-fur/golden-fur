@@ -128,8 +128,10 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
+    // A paid / no-down-payment Pending booking reads as "Confirmed" in the
+    // shared confirmation vocabulary.
     await waitFor(() =>
-      expect(screen.getByText('Pending')).toBeInTheDocument()
+      expect(screen.getByText('Confirmed')).toBeInTheDocument()
     );
     expect(bookingApi.listBookings).toHaveBeenCalledWith('token');
   });
@@ -224,7 +226,7 @@ describe('CustomerBookingsPage', () => {
     renderPage();
 
     await waitFor(() =>
-      expect(screen.getByText('Pending')).toBeInTheDocument()
+      expect(screen.getByText('Confirmed')).toBeInTheDocument()
     );
     expect(screen.queryByText('Pay')).not.toBeInTheDocument();
   });
