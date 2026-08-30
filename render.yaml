@@ -1,0 +1,64 @@
+# Render Blueprint for the golden-fur API server.
+#
+# This documents the production `golden-fur-server` web service, which was
+# originally created and configured by hand in the Render dashboard. It is
+# NOT auto-applied to that existing service - treat it as the source of
+# truth to reconcile the dashboard against, and as the definition Render
+# would use if the service were recreated from this Blueprint.
+#
+# Secrets (sync: false below) are set in the dashboard, never committed.
+# Keep this file and server/.env.example in step.
+
+services:
+  - type: web
+    name: golden-fur-server
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render injects PORT automatically; app.ts binds it (SERVER_PORT wins
+      # locally, PORT on Render). No need to set SERVER_PORT here.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      # Comma-separated, no spaces, no trailing slash. Must include the
+      # deployed frontend origin(s), e.g. https://golden-fur-client.vercel.app
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # base64 key that decodes to exactly 32 bytes: openssl rand -base64 32
+      - key: STAFF_TEMP_CREDENTIAL_KEY
+        sync: false
+      # Transactional email. Resend today, migrating to Brevo. Leave unset on
+      # environments where email isn't provisioned yet (sends will error).
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      # PayMongo - dormant until the client provisions an account. Leave unset;
+      # online-payment paths stay inactive.
+      - key: PAYMONGO_SECRET_KEY
+        sync: false
+      - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMONGO_SERVICE_FEE_PERCENT
+        sync: false
+      - key: PAYMONGO_REDIRECT_SUCCESS_URL
+        sync: false
+      - key: PAYMONGO_REDIRECT_FAILED_URL
+        sync: false
+      # Optional. Bare number or JSON branch map. Defaults to 15 if unset.
+      - key: DAYCARE_SESSION_CAPACITY
+        sync: false

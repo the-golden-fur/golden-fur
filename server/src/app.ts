@@ -36,7 +36,11 @@ app.get('/health', (_req, res) => {
 
 app.use(errorHandler);
 
-const PORT = Number(process.env.SERVER_PORT) || 3000;
+// SERVER_PORT is the explicit local/dev knob; PORT is what managed hosts
+// (Render, etc.) inject and expect the process to bind. Prefer SERVER_PORT
+// when set so local .env stays authoritative, then fall back to the
+// platform's PORT, then the dev default.
+const PORT = Number(process.env.SERVER_PORT || process.env.PORT) || 3000;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {

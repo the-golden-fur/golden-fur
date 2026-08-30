@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import '../../LandingPage.module.css';
+import '../../LandingPage.css';
 
 /**
  * Marketing navbar for the public landing page only - distinct from the
