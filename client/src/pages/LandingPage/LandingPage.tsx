@@ -14,6 +14,77 @@ import step3 from '../../assets/step3.png';
 import step4 from '../../assets/step4.png';
 import './LandingPage.module.css';
 
+const CUSTOMER_REVIEWS = [
+  {
+    quote:
+      'Rio used to come home from other groomers anxious and shaking. Here he practically drags me to the door. The team clearly loves what they do.',
+    name: 'Andrea Salcedo',
+    detail: 'Grooming · Makati',
+    rating: 5,
+  },
+  {
+    quote:
+      'Our senior cat needed bloodwork and a dental. The vet walked us through every option without rushing, and we even got a follow-up call the next day.',
+    name: 'Miguel Tan',
+    detail: 'Veterinary · Makati',
+    rating: 5,
+  },
+  {
+    quote:
+      'Booked the pet hotel for a week-long trip. The daily photo updates meant I actually relaxed on vacation — Buddy came back happy and calm.',
+    name: 'Kristine Reyes',
+    detail: 'Pet Hotel · Southwoods',
+    rating: 5,
+  },
+  {
+    quote:
+      'Day care has been a lifesaver on long workdays. Nala gets her play and naps on schedule, and pickup is always quick and friendly.',
+    name: 'Paolo Mendoza',
+    detail: 'Day Care · Makati',
+    rating: 5,
+  },
+  {
+    quote:
+      'Switched both dogs here after one visit. Clean, always on time, and they remember the little things — like which one is terrified of the dryer.',
+    name: 'Camille Ong',
+    detail: 'Grooming · Southwoods',
+    rating: 5,
+  },
+];
+
+// Placeholder branch details — replace addresses, hours, and phone numbers
+// with each branch's real information (kept in sync with BranchesPage).
+const VISIT_US = [
+  {
+    name: 'Makati',
+    address: 'Golden Fur Pet Care, Makati, Metro Manila, Philippines',
+    phone: '+63 2 8000 0000',
+    hours: [
+      { days: 'Mon – Fri', time: '9:00 AM – 7:00 PM' },
+      { days: 'Sat – Sun', time: '8:00 AM – 6:00 PM' },
+    ],
+  },
+  {
+    name: 'Southwoods, Laguna',
+    address: 'Golden Fur Pet Care, Southwoods, Laguna, Philippines',
+    phone: '+63 49 500 0000',
+    hours: [
+      { days: 'Mon – Fri', time: '9:00 AM – 7:00 PM' },
+      { days: 'Sat – Sun', time: '8:00 AM – 6:00 PM' },
+    ],
+  },
+];
+
+function getDirectionsUrl(address: string): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+    address
+  )}`;
+}
+
+function getMapEmbedUrl(address: string): string {
+  return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
 export default function GoldenFurLanding() {
   useEffect(() => {
     const navToggle = document.getElementById(
@@ -330,134 +401,6 @@ export default function GoldenFurLanding() {
       '.feature-strip-card'
     );
 
-    const bookingTabs =
-      document.querySelectorAll<HTMLElement>('.booking-step-tab');
-    const bookingPanels =
-      document.querySelectorAll<HTMLElement>('[data-step-panel]');
-    const bookingPrevBtn = document.getElementById(
-      'bookingPrevBtn'
-    ) as HTMLButtonElement | null;
-    const bookingNextBtn = document.getElementById(
-      'bookingNextBtn'
-    ) as HTMLButtonElement | null;
-    let bookingCurrentStep = 0;
-    let bookingSelectedService = 'grooming';
-
-    function requiresSpecialistStep(serviceKey: string) {
-      return serviceKey === 'grooming' || serviceKey === 'veterinary';
-    }
-
-    function getNearestValidStep(stepIndex: number) {
-      if (!requiresSpecialistStep(bookingSelectedService) && stepIndex === 3) {
-        return 4;
-      }
-      return stepIndex;
-    }
-
-    function updateBookingStepperUI() {
-      bookingCurrentStep = getNearestValidStep(bookingCurrentStep);
-      bookingTabs.forEach((tab, index) => {
-        tab.classList.remove('is-current', 'is-complete');
-
-        if (index < bookingCurrentStep) {
-          tab.classList.add('is-complete');
-        } else if (index === bookingCurrentStep) {
-          tab.classList.add('is-current');
-        }
-      });
-
-      bookingPanels.forEach((panel, index) => {
-        const isActive = index === bookingCurrentStep;
-        panel.hidden = !isActive;
-        panel.classList.toggle('is-active', isActive);
-      });
-
-      if (bookingPrevBtn) {
-        bookingPrevBtn.disabled = bookingCurrentStep === 0;
-      }
-
-      if (bookingNextBtn) {
-        bookingNextBtn.textContent =
-          bookingCurrentStep === bookingPanels.length - 1 ? 'Finish' : 'Next';
-      }
-
-      const step4SkipNote = document.getElementById(
-        'bookingStep4SkipNote'
-      ) as HTMLElement | null;
-      if (step4SkipNote) {
-        step4SkipNote.hidden = requiresSpecialistStep(bookingSelectedService);
-      }
-    }
-
-    if (bookingPrevBtn) {
-      bookingPrevBtn.addEventListener('click', () => {
-        if (bookingCurrentStep > 0) {
-          bookingCurrentStep -= 1;
-
-          if (
-            bookingCurrentStep === 3 &&
-            !requiresSpecialistStep(bookingSelectedService)
-          ) {
-            bookingCurrentStep = 2;
-          }
-
-          updateBookingStepperUI();
-        }
-      });
-    }
-
-    if (bookingNextBtn) {
-      bookingNextBtn.addEventListener('click', () => {
-        if (bookingCurrentStep < bookingPanels.length - 1) {
-          bookingCurrentStep += 1;
-
-          if (
-            bookingCurrentStep === 3 &&
-            !requiresSpecialistStep(bookingSelectedService)
-          ) {
-            bookingCurrentStep = 4;
-          }
-
-          updateBookingStepperUI();
-        }
-      });
-    }
-
-    const bookingServiceOptionButtons = document.querySelectorAll<HTMLElement>(
-      '.booking-service-option'
-    );
-    bookingServiceOptionButtons.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        bookingSelectedService = btn.dataset.service || 'grooming';
-
-        bookingServiceOptionButtons.forEach((b) =>
-          b.classList.remove('is-selected')
-        );
-        btn.classList.add('is-selected');
-
-        if (
-          bookingCurrentStep === 3 &&
-          !requiresSpecialistStep(bookingSelectedService)
-        ) {
-          bookingCurrentStep = 4;
-        }
-
-        updateBookingStepperUI();
-      });
-    });
-
-    bookingTabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        const stepIndex = Number(tab.dataset.step);
-        if (!Number.isNaN(stepIndex)) {
-          bookingCurrentStep = stepIndex;
-          updateBookingStepperUI();
-        }
-      });
-    });
-
-    updateBookingStepperUI();
-
     const scrollStorySection = document.getElementById(
       'scrollStory'
     ) as HTMLElement | null;
@@ -657,36 +600,64 @@ export default function GoldenFurLanding() {
 
       <LandingNavbar />
 
-      <img src={heroBg} alt="Hero Image" className="hero-image" />
+      <main className="hero fade-up">
+        <img
+          src={heroBg}
+          alt="A smiling owner embracing her golden retriever in warm light"
+          className="hero-image"
+        />
+        <div className="hero-scrim" aria-hidden="true" />
 
-      <main className="hero reveal-text fade-up">
-        <section className="section">
-          <div className="text-card">
-            <h3 className="reveal-text stagger" data-stagger id="TopP">
-              Care as warm as
-            </h3>
-            <h1 className="reveal-text stagger" data-animate data-stagger>
-              Golden
-            </h1>
-            <h1 className="reveal-text stagger" data-animate data-stagger>
-              Fur
-            </h1>
-            <p className="reveal-text fade-up">
-              Compassionate, expert veterinary care for your beloved companions.
-              Because every tail wag, purr, and nuzzle deserves the very best in
-              health and wellness.
-            </p>
-          </div>
-          <div className="branches">
-            <div className="branch-card fade-up">
-              <h2>📍 Makati</h2>
-            </div>
+        <div className="hero-content">
+          <p className="hero-eyebrow fade-up">
+            Grooming &middot; Veterinary &middot; Day Care &middot; Pet Hotel
+          </p>
 
-            <div className="branch-card fade-up">
-              <h2>📍 Southwoods, Laguna</h2>
-            </div>
+          <h1 className="hero-title">
+            <span className="hero-title-lead fade-up">Care as warm as</span>
+            <span
+              className="hero-title-brand stagger"
+              data-stagger
+              data-stagger-direction="left"
+            >
+              Golden Fur
+            </span>
+          </h1>
+
+          <p className="hero-lead fade-up">
+            Compassionate, expert care for your beloved companions — because
+            every tail wag, purr, and nuzzle deserves the very best.
+          </p>
+
+          <div className="hero-actions fade-up">
+            <Link to="/portal/book" className="hero-btn hero-btn-primary">
+              Book an appointment
+            </Link>
+            <a href="#servicesSection" className="hero-btn hero-btn-ghost">
+              Explore our services
+            </a>
           </div>
-        </section>
+
+          <ul className="hero-branches fade-up" aria-label="Our branches">
+            <li className="hero-branch">
+              <span aria-hidden="true">📍</span> Makati
+            </li>
+            <li className="hero-branch">
+              <span aria-hidden="true">📍</span> Southwoods, Laguna
+            </li>
+          </ul>
+        </div>
+
+        <a
+          className="hero-scroll-cue"
+          href="#servicesSection"
+          aria-label="Scroll to what we offer"
+        >
+          <span className="hero-scroll-cue-track" aria-hidden="true">
+            <span className="hero-scroll-cue-thumb" />
+          </span>
+          Scroll to explore
+        </a>
       </main>
 
       <div className="services fade-up" id="servicesSection">
@@ -845,132 +816,39 @@ export default function GoldenFurLanding() {
         </div>
       </section>
 
-      <section className="booking-flow fade-up" aria-label="How booking works">
-        <div className="booking-flow-inner">
-          <h2 className="booking-flow-title stagger" data-stagger>
-            How booking works
-          </h2>
-          <p className="booking-flow-subtitle fade-up">
-            Book in minutes with instant, fully automatic confirmation.
-          </p>
+      <section className="reviews fade-up" aria-labelledby="reviewsTitle">
+        <h2 className="reviews-title stagger" data-stagger id="reviewsTitle">
+          Loved by pet parents
+        </h2>
+        <p className="reviews-subtitle fade-up">
+          Real words from families across our Makati and Southwoods branches.
+        </p>
 
-          <div
-            className="booking-step-tabs"
-            id="bookingStepTabs"
-            role="tablist"
-            aria-label="Booking steps progress"
-          >
-            <button
-              className="booking-step-tab fade-up is-current"
-              type="button"
-              data-step="0"
-            >
-              1. Pet
-            </button>
-            <button
-              className="booking-step-tab fade-up"
-              type="button"
-              data-step="1"
-            >
-              2. Branch
-            </button>
-            <button
-              className="booking-step-tab fade-up"
-              type="button"
-              data-step="2"
-            >
-              3. Service
-            </button>
-            <button
-              className="booking-step-tab fade-up"
-              type="button"
-              data-step="3"
-            >
-              4. Groomer/Vet
-            </button>
-            <button
-              className="booking-step-tab fade-up"
-              type="button"
-              data-step="4"
-            >
-              5. Payment
-            </button>
-          </div>
-
-          <div className="booking-step-stage">
-            <article
-              className="booking-step-card is-active"
-              data-step-panel="0"
-            >
-              <div className="booking-step-number">1</div>
-              <h3 className="booking-step-title fade-up">Pick your pet</h3>
-              <p className="booking-step-text fade-up">
-                Choose which pet profile you are booking for.
-              </p>
-            </article>
-
-            <article className="booking-step-card" data-step-panel="1" hidden>
-              <div className="booking-step-number">2</div>
-              <h3 className="booking-step-title fade-up">Pick your branch</h3>
-              <p className="booking-step-text fade-up">
-                Select your preferred branch location before proceeding.
-              </p>
-            </article>
-
-            <article className="booking-step-card" data-step-panel="2" hidden>
-              <div className="booking-step-number">3</div>
-              <h3 className="booking-step-title fade-up">Pick your service</h3>
-              <p className="booking-step-text fade-up">
-                Choose one of the four available services.
-              </p>
-            </article>
-
-            <article className="booking-step-card" data-step-panel="3" hidden>
-              <div className="booking-step-number">4</div>
-              <h3 className="booking-step-title fade-up">
-                Pick groomer or vet
-              </h3>
-              <p className="booking-step-text fade-up" id="bookingStep4Text">
-                Choose your preferred specialist, or select{' '}
-                <strong>No preference</strong>.
-              </p>
+        <div className="reviews-grid">
+          {CUSTOMER_REVIEWS.map((review) => (
+            <article className="review-card fade-up" key={review.name}>
               <div
-                className="booking-step-conditional-note fade-up"
-                id="bookingStep4SkipNote"
-                hidden
+                className="review-stars"
+                role="img"
+                aria-label={`Rated ${review.rating} out of 5`}
               >
-                Step skipped automatically because selected service does not
-                require groomer/vet selection.
+                {'★'.repeat(review.rating)}
+                <span className="review-stars-empty" aria-hidden="true">
+                  {'★'.repeat(5 - review.rating)}
+                </span>
+              </div>
+              <p className="review-quote">{review.quote}</p>
+              <div className="review-author">
+                <span className="review-avatar" aria-hidden="true">
+                  {review.name.charAt(0)}
+                </span>
+                <span className="review-author-meta">
+                  <span className="review-name">{review.name}</span>
+                  <span className="review-detail">{review.detail}</span>
+                </span>
               </div>
             </article>
-
-            <article className="booking-step-card" data-step-panel="4" hidden>
-              <div className="booking-step-number">5</div>
-              <h3 className="booking-step-title fade-up">Payment</h3>
-              <p className="booking-step-text fade-up">
-                Complete payment securely and receive immediate booking
-                confirmation.
-              </p>
-            </article>
-          </div>
-
-          <div className="booking-step-controls">
-            <button
-              id="bookingPrevBtn"
-              className="booking-step-ctrl booking-step-ctrl-prev"
-              type="button"
-              disabled
-            >
-              Previous
-            </button>
-            <button
-              id="bookingNextBtn"
-              className="booking-step-ctrl booking-step-ctrl-next"
-              type="button"
-            >
-              Next
-            </button>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -1051,6 +929,88 @@ export default function GoldenFurLanding() {
                 keep your companion healthy between appointments.
               </p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="visit fade-up"
+        id="visitSection"
+        aria-labelledby="visitTitle"
+      >
+        <h2 className="visit-title stagger" data-stagger id="visitTitle">
+          Visit us
+        </h2>
+        <p className="visit-subtitle fade-up">
+          Drop by either branch — walk-ins are welcome, appointments
+          recommended.
+        </p>
+
+        <div className="visit-grid">
+          {VISIT_US.map((branch) => (
+            <article className="visit-card fade-up" key={branch.name}>
+              <div className="visit-map">
+                <iframe
+                  src={getMapEmbedUrl(branch.address)}
+                  title={`Map to Golden Fur ${branch.name}`}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+              <div className="visit-info">
+                <h3 className="visit-branch-name">📍 {branch.name}</h3>
+                <p className="visit-address">{branch.address}</p>
+
+                <dl className="visit-hours">
+                  {branch.hours.map((slot) => (
+                    <div className="visit-hours-row" key={slot.days}>
+                      <dt>{slot.days}</dt>
+                      <dd>{slot.time}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <p className="visit-contact">
+                  <a href={`tel:${branch.phone.replace(/\s/g, '')}`}>
+                    {branch.phone}
+                  </a>
+                </p>
+
+                <a
+                  href={getDirectionsUrl(branch.address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="visit-directions"
+                >
+                  Get directions
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="cta-band fade-up" aria-labelledby="ctaBandTitle">
+        <div className="cta-band-inner">
+          <div className="cta-band-copy">
+            <h2 className="cta-band-title" id="ctaBandTitle">
+              Your pet&rsquo;s next visit starts here
+            </h2>
+            <p className="cta-band-text">
+              Book online in minutes for grooming, veterinary, day care, and
+              boarding — at our Makati and Southwoods branches.
+            </p>
+          </div>
+          <div className="cta-band-actions">
+            <Link
+              to="/portal/book"
+              className="cta-band-btn cta-band-btn-primary"
+            >
+              Book an appointment
+            </Link>
+            <Link to="/branches" className="cta-band-btn cta-band-btn-ghost">
+              Find a branch
+            </Link>
           </div>
         </div>
       </section>
