@@ -35,7 +35,7 @@ The same review gate applies before a branch carrying real commits is
 pushed for the first time (trigger `pre-publish`). If every commit on the
 branch was already reviewed at `pre-commit` time and nothing has changed
 since, no extra pass is needed — otherwise run the `code-reviewer` subagent
-on the full `<base>..HEAD` diff before `git push`.
+on the full `<base>...HEAD` diff before `git push`.
 
 ## Message format
 
