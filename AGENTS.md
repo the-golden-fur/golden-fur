@@ -95,10 +95,13 @@ also invocable standalone). Any AI coding tool working in this repo
 should read the relevant file under `.agent/` before doing that kind of
 task.
 
-`commit`, `pr-to-dev`, and `pr-dev-to-main` each have a mandatory step that
-spawns the read-only `code-reviewer` agent (see "Domain agents & skills"
-below) for an unbiased review of the diff before the commit/PR proceeds —
-that is the in-repo gate. As a personal backstop you can also add a
+`commit`, `pr-to-dev`, and `pr-dev-to-main` each have two mandatory
+subagent steps before the commit/PR proceeds (see "Domain agents & skills"
+below): the read-only `ci-verifier` agent, which runs the `✅ CI: Verify
+All` task (tests, lint, format, build) for **both** `golden-fur` and
+`golden-fur-vault` and must come back green; and the read-only
+`code-reviewer` agent, for an unbiased review of the diff. As a personal
+backstop you can also add a
 `PreToolUse` hook to your own (gitignored) `.claude/settings.local.json`
 that blocks a direct `git commit` / `git push` / `gh pr create` when
 `client/src`, `server/src`, or `supabase/` changed and no matching review
@@ -138,6 +141,11 @@ git-workflow skills above applies (`.claude/agents/<name>.md` +
 **Agents** (spawnable subagents, most with full dev tool access unless
 noted):
 
+- `ci-verifier` — **read-only** runner for the `✅ CI: Verify All` task
+  (tests, lint, format, build) across **both** `golden-fur` and
+  `golden-fur-vault`. Runs automatically before a commit, a branch publish,
+  and a PR; reports one pass/fail with the failing output, never fixes or
+  commits. Keeps the full suite/build output out of the main session.
 - `code-reviewer` — unbiased, **read-only** review of the current branch's
   diff. Runs automatically as a step of the git workflow: before a commit
   (`commit`), before real commits are published, and before a PR is opened

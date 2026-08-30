@@ -10,7 +10,13 @@ effect of another task.
 1. **Run `.agent/skills/pre-commit-checks.md` first** — lint and format,
    fix then check, for both `client` and `server`. Resolve or surface
    anything it flags before moving on; don't skip straight to staging.
-2. **Run an unbiased code review** — spawn the `code-reviewer` subagent
+2. **Verify CI parity across both repos** — spawn the `ci-verifier`
+   subagent (`.agent/agents/ci-verifier.md`). It runs the `✅ CI: Verify
+All` task for `golden-fur` and for `golden-fur-vault` (tests, lint,
+   format, build) and reports one pass/fail. Everything must be green
+   before committing. A green pass from earlier this session with no
+   changes since in either repo still counts.
+3. **Run an unbiased code review** — spawn the `code-reviewer` subagent
    (`.agent/agents/code-reviewer.md`, trigger `pre-commit`) on the current
    diff. It is read-only and writes its report to
    `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/`.
@@ -19,23 +25,23 @@ effect of another task.
    non-functional diff — and say so if you skip. If the code-reviewer
    already ran this session and nothing has changed under `client/src`,
    `server/src`, or `supabase/` since, that pass still counts.
-3. Look at `git status --short` and `git diff` (staged and unstaged) to see
+4. Look at `git status --short` and `git diff` (staged and unstaged) to see
    what changed, and `git log --oneline -10` to match this repo's style.
-4. Stage the relevant files. Review what a broad `git add` would pick up
+5. Stage the relevant files. Review what a broad `git add` would pick up
    (`git status` after) rather than blindly using `git add -A`. If anything
    staged looks unrelated to the request or might contain a secret, flag it
    before committing.
-5. Write the commit message following the format below.
-6. Create the commit directly (pass multi-line messages via a heredoc so
+6. Write the commit message following the format below.
+7. Create the commit directly (pass multi-line messages via a heredoc so
    formatting survives), then run `git status` to confirm it succeeded.
 
 ## Publishing the branch
 
-The same review gate applies before a branch carrying real commits is
-pushed for the first time (trigger `pre-publish`). If every commit on the
-branch was already reviewed at `pre-commit` time and nothing has changed
-since, no extra pass is needed — otherwise run the `code-reviewer` subagent
-on the full `<base>...HEAD` diff before `git push`.
+Both gates apply again before a branch carrying real commits is pushed for
+the first time (`ci-verifier` for CI parity, `code-reviewer` at trigger
+`pre-publish` on the full `<base>...HEAD` diff). A green `ci-verifier` pass
+and a `pre-commit`-time review still count if nothing has changed since —
+otherwise re-run whichever is stale before `git push`.
 
 ## Message format
 
