@@ -961,13 +961,34 @@ export function CustomerBookingFlowPage() {
       return ['Misc'] as ServiceCategory[];
     }
 
-    return SERVICE_CATEGORIES.filter(
+    // Seeded categories that drive real category-specific behavior
+    // (availability, capacity, pricing, vet eligibility) - hidden only when
+    // their service_types row is explicitly inactive, or, for Veterinary,
+    // when the branch isn't a vet branch.
+    const seeded = SERVICE_CATEGORIES.filter(
       (candidate) =>
         (candidate !== 'Veterinary' ||
           (selectedBranch?.is_vet_branch ?? true)) &&
         (serviceTypeByKey.get(candidate)?.is_active ?? true)
     );
-  }, [selectedBranch, isSelectedPetAssessed, serviceTypeByKey]);
+
+    // Custom change: Service Types addendum (migration 20260809113) - a
+    // brand-new active type added in Admin Settings > Service Types is
+    // selectable here as soon as it's active, even though its
+    // category-specific behavior still has to be built in code separately.
+    // Such rows carry a free-text key outside the hardcoded
+    // SERVICE_CATEGORIES list, so iterating SERVICE_CATEGORIES alone would
+    // never render them.
+    const custom = serviceTypes
+      .filter(
+        (type) =>
+          type.is_active &&
+          !SERVICE_CATEGORIES.includes(type.key as ServiceCategory)
+      )
+      .map((type) => type.key as ServiceCategory);
+
+    return [...seeded, ...custom];
+  }, [selectedBranch, isSelectedPetAssessed, serviceTypeByKey, serviceTypes]);
 
   // For an unassessed pet, Initial Assessment is the only thing bookable at
   // all (see availableCategories above) - once the branch's catalog has
@@ -2046,7 +2067,10 @@ export function CustomerBookingFlowPage() {
           <div className={styles.serviceStep}>
             <div className={styles.categoryGrid}>
               {availableCategories.map((candidate) => {
-                const Icon = CATEGORY_ICONS[candidate];
+                // A custom Service Types row (key outside SERVICE_CATEGORIES)
+                // has no dedicated icon - fall back to the generic one rather
+                // than rendering `undefined` as a component.
+                const Icon = CATEGORY_ICONS[candidate] ?? ClipboardList;
                 // Custom change: Service Types addendum - the row's `name`
                 // is only ever a display-label override (Admin Settings >
                 // Service Types); `candidate` (the real ServiceCategory

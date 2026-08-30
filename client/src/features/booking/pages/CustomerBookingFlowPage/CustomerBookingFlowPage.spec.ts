@@ -938,6 +938,68 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Next'));
   }
 
+  function serviceType(overrides: {
+    key: string;
+    name?: string;
+    is_active?: boolean;
+  }) {
+    return {
+      id: `st-${overrides.key}`,
+      key: overrides.key,
+      name: overrides.name ?? overrides.key,
+      is_active: overrides.is_active ?? true,
+      staff_picker_enabled: false,
+      cage_picker_enabled: false,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+    };
+  }
+
+  it('Service Types addendum: a newly created, active service type with a brand-new key shows up in the Service Type step', async () => {
+    vi.mocked(bookingApi.listServiceTypes).mockResolvedValue({
+      data: [
+        serviceType({ key: 'Grooming' }),
+        serviceType({ key: 'Hotel' }),
+        serviceType({ key: 'Daycare' }),
+        serviceType({ key: 'Veterinary' }),
+        serviceType({ key: 'Boarding', name: 'Overnight Boarding' }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    expect(
+      screen.getByRole('button', { name: /Overnight Boarding/ })
+    ).toBeInTheDocument();
+  });
+
+  it('Service Types addendum: an inactive custom service type stays hidden from the Service Type step', async () => {
+    vi.mocked(bookingApi.listServiceTypes).mockResolvedValue({
+      data: [
+        serviceType({ key: 'Grooming' }),
+        serviceType({
+          key: 'Boarding',
+          name: 'Overnight Boarding',
+          is_active: false,
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    expect(
+      screen.queryByRole('button', { name: /Overnight Boarding/ })
+    ).not.toBeInTheDocument();
+  });
+
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
     const user = userEvent.setup();
     renderPage();
