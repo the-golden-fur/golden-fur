@@ -9,7 +9,7 @@ skill instead — the two directions use different merge strategies.
 1. Make sure the compare branch is pushed and up to date with its remote.
 2. **Run an unbiased code review of the whole branch** — spawn the
    `code-reviewer` subagent (`.agent/agents/code-reviewer.md`, trigger
-   `pre-pr`) on the full `dev..HEAD` diff. It is read-only and files its
+   `pre-pr`) on the full `dev...HEAD` diff. It is read-only and files its
    report under
    `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/`.
    Resolve every **Blocking** finding before opening the PR; fold anything

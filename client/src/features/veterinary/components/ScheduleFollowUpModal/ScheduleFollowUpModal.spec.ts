@@ -168,9 +168,11 @@ describe('ScheduleFollowUpModal', () => {
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
 
     // Only the Veterinary service shows up - the catalog's own (non-category-
-    // scoped) package is never offered as a choosable option.
+    // scoped) package is never offered as a choosable option. findBy, not
+    // getBy: the option list fills after getBookingCatalog resolves, a
+    // different async call than the listBranches one awaited above.
     expect(
-      screen.getByRole('option', { name: /Wellness Exam/ })
+      await screen.findByRole('option', { name: /Wellness Exam/ })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('option', { name: /Wellness Bundle/ })
@@ -196,6 +198,10 @@ describe('ScheduleFollowUpModal', () => {
     const user = userEvent.setup();
 
     const serviceSelect = await screen.findByRole('combobox');
+    // Wait for the catalog fetch to populate the options before selecting -
+    // findByRole('combobox') resolves as soon as the <select> mounts, while
+    // it still only holds the placeholder option.
+    await screen.findByRole('option', { name: /Wellness Exam/ });
     await user.selectOptions(serviceSelect, 'service-1');
     await user.click(screen.getByRole('button', { name: 'Pick mock slot' }));
     await user.click(screen.getByRole('button', { name: 'Pick mock staff' }));
@@ -234,6 +240,7 @@ describe('ScheduleFollowUpModal', () => {
     const user = userEvent.setup();
 
     const serviceSelect = await screen.findByRole('combobox');
+    await screen.findByRole('option', { name: /Wellness Exam/ });
     await user.selectOptions(serviceSelect, 'service-1');
     await user.click(screen.getByRole('button', { name: 'Pick mock slot' }));
     await user.click(screen.getByRole('button', { name: 'Confirm' }));

@@ -97,11 +97,15 @@ task.
 
 `commit`, `pr-to-dev`, and `pr-dev-to-main` each have a mandatory step that
 spawns the read-only `code-reviewer` agent (see "Domain agents & skills"
-below) for an unbiased review of the diff before the commit/PR proceeds. A
-`PreToolUse` hook in `.claude/settings.local.json` is a backstop: it blocks
-a direct `git commit` / `git push` / `gh pr create` when `client/src`,
-`server/src`, or `supabase/` has changed and no matching review exists for
-the branch under `../golden-fur-vault/Projects/golden-fur/testing/reviews/`.
+below) for an unbiased review of the diff before the commit/PR proceeds —
+that is the in-repo gate. As a personal backstop you can also add a
+`PreToolUse` hook to your own (gitignored) `.claude/settings.local.json`
+that blocks a direct `git commit` / `git push` / `gh pr create` when
+`client/src`, `server/src`, or `supabase/` changed and no matching review
+exists for the branch under
+`../golden-fur-vault/Projects/golden-fur/testing/reviews/` — see the vault
+decision record
+`Projects/golden-fur/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
 
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:
