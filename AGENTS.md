@@ -95,6 +95,14 @@ also invocable standalone). Any AI coding tool working in this repo
 should read the relevant file under `.agent/` before doing that kind of
 task.
 
+`commit`, `pr-to-dev`, and `pr-dev-to-main` each have a mandatory step that
+spawns the read-only `code-reviewer` agent (see "Domain agents & skills"
+below) for an unbiased review of the diff before the commit/PR proceeds. A
+`PreToolUse` hook in `.claude/settings.local.json` is a backstop: it blocks
+a direct `git commit` / `git push` / `gh pr create` when `client/src`,
+`server/src`, or `supabase/` has changed and no matching review exists for
+the branch under `../golden-fur-vault/Projects/golden-fur/testing/reviews/`.
+
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:
 
@@ -126,6 +134,18 @@ git-workflow skills above applies (`.claude/agents/<name>.md` +
 **Agents** (spawnable subagents, most with full dev tool access unless
 noted):
 
+- `code-reviewer` — unbiased, **read-only** review of the current branch's
+  diff. Runs automatically as a step of the git workflow: before a commit
+  (`commit`), before real commits are published, and before a PR is opened
+  (`pr-to-dev` / `pr-dev-to-main`). It did not write the code and gets no
+  rationale beyond the diff itself. No `Edit`; `Bash` limited to read-only
+  git inspection; `Write` used only for its one report file, which it
+  places in the sibling vault at
+  `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`
+  (never in this repo — same "no working docs in the code repo" rule as the
+  testing docs). Fix its **Blocking** findings before committing/opening
+  the PR; skip the gate only for a pure formatting/non-functional diff, and
+  say so.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
 - `payment-billing-agent` — PayMongo webhook handling and the Credit

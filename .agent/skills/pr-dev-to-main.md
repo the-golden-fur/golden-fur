@@ -8,11 +8,19 @@ skill instead — the two directions use different merge strategies.
 
 1. Make sure `dev` is up to date and includes everything intended for this
    release/promotion.
-2. Title/body summarize what's shipping — this can aggregate several
+2. **Confirm each feature/fix branch merged into `dev` since the last
+   promotion was reviewed** by the `code-reviewer` subagent
+   (`.agent/agents/code-reviewer.md`) at `pre-pr` time — its reports live
+   under `../golden-fur-vault/Projects/golden-fur/testing/reviews/`. If any
+   branch has no review on record, run the `code-reviewer` on that PR's
+   diff now (trigger `pre-pr`) and resolve any **Blocking** findings before
+   promoting. A `dev` → `main` promotion adds no new code, so it needs no
+   fresh full-tree review of its own.
+3. Title/body summarize what's shipping — this can aggregate several
    feature/fix PRs merged into `dev` since the last promotion, not just one
    change. Sections: Summary, What Changed (notable features/fixes since
    the last dev → main promotion), Testing.
-3. Open it directly: `gh pr create --base main --head dev --title "..."
+4. Open it directly: `gh pr create --base main --head dev --title "..."
 --body "..."`.
 
 ## Merge strategy: rebase first, merge as fallback — never squash

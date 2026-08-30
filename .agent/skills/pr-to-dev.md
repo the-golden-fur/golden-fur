@@ -7,12 +7,21 @@ skill instead — the two directions use different merge strategies.
 ## Process
 
 1. Make sure the compare branch is pushed and up to date with its remote.
-2. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
+2. **Run an unbiased code review of the whole branch** — spawn the
+   `code-reviewer` subagent (`.agent/agents/code-reviewer.md`, trigger
+   `pre-pr`) on the full `dev..HEAD` diff. It is read-only and files its
+   report under
+   `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/`.
+   Resolve every **Blocking** finding before opening the PR; fold anything
+   still worth noting into the PR's **Testing**/**How** sections. If the
+   branch's commits were each reviewed at `pre-commit` time and nothing has
+   changed since the last pass, that counts — no new pass needed.
+3. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
    (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
    Pre-Merge Checklist) — see field rules below.
-3. Open it directly: `gh pr create --base dev --head <branch> --title "..."
+4. Open it directly: `gh pr create --base dev --head <branch> --title "..."
 --body "..."`.
-4. Recommend label(s) and note the Milestone / Development (linked issues)
+5. Recommend label(s) and note the Milestone / Development (linked issues)
    fields — these are GitHub sidebar fields, not part of the body; set them
    with `gh pr edit --add-label ...` or leave them for the user to set in
    the UI if `gh` in this environment can't reach them.

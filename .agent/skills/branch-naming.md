@@ -19,6 +19,12 @@
    git push -u origin <type>/<short-description>
    ```
 
+Pushing the freshly-created (empty) branch here needs no review. The
+unbiased `code-reviewer` gate (`.agent/agents/code-reviewer.md`) kicks in
+later — before the first commit (`commit` skill), before the branch's real
+commits are published, and before a PR is opened (`pr-to-dev` /
+`pr-dev-to-main`).
+
 ## Types
 
 | Type        | When to use                                  | Base branch |
