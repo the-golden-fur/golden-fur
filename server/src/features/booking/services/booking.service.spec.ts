@@ -130,7 +130,10 @@ const DEFAULT_POLICY = {
   branch_id: null,
   notice_period_days: 3,
   notice_enforcement_mode: 'Strict',
-  notice_enforcement_enabled: true,
+  // Off for the bulk of these tests, which use a fixed BASE_INPUT date and
+  // aren't exercising the minimum-notice lead time - see the dedicated
+  // "minimum-notice lead time" describe block for the enabled case.
+  notice_enforcement_enabled: false,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,
@@ -1754,7 +1757,14 @@ describe('booking.service (#51)', () => {
 
       await createBooking({
         requesterId: CUSTOMER_ID,
-        input: BASE_INPUT,
+        // DOCUMENTED_DEFAULTS enforces a 3-day notice, so this one path
+        // needs a genuinely-future slot (the rest use a fixed past date
+        // with enforcement off via DEFAULT_POLICY).
+        input: {
+          ...BASE_INPUT,
+          scheduled_start: new Date(Date.now() + 30 * 864e5).toISOString(),
+          scheduled_end: new Date(Date.now() + 30 * 864e5 + 36e5).toISOString(),
+        },
       });
 
       const insert = recordedWrites.find(
@@ -1910,6 +1920,100 @@ describe('booking.service (#51)', () => {
       // The auto-cancel deadline is stamped for the unpaid pencil booking.
       const payload = insert?.payload as Record<string, unknown>;
       expect(payload.downpayment_due_at).toEqual(expect.any(String));
+    });
+  });
+
+  describe('minimum-notice lead time (advisor addendum)', () => {
+    const ENFORCED_POLICY = {
+      ...DEFAULT_POLICY,
+      notice_enforcement_enabled: true,
+      notice_period_days: 3,
+    };
+    const soonIso = (days: number) =>
+      new Date(Date.now() + days * 864e5).toISOString();
+
+    it('rejects an Online booking whose slot is inside the notice window with a 422', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [ENFORCED_POLICY], error: null } // effective policy (notice + downpayment)
+      );
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            scheduled_start: soonIso(1),
+            scheduled_end: soonIso(1.05),
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      expect(
+        recordedWrites.find((write) => write.table === 'bookings')
+      ).toBeUndefined();
+    });
+
+    it('accepts an Online booking whose slot clears the notice window', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [ENFORCED_POLICY], error: null }, // effective policy
+        { data: [ENFORCED_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          scheduled_start: soonIso(10),
+          scheduled_end: soonIso(10.05),
+        },
+      });
+
+      expect(
+        recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBeDefined();
+    });
+
+    it('a Walk-in booking is exempt from the notice window', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        // no notice/downpayment policy query - walk-in skips the whole block
+        { data: [ENFORCED_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: 'recept-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          booking_source: 'Walk-in',
+          scheduled_start: soonIso(0),
+          scheduled_end: soonIso(0.05),
+        },
+      });
+
+      expect(
+        recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBeDefined();
     });
   });
 

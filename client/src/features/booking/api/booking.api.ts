@@ -142,6 +142,10 @@ export interface AvailabilityQuery {
 export interface DayAvailability {
   slots: SlotAvailability[];
   window: OperatingWindow | null;
+  /** Minimum-notice lead time (policy_configurations.notice_period_days when
+   * enforcement is on, else 0): the Slot Picker floors its calendar this many
+   * days out so the browsable range opens on the first bookable day. */
+  minNoticeDays: number;
 }
 
 export async function getDayAvailability(
@@ -168,10 +172,18 @@ export async function getDayAvailability(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<DayAvailability>(response);
+  const result = await parseBody<{
+    slots: SlotAvailability[];
+    window: OperatingWindow | null;
+    min_notice_days?: number;
+  }>(response);
   return {
     data: result.data
-      ? { slots: result.data.slots, window: result.data.window }
+      ? {
+          slots: result.data.slots,
+          window: result.data.window,
+          minNoticeDays: result.data.min_notice_days ?? 0,
+        }
       : null,
     error: result.error,
   };
