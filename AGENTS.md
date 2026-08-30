@@ -95,6 +95,21 @@ also invocable standalone). Any AI coding tool working in this repo
 should read the relevant file under `.agent/` before doing that kind of
 task.
 
+`commit`, `pr-to-dev`, and `pr-dev-to-main` each have two mandatory
+subagent steps before the commit/PR proceeds (see "Domain agents & skills"
+below): the read-only `ci-verifier` agent, which runs the `✅ CI: Verify
+All` task (tests, lint, format, build) for **both** `golden-fur` and
+`golden-fur-vault` and must come back green; and the read-only
+`code-reviewer` agent, for an unbiased review of the diff. As a personal
+backstop you can also add a
+`PreToolUse` hook to your own (gitignored) `.claude/settings.local.json`
+that blocks a direct `git commit` / `git push` / `gh pr create` when
+`client/src`, `server/src`, or `supabase/` changed and no matching review
+exists for the branch under
+`../golden-fur-vault/Projects/golden-fur/testing/reviews/` — see the vault
+decision record
+`Projects/golden-fur/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
+
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:
 
@@ -126,6 +141,23 @@ git-workflow skills above applies (`.claude/agents/<name>.md` +
 **Agents** (spawnable subagents, most with full dev tool access unless
 noted):
 
+- `ci-verifier` — **read-only** runner for the `✅ CI: Verify All` task
+  (tests, lint, format, build) across **both** `golden-fur` and
+  `golden-fur-vault`. Runs automatically before a commit, a branch publish,
+  and a PR; reports one pass/fail with the failing output, never fixes or
+  commits. Keeps the full suite/build output out of the main session.
+- `code-reviewer` — unbiased, **read-only** review of the current branch's
+  diff. Runs automatically as a step of the git workflow: before a commit
+  (`commit`), before real commits are published, and before a PR is opened
+  (`pr-to-dev` / `pr-dev-to-main`). It did not write the code and gets no
+  rationale beyond the diff itself. No `Edit`; `Bash` limited to read-only
+  git inspection; `Write` used only for its one report file, which it
+  places in the sibling vault at
+  `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`
+  (never in this repo — same "no working docs in the code repo" rule as the
+  testing docs). Fix its **Blocking** findings before committing/opening
+  the PR; skip the gate only for a pure formatting/non-functional diff, and
+  say so.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
 - `payment-billing-agent` — PayMongo webhook handling and the Credit

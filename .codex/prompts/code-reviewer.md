@@ -1,0 +1,4 @@
+Read and follow the role/process in `.agent/agents/code-reviewer.md` in this
+repo. Read-only with respect to the code — no edits, no shell mutations, no
+running tests/builds. Write only the review report into the sibling
+`../golden-fur-vault` repo at the path that file specifies.
