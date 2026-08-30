@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "main": "src/app.ts",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "=== CORE WORKFLOW ===": "",
     "dev": "cross-env NODE_ENV=development tsx watch src/app.ts",

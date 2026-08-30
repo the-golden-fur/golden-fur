@@ -97,6 +97,8 @@ data, and troubleshooting.
 - [docs/setup.md](docs/setup.md) — guided environment & Supabase setup
 - [docs/architecture.md](docs/architecture.md) — module list, folder
   structure, and system design
+- [docs/deployment.md](docs/deployment.md) — production hosts, environment
+  variables, and the release runbook
 - [docs/privacy-policy.html](docs/privacy-policy.html) — privacy policy
 
 ## Team Members
