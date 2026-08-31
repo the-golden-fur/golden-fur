@@ -80,6 +80,7 @@ sql_paths = [
   "./seeds/module-2-customers-pets/*.sql",
   "./seeds/module-3-maintenance/*.sql",
   "./seeds/module-4-hotel/*.sql",
+  "./seeds/module-5-promos-vet-catalog/*.sql",
 ]
 
 [db.network_restrictions]

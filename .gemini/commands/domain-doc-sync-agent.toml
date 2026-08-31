@@ -1,0 +1,7 @@
+description = "Reconcile .agent domain agents/skills with changed business-rule code"
+prompt = """
+Read and follow the role/process in .agent/agents/domain-doc-sync-agent.md
+in this repo.
+
+{{args}}
+"""

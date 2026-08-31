@@ -1,0 +1,7 @@
+description = "Seed-coverage map + the .ts/.sql/.spec trio conventions + change checklist"
+prompt = """
+Read and follow the instructions in .agent/skills/supabase-seed-maintenance.md
+in this repo.
+
+{{args}}
+"""
