@@ -259,10 +259,13 @@ export function CustomerBookingsPage() {
     }
 
     replaceBooking(result.data.booking);
+    const branchName = branchNameById.get(booking.branch_id) ?? 'this branch';
     setActionMessage(
-      result.data.policy_violation
-        ? 'Booking cancelled without meeting the configured notice period.'
-        : 'Booking cancelled.'
+      result.data.credit_issued
+        ? `Booking cancelled. Your payment has been converted into account credit at ${branchName} for a future visit.`
+        : result.data.policy_violation
+          ? 'Booking cancelled. This did not meet the required notice period, so any payment was forfeited.'
+          : 'Booking cancelled.'
     );
     setActiveAction(null);
   }
@@ -579,13 +582,19 @@ export function CustomerBookingsPage() {
         body={
           <>
             <p>
-              Are you sure you want to cancel this booking? This cannot be
-              undone
-              {cancelTarget?.downpayment_amount
-                ? ' and may forfeit your downpayment depending on notice given'
-                : ''}
-              .
+              Are you sure you want to cancel this booking? This can&apos;t be
+              undone.
             </p>
+            {cancelTarget?.payment_stage === 'Paid' ||
+            cancelTarget?.payment_stage === 'Paid in Advance' ? (
+              <p>
+                Any payment you&apos;ve already made &mdash; a down payment or
+                the full amount &mdash; won&apos;t be refunded. If you cancel
+                with enough notice it becomes <strong>account credit</strong> at
+                this branch that you can use on a future visit; a late
+                cancellation forfeits it.
+              </p>
+            ) : null}
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Reason (optional)</span>
               <textarea
