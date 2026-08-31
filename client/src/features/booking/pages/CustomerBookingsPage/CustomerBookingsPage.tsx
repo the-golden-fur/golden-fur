@@ -5,6 +5,7 @@ import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
@@ -294,6 +295,14 @@ export function CustomerBookingsPage() {
     );
   }
 
+  // AC-5: cancellation always goes through this explicit modal dialog - a
+  // stray/double click on the row's "Cancel" button opens it, it never
+  // executes the cancellation.
+  const cancelTarget =
+    activeAction?.type === 'cancel'
+      ? bookings.find((booking) => booking.id === activeAction.bookingId)
+      : undefined;
+
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>My bookings</h1>
@@ -550,62 +559,49 @@ export function CustomerBookingsPage() {
                     </div>
                   </div>
                 ) : null}
-
-                {isCancelling ? (
-                  <div className={styles.actionPanel}>
-                    <p className={styles.copy} role="alert">
-                      Are you sure you want to cancel this booking? This cannot
-                      be undone
-                      {booking.downpayment_amount
-                        ? ' and may forfeit your downpayment depending on notice given'
-                        : ''}
-                      .
-                    </p>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        Reason (optional)
-                      </span>
-                      <textarea
-                        className={styles.input}
-                        value={cancellationReason}
-                        onChange={(event) =>
-                          setCancellationReason(event.target.value)
-                        }
-                      />
-                    </label>
-
-                    {actionError ? (
-                      <p className={styles.errorBanner} role="alert">
-                        {actionError}
-                      </p>
-                    ) : null}
-
-                    <div className={styles.bookingControls}>
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        disabled={isSubmittingAction}
-                        onClick={() => void confirmCancel(booking)}
-                      >
-                        {isSubmittingAction
-                          ? 'Cancelling...'
-                          : 'Yes, cancel booking'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={closeAction}
-                      >
-                        Keep booking
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
               </li>
             );
           })}
         </ul>
       )}
+
+      <ConfirmDialog
+        isOpen={cancelTarget !== undefined}
+        title="Cancel this booking?"
+        tone="danger"
+        confirmLabel="Yes, cancel"
+        cancelLabel="Keep booking"
+        isConfirming={isSubmittingAction}
+        onCancel={closeAction}
+        onConfirm={() => {
+          if (cancelTarget) void confirmCancel(cancelTarget);
+        }}
+        body={
+          <>
+            <p>
+              Are you sure you want to cancel this booking? This cannot be
+              undone
+              {cancelTarget?.downpayment_amount
+                ? ' and may forfeit your downpayment depending on notice given'
+                : ''}
+              .
+            </p>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Reason (optional)</span>
+              <textarea
+                className={styles.input}
+                value={cancellationReason}
+                onChange={(event) => setCancellationReason(event.target.value)}
+              />
+            </label>
+            {actionError ? (
+              <p className={styles.errorBanner} role="alert">
+                {actionError}
+              </p>
+            ) : null}
+          </>
+        }
+      />
     </main>
   );
 }
