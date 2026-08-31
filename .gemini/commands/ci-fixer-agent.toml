@@ -1,0 +1,7 @@
+description = "Fix a red '✅ CI: Verify All' (tests/lint/format/build) until green"
+prompt = """
+Read and follow the role/process in .agent/agents/ci-fixer-agent.md
+in this repo.
+
+{{args}}
+"""
