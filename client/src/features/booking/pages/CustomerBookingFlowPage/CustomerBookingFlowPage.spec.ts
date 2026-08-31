@@ -1009,10 +1009,12 @@ describe('CustomerBookingFlowPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'About Grooming' }));
 
+    // GROOMING_SERVICE from the mocked branch catalog, shown read-only as a
+    // plain name (no checkbox / clickable option, no price). findBy waits
+    // out the catalog fetch, same as the Services-step tests.
+    await screen.findByText('Bath');
     const note = screen.getByRole('note');
     expect(note).toHaveTextContent(/bathing, brushing, haircuts/);
-    // GROOMING_SERVICE from the mocked branch catalog, shown read-only as a
-    // plain name (no checkbox / clickable option, no price).
     expect(note).toHaveTextContent('Bath');
     // HOTEL_SERVICE belongs to another type and must not leak in here.
     expect(note).not.toHaveTextContent('Hotel Stay - Medium Cage');
@@ -1036,12 +1038,12 @@ describe('CustomerBookingFlowPage', () => {
     );
 
     // No CATEGORY_DESCRIPTIONS entry for a custom key - the definition
-    // paragraph is omitted, and the mocked catalog has no 'Boarding'
+    // paragraph is omitted, and the mocked catalog (loaded once the "no
+    // services" line replaces "Loading services...") has no 'Boarding'
     // service, so the empty-state line shows instead of a list.
+    await screen.findByText('No services are listed for this branch yet.');
     const note = screen.getByRole('note');
-    expect(note).toHaveTextContent(
-      'No services are listed for this branch yet.'
-    );
+    expect(note).not.toHaveTextContent(/bathing, brushing/);
   });
 
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {

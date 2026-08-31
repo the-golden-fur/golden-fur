@@ -2135,7 +2135,11 @@ export function CustomerBookingFlowPage() {
                         <p className={styles.infoHeading}>
                           Services at this branch
                         </p>
-                        {bookableServices.length > 0 ? (
+                        {allServices.length === 0 ? (
+                          // Catalog still loading - don't claim the branch
+                          // offers nothing until we actually know.
+                          <p className={styles.infoText}>Loading services…</p>
+                        ) : bookableServices.length > 0 ? (
                           // Names only - prices vary by category (Daycare is
                           // hourly, Hotel is per-night, Grooming can use a
                           // size/coat matrix), so the accurate figure is left
