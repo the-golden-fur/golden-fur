@@ -94,6 +94,9 @@ export function SlotPicker({
     useState<OperatingWindow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Minimum-notice lead time, reported by the availability endpoint. Until
+  // the first fetch resolves it stays 0 (no floor), matching prior behavior.
+  const [minNoticeDays, setMinNoticeDays] = useState(0);
 
   // Identity read via ref so a fresh arrow function on every parent render
   // never forces a re-fetch - only the actual query params below should.
@@ -141,6 +144,18 @@ export function SlotPicker({
       setError(null);
       setSlots(result.data.slots);
       setOperatingWindow(result.data.window);
+
+      const leadDays = result.data.minNoticeDays ?? 0;
+      setMinNoticeDays(leadDays);
+
+      // Jump the calendar forward to the first bookable day when the branch
+      // enforces a notice period and we're still showing an earlier (always
+      // empty) day - one corrective re-fetch, then it settles.
+      const earliest = shiftDate(todayIso(), leadDays);
+      if (date < earliest) {
+        setDate(earliest);
+      }
+
       onAvailabilityChangeRef.current?.({
         date,
         hasAnyAvailable: result.data.slots.some((slot) => slot.available),
@@ -185,12 +200,12 @@ export function SlotPicker({
     onSelect(nowSlot);
   }, [nowSlot, selectedSlot, onSelect]);
 
-  // A past date is never bookable (server-side: getDaySlots returns []
-  // for any date before "today" in the branch's own timezone) - blocking
-  // navigation to one here too is just the matching client-side guard, so
-  // Previous day/the date input can't even be used to reach a date that
-  // would always come back empty anyway.
-  const minDate = todayIso();
+  // The earliest bookable date: "today" in the browser's local zone, pushed
+  // forward by the branch's minimum-notice lead time. getDaySlots returns []
+  // for anything earlier (a past date, or a day inside the notice window), so
+  // flooring Previous day / the date input here just keeps navigation off
+  // dates that would always come back empty.
+  const minDate = shiftDate(todayIso(), minNoticeDays);
   const isAtMinDate = date <= minDate;
 
   return (
@@ -245,6 +260,15 @@ export function SlotPicker({
           </button>
         </div>
       )}
+
+      {!lockToNow && minNoticeDays > 0 ? (
+        <p className={styles.copy}>
+          This branch needs at least {minNoticeDays} day
+          {minNoticeDays === 1 ? '' : 's'} notice, so the earliest date you can
+          pick is {minNoticeDays} day{minNoticeDays === 1 ? '' : 's'} from
+          today.
+        </p>
+      ) : null}
 
       {/* Walk-in booking flow: the locked banner above already covers
           loading/resolved/no-slot messaging, so the normal loading/error/

@@ -32,10 +32,11 @@ import {
   confirmCapacityAfterInsert,
 } from './capacity.service.ts';
 import {
+  assertMeetsNoticeLeadTime,
   autoAssignStaff,
   isStaffPickerEnabled,
   listAvailableStaff,
-  resolveDownpaymentPolicy,
+  resolveEffectivePolicy,
 } from './staffPicker.service.ts';
 import {
   isCagePickerEnabled,
@@ -820,22 +821,30 @@ export async function createBooking({
   // still unpaid (applyDownpaymentExpiry). An actual payment is what turns
   // it into a real, slot-holding reservation.
   //
-  // Walk-in booking flow: a walk-in never touches the down payment policy -
-  // resolveDownpaymentPolicy is not even called (the customer/pet is
-  // physically present, paying in full at the counter, #122).
+  // Walk-in booking flow: a walk-in never touches the down payment policy or
+  // the minimum-notice window (the customer/pet is physically present,
+  // paying in full at the counter, #122).
   let downpaymentRequired = false;
   let downpaymentAmount: number | null = null;
   let downpaymentHoldHours = 24;
 
   if (bookingSource === 'Online') {
-    const downpaymentPolicy = await resolveDownpaymentPolicy(input.branch_id);
-    downpaymentRequired = downpaymentPolicy.downpayment_enabled;
-    downpaymentHoldHours = downpaymentPolicy.downpayment_hold_hours ?? 24;
+    // One effective-policy resolve feeds both the down-payment config and
+    // the minimum-notice lead time (advisor addendum): an Online booking's
+    // slot must sit at least notice_period_days out. This is the
+    // authoritative gate behind the Slot Picker's own floored calendar - a
+    // direct API call can't book inside the window.
+    const policy = await resolveEffectivePolicy(input.branch_id);
+
+    assertMeetsNoticeLeadTime(policy, input.scheduled_start);
+
+    downpaymentRequired = policy.downpayment_enabled;
+    downpaymentHoldHours = policy.downpayment_hold_hours ?? 24;
     downpaymentAmount = downpaymentRequired
       ? round2(
-          downpaymentPolicy.downpayment_type === 'Percentage'
-            ? netTotal * ((downpaymentPolicy.downpayment_amount ?? 0) / 100)
-            : Math.min(downpaymentPolicy.downpayment_amount ?? 0, netTotal)
+          policy.downpayment_type === 'Percentage'
+            ? netTotal * ((policy.downpayment_amount ?? 0) / 100)
+            : Math.min(policy.downpayment_amount ?? 0, netTotal)
         )
       : null;
   }

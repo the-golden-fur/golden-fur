@@ -9,7 +9,9 @@ import {
 } from './capacity.service.ts';
 import {
   listAvailableStaff,
+  noticeLeadDays,
   resolveEffectivePolicy,
+  resolveNoticeLeadDays,
 } from './staffPicker.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -227,6 +229,26 @@ export async function getDaySlots({
     return [];
   }
 
+  // One effective-policy resolve for this call - feeds both the
+  // minimum-notice date floor here and the lunch-break filter further down.
+  const policy = await resolveEffectivePolicy(branchId);
+
+  // Minimum-notice lead time (advisor addendum): when notice enforcement is
+  // on, the earliest bookable calendar date is N days out - every earlier
+  // day comes back empty, exactly like a closed day, so the Slot Picker and
+  // findNextAvailableSlot both skip past the notice window as a date range
+  // rather than showing pinned, unbookable near-term days. Day-granular (not
+  // an instant) so there is no confusing half-open first day. Walk-ins never
+  // reach this path (their slot is "now", not browsed).
+  const minLeadDays = noticeLeadDays(policy);
+
+  if (
+    minLeadDays > 0 &&
+    date < addDaysToDateString(todayInBranchTz, minLeadDays)
+  ) {
+    return [];
+  }
+
   const dayName = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     weekday: 'long',
@@ -284,7 +306,6 @@ export async function getDaySlots({
   // single source of truth for default-vs-branch-override precedence.
   // Applies to every category uniformly since Hotel/Daycare route through
   // this same candidate list ("cannot book at this time" is a blanket rule).
-  const policy = await resolveEffectivePolicy(branchId);
   let lunchCandidates = candidates;
 
   if (policy.lunch_break_enabled) {
@@ -306,13 +327,16 @@ export async function getDaySlots({
     );
   }
 
-  // Same-day bookings are allowed, but a slot whose start time is already in
-  // the past is never a real option (e.g. 8:00 AM showing as bookable at
-  // 3:00 PM) - applies to every category, Hotel included now that Hotel
-  // offers real arrival-time candidates rather than a single day-level flag.
-  const now = new Date();
+  // A slot whose start time is already in the past is never a real option
+  // (e.g. 8:00 AM showing as bookable at 3:00 PM) - applies to every
+  // category, Hotel included now that Hotel offers real arrival-time
+  // candidates rather than a single day-level flag. The same filter also
+  // enforces the minimum-notice lead time to the exact instant, so the
+  // first bookable day's earlier slots (before now + N days) drop out
+  // rather than being offered here and then 422'd by assertMeetsNoticeLeadTime.
+  const earliestStartMs = Date.now() + minLeadDays * 24 * 60 * 60 * 1000;
   const futureCandidates = lunchCandidates.filter(
-    (candidate) => candidate.start.getTime() > now.getTime()
+    (candidate) => candidate.start.getTime() > earliestStartMs
   );
 
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
@@ -398,8 +422,14 @@ export interface NextAvailableSlot {
 }
 
 function nextDateString(date: string): string {
+  return addDaysToDateString(date, 1);
+}
+
+/** Calendar-date arithmetic on a YYYY-MM-DD string, via UTC midnight so it is
+ * immune to the host's local offset. */
+function addDaysToDateString(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day + 1))
+  return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
     .slice(0, 10);
 }
@@ -420,9 +450,13 @@ export async function findNextAvailableSlot({
   petWeightClass,
   lookaheadDays = DEFAULT_LOOKAHEAD_DAYS,
 }: FindNextAvailableSlotParams): Promise<NextAvailableSlot | null> {
+  // The minimum-notice window (getDaySlots returns [] for every day inside
+  // it) is skipped for free rather than eating into lookaheadDays - the
+  // caller asked for N bookable days of look-ahead, not N days total.
+  const minLeadDays = await resolveNoticeLeadDays(branchId);
   let cursor = fromDate;
 
-  for (let i = 0; i < lookaheadDays; i += 1) {
+  for (let i = 0; i < lookaheadDays + minLeadDays; i += 1) {
     const slots = await getDaySlots({
       branchId,
       serviceCategory,

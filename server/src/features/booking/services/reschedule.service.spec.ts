@@ -145,6 +145,28 @@ describe('reschedule.service (#54)', () => {
     });
   });
 
+  it('minimum-notice lead time (advisor addendum): blocks a reschedule whose NEW slot is inside the notice window with a 422, even when the current appointment is far off', async () => {
+    queueFromResults(
+      { data: DAYCARE_BOOKING, error: null }, // booking fetch (current start 10 days out - clears evaluateNoticePeriod)
+      { data: [policyRow()], error: null } // policy (notice_period_days 3)
+    );
+
+    await expect(
+      rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {
+          scheduled_start: daysFromNow(1), // new slot too soon
+          scheduled_end: daysFromNow(1.1),
+        },
+      })
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    expect(
+      recordedWrites.find((write) => write.method === 'update')
+    ).toBeUndefined();
+  });
+
   it('AC-2: Strict mode blocks a reschedule that misses the notice period, naming the requirement', async () => {
     queueFromResults(
       {

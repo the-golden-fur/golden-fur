@@ -16,6 +16,7 @@ import {
   isOnlinePaymentsEnabled,
   listPolicyConfigurations,
   resolveDownpaymentPolicy,
+  resolveNoticeLeadDays,
   updatePolicyConfiguration,
 } from './services/staffPicker.service.ts';
 import { getCagePickerOptions } from './services/cagePicker.service.ts';
@@ -181,7 +182,7 @@ export async function availabilityController(
   }
 
   try {
-    const [slots, window] = await Promise.all([
+    const [slots, window, minNoticeDays] = await Promise.all([
       getDaySlots({
         branchId: parsed.data.branch_id,
         serviceCategory: parsed.data.service_category,
@@ -193,9 +194,15 @@ export async function availabilityController(
         branchId: parsed.data.branch_id,
         date: parsed.data.date,
       }),
+      resolveNoticeLeadDays(parsed.data.branch_id),
     ]);
 
-    return res.status(200).json({ slots, window });
+    // min_notice_days lets the Slot Picker floor its own calendar to the
+    // same date range getDaySlots enforces, so the browsable window opens
+    // on the first bookable day instead of a run of empty near-term days.
+    return res
+      .status(200)
+      .json({ slots, window, min_notice_days: minNoticeDays });
   } catch (error) {
     return sendServiceError(res, error);
   }
