@@ -7,7 +7,11 @@
 }
 
 .social {
+  /* Stacked full-width, not side-by-side: "Continue with Google/Facebook"
+     plus the 36px icon never fit on one line at ~176px per column, so the
+     label wrapped to three lines. */
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   width: 100%;
   min-width: 0;
@@ -55,9 +59,9 @@
 
 .socialButton span:last-child {
   min-width: 0;
-  overflow-wrap: break-word;
   line-height: 1.2;
   text-align: center;
+  white-space: nowrap;
 }
 
 .g {
@@ -190,10 +194,4 @@
 .submit:disabled {
   cursor: wait;
   opacity: 0.72;
-}
-
-@media (max-width: 400px) {
-  .social {
-    flex-direction: column;
-  }
 }

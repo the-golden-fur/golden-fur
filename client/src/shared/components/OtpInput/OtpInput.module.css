@@ -13,6 +13,11 @@
   font: inherit;
   font-size: var(--text-heading-md);
   font-weight: var(--weight-semibold);
+  /* Reset the UA <input> padding and the inherited 1.5 line-height: together
+     they push the digit's line box taller than the content area, so the top
+     and bottom of each numeral gets clipped. */
+  padding: 0;
+  line-height: 1;
   text-align: center;
   transition:
     border-color 0.15s ease,
