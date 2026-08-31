@@ -14,11 +14,25 @@ checkout credit-application flow.
 
 ## What generates a credit
 
-A qualifying **cancelled booking** whose item required a downpayment
-converts that downpayment into credit — but only if the configured notice
-period was met (see the cancellation/reschedule policy engine). If the
-notice period wasn't met, the downpayment is forfeited without credit
-issuance. A cancellation log is written either way.
+A qualifying **cancelled booking** converts a share of what the customer
+**actually paid** into credit — but only if the configured notice period
+was met (see the cancellation/reschedule policy engine). If the notice
+period wasn't met, the payment is forfeited without credit issuance. A
+cancellation log is written either way.
+
+- **Amount paid** is derived from `bookings.payment_stage` in
+  `cancellation.service.ts` (no extra query): `Paid` → the discounted net
+  total (`total_price − discount_amount − promo_amount`); `Paid in Advance`
+  → `downpayment_amount`; `Unpaid` → `0`. So a fully-paid booking of any
+  category can now generate credit, and an unpaid down-payment reservation
+  generates none.
+- **Conversion rate** is `policy_configurations.cancellation_credit_conversion_rate`
+  — a branch-scoped percentage (`0`–`100`, `NOT NULL DEFAULT 100`), resolved
+  by `resolveEffectivePolicy()` like every other policy field, editable on
+  Settings → Config → Policies. `creditAmount = round2(amountPaid × rate / 100)`.
+- Credit issuance is **not** gated on the `cancellation_logs` write
+  succeeding (issue #117): `credit_transactions.cancellation_log_id` is
+  nullable, so a failed log write still issues the credit (with a null link).
 
 ## Credit rules
 
