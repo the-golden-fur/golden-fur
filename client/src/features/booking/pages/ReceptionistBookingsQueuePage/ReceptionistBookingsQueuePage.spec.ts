@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -529,6 +529,55 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
     expect(screen.getByText('Reschedule')).toBeInTheDocument();
+  });
+
+  it('cancelling goes through an explicit modal dialog - the row button only opens it', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Pending' })],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
+    await user.click(screen.getByText('Cancel'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByText(/are you sure you want to cancel/i)
+    ).toBeInTheDocument();
+    expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByText('Keep booking'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
+
+    vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
+      data: {
+        booking: buildBooking({ status: 'Cancelled' }),
+        notice_period_met: true,
+        policy_violation: false,
+      },
+      error: null,
+    });
+
+    await user.click(screen.getByText('Cancel'));
+    await user.click(
+      within(screen.getByRole('dialog')).getByText('Yes, cancel booking')
+    );
+
+    await waitFor(() =>
+      expect(bookingApi.cancelBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'token',
+        {}
+      )
+    );
   });
 
   it('a Cancelled booking offers neither Reschedule nor Cancel', async () => {

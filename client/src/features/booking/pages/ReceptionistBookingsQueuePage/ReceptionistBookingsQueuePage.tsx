@@ -20,6 +20,7 @@ import {
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
@@ -729,6 +730,14 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
+  // Cancellation always routes through this explicit modal - the row's
+  // "Cancel" button only opens it, so a stray/double click never executes
+  // the cancellation on the customer's behalf.
+  const cancelTarget =
+    activeAction?.type === 'cancel'
+      ? bookings.find((booking) => booking.id === activeAction.bookingId)
+      : undefined;
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
@@ -1188,59 +1197,46 @@ export function ReceptionistBookingsQueuePage() {
                       </div>
                     </div>
                   ) : null}
-
-                  {isCancelling ? (
-                    <div className={styles.actionPanel}>
-                      <p className={styles.copy} role="alert">
-                        Cancel this booking on the customer's behalf? This
-                        cannot be undone.
-                      </p>
-                      <label className={styles.field}>
-                        <span className={styles.fieldLabel}>
-                          Reason (optional)
-                        </span>
-                        <textarea
-                          className={styles.input}
-                          value={cancellationReason}
-                          onChange={(event) =>
-                            setCancellationReason(event.target.value)
-                          }
-                        />
-                      </label>
-
-                      {actionError ? (
-                        <p className={styles.errorBanner} role="alert">
-                          {actionError}
-                        </p>
-                      ) : null}
-
-                      <div className={styles.bookingControls}>
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          disabled={isSubmittingAction}
-                          onClick={() => void confirmCancel(booking)}
-                        >
-                          {isSubmittingAction
-                            ? 'Cancelling...'
-                            : 'Yes, cancel booking'}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={closeAction}
-                        >
-                          Keep booking
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
                 </li>
               );
             })}
           </ul>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        isOpen={cancelTarget !== undefined}
+        title="Cancel this booking?"
+        tone="danger"
+        confirmLabel="Yes, cancel booking"
+        cancelLabel="Keep booking"
+        isConfirming={isSubmittingAction}
+        onCancel={closeAction}
+        onConfirm={() => {
+          if (cancelTarget) void confirmCancel(cancelTarget);
+        }}
+        body={
+          <>
+            <p>
+              Are you sure you want to cancel this booking on the
+              customer&apos;s behalf? This cannot be undone.
+            </p>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Reason (optional)</span>
+              <textarea
+                className={styles.input}
+                value={cancellationReason}
+                onChange={(event) => setCancellationReason(event.target.value)}
+              />
+            </label>
+            {actionError ? (
+              <p className={styles.errorBanner} role="alert">
+                {actionError}
+              </p>
+            ) : null}
+          </>
+        }
+      />
     </main>
   );
 }

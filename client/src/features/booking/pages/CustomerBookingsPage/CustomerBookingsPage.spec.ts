@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -148,11 +148,20 @@ describe('CustomerBookingsPage', () => {
     await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
     await user.click(screen.getByText('Cancel'));
 
-    // The confirm panel appears, but the API must not be called yet.
+    // An explicit modal dialog appears; the API must not be called yet.
+    const dialog = screen.getByRole('dialog');
     expect(
-      screen.getByText(/are you sure you want to cancel/i)
+      within(dialog).getByText(/are you sure you want to cancel/i)
     ).toBeInTheDocument();
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
+
+    // Dismissing with "Keep booking" closes the dialog and still never calls
+    // the API - so a stray click on the row's Cancel button is harmless.
+    await user.click(within(dialog).getByText('Keep booking'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('Cancel'));
 
     vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
       data: {
