@@ -6,6 +6,11 @@
 
 .content {
   display: grid;
+  /* Pack rows at the top - .page stretches .content to min-height: 100vh, and
+     without this the grid distributes that extra height between the rows,
+     blowing the gap between the title, toolbar, and (short) results list out
+     to ~200px each when the queue is empty. */
+  align-content: start;
   gap: var(--space-4);
   max-width: 72rem;
   width: 100%;

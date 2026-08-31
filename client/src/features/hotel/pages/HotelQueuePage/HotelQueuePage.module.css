@@ -6,6 +6,10 @@
 
 .content {
   display: grid;
+  /* Pack rows at the top - .page stretches .content to min-height: 100vh, and
+     without this the grid spreads that extra height between the rows, opening
+     a large gap under the header when the queue is short/empty. */
+  align-content: start;
   gap: var(--space-3);
   max-width: 56rem;
   width: 100%;

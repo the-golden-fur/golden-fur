@@ -6,6 +6,10 @@
 
 .content {
   display: grid;
+  /* Pack rows at the top - .page stretches .content to min-height: 100vh, and
+     without this the grid spreads that extra height between the rows, which
+     also stretches the flex tab row so the pill buttons balloon vertically. */
+  align-content: start;
   gap: var(--space-4);
   max-width: 56rem;
   width: 100%;
@@ -46,8 +50,12 @@
   border: 0;
   border-radius: var(--radius-pill);
   cursor: pointer;
-  font: inherit;
+  /* font-family only - `font: inherit` also pulled in the 1.5 line-height,
+     which together with the padding made these pills sit ~40px tall. */
+  font-family: inherit;
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
+  line-height: 1;
   padding: var(--space-1) var(--space-3);
 }
 
