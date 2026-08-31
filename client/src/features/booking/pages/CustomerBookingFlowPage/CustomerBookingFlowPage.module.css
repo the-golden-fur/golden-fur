@@ -273,22 +273,45 @@
   color: var(--color-accent-gold-primary);
 }
 
-/* Booking Type step: the ⓘ popover sits in the card's top-right corner as a
-   sibling of the card <button> (a button can't nest inside a button). */
-.bookingTypeCardWrap {
+/* Service Type / Booking Type steps: the ⓘ popover sits in the card's
+   top-right corner as a sibling of the card <button> (a button can't nest
+   inside a button). */
+.infoCardWrap {
   position: relative;
   display: flex;
 }
 
-.bookingTypeCardWrap .categoryCard {
+.infoCardWrap .categoryCard {
   flex: 1;
 }
 
-.bookingTypeInfo {
+.infoCardBadge {
   position: absolute;
   top: var(--space-1);
   right: var(--space-1);
   z-index: 1;
+}
+
+/* Read-only contents of the Service Type step's ⓘ popover. */
+.infoText {
+  margin: 0;
+}
+
+.infoHeading {
+  margin: 0 0 var(--space-1);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.infoText + .infoHeading {
+  margin-top: var(--space-2);
+}
+
+.infoServiceList {
+  margin: 0;
+  padding-left: var(--space-3);
+  display: grid;
+  gap: var(--space-0-5);
 }
 
 .categoryLabel {
