@@ -413,6 +413,9 @@ export interface PolicyConfiguration {
   reschedule_free_allowance: number | null;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  /** Percent (0-100) of what the customer paid that is returned as account
+   * credit on a qualifying cancellation. Default 100 (full). */
+  cancellation_credit_conversion_rate: number;
   /** Master toggle for the customer-facing PayMongo Pay button - when
    * false, the button still renders (disabled, with an explanatory
    * tooltip) rather than disappearing. */
@@ -449,6 +452,7 @@ export type EffectivePolicy = Pick<
   | 'reschedule_free_allowance'
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
+  | 'cancellation_credit_conversion_rate'
   | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
@@ -472,6 +476,7 @@ export interface UpdatePolicyPayload {
   reschedule_free_allowance?: number | null;
   credit_expiry_enabled?: boolean;
   credit_expiry_days?: number;
+  cancellation_credit_conversion_rate?: number;
   online_payments_enabled?: boolean;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;

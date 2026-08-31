@@ -407,6 +407,11 @@ export interface PolicyConfiguration {
   reschedule_free_allowance: number | null;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  /** Percentage (0-100) of the amount a customer actually paid that is
+   * converted to account credit on a qualifying cancellation (advisor
+   * addendum #10). Default 100 = full conversion; lower it to keep part of
+   * the payment as a cancellation charge. Applied in cancellation.service.ts. */
+  cancellation_credit_conversion_rate: number;
   /** Master toggle for the customer-facing PayMongo "Pay" button - when
    * false, the button still renders (disabled, with an explanatory
    * tooltip) rather than disappearing. See isOnlinePaymentsEnabled in
@@ -449,6 +454,7 @@ export type EffectivePolicy = Pick<
   | 'reschedule_free_allowance'
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
+  | 'cancellation_credit_conversion_rate'
   | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'

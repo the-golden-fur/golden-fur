@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
+import { CreditBalanceContext } from '../../../credits/providers/CreditBalanceContext';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as bookingApi from '../../api/booking.api';
@@ -72,6 +73,8 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
   };
 }
 
+const refreshCreditBalance = vi.fn();
+
 function renderPage() {
   const authValue: AuthContextValue = {
     session: null,
@@ -91,12 +94,23 @@ function renderPage() {
         AuthContext.Provider,
         { value: authValue },
         createElement(
-          Routes,
-          null,
-          createElement(Route, {
-            path: '/portal/bookings',
-            element: createElement(CustomerBookingsPage),
-          })
+          CreditBalanceContext.Provider,
+          {
+            value: {
+              balances: [],
+              total: 0,
+              isLoading: false,
+              refresh: refreshCreditBalance,
+            },
+          },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, {
+              path: '/portal/bookings',
+              element: createElement(CustomerBookingsPage),
+            })
+          )
         )
       )
     )
@@ -252,6 +266,10 @@ describe('CustomerBookingsPage', () => {
         /converted into account credit at Makati for a future visit/i
       )
     );
+
+    // The navbar credit pill / portal home is refreshed after a credit-issuing
+    // cancellation so the new balance shows without a reload.
+    expect(refreshCreditBalance).toHaveBeenCalled();
   });
 
   it('does not show reschedule/cancel actions for a Cancelled booking', async () => {

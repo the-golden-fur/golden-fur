@@ -17,6 +17,32 @@ import { sendBookingCancelledNotification } from './bookingNotifications.service
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * What the customer has actually paid on this booking, derived from
+ * payment_stage (the same axis advancePaymentStage in booking.service.ts
+ * uses to compute payment amounts) - no extra query.
+ *
+ * - 'Paid'            -> the whole discounted net total (walk-in full payment,
+ *                        or an online booking whose balance is settled)
+ * - 'Paid in Advance' -> just the downpayment that was collected online
+ * - 'Unpaid' / unset  -> nothing was received, so nothing to convert
+ */
+function amountPaidOnBooking(booking: Booking): number {
+  const netTotal = round2(
+    booking.total_price - booking.discount_amount - booking.promo_amount
+  );
+
+  if (booking.payment_stage === 'Paid') return netTotal;
+  if (booking.payment_stage === 'Paid in Advance') {
+    return round2(booking.downpayment_amount ?? 0);
+  }
+  return 0;
+}
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -31,8 +57,9 @@ export interface CancellationResult {
   /** True when enforcement is on and notice wasn't met, mirroring the
    * reschedule response so #59's UI surfaces both the same way. */
   policy_violation: boolean;
-  /** #91/#93: whether a qualifying Hotel downpayment was actually converted
-   * to a credit_balances increment for this event. */
+  /** #91/#93: whether a share of what the customer paid was actually
+   * converted to a credit_balances increment for this event (notice met,
+   * something was paid, and issue_credit succeeded). */
   credit_issued: boolean;
 }
 
@@ -47,17 +74,18 @@ interface CancelParams {
  * Unlike reschedule, an unmet notice never BLOCKS a cancellation - per the
  * M03 Process 5 flow diagram, the booking is set to Cancelled on both notice
  * branches; what the notice outcome decides is the financial consequence
- * (downpayment -> credit vs forfeited).
+ * (paid amount -> credit vs forfeited).
  *
  * evaluateNoticePeriod() itself is unchanged (Sprint 2 #54) - this issue
  * only fills the TODO(Sprint 5, M09/M10) marker that used to sit here: every
  * event writes a cancellation_logs row (AC-5), and a qualifying cancellation
- * (notice met AND a non-refundable downpayment actually exists to convert -
- * Grooming/Daycare/Veterinary bookings have no downpayment concept at all)
- * additionally calls into #93's creditIssuance.service.ts. Strict-mode
- * cancellations are never blocked by notice - Strict only withholds credit,
- * exactly as Sprint 2 already distinguished from a Strict reschedule
- * (reschedule.service.ts), which IS blocked outright.
+ * (notice met AND the customer actually paid something) additionally calls
+ * into #93's creditIssuance.service.ts, converting
+ * cancellation_credit_conversion_rate percent (default 100) of what was paid
+ * (advisor addendum #10). Strict-mode cancellations are never blocked by
+ * notice - Strict only withholds credit, exactly as Sprint 2 already
+ * distinguished from a Strict reschedule (reschedule.service.ts), which IS
+ * blocked outright.
  */
 export async function cancelBooking({
   requesterId,
@@ -103,12 +131,22 @@ export async function cancelBooking({
     policyViolation,
   });
 
-  const downpayment = booking.downpayment_amount ?? 0;
-  const qualifies = notice.met && downpayment > 0;
+  // #91/#93 + advisor addendum #10: convert a share of what the customer
+  // actually paid (not just the configured downpayment - a paid-in-full
+  // booking gets its full net total back, an unpaid one gets nothing) at the
+  // branch's configured cancellation_credit_conversion_rate (default 100%).
+  const rate = notice.policy.cancellation_credit_conversion_rate; // 0-100
+  const creditAmount = round2(amountPaidOnBooking(booking) * (rate / 100));
+  const qualifies = notice.met && creditAmount > 0;
 
   let creditIssued = false;
 
-  if (qualifies && log) {
+  // #117: credit issuance must NOT be gated on the cancellation_logs write
+  // succeeding - that write is best-effort and returns null on failure,
+  // which previously skipped the credit the customer was owed.
+  // credit_transactions.cancellation_log_id is nullable, so a missing log
+  // row is fine.
+  if (qualifies) {
     const expiresAt = notice.policy.credit_expiry_enabled
       ? new Date(
           Date.now() + notice.policy.credit_expiry_days * DAY_MS
@@ -118,14 +156,14 @@ export async function cancelBooking({
     const transaction = await issueCredit({
       customerId: booking.customer_id,
       branchId: booking.branch_id,
-      amount: downpayment,
-      cancellationLogId: log.id,
+      amount: creditAmount,
+      cancellationLogId: log?.id ?? null,
       expiresAt,
     });
 
     if (transaction) {
       creditIssued = true;
-      await markCreditIssuedOnLog(log.id, downpayment);
+      if (log) await markCreditIssuedOnLog(log.id, creditAmount);
     }
   }
 
@@ -137,7 +175,7 @@ export async function cancelBooking({
     booking: updated as Booking,
     noticePeriodMet: notice.met,
     policyViolation,
-    creditAmount: creditIssued ? downpayment : null,
+    creditAmount: creditIssued ? creditAmount : null,
   });
 
   return {

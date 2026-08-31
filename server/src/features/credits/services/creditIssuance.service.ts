@@ -4,9 +4,12 @@ import type { CreditTransaction } from '../credits.types.ts';
 export interface IssueCreditParams {
   customerId: string;
   branchId: string;
-  /** The forfeited-or-converted downpayment amount - always positive. */
+  /** The converted amount (paid amount x conversion rate) - always positive. */
   amount: number;
-  cancellationLogId: string;
+  /** null when the best-effort cancellation_logs write failed (#117) -
+   * credit_transactions.cancellation_log_id is nullable, so issuance still
+   * proceeds. */
+  cancellationLogId: string | null;
   /** Pre-computed by the caller from policy_configurations.credit_expiry_*
    * at the moment of issuance (#88) - null when credit_expiry_enabled is
    * false. */
@@ -14,8 +17,9 @@ export interface IssueCreditParams {
 }
 
 /**
- * Issue #93: converts a qualifying Hotel cancellation's downpayment into a
- * branch-locked credit_balances increment plus an issuance credit_
+ * Issue #93: converts a qualifying cancellation's credit amount (a configured
+ * share of what the customer paid - computed by cancellation.service.ts)
+ * into a branch-locked credit_balances increment plus an issuance credit_
  * transactions row - called by cancellation.service.ts (#91) once it has
  * confirmed the notice-period check qualifies.
  *

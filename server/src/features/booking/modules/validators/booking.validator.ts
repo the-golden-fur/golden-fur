@@ -326,6 +326,9 @@ export const updatePolicyValidator = z
     reschedule_free_allowance: z.number().int().min(0).nullable().optional(),
     credit_expiry_enabled: z.boolean().optional(),
     credit_expiry_days: z.number().int().min(1).optional(),
+    // Advisor addendum #10: percent of the paid amount returned as credit on
+    // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
+    cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
     online_payments_enabled: z.boolean().optional(),
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),

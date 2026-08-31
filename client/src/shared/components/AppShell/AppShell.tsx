@@ -22,6 +22,8 @@ interface AppShellProps {
   notificationBell?: ReactNode;
   /** ComposeEntryPoint (mail icon), passed through to Navbar. */
   composeButton?: ReactNode;
+  /** Customer-only CreditBalanceIndicator, passed through to Navbar. */
+  creditIndicator?: ReactNode;
   /** Customer-only: opens the same compose modal as the Navbar's mail icon,
    * wired to the HelpMascot's "Contact support" link. */
   onContactSupport?: () => void;
@@ -51,6 +53,7 @@ export function AppShell({
   sidebarSections,
   notificationBell,
   composeButton,
+  creditIndicator,
   onContactSupport,
   children,
 }: AppShellProps) {
@@ -81,6 +84,7 @@ export function AppShell({
           identity={identity}
           notificationBell={notificationBell}
           composeButton={composeButton}
+          creditIndicator={creditIndicator}
         />
       </div>
       <div className={styles.body}>

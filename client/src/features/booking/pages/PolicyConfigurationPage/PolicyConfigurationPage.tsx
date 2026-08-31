@@ -44,6 +44,7 @@ interface FormState {
   reschedule_free_allowance: number;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  cancellation_credit_conversion_rate: number;
   online_payments_enabled: boolean;
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType;
@@ -69,6 +70,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     reschedule_free_allowance: policy.reschedule_free_allowance ?? 1,
     credit_expiry_enabled: policy.credit_expiry_enabled,
     credit_expiry_days: policy.credit_expiry_days,
+    cancellation_credit_conversion_rate:
+      policy.cancellation_credit_conversion_rate,
     online_payments_enabled: policy.online_payments_enabled,
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type ?? 'Flat',
@@ -93,6 +96,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   reschedule_free_allowance: 1,
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
+  cancellation_credit_conversion_rate: 100,
   online_payments_enabled: true,
   downpayment_enabled: false,
   downpayment_type: 'Flat',
@@ -243,6 +247,8 @@ export function PolicyConfigurationPage() {
         : form.reschedule_free_allowance,
       credit_expiry_enabled: form.credit_expiry_enabled,
       credit_expiry_days: form.credit_expiry_days,
+      cancellation_credit_conversion_rate:
+        form.cancellation_credit_conversion_rate,
       online_payments_enabled: form.online_payments_enabled,
       downpayment_enabled: form.downpayment_enabled,
       downpayment_type: form.downpayment_enabled ? form.downpayment_type : null,
@@ -687,6 +693,43 @@ export function PolicyConfigurationPage() {
               its slot - other customers can still book that time. If the
               downpayment isn&apos;t paid within this many hours, the booking is
               automatically cancelled. Default 24.
+            </p>
+          </section>
+
+          <section aria-labelledby="cancellation-credit-heading">
+            <h2
+              className={styles.sectionTitle}
+              id="cancellation-credit-heading"
+            >
+              Cancellation credit
+            </h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Percent of payment returned as credit
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                max={100}
+                value={form.cancellation_credit_conversion_rate}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    cancellation_credit_conversion_rate: Number(
+                      event.target.value
+                    ),
+                  }))
+                }
+              />
+            </label>
+            <p className={styles.copy}>
+              When a booking is cancelled with enough notice, this much of what
+              the customer already paid becomes account credit for a future
+              visit. 100% gives the full amount back; lower it (e.g. 50%) to
+              keep part of the payment as a cancellation charge. Cancellations
+              that miss the notice period still forfeit everything.
             </p>
           </section>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -49,6 +50,7 @@ type ActiveAction = {
  */
 export function CustomerBookingsPage() {
   const { user, accessToken } = useAuth();
+  const { refresh: refreshCreditBalance } = useCreditBalance();
   const nowMs = useNowMs();
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -259,6 +261,11 @@ export function CustomerBookingsPage() {
     }
 
     replaceBooking(result.data.booking);
+    if (result.data.credit_issued) {
+      // Pull the new balance so the navbar credit pill (and the portal home)
+      // reflect the just-issued credit without a page reload.
+      refreshCreditBalance();
+    }
     const branchName = branchNameById.get(booking.branch_id) ?? 'this branch';
     setActionMessage(
       result.data.credit_issued

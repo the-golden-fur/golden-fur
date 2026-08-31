@@ -83,7 +83,13 @@ const HOTEL_BOOKING = {
   status: 'Pending',
   scheduled_start: daysFromNow(10),
   scheduled_end: daysFromNow(12),
+  total_price: 2000,
+  discount_amount: 0,
+  promo_amount: 0,
   downpayment_amount: 500,
+  // The customer paid the downpayment online but not the balance - so the
+  // convertible "amount paid" is 500, not the 2000 total.
+  payment_stage: 'Paid in Advance',
   reschedule_count: 0,
 };
 
@@ -91,6 +97,7 @@ const DAYCARE_BOOKING = {
   ...HOTEL_BOOKING,
   service_category: 'Daycare',
   downpayment_amount: null,
+  payment_stage: 'Unpaid',
 };
 
 function policyRow(overrides: Record<string, unknown> = {}) {
@@ -104,6 +111,7 @@ function policyRow(overrides: Record<string, unknown> = {}) {
     staff_picker_enabled_veterinary: true,
     credit_expiry_enabled: true,
     credit_expiry_days: 30,
+    cancellation_credit_conversion_rate: 100,
     ...overrides,
   };
 }
@@ -223,6 +231,121 @@ describe('cancellation.service (#54/#91)', () => {
       credit_issued: true,
       credit_amount: 500,
     });
+  });
+
+  it('advisor #10: cancellation_credit_conversion_rate scales the issued credit', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: HOTEL_BOOKING, error: null },
+      {
+        data: [policyRow({ cancellation_credit_conversion_rate: 50 })],
+        error: null,
+      },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      { data: null, error: null }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.credit_issued).toBe(true);
+    // Paid 500 (downpayment, "Paid in Advance") x 50% = 250.
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({ p_amount: 250 })
+    );
+
+    const logPatch = recordedWrites.find(
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'update'
+    );
+    expect(logPatch?.payload).toEqual({
+      credit_issued: true,
+      credit_amount: 250,
+    });
+  });
+
+  it('advisor #10: a fully-paid booking converts the whole net total, not just the downpayment', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, payment_stage: 'Paid' }, error: null },
+      { data: [policyRow()], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      { data: null, error: null }
+    );
+
+    await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    // total_price 2000, no discount/promo, rate 100% -> 2000.
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({ p_amount: 2000 })
+    );
+  });
+
+  it('advisor #10: an unpaid booking never issues credit even with notice met', async () => {
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, payment_stage: 'Unpaid' }, error: null },
+      { data: [policyRow()], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.credit_issued).toBe(false);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('#117: credit is still issued when the cancellation_logs write fails', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: HOTEL_BOOKING, error: null },
+      { data: [policyRow()], error: null },
+      { data: CANCELLED_ROW, error: null },
+      // cancellation_logs insert fails -> writeCancellationLog returns null
+      { data: null, error: { message: 'insert failed' } }
+    );
+
+    const result = await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(result.credit_issued).toBe(true);
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({ p_amount: 500, p_cancellation_log_id: null })
+    );
+    // No log row to patch.
+    const logPatch = recordedWrites.find(
+      (write) =>
+        write.table === 'cancellation_logs' && write.method === 'update'
+    );
+    expect(logPatch).toBeUndefined();
   });
 
   it('AC-3 (#91): Strict + notice unmet forfeits the downpayment - cancellation proceeds, no credit path', async () => {

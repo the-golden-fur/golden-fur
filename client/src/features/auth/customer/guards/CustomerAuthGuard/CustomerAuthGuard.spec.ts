@@ -31,6 +31,13 @@ vi.mock('../../../../notifications/api/notifications.api', () => ({
   markAllNotificationsRead: vi.fn(),
 }));
 
+// AppShell's customer navbar also mounts CreditBalanceProvider, which
+// self-fetches the caller's credit balances on mount - mock it for the same
+// reason as notifications above (no real relative fetch in guard tests).
+vi.mock('../../../../credits/api/credits.api', () => ({
+  listCreditBalances: vi.fn().mockResolvedValue({ data: [], error: null }),
+}));
+
 function createAuthValue(
   overrides: Partial<AuthContextValue>
 ): AuthContextValue {
