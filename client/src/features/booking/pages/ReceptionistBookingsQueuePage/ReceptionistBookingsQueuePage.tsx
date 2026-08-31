@@ -1219,8 +1219,18 @@ export function ReceptionistBookingsQueuePage() {
           <>
             <p>
               Are you sure you want to cancel this booking on the
-              customer&apos;s behalf? This cannot be undone.
+              customer&apos;s behalf? This can&apos;t be undone.
             </p>
+            {cancelTarget?.payment_stage === 'Paid' ||
+            cancelTarget?.payment_stage === 'Paid in Advance' ? (
+              <p>
+                Any payment the customer has made &mdash; a down payment or the
+                full amount &mdash; won&apos;t be refunded. If the cancellation
+                meets the required notice it becomes{' '}
+                <strong>account credit</strong> at this branch for a future
+                visit; a late cancellation forfeits it.
+              </p>
+            ) : null}
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Reason (optional)</span>
               <textarea

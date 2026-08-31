@@ -545,6 +545,10 @@ export interface CancellationResult {
   booking: Booking;
   notice_period_met: boolean;
   policy_violation: boolean;
+  /** #91/#93: whether a qualifying downpayment was actually converted to an
+   * account-credit increment for this cancellation (notice met AND a
+   * positive downpayment_amount existed). */
+  credit_issued: boolean;
 }
 
 /** Customer self-service Pay button (CustomerBookingsPage). */

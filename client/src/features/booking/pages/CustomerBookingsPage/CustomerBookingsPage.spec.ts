@@ -168,6 +168,7 @@ describe('CustomerBookingsPage', () => {
         booking: buildBooking({ status: 'Cancelled' }),
         notice_period_met: true,
         policy_violation: false,
+        credit_issued: false,
       },
       error: null,
     });
@@ -194,6 +195,7 @@ describe('CustomerBookingsPage', () => {
         booking: buildBooking({ status: 'Cancelled' }),
         notice_period_met: false,
         policy_violation: true,
+        credit_issued: false,
       },
       error: null,
     });
@@ -206,7 +208,48 @@ describe('CustomerBookingsPage', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        /without meeting the configured notice period/i
+        /did not meet the required notice period, so any payment was forfeited/i
+      )
+    );
+  });
+
+  it('discloses the non-refundable-becomes-credit policy and reports the credit conversion', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          status: 'Pending',
+          payment_stage: 'Paid in Advance',
+          downpayment_amount: 200,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
+      data: {
+        booking: buildBooking({ status: 'Cancelled' }),
+        notice_period_met: true,
+        policy_violation: false,
+        credit_issued: true,
+      },
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await user.click(screen.getByText('Cancel'));
+
+    // The dialog discloses the policy before the customer confirms.
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/won't be refunded/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/account credit/i)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByText('Yes, cancel'));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        /converted into account credit at Makati for a future visit/i
       )
     );
   });

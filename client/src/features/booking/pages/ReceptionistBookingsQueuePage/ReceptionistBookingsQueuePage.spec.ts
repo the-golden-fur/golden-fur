@@ -562,6 +562,7 @@ describe('ReceptionistBookingsQueuePage', () => {
         booking: buildBooking({ status: 'Cancelled' }),
         notice_period_met: true,
         policy_violation: false,
+        credit_issued: false,
       },
       error: null,
     });
