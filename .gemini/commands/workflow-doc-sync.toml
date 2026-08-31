@@ -1,0 +1,7 @@
+description = "Find vault workflow docs stalened by a code change; hand off to workflow-documenter"
+prompt = """
+Read and follow the instructions in .agent/skills/workflow-doc-sync.md
+in this repo.
+
+{{args}}
+"""

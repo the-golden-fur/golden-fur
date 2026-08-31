@@ -176,6 +176,24 @@ noted):
   questionnaire (the latter is a vault deliverable, not code).
 - `db-schema-agent` — Supabase migrations and multi-branch data isolation.
 
+**Maintenance agents** (keep generated/derived artifacts in step with the
+code as a task closes — see "Auto-run wiring" below):
+
+- `seed-sync-agent` — updates `supabase/seeds/` (the idempotent `.ts` +
+  mirrored `.sql` + `.spec.ts` trio) when a migration touches a seeded
+  table or adds a reference/lookup table. Backed by the
+  `supabase-seed-maintenance` skill, which carries the coverage map
+  (what's seeded, what's migration-seeded, what's deliberately app-only).
+- `ci-fixer-agent` — the write-side counterpart to `ci-verifier`: takes a
+  red `✅ CI: Verify All` and fixes the failures (format, lint, build,
+  tests) until green, across both repos, without ever weakening a check.
+  Spawn it when the `ci-verifier` gate in `commit` / `pr-to-dev` /
+  `pr-dev-to-main` comes back red.
+- `domain-doc-sync-agent` — reconciles the domain agents/skills above with
+  the business-rule code they describe (capacity thresholds, enums, role
+  lists, status machines, file layout) when that code moves. Docs-only,
+  no `Bash`.
+
 **Skills** (auto-invoked reference material — each backs the matching
 agent above, and applies equally when working the same area without
 spawning a subagent):
@@ -183,7 +201,34 @@ spawning a subagent):
 - `paymongo-webhook-handling`, `capacity-based-scheduling`,
   `rbac-totp-setup`, `credit-balance-ledger`, `daily-sales-report-format`,
   `email-notification-templates`, `discount-senior-pwd-compliance`,
-  `iso25010-evaluation-instrument`.
+  `iso25010-evaluation-instrument`, `supabase-seed-maintenance`.
+- `supabase-migration-push` — the closing step of a task that changed
+  `supabase/migrations/`: `supabase db push` to the linked project, run
+  **once, only after the whole task is done** and `ci-verifier` is green
+  and the seeds are reconciled. Confirms the linked ref isn't production
+  first.
+- `workflow-doc-sync` — after a code change, matches the changed paths
+  against each vault machine-workflow file's `source:` frontmatter to find
+  stale workflow docs, then hands off to the vault's `workflow-documenter`
+  agent (the only thing allowed to rewrite them). Never writes to the
+  vault — the `golden-fur` ⇄ `golden-fur-vault` write boundary still
+  holds.
+
+### Auto-run wiring
+
+`.claude/settings.json` (checked in) has `PostToolUse` + `Stop` hooks that
+watch the diff and _remind_ the session to run the right maintenance step
+— they never mutate anything themselves:
+
+- a migration or a seeded-table change under `supabase/` → run
+  `seed-sync-agent`, and (at task end) `supabase-migration-push`;
+- `client/src` / `server/src` changes matching a documented workflow's
+  `source:` list → run `workflow-doc-sync`;
+- changes to code a domain skill's rules depend on → run
+  `domain-doc-sync-agent`.
+
+The reminders fire on `Stop` (task boundary) so they don't interrupt
+mid-edit. A red `ci-verifier` in the git skills points at `ci-fixer-agent`.
 
 ### Why two PR skills instead of one
 
