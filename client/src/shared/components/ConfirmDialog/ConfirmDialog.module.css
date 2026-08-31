@@ -10,7 +10,7 @@
 
 .modal {
   composes: animate-fade-in from global;
-  width: min(100%, 22rem);
+  width: min(100%, 24rem);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
@@ -38,7 +38,6 @@
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-1);
 }
@@ -49,7 +48,7 @@
   flex: 0 0 auto;
   white-space: nowrap;
   border-radius: var(--radius-md);
-  padding: 0.5rem 0.95rem;
+  padding: 0.5rem 0.9rem;
   font-family: inherit;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);

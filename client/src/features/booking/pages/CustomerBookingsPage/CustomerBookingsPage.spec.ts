@@ -172,7 +172,7 @@ describe('CustomerBookingsPage', () => {
       error: null,
     });
 
-    await user.click(screen.getByText('Yes, cancel booking'));
+    await user.click(screen.getByText('Yes, cancel'));
 
     await waitFor(() =>
       expect(bookingApi.cancelBooking).toHaveBeenCalledWith(
@@ -202,7 +202,7 @@ describe('CustomerBookingsPage', () => {
 
     await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
     await user.click(screen.getByText('Cancel'));
-    await user.click(screen.getByText('Yes, cancel booking'));
+    await user.click(screen.getByText('Yes, cancel'));
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(

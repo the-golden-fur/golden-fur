@@ -568,7 +568,7 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     await user.click(screen.getByText('Cancel'));
     await user.click(
-      within(screen.getByRole('dialog')).getByText('Yes, cancel booking')
+      within(screen.getByRole('dialog')).getByText('Yes, cancel')
     );
 
     await waitFor(() =>

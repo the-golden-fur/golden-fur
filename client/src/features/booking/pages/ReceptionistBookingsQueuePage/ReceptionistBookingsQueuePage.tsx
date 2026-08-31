@@ -1208,7 +1208,7 @@ export function ReceptionistBookingsQueuePage() {
         isOpen={cancelTarget !== undefined}
         title="Cancel this booking?"
         tone="danger"
-        confirmLabel="Yes, cancel booking"
+        confirmLabel="Yes, cancel"
         cancelLabel="Keep booking"
         isConfirming={isSubmittingAction}
         onCancel={closeAction}
