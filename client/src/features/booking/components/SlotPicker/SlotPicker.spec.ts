@@ -216,6 +216,43 @@ describe('SlotPicker', () => {
     expect(input.max).toBe(WINDOW.close);
   });
 
+  it('minimum-notice lead time: floors the calendar N days out and advances off the notice window (advisor addendum)', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW, minNoticeDays: 3 },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    // The floor: local "today" + 3 days, computed the way the component does
+    // (todayIso() local calendar date, then UTC-midnight day arithmetic).
+    const now = new Date();
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const floorDate = new Date(`${localToday}T00:00:00Z`);
+    floorDate.setUTCDate(floorDate.getUTCDate() + 3);
+    const floor = floorDate.toISOString().slice(0, 10);
+
+    const dateInput = (await screen.findByLabelText(
+      'Date'
+    )) as HTMLInputElement;
+
+    await waitFor(() => expect(dateInput.min).toBe(floor));
+    // Auto-advanced past the 3-day notice window rather than sitting on today.
+    await waitFor(() => expect(dateInput.value).toBe(floor));
+    expect(screen.getByText('Previous day')).toBeDisabled();
+    expect(screen.getByText(/at least 3 days notice/i)).toBeInTheDocument();
+  });
+
   it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
       data: { slots: SLOTS, window: WINDOW },

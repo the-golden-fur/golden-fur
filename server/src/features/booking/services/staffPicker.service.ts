@@ -149,6 +149,51 @@ export async function resolveDownpaymentPolicy(
 }
 
 /**
+ * Minimum-notice lead time, in whole days, that a NEW booking (or the NEW
+ * slot of a reschedule) must sit ahead of "now" - advisor addendum: the
+ * "3-day minimum" is a booking date-range floor, not just an after-the-fact
+ * reschedule/cancellation penalty. 0 when enforcement is off.
+ *
+ * Distinct from evaluateNoticePeriod (reschedule.service.ts), which measures
+ * a change against the booking's CURRENT start. Every caller here already
+ * has the effective policy in hand, so this is a pure derivation - no extra
+ * query. Walk-ins skip it entirely (their slot is "now").
+ */
+export function noticeLeadDays(policy: EffectivePolicy): number {
+  return policy.notice_enforcement_enabled ? policy.notice_period_days : 0;
+}
+
+/**
+ * Throws a 422 when `scheduledStart` falls inside the minimum-notice window
+ * for `policy`. A no-op when enforcement is off. `action` only shapes the
+ * message. Day-granular is handled by getDaySlots for display; this instant
+ * comparison is the hard gate a direct API call still has to clear.
+ */
+export function assertMeetsNoticeLeadTime(
+  policy: EffectivePolicy,
+  scheduledStart: string,
+  action: 'Booking' | 'Reschedule' = 'Booking'
+): void {
+  const minLeadDays = noticeLeadDays(policy);
+  if (minLeadDays <= 0) return;
+
+  const earliest = Date.now() + minLeadDays * 24 * 60 * 60 * 1000;
+
+  if (new Date(scheduledStart).getTime() < earliest) {
+    throwWithStatus(
+      422,
+      `${action} requires at least ${minLeadDays} day(s) notice — please choose a later date`
+    );
+  }
+}
+
+/** Convenience for the availability endpoint / findNextAvailableSlot, which
+ * don't otherwise need the policy - one resolve, the day count out. */
+export async function resolveNoticeLeadDays(branchId: string): Promise<number> {
+  return noticeLeadDays(await resolveEffectivePolicy(branchId));
+}
+
+/**
  * Wraps the #49 RPC: eligible staff for a branch/role/time window, filtered
  * by all three availability conditions in the database. Only meaningful for
  * Grooming/Veterinary - other categories have no staff-role mapping.

@@ -107,8 +107,10 @@ const CREATE_PAYLOAD = {
   branch_id: '22222222-2222-4222-a222-222222222222',
   service_category: 'Daycare',
   items: [{ service_id: DAYCARE_SERVICE.id }],
-  scheduled_start: '2026-08-03T01:00:00+00:00',
-  scheduled_end: '2026-08-03T02:00:00+00:00',
+  // Comfortably outside the seeded 3-day minimum-notice window so createBooking
+  // accepts it; the notice floor itself is covered in booking.service.spec.
+  scheduled_start: daysFromNow(30),
+  scheduled_end: daysFromNow(30.05),
   payment_method: 'Cash',
   payment_confirmed: false,
 };

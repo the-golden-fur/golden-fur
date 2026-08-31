@@ -50,10 +50,11 @@ const BRANCH_ROW = {
   error: null,
 };
 
-/** Queued for getDaySlots' resolveEffectivePolicy() lunch-break lookup -
- * disabled so it never interferes with these tests' own slot-count/level
- * assertions (see the dedicated lunch-break describe block below for the
- * enabled case). */
+/** Queued for getDaySlots' single resolveEffectivePolicy() lookup (notice
+ * floor + lunch break). Both are disabled here so neither interferes with
+ * these tests' own slot-count/level assertions - see the dedicated
+ * lunch-break and minimum-notice describe blocks below for the enabled
+ * cases. */
 const POLICY_ROW_LUNCH_DISABLED = {
   data: [
     {
@@ -61,7 +62,7 @@ const POLICY_ROW_LUNCH_DISABLED = {
       branch_id: null,
       notice_period_days: 3,
       notice_enforcement_mode: 'Strict',
-      notice_enforcement_enabled: true,
+      notice_enforcement_enabled: false,
       staff_picker_enabled_grooming: true,
       staff_picker_enabled_veterinary: true,
       lunch_break_enabled: false,
@@ -74,7 +75,13 @@ const POLICY_ROW_LUNCH_DISABLED = {
   error: null,
 };
 
-function policyRow(overrides: { lunch_break_enabled?: boolean } = {}) {
+function policyRow(
+  overrides: {
+    lunch_break_enabled?: boolean;
+    notice_enforcement_enabled?: boolean;
+    notice_period_days?: number;
+  } = {}
+) {
   return {
     data: [
       {
@@ -366,6 +373,85 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       });
 
       expect(slots).toHaveLength(6);
+    });
+  });
+
+  describe('minimum-notice lead time (advisor addendum)', () => {
+    const WIDE_BRANCH_ROW = {
+      data: {
+        timezone: 'Asia/Manila',
+        operating_hours: { monday: { open: '09:00', close: '15:00' } },
+      },
+      error: null,
+    };
+
+    it('returns [] for a day inside the notice window, exactly like a closed day', async () => {
+      vi.useFakeTimers();
+      // Monday 2026-08-03 08:00 Asia/Manila; a 3-day notice floor => the
+      // earliest bookable date is 2026-08-06.
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW, // branch lookup
+        policyRow({ notice_enforcement_enabled: true, notice_period_days: 3 })
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-04', // one day out - inside the window
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toEqual([]);
+    });
+
+    it('generates slots normally on the first day outside the notice window', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({ notice_enforcement_enabled: true, notice_period_days: 3 }),
+        { data: null, error: null, count: 1 } // roster count
+      );
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-10', // a Monday, well outside the 3-day window
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots.length).toBeGreaterThan(0);
+    });
+
+    it('applies no floor when notice enforcement is disabled', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({ notice_enforcement_enabled: false, notice_period_days: 3 }),
+        { data: null, error: null, count: 1 }
+      );
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03', // same day - allowed when enforcement is off
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots.length).toBeGreaterThan(0);
     });
   });
 

@@ -9,6 +9,7 @@ import type { RescheduleBookingInput } from '../modules/validators/booking.valid
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import { checkCapacity } from './capacity.service.ts';
 import {
+  assertMeetsNoticeLeadTime,
   listAvailableStaff,
   pickRandomAvailableStaff,
   resolveEffectivePolicy,
@@ -140,6 +141,14 @@ export async function rescheduleBooking({
     booking.branch_id,
     booking.scheduled_start
   );
+
+  // Minimum-notice lead time (advisor addendum): the NEW slot must itself be
+  // at least notice_period_days out, mirroring createBooking. This is the
+  // date-range floor the reschedule Slot Picker also applies; distinct from
+  // the evaluateNoticePeriod check below, which asks how far ahead of the
+  // CURRENT appointment the customer is making the change. Reuses the policy
+  // evaluateNoticePeriod already resolved - no extra query.
+  assertMeetsNoticeLeadTime(notice.policy, input.scheduled_start, 'Reschedule');
 
   if (notice.enforced && !notice.met) {
     if (notice.policy.notice_enforcement_mode === 'Strict') {
