@@ -153,6 +153,23 @@ const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
   Misc: ClipboardList,
 };
 
+/** A general, plain-language definition of what each service type is, shown
+ * in the Service Type step's ⓘ popover above the read-only list of services
+ * actually offered at the chosen branch. Keyed by the hardcoded
+ * ServiceCategory - a custom Service Types row (key outside this list) just
+ * shows its service list with no definition line. */
+const CATEGORY_DESCRIPTIONS: Record<ServiceCategory, string> = {
+  Grooming:
+    "Cleaning and upkeep of your pet's appearance - bathing, brushing, haircuts, nail trimming and ear cleaning.",
+  Hotel:
+    "Overnight boarding: your pet stays with us and is housed, fed and looked after while you're away.",
+  Daycare:
+    "Daytime care and supervision for your pet while you're out, with pick-up on the same day.",
+  Veterinary:
+    'Medical care for your pet - check-ups, vaccinations and treatment by a licensed veterinarian.',
+  Misc: "Other services that don't fall under grooming, boarding, daycare or veterinary care.",
+};
+
 const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
   'Morning',
   'Noon',
@@ -1026,18 +1043,29 @@ export function CustomerBookingFlowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelectedPetAssessed, selectedPetId, selectedBranchId, allServices]);
 
+  // Every service bookable for this pet (requires_assessed_pet=false ones -
+  // Initial Assessment - exist ONLY for an unassessed pet; once assessed
+  // they're already done and hidden, leaving only requires_assessed_pet
+  // services visible), grouped by category. Powers the Service Type step's
+  // ⓘ popover, which previews each category's list before one is picked.
+  // Empty until the branch's catalog has loaded.
+  const bookableServicesByCategory = useMemo(() => {
+    const byCategory = new Map<string, Service[]>();
+    for (const service of allServices) {
+      if (service.requires_assessed_pet !== isSelectedPetAssessed) continue;
+      const list = byCategory.get(service.category) ?? [];
+      list.push(service);
+      byCategory.set(service.category, list);
+    }
+    return byCategory;
+  }, [allServices, isSelectedPetAssessed]);
+
+  // The selected category's own slice of the map above - the single source
+  // of truth for "what can this pet book here" so the Services step and the
+  // Service Type popover can't drift apart.
   const servicesForCategory = useMemo(
-    () =>
-      allServices.filter(
-        (service) =>
-          service.category === category &&
-          // requires_assessed_pet=false services (Initial Assessment) exist
-          // ONLY for an unassessed pet - once assessed, they're already
-          // done and hidden entirely, leaving only requires_assessed_pet
-          // services (everything else, including Reassessment) visible.
-          service.requires_assessed_pet === isSelectedPetAssessed
-      ),
-    [allServices, category, isSelectedPetAssessed]
+    () => (category ? (bookableServicesByCategory.get(category) ?? []) : []),
+    [bookableServicesByCategory, category]
   );
 
   const selectedServices = useMemo(
@@ -2077,19 +2105,58 @@ export function CustomerBookingFlowPage() {
                 // value) is still what's submitted/compared everywhere else.
                 const label =
                   serviceTypeByKey.get(candidate)?.name ?? candidate;
+                const description = CATEGORY_DESCRIPTIONS[candidate] ?? null;
+                const bookableServices =
+                  bookableServicesByCategory.get(candidate) ?? [];
                 return (
-                  <button
-                    key={candidate}
-                    type="button"
-                    aria-pressed={category === candidate}
-                    className={`${styles.categoryCard} ${
-                      category === candidate ? styles.selected : ''
-                    }`}
-                    onClick={() => handleCategorySelect(candidate)}
-                  >
-                    <Icon className={styles.categoryIcon} aria-hidden="true" />
-                    <span className={styles.categoryLabel}>{label}</span>
-                  </button>
+                  // The ⓘ popover is a sibling of the card <button>, not a
+                  // child - a button can't nest inside a button (same layout
+                  // as the Booking Type step).
+                  <div key={candidate} className={styles.infoCardWrap}>
+                    <button
+                      type="button"
+                      aria-pressed={category === candidate}
+                      className={`${styles.categoryCard} ${
+                        category === candidate ? styles.selected : ''
+                      }`}
+                      onClick={() => handleCategorySelect(candidate)}
+                    >
+                      <Icon
+                        className={styles.categoryIcon}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.categoryLabel}>{label}</span>
+                    </button>
+                    <span className={styles.infoCardBadge}>
+                      <InfoPopover label={`About ${label}`}>
+                        {description ? (
+                          <p className={styles.infoText}>{description}</p>
+                        ) : null}
+                        <p className={styles.infoHeading}>
+                          Services at this branch
+                        </p>
+                        {allServices.length === 0 ? (
+                          // Catalog still loading - don't claim the branch
+                          // offers nothing until we actually know.
+                          <p className={styles.infoText}>Loading services…</p>
+                        ) : bookableServices.length > 0 ? (
+                          // Names only - prices vary by category (Daycare is
+                          // hourly, Hotel is per-night, Grooming can use a
+                          // size/coat matrix), so the accurate figure is left
+                          // to the Services step rather than shown flat here.
+                          <ul className={styles.infoServiceList}>
+                            {bookableServices.map((service) => (
+                              <li key={service.id}>{service.name}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className={styles.infoText}>
+                            No services are listed for this branch yet.
+                          </p>
+                        )}
+                      </InfoPopover>
+                    </span>
+                  </div>
                 );
               })}
             </div>
@@ -2111,7 +2178,7 @@ export function CustomerBookingFlowPage() {
         return (
           <div className={styles.serviceStep}>
             <div className={styles.categoryGrid}>
-              <div className={styles.bookingTypeCardWrap}>
+              <div className={styles.infoCardWrap}>
                 <button
                   type="button"
                   aria-pressed={bookingSource === 'Online'}
@@ -2123,7 +2190,7 @@ export function CustomerBookingFlowPage() {
                   <Globe className={styles.categoryIcon} aria-hidden="true" />
                   <span className={styles.categoryLabel}>Online Booking</span>
                 </button>
-                <span className={styles.bookingTypeInfo}>
+                <span className={styles.infoCardBadge}>
                   <InfoPopover label="About online bookings">
                     A future or same-day appointment, booked on the
                     customer&apos;s behalf. Goes through the usual down payment
@@ -2131,7 +2198,7 @@ export function CustomerBookingFlowPage() {
                   </InfoPopover>
                 </span>
               </div>
-              <div className={styles.bookingTypeCardWrap}>
+              <div className={styles.infoCardWrap}>
                 <button
                   type="button"
                   aria-pressed={bookingSource === 'Walk-in'}
@@ -2146,7 +2213,7 @@ export function CustomerBookingFlowPage() {
                   />
                   <span className={styles.categoryLabel}>Walk-in</span>
                 </button>
-                <span className={styles.bookingTypeInfo}>
+                <span className={styles.infoCardBadge}>
                   <InfoPopover label="About walk-in bookings">
                     The customer and pet are physically here right now. No down
                     payment, no online checkout - the date and time are set to
