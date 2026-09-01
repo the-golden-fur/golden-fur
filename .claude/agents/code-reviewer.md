@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Unbiased, read-only review of the current branch's diff before it is committed, pushed, or opened as a PR. Did not write the code and gets no rationale beyond the diff. Run automatically as a step of the commit / branch-publish / PR workflow. Writes its report to golden-fur-vault, never to this repo.
+description: Unbiased, read-only review of the current branch's diff before a PR is opened. Did not write the code and gets no rationale beyond the diff. Runs automatically only as a step of the PR workflow (pr-to-dev / pr-dev-to-main), not on commit or push. Writes its report to golden-fur-vault, never to this repo.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 ---

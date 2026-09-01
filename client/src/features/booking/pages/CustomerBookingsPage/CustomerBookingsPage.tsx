@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
+import { notifyCreditBalanceChanged } from '../../../credits/providers/creditBalanceEvents';
 import { listCustomerPets } from '../../../customers/api/customer.api';
 import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -190,8 +191,10 @@ export function CustomerBookingsPage() {
     replaceBooking(result.data.booking);
     if (result.data.credit_issued) {
       // Pull the new balance so the navbar credit pill (and the portal home)
-      // reflect the just-issued credit without a page reload.
+      // reflect the just-issued credit without a page reload - both via the
+      // context and the global event, since the pill has been flaky.
       refreshCreditBalance();
+      notifyCreditBalanceChanged();
     }
     const branchName = branchNameById.get(booking.branch_id) ?? 'this branch';
     setActionMessage(

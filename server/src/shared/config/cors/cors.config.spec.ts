@@ -3,9 +3,11 @@ import { corsOptions } from './cors.config.ts';
 
 describe('corsOptions', () => {
   const ORIGINAL_ENV = process.env.CORS_ALLOWED_ORIGINS;
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
   afterEach(() => {
     process.env.CORS_ALLOWED_ORIGINS = ORIGINAL_ENV;
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
   });
 
   function checkOrigin(origin: string | undefined) {
@@ -56,5 +58,28 @@ describe('corsOptions', () => {
 
     expect(result.err).toBeNull();
     expect(result.allow).toBe(true);
+  });
+
+  it('allows any localhost port outside production (Vite port fallback)', async () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:5173';
+    process.env.NODE_ENV = 'development';
+
+    for (const origin of [
+      'http://localhost:5174',
+      'http://localhost:5180',
+      'http://127.0.0.1:5175',
+    ]) {
+      const result = await checkOrigin(origin);
+      expect(result.allow, origin).toBe(true);
+    }
+  });
+
+  it('does NOT loosen to localhost in production', async () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'https://app.goldenfur.example';
+    process.env.NODE_ENV = 'production';
+
+    const result = await checkOrigin('http://localhost:5174');
+
+    expect(result.err).toBeInstanceOf(Error);
   });
 });

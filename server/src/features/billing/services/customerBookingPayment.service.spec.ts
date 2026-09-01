@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { payForBooking } from './customerBookingPayment.service.ts';
+import {
+  addCustomerBalancePayment,
+  payForBooking,
+} from './customerBookingPayment.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getBookingById } from '../../booking/services/booking.service.ts';
 import { isOnlinePaymentsEnabled } from '../../booking/services/staffPicker.service.ts';
 import { initiatePaymongoPayment } from './paymongo.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
-  supabase: { from: vi.fn() },
+  supabase: { from: vi.fn(), rpc: vi.fn() },
 }));
 
 vi.mock('../../booking/services/booking.service.ts', () => ({
@@ -29,7 +32,7 @@ interface QueryResult {
 /** Each `supabase.from()` call shifts the next queued result. The builder
  * resolves the same result whether the caller ends with `.maybeSingle()` or
  * just awaits the chain (settled-sum read). Call order in payForBooking:
- * (1) settled-sum read, (2) pending-charge lookup, (3) update|insert. */
+ * (1) pending-charge lookup, (2) settled-sum read, (3) update|insert. */
 function queueFrom(...results: QueryResult[]) {
   const queue = [...results];
   const recorded: Array<{ method: string; payload: unknown }> = [];
@@ -168,8 +171,8 @@ describe('customerBookingPayment.service', () => {
   it('settles the existing Pending charge (not a second insert) for a full payment', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     const recorded = queueFrom(
-      { data: [], error: null }, // settled-sum read
       { data: { id: 'txn-initial' }, error: null }, // pending-charge lookup
+      { data: [], error: null }, // settled-sum read
       { data: { id: 'txn-initial', total_amount: 1000 }, error: null } // update
     );
 
@@ -201,8 +204,8 @@ describe('customerBookingPayment.service', () => {
       payment_status: 'Partially Paid',
     } as never);
     const recorded = queueFrom(
-      { data: [{ total_amount: 500 }], error: null }, // settled-sum read (downpayment already in)
       { data: null, error: null }, // no pending charge
+      { data: [{ total_amount: 500 }], error: null }, // settled-sum read (downpayment already in)
       { data: { id: 'txn-balance', total_amount: 500 }, error: null } // insert
     );
 
@@ -223,8 +226,8 @@ describe('customerBookingPayment.service', () => {
   it('pays only the downpayment_amount when payInFull is false and a downpayment is required', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     queueFrom(
-      { data: [], error: null },
       { data: { id: 'txn-initial' }, error: null },
+      { data: [], error: null },
       { data: { id: 'txn-initial', total_amount: 500 }, error: null }
     );
 
@@ -247,8 +250,8 @@ describe('customerBookingPayment.service', () => {
       promo_amount: 50,
     } as never);
     queueFrom(
-      { data: [], error: null },
       { data: { id: 'txn-initial' }, error: null },
+      { data: [], error: null },
       { data: { id: 'txn-initial', total_amount: 750 }, error: null }
     );
 
@@ -263,5 +266,64 @@ describe('customerBookingPayment.service', () => {
     expect(initiatePaymongoPayment).toHaveBeenCalledWith(
       expect.objectContaining({ amount: 750 })
     );
+  });
+});
+
+describe('addCustomerBalancePayment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rejects a booking that is not Partially Paid', async () => {
+    vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
+
+    await expect(
+      addCustomerBalancePayment({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        amount: 100,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejects when a charge is already awaiting settlement', async () => {
+    vi.mocked(getBookingById).mockResolvedValue({
+      ...UNPAID_BOOKING,
+      payment_status: 'Partially Paid',
+    } as never);
+    queueFrom({ data: { id: 'txn-pending' }, error: null });
+
+    await expect(
+      addCustomerBalancePayment({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        amount: 100,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('creates the balance charge via the add_booking_payment RPC', async () => {
+    vi.mocked(getBookingById).mockResolvedValue({
+      ...UNPAID_BOOKING,
+      payment_status: 'Partially Paid',
+    } as never);
+    queueFrom({ data: null, error: null }); // no pending charge
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: { id: 'txn-balance' },
+      error: null,
+    } as never);
+
+    const txn = await addCustomerBalancePayment({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      amount: 300,
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith('add_booking_payment', {
+      p_booking_id: 'booking-1',
+      p_amount: 300,
+      p_processed_by: null,
+    });
+    expect(txn).toMatchObject({ id: 'txn-balance' });
   });
 });

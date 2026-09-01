@@ -8,6 +8,7 @@
   },
   "scripts": {
     "=== CORE WORKFLOW ===": "",
+    "predev": "node ../scripts/free-ports.mjs 5173",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

@@ -4,8 +4,17 @@ import { SearchSortBar } from '../../../../shared/components/SearchSortBar/Searc
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { getMyTransactionHistory } from '../../api/reports.api';
 import { payTransactionWithCredit } from '../../../billing/api/billing.api';
-import { payForBooking } from '../../../booking/api/booking.api';
+import {
+  addBalancePaymentForBooking,
+  payForBooking,
+} from '../../../booking/api/booking.api';
 import type { TransactionRecord } from '../../reports.types';
+import {
+  payableBalances,
+  type PayableBalance,
+} from '../../utils/payableBalances';
+import { notifyCreditBalanceChanged } from '../../../credits/providers/creditBalanceEvents';
+import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
 const SERVICE_CATEGORIES = [
@@ -43,6 +52,7 @@ const PAY_MODES: Array<{ value: PayMode; label: string }> = [
 function paymentChoiceLabel(record: TransactionRecord): string {
   if (record.payment_choice === 'downpayment') return 'Down payment';
   if (record.payment_choice === 'full') return 'Full payment';
+  if (record.payment_choice === 'balance') return 'Balance payment';
   return '-';
 }
 
@@ -79,10 +89,53 @@ export function CustomerTransactionHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [pendingOnly, setPendingOnly] = useState(false);
+
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
   const [payMode, setPayMode] = useState<PayMode>('credit');
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+
+  const [balanceTarget, setBalanceTarget] = useState<PayableBalance | null>(
+    null
+  );
+  const [balanceAmount, setBalanceAmount] = useState('');
+  const [balanceSubmitting, setBalanceSubmitting] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const openBalance = (target: PayableBalance) => {
+    setBalanceTarget(target);
+    setBalanceAmount('');
+    setBalanceError(null);
+  };
+
+  const confirmBalance = async () => {
+    if (!accessToken || !balanceTarget) return;
+    const amount = Number(balanceAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setBalanceError('Enter an amount greater than zero.');
+      return;
+    }
+    if (amount > balanceTarget.remaining) {
+      setBalanceError('That is more than the balance left on this booking.');
+      return;
+    }
+
+    setBalanceSubmitting(true);
+    setBalanceError(null);
+    const result = await addBalancePaymentForBooking(
+      balanceTarget.bookingId,
+      amount,
+      accessToken
+    );
+    setBalanceSubmitting(false);
+    if (result.error) {
+      setBalanceError(result.error);
+      return;
+    }
+    setBalanceTarget(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
@@ -104,6 +157,8 @@ export function CustomerTransactionHistoryPage() {
       }
       setPayTarget(null);
       setReloadKey((k) => k + 1);
+      // Credit was just spent - refresh the navbar pill.
+      notifyCreditBalanceChanged();
       return;
     }
 
@@ -186,6 +241,12 @@ export function CustomerTransactionHistoryPage() {
     initialSortKey: 'newest',
   });
 
+  const rows = pendingOnly
+    ? visibleTransactions.filter((t) => t.payment_status === 'Pending')
+    : visibleTransactions;
+
+  const payable = payableBalances(transactions);
+
   if (!accessToken) {
     return (
       <main className={styles.page}>
@@ -262,7 +323,31 @@ export function CustomerTransactionHistoryPage() {
           onSortChange={setSortKey}
           sortOptions={SORT_OPTIONS}
         />
+        <label className={styles.field}>
+          <input
+            type="checkbox"
+            checked={pendingOnly}
+            onChange={(event) => setPendingOnly(event.target.checked)}
+          />{' '}
+          Due payments only
+        </label>
       </div>
+
+      {payable.length > 0 ? (
+        <div className={styles.filters}>
+          {payable.map((item) => (
+            <button
+              key={item.bookingId}
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => openBalance(item)}
+            >
+              Pay part of {item.serviceCategory} balance (
+              {formatCurrency(item.remaining)} left)
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {isLoading ? (
         <p className={styles.copy}>Loading transactions...</p>
@@ -270,7 +355,7 @@ export function CustomerTransactionHistoryPage() {
         <p className={styles.errorBanner} role="alert">
           {error}
         </p>
-      ) : visibleTransactions.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className={styles.copy}>No transactions match these filters.</p>
       ) : (
         <table className={styles.table}>
@@ -287,7 +372,7 @@ export function CustomerTransactionHistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {visibleTransactions.map((transaction) => (
+            {rows.map((transaction) => (
               <tr key={transaction.id}>
                 <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
                 <td>
@@ -373,6 +458,63 @@ export function CustomerTransactionHistoryPage() {
                   : payMode === 'credit'
                     ? 'Pay with credit'
                     : 'Continue to payment'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {balanceTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="balance-payment-title"
+          >
+            <h2 id="balance-payment-title" className={styles.modalTitle}>
+              Pay part of your balance
+            </h2>
+            <p className={styles.copy}>
+              {formatCurrency(balanceTarget.remaining)} left on this{' '}
+              {balanceTarget.serviceCategory} booking. Enter any amount up to
+              that - you can pay the rest later.
+            </p>
+
+            <label className={styles.field}>
+              Amount
+              <input
+                className={styles.control}
+                type="number"
+                min={1}
+                max={balanceTarget.remaining}
+                step="0.01"
+                value={balanceAmount}
+                onChange={(event) => setBalanceAmount(event.target.value)}
+              />
+            </label>
+
+            {balanceError ? (
+              <p className={styles.errorBanner} role="alert">
+                {balanceError}
+              </p>
+            ) : null}
+
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setBalanceTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={balanceSubmitting}
+                onClick={() => void confirmBalance()}
+              >
+                {balanceSubmitting ? 'Adding...' : 'Add this payment'}
               </button>
             </div>
           </section>

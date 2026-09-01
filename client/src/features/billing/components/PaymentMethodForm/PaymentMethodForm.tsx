@@ -10,10 +10,6 @@ interface PaymentMethodFormProps {
   value: PaymentFields;
   onChange: (next: PaymentFields) => void;
   amountDue: number;
-  /** Restrict the method dropdown - defaults to every PAYMENT_METHODS value.
-   * The cashier Transactions page passes COUNTER_PAYMENT_METHODS (no
-   * GCash/Maya - those go through the customer's own online flow). */
-  methods?: readonly string[];
 }
 
 /**
@@ -30,7 +26,6 @@ export function PaymentMethodForm({
   value,
   onChange,
   amountDue,
-  methods = PAYMENT_METHODS,
 }: PaymentMethodFormProps) {
   const isOnlineMethod = (ONLINE_PAYMENT_METHODS as readonly string[]).includes(
     value.payment_method
@@ -65,7 +60,7 @@ export function PaymentMethodForm({
             })
           }
         >
-          {methods.map((method) => (
+          {PAYMENT_METHODS.map((method) => (
             <option key={method} value={method}>
               {method}
             </option>

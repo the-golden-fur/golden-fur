@@ -8,11 +8,18 @@ having started a second, colliding copy of one that was already up.
 ## The setup
 
 - **`server/`** — Express + `tsx watch src/app.ts`, binds port **3000**.
-- **`client/`** — Vite, binds port **5173**, proxies API calls to
-  `http://localhost:3000` (see `client/vite.config.ts`). Every
-  `ECONNREFUSED`/`http proxy error` in the Vite log means the server isn't
-  reachable on 3000 at that moment — it does **not** mean anything is wrong
-  with the client.
+- **`client/`** — Vite, binds port **5173** (falls to 5174+ if taken),
+  proxies API calls to `http://localhost:3000`. The proxy prefixes are
+  generated from `client/vite.proxy.config.ts` (`API_ROUTE_PREFIXES`), one
+  per server route file — `vite.proxy.config.spec.ts` fails CI if a server
+  route has no matching prefix, so a new route can't silently 404-via-HTML
+  in dev. Every `ECONNREFUSED`/`http proxy error` in the Vite log means the
+  server isn't reachable on 3000 at that moment — not a client bug.
+- Both `npm run dev` scripts have a **`predev`** that runs
+  `node scripts/free-ports.mjs` first, killing any stale listener on the
+  port it's about to bind (the fix for recurring `EADDRINUSE :::3000` and
+  the silent Vite-on-5174 → CORS mess). CORS also allows any `localhost:*`
+  origin outside production, so a 5174 fallback still works.
 - Root `npm run dev` (via `concurrently`) or the VS Code task **"🚀 Dev:
   Start All"** starts both together. The VS Code tasks **"💻 Client: Dev"**
   and **"🖥️ Server: Dev"** each start only one half — if a user's terminal
@@ -41,6 +48,15 @@ Get-NetTCPConnection -LocalPort 3000,5173 -State Listen -ErrorAction SilentlyCon
 - If you do start one, use the root `npm run dev` (or the matching single
   script) — never `taskkill /IM node.exe /F` to "clean up," since that
   kills every Node process on the machine, including unrelated tools.
+
+## `EADDRINUSE`, or a stale server won't die
+
+`npm run <dev>`'s `predev` handles this automatically now. To do it by
+hand: **`npm run free-ports`** (root) frees both 3000 and 5173;
+`node scripts/free-ports.mjs 3000` frees just one. It kills only the
+process **LISTENING** on that exact port — `TIME_WAIT` sockets (the
+`[::1]:3000 ... TIME_WAIT` lines) are not processes and clear on their
+own; leave them. Then re-run the dev script.
 
 ## A proxy error right at startup is not necessarily a bug
 

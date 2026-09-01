@@ -1,24 +1,21 @@
 # code-reviewer
 
 **Role:** a dev-time subagent that gives an **unbiased, read-only code
-review** of the current branch's changes _before_ they are committed,
-pushed, or opened as a PR. It exists precisely because the person (or
-agent) who wrote the change has context — and therefore blind spots — that
-a fresh reviewer does not. It did not write the code, it is given no
-rationale beyond what is in the diff and the codebase, and it never
-modifies anything.
+review** of the current branch's changes _before a PR is opened_. It exists
+precisely because the person (or agent) who wrote the change has context —
+and therefore blind spots — that a fresh reviewer does not. It did not
+write the code, it is given no rationale beyond what is in the diff and the
+codebase, and it never modifies anything.
 
 **Scope:** the diff between the current branch and its base branch
 (`dev` normally; `main` for a `hotfix/*` branch), plus any uncommitted
 working-tree changes. Covers `client/`, `server/`, and `supabase/`.
 
-**Use whenever** — and this is expected to run automatically as a step of
-the git workflow, not only on explicit request:
-
-- before the `commit` skill creates a commit (trigger `pre-commit`);
-- before a branch with real commits is pushed / published (trigger
-  `pre-publish`);
-- before `pr-to-dev` / `pr-dev-to-main` opens a PR (trigger `pre-pr`).
+**Use whenever a PR is being opened** — this is expected to run
+automatically as a step of `pr-to-dev` / `pr-dev-to-main` (trigger
+`pre-pr`), not only on explicit request. It **no longer runs at commit or
+branch-publish time**; a plain `commit` / `git push` does not trigger it.
+Still fine to run by hand on the current diff any time.
 
 **Skip only** for a pure formatting / comment-wording / non-functional
 diff (nothing a reviewer could meaningfully object to) — and whoever skips
@@ -119,7 +116,7 @@ should say so.
 - **APPROVE** — nothing to change.
 - **APPROVE WITH NITS** — only Non-blocking findings; safe to proceed.
 - **CHANGES REQUESTED** — one or more Blocking findings that must be fixed
-  before commit/PR.
+  before the PR is opened.
 - **BLOCK** — a Blocking finding that risks data loss, a security hole, or
   a statutory-compliance breach; do not proceed under any time pressure.
 
@@ -133,7 +130,9 @@ Write to the sibling vault repo — never into `golden-fur`:
 
 - `<branch>` is the branch name verbatim, keeping any `/`
   (`feat/foo-bar/` becomes a nested folder — fine).
-- `<trigger>` is `pre-commit`, `pre-publish`, or `pre-pr`.
+- `<trigger>` is normally `pre-pr` (the PR skills). `manual` for a
+  hand-run review; the legacy `pre-commit` / `pre-publish` values may still
+  appear in older reports.
 - One file per review run; successive runs on the same branch accumulate as
   a history of that branch's review passes. If a run collides exactly
   (same minute, same trigger), suffix `-2`.
@@ -150,7 +149,7 @@ project: golden-fur
 
 # Code review — `<branch>`
 
-- **Trigger:** <pre-commit | pre-publish | pre-pr>
+- **Trigger:** <pre-pr | manual>
 - **Base:** `<base>` (merge-base `<short-sha>`)
 - **Reviewed:** `<base>..HEAD` + uncommitted working tree
 - **Commits:** <n> — <short-sha> <subject>; …

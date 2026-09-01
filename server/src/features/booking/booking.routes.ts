@@ -9,6 +9,7 @@ import {
   catalogController,
   completeBookingController,
   createBookingController,
+  addBalancePaymentController,
   downpaymentStatusController,
   getBookingController,
   listBookingsController,
@@ -164,6 +165,14 @@ router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
 // Customer self-service Pay button (CustomerBookingsPage) - ownership
 // checked in payForBooking, same pattern as reschedule/cancel above.
 router.post('/bookings/:id/pay', jwtMiddleware, payBookingController);
+
+// Customer-chosen partial payment toward a partly-paid booking's balance
+// (CustomerTransactionHistoryPage) - ownership + eligibility in the service.
+router.post(
+  '/bookings/:id/balance-payment',
+  jwtMiddleware,
+  addBalancePaymentController
+);
 
 // Manual status-advance actions (booking-status revision, replacing the
 // retired 'Confirmed' payment gate): Start/Complete open to any staff role
