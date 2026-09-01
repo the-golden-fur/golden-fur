@@ -87,8 +87,6 @@ const HOTEL_BOOKING = {
   discount_amount: 0,
   promo_amount: 0,
   downpayment_amount: 500,
-  // The customer paid the downpayment online but not the balance - so the
-  // convertible "amount paid" is 500, not the 2000 total.
   payment_stage: 'Paid in Advance',
   reschedule_count: 0,
 };
@@ -99,6 +97,11 @@ const DAYCARE_BOOKING = {
   downpayment_amount: null,
   payment_stage: 'Unpaid',
 };
+
+// confirmedAmountPaid() reads the booking's non-Pending booking_payment
+// transactions. A settled downpayment of 500; and "nothing confirmed yet".
+const PAID_TXNS = { data: [{ total_amount: 500 }], error: null };
+const NO_TXNS = { data: [], error: null };
 
 function policyRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -154,6 +157,7 @@ describe('cancellation.service (#54/#91)', () => {
       { data: [policyRow()], error: null }, // policy
       { data: CANCELLED_ROW, error: null }, // booking update
       { data: LOG_ROW, error: null }, // cancellation_logs insert
+      PAID_TXNS, // confirmedAmountPaid
       { data: null, error: null } // markCreditIssuedOnLog update
     );
 
@@ -189,6 +193,7 @@ describe('cancellation.service (#54/#91)', () => {
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },
+      PAID_TXNS,
       { data: null, error: null }
     );
 
@@ -246,6 +251,7 @@ describe('cancellation.service (#54/#91)', () => {
       },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },
+      PAID_TXNS,
       { data: null, error: null }
     );
 
@@ -272,16 +278,18 @@ describe('cancellation.service (#54/#91)', () => {
     });
   });
 
-  it('advisor #10: a fully-paid booking converts the whole net total, not just the downpayment', async () => {
+  it('advisor #10: credit is the full settled amount, converting every confirmed payment', async () => {
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: ISSUED_TRANSACTION,
       error: null,
     } as never);
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, payment_stage: 'Paid' }, error: null },
+      { data: HOTEL_BOOKING, error: null },
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },
+      // downpayment (Partially Paid) + remaining balance (Fully Paid) = 2000
+      { data: [{ total_amount: 500 }, { total_amount: 1500 }], error: null },
       { data: null, error: null }
     );
 
@@ -291,19 +299,20 @@ describe('cancellation.service (#54/#91)', () => {
       input: {},
     });
 
-    // total_price 2000, no discount/promo, rate 100% -> 2000.
+    // rate 100% of the 2000 actually collected.
     expect(supabase.rpc).toHaveBeenCalledWith(
       'issue_credit',
       expect.objectContaining({ p_amount: 2000 })
     );
   });
 
-  it('advisor #10: an unpaid booking never issues credit even with notice met', async () => {
+  it('advisor #10 / live feedback: a booking with no confirmed payment never issues credit, even at payment_stage "Paid"', async () => {
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, payment_stage: 'Unpaid' }, error: null },
+      { data: { ...HOTEL_BOOKING, payment_stage: 'Paid' }, error: null },
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
-      { data: LOG_ROW, error: null }
+      { data: LOG_ROW, error: null },
+      NO_TXNS // no non-Pending booking_payment rows
     );
 
     const result = await cancelBooking({
@@ -326,7 +335,8 @@ describe('cancellation.service (#54/#91)', () => {
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
       // cancellation_logs insert fails -> writeCancellationLog returns null
-      { data: null, error: { message: 'insert failed' } }
+      { data: null, error: { message: 'insert failed' } },
+      PAID_TXNS
     );
 
     const result = await cancelBooking({
@@ -441,12 +451,13 @@ describe('cancellation.service (#54/#91)', () => {
     });
   });
 
-  it('a qualifying notice with no downpayment (e.g. Daycare) never issues credit', async () => {
+  it('a qualifying notice with nothing paid (e.g. Daycare, no transactions) never issues credit', async () => {
     queueFromResults(
       { data: DAYCARE_BOOKING, error: null },
       { data: [policyRow()], error: null },
       { data: { ...DAYCARE_BOOKING, status: 'Cancelled' }, error: null },
-      { data: LOG_ROW, error: null }
+      { data: LOG_ROW, error: null },
+      NO_TXNS
     );
 
     const result = await cancelBooking({
@@ -473,6 +484,7 @@ describe('cancellation.service (#54/#91)', () => {
       { data: [policyRow({ notice_enforcement_enabled: false })], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },
+      PAID_TXNS,
       { data: null, error: null }
     );
 

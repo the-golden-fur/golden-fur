@@ -22,25 +22,31 @@ function round2(value: number): number {
 }
 
 /**
- * What the customer has actually paid on this booking, derived from
- * payment_stage (the same axis advancePaymentStage in booking.service.ts
- * uses to compute payment amounts) - no extra query.
+ * Money the business has actually confirmed against this booking - the sum
+ * of its `booking_payment` transactions that a cashier or the PayMongo
+ * webhook has moved off 'Pending' (a settled down payment is 'Partially
+ * Paid', a settled full/remaining payment is 'Fully Paid' - see
+ * recordBookingPaymentTransaction in booking.service.ts).
  *
- * - 'Paid'            -> the whole discounted net total (walk-in full payment,
- *                        or an online booking whose balance is settled)
- * - 'Paid in Advance' -> just the downpayment that was collected online
- * - 'Unpaid' / unset  -> nothing was received, so nothing to convert
+ * This is deliberately NOT `bookings.payment_stage`: an Online booking that
+ * doesn't require a down payment can carry `payment_stage = 'Paid'` before a
+ * single peso has been collected, and cancelling one of those must not mint
+ * credit for money that was never received. A booking with no confirmed
+ * transaction row returns 0 -> no credit.
  */
-function amountPaidOnBooking(booking: Booking): number {
-  const netTotal = round2(
-    booking.total_price - booking.discount_amount - booking.promo_amount
-  );
+async function confirmedAmountPaid(bookingId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq('booking_id', bookingId)
+    .eq('transaction_type', 'booking_payment')
+    .neq('payment_status', 'Pending');
 
-  if (booking.payment_stage === 'Paid') return netTotal;
-  if (booking.payment_stage === 'Paid in Advance') {
-    return round2(booking.downpayment_amount ?? 0);
-  }
-  return 0;
+  if (error || !data) return 0;
+
+  return round2(
+    data.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0)
+  );
 }
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -132,11 +138,15 @@ export async function cancelBooking({
   });
 
   // #91/#93 + advisor addendum #10: convert a share of what the customer
-  // actually paid (not just the configured downpayment - a paid-in-full
-  // booking gets its full net total back, an unpaid one gets nothing) at the
+  // has actually paid - only confirmed booking_payment transactions count,
+  // so an unpaid (or "Paid"-but-uncollected) booking mints no credit, and a
+  // paid-in-full booking gets its whole settled amount back - at the
   // branch's configured cancellation_credit_conversion_rate (default 100%).
+  // The transaction read is skipped entirely when notice wasn't met (the
+  // payment is forfeited regardless).
   const rate = notice.policy.cancellation_credit_conversion_rate; // 0-100
-  const creditAmount = round2(amountPaidOnBooking(booking) * (rate / 100));
+  const amountPaid = notice.met ? await confirmedAmountPaid(booking.id) : 0;
+  const creditAmount = round2(amountPaid * (rate / 100));
   const qualifies = notice.met && creditAmount > 0;
 
   let creditIssued = false;
