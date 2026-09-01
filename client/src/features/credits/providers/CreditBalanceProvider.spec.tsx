@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCreditBalances } from '../api/credits.api';
@@ -21,7 +22,11 @@ function Probe() {
 
 function renderProvider() {
   return render(
-    createElement(CreditBalanceProvider, null, createElement(Probe))
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(CreditBalanceProvider, null, createElement(Probe))
+    )
   );
 }
 

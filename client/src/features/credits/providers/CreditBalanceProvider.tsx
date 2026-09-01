@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useLocation } from 'react-router';
 import { useAuth } from '../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCreditBalances } from '../api/credits.api';
 import type { CreditBalance } from '../credits.types';
@@ -23,6 +24,7 @@ import { CreditBalanceContext } from './CreditBalanceContext';
  */
 export function CreditBalanceProvider({ children }: { children: ReactNode }) {
   const { accessToken } = useAuth();
+  const { pathname } = useLocation();
   const [balances, setBalances] = useState<CreditBalance[]>([]);
   // Only tracks the FIRST load - a refresh() re-fetch keeps showing the old
   // total until the new one lands rather than flashing the pill away.
@@ -34,9 +36,10 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
 
   // The provider is mounted once around the whole customer shell and never
   // remounts on navigation, so without this a server-side credit change from
-  // any path other than the cancel button (e.g. a staff adjustment, another
-  // tab) leaves the pill stale until a full reload. Re-fetch when the tab
-  // regains focus / becomes visible again.
+  // any path other than the cancel button (a staff adjustment, a payment
+  // made from the transactions page, another tab) leaves the pill stale
+  // until a full reload. Re-fetch when the tab regains focus / becomes
+  // visible again.
   useEffect(() => {
     if (!accessToken) {
       return;
@@ -64,6 +67,10 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true;
 
+    // `pathname` in the deps re-pulls on every in-app navigation within the
+    // customer shell - cheap (one small query) and covers the common case
+    // of the balance changing on one page and the pill being read on the
+    // next without the tab ever losing focus.
     void listCreditBalances(accessToken).then((result) => {
       if (!isMounted) {
         return;
@@ -77,7 +84,7 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, reloadKey]);
+  }, [accessToken, reloadKey, pathname]);
 
   const value = useMemo(
     () => ({
