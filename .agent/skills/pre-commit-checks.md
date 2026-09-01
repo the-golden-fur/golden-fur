@@ -2,18 +2,16 @@
 
 **Purpose:** run every `(check)`/`(fix)`-labeled VS Code task in
 `.vscode/tasks.json` — lint and format, for both `client` and `server` —
-before code gets committed, so issues are caught and auto-corrected
-locally instead of surfacing later in CI or needing manual cleanup after
-the fact.
+to catch and auto-correct issues locally instead of surfacing them later.
 
 **Use whenever:**
 
-- **Always, as the first step of the `commit` skill** — run this before
-  staging/writing the commit message, every time a local commit is made in
-  this repo.
+- **As a step of `pr-to-dev` / `pr-dev-to-main`** (it's folded into the
+  `ci-verifier` "✅ CI: Verify All" run there) — not on every commit.
+  A plain `commit` / `git push` has no lint/format gate.
 - On request, standalone — "run the checks", "lint this", "run the CI
-  tasks locally" — at any other point while working, e.g. mid-task on a
-  larger change.
+  tasks locally" — at any point while working, e.g. mid-task on a larger
+  change or just before opening a PR.
 
 ## Process
 
@@ -37,37 +35,29 @@ the fact.
 4. Only proceed to stage/commit once every check task passes clean, or the
    user explicitly says to commit anyway with known issues outstanding.
 
-## Windows CRLF false-diff — don't trust `git status` right after the fix tasks
+## Windows CRLF false-diff
 
-On Windows, `npm run format`/`lint:fix` can make `git status --short` briefly
-report dozens of files as modified that have nothing to do with the current
-change - pre-existing line-ending drift (`core.autocrlf`) that Prettier's
-write touches indirectly, not new content changes. It looks alarming (a huge
-unrelated diff right when you're about to commit) but is spurious: it clears
-up on its own once git recomputes, and doesn't survive being staged.
-
-**Countermeasure - stage, then unstage, before trusting the diff:**
+The repo's `.gitattributes` (`* text=auto eol=lf`) checks every text file
+out as LF on every platform, so `npm run format` and `git status` no
+longer disagree with CI over line endings. If you still see a big
+unrelated `git status` after the fix tasks (a working tree that predates
+`.gitattributes`, a fresh clone mid-migration): stage then unstage to
+normalize the comparison —
 
 ```sh
 git add -A
-git status --short   # now compare against this, not the pre-stage listing
+git status --short   # compare against this, not the pre-stage listing
 git restore --staged .
 ```
 
-Staging normalizes the line-ending noise out of the comparison. Only files
-that still show as modified after this round-trip are real changes worth
-reviewing/including. If a `git status --short` immediately after the fix
-tasks shows far more files than you expect, don't stage that whole set and
-don't "fix" the unrelated ones as a drive-by - run the stage/unstage check
-above first, then proceed with `commit.md`'s own file-by-file review using
-the now-accurate list.
+— and only files still showing modified are real. Don't stage or "fix"
+the line-ending-only set.
 
 ## Scope — deliberately narrow
 
 This runs only the tasks in `.vscode/tasks.json` whose label contains
 `(check)` or `(fix)` — lint and format. It does **not** run tests or the
 production build (the other jobs bundled into "✅ CI: Verify All") —
-those are slower, and already covered by CI on the PR itself. Run them
-yourself via the matching VS Code task, `npm test`, or `npm run build` if
-you want that extra confidence before pushing, but they're not part of
-this pre-commit gate.
+`ci-verifier` covers those at PR time. Run them yourself via the matching
+VS Code task, `npm test`, or `npm run build` any time you want the extra
+confidence.

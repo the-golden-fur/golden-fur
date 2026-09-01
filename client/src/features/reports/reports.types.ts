@@ -51,7 +51,17 @@ export interface TransactionRecord {
   total_amount: number;
   misc_sale_description: string | null;
   created_at: string;
-  bookings: { pet_id: string; service_category: string } | null;
+  bookings: {
+    pet_id: string;
+    service_category: string;
+    /** The parent booking's payment-status rollup + pricing snapshot -
+     * lets the transaction pages work out a partly-paid booking's
+     * remaining balance for the "add a balance payment" action. */
+    payment_status: string;
+    total_price: number;
+    discount_amount: number;
+    promo_amount: number;
+  } | null;
 }
 
 export type AnalyticsTimeFilter =

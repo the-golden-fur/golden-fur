@@ -15,9 +15,15 @@ import type { TransactionRecord } from '../../reports.types';
 import { PaymentMethodForm } from '../../../billing/components/PaymentMethodForm/PaymentMethodForm';
 import type { PaymentFields } from '../../../billing/billing.types';
 import {
+  addBookingPayment,
   payTransactionWithCredit,
   recordTransactionPayment,
 } from '../../../billing/api/billing.api';
+import { formatCurrency } from '../../../../shared/utils/formatCurrency';
+import {
+  payableBalances,
+  type PayableBalance,
+} from '../../utils/payableBalances';
 import styles from './TransactionHistoryTable.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -60,6 +66,7 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
 function paymentChoiceLabel(record: TransactionRecord): string {
   if (record.payment_choice === 'downpayment') return 'Down payment';
   if (record.payment_choice === 'full') return 'Full payment';
+  if (record.payment_choice === 'balance') return 'Balance payment';
   return '-';
 }
 
@@ -88,12 +95,53 @@ export function TransactionHistoryTable() {
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [reloadKey, setReloadKey] = useState(0);
+  const [pendingOnly, setPendingOnly] = useState(false);
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
   const [payFields, setPayFields] = useState<PaymentFields>({
     payment_method: 'Cash',
   });
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+
+  const [balanceTarget, setBalanceTarget] = useState<PayableBalance | null>(
+    null
+  );
+  const [balanceAmount, setBalanceAmount] = useState('');
+  const [balanceBusy, setBalanceBusy] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const openBalance = (target: PayableBalance) => {
+    setBalanceTarget(target);
+    setBalanceAmount('');
+    setBalanceError(null);
+  };
+
+  const confirmBalance = async () => {
+    if (!balanceTarget || !accessToken) return;
+    const amount = Number(balanceAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setBalanceError('Enter an amount greater than zero.');
+      return;
+    }
+    if (amount > balanceTarget.remaining) {
+      setBalanceError('That is more than the balance left on this booking.');
+      return;
+    }
+    setBalanceBusy(true);
+    setBalanceError(null);
+    const result = await addBookingPayment(
+      balanceTarget.bookingId,
+      amount,
+      accessToken
+    );
+    setBalanceBusy(false);
+    if (result.error) {
+      setBalanceError(result.error);
+      return;
+    }
+    setBalanceTarget(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
@@ -245,6 +293,12 @@ export function TransactionHistoryTable() {
     initialSortKey: 'newest',
   });
 
+  const rows = pendingOnly
+    ? visibleTransactions.filter((t) => t.payment_status === 'Pending')
+    : visibleTransactions;
+
+  const payable = payableBalances(transactions);
+
   if (isRoleLoading) {
     return <p>Loading...</p>;
   }
@@ -367,7 +421,31 @@ export function TransactionHistoryTable() {
           onSortChange={setSortKey}
           sortOptions={SORT_OPTIONS}
         />
+        <label className={styles.field}>
+          <input
+            type="checkbox"
+            checked={pendingOnly}
+            onChange={(event) => setPendingOnly(event.target.checked)}
+          />{' '}
+          Due payments only
+        </label>
       </div>
+
+      {payable.length > 0 ? (
+        <div className={styles.filters}>
+          {payable.map((item) => (
+            <button
+              key={item.bookingId}
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => openBalance(item)}
+            >
+              Add {item.serviceCategory} balance payment (
+              {formatCurrency(item.remaining)} left)
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {isLoading ? (
         <p className={styles.copy}>Loading transactions...</p>
@@ -375,7 +453,7 @@ export function TransactionHistoryTable() {
         <p className={styles.errorBanner} role="alert">
           {error}
         </p>
-      ) : visibleTransactions.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className={styles.copy}>No transactions match these filters.</p>
       ) : (
         <table className={styles.table}>
@@ -392,7 +470,7 @@ export function TransactionHistoryTable() {
             </tr>
           </thead>
           <tbody>
-            {visibleTransactions.map((transaction) => {
+            {rows.map((transaction) => {
               const canPay =
                 transaction.payment_status === 'Pending' &&
                 transaction.transaction_type === 'booking_payment' &&
@@ -513,6 +591,61 @@ export function TransactionHistoryTable() {
                 }
               >
                 {payBusy ? 'Processing...' : 'Record payment'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {balanceTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-balance-title"
+          >
+            <h2 id="add-balance-title" className={styles.modalTitle}>
+              Add a balance payment
+            </h2>
+            <p className={styles.copy}>
+              {formatCurrency(balanceTarget.remaining)} left on this{' '}
+              {balanceTarget.serviceCategory} booking. This creates a new due
+              payment for the amount entered, which is then settled like any
+              other.
+            </p>
+            <label className={styles.field}>
+              Amount
+              <input
+                className={styles.control}
+                type="number"
+                min={1}
+                max={balanceTarget.remaining}
+                step="0.01"
+                value={balanceAmount}
+                onChange={(event) => setBalanceAmount(event.target.value)}
+              />
+            </label>
+            {balanceError ? (
+              <p className={styles.errorBanner} role="alert">
+                {balanceError}
+              </p>
+            ) : null}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setBalanceTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={balanceBusy}
+                onClick={() => void confirmBalance()}
+              >
+                {balanceBusy ? 'Adding...' : 'Add payment'}
               </button>
             </div>
           </section>

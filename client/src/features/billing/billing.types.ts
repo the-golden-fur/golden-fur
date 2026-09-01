@@ -14,17 +14,6 @@ export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
   'Maya',
 ];
 
-/** Methods a cashier settles directly at the counter - mirrors the server's
- * COUNTER_PAYMENT_METHODS (recordTransactionPaymentValidator). GCash/Maya go
- * through the customer's own online flow; Credit is a separate action. */
-export const COUNTER_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'Cash',
-  'Card',
-  'Bank Transfer',
-  'Grabmart',
-  'Pickaroo',
-];
-
 export const BANK_NAMES = ['BPI', 'BDO'] as const;
 export type BankName = (typeof BANK_NAMES)[number];
 

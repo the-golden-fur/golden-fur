@@ -278,6 +278,13 @@ export const payBookingValidator = z
   })
   .strict();
 
+/** Customer-chosen partial payment toward a partly-paid booking's balance. */
+export const addBalancePaymentValidator = z
+  .object({
+    amount: z.number().positive(),
+  })
+  .strict();
+
 export const onlinePaymentsStatusQueryValidator = z.object({
   branch_id: z.uuid(),
 });

@@ -27,7 +27,10 @@ import {
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
-import { payForBooking } from '../billing/services/customerBookingPayment.service.ts';
+import {
+  addCustomerBalancePayment,
+  payForBooking,
+} from '../billing/services/customerBookingPayment.service.ts';
 import {
   availabilityQueryValidator,
   cagePickerQueryValidator,
@@ -40,6 +43,7 @@ import {
   onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
   partsOfDayQueryValidator,
+  addBalancePaymentValidator,
   payBookingValidator,
   petBookingConflictsQueryValidator,
   rescheduleBookingValidator,
@@ -449,6 +453,39 @@ export async function payBookingController(
     });
 
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Customer-chosen partial balance payment (CustomerTransactionHistoryPage) -
+ * creates a fresh Pending 'balance' charge the customer then settles. */
+export async function addBalancePaymentController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = addBalancePaymentValidator.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const transaction = await addCustomerBalancePayment({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+      amount: parsed.data.amount,
+    });
+
+    return res.status(201).json({ transaction });
   } catch (error) {
     return sendServiceError(res, error);
   }
