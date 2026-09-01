@@ -183,10 +183,10 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
-            title: 'Payments Queue',
+            title: 'Transactions',
             description:
-              'Mark completed bookings as paid, or override a payment stage.',
-            to: '/staff/billing/payments-queue',
+              'Record a payment against any pending charge; add balance payments.',
+            to: '/staff/billing/transactions',
           },
           {
             title: 'Transaction History',
@@ -450,10 +450,10 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
-            title: 'Payments Queue',
+            title: 'Transactions',
             description:
-              'Mark completed bookings as paid, or override a payment stage.',
-            to: '/staff/billing/payments-queue',
+              'Record a payment against any pending charge; add balance payments.',
+            to: '/staff/billing/transactions',
           },
           {
             title: 'Transaction History',
@@ -541,7 +541,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'My Patients': PawPrint,
   'My Catalog': ListChecks,
   'Checkout & Billing': Wallet,
-  'Payments Queue': Receipt,
+  Transactions: Receipt,
   'Credit Management': Coins,
   'Boarding Checklist': Heart,
   'Activity Log': History,

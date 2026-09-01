@@ -3,6 +3,7 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { getMyTransactionHistory } from '../../api/reports.api';
+import { payTransactionWithCredit } from '../../../billing/api/billing.api';
 import type { TransactionRecord } from '../../reports.types';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
@@ -58,6 +59,22 @@ export function CustomerTransactionHistoryPage() {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const payWithCredit = async (transactionId: string) => {
+    if (!accessToken) return;
+    setPayingId(transactionId);
+    setPayError(null);
+    const result = await payTransactionWithCredit(transactionId, accessToken);
+    setPayingId(null);
+    if (result.error) {
+      setPayError(result.error);
+      return;
+    }
+    setReloadKey((k) => k + 1);
+  };
 
   useEffect(() => {
     if (!accessToken) return;
@@ -88,7 +105,7 @@ export function CustomerTransactionHistoryPage() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, dateFrom, dateTo, serviceCategory, paymentChoice]);
+  }, [accessToken, dateFrom, dateTo, serviceCategory, paymentChoice, reloadKey]);
 
   const {
     search,
@@ -211,6 +228,7 @@ export function CustomerTransactionHistoryPage() {
               <th>Payment Method</th>
               <th>Status</th>
               <th>Amount</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -227,11 +245,32 @@ export function CustomerTransactionHistoryPage() {
                 <td>{transaction.payment_method}</td>
                 <td>{paymentStatusLabel(transaction.payment_status)}</td>
                 <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                <td>
+                  {transaction.payment_status === 'Pending' &&
+                  transaction.transaction_type === 'booking_payment' ? (
+                    <button
+                      type="button"
+                      className={styles.payButton}
+                      disabled={payingId === transaction.id}
+                      onClick={() => void payWithCredit(transaction.id)}
+                    >
+                      {payingId === transaction.id
+                        ? 'Paying...'
+                        : 'Pay with credit'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {payError ? (
+        <p className={styles.errorBanner} role="alert">
+          {payError}
+        </p>
+      ) : null}
     </main>
   );
 }

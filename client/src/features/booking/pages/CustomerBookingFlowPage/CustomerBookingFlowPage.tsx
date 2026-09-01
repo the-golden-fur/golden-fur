@@ -28,7 +28,6 @@ import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
-import { PayMongoFeeNotice } from '../../components/PayMongoFeeNotice/PayMongoFeeNotice';
 import {
   createBooking,
   getBookingCatalog,
@@ -41,7 +40,6 @@ import {
 } from '../../api/booking.api';
 import {
   BOOKING_MARK_PAID_ROLES,
-  PAYMENT_METHODS,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingSource,
@@ -50,7 +48,6 @@ import {
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
-  type PaymentMethod,
   type PetBookingConflict,
   type ServiceCategory,
   type StaffPreferenceInput,
@@ -76,7 +73,6 @@ import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './CustomerBookingFlowPage.module.css';
 
-const ONLINE_METHODS = new Set<PaymentMethod>(['GCash', 'Maya']);
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
  * array (and invalidate every memo that depends on them) on every render. */
@@ -256,7 +252,6 @@ interface PersistedBookingDraft {
   hotelNights: number;
   selectedPromoId: string;
   selectedDiscountId: string;
-  paymentMethod: PaymentMethod | '';
   paymentChoice: 'downpayment' | 'full';
   specialInstructions: string;
   hotelFeeding: HotelFeedingRowState[];
@@ -506,10 +501,8 @@ export function CustomerBookingFlowPage() {
   // checkboxes) - the act of a qualifying staff role choosing a Cash booking
   // and checking this box IS the attestation.
   const [discountIdVerified, setDiscountIdVerified] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
-  // Custom change (P-1 roadmap item: generic downpayment) - only surfaced
-  // (and only sent to the server) when the selection requires a downpayment
-  // and an online payment method is picked - see showPaymentChoice below.
+  // Payment scheme: only sent when the branch requires a down payment (see
+  // showPaymentChoice). Decides the size of the booking's initial charge.
   const [paymentChoice, setPaymentChoice] = useState<'downpayment' | 'full'>(
     'downpayment'
   );
@@ -830,7 +823,6 @@ export function CustomerBookingFlowPage() {
       setHotelNights(draft.hotelNights);
       setSelectedPromoId(draft.selectedPromoId);
       setSelectedDiscountId(draft.selectedDiscountId);
-      setPaymentMethod(draft.paymentMethod);
       setPaymentChoice(draft.paymentChoice);
       setSpecialInstructions(draft.specialInstructions);
       setHotelFeeding(draft.hotelFeeding);
@@ -867,7 +859,6 @@ export function CustomerBookingFlowPage() {
         hotelNights,
         selectedPromoId,
         selectedDiscountId,
-        paymentMethod,
         paymentChoice,
         specialInstructions,
         hotelFeeding,
@@ -894,7 +885,6 @@ export function CustomerBookingFlowPage() {
     hotelNights,
     selectedPromoId,
     selectedDiscountId,
-    paymentMethod,
     paymentChoice,
     specialInstructions,
     hotelFeeding,
@@ -928,7 +918,6 @@ export function CustomerBookingFlowPage() {
     setSelectedPromoId('');
     setSelectedDiscountId('');
     setDiscountIdVerified(false);
-    setPaymentMethod('');
     setPaymentChoice('downpayment');
     setSpecialInstructions('');
     resetHotelPreferences();
@@ -1208,7 +1197,7 @@ export function CustomerBookingFlowPage() {
   // Cash is chosen as the payment method (canApplyDiscounts already gates
   // whether any discounts were even fetched - see the discounts effect).
   const applicableDiscounts = useMemo(() => {
-    if (!canApplyDiscounts || paymentMethod !== 'Cash') return [];
+    if (!canApplyDiscounts) return [];
 
     return discounts.filter((discount) => {
       if (!discount.is_active) return false;
@@ -1223,7 +1212,6 @@ export function CustomerBookingFlowPage() {
     });
   }, [
     canApplyDiscounts,
-    paymentMethod,
     discounts,
     selectedServiceIds,
     selectedPackageIds,
@@ -1274,15 +1262,12 @@ export function CustomerBookingFlowPage() {
       ? estimatedTotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
       : Math.min(downpaymentStatus?.downpayment_amount ?? 0, estimatedTotal)
     : null;
-  // Only meaningful when paying online right now (GCash/Maya) - pay-at-
-  // counter methods always defer the whole amount to later regardless, same
-  // as today, so there's nothing to choose between until the customer is
-  // actually at the counter (handled there via the Payments Queue's
-  // existing Mark as Paid "Advance payment" vs "Normal onsite payment").
-  const showPaymentChoice =
-    downpaymentRequired &&
-    paymentMethod !== '' &&
-    ONLINE_METHODS.has(paymentMethod);
+  // Shown whenever the branch requires a down payment: the customer picks
+  // whether the booking's initial charge is the down payment (balance
+  // recorded later at the counter) or the full amount. No payment method is
+  // chosen here any more - that happens per transaction on the Transactions
+  // page.
+  const showPaymentChoice = downpaymentRequired;
 
   // ---- Steps ----
 
@@ -1402,10 +1387,7 @@ export function CustomerBookingFlowPage() {
       case 'hotelDetails':
         return true;
       case 'payment':
-        return (
-          (!requiresPayment || paymentMethod !== '') &&
-          (!selectedDiscount?.is_mandated || discountIdVerified)
-        );
+        return !selectedDiscount?.is_mandated || discountIdVerified;
       default:
         return true;
     }
@@ -1555,15 +1537,6 @@ export function CustomerBookingFlowPage() {
   function handleBookingSourceSelect(source: BookingSource) {
     setBookingSource(source);
     setSelectedSlot(null);
-    // Walk-in never offers an online (GCash/Maya) payment method - clears a
-    // stale online pick left over from browsing back from a later step
-    // rather than letting the payment step render with a selection that's
-    // no longer in its own option list.
-    setPaymentMethod((current) =>
-      source === 'Walk-in' && ONLINE_METHODS.has(current as PaymentMethod)
-        ? ''
-        : current
-    );
   }
 
   /** A package's bundled price already covers its member services - keeping
@@ -1826,10 +1799,6 @@ export function CustomerBookingFlowPage() {
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const paymentConfirmed = requiresPayment
-      ? ONLINE_METHODS.has(paymentMethod as PaymentMethod)
-      : false;
-
     // #22 follow-up: try/catch is load-bearing, not defensive boilerplate -
     // without it, a thrown exception here (a network failure, a bad JSON
     // response) would skip setIsSubmitting(false) entirely, leaving the
@@ -1856,13 +1825,7 @@ export function CustomerBookingFlowPage() {
         scheduled_end: finalScheduledEnd!,
         ...(staffPreference ? { staff_preference: staffPreference } : {}),
         ...(cagePreference ? { cage_preference: cagePreference } : {}),
-        ...(requiresPayment && paymentMethod
-          ? {
-              payment_method: paymentMethod,
-              payment_confirmed: paymentConfirmed,
-            }
-          : {}),
-        ...(showPaymentChoice ? { payment_choice: paymentChoice } : {}),
+        ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
         ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
         ...(specialInstructions.trim()
@@ -1916,7 +1879,7 @@ export function CustomerBookingFlowPage() {
           )}
           .{' '}
           {requiresPayment
-            ? confirmedBooking.payment_confirmed
+            ? confirmedBooking.payment_status === 'Fully Paid'
               ? 'Your payment has been received.'
               : 'Payment is due at the counter.'
             : "You're all set!"}
@@ -1925,7 +1888,7 @@ export function CustomerBookingFlowPage() {
             slot and is released if the deadline passes - tell the customer
             plainly so they pay in time. */}
         {confirmedBooking.downpayment_required &&
-        confirmedBooking.payment_stage === 'Unpaid' &&
+        confirmedBooking.payment_status === 'Pending' &&
         confirmedBooking.downpayment_due_at ? (
           <p className={styles.errorBanner} role="alert">
             This time slot is not reserved yet. Pay your down payment of PHP{' '}
@@ -2964,31 +2927,10 @@ export function CustomerBookingFlowPage() {
             </section>
 
             {requiresPayment ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Payment method</span>
-                <select
-                  className={styles.input}
-                  value={paymentMethod}
-                  onChange={(event) =>
-                    setPaymentMethod(event.target.value as PaymentMethod)
-                  }
-                >
-                  <option value="">Select a payment method...</option>
-                  {/* Walk-in booking flow: on-site/counter options only - no
-                      PayMongo/GCash/Maya online checkout, since the customer
-                      is already physically at the counter. */}
-                  {(bookingSource === 'Walk-in'
-                    ? PAYMENT_METHODS.filter(
-                        (method) => !ONLINE_METHODS.has(method)
-                      )
-                    : PAYMENT_METHODS
-                  ).map((method) => (
-                    <option key={method} value={method}>
-                      {method}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <p className={styles.copy}>
+                Payment is recorded at the counter (or from account credit) -
+                no payment method is chosen here.
+              </p>
             ) : (
               <p className={styles.copy}>
                 No upfront payment is required for Veterinary bookings.
@@ -2998,8 +2940,8 @@ export function CustomerBookingFlowPage() {
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
                 <legend className={styles.fieldLabel}>
-                  This booking requires a downpayment - pay it now, or pay in
-                  full?
+                  This booking requires a down payment - set it up as the down
+                  payment now, or the full amount?
                 </legend>
                 <label className={styles.radioOption}>
                   <input
@@ -3025,10 +2967,9 @@ export function CustomerBookingFlowPage() {
             ) : null}
 
             {canApplyDiscounts ? (
-              paymentMethod === 'Cash' ? (
                 <fieldset className={styles.field}>
                   <legend className={styles.fieldLabel}>
-                    Discount (Cash only - verify ID before applying)
+                    Discount (verify the customer&apos;s ID before applying)
                   </legend>
                   <label className={styles.radioOption}>
                     <input
@@ -3078,11 +3019,6 @@ export function CustomerBookingFlowPage() {
                     </label>
                   ) : null}
                 </fieldset>
-              ) : (
-                <p className={styles.copy}>
-                  Select Cash as the payment method to apply a discount.
-                </p>
-              )
             ) : null}
 
             {applicablePromos.length > 0 ? (
@@ -3113,14 +3049,6 @@ export function CustomerBookingFlowPage() {
                   </label>
                 ))}
               </fieldset>
-            ) : null}
-
-            {/* Walk-in booking flow: no PayMongo/GCash/Maya online checkout
-                UI at all - paymentMethod can never actually be an online
-                method here anyway (filtered out above), but this skips the
-                notice outright rather than relying on that indirectly. */}
-            {bookingSource !== 'Walk-in' ? (
-              <PayMongoFeeNotice paymentMethod={paymentMethod} />
             ) : null}
 
             {submitError ? (

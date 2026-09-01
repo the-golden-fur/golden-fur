@@ -136,9 +136,85 @@ export async function listMiscSales(
   return { data: result.data?.transactions ?? null, error: result.error };
 }
 
-/** §6 (down-payment slot gate): every payment recorded against one
- * booking, oldest first - powers the Payments Queue row's "View payments"
- * panel (date, amount, method, status, full vs down payment). */
+export interface RecordPaymentPayload {
+  payment_method: string;
+  bank_name?: string;
+  payment_reference?: string;
+  cash_tendered?: number;
+}
+
+/** Cashier records a counter payment against a Pending booking_payment
+ * transaction (Transactions page). */
+export async function recordTransactionPayment(
+  transactionId: string,
+  payload: RecordPaymentPayload,
+  accessToken: string
+): Promise<
+  BillingApiResult<{
+    transaction: Transaction;
+    booking: unknown;
+    changeAmount: number | null;
+  }>
+> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/pay`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
+/** Adds a balance-payment charge against a booking (Transactions page). */
+export async function addBookingPayment(
+  bookingId: string,
+  amount: number,
+  accessToken: string
+): Promise<BillingApiResult<{ transaction: Transaction }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/bookings/${bookingId}/payments`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ amount }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
+/** Pays a Pending transaction from the customer's credit balance. */
+export async function payTransactionWithCredit(
+  transactionId: string,
+  accessToken: string
+): Promise<
+  BillingApiResult<{ transaction: Transaction; booking: unknown }>
+> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/pay-with-credit`,
+    { method: 'POST', headers: jsonHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
+/** Every payment recorded against one booking, oldest first - the
+ * "View payments" drill-down panel (date, amount, method, status). */
 export async function listBookingTransactions(
   bookingId: string,
   accessToken: string
