@@ -4,6 +4,7 @@ import { SearchSortBar } from '../../../../shared/components/SearchSortBar/Searc
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { getMyTransactionHistory } from '../../api/reports.api';
 import { payTransactionWithCredit } from '../../../billing/api/billing.api';
+import { payForBooking } from '../../../booking/api/booking.api';
 import type { TransactionRecord } from '../../reports.types';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
@@ -30,6 +31,15 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'amount-low', label: 'Sort: Amount (low to high)' },
 ];
 
+/** Modes a customer can pay a Pending transaction with. */
+type PayMode = 'credit' | 'GCash' | 'Maya';
+
+const PAY_MODES: Array<{ value: PayMode; label: string }> = [
+  { value: 'credit', label: 'Account credit' },
+  { value: 'GCash', label: 'GCash' },
+  { value: 'Maya', label: 'Maya' },
+];
+
 function paymentChoiceLabel(record: TransactionRecord): string {
   if (record.payment_choice === 'downpayment') return 'Down payment';
   if (record.payment_choice === 'full') return 'Full payment';
@@ -40,13 +50,21 @@ function paymentStatusLabel(status: string): string {
   return status === 'Pending' ? 'Due payment' : status;
 }
 
+function isPayable(t: TransactionRecord): boolean {
+  return (
+    t.payment_status === 'Pending' &&
+    t.transaction_type === 'booking_payment' &&
+    Boolean(t.booking_id)
+  );
+}
+
 /**
  * Custom change (P-1 roadmap item: transaction history visibility) - the
  * customer-facing counterpart to TransactionHistoryTable.tsx, reusing its
- * styles. No customer/pet picker (implicitly "me" - GET /reports/
- * my-transaction-history is always scoped server-side to the caller's own
- * customer_id), just date range, service type, payment choice, and the same
- * client-side search + date/amount sort the staff view offers.
+ * styles. Payment/transactions rework: this is where a customer pays an
+ * outstanding charge - "Pay" on a Pending booking_payment row opens a modal
+ * to choose account credit / GCash / Maya. Credit settles immediately;
+ * GCash/Maya redirect to PayMongo.
  */
 export function CustomerTransactionHistoryPage() {
   const { accessToken } = useAuth();
@@ -60,20 +78,50 @@ export function CustomerTransactionHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [payingId, setPayingId] = useState<string | null>(null);
+
+  const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
+  const [payMode, setPayMode] = useState<PayMode>('credit');
+  const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const payWithCredit = async (transactionId: string) => {
-    if (!accessToken) return;
-    setPayingId(transactionId);
+  const openPay = (t: TransactionRecord) => {
+    setPayTarget(t);
+    setPayMode('credit');
     setPayError(null);
-    const result = await payTransactionWithCredit(transactionId, accessToken);
-    setPayingId(null);
-    if (result.error) {
-      setPayError(result.error);
+  };
+
+  const confirmPay = async () => {
+    if (!accessToken || !payTarget) return;
+    setPaySubmitting(true);
+    setPayError(null);
+
+    if (payMode === 'credit') {
+      const result = await payTransactionWithCredit(payTarget.id, accessToken);
+      setPaySubmitting(false);
+      if (result.error) {
+        setPayError(result.error);
+        return;
+      }
+      setPayTarget(null);
+      setReloadKey((k) => k + 1);
       return;
     }
-    setReloadKey((k) => k + 1);
+
+    // GCash / Maya - settle the booking's outstanding charge via PayMongo.
+    const result = await payForBooking(
+      payTarget.booking_id as string,
+      accessToken,
+      {
+        payment_method: payMode,
+        pay_in_full: payTarget.payment_choice !== 'downpayment',
+      }
+    );
+    setPaySubmitting(false);
+    if (result.error || !result.data) {
+      setPayError(result.error ?? 'Could not start this payment.');
+      return;
+    }
+    window.location.href = result.data.checkoutUrl;
   };
 
   useEffect(() => {
@@ -249,21 +297,21 @@ export function CustomerTransactionHistoryPage() {
                 </td>
                 <td>{transaction.bookings?.service_category ?? '-'}</td>
                 <td>{paymentChoiceLabel(transaction)}</td>
-                <td>{transaction.payment_method}</td>
+                <td>
+                  {transaction.payment_status === 'Pending'
+                    ? '—'
+                    : transaction.payment_method}
+                </td>
                 <td>{paymentStatusLabel(transaction.payment_status)}</td>
                 <td>PHP {transaction.total_amount.toFixed(2)}</td>
                 <td>
-                  {transaction.payment_status === 'Pending' &&
-                  transaction.transaction_type === 'booking_payment' ? (
+                  {isPayable(transaction) ? (
                     <button
                       type="button"
                       className={styles.payButton}
-                      disabled={payingId === transaction.id}
-                      onClick={() => void payWithCredit(transaction.id)}
+                      onClick={() => openPay(transaction)}
                     >
-                      {payingId === transaction.id
-                        ? 'Paying...'
-                        : 'Pay with credit'}
+                      Pay
                     </button>
                   ) : null}
                 </td>
@@ -273,10 +321,62 @@ export function CustomerTransactionHistoryPage() {
         </table>
       )}
 
-      {payError ? (
-        <p className={styles.errorBanner} role="alert">
-          {payError}
-        </p>
+      {payTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pay-transaction-title"
+          >
+            <h2 id="pay-transaction-title" className={styles.modalTitle}>
+              Pay PHP {payTarget.total_amount.toFixed(2)}
+            </h2>
+
+            <fieldset className={styles.modeGroup}>
+              <legend>How would you like to pay?</legend>
+              {PAY_MODES.map((mode) => (
+                <label key={mode.value} className={styles.modeOption}>
+                  <input
+                    type="radio"
+                    name="pay-mode"
+                    checked={payMode === mode.value}
+                    onChange={() => setPayMode(mode.value)}
+                  />
+                  {mode.label}
+                </label>
+              ))}
+            </fieldset>
+
+            {payError ? (
+              <p className={styles.errorBanner} role="alert">
+                {payError}
+              </p>
+            ) : null}
+
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setPayTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={paySubmitting}
+                onClick={() => void confirmPay()}
+              >
+                {paySubmitting
+                  ? 'Processing...'
+                  : payMode === 'credit'
+                    ? 'Pay with credit'
+                    : 'Continue to payment'}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
     </main>
   );

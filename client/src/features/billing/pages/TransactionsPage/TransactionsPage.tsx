@@ -7,9 +7,13 @@ import type { TransactionRecord } from '../../../reports/reports.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { PaymentMethodForm } from '../../components/PaymentMethodForm/PaymentMethodForm';
-import type { PaymentFields } from '../../billing.types';
+import {
+  COUNTER_PAYMENT_METHODS,
+  type PaymentFields,
+} from '../../billing.types';
 import {
   addBookingPayment,
+  payTransactionWithCredit,
   recordTransactionPayment,
 } from '../../api/billing.api';
 import styles from './TransactionsPage.module.css';
@@ -58,6 +62,10 @@ export function TransactionsPage() {
   // Add-balance-payment inline form, keyed by booking id
   const [addBookingId, setAddBookingId] = useState<string | null>(null);
   const [addAmount, setAddAmount] = useState('');
+
+  // Default to booking groups with an outstanding charge; the rest are shown
+  // on demand so the page stays a queue, not the whole ledger.
+  const [showSettled, setShowSettled] = useState(false);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -156,6 +164,23 @@ export function TransactionsPage() {
     setReloadKey((k) => k + 1);
   };
 
+  // Settle the charge from the customer's account credit instead of a counter
+  // method (staff-on-behalf - full cover only, same rule as the customer's
+  // own pay-with-credit).
+  const confirmPayWithCredit = async () => {
+    if (!payTarget) return;
+    setBusy(true);
+    setActionError(null);
+    const result = await payTransactionWithCredit(payTarget.id, accessToken);
+    setBusy(false);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    setPayTarget(null);
+    setReloadKey((k) => k + 1);
+  };
+
   const confirmAddPayment = async (bookingId: string) => {
     const amount = Number(addAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -194,82 +219,98 @@ export function TransactionsPage() {
         <p className={styles.copy}>No transactions yet.</p>
       ) : null}
 
-      {Array.from(groups.byBooking.entries()).map(([bookingId, rows]) => {
-        const category = rows[0]?.bookings?.service_category ?? 'Booking';
-        const anyPending = rows.some((r) => r.payment_status === 'Pending');
-        return (
-          <section key={bookingId} className={styles.group}>
-            <div className={styles.groupHeader}>
-              <span className={styles.groupTitle}>{category} booking</span>
-            </div>
-            <ul className={styles.rows}>
-              {rows.map((t) => (
-                <li key={t.id} className={styles.row}>
-                  <span>
-                    {new Date(t.created_at).toLocaleDateString()} ·{' '}
-                    {formatCurrency(t.total_amount)}
-                    {t.payment_choice ? ` · ${t.payment_choice}` : ''}
-                  </span>
-                  <span className={styles.rowRight}>
-                    <PaymentStatusBadge
-                      status={toPaymentStatus(t.payment_status)}
-                      context="billing"
-                    />
-                    {t.payment_status === 'Pending' ? (
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        onClick={() => openPay(t)}
-                      >
-                        Record payment
-                      </button>
-                    ) : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {addBookingId === bookingId ? (
-              <div className={styles.addRow}>
-                <input
-                  className={styles.input}
-                  type="number"
-                  min={1}
-                  placeholder="Amount"
-                  value={addAmount}
-                  onChange={(e) => setAddAmount(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={busy}
-                  onClick={() => void confirmAddPayment(bookingId)}
-                >
-                  Add
-                </button>
+      {!isLoading && !error && transactions.length > 0 ? (
+        <label className={styles.copy}>
+          <input
+            type="checkbox"
+            checked={showSettled}
+            onChange={(e) => setShowSettled(e.target.checked)}
+          />{' '}
+          Show fully-settled bookings
+        </label>
+      ) : null}
+
+      {Array.from(groups.byBooking.entries())
+        .filter(
+          ([, rows]) =>
+            showSettled || rows.some((r) => r.payment_status === 'Pending')
+        )
+        .map(([bookingId, rows]) => {
+          const category = rows[0]?.bookings?.service_category ?? 'Booking';
+          const anyPending = rows.some((r) => r.payment_status === 'Pending');
+          return (
+            <section key={bookingId} className={styles.group}>
+              <div className={styles.groupHeader}>
+                <span className={styles.groupTitle}>{category} booking</span>
+              </div>
+              <ul className={styles.rows}>
+                {rows.map((t) => (
+                  <li key={t.id} className={styles.row}>
+                    <span>
+                      {new Date(t.created_at).toLocaleDateString()} ·{' '}
+                      {formatCurrency(t.total_amount)}
+                      {t.payment_choice ? ` · ${t.payment_choice}` : ''}
+                    </span>
+                    <span className={styles.rowRight}>
+                      <PaymentStatusBadge
+                        status={toPaymentStatus(t.payment_status)}
+                        context="billing"
+                      />
+                      {t.payment_status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          onClick={() => openPay(t)}
+                        >
+                          Record payment
+                        </button>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {addBookingId === bookingId ? (
+                <div className={styles.addRow}>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    placeholder="Amount"
+                    value={addAmount}
+                    onChange={(e) => setAddAmount(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={busy}
+                    onClick={() => void confirmAddPayment(bookingId)}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setAddBookingId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : !anyPending ? (
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={() => setAddBookingId(null)}
+                  onClick={() => {
+                    setAddBookingId(bookingId);
+                    setAddAmount('');
+                    setActionError(null);
+                  }}
                 >
-                  Cancel
+                  Add a payment
                 </button>
-              </div>
-            ) : !anyPending ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => {
-                  setAddBookingId(bookingId);
-                  setAddAmount('');
-                  setActionError(null);
-                }}
-              >
-                Add a payment
-              </button>
-            ) : null}
-          </section>
-        );
-      })}
+              ) : null}
+            </section>
+          );
+        })}
 
       {payTarget ? (
         <div className={styles.modalBackdrop} role="presentation">
@@ -286,6 +327,7 @@ export function TransactionsPage() {
               value={payFields}
               onChange={setPayFields}
               amountDue={payTarget.total_amount}
+              methods={COUNTER_PAYMENT_METHODS}
             />
             {actionError ? (
               <p className={styles.error} role="alert">
@@ -299,6 +341,14 @@ export function TransactionsPage() {
                 onClick={() => setPayTarget(null)}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => void confirmPayWithCredit()}
+              >
+                Pay from account credit
               </button>
               <button
                 type="button"

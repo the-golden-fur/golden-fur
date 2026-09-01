@@ -135,6 +135,13 @@ describe('CustomerBookingsPage', () => {
     });
   });
 
+  /** Reschedule/Cancel live behind the row's "..." menu now. */
+  async function openMenu(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      await screen.findByRole('button', { name: /options for this/i })
+    );
+  }
+
   it("AC-1: shows only the caller's bookings with a status badge", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking({ status: 'Pending' })],
@@ -160,7 +167,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     // An explicit modal dialog appears; the API must not be called yet.
@@ -171,11 +178,12 @@ describe('CustomerBookingsPage', () => {
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
 
     // Dismissing with "Keep booking" closes the dialog and still never calls
-    // the API - so a stray click on the row's Cancel button is harmless.
+    // the API - so a stray click on the Cancel menu item is harmless.
     await user.click(within(dialog).getByText('Keep booking'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
 
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
@@ -217,7 +225,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
     await user.click(screen.getByText('Yes, cancel'));
 
@@ -252,7 +260,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     // The dialog discloses the policy before the customer confirms.
@@ -288,9 +296,9 @@ describe('CustomerBookingsPage', () => {
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });
 
-  it('does not show a Pay button once payment_status is Fully Paid', async () => {
+  it('never shows a Pay action - paying moved to the Transaction History page', async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_status: 'Fully Paid' })],
+      data: [buildBooking({ status: 'Pending', payment_status: 'Pending' })],
       error: null,
     });
 
@@ -300,63 +308,5 @@ describe('CustomerBookingsPage', () => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument()
     );
     expect(screen.queryByText('Pay')).not.toBeInTheDocument();
-  });
-
-  it('disables the Pay button with an explanatory tooltip when online payments are off for the branch', async () => {
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_status: 'Pending' })],
-      error: null,
-    });
-    vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
-      data: { online_payments_enabled: false },
-      error: null,
-    });
-
-    renderPage();
-
-    const payButton = await screen.findByText('Pay');
-    await waitFor(() => expect(payButton).toBeDisabled());
-    expect(payButton).toHaveAttribute(
-      'title',
-      expect.stringContaining('unavailable')
-    );
-  });
-
-  it('pays the downpayment amount when that choice is selected, and shows the PayMongo failure message on error', async () => {
-    const user = userEvent.setup();
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        buildBooking({
-          status: 'Pending',
-          payment_status: 'Pending',
-          downpayment_required: true,
-          downpayment_amount: 250,
-          total_price: 500,
-        }),
-      ],
-      error: null,
-    });
-    vi.mocked(bookingApi.payForBooking).mockResolvedValue({
-      data: null,
-      error:
-        'Payment service is currently unavailable - please try again later',
-    });
-
-    renderPage();
-
-    await user.click(await screen.findByText('Pay'));
-    await user.click(screen.getByText(/Pay downpayment only/));
-    await user.click(screen.getByText('Continue to payment'));
-
-    await waitFor(() =>
-      expect(bookingApi.payForBooking).toHaveBeenCalledWith(
-        'booking-1',
-        'token',
-        { payment_method: 'GCash', pay_in_full: false }
-      )
-    );
-    expect(
-      await screen.findByText(/payment service is currently unavailable/i)
-    ).toBeInTheDocument();
   });
 });

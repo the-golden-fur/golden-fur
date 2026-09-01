@@ -171,6 +171,10 @@ describe('TransactionsPage', () => {
 
     renderPage('Receptionist');
 
+    // A fully-settled booking group is hidden until "show settled" is on.
+    await user.click(
+      await screen.findByLabelText(/show fully-settled bookings/i)
+    );
     await user.click(
       await screen.findByRole('button', { name: 'Add a payment' })
     );

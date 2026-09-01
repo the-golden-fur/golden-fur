@@ -7,19 +7,17 @@ import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
   cancelBooking,
-  getOnlinePaymentsStatus,
   listBookings,
-  payForBooking,
   rescheduleBooking,
 } from '../../api/booking.api';
 import {
   CANCELLABLE_BOOKING_STATUSES,
-  PAYABLE_BOOKING_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
   type Booking,
   type StaffPreferenceInput,
@@ -33,24 +31,9 @@ function formatDateTime(iso: string): string {
   });
 }
 
-function formatPeso(amount: number): string {
-  return `PHP ${amount.toFixed(2)}`;
-}
-
-/** What the booking actually costs after any booking-time discount/promo -
- * the figure the server bills against (netTotal in the payment services). */
-function netTotal(booking: Booking): number {
-  return (
-    Math.round(
-      (booking.total_price - booking.discount_amount - booking.promo_amount) *
-        100
-    ) / 100
-  );
-}
-
 type ActiveAction = {
   bookingId: string;
-  type: 'reschedule' | 'cancel' | 'pay';
+  type: 'reschedule' | 'cancel';
 };
 
 /**
@@ -58,6 +41,11 @@ type ActiveAction = {
  * Slot/Staff Picker scoped to the existing booking, per dev notes - not a
  * full re-entry of the 8-step flow) and cancel (behind an explicit confirm
  * step, AC-5).
+ *
+ * Payment/transactions rework: paying for a booking moved out of here
+ * entirely - it now lives on the Transaction History page
+ * (`/portal/transactions`), per transaction. Reschedule and Cancel are the
+ * only actions here, tucked behind a "..." menu.
  */
 export function CustomerBookingsPage() {
   const { user, accessToken } = useAuth();
@@ -82,13 +70,6 @@ export function CustomerBookingsPage() {
   // (#52). See StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
-  const [payPaymentMethod, setPayPaymentMethod] = useState<'GCash' | 'Maya'>(
-    'GCash'
-  );
-  const [payInFull, setPayInFull] = useState(true);
-  const [onlinePaymentsByBranch, setOnlinePaymentsByBranch] = useState<
-    Map<string, boolean>
-  >(new Map());
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
@@ -122,34 +103,6 @@ export function CustomerBookingsPage() {
     };
   }, [accessToken, user?.id]);
 
-  // One online-payments-status lookup per distinct branch a booking belongs
-  // to, so the Pay button can be disabled up front rather than only failing
-  // once clicked - branches rarely differ across a customer's own bookings,
-  // but nothing here assumes there's only one.
-  useEffect(() => {
-    if (!accessToken || bookings.length === 0) return;
-
-    let isMounted = true;
-    const branchIds = [
-      ...new Set(bookings.map((booking) => booking.branch_id)),
-    ];
-
-    void Promise.all(
-      branchIds.map((branchId) =>
-        getOnlinePaymentsStatus(branchId, accessToken).then(
-          (result) =>
-            [branchId, result.data?.online_payments_enabled ?? true] as const
-        )
-      )
-    ).then((entries) => {
-      if (isMounted) setOnlinePaymentsByBranch(new Map(entries));
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [accessToken, bookings]);
-
   const petNameById = useMemo(
     () => new Map(pets.map((pet) => [pet.id, pet.name])),
     [pets]
@@ -181,48 +134,8 @@ export function CustomerBookingsPage() {
     setActionMessage(null);
   }
 
-  function openPay(booking: Booking) {
-    setActiveAction({ bookingId: booking.id, type: 'pay' });
-    setPayPaymentMethod('GCash');
-    // 'Paid in Advance' only ever has one thing left to pay (the
-    // remainder) - offering the downpayment/full choice again wouldn't
-    // mean anything, payForBooking always charges the remainder regardless
-    // of what's sent for that stage.
-    // A Partially Paid booking has only the balance left - the
-    // downpayment/full choice is meaningless, payForBooking bills the
-    // remaining net amount regardless.
-    setPayInFull(
-      booking.payment_status === 'Partially Paid' ||
-        !booking.downpayment_required
-    );
-    setActionError(null);
-    setActionMessage(null);
-  }
-
   function closeAction() {
     setActiveAction(null);
-  }
-
-  async function confirmPay(booking: Booking) {
-    if (!accessToken) return;
-
-    setIsSubmittingAction(true);
-    setActionError(null);
-
-    const result = await payForBooking(booking.id, accessToken, {
-      payment_method: payPaymentMethod,
-      pay_in_full: payInFull,
-    });
-
-    if (result.error || !result.data) {
-      setIsSubmittingAction(false);
-      setActionError(result.error ?? 'Could not start this payment.');
-      return;
-    }
-
-    // Real PayMongo-hosted checkout - leaves the app entirely, same as the
-    // cashier "Customer portal" GCash/Maya channel's own redirect.
-    window.location.href = result.data.checkoutUrl;
   }
 
   async function confirmReschedule(booking: Booking) {
@@ -320,7 +233,7 @@ export function CustomerBookingsPage() {
   }
 
   // AC-5: cancellation always goes through this explicit modal dialog - a
-  // stray/double click on the row's "Cancel" button opens it, it never
+  // stray/double click on the row's "Cancel" menu item opens it, it never
   // executes the cancellation.
   const cancelTarget =
     activeAction?.type === 'cancel'
@@ -353,20 +266,12 @@ export function CustomerBookingsPage() {
             const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
               booking.status
             );
-            const canPay =
-              PAYABLE_BOOKING_STATUSES.includes(booking.status) &&
-              booking.payment_status !== 'Fully Paid';
-            const onlinePaymentsEnabled =
-              onlinePaymentsByBranch.get(booking.branch_id) ?? true;
             const isRescheduling =
               activeAction?.bookingId === booking.id &&
               activeAction.type === 'reschedule';
             const isCancelling =
               activeAction?.bookingId === booking.id &&
               activeAction.type === 'cancel';
-            const isPaying =
-              activeAction?.bookingId === booking.id &&
-              activeAction.type === 'pay';
 
             const durationMinutes = Math.round(
               (new Date(booking.scheduled_end).getTime() -
@@ -384,6 +289,20 @@ export function CustomerBookingsPage() {
               rescheduleSlot !== null &&
               !staffPickerUnavailable;
 
+            const menuItems = [
+              ...(canReschedule
+                ? [
+                    {
+                      label: 'Reschedule',
+                      onSelect: () => openReschedule(booking),
+                    },
+                  ]
+                : []),
+              ...(canCancel
+                ? [{ label: 'Cancel', onSelect: () => openCancel(booking) }]
+                : []),
+            ];
+
             return (
               <li key={booking.id} className={styles.bookingRow}>
                 <div className={styles.bookingMain}>
@@ -398,134 +317,11 @@ export function CustomerBookingsPage() {
                   <BookingConfirmationBadge booking={booking} />
                 </div>
 
-                {(canReschedule || canCancel || canPay) &&
-                !isRescheduling &&
-                !isCancelling &&
-                !isPaying ? (
-                  <div className={styles.bookingControls}>
-                    {canPay ? (
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        disabled={!onlinePaymentsEnabled}
-                        title={
-                          onlinePaymentsEnabled
-                            ? undefined
-                            : 'Online payments are currently unavailable for this branch - please pay at the branch instead.'
-                        }
-                        onClick={() => openPay(booking)}
-                      >
-                        Pay
-                      </button>
-                    ) : null}
-                    {canReschedule ? (
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => openReschedule(booking)}
-                      >
-                        Reschedule
-                      </button>
-                    ) : null}
-                    {canCancel ? (
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => openCancel(booking)}
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {isPaying ? (
-                  <div className={styles.actionPanel}>
-                    {booking.payment_status === 'Pending' &&
-                    booking.downpayment_required &&
-                    booking.downpayment_amount ? (
-                      <fieldset className={styles.field}>
-                        <legend className={styles.fieldLabel}>
-                          How much would you like to pay now?
-                        </legend>
-                        <label className={styles.checkboxField}>
-                          <input
-                            type="radio"
-                            name={`pay-choice-${booking.id}`}
-                            checked={payInFull}
-                            onChange={() => setPayInFull(true)}
-                          />
-                          <span>
-                            Pay in full ({formatPeso(netTotal(booking))})
-                          </span>
-                        </label>
-                        <label className={styles.checkboxField}>
-                          <input
-                            type="radio"
-                            name={`pay-choice-${booking.id}`}
-                            checked={!payInFull}
-                            onChange={() => setPayInFull(false)}
-                          />
-                          <span>
-                            Pay downpayment only (
-                            {formatPeso(booking.downpayment_amount)})
-                          </span>
-                        </label>
-                      </fieldset>
-                    ) : (
-                      <p className={styles.copy}>
-                        Amount due:{' '}
-                        {formatPeso(
-                          booking.payment_status === 'Partially Paid'
-                            ? netTotal(booking) -
-                                (booking.downpayment_amount ?? 0)
-                            : netTotal(booking)
-                        )}
-                      </p>
-                    )}
-
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Payment method</span>
-                      <select
-                        className={styles.input}
-                        value={payPaymentMethod}
-                        onChange={(event) =>
-                          setPayPaymentMethod(
-                            event.target.value as 'GCash' | 'Maya'
-                          )
-                        }
-                      >
-                        <option value="GCash">GCash</option>
-                        <option value="Maya">Maya</option>
-                      </select>
-                    </label>
-
-                    {actionError ? (
-                      <p className={styles.errorBanner} role="alert">
-                        {actionError}
-                      </p>
-                    ) : null}
-
-                    <div className={styles.bookingControls}>
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        disabled={isSubmittingAction}
-                        onClick={() => void confirmPay(booking)}
-                      >
-                        {isSubmittingAction
-                          ? 'Redirecting...'
-                          : 'Continue to payment'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={closeAction}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                {menuItems.length > 0 && !isRescheduling && !isCancelling ? (
+                  <MoreOptionsMenu
+                    label={`Options for this ${booking.service_category} booking`}
+                    items={menuItems}
+                  />
                 ) : null}
 
                 {isRescheduling ? (
