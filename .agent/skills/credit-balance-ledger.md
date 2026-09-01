@@ -20,12 +20,15 @@ was met (see the cancellation/reschedule policy engine). If the notice
 period wasn't met, the payment is forfeited without credit issuance. A
 cancellation log is written either way.
 
-- **Amount paid** is derived from `bookings.payment_stage` in
-  `cancellation.service.ts` (no extra query): `Paid` → the discounted net
-  total (`total_price − discount_amount − promo_amount`); `Paid in Advance`
-  → `downpayment_amount`; `Unpaid` → `0`. So a fully-paid booking of any
-  category can now generate credit, and an unpaid down-payment reservation
-  generates none.
+- **Amount paid** is the sum of the booking's `booking_payment`
+  `transactions` rows that a cashier or the PayMongo webhook has moved off
+  `'Pending'` (a settled down payment is `'Partially Paid'`, a settled
+  full/remaining payment is `'Fully Paid'`) — read in `cancellation.service.ts`
+  via `confirmedAmountPaid()`. **Not** `bookings.payment_stage`: an Online
+  booking that requires no down payment can sit at `payment_stage = 'Paid'`
+  before any money is collected, and cancelling one must not mint credit for
+  a payment that never happened. A booking with no confirmed transaction
+  converts nothing.
 - **Conversion rate** is `policy_configurations.cancellation_credit_conversion_rate`
   — a branch-scoped percentage (`0`–`100`, `NOT NULL DEFAULT 100`), resolved
   by `resolveEffectivePolicy()` like every other policy field, editable on
