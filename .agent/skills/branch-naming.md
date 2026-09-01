@@ -1,7 +1,11 @@
 # Branch naming & creation
 
-**Use whenever** starting new work: creating a branch, naming a branch, or
-"start a branch for X" — before any commit or PR work begins.
+**Use when** the user asks to start a branch — "start a branch for X",
+"name a branch", "branch off dev". Also fine to run once, unprompted, when
+you're about to make changes and the repo is sitting on `dev`/`main` (work
+shouldn't land on the default branch). **Do not** create a branch _and_
+commit to it as an end-of-task reflex — branch if needed, make the edits,
+then stop and let the user ask for the commit (see `commit.md`).
 
 ## Process
 
@@ -22,9 +26,9 @@
 Pushing the freshly-created (empty) branch here needs no checks. The
 `ci-verifier` (`.agent/agents/ci-verifier.md`, full CI parity across both
 repos) and `code-reviewer` (`.agent/agents/code-reviewer.md`, unbiased
-review) gates kick in later — before the first commit (`commit` skill),
-before the branch's real commits are published, and before a PR is opened
-(`pr-to-dev` / `pr-dev-to-main`).
+review) gates kick in later — **only when a PR is opened** (`pr-to-dev` /
+`pr-dev-to-main`). Plain commits and branch pushes just need
+`pre-commit-checks` (lint + format) clean.
 
 ## Types
 

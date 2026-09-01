@@ -17,15 +17,21 @@ skill instead — the two directions use different merge strategies.
    report under
    `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/`.
    Resolve every **Blocking** finding before opening the PR; fold anything
-   still worth noting into the PR's **Testing**/**How** sections. If the
-   branch's commits were each reviewed at `pre-commit` time and nothing has
-   changed since the last pass, that counts — no new pass needed.
-4. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
+   still worth noting into the PR's **Testing**/**How** sections. If
+   `code-reviewer` already ran on this branch earlier in the session and
+   nothing has changed under `client/src`, `server/src`, or `supabase/`
+   since, that pass counts — no new pass needed.
+4. **Check workflow-doc drift** — if the branch touched `client/src` /
+   `server/src` / `supabase/migrations`, run the `workflow-doc-sync` skill
+   once over the whole `dev...HEAD` diff. It only detects drift and hands
+   off to the vault's `workflow-documenter`; note any candidates in the
+   PR's **How** section. (This is the only point it runs — not per commit.)
+5. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
    (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
    Pre-Merge Checklist) — see field rules below.
-5. Open it directly: `gh pr create --base dev --head <branch> --title "..."
+6. Open it directly: `gh pr create --base dev --head <branch> --title "..."
 --body "..."`.
-6. Recommend label(s) and note the Milestone / Development (linked issues)
+7. Recommend label(s) and note the Milestone / Development (linked issues)
    fields — these are GitHub sidebar fields, not part of the body; set them
    with `gh pr edit --add-label ...` or leave them for the user to set in
    the UI if `gh` in this environment can't reach them.

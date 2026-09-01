@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: ['src/**/*.spec.{ts,tsx}'],
+    include: ['src/**/*.spec.{ts,tsx}', 'vite.proxy.config.spec.ts'],
     setupFiles: ['./vitest.setup.tsx'],
     passWithNoTests: true,
   },

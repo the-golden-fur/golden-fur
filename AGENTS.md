@@ -61,7 +61,10 @@ schemas, seeds, and edge functions.
   goes in `src/shared/`.
 - Server features mirror the client's naming: `*.controller.ts`,
   `*.routes.ts`, `*.types.ts`, plus `modules/`/`services/` for domain logic
-  and a `tests/` folder per feature.
+  and a `tests/` folder per feature. A new `*.routes.ts` file also needs
+  its bare path prefix added to `API_ROUTE_PREFIXES` in
+  `client/vite.proxy.config.ts` so the dev proxy forwards it to Express —
+  `vite.proxy.config.spec.ts` fails CI if you forget.
 - Request/response validation uses Zod on both client and server.
 - The client talks to Supabase directly for auth/session and RLS-guarded
   reads; it goes through the Express API for anything needing server-side
@@ -76,6 +79,11 @@ schemas, seeds, and edge functions.
 
 ## Reusable skills (multi-tool)
 
+**`commit`, the `pr-*` skills, and branch creation are explicit-request
+only** — run them when the user asks, never as an automatic end-of-task
+step. Finishing work means leaving it staged/unstaged and saying it's
+ready; the user calls the commit.
+
 `.agent/skills/` holds the canonical, tool-agnostic instructions for this
 repo's git workflow: `branch-naming` (name and create a branch),
 `commit` (write and create a conventional commit — performs the commit
@@ -88,24 +96,27 @@ plain-text description into a filled, opened GitHub issue) — plus
 of one already running — deliberately not named `run`, so it doesn't
 shadow Claude Code's own built-in `run` skill, which drives the app in a
 browser; use `dev-servers` first to confirm the processes are up, then
-`run` to actually look at a page) and `pre-commit-checks` (run every
+`run` to actually look at a page; `npm run dev`'s `predev` frees the port
+first via `scripts/free-ports.mjs`, and `npm run free-ports` does it on
+demand) and `pre-commit-checks` (run every
 `(check)`/`(fix)`-labeled VS Code task — lint and format, client and
 server — auto-fixing what it can; always runs as `commit`'s first step,
 also invocable standalone). Any AI coding tool working in this repo
 should read the relevant file under `.agent/` before doing that kind of
 task.
 
-`commit`, `pr-to-dev`, and `pr-dev-to-main` each have two mandatory
-subagent steps before the commit/PR proceeds (see "Domain agents & skills"
-below): the read-only `ci-verifier` agent, which runs the `✅ CI: Verify
-All` task (tests, lint, format, build) for **both** `golden-fur` and
-`golden-fur-vault` and must come back green; and the read-only
-`code-reviewer` agent, for an unbiased review of the diff. As a personal
-backstop you can also add a
-`PreToolUse` hook to your own (gitignored) `.claude/settings.local.json`
-that blocks a direct `git commit` / `git push` / `gh pr create` when
-`client/src`, `server/src`, or `supabase/` changed and no matching review
-exists for the branch under
+`pr-to-dev` and `pr-dev-to-main` each have two mandatory subagent steps
+before the PR is opened (see "Domain agents & skills" below): the read-only
+`ci-verifier` agent, which runs the `✅ CI: Verify All` task (tests, lint,
+format, build) for **both** `golden-fur` and `golden-fur-vault` and must
+come back green; and the read-only `code-reviewer` agent, for an unbiased
+review of the diff. **`commit` does not run either gate** — a plain commit
+or branch push just needs `pre-commit-checks` (lint + format) clean; CI
+parity and the unbiased review happen when a PR is actually being opened.
+As a personal backstop you can add a `PreToolUse` hook to your own
+(gitignored) `.claude/settings.local.json` that blocks a direct
+`gh pr create` when `client/src`, `server/src`, or `supabase/` changed and
+no matching review exists for the branch under
 `../golden-fur-vault/Projects/golden-fur/testing/reviews/` — see the vault
 decision record
 `Projects/golden-fur/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
@@ -143,21 +154,22 @@ noted):
 
 - `ci-verifier` — **read-only** runner for the `✅ CI: Verify All` task
   (tests, lint, format, build) across **both** `golden-fur` and
-  `golden-fur-vault`. Runs automatically before a commit, a branch publish,
-  and a PR; reports one pass/fail with the failing output, never fixes or
-  commits. Keeps the full suite/build output out of the main session.
+  `golden-fur-vault`. Runs automatically **only when a PR is being opened**
+  (`pr-to-dev` / `pr-dev-to-main`) — not at commit or branch-publish time;
+  reports one pass/fail with the failing output, never fixes or commits.
+  Keeps the full suite/build output out of the main session. Still fine to
+  run by hand any time.
 - `code-reviewer` — unbiased, **read-only** review of the current branch's
-  diff. Runs automatically as a step of the git workflow: before a commit
-  (`commit`), before real commits are published, and before a PR is opened
-  (`pr-to-dev` / `pr-dev-to-main`). It did not write the code and gets no
-  rationale beyond the diff itself. No `Edit`; `Bash` limited to read-only
-  git inspection; `Write` used only for its one report file, which it
-  places in the sibling vault at
+  diff. Runs automatically **only as a step of the PR workflow**
+  (`pr-to-dev` / `pr-dev-to-main`, trigger `pre-pr`) — not on commit or
+  branch publish. It did not write the code and gets no rationale beyond
+  the diff itself. No `Edit`; `Bash` limited to read-only git inspection;
+  `Write` used only for its one report file, which it places in the sibling
+  vault at
   `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`
   (never in this repo — same "no working docs in the code repo" rule as the
-  testing docs). Fix its **Blocking** findings before committing/opening
-  the PR; skip the gate only for a pure formatting/non-functional diff, and
-  say so.
+  testing docs). Fix its **Blocking** findings before opening the PR; skip
+  the gate only for a pure formatting/non-functional diff, and say so.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
 - `payment-billing-agent` — PayMongo webhook handling and the Credit
@@ -187,8 +199,8 @@ code as a task closes — see "Auto-run wiring" below):
 - `ci-fixer-agent` — the write-side counterpart to `ci-verifier`: takes a
   red `✅ CI: Verify All` and fixes the failures (format, lint, build,
   tests) until green, across both repos, without ever weakening a check.
-  Spawn it when the `ci-verifier` gate in `commit` / `pr-to-dev` /
-  `pr-dev-to-main` comes back red.
+  Spawn it when the `ci-verifier` gate in `pr-to-dev` / `pr-dev-to-main`
+  (or a hand-run `ci-verifier`) comes back red.
 - `domain-doc-sync-agent` — reconciles the domain agents/skills above with
   the business-rule code they describe (capacity thresholds, enums, role
   lists, status machines, file layout) when that code moves. Docs-only,
@@ -207,12 +219,14 @@ spawning a subagent):
   **once, only after the whole task is done** and `ci-verifier` is green
   and the seeds are reconciled. Confirms the linked ref isn't production
   first.
-- `workflow-doc-sync` — after a code change, matches the changed paths
-  against each vault machine-workflow file's `source:` frontmatter to find
-  stale workflow docs, then hands off to the vault's `workflow-documenter`
-  agent (the only thing allowed to rewrite them). Never writes to the
-  vault — the `golden-fur` ⇄ `golden-fur-vault` write boundary still
-  holds.
+- `workflow-doc-sync` — **run once when a PR is opened** (`pr-to-dev` step),
+  over the whole branch diff: matches the changed paths against each vault
+  machine-workflow file's `source:` frontmatter to find stale workflow
+  docs, then hands off to the vault's `workflow-documenter` agent (the only
+  thing allowed to rewrite them). Not per commit / per task — spawning the
+  vault agent repeatedly mid-work is the session-budget cost this avoids.
+  Never writes to the vault — the `golden-fur` ⇄ `golden-fur-vault` write
+  boundary still holds.
 
 ### Auto-run wiring
 
@@ -222,13 +236,18 @@ watch the diff and _remind_ the session to run the right maintenance step
 
 - a migration or a seeded-table change under `supabase/` → run
   `seed-sync-agent`, and (at task end) `supabase-migration-push`;
-- `client/src` / `server/src` changes matching a documented workflow's
-  `source:` list → run `workflow-doc-sync`;
 - changes to code a domain skill's rules depend on → run
   `domain-doc-sync-agent`.
 
 The reminders fire on `Stop` (task boundary) so they don't interrupt
-mid-edit. A red `ci-verifier` in the git skills points at `ci-fixer-agent`.
+mid-edit. A red `ci-verifier` in the PR skills points at `ci-fixer-agent`.
+
+**PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of
+`commit` or a branch push): `ci-verifier`, `code-reviewer`, and
+`workflow-doc-sync`. The `Stop` hook no longer nags about workflow-doc
+drift on every task — it's one pass over the whole branch diff at PR time.
+The `testing-documenter` agent (in the vault) is unaffected: it still runs
+as the closing step of any golden-fur change made in response to a request.
 
 ### Why two PR skills instead of one
 
