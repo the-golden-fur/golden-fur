@@ -41,9 +41,10 @@ closely, and don't infer role ownership from array order in an
 meaningful, just however the set was originally written. Two concrete
 examples of scoping that's easy to get wrong by guessing:
 
-- Money-handling actions like `payment_stage` advancement are restricted
-  to Superadmin, Admin, Supervisor, Receptionist, Cashier specifically —
-  not every staff role.
+- Money-handling actions like recording a transaction payment
+  (`BOOKING_MARK_PAID_ROLES` server-side) are restricted to Superadmin,
+  Admin, Supervisor, Receptionist, Cashier specifically — not every staff
+  role.
 - The Hotel Queue (`/staff/hotel/queue`) and Daycare Queue
   (`/staff/daycare/queue`) are scoped to **Groomer and Pet Assistant
   only** — Receptionist has no access to either, despite being a

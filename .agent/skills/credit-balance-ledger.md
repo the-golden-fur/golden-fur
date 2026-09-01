@@ -6,8 +6,8 @@ that are easy to implement wrong without a written reference to check
 against.
 
 **Where this lives:** `server/src/features/credits`;
-`server/src/features/billing` (consumer side, currently stubbed — see
-below).
+`server/src/features/billing` (consumer side — `creditStub.service.ts`,
+`transactionPayment.service.ts`; redemption is live, see below).
 
 **Use whenever** touching credit issuance, redemption, expiry, or the
 checkout credit-application flow.
@@ -21,13 +21,13 @@ period wasn't met, the payment is forfeited without credit issuance. A
 cancellation log is written either way.
 
 - **Amount paid** is the sum of the booking's `booking_payment`
-  `transactions` rows that a cashier or the PayMongo webhook has moved off
-  `'Pending'` (a settled down payment is `'Partially Paid'`, a settled
-  full/remaining payment is `'Fully Paid'`) — read in `cancellation.service.ts`
-  via `confirmedAmountPaid()`. **Not** `bookings.payment_stage`: an Online
-  booking that requires no down payment can sit at `payment_stage = 'Paid'`
-  before any money is collected, and cancelling one must not mint credit for
-  a payment that never happened. A booking with no confirmed transaction
+  `transactions` rows that a cashier or the PayMongo webhook has settled —
+  every settled row is `payment_status = 'Fully Paid'`, an uncollected
+  charge stays `'Pending'` — read in `cancellation.service.ts` via
+  `confirmedAmountPaid()`. **Not** `bookings.payment_status` (the
+  Pending / Partially Paid / Fully Paid rollup): the rollup answers "is this
+  booking square?", not "how much cash came in" — always sum the settled
+  `transactions` rows for credit math. A booking with no settled transaction
   converts nothing.
 - **Conversion rate** is `policy_configurations.cancellation_credit_conversion_rate`
   — a branch-scoped percentage (`0`–`100`, `NOT NULL DEFAULT 100`), resolved
@@ -63,19 +63,23 @@ fallback. It writes an offsetting expiry transaction and decrements the
 balance for anything past its expiry date. Any new credit-related feature
 needs to account for this sweep running independently of user action.
 
-## The known gap — checkout redemption is a stub
+## Checkout redemption is now wired
 
-Credit issuance, balance tracking, and expiry are fully live end-to-end.
-**Applying a credit to reduce a transaction total at checkout is not
-wired up** — the billing side currently reads the balance through a stub.
-This means:
+Credit issuance, balance tracking, expiry, **and** redemption are all live
+end-to-end since the payment/transactions rework:
 
-- Daily Sales Report credit-usage figures read zero until this ships (see
-  `daily-sales-report-format.md`).
-- If your task is to wire up redemption: the intended design is atomic
-  deduction with partial application, capped at the lesser of balance or
-  transaction total — implement it as an extension of the same
-  transactional pattern issuance uses, not a new one-off.
-- Don't assume redemption already works when testing or reviewing
-  checkout code that touches credits — verify against current behavior,
-  not the design intent.
+- `creditStub.service.ts` (filename kept so callers' import paths don't
+  change) wraps the atomic `redeem_credit()` RPC (migration 20260901155) —
+  upsert-decrement the balance and insert a signed redemption row in one
+  DB transaction.
+- `checkoutAggregation.service.ts` and `miscSale.service.ts` apply credit
+  partially via `applyCredit()`, capped at the lesser of balance or
+  transaction total.
+- `payTransactionWithCredit` in
+  `server/src/features/billing/services/transactionPayment.service.ts`
+  pays a whole Pending transaction from the customer's branch-locked
+  balance — **full-cover only** this round; a charge the balance can't
+  cover has to be split first. It settles the transaction as payment
+  method `'Credit'` and stamps `credit_applied_amount`.
+- Daily Sales Report credit-usage figures now read real redemption rows
+  (see `daily-sales-report-format.md`).
