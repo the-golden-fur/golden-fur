@@ -7,17 +7,13 @@ import styles from './CreditBalanceIndicator.module.css';
 /**
  * Navbar pill showing the signed-in customer's total account credit across
  * all branches, linking to the portal home where the per-branch cards live.
- * Renders nothing when the total is zero (mirrors NotificationBell hiding its
- * badge at zero) so it never nags customers who have no credit. Customer-only
+ * Always rendered (even at a zero balance) so customers discover the
+ * feature - it shows the wallet icon plus the formatted total. Customer-only
  * - CustomerAuthGuard passes it as the Navbar's creditIndicator prop; staff
  * never get one.
  */
 export function CreditBalanceIndicator() {
-  const { total, isLoading } = useCreditBalance();
-
-  if (isLoading || total <= 0) {
-    return null;
-  }
+  const { total } = useCreditBalance();
 
   return (
     <Link

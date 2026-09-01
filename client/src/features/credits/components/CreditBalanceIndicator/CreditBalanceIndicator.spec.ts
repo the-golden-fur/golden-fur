@@ -30,12 +30,7 @@ function renderIndicator(overrides: Partial<CreditBalanceContextValue> = {}) {
 
 describe('CreditBalanceIndicator', () => {
   it('renders the summed total as a link to the portal', () => {
-    renderIndicator({
-      total: 1750.5,
-      balances: [
-        // shape only matters for `total` here
-      ],
-    });
+    renderIndicator({ total: 1750.5 });
 
     const link = screen.getByRole('link', {
       name: /account credit: ₱1,750\.50/i,
@@ -44,13 +39,18 @@ describe('CreditBalanceIndicator', () => {
     expect(link).toHaveTextContent('₱1,750.50');
   });
 
-  it('renders nothing when the customer has no credit', () => {
-    const { container } = renderIndicator({ total: 0 });
-    expect(container).toBeEmptyDOMElement();
+  it('still renders (₱0.00) when the customer has no credit', () => {
+    renderIndicator({ total: 0 });
+
+    const link = screen.getByRole('link', {
+      name: /account credit: ₱0\.00/i,
+    });
+    expect(link).toHaveTextContent('₱0.00');
   });
 
-  it('renders nothing while the balance is still loading', () => {
-    const { container } = renderIndicator({ total: 500, isLoading: true });
-    expect(container).toBeEmptyDOMElement();
+  it('renders ₱0.00 while the balance is still loading', () => {
+    renderIndicator({ total: 0, isLoading: true });
+
+    expect(screen.getByRole('link')).toHaveTextContent('₱0.00');
   });
 });
