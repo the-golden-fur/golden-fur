@@ -3,7 +3,7 @@ import { getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
 import { applyFirstBookingPaymentSideEffects } from '../../booking/services/booking.service.ts';
 import type { PaymentStatus } from '../../booking/booking.types.ts';
-import type { CounterPaymentMethod, Transaction } from '../billing.types.ts';
+import type { PaymentMethod, Transaction } from '../billing.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -55,7 +55,7 @@ async function loadBookingPaymentStatus(
 export interface RecordTransactionPaymentParams {
   requesterId: string;
   transactionId: string;
-  paymentMethod: CounterPaymentMethod;
+  paymentMethod: PaymentMethod;
   bankName?: string | null;
   paymentReference?: string | null;
   cashTendered?: number | null;

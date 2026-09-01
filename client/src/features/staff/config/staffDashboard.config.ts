@@ -186,12 +186,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Transactions',
             description:
               'Record a payment against any pending charge; add balance payments.',
-            to: '/staff/billing/transactions',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, service, or full/down payment.',
             to: '/staff/reports/transaction-history',
           },
           {
@@ -254,12 +248,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, or service.',
-            to: '/staff/reports/transaction-history',
-          },
         ],
       },
     ],
@@ -318,12 +306,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, or service.',
-            to: '/staff/reports/transaction-history',
           },
         ],
       },
@@ -453,12 +435,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Transactions',
             description:
               'Record a payment against any pending charge; add balance payments.',
-            to: '/staff/billing/transactions',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, service, or full/down payment.',
             to: '/staff/reports/transaction-history',
           },
           {

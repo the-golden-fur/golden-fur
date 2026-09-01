@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   BANK_NAMES,
-  COUNTER_PAYMENT_METHODS,
   ONLINE_PAYMENT_METHODS,
   PAYMENT_METHODS,
 } from '../../billing.types.ts';
@@ -154,7 +153,10 @@ export type CreateMiscSaleInput = z.infer<typeof createMiscSaleValidator>;
  */
 export const recordTransactionPaymentValidator = z
   .object({
-    payment_method: z.enum(COUNTER_PAYMENT_METHODS),
+    // Cashier can settle with any method: the 5 counter methods plus GCash/
+    // Maya (cashier-confirmed walk-in QR - Fully Paid immediately, see
+    // resolvePaymentConfirmation). 'Credit' has its own pay-with-credit path.
+    payment_method: z.enum(PAYMENT_METHODS),
     bank_name: z.enum(BANK_NAMES).optional(),
     payment_reference: z.string().trim().min(1).optional(),
     cash_tendered: z.number().nonnegative().optional(),
