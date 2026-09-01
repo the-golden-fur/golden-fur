@@ -1613,25 +1613,30 @@ async function recordBookingPaymentTransaction(params: {
   const downpayment = round2(booking.downpayment_amount ?? 0);
 
   let amount: number;
-  let paymentChoice: 'downpayment' | 'full';
   let description: string;
 
   if (fromStage === 'Unpaid' && toStage === 'Paid in Advance') {
     amount = downpayment;
-    paymentChoice = 'downpayment';
     description = 'Down payment';
   } else if (fromStage === 'Paid in Advance' && toStage === 'Paid') {
     amount = round2(netTotal - downpayment);
-    paymentChoice = 'full';
     description = 'Remaining balance';
   } else {
     amount = netTotal;
-    paymentChoice = 'full';
     description = 'Full payment';
   }
 
   if (amount <= 0) return;
 
+  // payment_choice is deliberately NOT set here: the DB CHECK
+  // transactions_payment_choice_requires_customer_initiated (migration
+  // 20260809118) only allows a non-null payment_choice on
+  // initiated_by = 'customer' rows. A staff "Mark as Paid" row is
+  // initiated_by = 'staff' (the column default), so setting payment_choice
+  // threw a constraint violation on every insert - swallowed by the caller's
+  // best-effort try/catch, which is why no staff-counter transaction row was
+  // ever persisted. The line-item description ('Down payment' / 'Remaining
+  // balance' / 'Full payment') and payment_status carry the same meaning.
   const { data: transaction, error } = await supabase
     .from('transactions')
     .insert({
@@ -1643,7 +1648,6 @@ async function recordBookingPaymentTransaction(params: {
       payment_status: toStage === 'Paid' ? 'Fully Paid' : 'Partially Paid',
       subtotal_amount: amount,
       total_amount: amount,
-      payment_choice: paymentChoice,
       processed_by_staff_id: processedByStaffId,
     })
     .select('id')

@@ -1204,10 +1204,19 @@ describe('booking.service (#51)', () => {
         booking_id: 'booking-1',
         transaction_type: 'booking_payment',
         payment_status: 'Fully Paid',
-        payment_choice: 'full',
         total_amount: 500,
         processed_by_staff_id: 'cashier-1',
       });
+      // payment_choice must NOT be set on a staff row - the DB CHECK
+      // transactions_payment_choice_requires_customer_initiated rejects it,
+      // and the swallowed throw is why no transaction ever persisted.
+      expect(txn?.payload).not.toHaveProperty('payment_choice');
+
+      const line = recordedWrites.find(
+        (write) =>
+          write.table === 'transaction_line_items' && write.method === 'insert'
+      );
+      expect(line?.payload).toMatchObject({ description: 'Full payment' });
     });
 
     it('down payment then balance: two transactions summing to the net total', async () => {
@@ -1227,9 +1236,9 @@ describe('booking.service (#51)', () => {
       );
       expect(first?.payload).toMatchObject({
         payment_status: 'Partially Paid',
-        payment_choice: 'downpayment',
         total_amount: 250,
       });
+      expect(first?.payload).not.toHaveProperty('payment_choice');
 
       recordedWrites.length = 0;
       queueFromResults(
