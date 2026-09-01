@@ -13,6 +13,7 @@ import {
   payableBalances,
   type PayableBalance,
 } from '../../utils/payableBalances';
+import { notifyCreditBalanceChanged } from '../../../credits/providers/creditBalanceEvents';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
@@ -156,6 +157,8 @@ export function CustomerTransactionHistoryPage() {
       }
       setPayTarget(null);
       setReloadKey((k) => k + 1);
+      // Credit was just spent - refresh the navbar pill.
+      notifyCreditBalanceChanged();
       return;
     }
 

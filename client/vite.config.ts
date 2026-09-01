@@ -96,6 +96,15 @@ export default defineConfig(({ mode }) => {
         // '/staff/billing/...' and '/staff/admin/misc-sales', not bare
         // '/billing', so no bypass is needed here either.
         '/billing': apiProxy,
+        // credits.routes.ts (server) is mounted at the server root too - its
+        // client-side surfaces are the navbar credit pill, the portal-home
+        // per-branch cards, and the staff Credit Management page, none of
+        // which are a bare '/credits' route, so no bypass is needed. Without
+        // this entry GET /credits/balances, GET /credits/history, and POST
+        // /credits/expire fall through to Vite's own dev server instead of
+        // reaching Express - the navbar pill just silently reads ₱0.00
+        // (same non-JSON-response failure mode '/reports' below documents).
+        '/credits': apiProxy,
         // reports.routes.ts (server, Sprint 6 Epic A #DSR/analytics/occupancy)
         // is mounted at the server root too - its client-side page routes
         // live under '/staff/reports/...', not bare '/reports', so no

@@ -10,40 +10,69 @@ import { useAuth } from '../../../shared/auth/providers/AuthProvider/useAuth';
 import { listCreditBalances } from '../api/credits.api';
 import type { CreditBalance } from '../credits.types';
 import { CreditBalanceContext } from './CreditBalanceContext';
+import { CREDIT_BALANCE_CHANGED_EVENT } from './creditBalanceEvents';
 
 /**
- * Issue: navbar credit indicator (#customer). Holds the signed-in customer's
- * own credit balances so both the navbar pill and the portal home read one
- * fetch, and an action that changes the balance (a cancellation that
- * converts payment to credit - CustomerBookingsPage) can refresh it
- * immediately via refresh().
+ * Holds the signed-in customer's own credit balances so the navbar pill and
+ * the portal home read one shared fetch.
  *
- * Self-read only: listCreditBalances(accessToken) with no customerId
- * resolves to the caller server-side. Wrapped around the customer AppShell
- * subtree by CustomerAuthGuard - never mounted for staff.
+ * Keeping this in sync with the server has been fragile, so it now pulls the
+ * balance from every angle: an initial load, a 20s background poll, whenever
+ * the tab regains focus / becomes visible, on every in-app navigation, on an
+ * explicit refresh() (the cancel button etc.), and on a
+ * `goldenfur:credit-balance-changed` window event any flow can dispatch. A
+ * failed pull never wipes a balance that already loaded.
+ *
+ * Self-read only: listCreditBalances(token) with no customerId resolves to
+ * the caller server-side. Mounted around the customer AppShell by
+ * CustomerAuthGuard - never for staff.
  */
+
+const POLL_INTERVAL_MS = 20_000;
+
 export function CreditBalanceProvider({ children }: { children: ReactNode }) {
   const { accessToken } = useAuth();
   const { pathname } = useLocation();
+
   const [balances, setBalances] = useState<CreditBalance[]>([]);
-  // Only tracks the FIRST load - a refresh() re-fetch keeps showing the old
-  // total until the new one lands rather than flashing the pill away.
   const [hasLoaded, setHasLoaded] = useState(false);
-  // Bumped by refresh() to re-run the effect below.
+  // Bumped by every revalidation trigger; a dep of the fetch effect below.
   const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
-  // The provider is mounted once around the whole customer shell and never
-  // remounts on navigation, so without this a server-side credit change from
-  // any path other than the cancel button (a staff adjustment, a payment
-  // made from the transactions page, another tab) leaves the pill stale
-  // until a full reload. Re-fetch when the tab regains focus / becomes
-  // visible again.
+  // The one place the fetch happens - re-runs on a token change, an in-app
+  // navigation (pathname), or any refresh() bump.
   useEffect(() => {
     if (!accessToken) {
       return;
     }
+
+    let active = true;
+
+    void listCreditBalances(accessToken).then((result) => {
+      if (!active) return;
+      // Only overwrite on a good response - a transient error must not blank
+      // out a balance that is already on screen.
+      if (result.data) {
+        setBalances(result.data);
+      }
+      setHasLoaded(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, pathname, reloadKey]);
+
+  // Background poll + event-driven revalidation. Each of these just bumps
+  // reloadKey (via refresh), which re-runs the fetch effect above.
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    const poll = window.setInterval(refresh, POLL_INTERVAL_MS);
 
     const revalidate = () => {
       if (document.visibilityState === 'visible') {
@@ -53,51 +82,25 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener('focus', revalidate);
     document.addEventListener('visibilitychange', revalidate);
+    window.addEventListener(CREDIT_BALANCE_CHANGED_EVENT, revalidate);
 
     return () => {
+      window.clearInterval(poll);
       window.removeEventListener('focus', revalidate);
       document.removeEventListener('visibilitychange', revalidate);
+      window.removeEventListener(CREDIT_BALANCE_CHANGED_EVENT, revalidate);
     };
   }, [accessToken, refresh]);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    let isMounted = true;
-
-    // `pathname` in the deps re-pulls on every in-app navigation within the
-    // customer shell - cheap (one small query) and covers the common case
-    // of the balance changing on one page and the pill being read on the
-    // next without the tab ever losing focus.
-    void listCreditBalances(accessToken).then((result) => {
-      if (!isMounted) {
-        return;
-      }
-      setHasLoaded(true);
-      if (result.data) {
-        setBalances(result.data);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [accessToken, reloadKey, pathname]);
-
-  const value = useMemo(
-    () => ({
-      balances,
-      total: balances.reduce(
-        (sum, balance) => sum + Number(balance.balance),
-        0
-      ),
-      isLoading: !hasLoaded,
+  const value = useMemo(() => {
+    const rows = accessToken ? balances : [];
+    return {
+      balances: rows,
+      total: rows.reduce((sum, b) => sum + Number(b.balance ?? 0), 0),
+      isLoading: Boolean(accessToken) && !hasLoaded,
       refresh,
-    }),
-    [balances, hasLoaded, refresh]
-  );
+    };
+  }, [accessToken, balances, hasLoaded, refresh]);
 
   return (
     <CreditBalanceContext.Provider value={value}>
