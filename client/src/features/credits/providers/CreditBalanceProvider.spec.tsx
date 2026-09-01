@@ -61,9 +61,9 @@ describe('CreditBalanceProvider', () => {
     window.dispatchEvent(new Event('focus'));
 
     await waitFor(() =>
-      expect(
-        vi.mocked(listCreditBalances).mock.calls.length
-      ).toBeGreaterThan(callsAfterMount)
+      expect(vi.mocked(listCreditBalances).mock.calls.length).toBeGreaterThan(
+        callsAfterMount
+      )
     );
   });
 
