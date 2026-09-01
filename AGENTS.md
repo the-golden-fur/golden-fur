@@ -214,12 +214,14 @@ spawning a subagent):
   **once, only after the whole task is done** and `ci-verifier` is green
   and the seeds are reconciled. Confirms the linked ref isn't production
   first.
-- `workflow-doc-sync` — after a code change, matches the changed paths
-  against each vault machine-workflow file's `source:` frontmatter to find
-  stale workflow docs, then hands off to the vault's `workflow-documenter`
-  agent (the only thing allowed to rewrite them). Never writes to the
-  vault — the `golden-fur` ⇄ `golden-fur-vault` write boundary still
-  holds.
+- `workflow-doc-sync` — **run once when a PR is opened** (`pr-to-dev` step),
+  over the whole branch diff: matches the changed paths against each vault
+  machine-workflow file's `source:` frontmatter to find stale workflow
+  docs, then hands off to the vault's `workflow-documenter` agent (the only
+  thing allowed to rewrite them). Not per commit / per task — spawning the
+  vault agent repeatedly mid-work is the session-budget cost this avoids.
+  Never writes to the vault — the `golden-fur` ⇄ `golden-fur-vault` write
+  boundary still holds.
 
 ### Auto-run wiring
 
@@ -229,18 +231,18 @@ watch the diff and _remind_ the session to run the right maintenance step
 
 - a migration or a seeded-table change under `supabase/` → run
   `seed-sync-agent`, and (at task end) `supabase-migration-push`;
-- `client/src` / `server/src` changes matching a documented workflow's
-  `source:` list → run `workflow-doc-sync`;
 - changes to code a domain skill's rules depend on → run
   `domain-doc-sync-agent`.
 
 The reminders fire on `Stop` (task boundary) so they don't interrupt
 mid-edit. A red `ci-verifier` in the PR skills points at `ci-fixer-agent`.
 
-`ci-verifier` and `code-reviewer` are **PR-time only** — they run as steps
-of `pr-to-dev` / `pr-dev-to-main`, not of `commit` or a branch push. The
-`testing-documenter` agent (in the vault) is unaffected: it still runs as
-the closing step of any golden-fur change made in response to a request.
+**PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of
+`commit` or a branch push): `ci-verifier`, `code-reviewer`, and
+`workflow-doc-sync`. The `Stop` hook no longer nags about workflow-doc
+drift on every task — it's one pass over the whole branch diff at PR time.
+The `testing-documenter` agent (in the vault) is unaffected: it still runs
+as the closing step of any golden-fur change made in response to a request.
 
 ### Why two PR skills instead of one
 

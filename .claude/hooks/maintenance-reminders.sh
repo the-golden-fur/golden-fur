@@ -32,7 +32,6 @@ elif grep -qE '^supabase/seeds/' <<<"$changed"; then
 fi
 
 if grep -qE '^(client|server)/src/' <<<"$changed"; then
-  add "app code changed -> run the \`workflow-doc-sync\` skill to check whether any vault workflow doc's \`source:\` list is now stale."
   add "if a capacity / eligibility / status / enum / role rule moved, run \`domain-doc-sync-agent\` to reconcile the .agent domain docs."
 fi
 

@@ -1,6 +1,6 @@
 ---
 name: workflow-doc-sync
-description: After a code change, finds which vault workflow docs are stale by matching changed paths against each machine workflow file's source: frontmatter, then hands off to the vault's workflow-documenter agent (the only thing allowed to rewrite them). Never writes to the vault. Use whenever a task changed code a documented business-process workflow describes.
+description: When a PR is being opened (pr-to-dev step), finds which vault workflow docs are stale by matching the branch diff against each machine workflow file's source: frontmatter, then hands off to the vault's workflow-documenter agent (the only thing allowed to rewrite them). Never writes to the vault. Runs once per PR over the whole diff — not per commit or per task.
 ---
 
 # Workflow doc sync

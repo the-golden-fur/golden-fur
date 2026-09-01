@@ -19,7 +19,8 @@ skill instead — the two directions use different merge strategies.
    branch has no review on record, run the `code-reviewer` on that PR's
    diff now (trigger `pre-pr`) and resolve any **Blocking** findings before
    promoting. A `dev` → `main` promotion adds no new code, so it needs no
-   fresh full-tree review of its own.
+   fresh full-tree review — and no `workflow-doc-sync` pass either, since
+   that already ran per feature branch at `pr-to-dev` time.
 4. Title/body summarize what's shipping — this can aggregate several
    feature/fix PRs merged into `dev` since the last promotion, not just one
    change. Sections: Summary, What Changed (notable features/fixes since
