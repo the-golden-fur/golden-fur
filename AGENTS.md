@@ -61,7 +61,10 @@ schemas, seeds, and edge functions.
   goes in `src/shared/`.
 - Server features mirror the client's naming: `*.controller.ts`,
   `*.routes.ts`, `*.types.ts`, plus `modules/`/`services/` for domain logic
-  and a `tests/` folder per feature.
+  and a `tests/` folder per feature. A new `*.routes.ts` file also needs
+  its bare path prefix added to `API_ROUTE_PREFIXES` in
+  `client/vite.proxy.config.ts` so the dev proxy forwards it to Express —
+  `vite.proxy.config.spec.ts` fails CI if you forget.
 - Request/response validation uses Zod on both client and server.
 - The client talks to Supabase directly for auth/session and RLS-guarded
   reads; it goes through the Express API for anything needing server-side
@@ -93,7 +96,9 @@ plain-text description into a filled, opened GitHub issue) — plus
 of one already running — deliberately not named `run`, so it doesn't
 shadow Claude Code's own built-in `run` skill, which drives the app in a
 browser; use `dev-servers` first to confirm the processes are up, then
-`run` to actually look at a page) and `pre-commit-checks` (run every
+`run` to actually look at a page; `npm run dev`'s `predev` frees the port
+first via `scripts/free-ports.mjs`, and `npm run free-ports` does it on
+demand) and `pre-commit-checks` (run every
 `(check)`/`(fix)`-labeled VS Code task — lint and format, client and
 server — auto-fixing what it can; always runs as `commit`'s first step,
 also invocable standalone). Any AI coding tool working in this repo
