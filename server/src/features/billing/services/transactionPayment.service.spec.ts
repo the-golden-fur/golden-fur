@@ -41,7 +41,7 @@ function queueFrom(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'update']) {
+    for (const method of ['select', 'eq', 'neq', 'update', 'limit', 'order']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -158,6 +158,7 @@ describe('transactionPayment.service', () => {
   });
 
   it('adds a balance payment via the add_booking_payment RPC', async () => {
+    queueFrom({ data: null, error: null }); // no outstanding Pending charge
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: { id: 'txn-2', payment_status: 'Pending', total_amount: 300 },
       error: null,
@@ -177,11 +178,24 @@ describe('transactionPayment.service', () => {
     expect(transaction.payment_status).toBe('Pending');
   });
 
-  it('pays a transaction fully from credit: redeems, settles as Credit, stamps credit_applied_amount', async () => {
+  it('rejects add-a-payment while the booking still has an unsettled charge', async () => {
+    queueFrom({ data: { id: 'txn-pending' }, error: null });
+
+    await expect(
+      addBookingPayment({
+        requesterId: 'staff-1',
+        bookingId: 'booking-1',
+        amount: 300,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('pays a transaction fully from credit via the atomic pay_transaction_with_credit RPC', async () => {
     queueFrom(
       { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
       { data: { payment_status: 'Pending' }, error: null }, // loadBookingPaymentStatus
-      { data: null, error: null }, // update({ credit_applied_amount }).eq()
+      { data: { id: 'credit-txn-1', amount: -500 }, error: null }, // credit_transactions lookup
       {
         data: {
           ...PENDING_BOOKING_TXN,
@@ -192,18 +206,10 @@ describe('transactionPayment.service', () => {
       } // reload
     );
     vi.mocked(getAvailableCredit).mockResolvedValue(800);
-    vi.mocked(supabase.rpc).mockImplementation(((fn: string) => {
-      if (fn === 'redeem_credit') {
-        return Promise.resolve({
-          data: { id: 'credit-txn-1', amount: -500 },
-          error: null,
-        });
-      }
-      return Promise.resolve({
-        data: { booking_id: 'booking-1', payment_status: 'Fully Paid' },
-        error: null,
-      });
-    }) as never);
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: { id: 'booking-1', payment_status: 'Fully Paid' },
+      error: null,
+    } as never);
 
     const result = await payTransactionWithCredit({
       requesterId: 'staff-1',
@@ -211,19 +217,14 @@ describe('transactionPayment.service', () => {
       isStaff: true,
     });
 
-    expect(supabase.rpc).toHaveBeenCalledWith('redeem_credit', {
-      p_customer_id: 'customer-1',
-      p_branch_id: 'branch-1',
-      p_amount: 500,
+    // One atomic RPC - not a separate redeem_credit + settle_transaction.
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledWith('pay_transaction_with_credit', {
       p_transaction_id: 'txn-1',
+      p_amount: 500,
+      p_processed_by: 'staff-1',
     });
-    expect(supabase.rpc).toHaveBeenCalledWith(
-      'settle_transaction',
-      expect.objectContaining({
-        p_payment_method: 'Credit',
-        p_processed_by: 'staff-1',
-      })
-    );
+    expect(result.transaction.payment_status).toBe('Fully Paid');
     expect(result.creditTransaction).toEqual({
       id: 'credit-txn-1',
       amount: -500,

@@ -13,6 +13,7 @@ import {
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
 import { initiatePaymongoPayment } from './paymongo.service.ts';
+import { recomputeBookingPaymentStatus } from '../../booking/services/booking.service.ts';
 import { createNotification } from '../../notifications/services/notification.service.ts';
 import { sendPaymentConfirmedEmail } from '../../../shared/email/paymentConfirmedEmail.ts';
 import type { CheckoutInput } from '../modules/validators/billing.validator.ts';
@@ -174,21 +175,37 @@ export async function checkoutBooking(
   requesterId: string,
   input: CheckoutInput
 ): Promise<CheckoutResult> {
-  // A booking can now carry more than one payment record (the Payments
-  // Queue's "Mark as Paid" writes one per payment - down payment, then
-  // balance), so this is a list check, not .maybeSingle().
+  // Payment/transactions rework: every non-Vet booking now carries a
+  // still-'Pending' booking_payment charge from createInitialBookingCharge
+  // (the booking-time estimate). Checkout recomputes the real total from line
+  // items, so it *supersedes* that estimate - the Pending rows (and their
+  // line items) are deleted here and checkout builds its own transaction. A
+  // row that was actually settled (a cashier record-payment, a confirmed
+  // webhook, an earlier checkout) is a real payment - keep the 409.
   const { data: existingTransactions, error: existingError } = await supabase
     .from('transactions')
     .select('id, payment_status')
-    .eq('booking_id', input.booking_id)
-    .limit(1);
+    .eq('booking_id', input.booking_id);
 
   if (existingError) throwWithStatus(400, existingError.message);
-  if (existingTransactions && existingTransactions.length > 0) {
+
+  const settledRows = (existingTransactions ?? []).filter(
+    (t) => t.payment_status !== 'Pending'
+  );
+  if (settledRows.length > 0) {
     throwWithStatus(
       409,
-      `This booking already has a payment record (${existingTransactions[0].payment_status})`
+      `This booking already has a payment record (${settledRows[0].payment_status})`
     );
+  }
+
+  const staleChargeIds = (existingTransactions ?? []).map((t) => t.id);
+  if (staleChargeIds.length > 0) {
+    await supabase
+      .from('transaction_line_items')
+      .delete()
+      .in('transaction_id', staleChargeIds);
+    await supabase.from('transactions').delete().in('id', staleChargeIds);
   }
 
   const {
@@ -329,6 +346,21 @@ export async function checkoutBooking(
   // flagged here for the reviewer alongside the Guide's own open question.
   if ((transaction as Transaction).payment_status === 'Fully Paid') {
     await sendPaymentConfirmedNotification(transaction as Transaction);
+  }
+
+  // Roll the booking's payment_status up from the transaction just written
+  // (the rework made bookings.payment_status the source of truth for "is this
+  // paid" - startBooking, the slot gate, DSR all read it). Best-effort: a
+  // failure here must not fail an otherwise-complete checkout. A still-Pending
+  // GCash/Maya checkout stays Pending until the webhook confirms.
+  try {
+    await recomputeBookingPaymentStatus(input.booking_id);
+  } catch (rollupError) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `checkoutBooking: failed to roll up payment_status for booking ${input.booking_id}:`,
+      rollupError
+    );
   }
 
   return {

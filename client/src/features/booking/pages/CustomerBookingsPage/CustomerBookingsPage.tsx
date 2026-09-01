@@ -37,6 +37,17 @@ function formatPeso(amount: number): string {
   return `PHP ${amount.toFixed(2)}`;
 }
 
+/** What the booking actually costs after any booking-time discount/promo -
+ * the figure the server bills against (netTotal in the payment services). */
+function netTotal(booking: Booking): number {
+  return (
+    Math.round(
+      (booking.total_price - booking.discount_amount - booking.promo_amount) *
+        100
+    ) / 100
+  );
+}
+
 type ActiveAction = {
   bookingId: string;
   type: 'reschedule' | 'cancel' | 'pay';
@@ -177,6 +188,9 @@ export function CustomerBookingsPage() {
     // remainder) - offering the downpayment/full choice again wouldn't
     // mean anything, payForBooking always charges the remainder regardless
     // of what's sent for that stage.
+    // A Partially Paid booking has only the balance left - the
+    // downpayment/full choice is meaningless, payForBooking bills the
+    // remaining net amount regardless.
     setPayInFull(
       booking.payment_status === 'Partially Paid' ||
         !booking.downpayment_required
@@ -442,7 +456,7 @@ export function CustomerBookingsPage() {
                             onChange={() => setPayInFull(true)}
                           />
                           <span>
-                            Pay in full ({formatPeso(booking.total_price)})
+                            Pay in full ({formatPeso(netTotal(booking))})
                           </span>
                         </label>
                         <label className={styles.checkboxField}>
@@ -463,9 +477,9 @@ export function CustomerBookingsPage() {
                         Amount due:{' '}
                         {formatPeso(
                           booking.payment_status === 'Partially Paid'
-                            ? booking.total_price -
+                            ? netTotal(booking) -
                                 (booking.downpayment_amount ?? 0)
-                            : booking.total_price
+                            : netTotal(booking)
                         )}
                       </p>
                     )}

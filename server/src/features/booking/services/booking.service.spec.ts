@@ -1395,6 +1395,45 @@ describe('booking.service (#51)', () => {
       });
     });
 
+    it('a booking that owes nothing (100% discount) is born Fully Paid with no initial charge', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getDiscountById).mockResolvedValue({
+        ...DAYCARE_DISCOUNT,
+        discount_type: 'Percentage',
+        value: 100,
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [], error: null }, // daycare overlap - empty
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch (NO initial charge)
+      );
+
+      await createBooking({
+        requesterId: 'cashier-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Daycare',
+          items: [{ service_id: 'service-daycare' }],
+          discount_id: 'discount-1',
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ payment_status: 'Fully Paid' });
+      expect((insert?.payload as { paid_at?: string }).paid_at).toBeTruthy();
+      expect(
+        recordedWrites.some((write) => write.table === 'transactions')
+      ).toBe(false);
+    });
+
     it('rejects a discount when the requester is not a money-handling staff role', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Groomer');
       queueFromResults({ data: PET, error: null }); // pet ownership

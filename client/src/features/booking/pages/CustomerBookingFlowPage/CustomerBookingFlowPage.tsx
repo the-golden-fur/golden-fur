@@ -584,7 +584,7 @@ export function CustomerBookingFlowPage() {
   // mounts and fetches), and a plain numeric index would then silently
   // resolve to whatever step slid into that same slot instead of the step
   // the user actually meant to be on (previously caused Date & Time to
-  // jump straight to Review & Pay instead of Staff whenever this happened).
+  // jump straight to Review instead of Staff whenever this happened).
   const [currentStepKey, setCurrentStepKey] = useState<StepDef['key']>(() =>
     isReceptionistMode ? 'customer' : 'pet'
   );
@@ -1318,7 +1318,7 @@ export function CustomerBookingFlowPage() {
       list.push({ key: 'hotelDetails', label: 'Care Instructions' });
     }
 
-    list.push({ key: 'payment', label: 'Review & Pay' });
+    list.push({ key: 'payment', label: 'Review' });
 
     return list;
   }, [isReceptionistMode, category, staffPickerUnavailable]);

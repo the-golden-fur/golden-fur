@@ -871,6 +871,12 @@ export async function createBooking({
       ? (downpaymentAmount ?? netTotal)
       : netTotal;
 
+  // A fully-discounted / fully-promo'd booking owes nothing - there is no
+  // charge to create and no payment to collect, so it's born Fully Paid
+  // (otherwise it would sit Pending forever: startBooking, add_booking_payment
+  // and payForBooking all refuse a zero-owed booking).
+  const nothingOwed = requiresUpfrontCharge && netTotal <= 0;
+
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
   // (down-payment slot gate: advisor addendum A3); every other booking does.
@@ -962,7 +968,8 @@ export async function createBooking({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
-      payment_status: 'Pending',
+      payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
+      ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
       payment_method: null,
       payment_confirmed: false,
       selected_discount_id: selectedDiscountId,

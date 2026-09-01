@@ -21,6 +21,41 @@ vi.mock('./paymongo.service.ts', () => ({
   initiatePaymongoPayment: vi.fn(),
 }));
 
+interface QueryResult {
+  data: unknown;
+  error: unknown;
+}
+
+/** Each `supabase.from()` call shifts the next queued result. The builder
+ * resolves the same result whether the caller ends with `.maybeSingle()` or
+ * just awaits the chain (settled-sum read). Call order in payForBooking:
+ * (1) settled-sum read, (2) pending-charge lookup, (3) update|insert. */
+function queueFrom(...results: QueryResult[]) {
+  const queue = [...results];
+  const recorded: Array<{ method: string; payload: unknown }> = [];
+
+  vi.mocked(supabase.from).mockImplementation((() => {
+    const result = queue.shift() ?? { data: null, error: null };
+    const builder: Record<string, unknown> = {};
+
+    for (const method of ['select', 'eq', 'neq', 'limit', 'order']) {
+      builder[method] = vi.fn(() => builder);
+    }
+    for (const method of ['insert', 'update']) {
+      builder[method] = vi.fn((payload: unknown) => {
+        recorded.push({ method, payload });
+        return builder;
+      });
+    }
+    builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+    builder.then = (resolve: (_r: QueryResult) => unknown) => resolve(result);
+
+    return builder;
+  }) as never);
+
+  return recorded;
+}
+
 const CUSTOMER_ID = 'customer-1';
 
 const UNPAID_BOOKING = {
@@ -29,19 +64,11 @@ const UNPAID_BOOKING = {
   branch_id: 'branch-1',
   payment_status: 'Pending',
   total_price: 1000,
+  discount_amount: 0,
+  promo_amount: 0,
   downpayment_required: true,
   downpayment_amount: 500,
 };
-
-function mockInsertTransaction(result: { data: unknown; error: unknown }) {
-  vi.mocked(supabase.from).mockImplementation((() => ({
-    insert: vi.fn(() => ({
-      select: vi.fn(() => ({
-        maybeSingle: vi.fn(() => Promise.resolve(result)),
-      })),
-    })),
-  })) as never);
-}
 
 describe('customerBookingPayment.service', () => {
   beforeEach(() => {
@@ -91,6 +118,7 @@ describe('customerBookingPayment.service', () => {
       downpayment_required: false,
       downpayment_amount: null,
     } as never);
+    queueFrom({ data: [], error: null }); // settled-sum read
 
     await expect(
       payForBooking({
@@ -105,6 +133,7 @@ describe('customerBookingPayment.service', () => {
   it('rejects when online payments are disabled for the branch', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     vi.mocked(isOnlinePaymentsEnabled).mockResolvedValue(false);
+    queueFrom({ data: [], error: null });
 
     await expect(
       payForBooking({
@@ -121,6 +150,7 @@ describe('customerBookingPayment.service', () => {
   it('surfaces a PayMongo failure as a 502 with a friendly message', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     vi.mocked(initiatePaymongoPayment).mockRejectedValue(new Error('boom'));
+    queueFrom({ data: [], error: null }); // settled-sum read
 
     await expect(
       payForBooking({
@@ -135,12 +165,13 @@ describe('customerBookingPayment.service', () => {
     });
   });
 
-  it('pays the full total_price when payInFull is true, tagging the transaction customer/full', async () => {
+  it('settles the existing Pending charge (not a second insert) for a full payment', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
-    mockInsertTransaction({
-      data: { id: 'txn-1', total_amount: 1000 },
-      error: null,
-    });
+    const recorded = queueFrom(
+      { data: [], error: null }, // settled-sum read
+      { data: { id: 'txn-initial' }, error: null }, // pending-charge lookup
+      { data: { id: 'txn-initial', total_amount: 1000 }, error: null } // update
+    );
 
     const result = await payForBooking({
       requesterId: CUSTOMER_ID,
@@ -152,16 +183,50 @@ describe('customerBookingPayment.service', () => {
     expect(initiatePaymongoPayment).toHaveBeenCalledWith(
       expect.objectContaining({ amount: 1000, paymentMethod: 'GCash' })
     );
-    expect(supabase.from).toHaveBeenCalledWith('transactions');
+    // No second charge row - the initial Pending charge is updated in place.
+    expect(recorded.some((r) => r.method === 'insert')).toBe(false);
+    const update = recorded.find((r) => r.method === 'update');
+    expect(update?.payload).toMatchObject({
+      initiated_by: 'customer',
+      payment_choice: 'full',
+      total_amount: 1000,
+      payment_reference: 'src_123',
+    });
     expect(result.checkoutUrl).toBe('https://paymongo.test/checkout/src_123');
+  });
+
+  it('inserts a fresh charge when there is no outstanding Pending row (balance payment)', async () => {
+    vi.mocked(getBookingById).mockResolvedValue({
+      ...UNPAID_BOOKING,
+      payment_status: 'Partially Paid',
+    } as never);
+    const recorded = queueFrom(
+      { data: [{ total_amount: 500 }], error: null }, // settled-sum read (downpayment already in)
+      { data: null, error: null }, // no pending charge
+      { data: { id: 'txn-balance', total_amount: 500 }, error: null } // insert
+    );
+
+    await payForBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      paymentMethod: 'GCash',
+      payInFull: true,
+    });
+
+    // net 1000 - 500 settled = 500 remaining
+    expect(initiatePaymongoPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 500 })
+    );
+    expect(recorded.some((r) => r.method === 'insert')).toBe(true);
   });
 
   it('pays only the downpayment_amount when payInFull is false and a downpayment is required', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
-    mockInsertTransaction({
-      data: { id: 'txn-1', total_amount: 500 },
-      error: null,
-    });
+    queueFrom(
+      { data: [], error: null },
+      { data: { id: 'txn-initial' }, error: null },
+      { data: { id: 'txn-initial', total_amount: 500 }, error: null }
+    );
 
     await payForBooking({
       requesterId: CUSTOMER_ID,
@@ -175,26 +240,28 @@ describe('customerBookingPayment.service', () => {
     );
   });
 
-  it('a "Partially Paid" booking always pays only the remaining balance, regardless of payInFull', async () => {
+  it('bills net of a booking-time discount, not the gross total_price', async () => {
     vi.mocked(getBookingById).mockResolvedValue({
       ...UNPAID_BOOKING,
-      payment_status: 'Partially Paid',
+      discount_amount: 200,
+      promo_amount: 50,
     } as never);
-    mockInsertTransaction({
-      data: { id: 'txn-1', total_amount: 500 },
-      error: null,
-    });
+    queueFrom(
+      { data: [], error: null },
+      { data: { id: 'txn-initial' }, error: null },
+      { data: { id: 'txn-initial', total_amount: 750 }, error: null }
+    );
 
     await payForBooking({
       requesterId: CUSTOMER_ID,
       bookingId: 'booking-1',
       paymentMethod: 'GCash',
-      payInFull: false,
+      payInFull: true,
     });
 
-    // total_price 1000 - downpayment_amount 500 already paid = 500 remaining
+    // 1000 - 200 - 50 = 750
     expect(initiatePaymongoPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 500 })
+      expect.objectContaining({ amount: 750 })
     );
   });
 });

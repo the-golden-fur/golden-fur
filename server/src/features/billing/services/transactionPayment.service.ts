@@ -154,6 +154,26 @@ export async function addBookingPayment({
   bookingId,
   amount,
 }: AddBookingPaymentParams): Promise<Transaction> {
+  // add_booking_payment's "remaining" only nets settled rows, so without this
+  // guard a staff member could stack several Pending charges that together
+  // over-collect. Match the client, which hides "Add a payment" while any row
+  // is still Pending.
+  const { data: pending } = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('transaction_type', 'booking_payment')
+    .eq('payment_status', 'Pending')
+    .limit(1)
+    .maybeSingle();
+
+  if (pending) {
+    throwWithStatus(
+      409,
+      'This booking already has an unsettled charge - record that payment first'
+    );
+  }
+
   const { data, error } = await supabase.rpc('add_booking_payment', {
     p_booking_id: bookingId,
     p_amount: amount,
@@ -239,40 +259,20 @@ export async function payTransactionWithCredit({
     );
   }
 
-  const { data: creditData, error: creditError } = await supabase.rpc(
-    'redeem_credit',
+  // Redeem + settle + roll up in ONE RPC (one Postgres transaction) - a
+  // failure anywhere rolls the credit decrement back too, so credit is never
+  // burned against a transaction that didn't get settled.
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    'pay_transaction_with_credit',
     {
-      p_customer_id: transaction.customer_id,
-      p_branch_id: transaction.branch_id,
+      p_transaction_id: transactionId,
       p_amount: amount,
-      p_transaction_id: transactionId,
-    }
-  );
-
-  if (creditError) throwWithStatus(400, creditError.message);
-  const creditTransaction = firstRow<Record<string, unknown>>(creditData);
-
-  const { data: settleData, error: settleError } = await supabase.rpc(
-    'settle_transaction',
-    {
-      p_transaction_id: transactionId,
-      p_payment_method: 'Credit',
-      p_bank_name: null,
-      p_payment_reference: null,
-      p_cash_tendered: null,
       p_processed_by: isStaff ? requesterId : null,
     }
   );
 
-  if (settleError) throwWithStatus(400, settleError.message);
-  let booking = firstRow<Record<string, unknown>>(settleData);
-
-  const { error: updateError } = await supabase
-    .from('transactions')
-    .update({ credit_applied_amount: amount })
-    .eq('id', transactionId);
-
-  if (updateError) throwWithStatus(400, updateError.message);
+  if (rpcError) throwWithStatus(400, rpcError.message);
+  let booking = firstRow<Record<string, unknown>>(rpcData);
 
   if (transaction.booking_id && paymentStatusBefore) {
     booking = (await applyFirstBookingPaymentSideEffects({
@@ -282,7 +282,16 @@ export async function payTransactionWithCredit({
     })) as unknown as Record<string, unknown>;
   }
 
+  const { data: creditRow } = await supabase
+    .from('credit_transactions')
+    .select('*')
+    .eq('transaction_id', transactionId)
+    .eq('transaction_type', 'redemption')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const settled = await loadTransaction(transactionId);
 
-  return { transaction: settled, booking, creditTransaction };
+  return { transaction: settled, booking, creditTransaction: creditRow };
 }
