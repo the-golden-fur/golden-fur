@@ -32,6 +32,31 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  // The provider is mounted once around the whole customer shell and never
+  // remounts on navigation, so without this a server-side credit change from
+  // any path other than the cancel button (e.g. a staff adjustment, another
+  // tab) leaves the pill stale until a full reload. Re-fetch when the tab
+  // regains focus / becomes visible again.
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    const revalidate = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidate);
+
+    return () => {
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidate);
+    };
+  }, [accessToken, refresh]);
+
   useEffect(() => {
     if (!accessToken) {
       return;
@@ -57,7 +82,10 @@ export function CreditBalanceProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       balances,
-      total: balances.reduce((sum, balance) => sum + balance.balance, 0),
+      total: balances.reduce(
+        (sum, balance) => sum + Number(balance.balance),
+        0
+      ),
       isLoading: !hasLoaded,
       refresh,
     }),

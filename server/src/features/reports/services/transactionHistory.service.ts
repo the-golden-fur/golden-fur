@@ -22,10 +22,15 @@ function throwWithStatus(statusCode: number, message: string): never {
 export async function listTransactionHistory(
   filters: TransactionHistoryFilters
 ): Promise<Transaction[]> {
+  // payment_status + the pricing snapshot let the transaction-history pages
+  // work out a booking's outstanding balance (for the customer/staff
+  // "add a balance payment" action) without a second round trip.
+  const bookingColumns =
+    'pet_id, service_category, payment_status, total_price, discount_amount, promo_amount';
   const needsBookingJoin = Boolean(filters.petId || filters.serviceCategory);
   const bookingsSelect = needsBookingJoin
-    ? 'bookings!inner(pet_id, service_category)'
-    : 'bookings(pet_id, service_category)';
+    ? `bookings!inner(${bookingColumns})`
+    : `bookings(${bookingColumns})`;
 
   let query = supabase.from('transactions').select(`*, ${bookingsSelect}`);
 

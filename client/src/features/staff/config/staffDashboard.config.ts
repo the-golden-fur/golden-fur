@@ -244,6 +244,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/dsr',
           },
           {
+            title: 'Transactions',
+            description:
+              'Search and filter every customer transaction; record payments against pending charges.',
+            to: '/staff/reports/transaction-history',
+          },
+          {
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
@@ -301,6 +307,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Daily Sales Report - branch-wide performance reporting.',
             to: '/staff/reports/dsr',
+          },
+          {
+            title: 'Transactions',
+            description:
+              'Search and filter every customer transaction; record payments against pending charges.',
+            to: '/staff/reports/transaction-history',
           },
           {
             title: 'Cage Occupancy',
@@ -523,7 +535,6 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Activity Log': History,
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
-  'Transaction History': Receipt,
 };
 
 export interface SidebarReadySection {

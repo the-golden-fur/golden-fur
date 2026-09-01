@@ -46,7 +46,7 @@ describe('listTransactionHistory', () => {
 
     await listTransactionHistory({ customerId: 'cust-1' });
 
-    expect(selectArgs[0]).toContain('bookings(pet_id, service_category)');
+    expect(selectArgs[0]).toContain('bookings(pet_id, service_category');
     expect(selectArgs[0]).not.toContain('!inner');
   });
 
@@ -55,7 +55,7 @@ describe('listTransactionHistory', () => {
 
     await listTransactionHistory({ serviceCategory: 'Grooming' });
 
-    expect(selectArgs[0]).toContain('bookings!inner(pet_id, service_category)');
+    expect(selectArgs[0]).toContain('bookings!inner(pet_id, service_category');
   });
 
   it('applies the transaction_type and payment_choice filters', async () => {

@@ -418,6 +418,30 @@ export async function payForBooking(
   return parseBody<PayForBookingResult>(response);
 }
 
+/** Customer-chosen partial payment toward a partly-paid booking's balance -
+ * creates a fresh Pending 'balance' charge (amount re-checked <= remaining
+ * server-side) that the customer then settles from the transaction list. */
+export async function addBalancePaymentForBooking(
+  bookingId: string,
+  amount: number,
+  accessToken: string
+): Promise<BookingApiResult<{ transaction: { id: string } }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/balance-payment`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ amount }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ transaction: { id: string } }>(response);
+}
+
 /** Custom change: duplicate-booking prevention - pet ids that currently
  * have an unresolved Hotel/Daycare booking, so the booking flow's pet-
  * selection step can disable them. */

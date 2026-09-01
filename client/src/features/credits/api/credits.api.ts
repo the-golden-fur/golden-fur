@@ -49,7 +49,15 @@ export async function listCreditBalances(
   }
 
   const result = await parseBody<{ balances: CreditBalance[] }>(response);
-  return { data: result.data?.balances ?? null, error: result.error };
+  // `balance` is a PG numeric(10,2) - supabase-js/PostgREST serialize it as a
+  // string, and the server casts the row through untouched. Coerce here so
+  // every consumer (navbar sum, per-branch cards) does number math, not
+  // string concatenation ("0" + "500.00" -> "0500.00").
+  const balances = result.data?.balances?.map((row) => ({
+    ...row,
+    balance: Number(row.balance),
+  }));
+  return { data: balances ?? null, error: result.error };
 }
 
 export async function listCreditHistory(
@@ -69,7 +77,12 @@ export async function listCreditHistory(
   }
 
   const result = await parseBody<{ history: CreditTransaction[] }>(response);
-  return { data: result.data?.history ?? null, error: result.error };
+  // `amount` is a PG numeric - same string-serialization caveat as balances above.
+  const history = result.data?.history?.map((row) => ({
+    ...row,
+    amount: Number(row.amount),
+  }));
+  return { data: history ?? null, error: result.error };
 }
 
 /** Admin/Superadmin-only manual expiry trigger (#93) - the primary
