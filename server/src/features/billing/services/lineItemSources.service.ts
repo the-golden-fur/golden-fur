@@ -152,9 +152,9 @@ export async function getBookingForBilling(
  * required booking is only ever gated into the queue (and thus only ever
  * reaches Completed/checkout) once its downpayment_amount was actually
  * collected - see the booking-service.ts/grooming/consultation queue gates
- * keyed off downpayment_required + payment_stage. So unlike Hotel's own
+ * keyed off downpayment_required + payment_status. So unlike Hotel's own
  * netting (getHotelLineItems below, which stays keyed off `stays` and is
- * left untouched), this is unconditional on payment_stage: by the time a
+ * left untouched), this is unconditional on payment_status: by the time a
  * flagged booking can reach here, the downpayment is guaranteed paid.
  */
 function downpaymentNettingLines(booking: BookingForBilling): DraftLineItem[] {

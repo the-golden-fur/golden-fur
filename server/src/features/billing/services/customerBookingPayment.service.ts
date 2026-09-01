@@ -34,8 +34,8 @@ export interface PayForBookingResult {
  * counter interaction. This can pay either the full price or just the
  * catalog-required downpayment, and creates a 'Pending' transactions row
  * exactly like checkoutBooking does, tagged initiated_by: 'customer' so
- * confirmPaymongoWebhookEvent knows to also advance the booking's
- * payment_stage once PayMongo confirms (see that service for why the
+ * confirmPaymongoWebhookEvent knows to also recompute the booking's
+ * payment_status once PayMongo confirms (see that service for why the
  * cashier path is left untouched).
  */
 export async function payForBooking({

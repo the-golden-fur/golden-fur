@@ -24,16 +24,15 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
  * doing the work (Groomer, Veterinarian, Receptionist checking a pet in,
  * etc.) should be able to advance a booking regardless of category, mirroring
  * BOOKING_POLICY_READ_ROLES' "all staff" set. Cashier is carved out: they
- * only ever handle payment collection (the payment_stage "Mark as Paid"
- * action - see PAYMENT_STAGE_ADVANCE_ROLES), never the service lifecycle
- * itself. */
+ * only ever handle payment collection (recording a payment on the
+ * Transactions page), never the service lifecycle itself. */
 export const BOOKING_STATUS_ADVANCE_ROLES: readonly string[] =
   BOOKING_POLICY_READ_ROLES.filter((role) => role !== 'Cashier');
 
 /** Money-handling roles only - excludes Groomer/Veterinarian/Pet Assistant,
- * who advance Start/Complete but never touch payment. Gates both the
- * payment_stage "Mark as Paid" action (PAYMENT_STAGE_ADVANCE_ROLES) and the
- * booking-time Cash discount picker (resolveDiscountAndPromo). */
+ * who advance Start/Complete but never touch payment. Gates the recording of
+ * a transaction payment and the booking-time Cash discount picker
+ * (resolveDiscountAndPromo). */
 export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
@@ -41,12 +40,6 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Receptionist',
   'Cashier',
 ];
-
-/** payment_stage "Mark as Paid" action: same money-handling roles as
- * BOOKING_MARK_PAID_ROLES - cashiers are the primary user, but
- * Receptionist/Admin/Supervisor also collect payment at the front desk. */
-export const PAYMENT_STAGE_ADVANCE_ROLES: readonly string[] =
-  BOOKING_MARK_PAID_ROLES;
 
 /** Direct status override (forward OR backward) - Admin/Superadmin only,
  * replacing their Start/Complete buttons with a single status dropdown in
@@ -61,7 +54,7 @@ export const BOOKING_STATUS_OVERRIDE_ROLES: readonly string[] = [
  * Cancelled/No-show, which keep their own dedicated flows (a cancellation
  * reason, the lazy no-show transition) rather than becoming a bare status
  * flip. 'Paid' was retired from BookingStatus entirely (see below) - payment
- * is tracked exclusively via payment_stage now. */
+ * is tracked exclusively via payment_status now. */
 export const OVERRIDABLE_BOOKING_STATUSES = [
   'Pending',
   'In Progress',
@@ -90,9 +83,9 @@ export type ServiceCategory =
  * No-show the next time it's read. Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
- * now tracked exclusively via the independent `payment_stage` column/enum
- * (Unpaid -> Paid in Advance -> Paid, see PaymentStage below) - a booking's
- * service-lifecycle status and its payment status move independently.
+ * now tracked exclusively via the independent `payment_status` column/enum
+ * (Pending -> Partially Paid -> Fully Paid, see PaymentStatus below) - a
+ * booking's service-lifecycle status and its payment status move independently.
  */
 export type BookingStatus =
   | 'Pending'

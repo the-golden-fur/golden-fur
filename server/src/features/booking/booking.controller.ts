@@ -626,4 +626,3 @@ export async function overrideBookingStatusController(
     return sendServiceError(res, error);
   }
 }
-

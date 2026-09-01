@@ -288,7 +288,8 @@ export async function payTransactionWithCreditController(
 
   try {
     const staffRole = await getStaffRoleOrNull(requesterId);
-    const isStaff = staffRole !== null && BILLING_STAFF_ROLES.includes(staffRole);
+    const isStaff =
+      staffRole !== null && BILLING_STAFF_ROLES.includes(staffRole);
 
     const result = await payTransactionWithCredit({
       requesterId,

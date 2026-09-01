@@ -57,6 +57,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     status: 'Pending',
     total_price: 500,
     downpayment_amount: null,
+    payment_status: 'Pending',
     payment_method: 'Cash',
     payment_confirmed: false,
     special_instructions: null,
@@ -233,7 +234,7 @@ describe('CustomerBookingsPage', () => {
       data: [
         buildBooking({
           status: 'Pending',
-          payment_stage: 'Paid in Advance',
+          payment_status: 'Partially Paid',
           downpayment_amount: 200,
         }),
       ],
@@ -287,9 +288,9 @@ describe('CustomerBookingsPage', () => {
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });
 
-  it('does not show a Pay button once payment_stage is Paid', async () => {
+  it('does not show a Pay button once payment_status is Fully Paid', async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
+      data: [buildBooking({ status: 'Pending', payment_status: 'Fully Paid' })],
       error: null,
     });
 
@@ -303,7 +304,7 @@ describe('CustomerBookingsPage', () => {
 
   it('disables the Pay button with an explanatory tooltip when online payments are off for the branch', async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_stage: 'Unpaid' })],
+      data: [buildBooking({ status: 'Pending', payment_status: 'Pending' })],
       error: null,
     });
     vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
@@ -327,7 +328,7 @@ describe('CustomerBookingsPage', () => {
       data: [
         buildBooking({
           status: 'Pending',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
           downpayment_required: true,
           downpayment_amount: 250,
           total_price: 500,

@@ -483,12 +483,10 @@ export async function getDownpaymentStatus(
 
 /**
  * Manual status-advance actions: Start (Pending -> In Progress), Complete
- * (In Progress -> Completed; also auto-advances payment_stage to Paid when
- * an online payment was already confirmed - see completeBooking in
- * booking.service.ts). No-show has no endpoint - it's a lazy transition the
- * server applies whenever a booking is read. Payment ("Mark as Paid") is a
- * separate action on the payment_stage track - see advancePaymentStatus
- * below.
+ * (In Progress -> Completed). No-show has no endpoint - it's a lazy
+ * transition the server applies whenever a booking is read. Payment is
+ * tracked independently via `payment_status`, settled per-transaction on the
+ * Transactions page (billing feature) - not on this status track.
  */
 async function postBookingAction(
   bookingId: string,

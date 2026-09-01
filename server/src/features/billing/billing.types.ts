@@ -87,13 +87,13 @@ export interface Transaction {
   /** 'staff' for every pre-existing/cashier-created row (default);
    * 'customer' only for a booking payment the customer initiated themselves
    * (customerBookingPayment.service.ts) - lets confirmPaymongoWebhookEvent
-   * additionally advance the booking's payment_stage once one of these
-   * confirms, without touching cashier-checkout behavior. */
+   * recompute the booking's payment_status once one of these confirms,
+   * without touching cashier-checkout behavior. */
   initiated_by: 'staff' | 'customer';
-  /** Only set on a customer-initiated booking_payment row - which
-   * advancePaymentStage target the webhook should apply once this
-   * confirms. */
-  payment_choice: 'full' | 'downpayment' | null;
+  /** Which portion of the booking this transaction covers:
+   * 'full' / 'downpayment' / 'balance' (an additional payment toward the
+   * remaining balance). Null on misc sales. */
+  payment_choice: 'full' | 'downpayment' | 'balance' | null;
   created_at: string;
   updated_at: string;
 }

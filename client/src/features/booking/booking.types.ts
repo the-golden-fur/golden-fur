@@ -14,8 +14,7 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
 /** Mirrors the server's BOOKING_MARK_PAID_ROLES - money-handling roles only.
  * Reused client-side to gate the booking wizard's discount picker (a
  * discount needs staff to have verified an ID onsite, same trust boundary
- * as Mark as Paid) and the payment_stage "Mark as Paid" button, separate
- * from promos which anyone can select. */
+ * as recording a payment), separate from promos which anyone can select. */
 export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
@@ -69,8 +68,8 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  * the next time it's read. Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
- * now tracked exclusively via the independent `payment_stage` field
- * (Unpaid -> Paid in Advance -> Paid, see PaymentStage below).
+ * now tracked exclusively via the independent `payment_status` field
+ * (Pending -> Partially Paid -> Fully Paid, see PaymentStatus below).
  */
 export type BookingStatus =
   | 'Pending'
@@ -138,7 +137,7 @@ export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
 /**
  * Receptionist-facing lifecycle vocabulary (bookings queue only). NOT a DB
  * enum and NOT a second axis on the booking - a pure display derivation over
- * `status` + `payment_stage` + `downpayment_required` + `cancellation_reason`
+ * `status` + `payment_status` + `downpayment_required` + `cancellation_reason`
  * (see deriveBookingConfirmationState). An online booking that still owes its
  * down payment reads as "Unconfirmed" (it holds no slot and can expire);
  * paying it, or a walk-in / no-down-payment booking, reads as "Confirmed";

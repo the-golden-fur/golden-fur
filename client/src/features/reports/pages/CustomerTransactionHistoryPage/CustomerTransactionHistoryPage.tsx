@@ -105,7 +105,14 @@ export function CustomerTransactionHistoryPage() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, dateFrom, dateTo, serviceCategory, paymentChoice, reloadKey]);
+  }, [
+    accessToken,
+    dateFrom,
+    dateTo,
+    serviceCategory,
+    paymentChoice,
+    reloadKey,
+  ]);
 
   const {
     search,

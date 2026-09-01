@@ -25,7 +25,7 @@ const STATE_CLASSNAME: Record<BookingConfirmationState, keyof typeof styles> = {
 
 /**
  * The receptionist bookings queue's lifecycle pill - replaces
- * BookingStatusBadge on that page only. It folds `payment_stage` into the
+ * BookingStatusBadge on that page only. It folds `payment_status` into the
  * label so an unpaid pencil booking reads as "Unconfirmed" instead of a
  * bare "Pending" the receptionist has to cross-reference against a separate
  * payment badge. Everywhere else (module execution UIs, etc.)

@@ -2928,8 +2928,8 @@ export function CustomerBookingFlowPage() {
 
             {requiresPayment ? (
               <p className={styles.copy}>
-                Payment is recorded at the counter (or from account credit) -
-                no payment method is chosen here.
+                Payment is recorded at the counter (or from account credit) - no
+                payment method is chosen here.
               </p>
             ) : (
               <p className={styles.copy}>
@@ -2967,58 +2967,58 @@ export function CustomerBookingFlowPage() {
             ) : null}
 
             {canApplyDiscounts ? (
-                <fieldset className={styles.field}>
-                  <legend className={styles.fieldLabel}>
-                    Discount (verify the customer&apos;s ID before applying)
-                  </legend>
-                  <label className={styles.radioOption}>
+              <fieldset className={styles.field}>
+                <legend className={styles.fieldLabel}>
+                  Discount (verify the customer&apos;s ID before applying)
+                </legend>
+                <label className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="discount"
+                    checked={selectedDiscountId === ''}
+                    onChange={() => {
+                      setSelectedDiscountId('');
+                      setDiscountIdVerified(false);
+                    }}
+                  />
+                  None
+                </label>
+                {applicableDiscounts.map((discount) => (
+                  <label key={discount.id} className={styles.radioOption}>
                     <input
                       type="radio"
                       name="discount"
-                      checked={selectedDiscountId === ''}
+                      checked={selectedDiscountId === discount.id}
                       onChange={() => {
-                        setSelectedDiscountId('');
+                        setSelectedDiscountId(discount.id);
                         setDiscountIdVerified(false);
                       }}
                     />
-                    None
+                    {discount.name} (
+                    {discount.discount_type === 'Percentage'
+                      ? `${discount.value}%`
+                      : `PHP ${discount.value.toFixed(2)}`}
+                    )
                   </label>
-                  {applicableDiscounts.map((discount) => (
-                    <label key={discount.id} className={styles.radioOption}>
-                      <input
-                        type="radio"
-                        name="discount"
-                        checked={selectedDiscountId === discount.id}
-                        onChange={() => {
-                          setSelectedDiscountId(discount.id);
-                          setDiscountIdVerified(false);
-                        }}
-                      />
-                      {discount.name} (
-                      {discount.discount_type === 'Percentage'
-                        ? `${discount.value}%`
-                        : `PHP ${discount.value.toFixed(2)}`}
-                      )
-                    </label>
-                  ))}
-                  {applicableDiscounts.length === 0 ? (
-                    <p className={styles.copy}>
-                      No discounts apply to the selected items.
-                    </p>
-                  ) : null}
-                  {selectedDiscount?.is_mandated ? (
-                    <label className={styles.radioOption}>
-                      <input
-                        type="checkbox"
-                        checked={discountIdVerified}
-                        onChange={(event) =>
-                          setDiscountIdVerified(event.target.checked)
-                        }
-                      />
-                      I have verified the customer&apos;s ID for this discount
-                    </label>
-                  ) : null}
-                </fieldset>
+                ))}
+                {applicableDiscounts.length === 0 ? (
+                  <p className={styles.copy}>
+                    No discounts apply to the selected items.
+                  </p>
+                ) : null}
+                {selectedDiscount?.is_mandated ? (
+                  <label className={styles.radioOption}>
+                    <input
+                      type="checkbox"
+                      checked={discountIdVerified}
+                      onChange={(event) =>
+                        setDiscountIdVerified(event.target.checked)
+                      }
+                    />
+                    I have verified the customer&apos;s ID for this discount
+                  </label>
+                ) : null}
+              </fieldset>
             ) : null}
 
             {applicablePromos.length > 0 ? (

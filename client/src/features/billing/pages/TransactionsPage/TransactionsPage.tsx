@@ -23,7 +23,9 @@ const ALLOWED_ROLES = new Set([
   'Cashier',
 ]);
 
-function toPaymentStatus(raw: string): 'Pending' | 'Partially Paid' | 'Fully Paid' {
+function toPaymentStatus(
+  raw: string
+): 'Pending' | 'Partially Paid' | 'Fully Paid' {
   if (raw === 'Fully Paid' || raw === 'Partially Paid') return raw;
   return 'Pending';
 }
@@ -63,9 +65,7 @@ export function TransactionsPage() {
     void listStaff(accessToken).then((result) => {
       if (!mounted) return;
       setRoleLoading(false);
-      setViewerRole(
-        result.data?.find((s) => s.id === user.id)?.role ?? null
-      );
+      setViewerRole(result.data?.find((s) => s.id === user.id)?.role ?? null);
     });
     return () => {
       mounted = false;
@@ -75,7 +75,6 @@ export function TransactionsPage() {
   useEffect(() => {
     if (!accessToken) return;
     let mounted = true;
-    setIsLoading(true);
     void getTransactionHistory({}, accessToken).then((result) => {
       if (!mounted) return;
       setIsLoading(false);
@@ -180,8 +179,8 @@ export function TransactionsPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>Transactions</h1>
       <p className={styles.copy}>
-        Record a payment against any pending charge. A booking with a
-        remaining balance can take more than one payment.
+        Record a payment against any pending charge. A booking with a remaining
+        balance can take more than one payment.
       </p>
 
       {isLoading ? <p>Loading transactions...</p> : null}

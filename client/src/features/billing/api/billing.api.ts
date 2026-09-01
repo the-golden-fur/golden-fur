@@ -198,9 +198,7 @@ export async function addBookingPayment(
 export async function payTransactionWithCredit(
   transactionId: string,
   accessToken: string
-): Promise<
-  BillingApiResult<{ transaction: Transaction; booking: unknown }>
-> {
+): Promise<BillingApiResult<{ transaction: Transaction; booking: unknown }>> {
   const response = await fetch(
     `${API_BASE_URL}/billing/transactions/${transactionId}/pay-with-credit`,
     { method: 'POST', headers: jsonHeaders(accessToken) }

@@ -867,7 +867,9 @@ export async function createBooking({
       ? 'downpayment'
       : 'full';
   const initialChargeAmount =
-    paymentScheme === 'downpayment' ? (downpaymentAmount ?? netTotal) : netTotal;
+    paymentScheme === 'downpayment'
+      ? (downpaymentAmount ?? netTotal)
+      : netTotal;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -922,7 +924,7 @@ export async function createBooking({
     // booking reserves nothing, so it neither consumes capacity nor is
     // blocked by a full slot (multiple customers may pencil-book the same
     // slot; whoever pays first reserves it - re-checked in
-    // advancePaymentStage).
+    // recomputeBookingPaymentStatus).
     const capacity = await checkCapacity({
       branchId: input.branch_id,
       serviceCategory: input.service_category,
@@ -1060,11 +1062,8 @@ export async function createBooking({
         paymentScheme
       );
     } catch (chargeError) {
-      console.error(
-        // eslint-disable-line no-console
-        'createInitialBookingCharge failed:',
-        chargeError
-      );
+      // eslint-disable-next-line no-console
+      console.error('createInitialBookingCharge failed:', chargeError);
     }
   }
 
@@ -1099,13 +1098,13 @@ export async function createBooking({
 /** Custom change: duplicate-booking prevention at pet selection - "still
  * not resolved" means either the booking hasn't finished yet (Pending/In
  * Progress), or it finished but was never paid for (Completed with
- * payment_stage still 'Unpaid' - see UNPAID_CONFLICT_STATUS below). This is
+ * payment_status still 'Pending' - see UNPAID_CONFLICT_STATUS below). This is
  * still deliberately narrower than ACTIVE_BOOKING_STATUSES (which also
  * includes 'Completed' unconditionally, for the staff-availability overlap
  * check's own different purpose): a *paid* Completed booking means the
  * service already happened and was settled, so the pet is free to be
  * booked again. Cancelled/No-show bookings never block, regardless of
- * payment_stage - no service was rendered on them and nothing is owed. */
+ * payment_status - no service was rendered on them and nothing is owed. */
 const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
   'In Progress',
@@ -1113,7 +1112,7 @@ const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
 
 /** A Completed booking only conflicts when it's also still Unpaid - see
  * UNRESOLVED_BOOKING_STATUSES above. Queried alongside those statuses so
- * listPetBookingConflicts can apply the payment_stage check itself. */
+ * listPetBookingConflicts can apply the payment_status check itself. */
 const UNPAID_CONFLICT_STATUS: Booking['status'] = 'Completed';
 
 interface PetBookingConflictsParams {
@@ -1175,7 +1174,8 @@ export async function listPetBookingConflicts({
   }>) {
     const isUnresolved =
       UNRESOLVED_BOOKING_STATUSES.includes(row.status) ||
-      (row.status === UNPAID_CONFLICT_STATUS && row.payment_status === 'Pending');
+      (row.status === UNPAID_CONFLICT_STATUS &&
+        row.payment_status === 'Pending');
     if (!isUnresolved) continue;
     if (conflictByPetId.has(row.pet_id)) continue;
     conflictByPetId.set(row.pet_id, {
@@ -1299,7 +1299,9 @@ export async function listBookings({
   }
 
   if (filters.excludeUnpaidDownpayment) {
-    query = query.or('downpayment_required.eq.false,payment_status.neq.Pending');
+    query = query.or(
+      'downpayment_required.eq.false,payment_status.neq.Pending'
+    );
   }
 
   if (filters.date) {
@@ -1536,9 +1538,9 @@ interface OverrideStatusParams {
  * BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this function trusts
  * that gate and only reshapes the row itself. Unlike start/complete, this
  * never rejects based on the booking's current status - any of the three
- * overridable statuses can move to any other. Doesn't touch payment_stage
- * or paid_at at all - those move independently via
- * advancePaymentStage/overridePaymentStage now.
+ * overridable statuses can move to any other. Doesn't touch payment_status
+ * or paid_at at all - those move independently as transactions are settled
+ * (settle_transaction RPC / recomputeBookingPaymentStatus).
  *
  * started_at/completed_at are filled the first time a status is reached and
  * preserved on a later revisit (so reverting Completed -> In Progress ->
@@ -1637,13 +1639,18 @@ export async function recomputeBookingPaymentStatus(
   );
   const settled = round2(
     (paidRows ?? []).reduce(
-      (sum, row) => sum + Number((row as { total_amount: number }).total_amount),
+      (sum, row) =>
+        sum + Number((row as { total_amount: number }).total_amount),
       0
     )
   );
 
   const nextStatus: PaymentStatus =
-    settled <= 0 ? 'Pending' : settled >= netTotal ? 'Fully Paid' : 'Partially Paid';
+    settled <= 0
+      ? 'Pending'
+      : settled >= netTotal
+        ? 'Fully Paid'
+        : 'Partially Paid';
 
   if (nextStatus === booking.payment_status) {
     return booking;
@@ -1698,8 +1705,8 @@ export async function recomputeBookingPaymentStatus(
         await sendStaffAssignedNotification(updated);
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(
-        // eslint-disable-line no-console
         'recomputeBookingPaymentStatus notifications failed:',
         error
       );
