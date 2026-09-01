@@ -17,12 +17,10 @@ import {
 import {
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
-  ONLINE_PAYMENT_METHODS,
   OVERRIDABLE_BOOKING_STATUSES,
-  OVERRIDABLE_PAYMENT_STAGES,
   type Booking,
   type BookingSource,
-  type PaymentStage,
+  type PaymentStatus,
   type ServiceCategory,
 } from '../booking.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
@@ -506,9 +504,10 @@ async function resolveDiscountAndPromo(
       );
     }
 
-    if (input.payment_method !== 'Cash') {
-      throwWithStatus(400, 'Discounts can only be applied to Cash bookings');
-    }
+    // The "Cash only" restriction went away with the payment-method-at-booking
+    // step - a staff member applying a statutory discount is already gated to
+    // money-handling roles and must verify the ID onsite. The payment method
+    // is chosen later, per transaction.
 
     const discount = await getDiscountById(input.discount_id);
 
@@ -849,50 +848,43 @@ export async function createBooking({
       : null;
   }
 
-  // payment_confirmed is trusted only for a STAFF-created booking (a
-  // receptionist collecting payment at the counter - a walk-in, or an
-  // Online booking made on someone's behalf). A customer's own
-  // self-service Online booking is never created pre-paid: they pay
-  // afterward through the Pay flow (customerBookingPayment.service.ts), or
-  // a cashier marks it paid on arrival. This is the down-payment slot
-  // gate's enforcement point - an unpaid customer booking that requires a
-  // down payment holds no slot (advisor addendum A1: no zero-payment slot
-  // reservation).
-  const paymentConfirmed =
-    input.service_category === 'Veterinary'
-      ? false
-      : staffRole
-        ? (input.payment_confirmed ?? false)
-        : false;
   const status: Booking['status'] =
     bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
-  // payment_stage at creation. A confirmed payment (staff collected it at
-  // the counter, or an online method was actually charged) lands on 'Paid'
-  // - or 'Paid in Advance' when only the down payment was taken. Everything
-  // else falls through to the column default 'Unpaid', which is what makes
-  // an unpaid Online booking read as "Unconfirmed" in the queue (see
-  // deriveBookingConfirmationState) - no staff alert, not checkinable, until
-  // a payment is recorded. Walk-ins and Veterinary (priced during the
-  // visit) are never gated this way.
-  const paymentStage: Booking['payment_stage'] | undefined = paymentConfirmed
-    ? downpaymentRequired && input.payment_choice === 'downpayment'
-      ? 'Paid in Advance'
-      : 'Paid'
-    : downpaymentRequired
-      ? 'Unpaid'
-      : undefined;
+  // Payment model rework: a booking is always created with no payment
+  // (payment_status defaults to 'Pending' - the rollup of its transactions,
+  // of which the only one so far is the Pending charge emitted below).
+  // Method + collector are recorded per transaction later on the
+  // Transactions page - nothing here reads payment_method / payment_confirmed
+  // any more.
+  //
+  // payment_scheme decides how much the initial charge transaction is for:
+  // 'downpayment' (only when the branch down-payment policy is on) charges
+  // just the down payment; 'full' / no policy charges the whole net total.
+  const requiresUpfrontCharge = input.service_category !== 'Veterinary';
+  const paymentScheme: 'downpayment' | 'full' =
+    downpaymentRequired && input.payment_scheme === 'downpayment'
+      ? 'downpayment'
+      : 'full';
+  const initialChargeAmount =
+    paymentScheme === 'downpayment'
+      ? (downpaymentAmount ?? netTotal)
+      : netTotal;
 
-  // Whether this booking actually reserves its capacity/staff-time slot. A
-  // down-payment-required Online booking still sitting fully Unpaid does
-  // not - the capacity checks below are skipped for it, and it stays out
-  // of every other booking's overlap count (capacity.service.ts /
-  // get_staff_availability Check 2).
-  const holdsSlot = !(downpaymentRequired && paymentStage === 'Unpaid');
+  // A fully-discounted / fully-promo'd booking owes nothing - there is no
+  // charge to create and no payment to collect, so it's born Fully Paid
+  // (otherwise it would sit Pending forever: startBooking, add_booking_payment
+  // and payForBooking all refuse a zero-owed booking).
+  const nothingOwed = requiresUpfrontCharge && netTotal <= 0;
+
+  // Whether this booking reserves its capacity/staff-time slot. A
+  // down-payment-required Online booking holds no slot until a payment lands
+  // (down-payment slot gate: advisor addendum A3); every other booking does.
+  const holdsSlot = !downpaymentRequired;
 
   // Down-payment slot gate: the auto-cancel deadline, snapshotted from the
   // effective policy so a later policy change never moves an existing one.
-  // Only a down-payment-required Online booking sitting Unpaid gets one.
+  // Only a down-payment-required Online booking (which starts unpaid) gets one.
   const downpaymentDueAt = holdsSlot
     ? null
     : new Date(
@@ -938,7 +930,7 @@ export async function createBooking({
     // booking reserves nothing, so it neither consumes capacity nor is
     // blocked by a full slot (multiple customers may pencil-book the same
     // slot; whoever pays first reserves it - re-checked in
-    // advancePaymentStage).
+    // recomputeBookingPaymentStatus).
     const capacity = await checkCapacity({
       branchId: input.branch_id,
       serviceCategory: input.service_category,
@@ -976,9 +968,10 @@ export async function createBooking({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
-      ...(paymentStage ? { payment_stage: paymentStage } : {}),
-      payment_method: input.payment_method ?? null,
-      payment_confirmed: paymentConfirmed,
+      payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
+      ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
+      payment_method: null,
+      payment_confirmed: false,
       selected_discount_id: selectedDiscountId,
       selected_promo_id: selectedPromoId,
       discount_amount: discountAmount,
@@ -1035,7 +1028,7 @@ export async function createBooking({
   // reserves nothing, so it neither wins nor loses this race, and it would
   // in fact always "lose" here since the capacity queries now exclude it
   // (SLOT_HOLD_PAID_OR_FILTER). Its capacity is re-verified when it pays
-  // (advancePaymentStage).
+  // (recomputeBookingPaymentStatus after the first settled transaction).
   if (holdsSlot) {
     const won = await confirmCapacityAfterInsert(booking);
 
@@ -1051,19 +1044,33 @@ export async function createBooking({
   // An unpaid Online booking is "Unconfirmed" (see
   // deriveBookingConfirmationState) - it isn't a secured appointment yet, so
   // neither the customer's "booking confirmed" alert nor the assigned
-  // staff's "you were picked" alert fires here. Both are sent instead when a
-  // payment is recorded (advancePaymentStage). Walk-ins and Veterinary
-  // (priced during the visit) are confirmed on creation as before.
+  // staff's "you were picked" alert fires here. Both are sent instead by
+  // recomputeBookingPaymentStatus when the first payment settles. Walk-ins
+  // and Veterinary (priced during the visit) are confirmed on creation.
   const isConfirmedAtCreation =
-    bookingSource === 'Walk-in' ||
-    input.service_category === 'Veterinary' ||
-    paymentConfirmed;
+    bookingSource === 'Walk-in' || input.service_category === 'Veterinary';
 
   if (isConfirmedAtCreation) {
     await sendBookingConfirmedNotification(booking);
 
     if (staffResolution.preferenceType === 'specific') {
       await sendStaffAssignedNotification(booking);
+    }
+  }
+
+  // Emit the initial charge transaction (best-effort - a failure here must
+  // not undo the booking; the cashier can add the charge manually). Vet
+  // bookings are priced during the visit, so they get no upfront charge.
+  if (requiresUpfrontCharge && initialChargeAmount > 0) {
+    try {
+      await createInitialBookingCharge(
+        booking,
+        initialChargeAmount,
+        paymentScheme
+      );
+    } catch (chargeError) {
+      // eslint-disable-next-line no-console
+      console.error('createInitialBookingCharge failed:', chargeError);
     }
   }
 
@@ -1098,13 +1105,13 @@ export async function createBooking({
 /** Custom change: duplicate-booking prevention at pet selection - "still
  * not resolved" means either the booking hasn't finished yet (Pending/In
  * Progress), or it finished but was never paid for (Completed with
- * payment_stage still 'Unpaid' - see UNPAID_CONFLICT_STATUS below). This is
+ * payment_status still 'Pending' - see UNPAID_CONFLICT_STATUS below). This is
  * still deliberately narrower than ACTIVE_BOOKING_STATUSES (which also
  * includes 'Completed' unconditionally, for the staff-availability overlap
  * check's own different purpose): a *paid* Completed booking means the
  * service already happened and was settled, so the pet is free to be
  * booked again. Cancelled/No-show bookings never block, regardless of
- * payment_stage - no service was rendered on them and nothing is owed. */
+ * payment_status - no service was rendered on them and nothing is owed. */
 const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
   'In Progress',
@@ -1112,7 +1119,7 @@ const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
 
 /** A Completed booking only conflicts when it's also still Unpaid - see
  * UNRESOLVED_BOOKING_STATUSES above. Queried alongside those statuses so
- * listPetBookingConflicts can apply the payment_stage check itself. */
+ * listPetBookingConflicts can apply the payment_status check itself. */
 const UNPAID_CONFLICT_STATUS: Booking['status'] = 'Completed';
 
 interface PetBookingConflictsParams {
@@ -1154,7 +1161,7 @@ export async function listPetBookingConflicts({
   const { data, error } = await supabase
     .from('bookings')
     .select(
-      'id, pet_id, service_category, scheduled_start, status, payment_stage'
+      'id, pet_id, service_category, scheduled_start, status, payment_status'
     )
     .eq('customer_id', customerId)
     .in('status', [...UNRESOLVED_BOOKING_STATUSES, UNPAID_CONFLICT_STATUS])
@@ -1170,11 +1177,12 @@ export async function listPetBookingConflicts({
     service_category: Booking['service_category'];
     scheduled_start: string;
     status: Booking['status'];
-    payment_stage: PaymentStage;
+    payment_status: PaymentStatus;
   }>) {
     const isUnresolved =
       UNRESOLVED_BOOKING_STATUSES.includes(row.status) ||
-      (row.status === UNPAID_CONFLICT_STATUS && row.payment_stage === 'Unpaid');
+      (row.status === UNPAID_CONFLICT_STATUS &&
+        row.payment_status === 'Pending');
     if (!isUnresolved) continue;
     if (conflictByPetId.has(row.pet_id)) continue;
     conflictByPetId.set(row.pet_id, {
@@ -1231,10 +1239,9 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: Booking['status'];
-  /** Custom change (bookings/payments queue paid/unpaid filter) - exact
-   * match against payment_stage, independent of `status` above (see
-   * PaymentStage's own dev note in booking.types.ts). */
-  paymentStage?: Booking['payment_stage'];
+  /** Bookings/Transactions filter - exact match against the booking's
+   * payment_status rollup, independent of `status` above. */
+  paymentStatus?: Booking['payment_status'];
   /** A staff UUID (exact match), or the sentinel 'unassigned' for
    * assigned_staff_id IS NULL ("No preference" bookings that haven't been
    * auto-assigned yet). Bookings Queue's own "assigned to me / no
@@ -1288,8 +1295,8 @@ export async function listBookings({
     query = query.eq('status', filters.status);
   }
 
-  if (filters.paymentStage) {
-    query = query.eq('payment_stage', filters.paymentStage);
+  if (filters.paymentStatus) {
+    query = query.eq('payment_status', filters.paymentStatus);
   }
 
   if (filters.assignedStaffId === 'unassigned') {
@@ -1299,7 +1306,9 @@ export async function listBookings({
   }
 
   if (filters.excludeUnpaidDownpayment) {
-    query = query.or('downpayment_required.eq.false,payment_stage.neq.Unpaid');
+    query = query.or(
+      'downpayment_required.eq.false,payment_status.neq.Pending'
+    );
   }
 
   if (filters.date) {
@@ -1361,7 +1370,7 @@ async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
       (booking) =>
         booking.status === 'Pending' &&
         booking.downpayment_required &&
-        booking.payment_stage === 'Unpaid' &&
+        booking.payment_status === 'Pending' &&
         booking.downpayment_due_at !== null &&
         new Date(booking.downpayment_due_at).getTime() < now.getTime()
     )
@@ -1485,11 +1494,11 @@ export async function startBooking({
   if (
     booking.booking_source === 'Online' &&
     booking.service_category !== 'Veterinary' &&
-    booking.payment_stage === 'Unpaid'
+    booking.payment_status === 'Pending'
   ) {
     throwWithStatus(
       409,
-      "This booking hasn't been paid yet, so it can't be checked in. Record the payment on the Payments Queue first."
+      "This booking hasn't been paid yet, so it can't be checked in. Record the payment on the Transactions page first."
     );
   }
 
@@ -1502,14 +1511,11 @@ export async function startBooking({
 }
 
 /**
- * Manual Complete action: In Progress -> Completed. When the booking was
- * already paid online (payment_method is GCash/Maya and payment_confirmed
- * is true), payment_stage is also auto-advanced straight to 'Paid' here -
- * the money was already collected before the service even started, so
- * there's no separate "Mark as Paid" click to wait for. Every pay-at-counter
- * booking (Cash/Card/Bank Transfer/Grabmart/Pickaroo, or an online booking
- * that was never actually confirmed) lands on Completed with payment_stage
- * left as-is, for a cashier to advance later via advancePaymentStage.
+ * Manual Complete action: In Progress -> Completed. Payment is tracked
+ * entirely on the `transactions` ledger now (rolled up to
+ * `bookings.payment_status`), so completing a booking never touches payment
+ * state - an unpaid completed booking is settled afterward on the
+ * Transactions page.
  */
 export async function completeBooking({
   bookingId,
@@ -1521,22 +1527,9 @@ export async function completeBooking({
   }
 
   const now = new Date().toISOString();
-  // Custom change (P-1 roadmap item: generic downpayment): a booking
-  // already sitting at 'Paid in Advance' only had its downpayment collected
-  // online (createBooking's payment_choice === 'downpayment' path) - the
-  // remaining balance is still owed, so this fast path must not blindly
-  // re-advance it straight to 'Paid'. Every other booking (payment_stage
-  // still 'Unpaid' here, same as before this feature existed) is unaffected.
-  const onlinePrepaid =
-    booking.payment_stage !== 'Paid in Advance' &&
-    booking.payment_method !== null &&
-    booking.payment_confirmed &&
-    ONLINE_PAYMENT_METHODS.includes(booking.payment_method);
-
   return updateBookingRow(bookingId, {
     status: 'Completed',
     completed_at: now,
-    ...(onlinePrepaid ? { payment_stage: 'Paid', paid_at: now } : {}),
     updated_at: now,
   });
 }
@@ -1552,9 +1545,9 @@ interface OverrideStatusParams {
  * BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this function trusts
  * that gate and only reshapes the row itself. Unlike start/complete, this
  * never rejects based on the booking's current status - any of the three
- * overridable statuses can move to any other. Doesn't touch payment_stage
- * or paid_at at all - those move independently via
- * advancePaymentStage/overridePaymentStage now.
+ * overridable statuses can move to any other. Doesn't touch payment_status
+ * or paid_at at all - those move independently as transactions are settled
+ * (settle_transaction RPC / recomputeBookingPaymentStatus).
  *
  * started_at/completed_at are filled the first time a status is reached and
  * preserved on a later revisit (so reverting Completed -> In Progress ->
@@ -1581,57 +1574,18 @@ export async function overrideBookingStatus({
   });
 }
 
-interface AdvancePaymentStageParams {
-  bookingId: string;
-  choice?: 'advance' | 'onsite';
-  /** The staff member recording the payment at the counter. Set for the
-   * Payments Queue "Mark as Paid" action - a transactions row is written for
-   * that payment. Omitted for the PayMongo webhook path, which already has
-   * its own transactions row from payForBooking. */
-  processedByStaffId?: string | null;
-}
-
 /**
- * Records one payment against a booking - a transactions row plus a single
- * matching line item (keeping SUM(line_total) = total_amount). One row per
- * payment event so the Payments Queue and Transaction History show the
- * down payment, the balance, or a full payment separately, each linked to
- * the booking. Best-effort: a failure here is logged by the caller, never
- * blocks the payment-stage advance.
+ * Emits the initial charge transaction for a freshly-created booking - one
+ * `Pending` `booking_payment` row plus a matching line item (keeping
+ * SUM(line_total) = total_amount). A cashier settles it later on the
+ * Transactions page (`recordTransactionPayment` -> `settle_transaction`).
+ * Best-effort: the caller logs a failure and never lets it undo the booking.
  */
-async function recordBookingPaymentTransaction(params: {
-  booking: Booking;
-  fromStage: PaymentStage;
-  toStage: PaymentStage;
-  processedByStaffId: string | null;
-}): Promise<void> {
-  const { booking, fromStage, toStage, processedByStaffId } = params;
-
-  const netTotal = round2(
-    booking.total_price - booking.discount_amount - booking.promo_amount
-  );
-  const downpayment = round2(booking.downpayment_amount ?? 0);
-
-  let amount: number;
-  let paymentChoice: 'downpayment' | 'full';
-  let description: string;
-
-  if (fromStage === 'Unpaid' && toStage === 'Paid in Advance') {
-    amount = downpayment;
-    paymentChoice = 'downpayment';
-    description = 'Down payment';
-  } else if (fromStage === 'Paid in Advance' && toStage === 'Paid') {
-    amount = round2(netTotal - downpayment);
-    paymentChoice = 'full';
-    description = 'Remaining balance';
-  } else {
-    amount = netTotal;
-    paymentChoice = 'full';
-    description = 'Full payment';
-  }
-
-  if (amount <= 0) return;
-
+async function createInitialBookingCharge(
+  booking: Booking,
+  amount: number,
+  scheme: 'downpayment' | 'full'
+): Promise<void> {
   const { data: transaction, error } = await supabase
     .from('transactions')
     .insert({
@@ -1639,18 +1593,17 @@ async function recordBookingPaymentTransaction(params: {
       customer_id: booking.customer_id,
       branch_id: booking.branch_id,
       transaction_type: 'booking_payment',
-      payment_method: booking.payment_method ?? 'Cash',
-      payment_status: toStage === 'Paid' ? 'Fully Paid' : 'Partially Paid',
+      payment_method: 'Cash', // placeholder - set when the payment is recorded
+      payment_status: 'Pending',
+      payment_choice: scheme,
       subtotal_amount: amount,
       total_amount: amount,
-      payment_choice: paymentChoice,
-      processed_by_staff_id: processedByStaffId,
     })
     .select('id')
     .single();
 
   if (error || !transaction) {
-    throw new Error(error?.message ?? 'Failed to record the payment');
+    throw new Error(error?.message ?? 'Failed to record the initial charge');
   }
 
   const { error: lineError } = await supabase
@@ -1658,7 +1611,7 @@ async function recordBookingPaymentTransaction(params: {
     .insert({
       transaction_id: transaction.id,
       line_item_type: 'service',
-      description,
+      description: scheme === 'downpayment' ? 'Down payment' : 'Full payment',
       quantity: 1,
       unit_price: amount,
       line_total: amount,
@@ -1668,94 +1621,123 @@ async function recordBookingPaymentTransaction(params: {
 }
 
 /**
- * Manual "Advance" action for the payment_stage track - independent of
- * `status`'s own Pending -> In Progress -> Completed -> Paid lifecycle (see
- * PaymentStage's dev note in booking.types.ts). From Unpaid, the caller must
- * say whether this is an advance payment (money collected before the
- * service happens - moves to 'Paid in Advance') or a normal onsite payment
- * (collected once, in full - moves straight to 'Paid'). From 'Paid in
- * Advance', the only next step is settling the remaining balance, so no
- * choice is needed - it always advances straight to 'Paid'.
+ * Recomputes `bookings.payment_status` from the booking's settled
+ * `booking_payment` transactions and applies the first-payment side-effects.
+ * The `settle_transaction` RPC already does the SQL-side rollup atomically;
+ * this is the app-side path for the PayMongo webhook (which flips its own
+ * transaction row) and a safety net after a settlement - it also owns the
+ * one-time "the first payment confirms an Online booking" notifications and
+ * the down-payment slot-gate capacity re-check.
  */
-export async function advancePaymentStage({
-  bookingId,
-  choice,
-  processedByStaffId,
-}: AdvancePaymentStageParams): Promise<Booking> {
+export async function recomputeBookingPaymentStatus(
+  bookingId: string
+): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
-  if (booking.payment_stage === 'Paid') {
-    throwWithStatus(409, 'This booking is already fully paid');
-  }
+  const { data: paidRows } = await supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq('booking_id', bookingId)
+    .eq('transaction_type', 'booking_payment')
+    .neq('payment_status', 'Pending');
 
-  let nextStage: PaymentStage;
+  const netTotal = round2(
+    booking.total_price - booking.discount_amount - booking.promo_amount
+  );
+  const settled = round2(
+    (paidRows ?? []).reduce(
+      (sum, row) =>
+        sum + Number((row as { total_amount: number }).total_amount),
+      0
+    )
+  );
 
-  if (booking.payment_stage === 'Paid in Advance') {
-    nextStage = 'Paid';
-  } else if (choice === 'advance') {
-    nextStage = 'Paid in Advance';
-  } else if (choice === 'onsite') {
-    nextStage = 'Paid';
-  } else {
-    throwWithStatus(
-      400,
-      'Specify whether this is an advance payment or a normal onsite payment'
-    );
+  const nextStatus: PaymentStatus =
+    settled <= 0
+      ? 'Pending'
+      : settled >= netTotal
+        ? 'Fully Paid'
+        : 'Partially Paid';
+
+  if (nextStatus === booking.payment_status) {
+    return booking;
   }
 
   const nowIso = new Date().toISOString();
-  const updated = await updateBookingRow(bookingId, {
-    payment_stage: nextStage,
-    ...(nextStage === 'Paid' ? { paid_at: nowIso } : {}),
+  await updateBookingRow(bookingId, {
+    payment_status: nextStatus,
+    ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
     updated_at: nowIso,
   });
 
-  // Down-payment slot gate: a down-payment-required booking that was still
-  // Unpaid held NO slot (capacity.service.ts / get_staff_availability
-  // exclude it). Paying it now turns it into a real reservation - so
-  // re-verify capacity, exactly as createBooking does post-insert. If the
-  // slot filled with paid bookings while this one sat unpaid, revert the
-  // payment stage and reject: the money hasn't actually been taken here
-  // (the cashier/webhook is about to), and the customer must reschedule.
+  // Webhook path: the customer's transaction isn't settled until this
+  // succeeds, so a capacity conflict hard-rejects (revert + 409).
+  return applyFirstBookingPaymentSideEffects({
+    bookingId,
+    paymentStatusBeforePayment: booking.payment_status,
+    revertOnCapacityConflict: true,
+  });
+}
+
+/**
+ * First-payment side-effects for a booking that just left payment_status
+ * 'Pending' (a down payment or a full payment landed). Shared by the PayMongo
+ * webhook path (recomputeBookingPaymentStatus) and the counter paths
+ * (recordTransactionPayment / payTransactionWithCredit - the `settle_transaction`
+ * RPC does the SQL rollup but none of this).
+ *
+ * - Re-verifies capacity: a down-payment-required Online booking held no slot
+ *   while it sat Unconfirmed. `revertOnCapacityConflict` puts payment_status
+ *   back to 'Pending' and throws 409 (webhook path - nothing is settled yet);
+ *   the counter path passes false, keeps the payment (the cash is already in
+ *   the drawer), and leaves the booking for staff to reschedule.
+ * - Fires the booking_confirmed / staff_assigned alerts createBooking held
+ *   back while the booking was Unconfirmed.
+ *
+ * No-ops unless the booking actually went Pending -> settled, so it's safe to
+ * call unconditionally after any settlement.
+ */
+export async function applyFirstBookingPaymentSideEffects({
+  bookingId,
+  paymentStatusBeforePayment,
+  revertOnCapacityConflict,
+}: {
+  bookingId: string;
+  paymentStatusBeforePayment: PaymentStatus;
+  revertOnCapacityConflict: boolean;
+}): Promise<Booking> {
+  const updated = await getRawBookingById(bookingId);
+
   if (
-    booking.payment_stage === 'Unpaid' &&
-    booking.downpayment_required &&
+    paymentStatusBeforePayment !== 'Pending' ||
+    updated.payment_status === 'Pending'
+  ) {
+    return updated;
+  }
+
+  if (
+    updated.downpayment_required &&
     (updated.status === 'Pending' || updated.status === 'In Progress') &&
     !(await confirmCapacityAfterInsert(updated))
   ) {
-    await updateBookingRow(bookingId, {
-      payment_stage: 'Unpaid',
-      updated_at: new Date().toISOString(),
-    });
-    throwWithStatus(
-      409,
-      'That time slot filled up before this payment - please reschedule the booking to an open slot'
-    );
+    if (revertOnCapacityConflict) {
+      await updateBookingRow(bookingId, {
+        payment_status: 'Pending',
+        updated_at: new Date().toISOString(),
+      });
+      throwWithStatus(
+        409,
+        'That time slot filled up before this payment - please reschedule the booking to an open slot'
+      );
+    }
+    // Counter path: keep the payment; the slot is overbooked until staff
+    // reschedule the booking. The confirmation alert below still fires.
   }
 
-  // Best-effort payment record + confirmation alerts - neither should ever
-  // undo a payment the cashier just took, so a failure is logged, not
-  // thrown. The transaction row is only written for the staff "Mark as
-  // Paid" path (processedByStaffId set); the webhook path already has one.
-  try {
-    if (processedByStaffId != null) {
-      await recordBookingPaymentTransaction({
-        booking: updated,
-        fromStage: booking.payment_stage,
-        toStage: nextStage,
-        processedByStaffId,
-      });
-    }
-
-    // The first payment on a still-Pending Online booking is what
-    // "confirms" it - fire the alerts createBooking held back while it was
-    // Unconfirmed (customer "booking confirmed", plus the assigned staff's
-    // "you were picked" when the customer chose them specifically).
-    if (
-      booking.payment_stage === 'Unpaid' &&
-      updated.status === 'Pending' &&
-      updated.booking_source === 'Online'
-    ) {
+  // Best-effort: the first payment "confirms" a still-Pending Online booking
+  // - fire the alerts createBooking held back while it was Unconfirmed.
+  if (updated.status === 'Pending' && updated.booking_source === 'Online') {
+    try {
       await sendBookingConfirmedNotification(updated);
 
       const preferences = Array.isArray(updated.staff_picker_preferences)
@@ -1770,32 +1752,14 @@ export async function advancePaymentStage({
       ) {
         await sendStaffAssignedNotification(updated);
       }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        'applyFirstBookingPaymentSideEffects notifications failed:',
+        error
+      );
     }
-  } catch (error) {
-    console.error(
-      'advancePaymentStage post-update side effects failed:',
-      error
-    );
   }
 
   return updated;
-}
-
-interface OverridePaymentStageParams {
-  bookingId: string;
-  paymentStage: (typeof OVERRIDABLE_PAYMENT_STAGES)[number];
-}
-
-/** Admin/Superadmin-only direct set (forward or backward) - mirrors
- * overrideBookingStatus above, e.g. undoing an accidental Advance click.
- * Route-gated to BOOKING_STATUS_OVERRIDE_ROLES (booking.routes.ts); this
- * function trusts that gate. */
-export async function overridePaymentStage({
-  bookingId,
-  paymentStage,
-}: OverridePaymentStageParams): Promise<Booking> {
-  return updateBookingRow(bookingId, {
-    payment_stage: paymentStage,
-    updated_at: new Date().toISOString(),
-  });
 }

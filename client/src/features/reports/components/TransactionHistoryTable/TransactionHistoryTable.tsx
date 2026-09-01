@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -11,6 +12,12 @@ import {
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { getTransactionHistory } from '../../api/reports.api';
 import type { TransactionRecord } from '../../reports.types';
+import { PaymentMethodForm } from '../../../billing/components/PaymentMethodForm/PaymentMethodForm';
+import type { PaymentFields } from '../../../billing/billing.types';
+import {
+  payTransactionWithCredit,
+  recordTransactionPayment,
+} from '../../../billing/api/billing.api';
 import styles from './TransactionHistoryTable.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -75,9 +82,37 @@ function paymentStatusLabel(status: string): string {
  */
 export function TransactionHistoryTable() {
   const { user, accessToken } = useAuth();
+  const navigate = useNavigate();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
+
+  const [reloadKey, setReloadKey] = useState(0);
+  const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
+  const [payFields, setPayFields] = useState<PaymentFields>({
+    payment_method: 'Cash',
+  });
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const openPay = (t: TransactionRecord) => {
+    setPayTarget(t);
+    setPayFields({ payment_method: 'Cash' });
+    setPayError(null);
+  };
+
+  const runPay = async (fn: () => Promise<{ error?: string | null }>) => {
+    setPayBusy(true);
+    setPayError(null);
+    const result = await fn();
+    setPayBusy(false);
+    if (result.error) {
+      setPayError(result.error);
+      return;
+    }
+    setPayTarget(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -183,6 +218,7 @@ export function TransactionHistoryTable() {
     serviceCategory,
     transactionType,
     paymentChoice,
+    reloadKey,
   ]);
 
   const {
@@ -219,7 +255,7 @@ export function TransactionHistoryTable() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Transaction History</h1>
+      <h1 className={styles.title}>Transactions</h1>
 
       <div className={styles.filters}>
         <label className={styles.field}>
@@ -352,37 +388,136 @@ export function TransactionHistoryTable() {
               <th>Method</th>
               <th>Status</th>
               <th>Amount</th>
-              <th>Booking</th>
+              <th />
             </tr>
           </thead>
           <tbody>
-            {visibleTransactions.map((transaction) => (
-              <tr key={transaction.id}>
-                <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
-                <td>
-                  {transaction.transaction_type === 'miscellaneous_sale'
-                    ? transaction.misc_sale_description
-                    : 'Booking payment'}
-                </td>
-                <td>{transaction.bookings?.service_category ?? '-'}</td>
-                <td>{paymentChoiceLabel(transaction)}</td>
-                <td>{transaction.payment_method}</td>
-                <td>{paymentStatusLabel(transaction.payment_status)}</td>
-                <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                <td>
-                  {transaction.booking_id ? (
-                    <Link to={`/staff/bookings/${transaction.booking_id}`}>
-                      View booking
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-            ))}
+            {visibleTransactions.map((transaction) => {
+              const canPay =
+                transaction.payment_status === 'Pending' &&
+                transaction.transaction_type === 'booking_payment' &&
+                Boolean(transaction.booking_id);
+              const menuItems = [
+                ...(transaction.booking_id
+                  ? [
+                      {
+                        label: 'View booking',
+                        onSelect: () =>
+                          navigate(`/staff/bookings/${transaction.booking_id}`),
+                      },
+                    ]
+                  : []),
+                ...(canPay
+                  ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
+                  : []),
+              ];
+              return (
+                <tr key={transaction.id}>
+                  <td>
+                    {new Date(transaction.created_at).toLocaleDateString()}
+                  </td>
+                  <td>
+                    {transaction.transaction_type === 'miscellaneous_sale'
+                      ? transaction.misc_sale_description
+                      : 'Booking payment'}
+                  </td>
+                  <td>{transaction.bookings?.service_category ?? '-'}</td>
+                  <td>{paymentChoiceLabel(transaction)}</td>
+                  <td>
+                    {transaction.payment_status === 'Pending'
+                      ? '—'
+                      : transaction.payment_method}
+                  </td>
+                  <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                  <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                  <td>
+                    {menuItems.length > 0 ? (
+                      <MoreOptionsMenu
+                        label={`Options for this transaction`}
+                        items={menuItems}
+                      />
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
+
+      {payTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-payment-title"
+          >
+            <h2 id="record-payment-title" className={styles.modalTitle}>
+              Record payment — PHP {payTarget.total_amount.toFixed(2)}
+            </h2>
+            {/* The amount is locked to this transaction's own total - a
+                'downpayment' or 'full' charge is settled as-is; a partial
+                'balance' amount is chosen when the balance charge is created,
+                not here. */}
+            <PaymentMethodForm
+              value={payFields}
+              onChange={setPayFields}
+              amountDue={payTarget.total_amount}
+            />
+            {payError ? (
+              <p className={styles.errorBanner} role="alert">
+                {payError}
+              </p>
+            ) : null}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setPayTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={payBusy}
+                onClick={() =>
+                  void runPay(() =>
+                    payTransactionWithCredit(
+                      payTarget.id,
+                      accessToken as string
+                    )
+                  )
+                }
+              >
+                Pay from account credit
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={payBusy}
+                onClick={() =>
+                  void runPay(() =>
+                    recordTransactionPayment(
+                      payTarget.id,
+                      {
+                        payment_method: payFields.payment_method,
+                        bank_name: payFields.bank_name,
+                        payment_reference: payFields.payment_reference,
+                        cash_tendered: payFields.cash_tendered,
+                      },
+                      accessToken as string
+                    )
+                  )
+                }
+              >
+                {payBusy ? 'Processing...' : 'Record payment'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

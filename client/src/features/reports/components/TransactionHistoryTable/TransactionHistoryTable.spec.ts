@@ -116,7 +116,7 @@ describe('TransactionHistoryTable', () => {
 
   it('passes the transaction-type and payment-choice filters to the API', async () => {
     renderTable();
-    await screen.findByText('View booking');
+    await screen.findByText('PHP 500.00');
 
     await userEvent.selectOptions(
       screen.getByLabelText('Transaction type'),
@@ -138,7 +138,7 @@ describe('TransactionHistoryTable', () => {
     );
   });
 
-  it('links a booking-payment row to its booking and omits the link for a misc sale', async () => {
+  it('offers "View booking" in the row menu for a booking payment, and no menu for a misc sale', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [
         buildTransaction({ id: 'txn-1', booking_id: 'booking-9' }),
@@ -155,12 +155,17 @@ describe('TransactionHistoryTable', () => {
     });
 
     renderTable();
+    await screen.findByText('Leash');
 
-    const link = await screen.findByRole('link', { name: 'View booking' });
-    expect(link).toHaveAttribute('href', '/staff/bookings/booking-9');
-    expect(screen.getAllByRole('link', { name: 'View booking' })).toHaveLength(
-      1
-    );
+    // The misc sale (no booking) gets no "..." menu; the booking payment does.
+    const menus = screen.getAllByRole('button', {
+      name: /options for this transaction/i,
+    });
+    expect(menus).toHaveLength(1);
+
+    await userEvent.click(menus[0]);
+    await userEvent.click(await screen.findByText('View booking'));
+    expect(await screen.findByText('Booking details')).toBeInTheDocument();
   });
 
   it('sorts rows by amount', async () => {

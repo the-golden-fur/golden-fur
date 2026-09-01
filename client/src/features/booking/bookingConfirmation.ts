@@ -7,17 +7,17 @@ import {
 type ConfirmationInput = Pick<
   Booking,
   | 'status'
-  | 'payment_stage'
+  | 'payment_status'
   | 'booking_source'
   | 'service_category'
   | 'cancellation_reason'
 >;
 
 /**
- * Collapses a booking's independent `status`, `payment_stage` and
+ * Collapses a booking's independent `status`, `payment_status` and
  * `booking_source` axes into the single lifecycle label the receptionist
  * queue speaks (see BookingConfirmationState). Deliberately derived, not
- * stored - a stored copy would drift from `payment_stage` the moment a
+ * stored - a stored copy would drift from `payment_status` the moment a
  * cashier records a payment.
  *
  * - Online + Pending + nobody has paid  -> Unconfirmed  (not a secured
@@ -50,7 +50,7 @@ export function deriveBookingConfirmationState(
       const awaitingPayment =
         booking.booking_source === 'Online' &&
         booking.service_category !== 'Veterinary' &&
-        booking.payment_stage === 'Unpaid';
+        booking.payment_status === 'Pending';
       return awaitingPayment ? 'Unconfirmed' : 'Confirmed';
     }
   }

@@ -261,7 +261,7 @@ describe('capacity.service (#51)', () => {
       await confirmCapacityAfterInsert(GROOMING_BOOKING);
 
       expect(orCalls).toContain(
-        'downpayment_required.eq.false,payment_stage.neq.Unpaid'
+        'downpayment_required.eq.false,payment_status.neq.Pending'
       );
     });
   });
@@ -273,7 +273,7 @@ describe('capacity.service (#51)', () => {
       await checkCapacity({ ...WINDOW, serviceCategory: 'Daycare' });
 
       expect(orCalls).toContain(
-        'downpayment_required.eq.false,payment_stage.neq.Unpaid'
+        'downpayment_required.eq.false,payment_status.neq.Pending'
       );
     });
   });

@@ -778,8 +778,6 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'Cash' } });
     await user.click(screen.getByText('Confirm booking'));
 
     await waitFor(() =>
@@ -1247,8 +1245,6 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'Cash' } });
 
     await user.click(screen.getByText('Confirm booking'));
 
@@ -1383,8 +1379,6 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'Cash' } });
     await user.click(screen.getByText('Confirm booking'));
 
     await waitFor(() =>
@@ -1491,7 +1485,7 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.queryByText('Walk-in')).not.toBeInTheDocument();
     });
 
-    it('defaults to Online: no lockToNow, every payment method offered, and booking_source "Online" is sent', async () => {
+    it('defaults to Online: no lockToNow, no payment method chosen here, and booking_source "Online" is sent', async () => {
       vi.mocked(bookingApi.createBooking).mockResolvedValue({
         data: {
           id: 'booking-1',
@@ -1526,12 +1520,10 @@ describe('CustomerBookingFlowPage', () => {
       await waitFor(() =>
         expect(screen.getByText('Confirm booking')).toBeInTheDocument()
       );
-      // Every payment method is offered, including the online ones.
-      expect(screen.getByRole('option', { name: 'GCash' })).toBeInTheDocument();
-      expect(screen.getByRole('option', { name: 'Maya' })).toBeInTheDocument();
+      // No payment method is chosen in the flow anymore - payment is recorded
+      // at the counter (or from account credit) after the booking is made.
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
-      const select = screen.getByRole('combobox') as HTMLSelectElement;
-      fireEvent.change(select, { target: { value: 'Cash' } });
       await user.click(screen.getByText('Confirm booking'));
 
       await waitFor(() =>
@@ -1542,7 +1534,7 @@ describe('CustomerBookingFlowPage', () => {
       );
     });
 
-    it('selecting Walk-in locks the date/time picker (staff picker stays interactive), restricts payment methods to on-site options, hides the downpayment breakdown, and sends booking_source "Walk-in"', async () => {
+    it('selecting Walk-in locks the date/time picker (staff picker stays interactive), hides the downpayment breakdown, and sends booking_source "Walk-in"', async () => {
       vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
         data: {
           downpayment_enabled: true,
@@ -1585,14 +1577,8 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Confirm booking')).toBeInTheDocument()
       );
 
-      // On-site/counter options only - no online (GCash/Maya) checkout UI.
-      expect(
-        screen.queryByRole('option', { name: 'GCash' })
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('option', { name: 'Maya' })
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole('option', { name: 'Cash' })).toBeInTheDocument();
+      // No payment method UI in the flow at all - recorded at the counter later.
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
       // No downpayment breakdown/toggle shown, even though the branch policy
       // has one enabled - it's forced off server-side for a walk-in.
@@ -1601,8 +1587,6 @@ describe('CustomerBookingFlowPage', () => {
         screen.queryByText(/requires a downpayment/)
       ).not.toBeInTheDocument();
 
-      const select = screen.getByRole('combobox') as HTMLSelectElement;
-      fireEvent.change(select, { target: { value: 'Cash' } });
       await user.click(screen.getByText('Confirm booking'));
 
       await waitFor(() =>

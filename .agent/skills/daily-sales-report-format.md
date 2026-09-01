@@ -14,22 +14,26 @@ code.
 
 ## Daily Sales Report (DSR)
 
-`get_daily_sales_report(branch, date)` returns:
+`get_daily_sales_report(branch, date)` returns (since migration
+20260901157, every `transactions` aggregation below counts **only settled
+`payment_status = 'Fully Paid'` rows** — a booking_payment row is created
+`'Pending'` up front and would otherwise inflate gross by every
+uncollected charge):
 
 - A breakdown by **service category** and **payment method**, plus totals.
   No individual transaction line-item array — the `DailySalesReport` TS
   type has no such field; that granularity lives only in the separate
   Transaction History report below.
-- A **credit-usage section** (from `credit_transactions` redemption rows)
-  — reads zero until checkout's credit-redemption stub is replaced (see
-  `credit-balance-ledger.md`); don't treat a zero here as a bug in the DSR
-  itself.
+- A **credit-usage section** (from `credit_transactions` redemption rows,
+  not filtered by `payment_status`) — live now that credit redemption is
+  wired (see `credit-balance-ledger.md`).
 - A **Miscellaneous Sales total** — transactions with no booking record
   (`booking_id` NULL, `transaction_type = miscellaneous_sale`), used
   mainly for credit redemption against non-inventory retail items. This is
   distinct from the _Misc_ `service_category` (Initial
-  Assessment/Reassessment), which does have a booking record and flows
-  through the normal Payments Queue.
+  Assessment/Reassessment), which does have a booking record and is
+  settled per-transaction on the Transactions page like any other booking
+  payment.
 - Passing no `branch` returns a **Superadmin combined-branches view.**
 
 ## Cage Occupancy Report
@@ -54,17 +58,19 @@ calling customer.
 `get_analytics_summary(branch, time_filter)` returns total revenue,
 booking count, cancelled count, and cancellation rate, filterable by
 Today / This Week / This Month / This Year / All Time, per branch or
-combined. Gated at the route layer to Superadmin — distinct from the
+combined. Total revenue counts only settled
+(`payment_status = 'Fully Paid'`) transactions (migration 20260901157). Gated at the route layer to Superadmin — distinct from the
 operational DSR ledger available to other roles.
 
 ## Status semantics for any report touching booking state
 
 Reflect the current **5-value booking status** (Pending / In Progress /
 Completed / Cancelled / No-show) plus the **independent**
-`payment_stage` (Unpaid / Paid in Advance / Paid) as two separate
+`payment_status` (Pending / Partially Paid / Fully Paid — a stored rollup
+of the booking's settled `booking_payment` transactions) as two separate
 dimensions — never conflate them into one combined status, and never
-assume a booking's status implies its payment stage (e.g. Completed +
-Unpaid is a valid, real state).
+assume a booking's status implies its payment status (e.g. Completed +
+Pending is a valid, real state).
 
 ## Pattern to follow for new report sections
 

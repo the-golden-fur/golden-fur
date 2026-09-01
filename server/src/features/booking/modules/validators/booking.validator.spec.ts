@@ -72,7 +72,6 @@ describe('createBookingValidator', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
-        payment_method: 'Cash',
         discount_id: '66666666-6666-4666-a666-666666666666',
         promo_id: '77777777-7777-4777-a777-777777777777',
       }).success
@@ -88,31 +87,35 @@ describe('createBookingValidator', () => {
     ).toBe(false);
   });
 
-  it('rejects an unknown payment_method value', () => {
+  it('accepts an optional payment_scheme', () => {
+    for (const scheme of ['downpayment', 'full']) {
+      expect(
+        createBookingValidator.safeParse({
+          ...BASE_BOOKING,
+          payment_scheme: scheme,
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it('rejects an unknown payment_scheme value', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
-        payment_method: 'Bitcoin',
+        payment_scheme: 'installments',
       }).success
     ).toBe(false);
   });
 
-  it('accepts every documented stub payment_method value', () => {
-    for (const method of [
-      'Cash',
-      'GCash',
-      'Maya',
-      'Card',
-      'Bank Transfer',
-      'Grabmart',
-      'Pickaroo',
+  it('rejects the retired payment_method / payment_confirmed / payment_choice fields (.strict)', () => {
+    for (const field of [
+      { payment_method: 'Cash' },
+      { payment_confirmed: true },
+      { payment_choice: 'full' },
     ]) {
       expect(
-        createBookingValidator.safeParse({
-          ...BASE_BOOKING,
-          payment_method: method,
-        }).success
-      ).toBe(true);
+        createBookingValidator.safeParse({ ...BASE_BOOKING, ...field }).success
+      ).toBe(false);
     }
   });
 
@@ -346,7 +349,7 @@ describe('overrideBookingStatusValidator', () => {
     }
   });
 
-  it('rejects Paid - retired from BookingStatus, tracked via payment_stage now', () => {
+  it('rejects Paid - retired from BookingStatus, tracked via payment_status now', () => {
     expect(
       overrideBookingStatusValidator.safeParse({ status: 'Paid' }).success
     ).toBe(false);

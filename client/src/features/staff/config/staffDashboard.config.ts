@@ -183,15 +183,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
-            title: 'Payments Queue',
+            title: 'Transactions',
             description:
-              'Mark completed bookings as paid, or override a payment stage.',
-            to: '/staff/billing/payments-queue',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, service, or full/down payment.',
+              'Record a payment against any pending charge; add balance payments.',
             to: '/staff/reports/transaction-history',
           },
           {
@@ -254,12 +248,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, or service.',
-            to: '/staff/reports/transaction-history',
-          },
         ],
       },
     ],
@@ -318,12 +306,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, or service.',
-            to: '/staff/reports/transaction-history',
           },
         ],
       },
@@ -450,15 +432,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
-            title: 'Payments Queue',
+            title: 'Transactions',
             description:
-              'Mark completed bookings as paid, or override a payment stage.',
-            to: '/staff/billing/payments-queue',
-          },
-          {
-            title: 'Transaction History',
-            description:
-              'Search past transactions by customer, pet, date, service, or full/down payment.',
+              'Record a payment against any pending charge; add balance payments.',
             to: '/staff/reports/transaction-history',
           },
           {
@@ -541,7 +517,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'My Patients': PawPrint,
   'My Catalog': ListChecks,
   'Checkout & Billing': Wallet,
-  'Payments Queue': Receipt,
+  Transactions: Receipt,
   'Credit Management': Coins,
   'Boarding Checklist': Heart,
   'Activity Log': History,

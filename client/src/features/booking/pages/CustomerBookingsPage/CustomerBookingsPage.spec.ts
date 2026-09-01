@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
+import { CreditBalanceContext } from '../../../credits/providers/CreditBalanceContext';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as bookingApi from '../../api/booking.api';
@@ -56,6 +57,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     status: 'Pending',
     total_price: 500,
     downpayment_amount: null,
+    payment_status: 'Pending',
     payment_method: 'Cash',
     payment_confirmed: false,
     special_instructions: null,
@@ -71,6 +73,8 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     ...overrides,
   };
 }
+
+const refreshCreditBalance = vi.fn();
 
 function renderPage() {
   const authValue: AuthContextValue = {
@@ -91,12 +95,23 @@ function renderPage() {
         AuthContext.Provider,
         { value: authValue },
         createElement(
-          Routes,
-          null,
-          createElement(Route, {
-            path: '/portal/bookings',
-            element: createElement(CustomerBookingsPage),
-          })
+          CreditBalanceContext.Provider,
+          {
+            value: {
+              balances: [],
+              total: 0,
+              isLoading: false,
+              refresh: refreshCreditBalance,
+            },
+          },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, {
+              path: '/portal/bookings',
+              element: createElement(CustomerBookingsPage),
+            })
+          )
         )
       )
     )
@@ -119,6 +134,13 @@ describe('CustomerBookingsPage', () => {
       error: null,
     });
   });
+
+  /** Reschedule/Cancel live behind the row's "..." menu now. */
+  async function openMenu(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      await screen.findByRole('button', { name: /options for this/i })
+    );
+  }
 
   it("AC-1: shows only the caller's bookings with a status badge", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -145,7 +167,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     // An explicit modal dialog appears; the API must not be called yet.
@@ -156,11 +178,12 @@ describe('CustomerBookingsPage', () => {
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
 
     // Dismissing with "Keep booking" closes the dialog and still never calls
-    // the API - so a stray click on the row's Cancel button is harmless.
+    // the API - so a stray click on the Cancel menu item is harmless.
     await user.click(within(dialog).getByText('Keep booking'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
 
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
@@ -202,7 +225,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
     await user.click(screen.getByText('Yes, cancel'));
 
@@ -219,7 +242,7 @@ describe('CustomerBookingsPage', () => {
       data: [
         buildBooking({
           status: 'Pending',
-          payment_stage: 'Paid in Advance',
+          payment_status: 'Partially Paid',
           downpayment_amount: 200,
         }),
       ],
@@ -237,7 +260,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('Cancel')).toBeInTheDocument());
+    await openMenu(user);
     await user.click(screen.getByText('Cancel'));
 
     // The dialog discloses the policy before the customer confirms.
@@ -252,6 +275,10 @@ describe('CustomerBookingsPage', () => {
         /converted into account credit at Makati for a future visit/i
       )
     );
+
+    // The navbar credit pill / portal home is refreshed after a credit-issuing
+    // cancellation so the new balance shows without a reload.
+    expect(refreshCreditBalance).toHaveBeenCalled();
   });
 
   it('does not show reschedule/cancel actions for a Cancelled booking', async () => {
@@ -269,9 +296,9 @@ describe('CustomerBookingsPage', () => {
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
   });
 
-  it('does not show a Pay button once payment_stage is Paid', async () => {
+  it('never shows a Pay action - paying moved to the Transaction History page', async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
+      data: [buildBooking({ status: 'Pending', payment_status: 'Pending' })],
       error: null,
     });
 
@@ -281,63 +308,5 @@ describe('CustomerBookingsPage', () => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument()
     );
     expect(screen.queryByText('Pay')).not.toBeInTheDocument();
-  });
-
-  it('disables the Pay button with an explanatory tooltip when online payments are off for the branch', async () => {
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'Pending', payment_stage: 'Unpaid' })],
-      error: null,
-    });
-    vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
-      data: { online_payments_enabled: false },
-      error: null,
-    });
-
-    renderPage();
-
-    const payButton = await screen.findByText('Pay');
-    await waitFor(() => expect(payButton).toBeDisabled());
-    expect(payButton).toHaveAttribute(
-      'title',
-      expect.stringContaining('unavailable')
-    );
-  });
-
-  it('pays the downpayment amount when that choice is selected, and shows the PayMongo failure message on error', async () => {
-    const user = userEvent.setup();
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        buildBooking({
-          status: 'Pending',
-          payment_stage: 'Unpaid',
-          downpayment_required: true,
-          downpayment_amount: 250,
-          total_price: 500,
-        }),
-      ],
-      error: null,
-    });
-    vi.mocked(bookingApi.payForBooking).mockResolvedValue({
-      data: null,
-      error:
-        'Payment service is currently unavailable - please try again later',
-    });
-
-    renderPage();
-
-    await user.click(await screen.findByText('Pay'));
-    await user.click(screen.getByText(/Pay downpayment only/));
-    await user.click(screen.getByText('Continue to payment'));
-
-    await waitFor(() =>
-      expect(bookingApi.payForBooking).toHaveBeenCalledWith(
-        'booking-1',
-        'token',
-        { payment_method: 'GCash', pay_in_full: false }
-      )
-    );
-    expect(
-      await screen.findByText(/payment service is currently unavailable/i)
-    ).toBeInTheDocument();
   });
 });

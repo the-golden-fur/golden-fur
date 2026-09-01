@@ -20,11 +20,13 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  listServices: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
+  updatePet: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -32,6 +34,8 @@ vi.mock('../../api/booking.api', () => ({
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
   startBooking: vi.fn(),
+  completeBooking: vi.fn(),
+  overrideBookingStatus: vi.fn(),
 }));
 
 // Reschedule button gating (#24) reads policy_configurations - only the
@@ -100,7 +104,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_end: '2026-08-03T02:00:00.000Z',
     assigned_staff_id: 'staff-2',
     status: 'Pending',
-    payment_stage: 'Unpaid',
+    payment_status: 'Pending',
     started_at: null,
     completed_at: null,
     paid_at: null,
@@ -158,6 +162,10 @@ describe('ReceptionistBookingsQueuePage', () => {
         { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
         { id: 'branch-southwoods', name: 'Southwoods', is_vet_branch: false },
       ],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [],
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -263,7 +271,7 @@ describe('ReceptionistBookingsQueuePage', () => {
     await waitFor(() => expect(screen.getByText('Branch')).toBeInTheDocument());
   });
 
-  it('custom change (bookings/payments queue paid/unpaid filter): the Payment status filter requests bookings filtered by payment_stage', async () => {
+  it('custom change (bookings/payments queue paid/unpaid filter): the Payment status filter requests bookings filtered by payment_status', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],
       error: null,
@@ -274,12 +282,15 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
 
-    await user.selectOptions(screen.getByLabelText('Payment status'), 'Unpaid');
+    await user.selectOptions(
+      screen.getByLabelText('Payment status'),
+      'Pending'
+    );
 
     await waitFor(() =>
       expect(bookingApi.listBookings).toHaveBeenLastCalledWith(
         'token',
-        expect.objectContaining({ paymentStage: 'Unpaid' })
+        expect.objectContaining({ paymentStatus: 'Pending' })
       )
     );
   });
@@ -404,7 +415,9 @@ describe('ReceptionistBookingsQueuePage', () => {
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [buildBooking({ status: 'In Progress', payment_stage: 'Unpaid' })],
+      data: [
+        buildBooking({ status: 'In Progress', payment_status: 'Pending' }),
+      ],
       error: null,
     });
 
@@ -754,7 +767,9 @@ describe('ReceptionistBookingsQueuePage', () => {
         error: null,
       });
       vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
+        data: [
+          buildBooking({ status: 'Pending', payment_status: 'Fully Paid' }),
+        ],
         error: null,
       });
       vi.mocked(bookingApi.startBooking).mockResolvedValue({
@@ -803,7 +818,9 @@ describe('ReceptionistBookingsQueuePage', () => {
         error: null,
       });
       vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [buildBooking({ status: 'Pending', payment_stage: 'Paid' })],
+        data: [
+          buildBooking({ status: 'Pending', payment_status: 'Fully Paid' }),
+        ],
         error: null,
       });
       vi.mocked(bookingApi.startBooking).mockResolvedValue({
@@ -840,7 +857,7 @@ describe('ReceptionistBookingsQueuePage', () => {
           buildBooking({
             status: 'Pending',
             booking_source: 'Online',
-            payment_stage: 'Unpaid',
+            payment_status: 'Pending',
           }),
         ],
         error: null,
@@ -866,7 +883,7 @@ describe('ReceptionistBookingsQueuePage', () => {
         data: [
           buildBooking({
             status: 'Pending',
-            payment_stage: 'Paid in Advance',
+            payment_status: 'Partially Paid',
           }),
         ],
         error: null,
@@ -894,14 +911,14 @@ describe('ReceptionistBookingsQueuePage', () => {
             id: 'b-unconfirmed',
             pet_id: 'pet-a',
             status: 'Pending',
-            payment_stage: 'Unpaid',
+            payment_status: 'Pending',
             downpayment_required: true,
           }),
           buildBooking({
             id: 'b-confirmed',
             pet_id: 'pet-b',
             status: 'Pending',
-            payment_stage: 'Paid',
+            payment_status: 'Fully Paid',
             downpayment_required: true,
           }),
         ],
@@ -928,6 +945,152 @@ describe('ReceptionistBookingsQueuePage', () => {
       expect(screen.getAllByRole('listitem')[0].textContent).toContain(
         'Unconfirmed'
       );
+    });
+  });
+
+  describe('Misc-category controls (folded back from the deleted Payments Queue)', () => {
+    it('starts a Misc booking via its own Start button, capturing the pet assessment first', async () => {
+      const user = userEvent.setup();
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [
+          {
+            id: 'svc-misc-1',
+            category: 'Misc',
+            captures_pet_assessment: true,
+          } as never,
+        ],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            service_category: 'Misc',
+            status: 'Pending',
+            payment_status: 'Fully Paid',
+            booking_items: [
+              {
+                id: 'bi-1',
+                booking_id: 'booking-1',
+                service_id: 'svc-misc-1',
+                package_id: null,
+                price_at_booking: 0,
+                duration_minutes_at_booking: 30,
+              },
+            ],
+          }),
+        ],
+        error: null,
+      });
+      vi.mocked(customerApi.updatePet).mockResolvedValue({
+        data: {
+          id: 'pet-12345678',
+          weight_class: 'M',
+          coat_type: 'SC',
+        } as never,
+        error: null,
+      });
+      vi.mocked(bookingApi.startBooking).mockResolvedValue({
+        data: buildBooking({ service_category: 'Misc', status: 'In Progress' }),
+        error: null,
+      });
+
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Start' }));
+
+      const dialog = await screen.findByRole('dialog');
+      await user.selectOptions(
+        within(dialog).getByLabelText('Weight class'),
+        'M'
+      );
+      await user.selectOptions(
+        within(dialog).getByLabelText('Coat type'),
+        'SC'
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Save & Start' })
+      );
+
+      await waitFor(() =>
+        expect(customerApi.updatePet).toHaveBeenCalledWith(
+          'pet-12345678',
+          'token',
+          { weight_class: 'M', coat_type: 'SC' }
+        )
+      );
+      await waitFor(() =>
+        expect(bookingApi.startBooking).toHaveBeenCalledWith(
+          'booking-1',
+          'token'
+        )
+      );
+    });
+
+    it('gives an Admin a status-override dropdown for a Misc booking', async () => {
+      const user = userEvent.setup();
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Admin')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            service_category: 'Misc',
+            status: 'Pending',
+            payment_status: 'Fully Paid',
+          }),
+        ],
+        error: null,
+      });
+      vi.mocked(bookingApi.overrideBookingStatus).mockResolvedValue({
+        data: buildBooking({ service_category: 'Misc', status: 'Completed' }),
+        error: null,
+      });
+
+      renderPage();
+
+      const row = await screen.findByRole('listitem');
+      await user.selectOptions(
+        within(row).getByLabelText('Status'),
+        'Completed'
+      );
+
+      await waitFor(() =>
+        expect(bookingApi.overrideBookingStatus).toHaveBeenCalledWith(
+          'booking-1',
+          'Completed',
+          'token'
+        )
+      );
+    });
+
+    it('shows no Start/Complete for a non-Misc booking', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ service_category: 'Grooming', status: 'Pending' }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('View details')).toBeInTheDocument()
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Start' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Complete' })
+      ).not.toBeInTheDocument();
     });
   });
 });

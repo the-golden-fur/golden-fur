@@ -8,7 +8,7 @@ deploy.
 
 **Where this lives:** `server/src/features/billing/services/paymongo.service.ts`,
 `webhookConfirmation.service.ts`, `routes/paymongoWebhook.routes.ts`,
-`checkoutAggregation.service.ts`.
+`checkoutAggregation.service.ts`, `transactionPayment.service.ts`.
 
 **Use whenever** implementing or reviewing PayMongo webhook, checkout, or
 online-payment code.
@@ -26,8 +26,9 @@ PayMongo can and will redeliver the same event. Before applying a status
 change:
 
 1. Check whether this event (or the resulting state change) has already
-   been applied — don't advance `payment_stage` or a credit balance twice
-   for one logical payment.
+   been applied — don't settle a transaction, recompute
+   `bookings.payment_status`, or move a credit balance twice for one
+   logical payment.
 2. Prefer a database-level uniqueness/idempotency guard over an
    application-level "have I seen this before" check that can race under
    concurrent delivery.
@@ -35,15 +36,19 @@ change:
 ## Who initiated the payment matters
 
 `transactions.initiated_by` (`staff` / `customer`) and
-`transactions.payment_choice` (`full` / `downpayment`) distinguish two
-payment paths:
+`transactions.payment_choice` (`full` / `downpayment` / `balance`, carried
+on staff-created rows too since the payment/transactions rework)
+distinguish two payment paths:
 
-- **Customer self-service** (portal "My Bookings > Pay"): only this path
-  auto-advances `bookings.payment_stage` on webhook confirmation.
-- **Staff/cashier-recorded**: advances `payment_stage` through the
-  Payments Queue action instead, not the webhook. Don't write webhook
-  handling that assumes every event came from a customer-initiated
-  payment.
+- **Customer self-service** (portal "My Bookings > Pay"): webhook
+  confirmation settles the transaction and calls
+  `recomputeBookingPaymentStatus(bookingId)` to refresh the booking's
+  `payment_status` rollup (Pending / Partially Paid / Fully Paid).
+- **Staff/cashier-recorded**: recorded per-transaction on the Transactions
+  page via `transactionPayment.service.ts` — the `settle_transaction` RPC,
+  which recomputes `bookings.payment_status` in SQL — not the webhook.
+  Don't write webhook handling that assumes every event came from a
+  customer-initiated payment.
 
 ## The `online_payments_enabled` toggle
 

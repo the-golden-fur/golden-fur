@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import type { CreditBalance, CreditTransaction } from '../../credits.types';
 import styles from './CreditBalanceCard.module.css';
 
@@ -11,10 +12,6 @@ import styles from './CreditBalanceCard.module.css';
  */
 const EXPIRY_LOOKAHEAD_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function formatCurrency(amount: number): string {
-  return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function soonestActiveExpiry(history: CreditTransaction[]): string | null {
   const active = history.filter(

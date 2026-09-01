@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { advancePaymentStage } from '../../booking/services/booking.service.ts';
+// Payment/transactions rework: replaces the deleted advancePaymentStage -
+// the RPCs recompute bookings.payment_status for staff-recorded payments;
+// this is the customer-initiated (webhook-confirmed) path's equivalent.
+import { recomputeBookingPaymentStatus } from '../../booking/services/booking.service.ts';
 import type { PaymongoWebhookEvent } from './paymongo.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -45,29 +48,26 @@ export async function confirmPaymongoWebhookEvent(
     })
     .eq('payment_reference', event.sourceId)
     .eq('payment_status', 'Pending')
-    .select('id, booking_id, initiated_by, payment_choice')
+    .select('id, booking_id, initiated_by')
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
 
   if (updated?.initiated_by === 'customer' && updated.booking_id) {
     // Customer self-service payment (customerBookingPayment.service.ts) -
-    // bookings.payment_stage is otherwise only ever moved by a staff
-    // Mark-as-Paid action, so this is the only place a confirmed online
-    // customer payment gets reflected there. Never applies to a cashier's
-    // own checkoutBooking transactions (initiated_by stays 'staff' for
-    // those), so that flow's behavior is unchanged. Logged, not rethrown -
-    // the webhook must still ack 200 so PayMongo doesn't retry redelivery
-    // for an event whose transaction was already confirmed above.
+    // bookings.payment_status is otherwise only ever moved by a staff
+    // Mark-as-Paid / record-a-payment action, so this is the only place a
+    // confirmed online customer payment gets reflected there. Never applies
+    // to a cashier's own checkoutBooking transactions (initiated_by stays
+    // 'staff' for those), so that flow's behavior is unchanged. Logged, not
+    // rethrown - the webhook must still ack 200 so PayMongo doesn't retry
+    // redelivery for an event whose transaction was already confirmed above.
     try {
-      await advancePaymentStage({
-        bookingId: updated.booking_id,
-        choice: updated.payment_choice === 'downpayment' ? 'advance' : 'onsite',
-      });
+      await recomputeBookingPaymentStatus(updated.booking_id);
     } catch (stageError) {
       // eslint-disable-next-line no-console
       console.error(
-        `Failed to advance payment_stage for booking ${updated.booking_id} after webhook confirmation:`,
+        `Failed to recompute payment_status for booking ${updated.booking_id} after webhook confirmation:`,
         stageError
       );
     }

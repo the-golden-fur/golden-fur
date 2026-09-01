@@ -18,7 +18,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
     scheduled_end: '2026-07-19T03:00:00.000Z',
     assigned_staff_id: 'groomer-1',
     status: 'Pending',
-    payment_stage: 'Unpaid',
+    payment_status: 'Pending',
     total_price: 500,
     downpayment_amount: null,
     payment_method: null,

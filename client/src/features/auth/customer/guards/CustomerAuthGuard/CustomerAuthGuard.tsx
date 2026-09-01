@@ -9,6 +9,8 @@ import { getCustomerProfile } from '../../../../customers/api/customer.api';
 import { CUSTOMER_SIDEBAR_SECTIONS } from '../../../../customers/config/customerPortal.config';
 import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
 import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
+import { CreditBalanceProvider } from '../../../../credits/providers/CreditBalanceProvider';
+import { CreditBalanceIndicator } from '../../../../credits/components/CreditBalanceIndicator/CreditBalanceIndicator';
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
@@ -128,30 +130,35 @@ export function CustomerAuthGuard() {
   }
 
   return (
-    <AppShell
-      role="customer"
-      brandLabel="Golden Fur"
-      identity={fullName ? { primary: fullName } : null}
-      sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
-      notificationBell={
-        accessToken ? (
-          <NotificationBell
-            accessToken={accessToken}
-            notificationsHref="/portal/notifications"
-          />
-        ) : null
-      }
-      composeButton={
-        accessToken ? (
-          <ComposeEntryPoint
-            accessToken={accessToken}
-            viewerRole={null}
-            isOpen={isComposeOpen}
-            onOpenChange={setIsComposeOpen}
-          />
-        ) : null
-      }
-      onContactSupport={accessToken ? () => setIsComposeOpen(true) : undefined}
-    />
+    <CreditBalanceProvider>
+      <AppShell
+        role="customer"
+        brandLabel="Golden Fur"
+        identity={fullName ? { primary: fullName } : null}
+        sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+        creditIndicator={<CreditBalanceIndicator />}
+        notificationBell={
+          accessToken ? (
+            <NotificationBell
+              accessToken={accessToken}
+              notificationsHref="/portal/notifications"
+            />
+          ) : null
+        }
+        composeButton={
+          accessToken ? (
+            <ComposeEntryPoint
+              accessToken={accessToken}
+              viewerRole={null}
+              isOpen={isComposeOpen}
+              onOpenChange={setIsComposeOpen}
+            />
+          ) : null
+        }
+        onContactSupport={
+          accessToken ? () => setIsComposeOpen(true) : undefined
+        }
+      />
+    </CreditBalanceProvider>
   );
 }
