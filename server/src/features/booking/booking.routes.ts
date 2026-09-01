@@ -3,7 +3,6 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
-  advancePaymentStageController,
   availabilityController,
   cagePickerOptionsController,
   cancelBookingController,
@@ -17,7 +16,6 @@ import {
   nextAvailableSlotController,
   onlinePaymentsStatusController,
   overrideBookingStatusController,
-  overridePaymentStageController,
   partsOfDayController,
   payBookingController,
   petBookingConflictsController,
@@ -31,7 +29,6 @@ import {
   BOOKING_POLICY_WRITE_ROLES,
   BOOKING_STATUS_ADVANCE_ROLES,
   BOOKING_STATUS_OVERRIDE_ROLES,
-  PAYMENT_STAGE_ADVANCE_ROLES,
 } from './booking.types.ts';
 
 /**
@@ -64,12 +61,6 @@ const statusAdvance = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...BOOKING_STATUS_ADVANCE_ROLES]),
-];
-
-const paymentStageAdvance = [
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  requireRole([...PAYMENT_STAGE_ADVANCE_ROLES]),
 ];
 
 const statusOverride = [
@@ -189,20 +180,8 @@ router.patch(
   overrideBookingStatusController
 );
 
-// payment_stage track (Unpaid -> Paid in Advance -> Paid) - independent of
-// the status-advance/override routes above (see PaymentStage's dev note in
-// booking.types.ts) and the sole "Mark as Paid" action now that `status`
-// can no longer reach 'Paid'. Money-handling roles advance it;
-// Admin/Superadmin-only override mirrors the status dropdown.
-router.post(
-  '/bookings/:id/payment-stage/advance',
-  paymentStageAdvance,
-  advancePaymentStageController
-);
-router.patch(
-  '/bookings/:id/payment-stage',
-  statusOverride,
-  overridePaymentStageController
-);
+// Payment is recorded per transaction on the Transactions page now
+// (POST /billing/transactions/:id/pay etc.) - the old
+// /bookings/:id/payment-stage routes are gone with the Payments Queue.
 
 export default router;

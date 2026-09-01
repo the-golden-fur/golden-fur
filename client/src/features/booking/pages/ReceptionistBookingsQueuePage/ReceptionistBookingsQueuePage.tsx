@@ -3,13 +3,25 @@ import { useNavigate } from 'react-router';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
-import { listBranches } from '../../../maintenance/api/maintenance.api';
-import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import {
+  listBranches,
+  listServices,
+} from '../../../maintenance/api/maintenance.api';
+import type {
+  BranchSummary,
+  Service,
+} from '../../../maintenance/maintenance.types';
 import {
   getCustomerProfile,
   getPet,
+  updatePet,
 } from '../../../customers/api/customer.api';
-import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import type {
+  CustomerProfile,
+  Pet,
+  PetCoatType,
+  PetWeightClass,
+} from '../../../customers/customer.types';
 import {
   QueueFilterBar,
   type QueueStatusOption,
@@ -24,12 +36,14 @@ import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/Confi
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
-import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
+import { PaymentStatusBadge } from '../../components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
   cancelBooking,
+  completeBooking,
   listBookings,
+  overrideBookingStatus,
   rescheduleBooking,
   startBooking,
 } from '../../api/booking.api';
@@ -39,14 +53,16 @@ import {
 } from '../../api/policy.api';
 import {
   BOOKING_CONFIRMATION_STATES,
+  BOOKING_STATUS_OVERRIDE_ROLES,
   CANCELLABLE_BOOKING_STATUSES,
-  PAYMENT_STAGES,
+  OVERRIDABLE_BOOKING_STATUSES,
+  PAYMENT_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingConfirmationState,
   type BookingStatus,
-  type PaymentStage,
+  type PaymentStatus,
   type PolicyConfiguration,
   type ServiceCategory,
   type StaffPreferenceInput,
@@ -188,8 +204,14 @@ function addMonths(date: Date, amount: number): Date {
 
 type ActiveAction = {
   bookingId: string;
-  type: 'reschedule' | 'cancel';
+  type: 'reschedule' | 'cancel' | 'assess-pet';
 };
+
+// Same option lists as PetDetailPanel's staff-only assessment fields - kept
+// local (mirrors the deleted PaymentsQueuePage, whose Misc start/complete +
+// pet-assessment capture folded back into this queue).
+const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
 /**
  * Issue #60: branch-wide daily/filtered booking queue for Receptionist/
@@ -198,15 +220,19 @@ type ActiveAction = {
  * customer would, with the requesting staff_id recorded server-side from
  * the JWT - no separate receptionist-only endpoint (dev notes).
  *
- * Custom change (bookings-queue-readonly-and-sidebar-reorg): Start/Complete,
- * the Admin/Superadmin status-override dropdown, and both payment_stage
- * actions (Mark as Paid / payment-stage override) were removed from here -
- * every service category now advances status through its own dedicated
- * queue (Hotel/Daycare check-in-out, Grooming queue, Veterinary console),
- * and payment actions (plus the Misc-category start/complete that has no
- * dedicated queue of its own) moved to PaymentsQueuePage. This page was left
- * with only the actions that are genuinely a receptionist's own job: view
- * details, reschedule, cancel, and create a new booking.
+ * Custom change (bookings-queue-readonly-and-sidebar-reorg): Start/Complete
+ * and the Admin/Superadmin status-override dropdown were removed from here -
+ * every service category with a dedicated queue advances status through it
+ * (Hotel/Daycare check-in-out, Grooming queue, Veterinary console). This page
+ * kept the actions that are genuinely a receptionist's own job: view details,
+ * reschedule, cancel, create a new booking.
+ *
+ * Custom change (payment/transactions rework): the Payments Queue was deleted
+ * (per-transaction payment moved to the Transactions page). Its one
+ * non-payment responsibility - Start/Complete + the Admin status-override for
+ * Misc-category bookings (Initial Assessment / Reassessment, the only
+ * category with no dedicated queue of its own), plus the pet-assessment
+ * capture modal on Start - folded back in here. Non-Misc rows are unchanged.
  *
  * Custom change (walk-in booking flow): a "Check In" action is back,
  * *without* contradicting the paragraph above - it's a direct consequence of
@@ -243,8 +269,8 @@ export function ReceptionistBookingsQueuePage() {
   const [confirmationFilter, setConfirmationFilter] = useState<
     BookingConfirmationState | 'All'
   >('All');
-  const [paymentStageFilter, setPaymentStageFilter] = useState<
-    PaymentStage | 'All'
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<
+    PaymentStatus | 'All'
   >('All');
 
   const dateRange = useMemo(
@@ -306,6 +332,22 @@ export function ReceptionistBookingsQueuePage() {
     message: string;
   } | null>(null);
 
+  // Misc-category Start/Complete/status-override (folded back from the deleted
+  // Payments Queue). Own in-flight/error state, scoped to the row being
+  // advanced - same shape the Payments Queue used.
+  const [miscServices, setMiscServices] = useState<Service[]>([]);
+  const [advancingBookingId, setAdvancingBookingId] = useState<string | null>(
+    null
+  );
+  const [advanceError, setAdvanceError] = useState<{
+    bookingId: string;
+    message: string;
+  } | null>(null);
+  const [assessWeightClass, setAssessWeightClass] = useState<
+    PetWeightClass | ''
+  >('');
+  const [assessCoatType, setAssessCoatType] = useState<PetCoatType | ''>('');
+
   // Viewer role/branch via the requester's own row in GET /staff, same
   // recipe as every other admin-adjacent staff page (the JWT's user.role is
   // just Postgres "authenticated" - the app role only lives in staff_profiles).
@@ -329,12 +371,49 @@ export function ReceptionistBookingsQueuePage() {
   }, [accessToken, user?.id]);
 
   const isSuperadmin = viewerRole === 'Superadmin';
+  // Admin/Superadmin get one status dropdown (forward or backward) instead of
+  // the one-directional Start/Complete buttons everyone else uses.
+  const isStatusOverrideRole =
+    viewerRole !== null && BOOKING_STATUS_OVERRIDE_ROLES.includes(viewerRole);
 
   useEffect(() => {
     void listBranches().then((result) => {
       if (result.data) setBranches(result.data);
     });
   }, []);
+
+  // Misc is the only category this queue advances status for, so only Misc
+  // services' captures_pet_assessment flag is worth fetching. includeInactive
+  // covers a booking whose service was later deactivated.
+  useEffect(() => {
+    if (!accessToken) return;
+
+    void listServices(accessToken, {
+      category: 'Misc',
+      includeInactive: true,
+    }).then((result) => {
+      if (result.data) setMiscServices(result.data);
+    });
+  }, [accessToken]);
+
+  const assessmentServiceIds = useMemo(
+    () =>
+      new Set(
+        miscServices
+          .filter((service) => service.captures_pet_assessment)
+          .map((service) => service.id)
+      ),
+    [miscServices]
+  );
+
+  function bookingNeedsAssessment(booking: Booking): boolean {
+    return (
+      booking.booking_items?.some(
+        (item) =>
+          item.service_id !== null && assessmentServiceIds.has(item.service_id)
+      ) ?? false
+    );
+  }
 
   // Reschedule button gate (below) needs the same policy_configurations rows
   // the Policies admin page reads - all-staff read, no role gate needed here.
@@ -364,8 +443,8 @@ export function ReceptionistBookingsQueuePage() {
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: confirmationToStatusParam(confirmationFilter),
-      paymentStage:
-        paymentStageFilter === 'All' ? undefined : paymentStageFilter,
+      paymentStatus:
+        paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -422,7 +501,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRange.to,
     categoryFilter,
     confirmationFilter,
-    paymentStageFilter,
+    paymentStatusFilter,
   ]);
 
   // Unconfirmed/Confirmed and Expired/Cancelled share a `status` value, so
@@ -505,11 +584,11 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setCategoryFilter('All'),
       });
     }
-    if (paymentStageFilter !== 'All') {
+    if (paymentStatusFilter !== 'All') {
       chips.push({
         id: 'payment',
-        label: `Payment: ${paymentStageFilter}`,
-        onClear: () => setPaymentStageFilter('All'),
+        label: `Payment: ${paymentStatusFilter}`,
+        onClear: () => setPaymentStatusFilter('All'),
       });
     }
     if (isSuperadmin && branchFilter !== 'All') {
@@ -541,7 +620,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRangePreset,
     confirmationFilter,
     categoryFilter,
-    paymentStageFilter,
+    paymentStatusFilter,
     isSuperadmin,
     branchFilter,
     branchNameById,
@@ -708,6 +787,101 @@ export function ReceptionistBookingsQueuePage() {
     replaceBooking(result.data);
   }
 
+  // Misc-category Start / Complete / status-override (folded back from the
+  // deleted Payments Queue). Every other category advances status through its
+  // own dedicated queue; Misc (Initial Assessment / Reassessment) has none.
+  async function runAdvanceAction(
+    booking: Booking,
+    action: (
+      bookingId: string,
+      accessToken: string
+    ) => ReturnType<typeof startBooking>,
+    failureMessage: string
+  ): Promise<boolean> {
+    if (!accessToken) return false;
+
+    setAdvancingBookingId(booking.id);
+    setAdvanceError(null);
+
+    const result = await action(booking.id, accessToken);
+
+    setAdvancingBookingId(null);
+
+    if (result.error || !result.data) {
+      setAdvanceError({
+        bookingId: booking.id,
+        message: result.error ?? failureMessage,
+      });
+      return false;
+    }
+
+    replaceBooking(result.data);
+    return true;
+  }
+
+  function handleStart(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      startBooking,
+      'Could not start this booking.'
+    );
+  }
+
+  function handleComplete(booking: Booking) {
+    return runAdvanceAction(
+      booking,
+      completeBooking,
+      'Could not complete this booking.'
+    );
+  }
+
+  function handleOverrideStatus(booking: Booking, status: BookingStatus) {
+    return runAdvanceAction(
+      booking,
+      (bookingId, token) => overrideBookingStatus(bookingId, status, token),
+      'Could not update this booking’s status.'
+    );
+  }
+
+  // Pre-filled from the pet's current values (if any) so Reassessment can just
+  // confirm/adjust rather than starting blank.
+  function openAssessment(booking: Booking) {
+    const pet = pets[booking.pet_id];
+    setAssessWeightClass(pet?.weight_class ?? '');
+    setAssessCoatType(pet?.coat_type ?? '');
+    setAdvanceError(null);
+    setActiveAction({ bookingId: booking.id, type: 'assess-pet' });
+  }
+
+  // Saves the pet's assessment first, then starts the booking - only on a
+  // successful save does it proceed to Start.
+  async function confirmAssessment(booking: Booking) {
+    if (!accessToken || !assessWeightClass || !assessCoatType) return;
+
+    setAdvancingBookingId(booking.id);
+    setAdvanceError(null);
+
+    const petResult = await updatePet(booking.pet_id, accessToken, {
+      weight_class: assessWeightClass,
+      coat_type: assessCoatType,
+    });
+
+    if (petResult.error || !petResult.data) {
+      setAdvancingBookingId(null);
+      setAdvanceError({
+        bookingId: booking.id,
+        message: petResult.error ?? "Could not save this pet's assessment.",
+      });
+      return;
+    }
+
+    const savedPet = petResult.data;
+    setPets((prev) => ({ ...prev, [savedPet.id]: savedPet }));
+
+    const started = await handleStart(booking);
+    if (started) setActiveAction(null);
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -737,6 +911,17 @@ export function ReceptionistBookingsQueuePage() {
     activeAction?.type === 'cancel'
       ? bookings.find((booking) => booking.id === activeAction.bookingId)
       : undefined;
+
+  // Misc pet-assessment capture (folded back from the deleted Payments Queue):
+  // Starting an Initial Assessment / Reassessment records the pet's weight
+  // class + coat type first.
+  const assessmentModalBooking =
+    activeAction?.type === 'assess-pet'
+      ? bookings.find((booking) => booking.id === activeAction.bookingId)
+      : undefined;
+  const assessmentModalPet = assessmentModalBooking
+    ? (pets[assessmentModalBooking.pet_id] ?? null)
+    : null;
 
   return (
     <main className={styles.page}>
@@ -796,15 +981,15 @@ export function ReceptionistBookingsQueuePage() {
             <span className={styles.filterLabel}>Payment status</span>
             <select
               className={styles.filterSelect}
-              value={paymentStageFilter}
+              value={paymentStatusFilter}
               onChange={(event) =>
-                setPaymentStageFilter(
-                  event.target.value as PaymentStage | 'All'
+                setPaymentStatusFilter(
+                  event.target.value as PaymentStatus | 'All'
                 )
               }
             >
               <option value="All">All payment statuses</option>
-              {PAYMENT_STAGES.map((stage) => (
+              {PAYMENT_STATUSES.map((stage) => (
                 <option key={stage} value={stage}>
                   {stage}
                 </option>
@@ -1043,6 +1228,25 @@ export function ReceptionistBookingsQueuePage() {
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'cancel';
 
+              // Misc-category status advancement (folded back from the deleted
+              // Payments Queue). Admin/Superadmin get a status dropdown;
+              // everyone else (except Cashier) gets one-directional
+              // Start/Complete.
+              const isMisc = booking.service_category === 'Misc';
+              const canOverrideMiscStatus =
+                isMisc &&
+                isStatusOverrideRole &&
+                (OVERRIDABLE_BOOKING_STATUSES as readonly string[]).includes(
+                  booking.status
+                );
+              const canAdvanceMiscStatus =
+                isMisc &&
+                !isStatusOverrideRole &&
+                viewerRole !== 'Cashier' &&
+                (booking.status === 'Pending' ||
+                  booking.status === 'In Progress');
+              const isAdvancing = advancingBookingId === booking.id;
+
               const durationMinutes = Math.round(
                 (new Date(booking.scheduled_end).getTime() -
                   new Date(booking.scheduled_start).getTime()) /
@@ -1062,7 +1266,7 @@ export function ReceptionistBookingsQueuePage() {
                     </span>
                     <div className={styles.bookingBadges}>
                       <BookingConfirmationBadge booking={booking} />
-                      <PaymentStageBadge stage={booking.payment_stage} />
+                      <PaymentStatusBadge status={booking.payment_status} />
                     </div>
                   </div>
                   <span className={styles.bookingMeta}>
@@ -1101,8 +1305,11 @@ export function ReceptionistBookingsQueuePage() {
                           category queue instead. Confirmation gate: an
                           'Unconfirmed' booking still owes its down payment,
                           holds no slot, and is refused by startBooking -
-                          collect payment first (Payments Queue). */}
-                      {confirmationState === 'Confirmed' ? (
+                          record the payment on the Transactions page first.
+                          Misc has no dedicated queue, so it uses its own
+                          Start/Complete below (with the assessment capture)
+                          rather than this generic Check In. */}
+                      {confirmationState === 'Confirmed' && !isMisc ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}
@@ -1112,6 +1319,55 @@ export function ReceptionistBookingsQueuePage() {
                           {checkingInBookingId === booking.id
                             ? 'Checking in...'
                             : 'Check In'}
+                        </button>
+                      ) : null}
+                      {canOverrideMiscStatus ? (
+                        <label className={styles.statusOverrideField}>
+                          <span className={styles.filterLabel}>Status</span>
+                          <select
+                            className={styles.filterSelect}
+                            value={booking.status}
+                            disabled={isAdvancing}
+                            onChange={(event) =>
+                              void handleOverrideStatus(
+                                booking,
+                                event.target.value as BookingStatus
+                              )
+                            }
+                          >
+                            {OVERRIDABLE_BOOKING_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      {canAdvanceMiscStatus && booking.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={
+                            isAdvancing || confirmationState !== 'Confirmed'
+                          }
+                          onClick={() =>
+                            bookingNeedsAssessment(booking)
+                              ? openAssessment(booking)
+                              : void handleStart(booking)
+                          }
+                        >
+                          {isAdvancing ? 'Starting...' : 'Start'}
+                        </button>
+                      ) : null}
+                      {canAdvanceMiscStatus &&
+                      booking.status === 'In Progress' ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={isAdvancing}
+                          onClick={() => void handleComplete(booking)}
+                        >
+                          {isAdvancing ? 'Completing...' : 'Complete'}
                         </button>
                       ) : null}
                       {canReschedule ? (
@@ -1138,6 +1394,13 @@ export function ReceptionistBookingsQueuePage() {
                   {checkInError?.bookingId === booking.id ? (
                     <p className={styles.errorBanner} role="alert">
                       {checkInError.message}
+                    </p>
+                  ) : null}
+
+                  {advanceError?.bookingId === booking.id &&
+                  activeAction?.type !== 'assess-pet' ? (
+                    <p className={styles.errorBanner} role="alert">
+                      {advanceError.message}
                     </p>
                   ) : null}
 
@@ -1221,8 +1484,8 @@ export function ReceptionistBookingsQueuePage() {
               Are you sure you want to cancel this booking on the
               customer&apos;s behalf? This can&apos;t be undone.
             </p>
-            {cancelTarget?.payment_stage === 'Paid' ||
-            cancelTarget?.payment_stage === 'Paid in Advance' ? (
+            {cancelTarget?.payment_status === 'Fully Paid' ||
+            cancelTarget?.payment_status === 'Partially Paid' ? (
               <p>
                 Any payment the customer has made &mdash; a down payment or the
                 full amount &mdash; won&apos;t be refunded. If the cancellation
@@ -1247,6 +1510,94 @@ export function ReceptionistBookingsQueuePage() {
           </>
         }
       />
+
+      {assessmentModalBooking ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modalDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="assess-pet-title"
+          >
+            <h2 id="assess-pet-title" className={styles.modalTitle}>
+              Record pet assessment
+            </h2>
+            <p className={styles.modalBody}>
+              {assessmentModalPet?.name ?? 'This pet'}&apos;s weight class and
+              coat type are recorded as part of starting this booking. Starting
+              will save the assessment first.
+            </p>
+
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Weight class</span>
+              <select
+                className={styles.filterSelect}
+                value={assessWeightClass}
+                onChange={(event) =>
+                  setAssessWeightClass(
+                    event.target.value as PetWeightClass | ''
+                  )
+                }
+              >
+                <option value="">Select weight class</option>
+                {WEIGHT_CLASS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Coat type</span>
+              <select
+                className={styles.filterSelect}
+                value={assessCoatType}
+                onChange={(event) =>
+                  setAssessCoatType(event.target.value as PetCoatType | '')
+                }
+              >
+                <option value="">Select coat type</option>
+                {COAT_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {advanceError?.bookingId === assessmentModalBooking.id ? (
+              <p className={styles.errorBanner} role="alert">
+                {advanceError.message}
+              </p>
+            ) : null}
+
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setActiveAction(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={
+                  !assessWeightClass ||
+                  !assessCoatType ||
+                  advancingBookingId === assessmentModalBooking.id
+                }
+                onClick={() => void confirmAssessment(assessmentModalBooking)}
+              >
+                {advancingBookingId === assessmentModalBooking.id
+                  ? 'Saving...'
+                  : 'Save & Start'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

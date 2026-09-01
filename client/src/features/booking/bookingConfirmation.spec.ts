@@ -8,7 +8,7 @@ import {
 type Input = Pick<
   Booking,
   | 'status'
-  | 'payment_stage'
+  | 'payment_status'
   | 'booking_source'
   | 'service_category'
   | 'cancellation_reason'
@@ -17,7 +17,7 @@ type Input = Pick<
 function input(overrides: Partial<Input>): Input {
   return {
     status: 'Pending',
-    payment_stage: 'Unpaid',
+    payment_status: 'Pending',
     booking_source: 'Online',
     service_category: 'Grooming',
     cancellation_reason: null,
@@ -33,11 +33,11 @@ describe('deriveBookingConfirmationState', () => {
   it('becomes Confirmed once any payment is recorded', () => {
     expect(
       deriveBookingConfirmationState(
-        input({ payment_stage: 'Paid in Advance' })
+        input({ payment_status: 'Partially Paid' })
       )
     ).toBe('Confirmed');
     expect(
-      deriveBookingConfirmationState(input({ payment_stage: 'Paid' }))
+      deriveBookingConfirmationState(input({ payment_status: 'Fully Paid' }))
     ).toBe('Confirmed');
   });
 

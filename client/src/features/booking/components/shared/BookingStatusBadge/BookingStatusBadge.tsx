@@ -20,7 +20,7 @@ const STATUS_CLASSNAME: Record<BookingStatus, keyof typeof styles> = {
  * every category's own execution UI (Grooming/Veterinary/Daycare/Hotel),
  * which no longer maintain their own separate status badge/vocabulary.
  * Payment status ('Paid' and friends) is a separate, independent field -
- * see PaymentStageBadge.
+ * see PaymentStatusBadge.
  */
 export function BookingStatusBadge({ status }: BookingStatusBadgeProps) {
   return <span className={styles[STATUS_CLASSNAME[status]]}>{status}</span>;

@@ -1,14 +1,12 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
-  advancePaymentStage,
   completeBooking,
   createBooking,
   getBookingById,
   listBookings,
   listPetBookingConflicts,
   overrideBookingStatus,
-  overridePaymentStage,
   startBooking,
 } from './services/booking.service.ts';
 import {
@@ -31,7 +29,6 @@ import {
 import { getBookingCatalog } from './services/catalog.service.ts';
 import { payForBooking } from '../billing/services/customerBookingPayment.service.ts';
 import {
-  advancePaymentStageValidator,
   availabilityQueryValidator,
   cagePickerQueryValidator,
   cancelBookingValidator,
@@ -42,7 +39,6 @@ import {
   nextAvailableSlotQueryValidator,
   onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
-  overridePaymentStageValidator,
   partsOfDayQueryValidator,
   payBookingValidator,
   petBookingConflictsQueryValidator,
@@ -151,7 +147,7 @@ export async function listBookingsController(
         dateTo: parsed.data.date_to,
         serviceCategory: parsed.data.service_category,
         status: parsed.data.status,
-        paymentStage: parsed.data.payment_stage,
+        paymentStatus: parsed.data.payment_status,
         assignedStaffId: parsed.data.assigned_staff_id,
         excludeUnpaidDownpayment: parsed.data.exclude_unpaid_downpayment,
       },
@@ -624,57 +620,6 @@ export async function overrideBookingStatusController(
     const booking = await overrideBookingStatus({
       bookingId: paramId(req, 'id'),
       status: parsed.data.status,
-    });
-    return res.status(200).json({ booking });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-/**
- * Payment-stage "Advance" action - independent of the status-advance
- * controllers above (see PaymentStage's dev note in booking.types.ts).
- */
-export async function advancePaymentStageController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = advancePaymentStageValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const booking = await advancePaymentStage({
-      bookingId: paramId(req, 'id'),
-      choice: parsed.data.choice,
-      processedByStaffId: req.user?.sub ?? null,
-    });
-    return res.status(200).json({ booking });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function overridePaymentStageController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const parsed = overridePaymentStageValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const booking = await overridePaymentStage({
-      bookingId: paramId(req, 'id'),
-      paymentStage: parsed.data.payment_stage,
     });
     return res.status(200).json({ booking });
   } catch (error) {

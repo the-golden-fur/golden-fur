@@ -24,6 +24,9 @@ interface NavbarProps {
   /** ComposeEntryPoint (mail/pencil icon), rendered next to notificationBell -
    * both roles get one, opening the New message modal directly. */
   composeButton?: ReactNode;
+  /** CreditBalanceIndicator - customer-only (CustomerAuthGuard passes it,
+   * StaffAuthGuard doesn't), so it's absent for staff. */
+  creditIndicator?: ReactNode;
 }
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -62,6 +65,7 @@ export function Navbar({
   identity,
   notificationBell,
   composeButton,
+  creditIndicator,
 }: NavbarProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
@@ -139,6 +143,7 @@ export function Navbar({
             ) : null}
           </div>
         ) : null}
+        {creditIndicator}
         {composeButton}
         {notificationBell}
         <Link

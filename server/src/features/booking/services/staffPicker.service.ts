@@ -34,6 +34,7 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   reschedule_free_allowance: null,
   credit_expiry_enabled: true,
   credit_expiry_days: 30,
+  cancellation_credit_conversion_rate: 100,
   online_payments_enabled: true,
   downpayment_enabled: false,
   downpayment_type: null,
@@ -354,6 +355,8 @@ export async function updatePolicyConfiguration({
     reschedule_free_allowance: resolved.reschedule_free_allowance,
     credit_expiry_enabled: resolved.credit_expiry_enabled,
     credit_expiry_days: resolved.credit_expiry_days,
+    cancellation_credit_conversion_rate:
+      resolved.cancellation_credit_conversion_rate,
     online_payments_enabled: resolved.online_payments_enabled,
     downpayment_enabled: resolved.downpayment_enabled,
     downpayment_type: resolved.downpayment_type,

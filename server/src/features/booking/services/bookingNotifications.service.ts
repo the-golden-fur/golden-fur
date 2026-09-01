@@ -183,7 +183,7 @@ export interface SendBookingCancelledNotificationParams {
   noticePeriodMet: boolean;
   policyViolation: boolean;
   /** The issued credit amount, or null when no credit was issued for this
-   * cancellation (unmet notice, or no downpayment to convert). */
+   * cancellation (unmet notice, nothing was paid, or a 0% conversion rate). */
   creditAmount: number | null;
 }
 

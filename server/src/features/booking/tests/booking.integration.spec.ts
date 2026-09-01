@@ -111,8 +111,6 @@ const CREATE_PAYLOAD = {
   // accepts it; the notice floor itself is covered in booking.service.spec.
   scheduled_start: daysFromNow(30),
   scheduled_end: daysFromNow(30.05),
-  payment_method: 'Cash',
-  payment_confirmed: false,
 };
 
 const PENDING_BOOKING = {
@@ -189,6 +187,8 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         ],
         error: null,
       }, // post-insert re-count (always runs now, regardless of status) - winner
+      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: PENDING_BOOKING, error: null } // final fetch
     );
 

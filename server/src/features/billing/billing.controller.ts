@@ -14,10 +14,19 @@ import {
 import { listBookingTransactions } from './services/bookingTransactions.service.ts';
 import { getPaymongoServiceFeeRate } from './services/paymongo.service.ts';
 import {
+  addBookingPayment,
+  payTransactionWithCredit,
+  recordTransactionPayment,
+} from './services/transactionPayment.service.ts';
+import {
+  addBookingPaymentValidator,
   checkoutValidator,
   createMiscSaleValidator,
+  recordTransactionPaymentValidator,
   updateMiscSaleValidator,
 } from './modules/validators/billing.validator.ts';
+import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
+import { BILLING_STAFF_ROLES } from './billing.types.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
   const value = req.params[name];
@@ -192,6 +201,102 @@ export async function deleteMiscSaleController(
   try {
     await deleteMiscSale(paramId(req, 'id'));
     return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Payment/transactions rework: cashier records a counter payment against a
+ * Pending booking_payment transaction. */
+export async function recordTransactionPaymentController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = recordTransactionPaymentValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await recordTransactionPayment({
+      requesterId,
+      transactionId: paramId(req, 'id'),
+      paymentMethod: parsed.data.payment_method,
+      bankName: parsed.data.bank_name ?? null,
+      paymentReference: parsed.data.payment_reference ?? null,
+      cashTendered: parsed.data.cash_tendered ?? null,
+    });
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Payment/transactions rework: adds a balance charge against a booking. */
+export async function addBookingPaymentController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = addBookingPaymentValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const transaction = await addBookingPayment({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+      amount: parsed.data.amount,
+    });
+    return res.status(201).json({ transaction });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Payment/transactions rework: pays a Pending transaction from the
+ * customer's credit balance. jwtMiddleware-only route - ownership is checked
+ * in the service; staff (BILLING_STAFF_ROLES) may pay on a customer's
+ * behalf. */
+export async function payTransactionWithCreditController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const staffRole = await getStaffRoleOrNull(requesterId);
+    const isStaff =
+      staffRole !== null && BILLING_STAFF_ROLES.includes(staffRole);
+
+    const result = await payTransactionWithCredit({
+      requesterId,
+      transactionId: paramId(req, 'id'),
+      isStaff,
+    });
+    return res.status(200).json(result);
   } catch (error) {
     return sendServiceError(res, error);
   }

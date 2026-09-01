@@ -14,8 +14,7 @@ export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
 /** Mirrors the server's BOOKING_MARK_PAID_ROLES - money-handling roles only.
  * Reused client-side to gate the booking wizard's discount picker (a
  * discount needs staff to have verified an ID onsite, same trust boundary
- * as Mark as Paid) and the payment_stage "Mark as Paid" button, separate
- * from promos which anyone can select. */
+ * as recording a payment), separate from promos which anyone can select. */
 export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
@@ -69,8 +68,8 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  * the next time it's read. Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
- * now tracked exclusively via the independent `payment_stage` field
- * (Unpaid -> Paid in Advance -> Paid, see PaymentStage below).
+ * now tracked exclusively via the independent `payment_status` field
+ * (Pending -> Partially Paid -> Fully Paid, see PaymentStatus below).
  */
 export type BookingStatus =
   | 'Pending'
@@ -106,18 +105,14 @@ export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
 ];
 
 /**
- * Mirrors the server's PaymentStage - independent of BookingStatus above, it
- * tracks only when money changed hands, not the service lifecycle. This is
- * the sole "payment complete" signal on a booking now that `status` can no
- * longer reach 'Paid'. A cashier (or other money-handling staff) advances
- * this via the queue's "Mark as Paid" button: from Unpaid, either straight
- * to Paid (a normal onsite payment) or to Paid in Advance (money collected
- * before the service happens); from Paid in Advance, always straight to
- * Paid once the balance is settled. Only Admin/Superadmin can revert it,
- * via the same BOOKING_STATUS_OVERRIDE_ROLES dropdown pattern used for
- * BookingStatus.
+ * Mirrors the server's PaymentStatus - the same vocabulary as a
+ * transaction's own `payment_status`. On a booking it is a **rollup of its
+ * transactions**: 'Pending' = nothing settled, 'Partially Paid' = some
+ * settled but below the net total, 'Fully Paid' = settled in full. Cashiers
+ * settle individual transactions on the Transactions page; the rollup
+ * follows automatically.
  */
-export type PaymentStage = 'Unpaid' | 'Paid in Advance' | 'Paid';
+export type PaymentStatus = 'Pending' | 'Partially Paid' | 'Fully Paid';
 
 /** Walk-in booking flow: mirrors the server's BookingSource. 'Online'
  * (default) is today's only path for a customer booking from home, or a
@@ -142,7 +137,7 @@ export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
 /**
  * Receptionist-facing lifecycle vocabulary (bookings queue only). NOT a DB
  * enum and NOT a second axis on the booking - a pure display derivation over
- * `status` + `payment_stage` + `downpayment_required` + `cancellation_reason`
+ * `status` + `payment_status` + `downpayment_required` + `cancellation_reason`
  * (see deriveBookingConfirmationState). An online booking that still owes its
  * down payment reads as "Unconfirmed" (it holds no slot and can expire);
  * paying it, or a walk-in / no-down-payment booking, reads as "Confirmed";
@@ -168,17 +163,11 @@ export const BOOKING_CONFIRMATION_STATES: readonly BookingConfirmationState[] =
     'No-show',
   ];
 
-export const PAYMENT_STAGES: readonly PaymentStage[] = [
-  'Unpaid',
-  'Paid in Advance',
-  'Paid',
+export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
+  'Pending',
+  'Partially Paid',
+  'Fully Paid',
 ];
-
-export const OVERRIDABLE_PAYMENT_STAGES = [
-  'Unpaid',
-  'Paid in Advance',
-  'Paid',
-] as const;
 
 /** Only before the service has started - a booking whose scheduled_start
  * has already passed is separately blocked even while still Pending (see
@@ -298,7 +287,8 @@ export interface Booking {
   scheduled_end: string;
   assigned_staff_id: string | null;
   status: BookingStatus;
-  payment_stage: PaymentStage;
+  /** Rollup of the booking's transactions - see PaymentStatus above. */
+  payment_status: PaymentStatus;
   total_price: number;
   downpayment_amount: number | null;
   /** True when the effective policy_configurations downpayment config was
@@ -413,6 +403,9 @@ export interface PolicyConfiguration {
   reschedule_free_allowance: number | null;
   credit_expiry_enabled: boolean;
   credit_expiry_days: number;
+  /** Percent (0-100) of what the customer paid that is returned as account
+   * credit on a qualifying cancellation. Default 100 (full). */
+  cancellation_credit_conversion_rate: number;
   /** Master toggle for the customer-facing PayMongo Pay button - when
    * false, the button still renders (disabled, with an explanatory
    * tooltip) rather than disappearing. */
@@ -449,6 +442,7 @@ export type EffectivePolicy = Pick<
   | 'reschedule_free_allowance'
   | 'credit_expiry_enabled'
   | 'credit_expiry_days'
+  | 'cancellation_credit_conversion_rate'
   | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
@@ -472,6 +466,7 @@ export interface UpdatePolicyPayload {
   reschedule_free_allowance?: number | null;
   credit_expiry_enabled?: boolean;
   credit_expiry_days?: number;
+  cancellation_credit_conversion_rate?: number;
   online_payments_enabled?: boolean;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
@@ -506,16 +501,13 @@ export interface CreateBookingPayload {
   scheduled_end: string;
   staff_preference?: StaffPreferenceInput;
   cage_preference?: CagePreferenceInput;
-  payment_method?: PaymentMethod;
-  payment_confirmed?: boolean;
-  /** Only meaningful when the selected items require a downpayment and
-   * payment_confirmed is true (an online method) - lets the customer/
-   * receptionist choose to pay just the downpayment now (payment_stage
-   * becomes 'Paid in Advance', balance settled later at the counter) or the
-   * full amount now (payment_stage becomes 'Paid'). Omitted/'full' behaves
-   * like every booking did before this field existed. */
-  payment_choice?: 'downpayment' | 'full';
-  // Staff-only (money-handling roles), Cash-only - see booking.service.ts's
+  /** Payment scheme (no payment method at booking time any more). Only
+   * matters when the branch down-payment policy is on: 'downpayment' sizes
+   * the initial charge transaction to the down payment (balance recorded
+   * later on the Transactions page); 'full' / policy-off charges the whole
+   * net total. */
+  payment_scheme?: 'downpayment' | 'full';
+  // Staff-only (money-handling roles) - see booking.service.ts's
   // resolveDiscountAndPromo.
   discount_id?: string;
   // Open to customers too - no role or payment-method restriction.
@@ -603,8 +595,8 @@ export interface ListBookingsFilters {
   dateTo?: string;
   serviceCategory?: ServiceCategory;
   status?: BookingStatus;
-  /** Custom change (bookings/payments queue paid/unpaid filter). */
-  paymentStage?: PaymentStage;
+  /** Bookings/Transactions paid/unpaid filter - the booking's payment_status rollup. */
+  paymentStatus?: PaymentStatus;
   /** "Assigned to me / no preference" filter - a staff UUID (pass the
    * viewer's own id for "assigned to me"), or the sentinel 'unassigned' for
    * bookings with no assigned staff yet. */
