@@ -1657,38 +1657,79 @@ export async function recomputeBookingPaymentStatus(
   }
 
   const nowIso = new Date().toISOString();
-  const updated = await updateBookingRow(bookingId, {
+  await updateBookingRow(bookingId, {
     payment_status: nextStatus,
     ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
     updated_at: nowIso,
   });
 
-  // First payment on a still-Pending down-payment Online booking: it held no
-  // slot until now, so re-verify capacity (createBooking's post-insert
-  // check). If the slot filled while it sat unpaid, revert and reject.
+  // Webhook path: the customer's transaction isn't settled until this
+  // succeeds, so a capacity conflict hard-rejects (revert + 409).
+  return applyFirstBookingPaymentSideEffects({
+    bookingId,
+    paymentStatusBeforePayment: booking.payment_status,
+    revertOnCapacityConflict: true,
+  });
+}
+
+/**
+ * First-payment side-effects for a booking that just left payment_status
+ * 'Pending' (a down payment or a full payment landed). Shared by the PayMongo
+ * webhook path (recomputeBookingPaymentStatus) and the counter paths
+ * (recordTransactionPayment / payTransactionWithCredit - the `settle_transaction`
+ * RPC does the SQL rollup but none of this).
+ *
+ * - Re-verifies capacity: a down-payment-required Online booking held no slot
+ *   while it sat Unconfirmed. `revertOnCapacityConflict` puts payment_status
+ *   back to 'Pending' and throws 409 (webhook path - nothing is settled yet);
+ *   the counter path passes false, keeps the payment (the cash is already in
+ *   the drawer), and leaves the booking for staff to reschedule.
+ * - Fires the booking_confirmed / staff_assigned alerts createBooking held
+ *   back while the booking was Unconfirmed.
+ *
+ * No-ops unless the booking actually went Pending -> settled, so it's safe to
+ * call unconditionally after any settlement.
+ */
+export async function applyFirstBookingPaymentSideEffects({
+  bookingId,
+  paymentStatusBeforePayment,
+  revertOnCapacityConflict,
+}: {
+  bookingId: string;
+  paymentStatusBeforePayment: PaymentStatus;
+  revertOnCapacityConflict: boolean;
+}): Promise<Booking> {
+  const updated = await getRawBookingById(bookingId);
+
   if (
-    booking.payment_status === 'Pending' &&
-    booking.downpayment_required &&
+    paymentStatusBeforePayment !== 'Pending' ||
+    updated.payment_status === 'Pending'
+  ) {
+    return updated;
+  }
+
+  if (
+    updated.downpayment_required &&
     (updated.status === 'Pending' || updated.status === 'In Progress') &&
     !(await confirmCapacityAfterInsert(updated))
   ) {
-    await updateBookingRow(bookingId, {
-      payment_status: 'Pending',
-      updated_at: new Date().toISOString(),
-    });
-    throwWithStatus(
-      409,
-      'That time slot filled up before this payment - please reschedule the booking to an open slot'
-    );
+    if (revertOnCapacityConflict) {
+      await updateBookingRow(bookingId, {
+        payment_status: 'Pending',
+        updated_at: new Date().toISOString(),
+      });
+      throwWithStatus(
+        409,
+        'That time slot filled up before this payment - please reschedule the booking to an open slot'
+      );
+    }
+    // Counter path: keep the payment; the slot is overbooked until staff
+    // reschedule the booking. The confirmation alert below still fires.
   }
 
   // Best-effort: the first payment "confirms" a still-Pending Online booking
   // - fire the alerts createBooking held back while it was Unconfirmed.
-  if (
-    booking.payment_status === 'Pending' &&
-    updated.status === 'Pending' &&
-    updated.booking_source === 'Online'
-  ) {
+  if (updated.status === 'Pending' && updated.booking_source === 'Online') {
     try {
       await sendBookingConfirmedNotification(updated);
 
@@ -1707,7 +1748,7 @@ export async function recomputeBookingPaymentStatus(
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(
-        'recomputeBookingPaymentStatus notifications failed:',
+        'applyFirstBookingPaymentSideEffects notifications failed:',
         error
       );
     }

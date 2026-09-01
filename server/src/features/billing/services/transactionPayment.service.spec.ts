@@ -6,6 +6,7 @@ import {
 } from './transactionPayment.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
+import { applyFirstBookingPaymentSideEffects } from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -13,6 +14,15 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 
 vi.mock('./creditStub.service.ts', () => ({
   getAvailableCredit: vi.fn(),
+}));
+
+// The first-payment side-effects (slot re-check + confirmation alerts) are
+// booking.service's own concern, covered by its spec - stub it here so this
+// spec stays a unit test of the settlement flow.
+vi.mock('../../booking/services/booking.service.ts', () => ({
+  applyFirstBookingPaymentSideEffects: vi
+    .fn()
+    .mockResolvedValue({ id: 'booking-1', payment_status: 'Fully Paid' }),
 }));
 
 interface QueryResult {
@@ -59,11 +69,12 @@ describe('transactionPayment.service', () => {
 
   it('records a cash payment: settles the transaction and returns the computed change', async () => {
     queueFrom(
-      { data: PENDING_BOOKING_TXN, error: null },
+      { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
+      { data: { payment_status: 'Pending' }, error: null }, // loadBookingPaymentStatus
       {
         data: { ...PENDING_BOOKING_TXN, payment_status: 'Fully Paid' },
         error: null,
-      }
+      } // reload
     );
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: { booking_id: 'booking-1', payment_status: 'Fully Paid' },
@@ -88,6 +99,46 @@ describe('transactionPayment.service', () => {
     );
     expect(result.changeAmount).toBe(100);
     expect(result.transaction.payment_status).toBe('Fully Paid');
+    // The counter path must run the same first-payment side-effects (slot
+    // re-check + confirmation alerts) the customer webhook path gets.
+    expect(applyFirstBookingPaymentSideEffects).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+      paymentStatusBeforePayment: 'Pending',
+      revertOnCapacityConflict: false,
+    });
+  });
+
+  it('rejects recording a payment against a miscellaneous_sale transaction', async () => {
+    queueFrom({
+      data: { ...PENDING_BOOKING_TXN, transaction_type: 'miscellaneous_sale' },
+      error: null,
+    });
+
+    await expect(
+      recordTransactionPayment({
+        requesterId: 'staff-1',
+        transactionId: 'txn-1',
+        paymentMethod: 'Cash',
+        cashTendered: 600,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects pay-with-credit against a miscellaneous_sale transaction', async () => {
+    queueFrom({
+      data: { ...PENDING_BOOKING_TXN, transaction_type: 'miscellaneous_sale' },
+      error: null,
+    });
+
+    await expect(
+      payTransactionWithCredit({
+        requesterId: 'staff-1',
+        transactionId: 'txn-1',
+        isStaff: true,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(getAvailableCredit).not.toHaveBeenCalled();
   });
 
   it('rejects recording a payment against an already-settled transaction', async () => {
@@ -128,7 +179,8 @@ describe('transactionPayment.service', () => {
 
   it('pays a transaction fully from credit: redeems, settles as Credit, stamps credit_applied_amount', async () => {
     queueFrom(
-      { data: PENDING_BOOKING_TXN, error: null },
+      { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
+      { data: { payment_status: 'Pending' }, error: null }, // loadBookingPaymentStatus
       { data: null, error: null }, // update({ credit_applied_amount }).eq()
       {
         data: {
@@ -137,7 +189,7 @@ describe('transactionPayment.service', () => {
           credit_applied_amount: 500,
         },
         error: null,
-      }
+      } // reload
     );
     vi.mocked(getAvailableCredit).mockResolvedValue(800);
     vi.mocked(supabase.rpc).mockImplementation(((fn: string) => {

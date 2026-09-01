@@ -1,6 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
+import { applyFirstBookingPaymentSideEffects } from '../../booking/services/booking.service.ts';
+import type { PaymentStatus } from '../../booking/booking.types.ts';
 import type { CounterPaymentMethod, Transaction } from '../billing.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -30,6 +32,24 @@ async function loadTransaction(transactionId: string): Promise<Transaction> {
   if (!data) throwWithStatus(404, 'Transaction not found');
 
   return data as Transaction;
+}
+
+/** The booking's payment_status *before* a settlement, so
+ * applyFirstBookingPaymentSideEffects can tell a first payment (Pending ->
+ * settled: re-check the slot, send the confirmation alerts) apart from a
+ * later balance payment. Null for a transaction with no booking. */
+async function loadBookingPaymentStatus(
+  bookingId: string | null
+): Promise<PaymentStatus | null> {
+  if (!bookingId) return null;
+
+  const { data } = await supabase
+    .from('bookings')
+    .select('payment_status')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  return (data?.payment_status as PaymentStatus | undefined) ?? null;
 }
 
 export interface RecordTransactionPaymentParams {
@@ -86,6 +106,10 @@ export async function recordTransactionPayment({
     cashTendered: cashTendered ?? undefined,
   });
 
+  const paymentStatusBefore = await loadBookingPaymentStatus(
+    transaction.booking_id
+  );
+
   const { data, error } = await supabase.rpc('settle_transaction', {
     p_transaction_id: transactionId,
     p_payment_method: paymentMethod,
@@ -97,7 +121,18 @@ export async function recordTransactionPayment({
 
   if (error) throwWithStatus(400, error.message);
 
-  const booking = firstRow<Record<string, unknown>>(data);
+  let booking = firstRow<Record<string, unknown>>(data);
+
+  // settle_transaction did the SQL rollup; run the app-side first-payment
+  // side-effects (slot re-check + confirmation alerts) the webhook path gets.
+  if (transaction.booking_id && paymentStatusBefore) {
+    booking = (await applyFirstBookingPaymentSideEffects({
+      bookingId: transaction.booking_id,
+      paymentStatusBeforePayment: paymentStatusBefore,
+      revertOnCapacityConflict: false,
+    })) as unknown as Record<string, unknown>;
+  }
+
   const settled = await loadTransaction(transactionId);
 
   return { transaction: settled, booking, changeAmount };
@@ -169,12 +204,20 @@ export async function payTransactionWithCredit({
     throwWithStatus(403, 'You can only pay for your own transactions');
   }
 
+  if (transaction.transaction_type !== 'booking_payment') {
+    throwWithStatus(400, 'Only booking payments can be paid with credit');
+  }
+
   if (transaction.payment_status !== 'Pending') {
     throwWithStatus(
       409,
       `This transaction is already ${transaction.payment_status}`
     );
   }
+
+  const paymentStatusBefore = await loadBookingPaymentStatus(
+    transaction.booking_id
+  );
 
   const chargeAmount = Number(transaction.total_amount);
   const available = await getAvailableCredit(
@@ -222,7 +265,7 @@ export async function payTransactionWithCredit({
   );
 
   if (settleError) throwWithStatus(400, settleError.message);
-  const booking = firstRow<Record<string, unknown>>(settleData);
+  let booking = firstRow<Record<string, unknown>>(settleData);
 
   const { error: updateError } = await supabase
     .from('transactions')
@@ -230,6 +273,14 @@ export async function payTransactionWithCredit({
     .eq('id', transactionId);
 
   if (updateError) throwWithStatus(400, updateError.message);
+
+  if (transaction.booking_id && paymentStatusBefore) {
+    booking = (await applyFirstBookingPaymentSideEffects({
+      bookingId: transaction.booking_id,
+      paymentStatusBeforePayment: paymentStatusBefore,
+      revertOnCapacityConflict: false,
+    })) as unknown as Record<string, unknown>;
+  }
 
   const settled = await loadTransaction(transactionId);
 

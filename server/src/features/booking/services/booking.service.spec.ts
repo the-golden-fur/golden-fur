@@ -1181,7 +1181,8 @@ describe('booking.service (#51)', () => {
           data: [{ total_amount: 250 }, { total_amount: 300 }],
           error: null,
         }, // settled booking_payment transactions
-        { data: { ...NET_BOOKING, payment_status: 'Fully Paid' }, error: null } // update
+        { data: { ...NET_BOOKING, payment_status: 'Fully Paid' }, error: null }, // update
+        { data: { ...NET_BOOKING, payment_status: 'Fully Paid' }, error: null } // applyFirstBookingPaymentSideEffects: getRawBookingById
       );
 
       await recomputeBookingPaymentStatus('booking-1');
@@ -1200,7 +1201,11 @@ describe('booking.service (#51)', () => {
         {
           data: { ...NET_BOOKING, payment_status: 'Partially Paid' },
           error: null,
-        } // update
+        }, // update
+        {
+          data: { ...NET_BOOKING, payment_status: 'Partially Paid' },
+          error: null,
+        } // applyFirstBookingPaymentSideEffects: getRawBookingById
       );
 
       await recomputeBookingPaymentStatus('booking-1');
