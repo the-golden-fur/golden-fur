@@ -358,7 +358,9 @@ describe('AdminPromoConfigPage', () => {
   it('the timing filter narrows to Ended promos', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
-        buildPromo(),
+        // Far-future end date so "Summer Sale" is never itself Ended,
+        // whatever the wall clock says when this runs.
+        buildPromo({ start_date: '2020-01-01', end_date: '2099-12-31' }),
         buildPromo({
           id: 'promo-2',
           name: 'Old Deal',
