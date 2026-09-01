@@ -23,16 +23,13 @@ function round2(value: number): number {
 
 /**
  * Money the business has actually confirmed against this booking - the sum
- * of its `booking_payment` transactions that a cashier or the PayMongo
- * webhook has moved off 'Pending' (a settled down payment is 'Partially
- * Paid', a settled full/remaining payment is 'Fully Paid' - see
- * recordBookingPaymentTransaction in booking.service.ts).
+ * of its `booking_payment` transactions a cashier or the PayMongo webhook
+ * has settled (`payment_status` off 'Pending').
  *
- * This is deliberately NOT `bookings.payment_stage`: an Online booking that
- * doesn't require a down payment can carry `payment_stage = 'Paid'` before a
- * single peso has been collected, and cancelling one of those must not mint
- * credit for money that was never received. A booking with no confirmed
- * transaction row returns 0 -> no credit.
+ * This is deliberately NOT the booking's own `payment_status` rollup: that
+ * is derived from these same rows, and this stays a direct read so the
+ * credit amount can never be inflated by a rollup lag. A booking with no
+ * settled transaction returns 0 -> no credit.
  */
 async function confirmedAmountPaid(bookingId: string): Promise<number> {
   const { data, error } = await supabase

@@ -34,6 +34,22 @@ export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
   'Maya',
 ];
 
+/**
+ * Payment/transactions rework (§ record-a-payment): the counter methods a
+ * cashier can settle a Pending booking_payment transaction with in one
+ * step - every manual method except GCash/Maya's portal channel (which
+ * only the PayMongo webhook confirms). 'Credit' is settled through the
+ * dedicated pay-with-credit path (transactionPayment.service.ts), not here.
+ */
+export const COUNTER_PAYMENT_METHODS = [
+  'Cash',
+  'Card',
+  'Bank Transfer',
+  'Grabmart',
+  'Pickaroo',
+] as const;
+export type CounterPaymentMethod = (typeof COUNTER_PAYMENT_METHODS)[number];
+
 export const BANK_NAMES = ['BPI', 'BDO'] as const;
 export type BankName = (typeof BANK_NAMES)[number];
 

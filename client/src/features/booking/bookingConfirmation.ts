@@ -7,7 +7,7 @@ import {
 type ConfirmationInput = Pick<
   Booking,
   | 'status'
-  | 'payment_stage'
+  | 'payment_status'
   | 'booking_source'
   | 'service_category'
   | 'cancellation_reason'
@@ -50,7 +50,7 @@ export function deriveBookingConfirmationState(
       const awaitingPayment =
         booking.booking_source === 'Online' &&
         booking.service_category !== 'Veterinary' &&
-        booking.payment_stage === 'Unpaid';
+        booking.payment_status === 'Pending';
       return awaitingPayment ? 'Unconfirmed' : 'Confirmed';
     }
   }

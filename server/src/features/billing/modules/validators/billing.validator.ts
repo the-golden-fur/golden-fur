@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   BANK_NAMES,
+  COUNTER_PAYMENT_METHODS,
   ONLINE_PAYMENT_METHODS,
   PAYMENT_METHODS,
 } from '../../billing.types.ts';
@@ -142,6 +143,64 @@ export const createMiscSaleValidator = z
   .superRefine(validateMiscSaleItemShape);
 
 export type CreateMiscSaleInput = z.infer<typeof createMiscSaleValidator>;
+
+/**
+ * Payment/transactions rework: the cashier's "record a payment" action on a
+ * Pending booking_payment transaction (POST /billing/transactions/:id/pay).
+ * bank_name / cash_tendered follow the same per-method rules validatePayment
+ * Shape enforces for checkout - GCash/Maya are deliberately excluded (their
+ * portal channel is webhook-confirmed, their walk-in-QR channel is settled
+ * through checkout, not here).
+ */
+export const recordTransactionPaymentValidator = z
+  .object({
+    payment_method: z.enum(COUNTER_PAYMENT_METHODS),
+    bank_name: z.enum(BANK_NAMES).optional(),
+    payment_reference: z.string().trim().min(1).optional(),
+    cash_tendered: z.number().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.payment_method === 'Bank Transfer' && !input.bank_name) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['bank_name'],
+        message: "bank_name is required when payment_method is 'Bank Transfer'",
+      });
+    }
+
+    if (input.payment_method !== 'Bank Transfer' && input.bank_name) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['bank_name'],
+        message:
+          "bank_name is only valid when payment_method is 'Bank Transfer'",
+      });
+    }
+
+    if (input.payment_method === 'Cash' && input.cash_tendered === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cash_tendered'],
+        message: "cash_tendered is required when payment_method is 'Cash'",
+      });
+    }
+  });
+
+export type RecordTransactionPaymentInput = z.infer<
+  typeof recordTransactionPaymentValidator
+>;
+
+/**
+ * Payment/transactions rework: add a balance charge against a booking
+ * (POST /billing/bookings/:id/payments) - the amount <= remaining check is
+ * enforced by the add_booking_payment RPC, this only guards the shape.
+ */
+export const addBookingPaymentValidator = z
+  .object({ amount: z.number().positive() })
+  .strict();
+
+export type AddBookingPaymentInput = z.infer<typeof addBookingPaymentValidator>;
 
 export const updateMiscSaleValidator = z
   .object({

@@ -3,9 +3,7 @@ import {
   BOOKING_SOURCES,
   BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
-  OVERRIDABLE_PAYMENT_STAGES,
-  PAYMENT_METHODS,
-  PAYMENT_STAGES,
+  PAYMENT_STATUSES,
 } from '../../booking.types.ts';
 
 const CATEGORIES = [
@@ -215,14 +213,11 @@ export const createBookingValidator = z
     scheduled_end: isoDatetime,
     staff_preference: staffPreferenceValidator.optional(),
     cage_preference: cagePreferenceValidator.optional(),
-    payment_method: z.enum(PAYMENT_METHODS).optional(),
-    payment_confirmed: z.boolean().optional(),
-    // Custom change (P-1 roadmap item: generic downpayment) - only
-    // meaningful when the selected items require a downpayment and payment
-    // is confirmed now (online); ignored otherwise. Omitted/'full' behaves
-    // exactly like every booking did before this field existed. See
-    // createBooking in booking.service.ts.
-    payment_choice: z.enum(['downpayment', 'full']).optional(),
+    // Payment model rework: no payment method / confirmed flag at booking
+    // time - only the scheme (how the initial charge transaction is sized).
+    // 'downpayment' only matters when the branch down-payment policy is on;
+    // otherwise it's a single full-net-total charge. See createBooking.
+    payment_scheme: z.enum(['downpayment', 'full']).optional(),
     special_instructions: z.string().trim().min(1).optional(),
     hotel_preferences: hotelPreferencesValidator.optional(),
     // Role (money-handling staff only) and Cash-only enforcement happen in
@@ -509,8 +504,8 @@ export const listBookingsQueryValidator = z.object({
   date_to: z.iso.date().optional(),
   service_category: z.enum(CATEGORIES).optional(),
   status: z.enum(BOOKING_STATUSES).optional(),
-  // Custom change (bookings/payments queue paid/unpaid filter).
-  payment_stage: z.enum(PAYMENT_STAGES).optional(),
+  // Bookings/Transactions paid/unpaid filter - the booking's payment_status rollup.
+  payment_status: z.enum(PAYMENT_STATUSES).optional(),
   // Bookings Queue's "assigned to me / no preference" filter - a staff
   // UUID, or the sentinel 'unassigned' for assigned_staff_id IS NULL.
   assigned_staff_id: z.union([z.uuid(), z.literal('unassigned')]).optional(),
@@ -524,25 +519,6 @@ export const listBookingsQueryValidator = z.object({
 export const overrideBookingStatusValidator = z
   .object({
     status: z.enum(OVERRIDABLE_BOOKING_STATUSES),
-  })
-  .strict();
-
-/** "Advance" action for payment_stage - `choice` is required only when the
- * booking is currently Unpaid (advancePaymentStage in booking.service.ts
- * enforces that, since it depends on the booking's current stage, not
- * something this shape-only validator can express). */
-export const advancePaymentStageValidator = z
-  .object({
-    choice: z.enum(['advance', 'onsite']).optional(),
-  })
-  .strict();
-
-/** Admin/Superadmin-only direct payment_stage set (forward or backward) -
- * see BOOKING_STATUS_OVERRIDE_ROLES/overridePaymentStage in
- * booking.service.ts. */
-export const overridePaymentStageValidator = z
-  .object({
-    payment_stage: z.enum(OVERRIDABLE_PAYMENT_STAGES),
   })
   .strict();
 
@@ -567,10 +543,4 @@ export type CatalogQueryInput = z.infer<typeof catalogQueryValidator>;
 export type ListBookingsQueryInput = z.infer<typeof listBookingsQueryValidator>;
 export type OverrideBookingStatusInput = z.infer<
   typeof overrideBookingStatusValidator
->;
-export type AdvancePaymentStageInput = z.infer<
-  typeof advancePaymentStageValidator
->;
-export type OverridePaymentStageInput = z.infer<
-  typeof overridePaymentStageValidator
 >;

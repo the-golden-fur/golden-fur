@@ -87,7 +87,7 @@ const HOTEL_BOOKING = {
   discount_amount: 0,
   promo_amount: 0,
   downpayment_amount: 500,
-  payment_stage: 'Paid in Advance',
+  payment_status: 'Partially Paid',
   reschedule_count: 0,
 };
 
@@ -95,7 +95,7 @@ const DAYCARE_BOOKING = {
   ...HOTEL_BOOKING,
   service_category: 'Daycare',
   downpayment_amount: null,
-  payment_stage: 'Unpaid',
+  payment_status: 'Pending',
 };
 
 // confirmedAmountPaid() reads the booking's non-Pending booking_payment
@@ -306,9 +306,9 @@ describe('cancellation.service (#54/#91)', () => {
     );
   });
 
-  it('advisor #10 / live feedback: a booking with no confirmed payment never issues credit, even at payment_stage "Paid"', async () => {
+  it('advisor #10 / live feedback: a booking with no confirmed payment never issues credit, even at payment_status "Fully Paid"', async () => {
     queueFromResults(
-      { data: { ...HOTEL_BOOKING, payment_stage: 'Paid' }, error: null },
+      { data: { ...HOTEL_BOOKING, payment_status: 'Fully Paid' }, error: null },
       { data: [policyRow()], error: null },
       { data: CANCELLED_ROW, error: null },
       { data: LOG_ROW, error: null },

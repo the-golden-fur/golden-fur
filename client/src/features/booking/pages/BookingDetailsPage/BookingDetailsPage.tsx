@@ -23,7 +23,7 @@ import type {
 import { getBooking } from '../../api/booking.api';
 import type { Booking } from '../../booking.types';
 import { BookingStatusBadge } from '../../components/shared/BookingStatusBadge/BookingStatusBadge';
-import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
+import { PaymentStatusBadge } from '../../components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { BookingPaymentsPanel } from '../../../billing/components/BookingPaymentsPanel/BookingPaymentsPanel';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
@@ -261,7 +261,7 @@ export function BookingDetailsPage() {
           </div>
           <div className={styles.badgeGroup}>
             <BookingStatusBadge status={booking.status} />
-            <PaymentStageBadge stage={booking.payment_stage} />
+            <PaymentStatusBadge status={booking.payment_status} />
           </div>
         </div>
 

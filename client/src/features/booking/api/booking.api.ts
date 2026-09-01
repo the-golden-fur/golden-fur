@@ -10,7 +10,6 @@ import type {
   OperatingWindow,
   PayForBookingPayload,
   PayForBookingResult,
-  PaymentStage,
   PetBookingConflict,
   PolicyConfiguration,
   RescheduleBookingPayload,
@@ -109,7 +108,8 @@ export async function listBookings(
     params.set('service_category', filters.serviceCategory);
   }
   if (filters.status) params.set('status', filters.status);
-  if (filters.paymentStage) params.set('payment_stage', filters.paymentStage);
+  if (filters.paymentStatus)
+    params.set('payment_status', filters.paymentStatus);
   if (filters.assignedStaffId) {
     params.set('assigned_staff_id', filters.assignedStaffId);
   }
@@ -487,7 +487,7 @@ export async function getDownpaymentStatus(
  * an online payment was already confirmed - see completeBooking in
  * booking.service.ts). No-show has no endpoint - it's a lazy transition the
  * server applies whenever a booking is read. Payment ("Mark as Paid") is a
- * separate action on the payment_stage track - see advancePaymentStage
+ * separate action on the payment_stage track - see advancePaymentStatus
  * below.
  */
 async function postBookingAction(
@@ -537,54 +537,10 @@ export async function overrideBookingStatus(
   return { data: result.data?.booking ?? null, error: result.error };
 }
 
-/** payment_stage "Advance" action - independent of status (see PaymentStage
- * in booking.types.ts). `choice` is required only when the booking is
- * currently Unpaid; omit it once it's already Paid in Advance. */
-export async function advancePaymentStage(
-  bookingId: string,
-  accessToken: string,
-  choice?: 'advance' | 'onsite'
-): Promise<BookingApiResult<Booking>> {
-  const response = await fetch(
-    `${API_BASE_URL}/bookings/${bookingId}/payment-stage/advance`,
-    {
-      method: 'POST',
-      headers: jsonHeaders(accessToken),
-      body: JSON.stringify({ choice }),
-    }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ booking: Booking }>(response);
-  return { data: result.data?.booking ?? null, error: result.error };
-}
-
-/** Admin/Superadmin-only direct payment_stage set (forward or backward) -
- * see BOOKING_STATUS_OVERRIDE_ROLES server-side. */
-export async function overridePaymentStage(
-  bookingId: string,
-  paymentStage: PaymentStage,
-  accessToken: string
-): Promise<BookingApiResult<Booking>> {
-  const response = await fetch(
-    `${API_BASE_URL}/bookings/${bookingId}/payment-stage`,
-    {
-      method: 'PATCH',
-      headers: jsonHeaders(accessToken),
-      body: JSON.stringify({ payment_stage: paymentStage }),
-    }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ booking: Booking }>(response);
-  return { data: result.data?.booking ?? null, error: result.error };
-}
+// Payment is recorded per transaction on the Transactions page now
+// (billing.api.ts: recordTransactionPayment / addBookingPayment /
+// payTransactionWithCredit). The old /bookings/:id/payment-stage endpoints
+// are gone with the Payments Queue.
 
 export async function getBookingPolicy(
   accessToken: string

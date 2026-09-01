@@ -4,14 +4,17 @@ import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  addBookingPaymentController,
   checkoutController,
   createMiscSaleController,
   deleteMiscSaleController,
   getMiscSaleController,
   listBookingTransactionsController,
   listMiscSalesController,
+  payTransactionWithCreditController,
   paymongoFeeRateController,
   previewCheckoutController,
+  recordTransactionPaymentController,
   updateMiscSaleController,
 } from './billing.controller.ts';
 import { BILLING_ADMIN_ROLES, BILLING_STAFF_ROLES } from './billing.types.ts';
@@ -71,6 +74,29 @@ router.get(
   '/billing/booking/:bookingId/transactions',
   ...staffAccess,
   listBookingTransactionsController
+);
+
+// Payment/transactions rework: record a counter payment against a Pending
+// booking_payment transaction, and add a balance charge to a booking - both
+// staff-only (BILLING_STAFF_ROLES), same money-handling set as checkout.
+router.post(
+  '/billing/transactions/:id/pay',
+  ...staffAccess,
+  recordTransactionPaymentController
+);
+
+router.post(
+  '/billing/bookings/:id/payments',
+  ...staffAccess,
+  addBookingPaymentController
+);
+
+// jwtMiddleware only - a customer pays their own transaction from credit;
+// ownership (and the staff-on-behalf allowance) is enforced in the service.
+router.post(
+  '/billing/transactions/:id/pay-with-credit',
+  jwtMiddleware,
+  payTransactionWithCreditController
 );
 
 router.get('/billing/misc-sale', ...staffAccess, listMiscSalesController);

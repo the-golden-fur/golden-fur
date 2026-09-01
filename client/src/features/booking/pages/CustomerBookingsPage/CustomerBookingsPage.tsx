@@ -178,7 +178,7 @@ export function CustomerBookingsPage() {
     // mean anything, payForBooking always charges the remainder regardless
     // of what's sent for that stage.
     setPayInFull(
-      booking.payment_stage === 'Paid in Advance' ||
+      booking.payment_status === 'Partially Paid' ||
         !booking.downpayment_required
     );
     setActionError(null);
@@ -341,7 +341,7 @@ export function CustomerBookingsPage() {
             );
             const canPay =
               PAYABLE_BOOKING_STATUSES.includes(booking.status) &&
-              booking.payment_stage !== 'Paid';
+              booking.payment_status !== 'Fully Paid';
             const onlinePaymentsEnabled =
               onlinePaymentsByBranch.get(booking.branch_id) ?? true;
             const isRescheduling =
@@ -427,7 +427,7 @@ export function CustomerBookingsPage() {
 
                 {isPaying ? (
                   <div className={styles.actionPanel}>
-                    {booking.payment_stage === 'Unpaid' &&
+                    {booking.payment_status === 'Pending' &&
                     booking.downpayment_required &&
                     booking.downpayment_amount ? (
                       <fieldset className={styles.field}>
@@ -462,7 +462,7 @@ export function CustomerBookingsPage() {
                       <p className={styles.copy}>
                         Amount due:{' '}
                         {formatPeso(
-                          booking.payment_stage === 'Paid in Advance'
+                          booking.payment_status === 'Partially Paid'
                             ? booking.total_price -
                                 (booking.downpayment_amount ?? 0)
                             : booking.total_price
@@ -592,8 +592,8 @@ export function CustomerBookingsPage() {
               Are you sure you want to cancel this booking? This can&apos;t be
               undone.
             </p>
-            {cancelTarget?.payment_stage === 'Paid' ||
-            cancelTarget?.payment_stage === 'Paid in Advance' ? (
+            {cancelTarget?.payment_status === 'Fully Paid' ||
+            cancelTarget?.payment_status === 'Partially Paid' ? (
               <p>
                 Any payment you&apos;ve already made &mdash; a down payment or
                 the full amount &mdash; won&apos;t be refunded. If you cancel

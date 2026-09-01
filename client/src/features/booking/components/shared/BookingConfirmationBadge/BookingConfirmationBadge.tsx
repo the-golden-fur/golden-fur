@@ -6,7 +6,7 @@ interface BookingConfirmationBadgeProps {
   booking: Pick<
     Booking,
     | 'status'
-    | 'payment_stage'
+    | 'payment_status'
     | 'booking_source'
     | 'service_category'
     | 'cancellation_reason'

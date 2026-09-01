@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  advancePaymentStage,
   completeBooking,
   createBooking,
   listBookings,
   listPetBookingConflicts,
   overrideBookingStatus,
+  recomputeBookingPaymentStatus,
   resolvePackagePrice,
   resolveServicePrice,
   startBooking,
@@ -48,6 +48,7 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
 // in their sequential mock queues below.
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
+  sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -255,12 +256,14 @@ describe('booking.service (#51)', () => {
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
       { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
 
     const booking = await createBooking({
       requesterId: CUSTOMER_ID,
-      input: { ...BASE_INPUT, payment_confirmed: true },
+      input: BASE_INPUT,
     });
 
     expect(booking.id).toBe('booking-1');
@@ -277,7 +280,7 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  it('AC-4: a pay-at-counter (payment_confirmed=false) Daycare booking still starts Pending and still holds its capacity slot immediately', async () => {
+  it('AC-4: a Daycare booking starts Pending and holds its capacity slot immediately', async () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -298,6 +301,8 @@ describe('booking.service (#51)', () => {
         ],
         error: null,
       }, // post-insert re-count (always runs now, regardless of status) - winner
+      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
         error: null,
@@ -310,8 +315,6 @@ describe('booking.service (#51)', () => {
         ...BASE_INPUT,
         service_category: 'Daycare',
         items: [{ service_id: 'service-daycare' }],
-        payment_confirmed: false,
-        payment_method: 'Cash',
       },
     });
 
@@ -485,7 +488,7 @@ describe('booking.service (#51)', () => {
     await expect(
       createBooking({
         requesterId: CUSTOMER_ID,
-        input: { ...BASE_INPUT, payment_confirmed: true },
+        input: BASE_INPUT,
       })
     ).rejects.toMatchObject({
       statusCode: 409,
@@ -514,7 +517,6 @@ describe('booking.service (#51)', () => {
         requesterId: CUSTOMER_ID,
         input: {
           ...BASE_INPUT,
-          payment_confirmed: true,
           staff_preference: { type: 'specific', staff_id: 'groomer-9' },
         },
       })
@@ -555,6 +557,8 @@ describe('booking.service (#51)', () => {
       }, // insert
       { data: null, error: null }, // booking_items insert
       { data: [{ id: 'booking-3' }], error: null }, // re-count winner
+      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
 
@@ -567,7 +571,6 @@ describe('booking.service (#51)', () => {
         items: [{ package_id: 'package-1' }],
         scheduled_start: BASE_INPUT.scheduled_start,
         scheduled_end: BASE_INPUT.scheduled_end,
-        payment_confirmed: true,
       },
     });
 
@@ -615,7 +618,6 @@ describe('booking.service (#51)', () => {
           items: [{ package_id: 'package-1' }],
           scheduled_start: BASE_INPUT.scheduled_start,
           scheduled_end: BASE_INPUT.scheduled_end,
-          payment_confirmed: true,
         },
       })
     ).rejects.toMatchObject({ statusCode: 400 });
@@ -796,7 +798,7 @@ describe('booking.service (#51)', () => {
         string,
         ReturnType<typeof vi.fn>
       >;
-      expect(builder.eq).toHaveBeenCalledWith('payment_stage', 'Unpaid');
+      expect(builder.eq).toHaveBeenCalledWith('payment_status', 'Pending');
     });
 
     it('re-filters out a row the lazy No-show transition flipped away from the requested status filter', async () => {
@@ -844,7 +846,7 @@ describe('booking.service (#51)', () => {
               id: 'booking-expired',
               status: 'Pending',
               downpayment_required: true,
-              payment_stage: 'Unpaid',
+              payment_status: 'Pending',
               downpayment_due_at: '2020-01-01T00:00:00.000Z', // long past
               scheduled_start: '2099-01-01T00:00:00.000Z', // still future - not a no-show
             },
@@ -857,7 +859,7 @@ describe('booking.service (#51)', () => {
               id: 'booking-expired',
               status: 'Cancelled',
               downpayment_required: true,
-              payment_stage: 'Unpaid',
+              payment_status: 'Pending',
               downpayment_due_at: '2020-01-01T00:00:00.000Z',
               scheduled_start: '2099-01-01T00:00:00.000Z',
               cancellation_reason:
@@ -892,7 +894,7 @@ describe('booking.service (#51)', () => {
             id: 'booking-pending',
             status: 'Pending',
             downpayment_required: true,
-            payment_stage: 'Unpaid',
+            payment_status: 'Pending',
             downpayment_due_at: '2099-01-01T00:00:00.000Z', // still ahead
             scheduled_start: '2099-01-02T00:00:00.000Z',
           },
@@ -997,7 +999,7 @@ describe('booking.service (#51)', () => {
           status: 'Pending',
           booking_source: 'Online',
           service_category: 'Grooming',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
         },
         error: null,
       });
@@ -1018,7 +1020,7 @@ describe('booking.service (#51)', () => {
             status: 'Pending',
             booking_source: 'Online',
             service_category: 'Veterinary',
-            payment_stage: 'Unpaid',
+            payment_status: 'Pending',
           },
           error: null,
         }, // load
@@ -1040,7 +1042,7 @@ describe('booking.service (#51)', () => {
             ...INSERTED_BOOKING,
             status: 'Pending',
             booking_source: 'Online',
-            payment_stage: 'Paid in Advance',
+            payment_status: 'Partially Paid',
           },
           error: null,
         }, // load
@@ -1074,7 +1076,7 @@ describe('booking.service (#51)', () => {
       expect(booking.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({ status: 'Completed' });
-      expect(update?.payload).not.toHaveProperty('payment_stage');
+      expect(update?.payload).not.toHaveProperty('payment_status');
       expect(update?.payload).not.toHaveProperty('paid_at');
     });
 
@@ -1093,7 +1095,7 @@ describe('booking.service (#51)', () => {
           data: {
             ...INSERTED_BOOKING,
             status: 'Completed',
-            payment_stage: 'Paid',
+            payment_status: 'Fully Paid',
           },
           error: null,
         } // update
@@ -1105,7 +1107,7 @@ describe('booking.service (#51)', () => {
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({
         status: 'Completed',
-        payment_stage: 'Paid',
+        payment_status: 'Fully Paid',
       });
       expect((update?.payload as { paid_at?: string }).paid_at).toBeTruthy();
     });
@@ -1128,7 +1130,7 @@ describe('booking.service (#51)', () => {
 
       expect(booking.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).not.toHaveProperty('payment_stage');
+      expect(update?.payload).not.toHaveProperty('payment_status');
     });
 
     // Custom change (P-1 roadmap item: generic downpayment) - a booking
@@ -1143,7 +1145,7 @@ describe('booking.service (#51)', () => {
             status: 'In Progress',
             payment_method: 'GCash',
             payment_confirmed: true,
-            payment_stage: 'Paid in Advance',
+            payment_status: 'Partially Paid',
           },
           error: null,
         }, // load
@@ -1155,7 +1157,7 @@ describe('booking.service (#51)', () => {
       expect(booking.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({ status: 'Completed' });
-      expect(update?.payload).not.toHaveProperty('payment_stage');
+      expect(update?.payload).not.toHaveProperty('payment_status');
       expect(update?.payload).not.toHaveProperty('paid_at');
     });
 
@@ -1175,7 +1177,7 @@ describe('booking.service (#51)', () => {
     const BASE = {
       ...INSERTED_BOOKING,
       status: 'Pending',
-      payment_stage: 'Unpaid',
+      payment_status: 'Pending',
       total_price: 500,
       discount_amount: 0,
       promo_amount: 0,
@@ -1186,7 +1188,7 @@ describe('booking.service (#51)', () => {
     it('full payment: one Fully Paid booking_payment transaction for the net total, tagged with the cashier', async () => {
       queueFromResults(
         { data: BASE, error: null }, // load
-        { data: { ...BASE, payment_stage: 'Paid' }, error: null }, // update
+        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null }, // update
         { data: { id: 'txn-1' }, error: null }, // transactions insert
         { data: null, error: null } // line items insert
       );
@@ -1222,7 +1224,7 @@ describe('booking.service (#51)', () => {
     it('down payment then balance: two transactions summing to the net total', async () => {
       queueFromResults(
         { data: BASE, error: null },
-        { data: { ...BASE, payment_stage: 'Paid in Advance' }, error: null },
+        { data: { ...BASE, payment_status: 'Partially Paid' }, error: null },
         { data: { id: 'txn-1' }, error: null },
         { data: null, error: null }
       );
@@ -1242,8 +1244,8 @@ describe('booking.service (#51)', () => {
 
       recordedWrites.length = 0;
       queueFromResults(
-        { data: { ...BASE, payment_stage: 'Paid in Advance' }, error: null },
-        { data: { ...BASE, payment_stage: 'Paid' }, error: null },
+        { data: { ...BASE, payment_status: 'Partially Paid' }, error: null },
+        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null },
         { data: { id: 'txn-2' }, error: null },
         { data: null, error: null }
       );
@@ -1263,7 +1265,7 @@ describe('booking.service (#51)', () => {
     it('no transaction on the webhook path (no staff id - payForBooking already wrote one)', async () => {
       queueFromResults(
         { data: BASE, error: null },
-        { data: { ...BASE, payment_stage: 'Paid' }, error: null }
+        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null }
       );
       await advancePaymentStage({ bookingId: 'booking-1', choice: 'onsite' });
       expect(
@@ -1859,7 +1861,7 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({
-        payment_stage: 'Paid in Advance',
+        payment_status: 'Partially Paid',
       });
     });
 
@@ -1891,7 +1893,7 @@ describe('booking.service (#51)', () => {
       const insert = recordedWrites.find(
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
-      expect(insert?.payload).toMatchObject({ payment_stage: 'Paid' });
+      expect(insert?.payload).toMatchObject({ payment_status: 'Fully Paid' });
     });
 
     it('a downpayment-required customer booking is created Unpaid with a downpayment_due_at, and holds no slot until it pays (pencil booking)', async () => {
@@ -1924,7 +1926,7 @@ describe('booking.service (#51)', () => {
       expect(insert?.payload).toMatchObject({
         downpayment_required: true,
         payment_confirmed: false,
-        payment_stage: 'Unpaid', // same as the column default - gates the queue
+        payment_status: 'Pending', // same as the column default - gates the queue
       });
       // The auto-cancel deadline is stamped for the unpaid pencil booking.
       const payload = insert?.payload as Record<string, unknown>;
@@ -2147,7 +2149,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Grooming',
           scheduled_start: '2026-08-10T00:00:00.000Z',
           status: 'Pending',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
         },
         {
           id: 'booking-2',
@@ -2155,7 +2157,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Hotel',
           scheduled_start: '2026-08-20T00:00:00.000Z',
           status: 'In Progress',
-          payment_stage: 'Paid',
+          payment_status: 'Fully Paid',
         },
         {
           id: 'booking-3',
@@ -2163,7 +2165,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Veterinary',
           scheduled_start: '2026-08-11T00:00:00.000Z',
           status: 'Pending',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
         },
       ],
       error: null,
@@ -2200,7 +2202,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Hotel',
           scheduled_start: '2026-08-05T00:00:00.000Z',
           status: 'Completed',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
         },
       ],
       error: null,
@@ -2231,7 +2233,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Grooming',
           scheduled_start: '2026-08-05T00:00:00.000Z',
           status: 'Completed',
-          payment_stage: 'Paid',
+          payment_status: 'Fully Paid',
         },
         {
           id: 'booking-6',
@@ -2239,7 +2241,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Daycare',
           scheduled_start: '2026-08-06T00:00:00.000Z',
           status: 'Completed',
-          payment_stage: 'Paid in Advance',
+          payment_status: 'Partially Paid',
         },
       ],
       error: null,
@@ -2275,7 +2277,7 @@ describe('listPetBookingConflicts (duplicate-booking prevention, custom change)'
           service_category: 'Daycare',
           scheduled_start: '2026-08-12T00:00:00.000Z',
           status: 'Pending',
-          payment_stage: 'Unpaid',
+          payment_status: 'Pending',
         },
       ],
       error: null,

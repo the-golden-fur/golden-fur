@@ -50,16 +50,16 @@ export async function payForBooking({
     throwWithStatus(403, 'You can only pay for your own bookings');
   }
 
-  if (booking.payment_stage === 'Paid') {
+  if (booking.payment_status === 'Fully Paid') {
     throwWithStatus(409, 'This booking is already fully paid');
   }
 
   let amount: number;
   let paymentChoice: 'full' | 'downpayment';
 
-  if (booking.payment_stage === 'Paid in Advance') {
-    // The downpayment is already settled - the only thing left to pay is
-    // the remaining balance, regardless of which choice the client sent.
+  if (booking.payment_status === 'Partially Paid') {
+    // Some payment is already in - the only thing left to pay is the
+    // remaining balance, regardless of which choice the client sent.
     amount = round2(booking.total_price - (booking.downpayment_amount ?? 0));
     paymentChoice = 'full';
   } else if (payInFull) {

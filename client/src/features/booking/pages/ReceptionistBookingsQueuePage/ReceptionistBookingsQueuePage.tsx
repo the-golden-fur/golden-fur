@@ -24,7 +24,7 @@ import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/Confi
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
-import { PaymentStageBadge } from '../../components/shared/PaymentStageBadge/PaymentStageBadge';
+import { PaymentStatusBadge } from '../../components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
@@ -40,13 +40,13 @@ import {
 import {
   BOOKING_CONFIRMATION_STATES,
   CANCELLABLE_BOOKING_STATUSES,
-  PAYMENT_STAGES,
+  PAYMENT_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingConfirmationState,
   type BookingStatus,
-  type PaymentStage,
+  type PaymentStatus,
   type PolicyConfiguration,
   type ServiceCategory,
   type StaffPreferenceInput,
@@ -243,8 +243,8 @@ export function ReceptionistBookingsQueuePage() {
   const [confirmationFilter, setConfirmationFilter] = useState<
     BookingConfirmationState | 'All'
   >('All');
-  const [paymentStageFilter, setPaymentStageFilter] = useState<
-    PaymentStage | 'All'
+  const [paymentStatusFilter, setPaymentStageFilter] = useState<
+    PaymentStatus | 'All'
   >('All');
 
   const dateRange = useMemo(
@@ -364,8 +364,8 @@ export function ReceptionistBookingsQueuePage() {
       dateTo: dateRange.to ?? undefined,
       serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
       status: confirmationToStatusParam(confirmationFilter),
-      paymentStage:
-        paymentStageFilter === 'All' ? undefined : paymentStageFilter,
+      paymentStatus:
+        paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -422,7 +422,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRange.to,
     categoryFilter,
     confirmationFilter,
-    paymentStageFilter,
+    paymentStatusFilter,
   ]);
 
   // Unconfirmed/Confirmed and Expired/Cancelled share a `status` value, so
@@ -505,10 +505,10 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setCategoryFilter('All'),
       });
     }
-    if (paymentStageFilter !== 'All') {
+    if (paymentStatusFilter !== 'All') {
       chips.push({
         id: 'payment',
-        label: `Payment: ${paymentStageFilter}`,
+        label: `Payment: ${paymentStatusFilter}`,
         onClear: () => setPaymentStageFilter('All'),
       });
     }
@@ -541,7 +541,7 @@ export function ReceptionistBookingsQueuePage() {
     dateRangePreset,
     confirmationFilter,
     categoryFilter,
-    paymentStageFilter,
+    paymentStatusFilter,
     isSuperadmin,
     branchFilter,
     branchNameById,
@@ -796,15 +796,15 @@ export function ReceptionistBookingsQueuePage() {
             <span className={styles.filterLabel}>Payment status</span>
             <select
               className={styles.filterSelect}
-              value={paymentStageFilter}
+              value={paymentStatusFilter}
               onChange={(event) =>
                 setPaymentStageFilter(
-                  event.target.value as PaymentStage | 'All'
+                  event.target.value as PaymentStatus | 'All'
                 )
               }
             >
               <option value="All">All payment statuses</option>
-              {PAYMENT_STAGES.map((stage) => (
+              {PAYMENT_STATUSES.map((stage) => (
                 <option key={stage} value={stage}>
                   {stage}
                 </option>
@@ -1062,7 +1062,7 @@ export function ReceptionistBookingsQueuePage() {
                     </span>
                     <div className={styles.bookingBadges}>
                       <BookingConfirmationBadge booking={booking} />
-                      <PaymentStageBadge stage={booking.payment_stage} />
+                      <PaymentStatusBadge status={booking.payment_status} />
                     </div>
                   </div>
                   <span className={styles.bookingMeta}>
@@ -1221,8 +1221,8 @@ export function ReceptionistBookingsQueuePage() {
               Are you sure you want to cancel this booking on the
               customer&apos;s behalf? This can&apos;t be undone.
             </p>
-            {cancelTarget?.payment_stage === 'Paid' ||
-            cancelTarget?.payment_stage === 'Paid in Advance' ? (
+            {cancelTarget?.payment_status === 'Fully Paid' ||
+            cancelTarget?.payment_status === 'Partially Paid' ? (
               <p>
                 Any payment the customer has made &mdash; a down payment or the
                 full amount &mdash; won&apos;t be refunded. If the cancellation

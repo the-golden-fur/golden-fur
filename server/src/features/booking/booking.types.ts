@@ -124,15 +124,15 @@ export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
 /**
  * PostgREST `.or()` string for "this booking isn't a down-payment-required
  * booking still sitting fully unpaid" - i.e. `NOT (downpayment_required AND
- * payment_stage = 'Unpaid')`. A booking that fails this does NOT hold its
+ * payment_status = 'Pending')`. A booking that fails this does NOT hold its
  * capacity/staff-time slot (down-payment slot gate: advisor addendum A3 -
  * an unpaid down payment must not lock the schedule). Applied alongside
  * `.in('status', ACTIVE_BOOKING_STATUSES)` in capacity.service.ts and
- * mirrored in get_staff_availability()'s Check 2 (20260829148) and the
+ * mirrored in get_staff_availability()'s Check 2 and the
  * grooming/consultation queue vivification filters.
  */
 export const SLOT_HOLD_PAID_OR_FILTER =
-  'downpayment_required.eq.false,payment_stage.neq.Unpaid';
+  'downpayment_required.eq.false,payment_status.neq.Pending';
 
 /**
  * `bookings.cancellation_reason` written by applyDownpaymentExpiry when an
@@ -157,20 +157,17 @@ export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
 ];
 
 /**
- * Independent of `status` above - tracks only when money changed hands, not
- * the service lifecycle (a booking can be 'Paid in Advance' while `status`
- * is still 'Pending', or 'Unpaid' while `status` is 'Completed'). A cashier
- * (or other money-handling staff) manually advances this via the "Mark as
- * Paid" button on the queue: from Unpaid it moves to 'Paid in Advance'
- * (money collected before the service happens) or straight to 'Paid' (a
- * normal onsite payment, collected once in full); from 'Paid in Advance' it
- * always moves straight to 'Paid' once the balance is later settled. Only
- * Admin/Superadmin can revert it, mirroring OVERRIDABLE_BOOKING_STATUSES.
- * This is the sole "payment complete" signal on `bookings` now that
- * `status` can no longer reach 'Paid' - separate still from Cashier
- * Checkout's own `transactions` table, which this does not replace.
+ * Independent of `status` above - tracks only how much of the booking's
+ * charges have been collected, not the service lifecycle (a booking can be
+ * 'Partially Paid' while `status` is still 'Pending', or 'Pending' while
+ * `status` is 'Completed'). It is a **rollup of the booking's `transactions`
+ * rows** - recomputed by the `settle_transaction` RPC (and the app-side
+ * `recomputeBookingPaymentStatus`) after every payment: 'Pending' = nothing
+ * settled, 'Partially Paid' = some settled but below the net total, 'Fully
+ * Paid' = settled >= net total. Same vocabulary as `transactions.payment_status`
+ * on purpose - there is no separate booking-level payment enum.
  */
-export type PaymentStage = 'Unpaid' | 'Paid in Advance' | 'Paid';
+export type PaymentStatus = 'Pending' | 'Partially Paid' | 'Fully Paid';
 
 /** Walk-in booking flow (20260828145 migration): distinguishes a normal
  * future/same-day booking ('Online', default - customer self-booked, or
@@ -185,17 +182,11 @@ export type BookingSource = 'Online' | 'Walk-in';
 
 export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 
-export const PAYMENT_STAGES: readonly PaymentStage[] = [
-  'Unpaid',
-  'Paid in Advance',
-  'Paid',
+export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
+  'Pending',
+  'Partially Paid',
+  'Fully Paid',
 ];
-
-export const OVERRIDABLE_PAYMENT_STAGES = [
-  'Unpaid',
-  'Paid in Advance',
-  'Paid',
-] as const;
 
 /** Only before the service has started - matches "shouldn't be able to
  * reschedule a booking that's already underway or past due" (past-due is
@@ -312,7 +303,8 @@ export interface Booking {
   scheduled_end: string;
   assigned_staff_id: string | null;
   status: BookingStatus;
-  payment_stage: PaymentStage;
+  /** Rollup of the booking's transactions - see PaymentStatus above. */
+  payment_status: PaymentStatus;
   total_price: number;
   downpayment_amount: number | null;
   /** True when the effective policy_configurations downpayment config was
