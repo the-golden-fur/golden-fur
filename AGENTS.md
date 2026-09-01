@@ -76,6 +76,11 @@ schemas, seeds, and edge functions.
 
 ## Reusable skills (multi-tool)
 
+**`commit`, the `pr-*` skills, and branch creation are explicit-request
+only** — run them when the user asks, never as an automatic end-of-task
+step. Finishing work means leaving it staged/unstaged and saying it's
+ready; the user calls the commit.
+
 `.agent/skills/` holds the canonical, tool-agnostic instructions for this
 repo's git workflow: `branch-naming` (name and create a branch),
 `commit` (write and create a conventional commit — performs the commit

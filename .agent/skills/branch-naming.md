@@ -1,7 +1,11 @@
 # Branch naming & creation
 
-**Use whenever** starting new work: creating a branch, naming a branch, or
-"start a branch for X" — before any commit or PR work begins.
+**Use when** the user asks to start a branch — "start a branch for X",
+"name a branch", "branch off dev". Also fine to run once, unprompted, when
+you're about to make changes and the repo is sitting on `dev`/`main` (work
+shouldn't land on the default branch). **Do not** create a branch _and_
+commit to it as an end-of-task reflex — branch if needed, make the edits,
+then stop and let the user ask for the commit (see `commit.md`).
 
 ## Process
 

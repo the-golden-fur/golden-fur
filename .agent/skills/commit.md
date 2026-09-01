@@ -1,9 +1,15 @@
 # Commit
 
-**Use whenever** asked to commit changes — "commit this", "make a commit for
-X". This skill performs the actual commit; it does not just print a message
-for the user to paste. Only commit when explicitly asked, never as a side
-effect of another task.
+**Explicit request only.** Run this skill **only when the user directly
+asks for a commit** — "commit this", "make a commit for X", `/commit`.
+Never invoke it on your own: not as a task wrap-up step, not because a
+chunk of work looks done, not right after tests pass, not because the
+working tree is dirty. Finishing a task means leaving the changes staged-
+or-unstaged and _telling the user they're ready to commit_ — the user
+decides when.
+
+This skill performs the actual commit; it does not just print a message
+for the user to paste.
 
 ## Process
 
