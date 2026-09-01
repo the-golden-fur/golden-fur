@@ -95,17 +95,18 @@ also invocable standalone). Any AI coding tool working in this repo
 should read the relevant file under `.agent/` before doing that kind of
 task.
 
-`commit`, `pr-to-dev`, and `pr-dev-to-main` each have two mandatory
-subagent steps before the commit/PR proceeds (see "Domain agents & skills"
-below): the read-only `ci-verifier` agent, which runs the `✅ CI: Verify
-All` task (tests, lint, format, build) for **both** `golden-fur` and
-`golden-fur-vault` and must come back green; and the read-only
-`code-reviewer` agent, for an unbiased review of the diff. As a personal
-backstop you can also add a
-`PreToolUse` hook to your own (gitignored) `.claude/settings.local.json`
-that blocks a direct `git commit` / `git push` / `gh pr create` when
-`client/src`, `server/src`, or `supabase/` changed and no matching review
-exists for the branch under
+`pr-to-dev` and `pr-dev-to-main` each have two mandatory subagent steps
+before the PR is opened (see "Domain agents & skills" below): the read-only
+`ci-verifier` agent, which runs the `✅ CI: Verify All` task (tests, lint,
+format, build) for **both** `golden-fur` and `golden-fur-vault` and must
+come back green; and the read-only `code-reviewer` agent, for an unbiased
+review of the diff. **`commit` does not run either gate** — a plain commit
+or branch push just needs `pre-commit-checks` (lint + format) clean; CI
+parity and the unbiased review happen when a PR is actually being opened.
+As a personal backstop you can add a `PreToolUse` hook to your own
+(gitignored) `.claude/settings.local.json` that blocks a direct
+`gh pr create` when `client/src`, `server/src`, or `supabase/` changed and
+no matching review exists for the branch under
 `../golden-fur-vault/Projects/golden-fur/testing/reviews/` — see the vault
 decision record
 `Projects/golden-fur/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
@@ -143,21 +144,22 @@ noted):
 
 - `ci-verifier` — **read-only** runner for the `✅ CI: Verify All` task
   (tests, lint, format, build) across **both** `golden-fur` and
-  `golden-fur-vault`. Runs automatically before a commit, a branch publish,
-  and a PR; reports one pass/fail with the failing output, never fixes or
-  commits. Keeps the full suite/build output out of the main session.
+  `golden-fur-vault`. Runs automatically **only when a PR is being opened**
+  (`pr-to-dev` / `pr-dev-to-main`) — not at commit or branch-publish time;
+  reports one pass/fail with the failing output, never fixes or commits.
+  Keeps the full suite/build output out of the main session. Still fine to
+  run by hand any time.
 - `code-reviewer` — unbiased, **read-only** review of the current branch's
-  diff. Runs automatically as a step of the git workflow: before a commit
-  (`commit`), before real commits are published, and before a PR is opened
-  (`pr-to-dev` / `pr-dev-to-main`). It did not write the code and gets no
-  rationale beyond the diff itself. No `Edit`; `Bash` limited to read-only
-  git inspection; `Write` used only for its one report file, which it
-  places in the sibling vault at
+  diff. Runs automatically **only as a step of the PR workflow**
+  (`pr-to-dev` / `pr-dev-to-main`, trigger `pre-pr`) — not on commit or
+  branch publish. It did not write the code and gets no rationale beyond
+  the diff itself. No `Edit`; `Bash` limited to read-only git inspection;
+  `Write` used only for its one report file, which it places in the sibling
+  vault at
   `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`
   (never in this repo — same "no working docs in the code repo" rule as the
-  testing docs). Fix its **Blocking** findings before committing/opening
-  the PR; skip the gate only for a pure formatting/non-functional diff, and
-  say so.
+  testing docs). Fix its **Blocking** findings before opening the PR; skip
+  the gate only for a pure formatting/non-functional diff, and say so.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
 - `payment-billing-agent` — PayMongo webhook handling and the Credit
@@ -187,8 +189,8 @@ code as a task closes — see "Auto-run wiring" below):
 - `ci-fixer-agent` — the write-side counterpart to `ci-verifier`: takes a
   red `✅ CI: Verify All` and fixes the failures (format, lint, build,
   tests) until green, across both repos, without ever weakening a check.
-  Spawn it when the `ci-verifier` gate in `commit` / `pr-to-dev` /
-  `pr-dev-to-main` comes back red.
+  Spawn it when the `ci-verifier` gate in `pr-to-dev` / `pr-dev-to-main`
+  (or a hand-run `ci-verifier`) comes back red.
 - `domain-doc-sync-agent` — reconciles the domain agents/skills above with
   the business-rule code they describe (capacity thresholds, enums, role
   lists, status machines, file layout) when that code moves. Docs-only,
@@ -228,7 +230,12 @@ watch the diff and _remind_ the session to run the right maintenance step
   `domain-doc-sync-agent`.
 
 The reminders fire on `Stop` (task boundary) so they don't interrupt
-mid-edit. A red `ci-verifier` in the git skills points at `ci-fixer-agent`.
+mid-edit. A red `ci-verifier` in the PR skills points at `ci-fixer-agent`.
+
+`ci-verifier` and `code-reviewer` are **PR-time only** — they run as steps
+of `pr-to-dev` / `pr-dev-to-main`, not of `commit` or a branch push. The
+`testing-documenter` agent (in the vault) is unaffected: it still runs as
+the closing step of any golden-fur change made in response to a request.
 
 ### Why two PR skills instead of one
 

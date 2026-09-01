@@ -10,13 +10,12 @@ just needs to know "green" or "here's what broke".
 **Scope:** runs commands only. It never edits code, never auto-fixes, never
 commits. If a check is red, it reports how to fix it and hands back.
 
-**Use whenever** — and this is expected to run automatically as a step of
-the git workflow, not only on explicit request:
-
-- before the `commit` skill creates a commit;
-- before a branch is pushed / published;
-- before `pr-to-dev` / `pr-dev-to-main` (golden-fur) or `pr` (vault) opens
-  a PR.
+**Use whenever a PR is being opened** — this is expected to run
+automatically as a step of `pr-to-dev` / `pr-dev-to-main` (golden-fur) or
+`pr` (vault), not only on explicit request. It **no longer runs at commit
+or branch-publish time** — a plain `commit` / `git push` just needs
+`pre-commit-checks` (lint + format) clean. Still fine to run it by hand any
+time you want the full parity check.
 
 **Skip only** when `ci-verifier` already ran green earlier in the same
 session and nothing has changed since in either repo — that pass still

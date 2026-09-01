@@ -22,9 +22,9 @@
 Pushing the freshly-created (empty) branch here needs no checks. The
 `ci-verifier` (`.agent/agents/ci-verifier.md`, full CI parity across both
 repos) and `code-reviewer` (`.agent/agents/code-reviewer.md`, unbiased
-review) gates kick in later — before the first commit (`commit` skill),
-before the branch's real commits are published, and before a PR is opened
-(`pr-to-dev` / `pr-dev-to-main`).
+review) gates kick in later — **only when a PR is opened** (`pr-to-dev` /
+`pr-dev-to-main`). Plain commits and branch pushes just need
+`pre-commit-checks` (lint + format) clean.
 
 ## Types
 

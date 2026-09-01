@@ -1,6 +1,6 @@
 ---
 name: ci-verifier
-description: Runs the full local CI-parity check (the "✅ CI: Verify All" VS Code task) across BOTH the golden-fur and golden-fur-vault repos, and reports one pass/fail with the failing output. Run automatically before a commit, push, or PR. Read-only — runs checks, never fixes or commits.
+description: Runs the full local CI-parity check (the "✅ CI: Verify All" VS Code task) across BOTH the golden-fur and golden-fur-vault repos, and reports one pass/fail with the failing output. Runs automatically only when a PR is being opened (pr-to-dev / pr-dev-to-main), not on commit or push. Read-only — runs checks, never fixes or commits.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---

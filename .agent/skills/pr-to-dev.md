@@ -17,9 +17,10 @@ skill instead — the two directions use different merge strategies.
    report under
    `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/`.
    Resolve every **Blocking** finding before opening the PR; fold anything
-   still worth noting into the PR's **Testing**/**How** sections. If the
-   branch's commits were each reviewed at `pre-commit` time and nothing has
-   changed since the last pass, that counts — no new pass needed.
+   still worth noting into the PR's **Testing**/**How** sections. If
+   `code-reviewer` already ran on this branch earlier in the session and
+   nothing has changed under `client/src`, `server/src`, or `supabase/`
+   since, that pass counts — no new pass needed.
 4. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
    (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
    Pre-Merge Checklist) — see field rules below.
