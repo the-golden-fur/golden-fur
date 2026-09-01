@@ -13,24 +13,22 @@ for the user to paste.
 
 ## Process
 
-1. **Run `.agent/skills/pre-commit-checks.md` first** — lint and format,
-   fix then check, for both `client` and `server`. Resolve or surface
-   anything it flags before moving on; don't skip straight to staging.
-2. Look at `git status --short` and `git diff` (staged and unstaged) to see
+1. Look at `git status --short` and `git diff` (staged and unstaged) to see
    what changed, and `git log --oneline -10` to match this repo's style.
-3. Stage the relevant files. Review what a broad `git add` would pick up
+2. Stage the relevant files. Review what a broad `git add` would pick up
    (`git status` after) rather than blindly using `git add -A`. If anything
    staged looks unrelated to the request or might contain a secret, flag it
    before committing.
-4. Write the commit message following the format below.
-5. Create the commit directly (pass multi-line messages via a heredoc so
+3. Write the commit message following the format below.
+4. Create the commit directly (pass multi-line messages via a heredoc so
    formatting survives), then run `git status` to confirm it succeeded.
 
-> **CI parity (`ci-verifier`) and the unbiased `code-reviewer` no longer
-> run at commit or branch-publish time** — both are gates of `pr-to-dev` /
-> `pr-dev-to-main` only, run when a PR is actually being opened. Committing
-> and pushing a branch just needs `pre-commit-checks` (lint + format) to be
-> clean.
+> **No verification gates run at commit or branch-publish time** —
+> `pre-commit-checks` (lint + format), `ci-verifier` (full CI parity), and
+> `code-reviewer` are all steps of `pr-to-dev` / `pr-dev-to-main` only, run
+> when a PR is actually being opened. Committing and pushing a branch has
+> no gate. Run `pre-commit-checks` by hand any time you want lint/format
+> fixed mid-work.
 
 ## Message format
 

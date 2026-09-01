@@ -1,6 +1,6 @@
 ---
 name: pre-commit-checks
-description: Runs every (check)/(fix)-labeled VS Code task (lint + format, client and server) before code is committed, auto-fixing what it can and surfacing what it can't. Always run as the first step of the commit skill; can also be run standalone at any point mid-task.
+description: Runs every (check)/(fix)-labeled VS Code task (lint + format, client and server), auto-fixing what it can and surfacing what it can't. Runs as a step of pr-to-dev / pr-dev-to-main (via ci-verifier), NOT on every commit; also run it standalone on request or before opening a PR.
 ---
 
 # Pre-commit checks

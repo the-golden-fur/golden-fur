@@ -100,19 +100,21 @@ browser; use `dev-servers` first to confirm the processes are up, then
 first via `scripts/free-ports.mjs`, and `npm run free-ports` does it on
 demand) and `pre-commit-checks` (run every
 `(check)`/`(fix)`-labeled VS Code task — lint and format, client and
-server — auto-fixing what it can; always runs as `commit`'s first step,
-also invocable standalone). Any AI coding tool working in this repo
-should read the relevant file under `.agent/` before doing that kind of
-task.
+server — auto-fixing what it can; a step of the PR skills via
+`ci-verifier`, also invocable standalone, but **not** run on every
+commit). Any AI coding tool working in this repo should read the relevant
+file under `.agent/` before doing that kind of task.
 
-`pr-to-dev` and `pr-dev-to-main` each have two mandatory subagent steps
-before the PR is opened (see "Domain agents & skills" below): the read-only
+`pr-to-dev` and `pr-dev-to-main` each have mandatory subagent steps before
+the PR is opened (see "Domain agents & skills" below): the read-only
 `ci-verifier` agent, which runs the `✅ CI: Verify All` task (tests, lint,
 format, build) for **both** `golden-fur` and `golden-fur-vault` and must
 come back green; and the read-only `code-reviewer` agent, for an unbiased
-review of the diff. **`commit` does not run either gate** — a plain commit
-or branch push just needs `pre-commit-checks` (lint + format) clean; CI
-parity and the unbiased review happen when a PR is actually being opened.
+review of the diff. **`commit` runs no gate at all** — not
+`pre-commit-checks`, not `ci-verifier`, not `code-reviewer`. Lint, format,
+CI parity, and the unbiased review all happen when a PR is actually being
+opened. (Line endings are handled by `.gitattributes` — `* text=auto
+eol=lf` — so local format no longer churns hundreds of files.)
 As a personal backstop you can add a `PreToolUse` hook to your own
 (gitignored) `.claude/settings.local.json` that blocks a direct
 `gh pr create` when `client/src`, `server/src`, or `supabase/` changed and
