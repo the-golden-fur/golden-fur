@@ -27,7 +27,7 @@ const UNPAID_BOOKING = {
   id: 'booking-1',
   customer_id: CUSTOMER_ID,
   branch_id: 'branch-1',
-  payment_stage: 'Unpaid',
+  payment_status: 'Pending',
   total_price: 1000,
   downpayment_required: true,
   downpayment_amount: 500,
@@ -72,7 +72,7 @@ describe('customerBookingPayment.service', () => {
   it('rejects paying an already fully-paid booking', async () => {
     vi.mocked(getBookingById).mockResolvedValue({
       ...UNPAID_BOOKING,
-      payment_stage: 'Paid',
+      payment_status: 'Fully Paid',
     } as never);
 
     await expect(
@@ -175,10 +175,10 @@ describe('customerBookingPayment.service', () => {
     );
   });
 
-  it('a "Paid in Advance" booking always pays only the remaining balance, regardless of payInFull', async () => {
+  it('a "Partially Paid" booking always pays only the remaining balance, regardless of payInFull', async () => {
     vi.mocked(getBookingById).mockResolvedValue({
       ...UNPAID_BOOKING,
-      payment_stage: 'Paid in Advance',
+      payment_status: 'Partially Paid',
     } as never);
     mockInsertTransaction({
       data: { id: 'txn-1', total_amount: 500 },

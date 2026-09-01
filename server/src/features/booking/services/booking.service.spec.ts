@@ -280,6 +280,73 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  // Payment model rework: every non-Veterinary booking emits an initial
+  // Pending booking_payment charge transaction (createInitialBookingCharge);
+  // Veterinary is priced during the visit, so it gets none.
+  it('emits an initial Pending booking_payment charge for a normal Grooming booking', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+    queueFromResults(
+      { data: PET, error: null }, // pet ownership
+      { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
+      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+      { data: INSERTED_BOOKING, error: null }, // bookings insert
+      { data: null, error: null }, // booking_items insert
+      { data: null, error: null }, // staff_picker_preferences insert
+      { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+      { data: null, error: null }, // initial booking charge: transaction_line_items insert
+      { data: INSERTED_BOOKING, error: null } // final fetch
+    );
+
+    await createBooking({ requesterId: CUSTOMER_ID, input: BASE_INPUT });
+
+    const txn = recordedWrites.find(
+      (write) => write.table === 'transactions' && write.method === 'insert'
+    );
+    expect(txn?.payload).toMatchObject({
+      booking_id: 'booking-1',
+      transaction_type: 'booking_payment',
+      payment_status: 'Pending',
+      total_amount: 350,
+      payment_choice: 'full',
+    });
+  });
+
+  it('does not emit an initial charge for a Veterinary booking (priced during the visit)', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
+    queueFromResults(
+      { data: PET, error: null }, // pet ownership
+      {
+        data: { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
+        error: null,
+      }, // #53 guard
+      { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
+      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+      {
+        data: { ...INSERTED_BOOKING, service_category: 'Veterinary' },
+        error: null,
+      }, // insert
+      { data: null, error: null }, // booking_items insert
+      { data: null, error: null }, // preference insert
+      { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+      { data: INSERTED_BOOKING, error: null } // final fetch
+    );
+
+    await createBooking({
+      requesterId: CUSTOMER_ID,
+      input: {
+        ...BASE_INPUT,
+        service_category: 'Veterinary',
+        items: [{ service_id: 'service-vet' }],
+        branch_id: 'branch-makati',
+      },
+    });
+
+    expect(
+      recordedWrites.find((write) => write.table === 'transactions')
+    ).toBeUndefined();
+  });
+
   it('AC-4: a Daycare booking starts Pending and holds its capacity slot immediately', async () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(
@@ -649,6 +716,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -694,12 +763,14 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
       await createBooking({
         requesterId: CUSTOMER_ID,
-        input: { ...BASE_INPUT, payment_confirmed: true },
+        input: BASE_INPUT,
       });
 
       const insert = recordedWrites.find(
@@ -785,13 +856,13 @@ describe('booking.service (#51)', () => {
       expect(builder.eq).toHaveBeenCalledWith('status', 'Pending');
     });
 
-    it('custom change (bookings/payments queue paid/unpaid filter): applies a payment_stage filter independently of status', async () => {
+    it('custom change (bookings/payments queue paid/unpaid filter): applies a payment_status filter independently of status', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults({ data: [], error: null });
 
       await listBookings({
         requesterId: 'staff-1',
-        filters: { paymentStage: 'Unpaid' },
+        filters: { paymentStatus: 'Pending' },
       });
 
       const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
@@ -1035,7 +1106,7 @@ describe('booking.service (#51)', () => {
       );
     });
 
-    it('startBooking: allows an Online booking once a payment is recorded (payment_stage past Unpaid)', async () => {
+    it('startBooking: allows an Online booking once a payment is recorded (payment_status past Pending)', async () => {
       queueFromResults(
         {
           data: {
@@ -1057,96 +1128,10 @@ describe('booking.service (#51)', () => {
       expect(booking.status).toBe('In Progress');
     });
 
-    it('completeBooking: In Progress -> Completed for a pay-at-counter booking (payment_stage untouched)', async () => {
+    it('completeBooking: In Progress -> Completed, never writes payment_status or paid_at', async () => {
       queueFromResults(
         {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'In Progress',
-            payment_method: 'Cash',
-            payment_confirmed: false,
-          },
-          error: null,
-        }, // load
-        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
-      );
-
-      const booking = await completeBooking({ bookingId: 'booking-1' });
-
-      expect(booking.status).toBe('Completed');
-      const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({ status: 'Completed' });
-      expect(update?.payload).not.toHaveProperty('payment_status');
-      expect(update?.payload).not.toHaveProperty('paid_at');
-    });
-
-    it('completeBooking: auto-advances payment_stage to Paid when payment_method is an already-confirmed online method', async () => {
-      queueFromResults(
-        {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'In Progress',
-            payment_method: 'GCash',
-            payment_confirmed: true,
-          },
-          error: null,
-        }, // load
-        {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'Completed',
-            payment_status: 'Fully Paid',
-          },
-          error: null,
-        } // update
-      );
-
-      const booking = await completeBooking({ bookingId: 'booking-1' });
-
-      expect(booking.status).toBe('Completed');
-      const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).toMatchObject({
-        status: 'Completed',
-        payment_status: 'Fully Paid',
-      });
-      expect((update?.payload as { paid_at?: string }).paid_at).toBeTruthy();
-    });
-
-    it('completeBooking: an online method that was never actually confirmed leaves payment_stage untouched', async () => {
-      queueFromResults(
-        {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'In Progress',
-            payment_method: 'GCash',
-            payment_confirmed: false,
-          },
-          error: null,
-        },
-        { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null }
-      );
-
-      const booking = await completeBooking({ bookingId: 'booking-1' });
-
-      expect(booking.status).toBe('Completed');
-      const update = recordedWrites.find((write) => write.method === 'update');
-      expect(update?.payload).not.toHaveProperty('payment_status');
-    });
-
-    // Custom change (P-1 roadmap item: generic downpayment) - a booking
-    // already at 'Paid in Advance' only had its downpayment collected
-    // online; the remaining balance is still owed, so completeBooking must
-    // not blindly re-advance it straight to 'Paid'.
-    it('completeBooking: does not re-advance a Paid in Advance booking (only the downpayment was collected online)', async () => {
-      queueFromResults(
-        {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'In Progress',
-            payment_method: 'GCash',
-            payment_confirmed: true,
-            payment_status: 'Partially Paid',
-          },
+          data: { ...INSERTED_BOOKING, status: 'In Progress' },
           error: null,
         }, // load
         { data: { ...INSERTED_BOOKING, status: 'Completed' }, error: null } // update
@@ -1173,104 +1158,75 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  describe('advancePaymentStage records a transaction (Payments Queue "Mark as Paid")', () => {
-    const BASE = {
+  // Payment model rework: payment state is the rollup of the booking's
+  // settled booking_payment transactions - recomputeBookingPaymentStatus
+  // sums them and moves bookings.payment_status accordingly.
+  describe('recomputeBookingPaymentStatus', () => {
+    const NET_BOOKING = {
       ...INSERTED_BOOKING,
       status: 'Pending',
+      booking_source: 'Online',
       payment_status: 'Pending',
       total_price: 500,
       discount_amount: 0,
       promo_amount: 0,
-      downpayment_amount: 250,
-      payment_method: 'Cash',
+      downpayment_required: false,
+      staff_picker_preferences: [],
     };
 
-    it('full payment: one Fully Paid booking_payment transaction for the net total, tagged with the cashier', async () => {
+    it('sets Fully Paid + paid_at once settled transactions cover the net total', async () => {
       queueFromResults(
-        { data: BASE, error: null }, // load
-        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null }, // update
-        { data: { id: 'txn-1' }, error: null }, // transactions insert
-        { data: null, error: null } // line items insert
+        { data: NET_BOOKING, error: null }, // getRawBookingById
+        {
+          data: [{ total_amount: 250 }, { total_amount: 300 }],
+          error: null,
+        }, // settled booking_payment transactions
+        { data: { ...NET_BOOKING, payment_status: 'Fully Paid' }, error: null } // update
       );
 
-      await advancePaymentStage({
-        bookingId: 'booking-1',
-        choice: 'onsite',
-        processedByStaffId: 'cashier-1',
-      });
+      await recomputeBookingPaymentStatus('booking-1');
 
-      const txn = recordedWrites.find(
-        (write) => write.table === 'transactions' && write.method === 'insert'
+      const update = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'update'
       );
-      expect(txn?.payload).toMatchObject({
-        booking_id: 'booking-1',
-        transaction_type: 'booking_payment',
-        payment_status: 'Fully Paid',
-        total_amount: 500,
-        processed_by_staff_id: 'cashier-1',
-      });
-      // payment_choice must NOT be set on a staff row - the DB CHECK
-      // transactions_payment_choice_requires_customer_initiated rejects it,
-      // and the swallowed throw is why no transaction ever persisted.
-      expect(txn?.payload).not.toHaveProperty('payment_choice');
-
-      const line = recordedWrites.find(
-        (write) =>
-          write.table === 'transaction_line_items' && write.method === 'insert'
-      );
-      expect(line?.payload).toMatchObject({ description: 'Full payment' });
+      expect(update?.payload).toMatchObject({ payment_status: 'Fully Paid' });
+      expect((update?.payload as { paid_at?: string }).paid_at).toBeTruthy();
     });
 
-    it('down payment then balance: two transactions summing to the net total', async () => {
+    it('sets Partially Paid (no paid_at) when one settled transaction is short of the net total', async () => {
       queueFromResults(
-        { data: BASE, error: null },
-        { data: { ...BASE, payment_status: 'Partially Paid' }, error: null },
-        { data: { id: 'txn-1' }, error: null },
-        { data: null, error: null }
+        { data: NET_BOOKING, error: null }, // getRawBookingById
+        { data: [{ total_amount: 150 }], error: null }, // settled transactions
+        {
+          data: { ...NET_BOOKING, payment_status: 'Partially Paid' },
+          error: null,
+        } // update
       );
-      await advancePaymentStage({
-        bookingId: 'booking-1',
-        choice: 'advance',
-        processedByStaffId: 'cashier-1',
-      });
-      const first = recordedWrites.find(
-        (write) => write.table === 'transactions' && write.method === 'insert'
+
+      await recomputeBookingPaymentStatus('booking-1');
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'update'
       );
-      expect(first?.payload).toMatchObject({
+      expect(update?.payload).toMatchObject({
         payment_status: 'Partially Paid',
-        total_amount: 250,
       });
-      expect(first?.payload).not.toHaveProperty('payment_choice');
-
-      recordedWrites.length = 0;
-      queueFromResults(
-        { data: { ...BASE, payment_status: 'Partially Paid' }, error: null },
-        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null },
-        { data: { id: 'txn-2' }, error: null },
-        { data: null, error: null }
-      );
-      await advancePaymentStage({
-        bookingId: 'booking-1',
-        processedByStaffId: 'cashier-1',
-      });
-      const second = recordedWrites.find(
-        (write) => write.table === 'transactions' && write.method === 'insert'
-      );
-      expect(second?.payload).toMatchObject({
-        payment_status: 'Fully Paid',
-        total_amount: 250,
-      });
+      expect(update?.payload).not.toHaveProperty('paid_at');
     });
 
-    it('no transaction on the webhook path (no staff id - payForBooking already wrote one)', async () => {
+    it('stays Pending and writes nothing when there are no settled transactions (early return when unchanged)', async () => {
       queueFromResults(
-        { data: BASE, error: null },
-        { data: { ...BASE, payment_status: 'Fully Paid' }, error: null }
+        { data: NET_BOOKING, error: null }, // getRawBookingById
+        { data: [], error: null } // no settled transactions
       );
-      await advancePaymentStage({ bookingId: 'booking-1', choice: 'onsite' });
+
+      await recomputeBookingPaymentStatus('booking-1');
+
       expect(
-        recordedWrites.find((write) => write.table === 'transactions')
-      ).toBe(undefined);
+        recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'update'
+        )
+      ).toBeUndefined();
     });
   });
 
@@ -1397,7 +1353,7 @@ describe('booking.service (#51)', () => {
       ],
     } as never;
 
-    it('applies a Cash discount for a money-handling staff role', async () => {
+    it('applies a discount for a money-handling staff role', async () => {
       vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
       vi.mocked(getDiscountById).mockResolvedValue(DAYCARE_DISCOUNT);
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
@@ -1408,6 +1364,8 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1418,7 +1376,6 @@ describe('booking.service (#51)', () => {
           customer_id: CUSTOMER_ID,
           service_category: 'Daycare',
           items: [{ service_id: 'service-daycare' }],
-          payment_method: 'Cash',
           discount_id: 'discount-1',
         },
       });
@@ -1433,30 +1390,6 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('rejects a discount when the payment method is not Cash', async () => {
-      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
-      queueFromResults({ data: PET, error: null }); // pet ownership
-
-      await expect(
-        createBooking({
-          requesterId: 'cashier-1',
-          input: {
-            ...BASE_INPUT,
-            customer_id: CUSTOMER_ID,
-            service_category: 'Daycare',
-            items: [{ service_id: 'service-daycare' }],
-            payment_method: 'GCash',
-            discount_id: 'discount-1',
-          },
-        })
-      ).rejects.toMatchObject({
-        statusCode: 400,
-        message: expect.stringContaining('Cash'),
-      });
-
-      expect(getDiscountById).not.toHaveBeenCalled();
-    });
-
     it('rejects a discount when the requester is not a money-handling staff role', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Groomer');
       queueFromResults({ data: PET, error: null }); // pet ownership
@@ -1469,7 +1402,6 @@ describe('booking.service (#51)', () => {
             customer_id: CUSTOMER_ID,
             service_category: 'Daycare',
             items: [{ service_id: 'service-daycare' }],
-            payment_method: 'Cash',
             discount_id: 'discount-1',
           },
         })
@@ -1478,7 +1410,7 @@ describe('booking.service (#51)', () => {
       expect(getDiscountById).not.toHaveBeenCalled();
     });
 
-    it('applies a promo regardless of role or payment method, capped by promo_cap_configuration', async () => {
+    it('applies a promo regardless of role, capped by promo_cap_configuration', async () => {
       vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
       vi.mocked(getPromoById).mockResolvedValue(ALL_SERVICES_PROMO);
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null); // a customer, not staff
@@ -1493,6 +1425,8 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1569,6 +1503,8 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1606,6 +1542,8 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1657,6 +1595,8 @@ describe('booking.service (#51)', () => {
         // NOTE: no post-insert re-count here - down-payment slot gate: an
         // unpaid customer down-payment booking is a pencil booking, so it
         // skips confirmCapacityAfterInsert (it holds no slot to race for).
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1699,6 +1639,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         // pencil booking (unpaid customer down payment) - skips the re-count
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1736,6 +1678,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1763,6 +1707,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1801,6 +1747,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         // pencil booking (unpaid customer down payment) - skips the re-count
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1827,76 +1775,7 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    // Down-payment slot gate: payment_confirmed at creation is honored only
-    // for a STAFF-created booking (a receptionist collecting payment at the
-    // counter). A customer's own self-service booking is never trusted as
-    // pre-paid - it's a pencil booking until the Pay flow / a cashier
-    // settles it. These two cover the receptionist-collected case.
-    it('a receptionist collecting a down payment at creation (payment_choice "downpayment") sets payment_stage to Paid in Advance', async () => {
-      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
-      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
-      queueFromResults(
-        { data: PET, error: null },
-        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
-        { data: INSERTED_BOOKING, error: null },
-        { data: null, error: null },
-        { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count (holds a slot now - paid)
-        { data: INSERTED_BOOKING, error: null }
-      );
-
-      await createBooking({
-        requesterId: 'recept-1',
-        input: {
-          ...BASE_INPUT,
-          customer_id: CUSTOMER_ID,
-          payment_method: 'GCash',
-          payment_confirmed: true,
-          payment_choice: 'downpayment',
-        },
-      });
-
-      const insert = recordedWrites.find(
-        (write) => write.table === 'bookings' && write.method === 'insert'
-      );
-      expect(insert?.payload).toMatchObject({
-        payment_status: 'Partially Paid',
-      });
-    });
-
-    it('a receptionist collecting full payment at creation (payment_choice "full") sets payment_stage to Paid', async () => {
-      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
-      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
-      queueFromResults(
-        { data: PET, error: null },
-        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
-        { data: INSERTED_BOOKING, error: null },
-        { data: null, error: null },
-        { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count (holds a slot now - paid)
-        { data: INSERTED_BOOKING, error: null }
-      );
-
-      await createBooking({
-        requesterId: 'recept-1',
-        input: {
-          ...BASE_INPUT,
-          customer_id: CUSTOMER_ID,
-          payment_method: 'GCash',
-          payment_confirmed: true,
-          payment_choice: 'full',
-        },
-      });
-
-      const insert = recordedWrites.find(
-        (write) => write.table === 'bookings' && write.method === 'insert'
-      );
-      expect(insert?.payload).toMatchObject({ payment_status: 'Fully Paid' });
-    });
-
-    it('a downpayment-required customer booking is created Unpaid with a downpayment_due_at, and holds no slot until it pays (pencil booking)', async () => {
+    it('a downpayment-required customer booking is created Pending with a downpayment_due_at, and holds no slot until it pays (pencil booking)', async () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
@@ -1906,18 +1785,14 @@ describe('booking.service (#51)', () => {
         { data: null, error: null },
         { data: null, error: null },
         // NOTE: no post-insert re-count - pencil booking skips it
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
       await createBooking({
         requesterId: CUSTOMER_ID,
-        input: {
-          ...BASE_INPUT,
-          payment_method: 'GCash',
-          // A customer cannot self-declare payment - this is ignored for a
-          // non-staff requester (down-payment slot gate).
-          payment_confirmed: true,
-        },
+        input: BASE_INPUT,
       });
 
       const insert = recordedWrites.find(
@@ -1976,6 +1851,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -2006,6 +1883,8 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
+        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
