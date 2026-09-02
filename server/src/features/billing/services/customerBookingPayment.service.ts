@@ -86,11 +86,16 @@ export async function payForBooking({
   // The customer taps "Pay" on one row in their transaction history; the
   // client sends pay_in_full = (that row's choice !== 'downpayment'). Target
   // the matching pending charge: the 'downpayment' row when they picked the
-  // down payment, otherwise the oldest 'balance'/'full' row.
+  // down payment, otherwise the oldest 'balance'/'full' row. Either way we
+  // attach to an existing Pending row rather than inserting a fresh one
+  // whenever one exists (a fresh insert alongside a still-Pending row could
+  // over-collect).
   const pendingCharge = payInFull
     ? (pendingCharges.find((row) => row.payment_choice !== 'downpayment') ??
+      pendingCharges[0] ??
       null)
     : (pendingCharges.find((row) => row.payment_choice === 'downpayment') ??
+      pendingCharges[0] ??
       null);
 
   // What's actually still owed: the net total less everything already settled.
@@ -113,22 +118,25 @@ export async function payForBooking({
   let amount: number;
   let paymentChoice: PaymentChoice;
 
-  if (pendingCharge) {
-    // Every owed piece is its own transaction now - pay the chosen row for
-    // exactly the amount it was created for.
-    amount = round2(Number(pendingCharge.total_amount));
-    paymentChoice = pendingCharge.payment_choice ?? 'full';
-  } else if (payInFull) {
-    // No pending row to attach to (e.g. a Vet booking that got no upfront
-    // charge, or every charge already settled) - bill the whole remainder.
-    amount = remaining;
-    paymentChoice = 'full';
-  } else {
+  if (!payInFull) {
+    // "Pay just the down payment now" - bill the down-payment portion
+    // regardless of which Pending row it lands on (the update below shrinks
+    // that row to `amount`).
     if (!booking.downpayment_required || !booking.downpayment_amount) {
       throwWithStatus(400, 'This booking does not require a downpayment');
     }
     amount = round2(Math.min(booking.downpayment_amount, remaining));
     paymentChoice = 'downpayment';
+  } else if (pendingCharge) {
+    // Pay the chosen Pending row for exactly the amount it was created for
+    // (a down-payment booking's 'balance' row, or a 'full' booking's charge).
+    amount = round2(Number(pendingCharge.total_amount));
+    paymentChoice = pendingCharge.payment_choice ?? 'full';
+  } else {
+    // No Pending row to attach to (e.g. a Vet booking that got no upfront
+    // charge, or every charge already settled) - bill the whole remainder.
+    amount = remaining;
+    paymentChoice = 'full';
   }
 
   if (amount <= 0) {
