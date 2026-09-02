@@ -1387,7 +1387,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
   });
 
-  it('Review & Pay shows the down-payment split (due now / balance later) for an online booking when the branch policy is enabled', async () => {
+  it('Review shows the downpayment / remaining-balance split for an online booking when the branch policy is enabled and the downpayment scheme is selected', async () => {
     vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
       data: {
         downpayment_enabled: true,
@@ -1411,11 +1411,16 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
 
-    // Own emphasised rows in the pricing box, not the old grey helper line.
-    expect(screen.getByText('Downpayment due now')).toBeInTheDocument();
+    // Own emphasised rows in the pricing box, shown only for the downpayment
+    // scheme (the default selection).
+    expect(screen.getByText('Downpayment amount')).toBeInTheDocument();
     expect(screen.getByText('PHP 100.00')).toBeInTheDocument();
-    expect(screen.getByText('Balance due later')).toBeInTheDocument();
+    expect(screen.getByText('Remaining balance')).toBeInTheDocument();
     expect(screen.getByText('PHP 200.00')).toBeInTheDocument();
+
+    // Switching to full payment hides the split.
+    await user.click(screen.getByLabelText(/^Full payment/));
+    expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
   });
 
   it('does not restore (or show a banner for) a draft older than 24 hours', async () => {
@@ -1580,12 +1585,10 @@ describe('CustomerBookingFlowPage', () => {
       // No payment method UI in the flow at all - recorded at the counter later.
       expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
-      // No downpayment breakdown/toggle shown, even though the branch policy
-      // has one enabled - it's forced off server-side for a walk-in.
-      expect(screen.queryByText('Downpayment due now')).not.toBeInTheDocument();
-      expect(
-        screen.queryByText(/requires a downpayment/)
-      ).not.toBeInTheDocument();
+      // No downpayment breakdown/scheme choice shown, even though the branch
+      // policy has one enabled - it's forced off server-side for a walk-in.
+      expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
+      expect(screen.queryByText('Payment scheme')).not.toBeInTheDocument();
 
       await user.click(screen.getByText('Confirm booking'));
 

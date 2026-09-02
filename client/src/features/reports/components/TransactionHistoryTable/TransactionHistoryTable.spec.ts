@@ -9,6 +9,7 @@ import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as reportsApi from '../../api/reports.api';
+import * as billingApi from '../../../billing/api/billing.api';
 import type { TransactionRecord } from '../../reports.types';
 import { TransactionHistoryTable } from './TransactionHistoryTable';
 
@@ -18,6 +19,11 @@ vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
 }));
 vi.mock('../../api/reports.api', () => ({ getTransactionHistory: vi.fn() }));
+vi.mock('../../../billing/api/billing.api', () => ({
+  recordTransactionPayment: vi.fn(),
+  payTransactionWithCredit: vi.fn(),
+  addBookingPayment: vi.fn(),
+}));
 
 function buildViewer(role: StaffRole): StaffProfile {
   return {
@@ -112,6 +118,96 @@ describe('TransactionHistoryTable', () => {
       data: [buildTransaction()],
       error: null,
     });
+    vi.mocked(billingApi.recordTransactionPayment).mockResolvedValue({
+      data: {
+        transaction: null,
+        booking: null,
+        changeAmount: 0,
+        leftover: null,
+      },
+      error: null,
+    } as never);
+    vi.mocked(billingApi.payTransactionWithCredit).mockResolvedValue({
+      data: { transaction: null, booking: null, leftover: null },
+      error: null,
+    } as never);
+  });
+
+  async function openPayModal() {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({ payment_status: 'Pending', total_amount: 693 }),
+      ],
+      error: null,
+    });
+    renderTable();
+    await screen.findByText('PHP 693.00');
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    await userEvent.click(await screen.findByText('Pay'));
+    await screen.findByRole('dialog');
+  }
+
+  it('the Pay modal prefills cash tendered, offers Credit, and settles via one "Mark as paid" button', async () => {
+    await openPayModal();
+
+    // Cash tendered is prefilled to the transaction total.
+    expect(screen.getByLabelText(/cash tendered/i)).toHaveValue(693);
+    // Credit is an available method here (routed to the credit endpoint).
+    expect(screen.getByRole('option', { name: 'Credit' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.recordTransactionPayment).toHaveBeenCalledWith(
+        'txn-1',
+        expect.objectContaining({ payment_method: 'Cash' }),
+        'token'
+      )
+    );
+    // Full amount collected - no amount_applied sent.
+    expect(
+      vi.mocked(billingApi.recordTransactionPayment).mock.calls[0][1]
+        .amount_applied
+    ).toBeUndefined();
+  });
+
+  it('a partial "Amount to collect" is sent as amount_applied and previews the balance charge', async () => {
+    await openPayModal();
+
+    const amountField = screen.getByLabelText(/amount to collect/i);
+    await userEvent.clear(amountField);
+    await userEvent.type(amountField, '200');
+
+    expect(
+      screen.getByText(/balance payment will be created/i)
+    ).toHaveTextContent('493.00');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.recordTransactionPayment).toHaveBeenCalledWith(
+        'txn-1',
+        expect.objectContaining({ amount_applied: 200 }),
+        'token'
+      )
+    );
+  });
+
+  it('picking Credit routes "Mark as paid" to the pay-with-credit endpoint', async () => {
+    await openPayModal();
+
+    await userEvent.selectOptions(screen.getByLabelText('Method'), 'Credit');
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
+        'txn-1',
+        'token'
+      )
+    );
+    expect(billingApi.recordTransactionPayment).not.toHaveBeenCalled();
   });
 
   it('passes the transaction-type and payment-choice filters to the API', async () => {

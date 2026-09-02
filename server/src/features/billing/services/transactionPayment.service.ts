@@ -11,6 +11,59 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
+/** Rounds to the nearest centavo - matches numeric(10,2) column precision. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Ids of the booking's current Pending 'balance' booking_payment rows -
+ * snapshotted before a settle so loadSpawnedLeftover can spot the one a
+ * partial settlement adds. */
+async function pendingBalanceTxnIds(
+  bookingId: string | null
+): Promise<Set<string>> {
+  if (!bookingId) return new Set();
+
+  const { data } = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('transaction_type', 'booking_payment')
+    .eq('payment_status', 'Pending')
+    .eq('payment_choice', 'balance');
+
+  return new Set((data ?? []).map((row) => (row as { id: string }).id));
+}
+
+/**
+ * The Pending 'balance' transaction a partial settlement spawned, if any -
+ * settle_transaction / pay_transaction_with_credit insert it inside the same
+ * Postgres transaction as the settle. `before` is the id set from
+ * pendingBalanceTxnIds() taken just before the RPC. Null when the payment
+ * covered the whole transaction.
+ */
+async function loadSpawnedLeftover(
+  bookingId: string | null,
+  before: Set<string>
+): Promise<Transaction | null> {
+  if (!bookingId) return null;
+
+  const { data } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('booking_id', bookingId)
+    .eq('transaction_type', 'booking_payment')
+    .eq('payment_status', 'Pending')
+    .eq('payment_choice', 'balance')
+    .order('created_at', { ascending: false });
+
+  const spawned = (data ?? []).find(
+    (row) => !before.has((row as { id: string }).id)
+  );
+
+  return (spawned as Transaction | undefined) ?? null;
+}
+
 /**
  * The SECURITY DEFINER RPCs here can return either a bare row (RETURNS
  * bookings/transactions) or a one-element array (RETURNS SETOF ...)
@@ -59,12 +112,19 @@ export interface RecordTransactionPaymentParams {
   bankName?: string | null;
   paymentReference?: string | null;
   cashTendered?: number | null;
+  /** Amount actually collected. Defaults to the transaction's full
+   * total_amount; when less, settle_transaction settles this row for the
+   * partial amount and spawns a Pending 'balance' transaction for the rest. */
+  amountApplied?: number | null;
 }
 
 export interface RecordTransactionPaymentResult {
   transaction: Transaction;
   booking: unknown;
   changeAmount: number | null;
+  /** The Pending 'balance' transaction created for the unpaid remainder when
+   * this was a partial settlement; null otherwise. */
+  leftover: Transaction | null;
 }
 
 /**
@@ -84,6 +144,7 @@ export async function recordTransactionPayment({
   bankName,
   paymentReference,
   cashTendered,
+  amountApplied,
 }: RecordTransactionPaymentParams): Promise<RecordTransactionPaymentResult> {
   const transaction = await loadTransaction(transactionId);
 
@@ -98,17 +159,35 @@ export async function recordTransactionPayment({
     );
   }
 
-  const amountDue = Number(transaction.total_amount);
+  const transactionTotal = Number(transaction.total_amount);
+  // How much is actually being collected now - the whole transaction by
+  // default, or a smaller amount (settle_transaction then spawns a Pending
+  // 'balance' row for the remainder). Never more than the transaction total.
+  const applied =
+    amountApplied != null ? round2(amountApplied) : transactionTotal;
 
+  if (applied <= 0) {
+    throwWithStatus(400, 'Amount to collect must be more than zero');
+  }
+  if (applied > transactionTotal + 0.001) {
+    throwWithStatus(
+      400,
+      'Amount to collect cannot exceed the transaction total'
+    );
+  }
+
+  // The cash-tender check + change are against the amount being collected
+  // now, not the full transaction total.
   const { changeAmount } = resolvePaymentConfirmation({
     paymentMethod,
-    amountDue,
+    amountDue: applied,
     cashTendered: cashTendered ?? undefined,
   });
 
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
+  const balanceIdsBefore = await pendingBalanceTxnIds(transaction.booking_id);
 
   const { data, error } = await supabase.rpc('settle_transaction', {
     p_transaction_id: transactionId,
@@ -117,6 +196,7 @@ export async function recordTransactionPayment({
     p_payment_reference: paymentReference ?? null,
     p_cash_tendered: cashTendered ?? null,
     p_processed_by: requesterId,
+    p_amount_applied: applied,
   });
 
   if (error) throwWithStatus(400, error.message);
@@ -134,8 +214,12 @@ export async function recordTransactionPayment({
   }
 
   const settled = await loadTransaction(transactionId);
+  const leftover = await loadSpawnedLeftover(
+    transaction.booking_id,
+    balanceIdsBefore
+  );
 
-  return { transaction: settled, booking, changeAmount };
+  return { transaction: settled, booking, changeAmount, leftover };
 }
 
 export interface AddBookingPaymentParams {
@@ -147,33 +231,17 @@ export interface AddBookingPaymentParams {
 /**
  * Payment/transactions rework: adds a balance charge against a booking - a
  * new Pending booking_payment transaction the cashier then settles like any
- * other. The add_booking_payment RPC validates amount <= remaining.
+ * other. Since 20260902165 the add_booking_payment RPC validates
+ * amount <= net - settled - already-Pending, so it is safe to add another
+ * charge even while the booking still carries the Pending 'balance' row that
+ * create_initial_booking_charge emits for a down-payment booking - no
+ * app-side "one Pending charge only" guard is needed any more.
  */
 export async function addBookingPayment({
   requesterId,
   bookingId,
   amount,
 }: AddBookingPaymentParams): Promise<Transaction> {
-  // add_booking_payment's "remaining" only nets settled rows, so without this
-  // guard a staff member could stack several Pending charges that together
-  // over-collect. Match the client, which hides "Add a payment" while any row
-  // is still Pending.
-  const { data: pending } = await supabase
-    .from('transactions')
-    .select('id')
-    .eq('booking_id', bookingId)
-    .eq('transaction_type', 'booking_payment')
-    .eq('payment_status', 'Pending')
-    .limit(1)
-    .maybeSingle();
-
-  if (pending) {
-    throwWithStatus(
-      409,
-      'This booking already has an unsettled charge - record that payment first'
-    );
-  }
-
   const { data, error } = await supabase.rpc('add_booking_payment', {
     p_booking_id: bookingId,
     p_amount: amount,
@@ -201,14 +269,19 @@ export interface PayTransactionWithCreditResult {
   transaction: Transaction;
   booking: unknown;
   creditTransaction: unknown;
+  /** The Pending 'balance' transaction created for the remainder when the
+   * available credit only partly covered the charge; null otherwise. */
+  leftover: Transaction | null;
 }
 
 /**
- * Payment/transactions rework: pays a Pending transaction entirely from the
- * customer's branch-locked credit balance. Full-cover only this round - if
- * the available credit doesn't cover the whole charge the caller must split
- * the transaction first. Redeems the credit (atomic redeem_credit RPC),
- * settles the transaction as 'Credit', and stamps credit_applied_amount.
+ * Payment/transactions rework: pays a Pending transaction from the customer's
+ * branch-locked credit balance. When the available credit covers the whole
+ * charge the transaction settles Fully Paid; when it only covers part,
+ * pay_transaction_with_credit (20260902164) settles this row for what the
+ * credit covered and spawns a Pending 'balance' transaction for the rest -
+ * same partial-then-leftover behaviour as a partial cash settlement. Redeems
+ * the credit + settles + rolls up in one atomic RPC.
  *
  * Ownership: a customer caller may only pay a transaction whose customer_id
  * is theirs; a staff caller (isStaff) may pay any.
@@ -238,30 +311,23 @@ export async function payTransactionWithCredit({
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
+  const balanceIdsBefore = await pendingBalanceTxnIds(transaction.booking_id);
 
-  const chargeAmount = Number(transaction.total_amount);
+  const chargeAmount = round2(Number(transaction.total_amount));
   const available = await getAvailableCredit(
     transaction.customer_id,
     transaction.branch_id
   );
-  const amount = Math.min(available, chargeAmount);
+  const amount = round2(Math.min(available, chargeAmount));
 
   if (amount <= 0) {
     throwWithStatus(400, 'No credit available to apply');
   }
 
-  if (amount < chargeAmount) {
-    throwWithStatus(
-      400,
-      `Credit ₱${amount.toFixed(2)} doesn't cover this ₱${chargeAmount.toFixed(
-        2
-      )} charge — split it first`
-    );
-  }
-
   // Redeem + settle + roll up in ONE RPC (one Postgres transaction) - a
   // failure anywhere rolls the credit decrement back too, so credit is never
-  // burned against a transaction that didn't get settled.
+  // burned against a transaction that didn't get settled. When `amount` is
+  // less than the charge the RPC spawns a Pending 'balance' row for the rest.
   const { data: rpcData, error: rpcError } = await supabase.rpc(
     'pay_transaction_with_credit',
     {
@@ -292,6 +358,15 @@ export async function payTransactionWithCredit({
     .maybeSingle();
 
   const settled = await loadTransaction(transactionId);
+  const leftover = await loadSpawnedLeftover(
+    transaction.booking_id,
+    balanceIdsBefore
+  );
 
-  return { transaction: settled, booking, creditTransaction: creditRow };
+  return {
+    transaction: settled,
+    booking,
+    creditTransaction: creditRow,
+    leftover,
+  };
 }

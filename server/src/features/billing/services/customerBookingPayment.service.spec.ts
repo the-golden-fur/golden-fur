@@ -168,10 +168,21 @@ describe('customerBookingPayment.service', () => {
     });
   });
 
-  it('settles the existing Pending charge (not a second insert) for a full payment', async () => {
+  it('attaches PayMongo to the existing Pending charge (not a second insert), billing its own amount', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     const recorded = queueFrom(
-      { data: { id: 'txn-initial' }, error: null }, // pending-charge lookup
+      // pending-charge lookup - a 'full' booking's single charge
+      {
+        data: [
+          {
+            id: 'txn-initial',
+            payment_choice: 'full',
+            total_amount: 1000,
+            created_at: '2026-09-02T00:00:00Z',
+          },
+        ],
+        error: null,
+      },
       { data: [], error: null }, // settled-sum read
       { data: { id: 'txn-initial', total_amount: 1000 }, error: null } // update
     );
@@ -223,12 +234,28 @@ describe('customerBookingPayment.service', () => {
     expect(recorded.some((r) => r.method === 'insert')).toBe(true);
   });
 
-  it('pays only the downpayment_amount when payInFull is false and a downpayment is required', async () => {
+  it('targets the downpayment charge when payInFull is false', async () => {
     vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
     queueFrom(
-      { data: { id: 'txn-initial' }, error: null },
+      {
+        data: [
+          {
+            id: 'txn-dp',
+            payment_choice: 'downpayment',
+            total_amount: 500,
+            created_at: '2026-09-02T00:00:00Z',
+          },
+          {
+            id: 'txn-bal',
+            payment_choice: 'balance',
+            total_amount: 500,
+            created_at: '2026-09-02T00:00:01Z',
+          },
+        ],
+        error: null,
+      },
       { data: [], error: null },
-      { data: { id: 'txn-initial', total_amount: 500 }, error: null }
+      { data: { id: 'txn-dp', total_amount: 500 }, error: null }
     );
 
     await payForBooking({
@@ -243,16 +270,25 @@ describe('customerBookingPayment.service', () => {
     );
   });
 
-  it('bills net of a booking-time discount, not the gross total_price', async () => {
+  it('targets the balance charge (not the downpayment) when payInFull is true', async () => {
     vi.mocked(getBookingById).mockResolvedValue({
       ...UNPAID_BOOKING,
-      discount_amount: 200,
-      promo_amount: 50,
+      payment_status: 'Partially Paid',
     } as never);
-    queueFrom(
-      { data: { id: 'txn-initial' }, error: null },
-      { data: [], error: null },
-      { data: { id: 'txn-initial', total_amount: 750 }, error: null }
+    const recorded = queueFrom(
+      {
+        data: [
+          {
+            id: 'txn-bal',
+            payment_choice: 'balance',
+            total_amount: 500,
+            created_at: '2026-09-02T00:00:01Z',
+          },
+        ],
+        error: null,
+      },
+      { data: [{ total_amount: 500 }], error: null },
+      { data: { id: 'txn-bal', total_amount: 500 }, error: null }
     );
 
     await payForBooking({
@@ -262,10 +298,11 @@ describe('customerBookingPayment.service', () => {
       payInFull: true,
     });
 
-    // 1000 - 200 - 50 = 750
     expect(initiatePaymongoPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 750 })
+      expect.objectContaining({ amount: 500 })
     );
+    const update = recorded.find((r) => r.method === 'update');
+    expect(update?.payload).toMatchObject({ payment_choice: 'balance' });
   });
 });
 
@@ -286,20 +323,29 @@ describe('addCustomerBalancePayment', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('rejects when a charge is already awaiting settlement', async () => {
+  it('surfaces the RPC over-balance error as a friendly 400', async () => {
     vi.mocked(getBookingById).mockResolvedValue({
       ...UNPAID_BOOKING,
       payment_status: 'Partially Paid',
     } as never);
-    queueFrom({ data: { id: 'txn-pending' }, error: null });
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: null,
+      error: {
+        message:
+          'add_booking_payment: amount 999 exceeds remaining balance 500',
+      },
+    } as never);
 
     await expect(
       addCustomerBalancePayment({
         requesterId: CUSTOMER_ID,
         bookingId: 'booking-1',
-        amount: 100,
+        amount: 999,
       })
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('more than the balance'),
+    });
   });
 
   it('creates the balance charge via the add_booking_payment RPC', async () => {
@@ -307,7 +353,6 @@ describe('addCustomerBalancePayment', () => {
       ...UNPAID_BOOKING,
       payment_status: 'Partially Paid',
     } as never);
-    queueFrom({ data: null, error: null }); // no pending charge
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: { id: 'txn-balance' },
       error: null,

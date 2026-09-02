@@ -10,6 +10,10 @@ interface PaymentMethodFormProps {
   value: PaymentFields;
   onChange: (next: PaymentFields) => void;
   amountDue: number;
+  /** Overrides the method dropdown options. Defaults to PAYMENT_METHODS; the
+   * Transactions page passes [...PAYMENT_METHODS, 'Credit'] so a cashier can
+   * settle a booking payment straight from account credit here. */
+  methods?: readonly string[];
 }
 
 /**
@@ -26,14 +30,20 @@ export function PaymentMethodForm({
   value,
   onChange,
   amountDue,
+  methods = PAYMENT_METHODS,
 }: PaymentMethodFormProps) {
   const isOnlineMethod = (ONLINE_PAYMENT_METHODS as readonly string[]).includes(
     value.payment_method
   );
   const isBankTransfer = value.payment_method === 'Bank Transfer';
   const isCash = value.payment_method === 'Cash';
+  // 'Credit' is only ever in `methods` on the Transactions page - it isn't a
+  // PaymentMethod, so compare as a string.
+  const isCredit = (value.payment_method as string) === 'Credit';
   const showReference =
-    !isCash && (!isOnlineMethod || value.online_channel === 'walk_in_qr');
+    !isCash &&
+    !isCredit &&
+    (!isOnlineMethod || value.online_channel === 'walk_in_qr');
 
   const change =
     isCash && value.cash_tendered !== undefined
@@ -60,7 +70,7 @@ export function PaymentMethodForm({
             })
           }
         >
-          {PAYMENT_METHODS.map((method) => (
+          {methods.map((method) => (
             <option key={method} value={method}>
               {method}
             </option>
@@ -102,6 +112,7 @@ export function PaymentMethodForm({
               type="number"
               min="0"
               step="0.01"
+              placeholder={amountDue.toFixed(2)}
               value={value.cash_tendered ?? ''}
               onChange={(event) =>
                 onChange({
@@ -115,6 +126,12 @@ export function PaymentMethodForm({
             <p className={styles.change}>Change: PHP {change.toFixed(2)}</p>
           ) : null}
         </>
+      ) : null}
+
+      {isCredit ? (
+        <p className={styles.change}>
+          Settled from the customer&apos;s account credit for this branch.
+        </p>
       ) : null}
 
       {isOnlineMethod ? (

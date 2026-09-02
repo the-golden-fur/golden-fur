@@ -93,7 +93,9 @@ export function BookingPaymentsPanel({
               <span className={styles.paymentMeta}>
                 {transaction.payment_choice === 'downpayment'
                   ? 'Down payment'
-                  : 'Full payment'}{' '}
+                  : transaction.payment_choice === 'balance'
+                    ? 'Balance payment'
+                    : 'Full payment'}{' '}
                 · {transaction.payment_method} · {transaction.payment_status}
               </span>
               <span className={styles.paymentMeta}>

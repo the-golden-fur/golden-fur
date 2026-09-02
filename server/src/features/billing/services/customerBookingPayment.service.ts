@@ -2,7 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getBookingById } from '../../booking/services/booking.service.ts';
 import { isOnlinePaymentsEnabled } from '../../booking/services/staffPicker.service.ts';
 import { initiatePaymongoPayment } from './paymongo.service.ts';
-import type { Transaction } from '../billing.types.ts';
+import type { PaymentChoice, Transaction } from '../billing.types.ts';
 import type { Booking } from '../../booking/booking.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -63,17 +63,35 @@ export async function payForBooking({
     throwWithStatus(409, 'This booking is already fully paid');
   }
 
-  // The still-Pending charge to attach this checkout to, if any:
-  // createInitialBookingCharge's row, or a customer/staff-added balance
-  // charge. A booking carries at most one.
-  const { data: pendingCharge } = await supabase
+  // The still-Pending charges to attach this checkout to. A down-payment
+  // booking is created with two (the 'downpayment' row + a 'balance' row);
+  // a 'full' booking with one. Pay the down payment first, then the oldest
+  // balance - one row per checkout, the customer pays the rest on a return
+  // visit (they're all already visible and owed).
+  const { data: pendingChargeRows } = await supabase
     .from('transactions')
-    .select('id, payment_choice, total_amount')
+    .select('id, payment_choice, total_amount, created_at')
     .eq('booking_id', booking.id)
     .eq('transaction_type', 'booking_payment')
     .eq('payment_status', 'Pending')
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: true });
+
+  const pendingCharges = (pendingChargeRows ?? []) as {
+    id: string;
+    payment_choice: PaymentChoice | null;
+    total_amount: number;
+    created_at: string;
+  }[];
+
+  // The customer taps "Pay" on one row in their transaction history; the
+  // client sends pay_in_full = (that row's choice !== 'downpayment'). Target
+  // the matching pending charge: the 'downpayment' row when they picked the
+  // down payment, otherwise the oldest 'balance'/'full' row.
+  const pendingCharge = payInFull
+    ? (pendingCharges.find((row) => row.payment_choice !== 'downpayment') ??
+      null)
+    : (pendingCharges.find((row) => row.payment_choice === 'downpayment') ??
+      null);
 
   // What's actually still owed: the net total less everything already settled.
   const { data: settledRows } = await supabase
@@ -93,14 +111,16 @@ export async function payForBooking({
   const remaining = round2(netTotal(booking) - settled);
 
   let amount: number;
-  let paymentChoice: 'full' | 'downpayment' | 'balance';
+  let paymentChoice: PaymentChoice;
 
-  if (pendingCharge?.payment_choice === 'balance') {
-    // A customer-chosen partial balance charge - pay it for exactly the
-    // amount it was created for, don't recompute to the full remainder.
+  if (pendingCharge) {
+    // Every owed piece is its own transaction now - pay the chosen row for
+    // exactly the amount it was created for.
     amount = round2(Number(pendingCharge.total_amount));
-    paymentChoice = 'balance';
+    paymentChoice = pendingCharge.payment_choice ?? 'full';
   } else if (payInFull) {
+    // No pending row to attach to (e.g. a Vet booking that got no upfront
+    // charge, or every charge already settled) - bill the whole remainder.
     amount = remaining;
     paymentChoice = 'full';
   } else {
@@ -222,25 +242,9 @@ export async function addCustomerBalancePayment({
     );
   }
 
-  // One unsettled charge at a time - the RPC's "remaining" nets only settled
-  // rows, so a second Pending balance charge could over-collect (mirrors the
-  // staff addBookingPayment guard).
-  const { data: pendingCharge } = await supabase
-    .from('transactions')
-    .select('id')
-    .eq('booking_id', booking.id)
-    .eq('transaction_type', 'booking_payment')
-    .eq('payment_status', 'Pending')
-    .limit(1)
-    .maybeSingle();
-
-  if (pendingCharge) {
-    throwWithStatus(
-      409,
-      'This booking already has a payment awaiting settlement - pay that one first'
-    );
-  }
-
+  // No "one Pending charge only" guard: since 20260902165 add_booking_payment
+  // nets the already-Pending charges too, so it can't over-collect even while
+  // the booking still carries its original Pending 'balance' row.
   const { data, error } = await supabase.rpc('add_booking_payment', {
     p_booking_id: booking.id,
     p_amount: amount,
