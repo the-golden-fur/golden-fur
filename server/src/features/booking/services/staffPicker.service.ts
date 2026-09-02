@@ -23,6 +23,7 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   notice_period_days: 3,
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
+  booking_notice_period_days: 0,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   lunch_break_enabled: true,
@@ -154,25 +155,44 @@ export async function resolveDownpaymentPolicy(
 }
 
 /**
- * Minimum-notice lead time, in whole days, that a NEW booking (or the NEW
- * slot of a reschedule) must sit ahead of "now" - advisor addendum: the
- * "3-day minimum" is a booking date-range floor, not just an after-the-fact
- * reschedule/cancellation penalty. 0 when enforcement is off.
+ * Reschedule minimum-notice lead time, in whole days, that the NEW slot of a
+ * reschedule must sit ahead of "now". 0 when enforcement is off.
  *
- * Distinct from evaluateNoticePeriod (reschedule.service.ts), which measures
- * a change against the booking's CURRENT start. Every caller here already
- * has the effective policy in hand, so this is a pure derivation - no extra
- * query. Walk-ins skip it entirely (their slot is "now").
+ * NEW bookings do NOT use this - they have their own knob, see
+ * bookingLeadDays(). Also distinct from evaluateNoticePeriod
+ * (reschedule.service.ts), which measures a change against the booking's
+ * CURRENT start.
  */
 export function noticeLeadDays(policy: EffectivePolicy): number {
   return policy.notice_enforcement_enabled ? policy.notice_period_days : 0;
 }
 
 /**
- * Throws a 422 when `scheduledStart` falls inside the minimum-notice window
- * for `policy`. A no-op when enforcement is off. `action` only shapes the
- * message. Day-granular is handled by getDaySlots for display; this instant
- * comparison is the hard gate a direct API call still has to clear.
+ * New-online-booking lead time, in whole days, that a NEW booking's
+ * `scheduled_start` must sit ahead of "today". 0 = same-day bookings allowed
+ * (the default). Its own policy column, independent of the reschedule notice
+ * (noticeLeadDays) - Architectural-Change-History: the 3-day rule is for
+ * reschedules only. Walk-ins skip it entirely (their slot is "now").
+ */
+export function bookingLeadDays(policy: EffectivePolicy): number {
+  return policy.booking_notice_period_days;
+}
+
+/** Calendar-date arithmetic on a YYYY-MM-DD string, via UTC midnight so it is
+ * immune to the host's local offset. Mirrors availability.service.ts's own
+ * copy (kept local here to avoid a service<->service import cycle). */
+function shiftDateString(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * Throws a 422 when `scheduledStart` falls inside the reschedule
+ * minimum-notice window for `policy`. A no-op when enforcement is off.
+ * `action` only shapes the message. Instant comparison - the hard gate a
+ * direct API call still has to clear on top of getDaySlots' day-level filter.
  */
 export function assertMeetsNoticeLeadTime(
   policy: EffectivePolicy,
@@ -192,10 +212,56 @@ export function assertMeetsNoticeLeadTime(
   }
 }
 
+/**
+ * Throws a 422 when a NEW booking's `scheduledStart` is earlier than
+ * `today + booking_notice_period_days`, both evaluated as calendar dates in
+ * the branch's own timezone - so "2 days notice" means "the day after
+ * tomorrow onwards", never a rolling 48h instant. A no-op at the default 0.
+ * The hard gate behind getDaySlots' day-level filter that a direct API call
+ * still has to clear.
+ */
+export async function assertMeetsBookingLeadTime(
+  policy: EffectivePolicy,
+  scheduledStart: string,
+  branchId: string
+): Promise<void> {
+  const leadDays = bookingLeadDays(policy);
+  if (!leadDays || leadDays <= 0) return;
+
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  const timeZone = (branch as { timezone?: string } | null)?.timezone ?? 'UTC';
+
+  const asDate = (instant: Date): string =>
+    new Intl.DateTimeFormat('en-CA', { timeZone }).format(instant);
+
+  const earliestDate = shiftDateString(asDate(new Date()), leadDays);
+
+  if (asDate(new Date(scheduledStart)) < earliestDate) {
+    throwWithStatus(
+      422,
+      `This branch needs at least ${leadDays} day(s) notice for a new booking — please choose a later date`
+    );
+  }
+}
+
 /** Convenience for the availability endpoint / findNextAvailableSlot, which
  * don't otherwise need the policy - one resolve, the day count out. */
 export async function resolveNoticeLeadDays(branchId: string): Promise<number> {
   return noticeLeadDays(await resolveEffectivePolicy(branchId));
+}
+
+/** New-booking counterpart of resolveNoticeLeadDays. */
+export async function resolveBookingLeadDays(
+  branchId: string
+): Promise<number> {
+  return bookingLeadDays(await resolveEffectivePolicy(branchId));
 }
 
 /**
@@ -451,6 +517,7 @@ export async function updatePolicyConfiguration({
     notice_period_days: resolved.notice_period_days,
     notice_enforcement_mode: resolved.notice_enforcement_mode,
     notice_enforcement_enabled: resolved.notice_enforcement_enabled,
+    booking_notice_period_days: resolved.booking_notice_period_days,
     staff_picker_enabled_grooming: resolved.staff_picker_enabled_grooming,
     staff_picker_enabled_veterinary: resolved.staff_picker_enabled_veterinary,
     lunch_break_enabled: resolved.lunch_break_enabled,

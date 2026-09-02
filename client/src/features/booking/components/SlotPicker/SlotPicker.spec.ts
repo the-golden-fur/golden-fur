@@ -70,6 +70,52 @@ describe('SlotPicker', () => {
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
   });
 
+  it('defaults intent to new_booking and forwards an explicit reschedule intent', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW, minNoticeDays: 0 },
+      error: null,
+    });
+
+    const { rerender } = render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'staff',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() =>
+      expect(bookingApi.getDayAvailability).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({ intent: 'new_booking' })
+      )
+    );
+
+    rerender(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'staff',
+        intent: 'reschedule',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() =>
+      expect(bookingApi.getDayAvailability).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({ intent: 'reschedule' })
+      )
+    );
+  });
+
   it('AC-2: staff mode shows the actual available-slot count as text', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
       data: { slots: SLOTS, window: WINDOW },
