@@ -101,7 +101,7 @@ should say so.
 - Did the change add or update tests for the behaviour it changes?
 - Do existing tests still cover the modified branches?
 - Note gaps for a human to close. **Do not run the suites** — that is
-  `testing-documenter`'s job; you only read test files.
+  `session-documenter`'s job; you only read test files.
 
 **Consistency & cleanliness (Non-blocking)**
 
@@ -122,20 +122,26 @@ should say so.
 
 ## Output location & naming
 
-Write to the sibling vault repo — never into `golden-fur`:
+Write to the sibling vault repo — never into `golden-fur` — inside the
+**session's own folder**:
 
 ```
-../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md
+../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-<trigger>.md
 ```
 
-- `<branch>` is the branch name verbatim, keeping any `/`
-  (`feat/foo-bar/` becomes a nested folder — fine).
+- **Find `<NN-slug>`**: the session folder whose `plan.md` frontmatter
+  `branch:` matches the current branch (`grep -l` the branch name under
+  `sessions/*/plan.md` / `sessions/*/testing/testing.md`). It normally
+  already exists — `session-documenter` creates it at implementation-finish.
+  If none exists yet, create `sessions/<NN>-<slug>/reviews/` using the next
+  `NN` (per `session-documentation.md`) and a slug from the branch, and say
+  so in your hand-back line.
 - `<trigger>` is normally `pre-pr` (the PR skills). `manual` for a
-  hand-run review; the legacy `pre-commit` / `pre-publish` values may still
-  appear in older reports.
-- One file per review run; successive runs on the same branch accumulate as
-  a history of that branch's review passes. If a run collides exactly
-  (same minute, same trigger), suffix `-2`.
+  hand-run review; legacy `pre-commit` / `pre-publish` values appear in
+  older reports under `sessions/_legacy/reviews-feat/`.
+- One file per review run; successive runs accumulate in the same
+  `reviews/` folder. If a run collides exactly (same minute, same trigger),
+  suffix `-2`.
 
 ### Report template
 

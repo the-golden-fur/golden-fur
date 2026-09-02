@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop hook: inspect the working tree + branch diff and remind the session to
-# run the matching maintenance step. Never mutates anything — it only prints a
+# run the matching maintenance step. Never mutates anything - it only prints a
 # JSON systemMessage / additionalContext for Claude to act on.
 #
 # Wired from .claude/settings.json (Stop event). See AGENTS.md "Auto-run wiring".
@@ -33,6 +33,16 @@ fi
 
 if grep -qE '^(client|server)/src/' <<<"$changed"; then
   add "if a capacity / eligibility / status / enum / role rule moved, run \`domain-doc-sync-agent\` to reconcile the .agent domain docs."
+fi
+
+# Session record: client/server src changed but the sibling vault's sessions/
+# tree wasn't touched this session -> the session doc is probably not written.
+if grep -qE '^(client|server)/src/' <<<"$changed"; then
+  vault="$(cd ../golden-fur-vault 2>/dev/null && pwd || true)"
+  if [ -n "$vault" ]; then
+    touched="$(cd "$vault" && git status --porcelain -- 'Projects/golden-fur/sessions/' 2>/dev/null)"
+    [ -z "$touched" ] && add "golden-fur src changed but no \`golden-fur-vault/Projects/golden-fur/sessions/**\` file was touched -> run the \`session-documenter\` agent (near-beginner plan + click-by-click testing + copied context) as the closing step of this request."
+  fi
 fi
 
 [ -z "$reminders" ] && exit 0

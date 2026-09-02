@@ -24,11 +24,11 @@ then stop and let the user ask for the commit (see `commit.md`).
    ```
 
 Pushing the freshly-created (empty) branch here needs no checks. The
-`ci-verifier` (`.agent/agents/ci-verifier.md`, full CI parity across both
-repos) and `code-reviewer` (`.agent/agents/code-reviewer.md`, unbiased
-review) gates kick in later — **only when a PR is opened** (`pr-to-dev` /
-`pr-dev-to-main`). Plain commits and branch pushes just need
-`pre-commit-checks` (lint + format) clean.
+`ci-verifier` → `ci-fixer-agent` → `code-reviewer` gates kick in later —
+**only when a PR is opened** (`pr-to-dev` / `pr-dev-to-main`), where this
+skill is step 1. Plain commits and branch pushes have no lint/format/review
+gate at all; run `pre-commit-checks` by hand if you want lint + format tidy
+mid-work.
 
 ## Types
 
