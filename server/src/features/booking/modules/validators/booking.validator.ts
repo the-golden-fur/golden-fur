@@ -16,6 +16,11 @@ const CATEGORIES = [
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
+const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
+
+/** "YYYY-MM-DD" - the shape an <input type="date"> submits and a Postgres
+ * `date` column accepts. */
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 /** Matches branches.validator.ts's TIME_PATTERN - "HH:MM" 24h. */
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -326,8 +331,17 @@ export const updatePolicyValidator = z
     reschedule_fee_value: z.number().min(0).nullable().optional(),
     // NULL = unlimited free reschedules (documented default).
     reschedule_free_allowance: z.number().int().min(0).nullable().optional(),
-    credit_expiry_enabled: z.boolean().optional(),
+    // Mutually-exclusive expiry mode (20260902159), replacing the old
+    // credit_expiry_enabled boolean. credit_expiry_fixed_date is required
+    // with 'fixed_date' and must be absent/null otherwise - enforced in the
+    // superRefine below, mirroring the reschedule_fee_type/value pairing.
+    credit_expiry_mode: z.enum(CREDIT_EXPIRY_MODES).optional(),
     credit_expiry_days: z.number().int().min(1).optional(),
+    credit_expiry_fixed_date: z
+      .string()
+      .regex(DATE_PATTERN, 'Use YYYY-MM-DD')
+      .nullable()
+      .optional(),
     // Advisor addendum #10: percent of the paid amount returned as credit on
     // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
     cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
@@ -411,6 +425,33 @@ export const updatePolicyValidator = z
         code: 'custom',
         message: 'A percentage downpayment cannot exceed 100',
         path: ['downpayment_amount'],
+      });
+    }
+
+    // Credit expiry: the fixed date and the 'fixed_date' mode go together and
+    // nowhere else ("only one or the other" - the branch-wide fixed date XOR
+    // the rolling day count).
+    if (
+      input.credit_expiry_mode === 'fixed_date' &&
+      input.credit_expiry_fixed_date == null
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          "credit_expiry_fixed_date is required when credit_expiry_mode is 'fixed_date'",
+        path: ['credit_expiry_fixed_date'],
+      });
+    }
+
+    if (
+      input.credit_expiry_fixed_date != null &&
+      input.credit_expiry_mode !== 'fixed_date'
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          "credit_expiry_fixed_date is only valid when credit_expiry_mode is 'fixed_date'",
+        path: ['credit_expiry_fixed_date'],
       });
     }
   });

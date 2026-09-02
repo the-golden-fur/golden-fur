@@ -112,8 +112,9 @@ function policyRow(overrides: Record<string, unknown> = {}) {
     notice_enforcement_enabled: true,
     staff_picker_enabled_grooming: true,
     staff_picker_enabled_veterinary: true,
-    credit_expiry_enabled: true,
+    credit_expiry_mode: 'rolling',
     credit_expiry_days: 30,
+    credit_expiry_fixed_date: null,
     cancellation_credit_conversion_rate: 100,
     ...overrides,
   };
@@ -303,6 +304,110 @@ describe('cancellation.service (#54/#91)', () => {
     expect(supabase.rpc).toHaveBeenCalledWith(
       'issue_credit',
       expect.objectContaining({ p_amount: 2000 })
+    );
+  });
+
+  it('credit_expiry_mode "rolling": stamps end of the Manila day credit_expiry_days out', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: HOTEL_BOOKING, error: null },
+      {
+        data: [
+          policyRow({ credit_expiry_mode: 'rolling', credit_expiry_days: 30 }),
+        ],
+        error: null,
+      },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      PAID_TXNS,
+      { data: null, error: null }
+    );
+
+    await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    const call = vi
+      .mocked(supabase.rpc)
+      .mock.calls.find(([fn]) => fn === 'issue_credit');
+    const expiresAt = (call?.[1] as { p_expires_at: string }).p_expires_at;
+
+    const manilaDay = (ms: number) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(
+        new Date(ms)
+      );
+    // End of the Manila day 30 days out (23:59:59.999+08:00 === 15:59:59.999Z).
+    expect(expiresAt.endsWith('T15:59:59.999Z')).toBe(true);
+    expect(manilaDay(new Date(expiresAt).getTime())).toBe(
+      manilaDay(Date.now() + 30 * 86_400_000)
+    );
+  });
+
+  it('credit_expiry_mode "none": issues credit with no expiry', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: HOTEL_BOOKING, error: null },
+      { data: [policyRow({ credit_expiry_mode: 'none' })], error: null },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      PAID_TXNS,
+      { data: null, error: null }
+    );
+
+    await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({ p_expires_at: null })
+    );
+  });
+
+  it('credit_expiry_mode "fixed_date": stamps the configured end-of-day', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: HOTEL_BOOKING, error: null },
+      {
+        data: [
+          policyRow({
+            credit_expiry_mode: 'fixed_date',
+            credit_expiry_fixed_date: '2026-12-31',
+          }),
+        ],
+        error: null,
+      },
+      { data: CANCELLED_ROW, error: null },
+      { data: LOG_ROW, error: null },
+      PAID_TXNS,
+      { data: null, error: null }
+    );
+
+    await cancelBooking({
+      requesterId: CUSTOMER_ID,
+      bookingId: 'booking-1',
+      input: {},
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'issue_credit',
+      expect.objectContaining({
+        // End of 2026-12-31 in Manila (+08:00) === 15:59:59.999Z.
+        p_expires_at: new Date('2026-12-31T23:59:59.999+08:00').toISOString(),
+      })
     );
   });
 

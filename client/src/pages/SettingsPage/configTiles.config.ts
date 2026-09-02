@@ -76,7 +76,7 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   {
     title: 'Policies',
     description:
-      'Reschedule notice period, Staff Picker visibility, and the fixed lunch break.',
+      'Reschedule notice period & fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
     to: '/staff/admin/maintenance/policies',
     Component: PolicyConfigurationPage,
   },

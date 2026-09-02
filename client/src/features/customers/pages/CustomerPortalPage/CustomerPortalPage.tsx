@@ -1,42 +1,22 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { formatCurrency } from '../../../../shared/utils/formatCurrency';
+import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
 import { getCustomerProfile } from '../../api/customer.api';
-import { listBranches } from '../../../maintenance/api/maintenance.api';
-import type { BranchSummary } from '../../../maintenance/maintenance.types';
-import {
-  listCreditBalances,
-  listCreditHistory,
-} from '../../../credits/api/credits.api';
-import type {
-  CreditBalance,
-  CreditTransaction,
-} from '../../../credits/credits.types';
-import { CreditBalanceCard } from '../../../credits/components/CreditBalanceCard/CreditBalanceCard';
 import styles from './CustomerPortalPage.module.css';
 
 /**
- * The customer portal home (`/portal`, the Navbar brand link's destination)
- * - previously a tile grid linking to Book a Service/My Bookings/Pet
- * Manager/Settings, now redundant with the Sidebar (AppShell), which
- * already links to all of those (customerPortal.config.ts). Beyond the
- * welcome message, this is also where #95 surfaces the customer's own
- * credit balance (self-read via GET /credits/balances with no customer_id -
- * resolves to the caller) - one card per branch with a nonzero balance,
- * since credit is branch-locked and there's no cross-branch total to show.
- *
- * Custom change (notifications page + admin announcements): the inline
- * Notifications tab this page used to have (#101) moved to its own routed
- * page (/portal/notifications, NotificationsPage) reachable via the
- * sidebar and the new customer navbar bell, so this is Overview-only now.
+ * The customer portal home (`/portal`, the Navbar brand link's destination).
+ * Beyond the welcome message it shows a one-line account-credit summary that
+ * links to the dedicated credits page (/portal/credits, CustomerCreditsPage)
+ * - the per-branch cards + expiry schedule live there now, not here, so
+ * there's a single home for that information.
  */
 export function CustomerPortalPage() {
   const { user, accessToken } = useAuth();
+  const { total, balances, isLoading } = useCreditBalance();
   const [fullName, setFullName] = useState<string | null>(null);
-  const [branches, setBranches] = useState<BranchSummary[]>([]);
-  const [balances, setBalances] = useState<CreditBalance[]>([]);
-  const [historyByBranch, setHistoryByBranch] = useState<
-    Record<string, CreditTransaction[]>
-  >({});
 
   useEffect(() => {
     if (!user?.id || !accessToken) {
@@ -51,36 +31,14 @@ export function CustomerPortalPage() {
       }
     });
 
-    void listBranches().then((result) => {
-      if (isMounted && result.data) setBranches(result.data);
-    });
-
-    void listCreditBalances(accessToken).then((result) => {
-      if (!isMounted || !result.data) return;
-
-      const withBalance = result.data.filter((balance) => balance.balance > 0);
-      setBalances(withBalance);
-
-      for (const balance of withBalance) {
-        void listCreditHistory(accessToken, balance.branch_id).then(
-          (historyResult) => {
-            if (!isMounted || !historyResult.data) return;
-            setHistoryByBranch((prev) => ({
-              ...prev,
-              [balance.branch_id]: historyResult.data!,
-            }));
-          }
-        );
-      }
-    });
-
     return () => {
       isMounted = false;
     };
   }, [user?.id, accessToken]);
 
-  const branchName = (branchId: string) =>
-    branches.find((branch) => branch.id === branchId)?.name ?? 'Unknown branch';
+  const fundedBranches = balances.filter(
+    (balance) => balance.balance > 0
+  ).length;
 
   return (
     <main className={styles.page}>
@@ -90,17 +48,12 @@ export function CustomerPortalPage() {
 
       <p className={styles.copy}>Find everything you need in the sidebar.</p>
 
-      {balances.length > 0 ? (
-        <div className={styles.creditSection}>
-          {balances.map((balance) => (
-            <CreditBalanceCard
-              key={balance.id}
-              balance={balance}
-              branchName={branchName(balance.branch_id)}
-              history={historyByBranch[balance.branch_id] ?? []}
-            />
-          ))}
-        </div>
+      {!isLoading && total > 0 ? (
+        <Link to="/portal/credits" className={styles.creditSummary}>
+          You have <strong>{formatCurrency(total)}</strong> in account credit
+          across {fundedBranches} {fundedBranches === 1 ? 'branch' : 'branches'}{' '}
+          — view credit details
+        </Link>
       ) : null}
     </main>
   );

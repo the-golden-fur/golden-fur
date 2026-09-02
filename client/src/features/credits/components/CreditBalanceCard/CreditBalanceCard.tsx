@@ -1,79 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import type { CreditBalance, CreditTransaction } from '../../credits.types';
+import {
+  activeExpiringLots,
+  describeDaysLeft,
+  formatExpiryDate,
+  soonestExpiry,
+} from '../../utils/expiry';
 import styles from './CreditBalanceCard.module.css';
 
-/**
- * Illustrative only, per the Guide's own Open Items - "no exact threshold is
- * specified by Modules-Features beyond 'as expiry approaches'... a 7-day
- * example was floated... treat it as illustrative, not confirmed." Not
- * wired to any policy_configurations column - confirm with the requirements
- * owner before treating this as final.
- */
-const EXPIRY_LOOKAHEAD_DAYS = 7;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function soonestActiveExpiry(history: CreditTransaction[]): string | null {
-  const active = history.filter(
-    (txn) =>
-      txn.transaction_type === 'issuance' &&
-      txn.expired_at === null &&
-      txn.expires_at !== null
-  );
-
-  if (active.length === 0) return null;
-
-  return active.reduce<string>((soonest, txn) => {
-    return txn.expires_at! < soonest ? txn.expires_at! : soonest;
-  }, active[0].expires_at!);
-}
-
-/** Reading the current time is a side effect, not a pure render computation
- * (react-hooks/purity) - resolved here rather than in a useMemo, mirroring
- * UnavailabilityBlockBadge's own effect-driven status pattern. */
-function expiryBadgeText(soonest: string | null): string | null {
-  if (!soonest) return null;
-
-  const daysUntil = Math.ceil(
-    (new Date(soonest).getTime() - Date.now()) / DAY_MS
-  );
-
-  if (daysUntil > EXPIRY_LOOKAHEAD_DAYS) return null;
-
-  return daysUntil <= 0
-    ? 'Expires today'
-    : `Expires in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`;
-}
+/** Below this many days the "expires" line turns into a warning colour. */
+const EXPIRY_WARNING_DAYS = 7;
 
 interface CreditBalanceCardProps {
   balance: CreditBalance;
   branchName: string;
-  /** Optional - when supplied, an "Expires in N day(s)" badge renders if the
-   * soonest not-yet-expired issuance falls within EXPIRY_LOOKAHEAD_DAYS. */
+  /** Issuance/redemption/expiry rows for this (customer, branch) - when
+   * supplied, the card shows the soonest upcoming expiry (date + amount +
+   * days left) or "Does not expire". */
   history?: CreditTransaction[];
 }
 
-/** Cashier/Admin (#95) and customer portal (#95) balance display - reuses
- * --color-accent-gold-primary (Sprint 5 Epic A's own available-credit hue)
- * and the baseline warning tokens for the expiry-approaching badge. */
+/** Cashier/Admin (#95) and customer credits page balance display - reuses
+ * --color-accent-gold-primary (the available-credit hue) and the baseline
+ * warning tokens for an expiry that's close. */
 export function CreditBalanceCard({
   balance,
   branchName,
   history = [],
 }: CreditBalanceCardProps) {
-  const [expiryBadge, setExpiryBadge] = useState<string | null>(null);
+  // Read the clock once at mount (react-hooks/purity - not during render),
+  // same pattern as ReceptionistBookingsQueuePage's date state. "Days left"
+  // doesn't need to tick while the card is on screen.
+  const [now] = useState(() => Date.now());
 
-  useEffect(() => {
-    // Deferred to a real callback boundary (react-hooks/set-state-in-effect)
-    // - reading the current time is a read of an external platform API, not
-    // a pure render computation (react-hooks/purity), so it can't happen
-    // directly during render either.
-    const timer = setTimeout(() => {
-      setExpiryBadge(expiryBadgeText(soonestActiveExpiry(history)));
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, [history]);
+  // Only speak to expiry when history is actually loaded - the staff
+  // CreditManagementPage passes [] until a branch is expanded, and "Does not
+  // expire" must not show just because we haven't looked yet.
+  const expiryKnown = history.length > 0;
+  const next = expiryKnown
+    ? soonestExpiry(history, balance.balance, now)
+    : null;
+  const neverExpires =
+    expiryKnown &&
+    balance.balance > 0 &&
+    activeExpiringLots(history).length === 0;
 
   return (
     <div className={styles.card}>
@@ -83,10 +54,22 @@ export function CreditBalanceCard({
           {formatCurrency(balance.balance)}
         </span>
       </div>
-      {expiryBadge ? (
-        <span className={styles.expiryBadge} role="status">
-          {expiryBadge}
+
+      {next ? (
+        <span
+          className={
+            next.daysLeft <= EXPIRY_WARNING_DAYS
+              ? styles.expiryWarning
+              : styles.expiryNote
+          }
+          role="status"
+        >
+          {formatCurrency(next.amount)} expires{' '}
+          {formatExpiryDate(next.expiresAt)} &middot;{' '}
+          {describeDaysLeft(next.daysLeft)}
         </span>
+      ) : neverExpires ? (
+        <span className={styles.expiryNote}>Does not expire</span>
       ) : null}
     </div>
   );

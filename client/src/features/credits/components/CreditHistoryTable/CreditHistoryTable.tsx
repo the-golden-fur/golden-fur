@@ -12,6 +12,9 @@ function formatCurrency(amount: number): string {
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-PH', {
+    // Pinned to the business timezone so the shown day matches the expiry
+    // day math in credits/utils/expiry.ts.
+    timeZone: 'Asia/Manila',
     year: 'numeric',
     month: 'short',
     day: 'numeric',

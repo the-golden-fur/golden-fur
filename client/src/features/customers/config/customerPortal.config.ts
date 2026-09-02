@@ -5,6 +5,7 @@ import {
   PawPrint,
   Receipt,
   Salad,
+  Wallet,
 } from 'lucide-react';
 import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar';
 
@@ -30,6 +31,7 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
       { title: 'Book a Service', to: '/portal/book', icon: CalendarPlus },
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },
       { title: 'Transactions', to: '/portal/transactions', icon: Receipt },
+      { title: 'Credits', to: '/portal/credits', icon: Wallet },
       { title: 'Pet Manager', to: '/portal/pets', icon: PawPrint },
       {
         title: 'Food & Medication',

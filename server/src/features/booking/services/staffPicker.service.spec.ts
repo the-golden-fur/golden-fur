@@ -40,6 +40,7 @@ function queueFromResults(...results: QueryResult[]) {
       'in',
       'or',
       'is',
+      'not',
       'lt',
       'gt',
       'order',
@@ -73,6 +74,9 @@ const DEFAULT_POLICY = {
   lunch_break_enabled: true,
   lunch_break_start: '12:00:00',
   lunch_break_end: '13:00:00',
+  credit_expiry_mode: 'rolling',
+  credit_expiry_days: 30,
+  credit_expiry_fixed_date: null,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
 };
@@ -311,6 +315,91 @@ describe('staffPicker.service (#52)', () => {
         staff_picker_enabled_grooming: true,
         notice_period_days: 3,
       });
+    });
+
+    it('re-applies credit expiry to the one branch when a branch-override mode changes', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({ error: null } as never);
+      queueFromResults(
+        { data: { ...BRANCH_POLICY }, error: null }, // existing lookup
+        {
+          data: {
+            ...BRANCH_POLICY,
+            credit_expiry_mode: 'fixed_date',
+            credit_expiry_days: 30,
+            credit_expiry_fixed_date: '2026-12-31',
+          },
+          error: null,
+        } // update
+      );
+
+      await updatePolicyConfiguration({
+        input: {
+          branch_id: 'branch-1',
+          credit_expiry_mode: 'fixed_date',
+          credit_expiry_fixed_date: '2026-12-31',
+        },
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith(
+        'reapply_branch_credit_expiry',
+        {
+          p_branch_ids: ['branch-1'],
+          p_mode: 'fixed_date',
+          p_days: 30,
+          p_fixed_date: '2026-12-31',
+        }
+      );
+    });
+
+    it('fans the re-apply out to override-less branches when the default row changes', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({ error: null } as never);
+      queueFromResults(
+        { data: { ...DEFAULT_POLICY }, error: null }, // existing lookup
+        {
+          data: { ...DEFAULT_POLICY, credit_expiry_mode: 'none' },
+          error: null,
+        }, // update
+        {
+          data: [{ id: 'branch-1' }, { id: 'branch-2' }, { id: 'branch-3' }],
+          error: null,
+        }, // all branches
+        { data: [{ branch_id: 'branch-2' }], error: null } // override rows
+      );
+
+      await updatePolicyConfiguration({
+        input: { credit_expiry_mode: 'none' },
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith(
+        'reapply_branch_credit_expiry',
+        expect.objectContaining({
+          p_branch_ids: ['branch-1', 'branch-3'],
+          p_mode: 'none',
+        })
+      );
+    });
+
+    it('does not re-stamp credit expiry when an unrelated setting changes', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({ error: null } as never);
+      // The Policies page PATCHes all credit-expiry fields on every save, so
+      // an unchanged mode/days/date must be a no-op.
+      queueFromResults(
+        { data: DEFAULT_POLICY, error: null },
+        { data: { ...DEFAULT_POLICY, notice_period_days: 7 }, error: null }
+      );
+
+      await updatePolicyConfiguration({
+        input: {
+          notice_period_days: 7,
+          credit_expiry_mode: 'rolling',
+          credit_expiry_days: 30,
+        },
+      });
+
+      expect(supabase.rpc).not.toHaveBeenCalledWith(
+        'reapply_branch_credit_expiry',
+        expect.anything()
+      );
     });
   });
 });
