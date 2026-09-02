@@ -13,6 +13,7 @@ import {
   getStaffPickerOptions,
   isOnlinePaymentsEnabled,
   listPolicyConfigurations,
+  resolveBookingLeadDays,
   resolveDownpaymentPolicy,
   resolveNoticeLeadDays,
   updatePolicyConfiguration,
@@ -181,6 +182,8 @@ export async function availabilityController(
       .json({ error: 'Invalid query', details: parsed.error.issues });
   }
 
+  const intent = parsed.data.intent ?? 'new_booking';
+
   try {
     const [slots, window, minNoticeDays] = await Promise.all([
       getDaySlots({
@@ -189,12 +192,15 @@ export async function availabilityController(
         date: parsed.data.date,
         slotDurationMinutes: parsed.data.slot_duration_minutes,
         petWeightClass: parsed.data.pet_weight_class,
+        intent,
       }),
       resolveOperatingWindow({
         branchId: parsed.data.branch_id,
         date: parsed.data.date,
       }),
-      resolveNoticeLeadDays(parsed.data.branch_id),
+      intent === 'reschedule'
+        ? resolveNoticeLeadDays(parsed.data.branch_id)
+        : resolveBookingLeadDays(parsed.data.branch_id),
     ]);
 
     // min_notice_days lets the Slot Picker floor its own calendar to the

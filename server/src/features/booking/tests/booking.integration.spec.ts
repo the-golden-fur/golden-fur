@@ -85,6 +85,7 @@ const DEFAULT_POLICY = {
   notice_period_days: 3,
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
+  booking_notice_period_days: 0,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,

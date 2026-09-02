@@ -336,6 +336,7 @@ export function CustomerBookingsPage() {
                       slotDurationMinutes={durationMinutes}
                       petWeightClass={petWeightClass}
                       viewerMode="customer"
+                      intent="reschedule"
                       selectedSlot={rescheduleSlot}
                       onSelect={setRescheduleSlot}
                     />

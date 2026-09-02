@@ -18,6 +18,8 @@ const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
+/** Which notice-period floor the availability endpoints apply. */
+const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
 /** "YYYY-MM-DD" - the shape an <input type="date"> submits and a Postgres
  * `date` column accepts. */
@@ -316,6 +318,7 @@ export const updatePolicyValidator = z
     notice_period_days: z.number().int().min(0).optional(),
     notice_enforcement_mode: z.enum(ENFORCEMENT_MODES).optional(),
     notice_enforcement_enabled: z.boolean().optional(),
+    booking_notice_period_days: z.number().int().min(0).optional(),
     staff_picker_enabled_grooming: z.boolean().optional(),
     staff_picker_enabled_veterinary: z.boolean().optional(),
     lunch_break_enabled: z.boolean().optional(),
@@ -490,6 +493,10 @@ export const availabilityQueryValidator = z
     // appointment lengths.
     slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
     pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
+    // Which notice-period floor applies: a new booking uses
+    // booking_notice_period_days (default 0); a reschedule keeps
+    // notice_period_days (default 3). Omitted = new_booking.
+    intent: z.enum(BOOKING_INTENTS).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

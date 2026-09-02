@@ -63,6 +63,7 @@ const POLICY_ROW_LUNCH_DISABLED = {
       notice_period_days: 3,
       notice_enforcement_mode: 'Strict',
       notice_enforcement_enabled: false,
+      booking_notice_period_days: 0,
       staff_picker_enabled_grooming: true,
       staff_picker_enabled_veterinary: true,
       lunch_break_enabled: false,
@@ -80,6 +81,7 @@ function policyRow(
     lunch_break_enabled?: boolean;
     notice_enforcement_enabled?: boolean;
     notice_period_days?: number;
+    booking_notice_period_days?: number;
   } = {}
 ) {
   return {
@@ -376,24 +378,33 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     });
   });
 
-  describe('minimum-notice lead time (advisor addendum)', () => {
+  describe('minimum-notice lead time', () => {
     const WIDE_BRANCH_ROW = {
       data: {
         timezone: 'Asia/Manila',
+        // Mon 2026-08-03 and Mon 2026-08-10 both open; use a Monday date in
+        // every case so a returned [] can only mean the notice floor, never a
+        // closed weekday.
         operating_hours: { monday: { open: '09:00', close: '15:00' } },
       },
       error: null,
     };
 
-    it('returns [] for a day inside the notice window, exactly like a closed day', async () => {
+    const openRpc = () =>
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+
+    it('new_booking: booking_notice_period_days floors the day (returns [] inside the window)', async () => {
       vi.useFakeTimers();
-      // Monday 2026-08-03 08:00 Asia/Manila; a 3-day notice floor => the
-      // earliest bookable date is 2026-08-06.
+      // Mon 2026-08-03 08:00 Asia/Manila; a 2-day new-booking floor => the
+      // earliest bookable date is 2026-08-05.
       vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
 
       queueFromResults(
-        WIDE_BRANCH_ROW, // branch lookup
-        policyRow({ notice_enforcement_enabled: true, notice_period_days: 3 })
+        WIDE_BRANCH_ROW,
+        policyRow({ booking_notice_period_days: 2 })
       );
 
       const slots = await getDaySlots({
@@ -406,52 +417,128 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       expect(slots).toEqual([]);
     });
 
-    it('generates slots normally on the first day outside the notice window', async () => {
+    it('new_booking: at the default (0) a future date returns its full slot set', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
 
       queueFromResults(
         WIDE_BRANCH_ROW,
-        policyRow({ notice_enforcement_enabled: true, notice_period_days: 3 }),
+        policyRow({ booking_notice_period_days: 0 }),
         { data: null, error: null, count: 1 } // roster count
       );
-      vi.mocked(supabase.rpc).mockResolvedValue({
-        data: [],
-        error: null,
-      } as never);
+      openRpc();
 
       const slots = await getDaySlots({
         branchId: 'branch-1',
         serviceCategory: 'Grooming',
-        date: '2026-08-10', // a Monday, well outside the 3-day window
+        date: '2026-08-10', // next Monday
+        slotDurationMinutes: 60,
+      });
+
+      // 09:00-15:00 stepped by 60 => 6 candidate slots, none dropped.
+      expect(slots).toHaveLength(6);
+    });
+
+    it('new_booking: ignores notice_period_days (that is the reschedule knob)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({
+          notice_enforcement_enabled: true,
+          notice_period_days: 3,
+          booking_notice_period_days: 0,
+        }),
+        { data: null, error: null, count: 1 }
+      );
+      openRpc();
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-10',
         slotDurationMinutes: 60,
       });
 
       expect(slots.length).toBeGreaterThan(0);
     });
 
-    it('applies no floor when notice enforcement is disabled', async () => {
+    it('reschedule: still floored by notice_period_days (returns [] inside the window)', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
 
       queueFromResults(
         WIDE_BRANCH_ROW,
-        policyRow({ notice_enforcement_enabled: false, notice_period_days: 3 }),
-        { data: null, error: null, count: 1 }
+        policyRow({
+          notice_enforcement_enabled: true,
+          notice_period_days: 3,
+          booking_notice_period_days: 0,
+        })
       );
-      vi.mocked(supabase.rpc).mockResolvedValue({
-        data: [],
-        error: null,
-      } as never);
 
       const slots = await getDaySlots({
         branchId: 'branch-1',
         serviceCategory: 'Grooming',
-        date: '2026-08-03', // same day - allowed when enforcement is off
+        date: '2026-08-04', // inside the 3-day reschedule window
+        slotDurationMinutes: 60,
+        intent: 'reschedule',
+      });
+
+      expect(slots).toEqual([]);
+    });
+
+    it('a future date is never shifted by the current time-of-day', async () => {
+      vi.useFakeTimers();
+      // 13:00 Asia/Manila "now" - the old code would have dropped every
+      // candidate before 13:00 on any date; a future date must be unaffected.
+      vi.setSystemTime(new Date('2026-08-03T05:00:00.000Z'));
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({ booking_notice_period_days: 0 }),
+        { data: null, error: null, count: 1 }
+      );
+      openRpc();
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-10', // future Monday
         slotDurationMinutes: 60,
       });
 
-      expect(slots.length).toBeGreaterThan(0);
+      // The 09:00 candidate survives even though "now" is 13:00.
+      expect(slots[0]?.start).toBe(
+        new Date('2026-08-10T01:00:00.000Z').toISOString() // 09:00 Manila
+      );
+      expect(slots).toHaveLength(6);
+    });
+
+    it('today still drops slots whose start is already past', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T05:00:00.000Z')); // 13:00 Manila
+
+      queueFromResults(
+        WIDE_BRANCH_ROW,
+        policyRow({ booking_notice_period_days: 0 }),
+        { data: null, error: null, count: 1 }
+      );
+      openRpc();
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03', // today
+        slotDurationMinutes: 60,
+      });
+
+      // "now" is exactly 13:00; every candidate start <= 13:00 is dropped, so
+      // only the 14:00 start remains.
+      expect(slots.every((s) => new Date(s.start).getTime() > Date.now())).toBe(
+        true
+      );
+      expect(slots).toHaveLength(1);
     });
   });
 

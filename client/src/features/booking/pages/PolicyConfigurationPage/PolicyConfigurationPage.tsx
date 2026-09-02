@@ -29,6 +29,7 @@ interface FormState {
   notice_period_days: number;
   notice_enforcement_mode: EnforcementMode;
   notice_enforcement_enabled: boolean;
+  booking_notice_period_days: number;
   staff_picker_enabled_grooming: boolean;
   staff_picker_enabled_veterinary: boolean;
   lunch_break_enabled: boolean;
@@ -60,6 +61,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     notice_period_days: policy.notice_period_days,
     notice_enforcement_mode: policy.notice_enforcement_mode,
     notice_enforcement_enabled: policy.notice_enforcement_enabled,
+    booking_notice_period_days: policy.booking_notice_period_days,
     staff_picker_enabled_grooming: policy.staff_picker_enabled_grooming,
     staff_picker_enabled_veterinary: policy.staff_picker_enabled_veterinary,
     lunch_break_enabled: policy.lunch_break_enabled,
@@ -88,6 +90,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   notice_period_days: 3,
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
+  booking_notice_period_days: 0,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   lunch_break_enabled: true,
@@ -251,6 +254,7 @@ export function PolicyConfigurationPage() {
       notice_period_days: form.notice_period_days,
       notice_enforcement_mode: form.notice_enforcement_mode,
       notice_enforcement_enabled: form.notice_enforcement_enabled,
+      booking_notice_period_days: form.booking_notice_period_days,
       staff_picker_enabled_grooming: form.staff_picker_enabled_grooming,
       staff_picker_enabled_veterinary: form.staff_picker_enabled_veterinary,
       lunch_break_enabled: form.lunch_break_enabled,
@@ -346,9 +350,10 @@ export function PolicyConfigurationPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Policies</h1>
         <p className={styles.copy}>
-          Reschedule notice period and fee, Staff Picker visibility, the fixed
-          lunch break, online payments and downpayment, cancellation credit, and
-          credit expiry - system-wide default, or a per-branch override.
+          Reschedule notice period and fee, new online booking notice period,
+          Staff Picker visibility, the fixed lunch break, online payments and
+          downpayment, cancellation credit, and credit expiry - system-wide
+          default, or a per-branch override.
         </p>
 
         <label className={styles.field}>
@@ -432,6 +437,35 @@ export function PolicyConfigurationPage() {
                 </option>
               </select>
             </label>
+          </section>
+
+          <section aria-labelledby="booking-notice-heading">
+            <h2 className={styles.sectionTitle} id="booking-notice-heading">
+              New online booking notice period
+            </h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Minimum days before a new online booking (0 = same-day allowed)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                value={form.booking_notice_period_days}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    booking_notice_period_days: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <p className={styles.copy}>
+              Separate from the reschedule notice above. Applies only to
+              brand-new online bookings (customer self-service and receptionist
+              New Booking), never to walk-ins.
+            </p>
           </section>
 
           <section aria-labelledby="staff-picker-heading">

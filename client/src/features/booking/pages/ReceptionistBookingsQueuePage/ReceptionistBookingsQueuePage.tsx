@@ -1412,6 +1412,7 @@ export function ReceptionistBookingsQueuePage() {
                         serviceCategory={booking.service_category}
                         slotDurationMinutes={durationMinutes}
                         viewerMode="staff"
+                        intent="reschedule"
                         selectedSlot={rescheduleSlot}
                         onSelect={setRescheduleSlot}
                       />
