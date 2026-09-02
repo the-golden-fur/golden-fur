@@ -43,8 +43,25 @@ cancellation log is written either way.
   (unique per customer + branch).
 - **Non-transferable** between branches.
 - **Non-refundable as cash.**
-- **Expires** — 30 days from issuance by default, configurable per policy,
-  toggleable on/off.
+- **Expires** — per the branch's `policy_configurations.credit_expiry_mode`
+  (migration `20260902159`), one of: `none` (never), `rolling`
+  (`credit_expiry_days` after issuance — default 30), or `fixed_date` (every
+  lot at the branch on `credit_expiry_fixed_date`). Mutually exclusive;
+  replaced the old `credit_expiry_enabled` boolean. Changing the mode is
+  **retroactive** — when the effective mode/days/date for a branch actually
+  changes, `updatePolicyConfiguration()` calls the
+  `reapply_branch_credit_expiry()` RPC to re-stamp `expires_at` on every
+  not-yet-swept issuance row at the affected branch(es) (the one branch for
+  an override row; every override-less branch for the default row). It's
+  best-effort — a failure is logged and the policy save still returns 200, so
+  the retroactive re-stamp is not guaranteed on an RPC error.
+- **Expiry lands on a day boundary** — every lot's `expires_at` is the **end
+  of its Asia/Manila calendar day** (migration `20260902160`;
+  `server/src/features/credits/modules/creditExpiry.util.ts` for new lots,
+  `reapply_branch_credit_expiry()` for retroactive ones). So credit "expires
+  Oct 1", not "Oct 1 at 05:28", and two lots issued hours apart the same day
+  expire together. The client mirrors this: `credits/utils/expiry.ts` buckets
+  the schedule by Manila day and counts down in whole Manila calendar days.
 
 ## Atomic issuance
 
@@ -59,9 +76,30 @@ balance math in application code across multiple round-trips.
 
 Handled by an `expire_credits()` function — run on a schedule (`pg_cron`
 where available) or via an Admin/Superadmin-triggerable endpoint as a
-fallback. It writes an offsetting expiry transaction and decrements the
-balance for anything past its expiry date. Any new credit-related feature
-needs to account for this sweep running independently of user action.
+fallback. It walks not-yet-swept issuance rows oldest-expiry-first,
+re-reading the balance each iteration (migration `20260902159` — the
+original selected it once, which could drive the balance negative when
+several same-dated `fixed_date` lots exceeded it), writes an offsetting
+expiry transaction, and decrements the balance for anything past its expiry
+date. Any new credit-related feature needs to account for this sweep running
+independently of user action.
+
+## Surfacing expiry to customers
+
+`GET /credits/balances` enriches each per-branch row with `next_expires_at`
+and `next_expires_amount` (the soonest **Manila day**'s lot total,
+FIFO-capped at the balance) so the navbar pill's hover popover needs no
+history fetch. The `/portal/credits` page (`CustomerCreditsPage`) pulls
+per-branch history and replays the same FIFO walk client-side
+(`credits/utils/expiry.ts` `computeExpirySchedule`) for the full schedule;
+`schedule[0]` must equal the server's `next_expires_*`.
+
+**Redemptions are not lot-attributed.** `redeem_credit()` decrements the
+balance number only; `expire_credits()` expires oldest-expiry-first up to
+whatever balance remains. So a redemption effectively comes out of the
+customer's _latest_-expiring credit, and the schedule can legitimately show
+₱0 on a later date whose lot exists in the raw ledger — it reflects what the
+sweep will actually do.
 
 ## Checkout redemption is now wired
 

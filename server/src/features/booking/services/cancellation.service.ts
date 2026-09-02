@@ -13,6 +13,7 @@ import {
   writeCancellationLog,
 } from './cancellationLog.service.ts';
 import { issueCredit } from '../../credits/services/creditIssuance.service.ts';
+import { manilaEndOfDayIso } from '../../credits/modules/creditExpiry.util.ts';
 import { sendBookingCancelledNotification } from './bookingNotifications.service.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -154,11 +155,22 @@ export async function cancelBooking({
   // credit_transactions.cancellation_log_id is nullable, so a missing log
   // row is fine.
   if (qualifies) {
-    const expiresAt = notice.policy.credit_expiry_enabled
-      ? new Date(
-          Date.now() + notice.policy.credit_expiry_days * DAY_MS
-        ).toISOString()
-      : null;
+    const {
+      credit_expiry_mode: expiryMode,
+      credit_expiry_days: expiryDays,
+      credit_expiry_fixed_date: expiryFixedDate,
+    } = notice.policy;
+
+    let expiresAt: string | null = null;
+    if (expiryMode === 'rolling') {
+      // End of the Manila day N days out - see creditExpiry.util.ts. The
+      // same instant reapply_branch_credit_expiry() stamps for retroactive
+      // re-applies, so a fresh lot and the migrated ones line up.
+      expiresAt = manilaEndOfDayIso(new Date(Date.now() + expiryDays * DAY_MS));
+    } else if (expiryMode === 'fixed_date' && expiryFixedDate) {
+      expiresAt = manilaEndOfDayIso(expiryFixedDate);
+    }
+    // expiryMode === 'none' -> expiresAt stays null (credit never expires).
 
     const transaction = await issueCredit({
       customerId: booking.customer_id,

@@ -9,6 +9,12 @@ export interface CreditBalance {
   balance: number;
   created_at: string;
   updated_at: string;
+  /** Soonest upcoming expiry across this branch's not-yet-swept issuance
+   * lots (server-computed on read); null when nothing here expires. */
+  next_expires_at: string | null;
+  /** Pesos that actually expire on `next_expires_at` - the soonest lot(s)'
+   * total capped at the current balance; null when `next_expires_at` is. */
+  next_expires_amount: number | null;
 }
 
 export interface CreditTransaction {

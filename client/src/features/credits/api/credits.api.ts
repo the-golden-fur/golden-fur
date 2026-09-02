@@ -56,6 +56,9 @@ export async function listCreditBalances(
   const balances = result.data?.balances?.map((row) => ({
     ...row,
     balance: Number(row.balance),
+    // next_expires_amount is a PG numeric too - same string caveat.
+    next_expires_amount:
+      row.next_expires_amount == null ? null : Number(row.next_expires_amount),
   }));
   return { data: balances ?? null, error: result.error };
 }

@@ -21,8 +21,18 @@
   font-size: var(--text-sm);
 }
 
-.creditSection {
-  display: grid;
-  gap: var(--space-2);
+.creditSummary {
   margin-top: var(--space-2);
+  align-self: start;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.creditSummary:hover {
+  color: var(--color-accent-gold-primary);
+}
+
+.creditSummary strong {
+  color: var(--color-accent-gold-primary);
 }

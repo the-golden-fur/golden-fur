@@ -1,0 +1,93 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  gap: var(--space-3);
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.sections {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.branchSection {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.toggle {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-accent-gold-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  text-decoration: underline;
+}
+
+.detail {
+  display: grid;
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--color-border);
+}
+
+.detailHeading {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.schedule {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scheduleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.scheduleAmount {
+  color: var(--color-accent-gold-primary);
+  font-weight: var(--weight-bold);
+  min-width: 6rem;
+}
+
+.scheduleDate {
+  color: var(--color-text-primary);
+}
+
+.scheduleDays {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
