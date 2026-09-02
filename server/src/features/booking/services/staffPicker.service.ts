@@ -32,8 +32,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   reschedule_fee_type: null,
   reschedule_fee_value: null,
   reschedule_free_allowance: null,
-  credit_expiry_enabled: true,
+  credit_expiry_mode: 'rolling',
   credit_expiry_days: 30,
+  credit_expiry_fixed_date: null,
   cancellation_credit_conversion_rate: 100,
   online_payments_enabled: true,
   downpayment_enabled: false,
@@ -300,6 +301,92 @@ interface UpdatePolicyParams {
   input: UpdatePolicyInput;
 }
 
+type CreditExpirySnapshot = Pick<
+  EffectivePolicy,
+  'credit_expiry_mode' | 'credit_expiry_days' | 'credit_expiry_fixed_date'
+>;
+
+function creditExpiryUnchanged(
+  a: CreditExpirySnapshot,
+  b: CreditExpirySnapshot
+): boolean {
+  return (
+    a.credit_expiry_mode === b.credit_expiry_mode &&
+    a.credit_expiry_days === b.credit_expiry_days &&
+    a.credit_expiry_fixed_date === b.credit_expiry_fixed_date
+  );
+}
+
+/**
+ * A credit-expiry rule change is retroactive: re-stamp `expires_at` on every
+ * not-yet-swept `issuance` row at the affected branch(es) to match the new
+ * mode, so "entire branch credits expire at X date" (and relaxing it again)
+ * covers credit customers already hold, not just future issuances.
+ * `expire_credits()` then sweeps them on its normal schedule.
+ *
+ * No-op unless the effective mode/days/date for the branch actually changed
+ * (the Policies page PATCHes all fields on every save, so an unrelated edit
+ * like the lunch break must not fan a re-stamp out across every branch).
+ *
+ * Best-effort: a failure here is logged and the policy save still succeeds
+ * (mirrors the #117 credit-issuance non-gating precedent).
+ *
+ * Affected branches: the one concrete branch when a branch-override row was
+ * saved; every branch with no override of its own when the system-default
+ * row was saved (exactly the branches resolveEffectivePolicy hands the
+ * default row).
+ */
+async function reapplyCreditExpiryAfterPolicyChange(
+  branchId: string | null,
+  before: CreditExpirySnapshot,
+  after: CreditExpirySnapshot
+): Promise<void> {
+  if (creditExpiryUnchanged(before, after)) return;
+
+  try {
+    let branchIds: string[];
+    if (branchId) {
+      branchIds = [branchId];
+    } else {
+      const { data: allBranches, error: branchesError } = await supabase
+        .from('branches')
+        .select('id');
+      if (branchesError) throw new Error(branchesError.message);
+
+      const { data: overrideRows, error: overrideError } = await supabase
+        .from('policy_configurations')
+        .select('branch_id')
+        .not('branch_id', 'is', null);
+      if (overrideError) throw new Error(overrideError.message);
+
+      const overridden = new Set(
+        (overrideRows ?? []).map(
+          (row) => (row as { branch_id: string }).branch_id
+        )
+      );
+      branchIds = (allBranches ?? [])
+        .map((row) => (row as { id: string }).id)
+        .filter((id) => !overridden.has(id));
+    }
+
+    if (branchIds.length === 0) return;
+
+    const { error } = await supabase.rpc('reapply_branch_credit_expiry', {
+      p_branch_ids: branchIds,
+      p_mode: after.credit_expiry_mode,
+      p_days: after.credit_expiry_days,
+      p_fixed_date: after.credit_expiry_fixed_date,
+    });
+    if (error) throw new Error(error.message);
+  } catch (reapplyError) {
+    // eslint-disable-next-line no-console
+    console.error(
+      'reapplyCreditExpiryAfterPolicyChange failed (policy still saved):',
+      reapplyError
+    );
+  }
+}
+
 /**
  * Admin/Superadmin PATCH (#52 AC-2): updates the system-wide default row
  * (branch_id null/omitted) or a branch's override row, creating the override
@@ -310,6 +397,17 @@ export async function updatePolicyConfiguration({
   input,
 }: UpdatePolicyParams): Promise<PolicyConfiguration> {
   const { branch_id: branchId = null, ...settings } = input;
+
+  // credit_expiry_fixed_date only means anything in 'fixed_date' mode - clear
+  // it whenever the mode is being set to something else, so a stale date
+  // can't linger on the row (the validator only rejects a date sent *with* a
+  // non-fixed mode, not a mode change that omits the date field).
+  if (
+    settings.credit_expiry_mode !== undefined &&
+    settings.credit_expiry_mode !== 'fixed_date'
+  ) {
+    settings.credit_expiry_fixed_date = null;
+  }
 
   let existingQuery = supabase.from('policy_configurations').select('*');
 
@@ -334,6 +432,12 @@ export async function updatePolicyConfiguration({
       throwWithStatus(400, error?.message ?? 'Failed to update policy');
     }
 
+    await reapplyCreditExpiryAfterPolicyChange(
+      branchId,
+      existing as PolicyConfiguration,
+      data as PolicyConfiguration
+    );
+
     return data as PolicyConfiguration;
   }
 
@@ -353,8 +457,9 @@ export async function updatePolicyConfiguration({
     reschedule_fee_type: resolved.reschedule_fee_type,
     reschedule_fee_value: resolved.reschedule_fee_value,
     reschedule_free_allowance: resolved.reschedule_free_allowance,
-    credit_expiry_enabled: resolved.credit_expiry_enabled,
+    credit_expiry_mode: resolved.credit_expiry_mode,
     credit_expiry_days: resolved.credit_expiry_days,
+    credit_expiry_fixed_date: resolved.credit_expiry_fixed_date,
     cancellation_credit_conversion_rate:
       resolved.cancellation_credit_conversion_rate,
     online_payments_enabled: resolved.online_payments_enabled,
@@ -373,6 +478,14 @@ export async function updatePolicyConfiguration({
   if (error || !data) {
     throwWithStatus(400, error?.message ?? 'Failed to create policy row');
   }
+
+  // `resolved` is what this branch's credit followed before the override
+  // existed; a new row whose credit fields match it changes no lots.
+  await reapplyCreditExpiryAfterPolicyChange(
+    branchId,
+    resolved,
+    data as PolicyConfiguration
+  );
 
   return data as PolicyConfiguration;
 }

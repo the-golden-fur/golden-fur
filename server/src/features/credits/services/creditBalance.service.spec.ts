@@ -26,7 +26,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'order']) {
+    for (const method of ['select', 'eq', 'order', 'in', 'is', 'not']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -62,6 +62,100 @@ describe('creditBalance.service (#90/#95)', () => {
       const result = await listCreditBalances({ requesterId: CUSTOMER_ID });
 
       expect(result).toHaveLength(1);
+    });
+
+    it('enriches each balance with the soonest expiry, FIFO-capped at the balance', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'bal-1',
+              customer_id: CUSTOMER_ID,
+              branch_id: 'branch-1',
+              balance: 120,
+            },
+          ],
+          error: null,
+        },
+        {
+          // Two lots, ₱100 (soonest) + ₱80 - balance is only ₱120, so the
+          // soonest lot expires its full ₱100.
+          data: [
+            {
+              credit_balance_id: 'bal-1',
+              amount: 100,
+              expires_at: '2026-10-01T00:00:00Z',
+            },
+            {
+              credit_balance_id: 'bal-1',
+              amount: 80,
+              expires_at: '2026-11-01T00:00:00Z',
+            },
+          ],
+          error: null,
+        }
+      );
+
+      const [row] = await listCreditBalances({ requesterId: CUSTOMER_ID });
+
+      // End of the soonest lot's Manila day (2026-10-01 23:59:59.999 +08:00).
+      expect(row.next_expires_at).toBe('2026-10-01T15:59:59.999Z');
+      expect(row.next_expires_amount).toBe(100);
+    });
+
+    it('shrinks next_expires_amount when redemptions have eaten into the balance', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'bal-1',
+              customer_id: CUSTOMER_ID,
+              branch_id: 'branch-1',
+              balance: 30,
+            },
+          ],
+          error: null,
+        },
+        {
+          data: [
+            {
+              credit_balance_id: 'bal-1',
+              amount: 100,
+              expires_at: '2026-10-01T00:00:00Z',
+            },
+          ],
+          error: null,
+        }
+      );
+
+      const [row] = await listCreditBalances({ requesterId: CUSTOMER_ID });
+
+      expect(row.next_expires_amount).toBe(30);
+    });
+
+    it('leaves next_expires_* null when nothing at the branch expires', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'bal-1',
+              customer_id: CUSTOMER_ID,
+              branch_id: 'branch-1',
+              balance: 500,
+            },
+          ],
+          error: null,
+        },
+        { data: [], error: null }
+      );
+
+      const [row] = await listCreditBalances({ requesterId: CUSTOMER_ID });
+
+      expect(row.next_expires_at).toBeNull();
+      expect(row.next_expires_amount).toBeNull();
     });
 
     it('AC-3: a customer cannot pass a different customer_id', async () => {

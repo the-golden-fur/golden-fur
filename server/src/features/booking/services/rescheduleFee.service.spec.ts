@@ -16,8 +16,9 @@ function policy(overrides: Partial<EffectivePolicy> = {}): EffectivePolicy {
     reschedule_fee_type: null,
     reschedule_fee_value: null,
     reschedule_free_allowance: null,
-    credit_expiry_enabled: true,
+    credit_expiry_mode: 'rolling',
     credit_expiry_days: 30,
+    credit_expiry_fixed_date: null,
     ...overrides,
   };
 }

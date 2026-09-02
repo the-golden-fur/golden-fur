@@ -11,8 +11,8 @@ export interface IssueCreditParams {
    * proceeds. */
   cancellationLogId: string | null;
   /** Pre-computed by the caller from policy_configurations.credit_expiry_*
-   * at the moment of issuance (#88) - null when credit_expiry_enabled is
-   * false. */
+   * at the moment of issuance (#88) - null when credit_expiry_mode is
+   * 'none'. */
   expiresAt: string | null;
 }
 
@@ -44,11 +44,8 @@ export async function issueCredit(
   });
 
   if (error || !data) {
-    console.error(
-      // eslint-disable-line no-console
-      'issueCredit failed:',
-      error?.message ?? 'no row returned'
-    );
+    // eslint-disable-next-line no-console
+    console.error('issueCredit failed:', error?.message ?? 'no row returned');
     return null;
   }
 

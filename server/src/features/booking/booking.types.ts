@@ -221,6 +221,12 @@ export type RescheduleFeeType = 'Flat' | 'Percentage';
  * (policy_configurations.downpayment_type). */
 export type DownpaymentType = 'Flat' | 'Percentage';
 
+/** How account credit issued at a branch expires (20260902159):
+ * 'none' never, 'rolling' credit_expiry_days after issuance,
+ * 'fixed_date' all on credit_expiry_fixed_date. Mutually exclusive -
+ * replaces the old credit_expiry_enabled boolean. */
+export type CreditExpiryMode = 'none' | 'rolling' | 'fixed_date';
+
 export type StaffPreferenceType = 'no_preference' | 'specific';
 
 /**
@@ -390,8 +396,12 @@ export interface PolicyConfiguration {
   reschedule_fee_value: number | null;
   /** NULL = unlimited free reschedules (documented default). */
   reschedule_free_allowance: number | null;
-  credit_expiry_enabled: boolean;
+  credit_expiry_mode: CreditExpiryMode;
   credit_expiry_days: number;
+  /** The calendar date ("YYYY-MM-DD") every not-yet-expired credit lot at
+   * this branch expires on, when credit_expiry_mode = 'fixed_date'. NULL
+   * otherwise. */
+  credit_expiry_fixed_date: string | null;
   /** Percentage (0-100) of the amount a customer actually paid that is
    * converted to account credit on a qualifying cancellation (advisor
    * addendum #10). Default 100 = full conversion; lower it to keep part of
@@ -437,8 +447,9 @@ export type EffectivePolicy = Pick<
   | 'reschedule_fee_type'
   | 'reschedule_fee_value'
   | 'reschedule_free_allowance'
-  | 'credit_expiry_enabled'
+  | 'credit_expiry_mode'
   | 'credit_expiry_days'
+  | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
   | 'online_payments_enabled'
   | 'downpayment_enabled'

@@ -10,6 +10,7 @@ import {
   updatePolicyConfiguration,
 } from '../../api/policy.api';
 import type {
+  CreditExpiryMode,
   DownpaymentType,
   EnforcementMode,
   PolicyConfiguration,
@@ -42,8 +43,10 @@ interface FormState {
    * represent "no value" itself. */
   reschedule_free_allowance_unlimited: boolean;
   reschedule_free_allowance: number;
-  credit_expiry_enabled: boolean;
+  credit_expiry_mode: CreditExpiryMode;
   credit_expiry_days: number;
+  /** "YYYY-MM-DD"; '' when not in fixed_date mode. */
+  credit_expiry_fixed_date: string;
   cancellation_credit_conversion_rate: number;
   online_payments_enabled: boolean;
   downpayment_enabled: boolean;
@@ -68,8 +71,9 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     reschedule_free_allowance_unlimited:
       policy.reschedule_free_allowance === null,
     reschedule_free_allowance: policy.reschedule_free_allowance ?? 1,
-    credit_expiry_enabled: policy.credit_expiry_enabled,
+    credit_expiry_mode: policy.credit_expiry_mode,
     credit_expiry_days: policy.credit_expiry_days,
+    credit_expiry_fixed_date: policy.credit_expiry_fixed_date ?? '',
     cancellation_credit_conversion_rate:
       policy.cancellation_credit_conversion_rate,
     online_payments_enabled: policy.online_payments_enabled,
@@ -94,8 +98,9 @@ const DOCUMENTED_DEFAULTS: FormState = {
   reschedule_fee_value: 0,
   reschedule_free_allowance_unlimited: true,
   reschedule_free_allowance: 1,
-  credit_expiry_enabled: true,
+  credit_expiry_mode: 'rolling',
   credit_expiry_days: 30,
+  credit_expiry_fixed_date: '',
   cancellation_credit_conversion_rate: 100,
   online_payments_enabled: true,
   downpayment_enabled: false,
@@ -135,6 +140,8 @@ export function PolicyConfigurationPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // "YYYY-MM-DD" today, for the credit-expiry past-date hint.
+  const [todayIso] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -225,6 +232,16 @@ export function PolicyConfigurationPage() {
       return;
     }
 
+    if (
+      form.credit_expiry_mode === 'fixed_date' &&
+      !form.credit_expiry_fixed_date
+    ) {
+      setFormError(
+        'Pick the date all of this branch’s credit should expire on.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
     setMessage(null);
@@ -245,8 +262,12 @@ export function PolicyConfigurationPage() {
       reschedule_free_allowance: form.reschedule_free_allowance_unlimited
         ? null
         : form.reschedule_free_allowance,
-      credit_expiry_enabled: form.credit_expiry_enabled,
+      credit_expiry_mode: form.credit_expiry_mode,
       credit_expiry_days: form.credit_expiry_days,
+      credit_expiry_fixed_date:
+        form.credit_expiry_mode === 'fixed_date'
+          ? form.credit_expiry_fixed_date
+          : null,
       cancellation_credit_conversion_rate:
         form.cancellation_credit_conversion_rate,
       online_payments_enabled: form.online_payments_enabled,
@@ -325,8 +346,9 @@ export function PolicyConfigurationPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Policies</h1>
         <p className={styles.copy}>
-          Reschedule notice period, Staff Picker visibility, and the fixed lunch
-          break - system-wide default, or a per-branch override.
+          Reschedule notice period and fee, Staff Picker visibility, the fixed
+          lunch break, online payments and downpayment, cancellation credit, and
+          credit expiry - system-wide default, or a per-branch override.
         </p>
 
         <label className={styles.field}>
@@ -738,36 +760,75 @@ export function PolicyConfigurationPage() {
               Credit expiry
             </h2>
 
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.credit_expiry_enabled}
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>How credit expires</span>
+              <select
+                className={styles.input}
+                value={form.credit_expiry_mode}
                 onChange={(event) =>
                   setForm((prev) => ({
                     ...prev,
-                    credit_expiry_enabled: event.target.checked,
+                    credit_expiry_mode: event.target.value as CreditExpiryMode,
                   }))
                 }
-              />
-              <span>Unused credit expires</span>
+              >
+                <option value="none">Credit never expires</option>
+                <option value="rolling">
+                  Expire a set number of days after each credit is issued
+                </option>
+                <option value="fixed_date">
+                  All of this branch&apos;s credit expires on one date
+                </option>
+              </select>
             </label>
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Expires after (days)</span>
-              <input
-                className={styles.input}
-                type="number"
-                min={1}
-                value={form.credit_expiry_days}
-                disabled={!form.credit_expiry_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    credit_expiry_days: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
+            {form.credit_expiry_mode === 'rolling' ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Expires after (days)</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min={1}
+                  value={form.credit_expiry_days}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      credit_expiry_days: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+
+            {form.credit_expiry_mode === 'fixed_date' ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Expiry date</span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  value={form.credit_expiry_fixed_date}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      credit_expiry_fixed_date: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+
+            <p className={styles.copy}>
+              Saving this re-applies to credit customers already hold at{' '}
+              {selectedBranchId
+                ? 'this branch'
+                : 'every branch that follows the default'}
+              , not just credit issued from now on.
+              {form.credit_expiry_mode === 'fixed_date' &&
+              form.credit_expiry_fixed_date &&
+              form.credit_expiry_fixed_date < todayIso
+                ? ' The date you picked is already past — that credit will be expired on the next sweep.'
+                : ''}
+            </p>
           </section>
 
           {formError ? (

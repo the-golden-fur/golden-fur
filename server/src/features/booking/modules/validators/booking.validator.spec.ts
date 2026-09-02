@@ -338,6 +338,57 @@ describe('updatePolicyValidator', () => {
       }).success
     ).toBe(false);
   });
+
+  it('accepts credit_expiry_mode "rolling" with a day count', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'rolling',
+        credit_expiry_days: 45,
+      }).success
+    ).toBe(true);
+  });
+
+  it('accepts credit_expiry_mode "fixed_date" with a date', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'fixed_date',
+        credit_expiry_fixed_date: '2026-12-31',
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects "fixed_date" mode without a date', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'fixed_date',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a fixed date alongside a non-fixed mode (only one or the other)', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'rolling',
+        credit_expiry_days: 30,
+        credit_expiry_fixed_date: '2026-12-31',
+      }).success
+    ).toBe(false);
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'none',
+        credit_expiry_fixed_date: '2026-12-31',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a malformed fixed date', () => {
+    expect(
+      updatePolicyValidator.safeParse({
+        credit_expiry_mode: 'fixed_date',
+        credit_expiry_fixed_date: '12/31/2026',
+      }).success
+    ).toBe(false);
+  });
 });
 
 describe('overrideBookingStatusValidator', () => {
