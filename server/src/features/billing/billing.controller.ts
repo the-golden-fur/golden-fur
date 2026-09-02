@@ -234,6 +234,7 @@ export async function recordTransactionPaymentController(
       bankName: parsed.data.bank_name ?? null,
       paymentReference: parsed.data.payment_reference ?? null,
       cashTendered: parsed.data.cash_tendered ?? null,
+      amountApplied: parsed.data.amount_applied ?? null,
     });
     return res.status(200).json(result);
   } catch (error) {

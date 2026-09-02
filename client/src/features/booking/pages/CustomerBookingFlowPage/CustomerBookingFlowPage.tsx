@@ -48,6 +48,7 @@ import {
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
+  type PaymentScheme,
   type PetBookingConflict,
   type ServiceCategory,
   type StaffPreferenceInput,
@@ -252,7 +253,7 @@ interface PersistedBookingDraft {
   hotelNights: number;
   selectedPromoId: string;
   selectedDiscountId: string;
-  paymentChoice: 'downpayment' | 'full';
+  paymentChoice: PaymentScheme;
   specialInstructions: string;
   hotelFeeding: HotelFeedingRowState[];
   hotelWalking: Array<typeof EMPTY_HOTEL_WALKING_ROW>;
@@ -503,9 +504,8 @@ export function CustomerBookingFlowPage() {
   const [discountIdVerified, setDiscountIdVerified] = useState(false);
   // Payment scheme: only sent when the branch requires a down payment (see
   // showPaymentChoice). Decides the size of the booking's initial charge.
-  const [paymentChoice, setPaymentChoice] = useState<'downpayment' | 'full'>(
-    'downpayment'
-  );
+  const [paymentChoice, setPaymentChoice] =
+    useState<PaymentScheme>('downpayment');
   const [specialInstructions, setSpecialInstructions] = useState('');
 
   // Hotel-only: freetext feeding/walking/medication preferences captured at
@@ -2905,16 +2905,18 @@ export function CustomerBookingFlowPage() {
                 <span>Estimated total</span>
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
               </div>
-              {downpaymentAmount !== null ? (
+              {showPaymentChoice &&
+              paymentChoice === 'downpayment' &&
+              downpaymentAmount !== null ? (
                 <>
                   <div className={styles.downpaymentDueNow}>
-                    <span>Downpayment due now</span>
+                    <span>Downpayment amount</span>
                     <span>PHP {downpaymentAmount.toFixed(2)}</span>
                   </div>
                   <div
                     className={`${styles.pricingRow} ${styles.pricingRowMuted}`}
                   >
-                    <span>Balance due later</span>
+                    <span>Remaining balance</span>
                     <span>
                       PHP{' '}
                       {Math.max(0, estimatedTotal - downpaymentAmount).toFixed(
@@ -2928,8 +2930,9 @@ export function CustomerBookingFlowPage() {
 
             {requiresPayment ? (
               <p className={styles.copy}>
-                Payment is recorded at the counter (or from account credit) - no
-                payment method is chosen here.
+                No payment is collected in this step - you are only choosing the
+                payment scheme. The charge(s) are settled afterwards (at the
+                counter or from account credit).
               </p>
             ) : (
               <p className={styles.copy}>
@@ -2939,10 +2942,7 @@ export function CustomerBookingFlowPage() {
 
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>
-                  This booking requires a down payment - set it up as the down
-                  payment now, or the full amount?
-                </legend>
+                <legend className={styles.fieldLabel}>Payment scheme</legend>
                 <label className={styles.radioOption}>
                   <input
                     type="radio"
@@ -2950,9 +2950,13 @@ export function CustomerBookingFlowPage() {
                     checked={paymentChoice === 'downpayment'}
                     onChange={() => setPaymentChoice('downpayment')}
                   />
-                  Pay downpayment only now (PHP{' '}
-                  {(downpaymentAmount ?? 0).toFixed(2)}) - the rest is due at
-                  the counter
+                  Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
+                  PHP{' '}
+                  {Math.max(
+                    0,
+                    estimatedTotal - (downpaymentAmount ?? 0)
+                  ).toFixed(2)}{' '}
+                  remaining balance
                 </label>
                 <label className={styles.radioOption}>
                   <input
@@ -2961,7 +2965,7 @@ export function CustomerBookingFlowPage() {
                     checked={paymentChoice === 'full'}
                     onChange={() => setPaymentChoice('full')}
                   />
-                  Pay in full now (PHP {estimatedTotal.toFixed(2)})
+                  Full payment - PHP {estimatedTotal.toFixed(2)}
                 </label>
               </fieldset>
             ) : null}

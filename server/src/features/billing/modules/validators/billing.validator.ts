@@ -160,6 +160,10 @@ export const recordTransactionPaymentValidator = z
     bank_name: z.enum(BANK_NAMES).optional(),
     payment_reference: z.string().trim().min(1).optional(),
     cash_tendered: z.number().nonnegative().optional(),
+    // Amount actually collected now (defaults to the whole transaction).
+    // A smaller value settles this transaction partially and spawns a
+    // Pending 'balance' transaction for the remainder.
+    amount_applied: z.number().positive().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

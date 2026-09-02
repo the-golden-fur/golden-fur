@@ -20,6 +20,15 @@ export type BankName = (typeof BANK_NAMES)[number];
 export type TransactionType = 'booking_payment' | 'miscellaneous_sale';
 export type PaymentStatus = 'Pending' | 'Fully Paid' | 'Partially Paid';
 
+/** Which portion of a booking a booking_payment transaction covers - mirrors
+ * the server's PAYMENT_CHOICES. 'full' = whole net total; 'downpayment' = the
+ * required down payment; 'balance' = a payment toward the remaining balance
+ * (the upfront balance charge alongside a down payment, a leftover spawned by
+ * a partial settlement, or an added instalment). Null on misc sales / older
+ * rows. */
+export const PAYMENT_CHOICES = ['full', 'downpayment', 'balance'] as const;
+export type PaymentChoice = (typeof PAYMENT_CHOICES)[number];
+
 export type LineItemType =
   | 'service'
   | 'addon'
@@ -46,11 +55,10 @@ export interface Transaction {
   misc_sale_description: string | null;
   webhook_confirmed_at: string | null;
   processed_by_staff_id: string | null;
-  /** 'downpayment' when this payment only covered the booking's down
-   * payment (balance still due), 'full' otherwise. NULL for older rows /
-   * misc sales. Drives the "Down payment" vs "Full payment" label in the
-   * Payments Queue's per-booking payment history (§6). */
-  payment_choice: 'full' | 'downpayment' | null;
+  /** Which portion of the booking this payment covers - see PAYMENT_CHOICES.
+   * NULL for older rows / misc sales. Drives the "Down payment" / "Balance
+   * payment" / "Full payment" label in the per-booking payment history. */
+  payment_choice: PaymentChoice | null;
   created_at: string;
   updated_at: string;
 }

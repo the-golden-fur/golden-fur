@@ -3,6 +3,7 @@ import {
   BOOKING_SOURCES,
   BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
+  PAYMENT_SCHEMES,
   PAYMENT_STATUSES,
 } from '../../booking.types.ts';
 
@@ -222,7 +223,7 @@ export const createBookingValidator = z
     // time - only the scheme (how the initial charge transaction is sized).
     // 'downpayment' only matters when the branch down-payment policy is on;
     // otherwise it's a single full-net-total charge. See createBooking.
-    payment_scheme: z.enum(['downpayment', 'full']).optional(),
+    payment_scheme: z.enum(PAYMENT_SCHEMES).optional(),
     special_instructions: z.string().trim().min(1).optional(),
     hotel_preferences: hotelPreferencesValidator.optional(),
     // Role (money-handling staff only) and Cash-only enforcement happen in

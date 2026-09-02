@@ -13,7 +13,10 @@ import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { getTransactionHistory } from '../../api/reports.api';
 import type { TransactionRecord } from '../../reports.types';
 import { PaymentMethodForm } from '../../../billing/components/PaymentMethodForm/PaymentMethodForm';
-import type { PaymentFields } from '../../../billing/billing.types';
+import {
+  PAYMENT_METHODS,
+  type PaymentFields,
+} from '../../../billing/billing.types';
 import {
   addBookingPayment,
   payTransactionWithCredit,
@@ -52,7 +55,13 @@ const PAYMENT_CHOICE_OPTIONS = [
   { value: '', label: 'Full & down payments' },
   { value: 'full', label: 'Full payment' },
   { value: 'downpayment', label: 'Down payment' },
+  { value: 'balance', label: 'Balance payment' },
 ];
+
+/** The Record-payment modal lets a cashier settle straight from the
+ * customer's account credit too (routed to the pay-with-credit endpoint),
+ * on top of the usual counter methods. */
+const PAY_MODAL_METHODS = [...PAYMENT_METHODS, 'Credit'] as const;
 
 type SortKey = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
 
@@ -100,6 +109,7 @@ export function TransactionHistoryTable() {
   const [payFields, setPayFields] = useState<PaymentFields>({
     payment_method: 'Cash',
   });
+  const [payAmount, setPayAmount] = useState('');
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -145,14 +155,51 @@ export function TransactionHistoryTable() {
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
-    setPayFields({ payment_method: 'Cash' });
+    setPayFields({
+      payment_method: 'Cash',
+      // Prefill the cash box with the amount due - the common case is the
+      // customer handing over the exact amount.
+      cash_tendered: t.total_amount,
+    });
+    setPayAmount(String(t.total_amount));
     setPayError(null);
   };
 
-  const runPay = async (fn: () => Promise<{ error?: string | null }>) => {
+  // 'Credit' is a Transactions-page-only method (routed to the pay-with-credit
+  // endpoint); it isn't a PaymentMethod, so compare as a string.
+  const payIsCredit = (payFields.payment_method as string) === 'Credit';
+
+  const confirmPay = async () => {
+    if (!payTarget || !accessToken) return;
+
+    const collecting = Number(payAmount);
+    if (!Number.isFinite(collecting) || collecting <= 0) {
+      setPayError('Enter an amount greater than zero.');
+      return;
+    }
+    if (collecting > payTarget.total_amount + 0.001) {
+      setPayError('Amount to collect cannot exceed the transaction total.');
+      return;
+    }
+
     setPayBusy(true);
     setPayError(null);
-    const result = await fn();
+
+    const result = payIsCredit
+      ? await payTransactionWithCredit(payTarget.id, accessToken)
+      : await recordTransactionPayment(
+          payTarget.id,
+          {
+            payment_method: payFields.payment_method,
+            bank_name: payFields.bank_name,
+            payment_reference: payFields.payment_reference,
+            cash_tendered: payFields.cash_tendered,
+            amount_applied:
+              collecting < payTarget.total_amount ? collecting : undefined,
+          },
+          accessToken
+        );
+
     setPayBusy(false);
     if (result.error) {
       setPayError(result.error);
@@ -532,16 +579,35 @@ export function TransactionHistoryTable() {
             aria-labelledby="record-payment-title"
           >
             <h2 id="record-payment-title" className={styles.modalTitle}>
-              Record payment — PHP {payTarget.total_amount.toFixed(2)}
+              Mark as paid — PHP {payTarget.total_amount.toFixed(2)}
             </h2>
-            {/* The amount is locked to this transaction's own total - a
-                'downpayment' or 'full' charge is settled as-is; a partial
-                'balance' amount is chosen when the balance charge is created,
-                not here. */}
+            {payIsCredit ? null : (
+              <label className={styles.field}>
+                Amount to collect (PHP)
+                <input
+                  className={styles.control}
+                  type="number"
+                  min={0.01}
+                  max={payTarget.total_amount}
+                  step="0.01"
+                  value={payAmount}
+                  onChange={(event) => setPayAmount(event.target.value)}
+                />
+              </label>
+            )}
+            {!payIsCredit &&
+            Number(payAmount) > 0 &&
+            Number(payAmount) < payTarget.total_amount ? (
+              <p className={styles.copy}>
+                A PHP {(payTarget.total_amount - Number(payAmount)).toFixed(2)}{' '}
+                balance payment will be created for the rest.
+              </p>
+            ) : null}
             <PaymentMethodForm
               value={payFields}
               onChange={setPayFields}
-              amountDue={payTarget.total_amount}
+              amountDue={Number(payAmount) || payTarget.total_amount}
+              methods={PAY_MODAL_METHODS}
             />
             {payError ? (
               <p className={styles.errorBanner} role="alert">
@@ -558,39 +624,11 @@ export function TransactionHistoryTable() {
               </button>
               <button
                 type="button"
-                className={styles.secondaryButton}
-                disabled={payBusy}
-                onClick={() =>
-                  void runPay(() =>
-                    payTransactionWithCredit(
-                      payTarget.id,
-                      accessToken as string
-                    )
-                  )
-                }
-              >
-                Pay from account credit
-              </button>
-              <button
-                type="button"
                 className={styles.payButton}
                 disabled={payBusy}
-                onClick={() =>
-                  void runPay(() =>
-                    recordTransactionPayment(
-                      payTarget.id,
-                      {
-                        payment_method: payFields.payment_method,
-                        bank_name: payFields.bank_name,
-                        payment_reference: payFields.payment_reference,
-                        cash_tendered: payFields.cash_tendered,
-                      },
-                      accessToken as string
-                    )
-                  )
-                }
+                onClick={() => void confirmPay()}
               >
-                {payBusy ? 'Processing...' : 'Record payment'}
+                {payBusy ? 'Processing...' : 'Mark as paid'}
               </button>
             </div>
           </section>

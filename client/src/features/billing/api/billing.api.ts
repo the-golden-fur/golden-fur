@@ -141,6 +141,10 @@ export interface RecordPaymentPayload {
   bank_name?: string;
   payment_reference?: string;
   cash_tendered?: number;
+  /** Amount collected now; omit to settle the whole transaction. A smaller
+   * value settles it partially and creates a Pending 'balance' transaction
+   * for the remainder. */
+  amount_applied?: number;
 }
 
 /** Cashier records a counter payment against a Pending booking_payment
@@ -154,6 +158,7 @@ export async function recordTransactionPayment(
     transaction: Transaction;
     booking: unknown;
     changeAmount: number | null;
+    leftover: Transaction | null;
   }>
 > {
   const response = await fetch(
@@ -194,11 +199,19 @@ export async function addBookingPayment(
   return parseBody(response);
 }
 
-/** Pays a Pending transaction from the customer's credit balance. */
+/** Pays a Pending transaction from the customer's credit balance. Partial
+ * cover settles it for the available credit and spawns a Pending 'balance'
+ * transaction for the rest. */
 export async function payTransactionWithCredit(
   transactionId: string,
   accessToken: string
-): Promise<BillingApiResult<{ transaction: Transaction; booking: unknown }>> {
+): Promise<
+  BillingApiResult<{
+    transaction: Transaction;
+    booking: unknown;
+    leftover: Transaction | null;
+  }>
+> {
   const response = await fetch(
     `${API_BASE_URL}/billing/transactions/${transactionId}/pay-with-credit`,
     { method: 'POST', headers: jsonHeaders(accessToken) }
