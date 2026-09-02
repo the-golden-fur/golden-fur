@@ -20,6 +20,7 @@ import {
   OVERRIDABLE_BOOKING_STATUSES,
   type Booking,
   type BookingSource,
+  type PaymentScheme,
   type PaymentStatus,
   type ServiceCategory,
 } from '../booking.types.ts';
@@ -858,18 +859,16 @@ export async function createBooking({
   // Transactions page - nothing here reads payment_method / payment_confirmed
   // any more.
   //
-  // payment_scheme decides how much the initial charge transaction is for:
-  // 'downpayment' (only when the branch down-payment policy is on) charges
-  // just the down payment; 'full' / no policy charges the whole net total.
+  // payment_scheme decides the shape of the initial charge (see
+  // create_initial_booking_charge, 20260902162): 'downpayment' (only when the
+  // branch down-payment policy is on) creates TWO Pending transactions - the
+  // down payment plus a 'balance' transaction for the rest; 'full' / no policy
+  // creates ONE for the whole net total.
   const requiresUpfrontCharge = input.service_category !== 'Veterinary';
-  const paymentScheme: 'downpayment' | 'full' =
+  const paymentScheme: PaymentScheme =
     downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
       : 'full';
-  const initialChargeAmount =
-    paymentScheme === 'downpayment'
-      ? (downpaymentAmount ?? netTotal)
-      : netTotal;
 
   // A fully-discounted / fully-promo'd booking owes nothing - there is no
   // charge to create and no payment to collect, so it's born Fully Paid
@@ -1058,19 +1057,26 @@ export async function createBooking({
     }
   }
 
-  // Emit the initial charge transaction (best-effort - a failure here must
+  // Emit the initial charge transaction(s) (best-effort - a failure here must
   // not undo the booking; the cashier can add the charge manually). Vet
-  // bookings are priced during the visit, so they get no upfront charge.
-  if (requiresUpfrontCharge && initialChargeAmount > 0) {
+  // bookings are priced during the visit, so they get no upfront charge; a
+  // fully-discounted booking (nothingOwed) owes nothing.
+  if (requiresUpfrontCharge && !nothingOwed && netTotal > 0) {
     try {
-      await createInitialBookingCharge(
-        booking,
-        initialChargeAmount,
-        paymentScheme
+      const { error: chargeRpcError } = await supabase.rpc(
+        'create_initial_booking_charge',
+        {
+          p_booking_id: booking.id,
+          p_scheme: paymentScheme,
+          p_net_total: netTotal,
+          p_downpayment_amount:
+            paymentScheme === 'downpayment' ? downpaymentAmount : null,
+        }
       );
+      if (chargeRpcError) throw new Error(chargeRpcError.message);
     } catch (chargeError) {
       // eslint-disable-next-line no-console
-      console.error('createInitialBookingCharge failed:', chargeError);
+      console.error('create_initial_booking_charge failed:', chargeError);
     }
   }
 
@@ -1572,52 +1578,6 @@ export async function overrideBookingStatus({
     completed_at: completedAt,
     updated_at: now,
   });
-}
-
-/**
- * Emits the initial charge transaction for a freshly-created booking - one
- * `Pending` `booking_payment` row plus a matching line item (keeping
- * SUM(line_total) = total_amount). A cashier settles it later on the
- * Transactions page (`recordTransactionPayment` -> `settle_transaction`).
- * Best-effort: the caller logs a failure and never lets it undo the booking.
- */
-async function createInitialBookingCharge(
-  booking: Booking,
-  amount: number,
-  scheme: 'downpayment' | 'full'
-): Promise<void> {
-  const { data: transaction, error } = await supabase
-    .from('transactions')
-    .insert({
-      booking_id: booking.id,
-      customer_id: booking.customer_id,
-      branch_id: booking.branch_id,
-      transaction_type: 'booking_payment',
-      payment_method: 'Cash', // placeholder - set when the payment is recorded
-      payment_status: 'Pending',
-      payment_choice: scheme,
-      subtotal_amount: amount,
-      total_amount: amount,
-    })
-    .select('id')
-    .single();
-
-  if (error || !transaction) {
-    throw new Error(error?.message ?? 'Failed to record the initial charge');
-  }
-
-  const { error: lineError } = await supabase
-    .from('transaction_line_items')
-    .insert({
-      transaction_id: transaction.id,
-      line_item_type: 'service',
-      description: scheme === 'downpayment' ? 'Down payment' : 'Full payment',
-      quantity: 1,
-      unit_price: amount,
-      line_total: amount,
-    });
-
-  if (lineError) throw new Error(lineError.message);
 }
 
 /**

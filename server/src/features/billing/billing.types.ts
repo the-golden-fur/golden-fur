@@ -55,6 +55,16 @@ export type BankName = (typeof BANK_NAMES)[number];
 
 export type PaymentStatus = 'Pending' | 'Fully Paid' | 'Partially Paid';
 
+/** Which portion of a booking a booking_payment transaction covers.
+ * 'full' = the whole net total; 'downpayment' = just the required down
+ * payment; 'balance' = a payment toward the remaining balance (the upfront
+ * balance charge created alongside a down payment, a leftover spawned by a
+ * partial settlement, or a cashier/customer-added instalment). Null on misc
+ * sales / older rows. Free text in the DB (transactions.payment_choice CHECK,
+ * 20260901151) - this const is the app-side source of truth. */
+export const PAYMENT_CHOICES = ['full', 'downpayment', 'balance'] as const;
+export type PaymentChoice = (typeof PAYMENT_CHOICES)[number];
+
 /** Plain text, not an enum - matches the migration's own convention
  * (transaction_line_items.line_item_type). Documented values: service,
  * addon, discount, promo, reschedule_fee, misc_sale_item. */
@@ -90,10 +100,9 @@ export interface Transaction {
    * recompute the booking's payment_status once one of these confirms,
    * without touching cashier-checkout behavior. */
   initiated_by: 'staff' | 'customer';
-  /** Which portion of the booking this transaction covers:
-   * 'full' / 'downpayment' / 'balance' (an additional payment toward the
-   * remaining balance). Null on misc sales. */
-  payment_choice: 'full' | 'downpayment' | 'balance' | null;
+  /** Which portion of the booking this transaction covers - see
+   * PAYMENT_CHOICES. Null on misc sales. */
+  payment_choice: PaymentChoice | null;
   created_at: string;
   updated_at: string;
 }

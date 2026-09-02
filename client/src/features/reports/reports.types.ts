@@ -46,7 +46,7 @@ export interface TransactionRecord {
   transaction_type: string;
   payment_method: string;
   payment_status: string;
-  /** 'full' | 'downpayment' | null (older rows / misc sales). */
+  /** 'full' | 'downpayment' | 'balance' | null (older rows / misc sales). */
   payment_choice: string | null;
   total_amount: number;
   misc_sale_description: string | null;

@@ -130,6 +130,12 @@ const PENDING_BOOKING = {
 describe('booking HTTP surface (Issues #51-#54)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: get_staff_availability / create_initial_booking_charge etc.
+    // resolve to an empty ok result. Individual tests override as needed.
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: [],
+      error: null,
+    } as never);
   });
 
   it('requires authentication on every booking route', async () => {
@@ -187,8 +193,8 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         ],
         error: null,
       }, // post-insert re-count (always runs now, regardless of status) - winner
-      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-      { data: null, error: null }, // initial booking charge: transaction_line_items insert
+      // initial charge is emitted via the create_initial_booking_charge RPC
+      // (supabase.rpc), not a supabase.from() insert - nothing to queue here
       { data: PENDING_BOOKING, error: null } // final fetch
     );
 

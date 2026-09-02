@@ -82,9 +82,10 @@ export interface TransactionHistoryFilters {
   serviceCategory?: string;
   /** 'booking_payment' | 'miscellaneous_sale' - the transactions.transaction_type enum. */
   transactionType?: string;
-  /** 'full' | 'downpayment' - transactions.payment_choice (the advisor's
-   * "downpayment, full, etc." on the transactions page). NULL on older rows
-   * and misc sales, so this filter also narrows to booking payments. */
+  /** 'full' | 'downpayment' | 'balance' - transactions.payment_choice (the
+   * advisor's "downpayment, full, etc." on the transactions page). NULL on
+   * older rows and misc sales, so this filter also narrows to booking
+   * payments. */
   paymentChoice?: string;
 }
 

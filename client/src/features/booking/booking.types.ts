@@ -127,6 +127,18 @@ export type BookingSource = 'Online' | 'Walk-in';
 
 export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 
+/** The payment scheme the customer/receptionist picks on the booking flow's
+ * Review step. 'downpayment' sizes the initial charge to the down payment (a
+ * separate 'balance' charge is created alongside it); 'full' charges the whole
+ * net total in one transaction. Only offered when the branch down-payment
+ * policy is on. No shared const on the server - it re-declares the union. */
+export type PaymentScheme = 'downpayment' | 'full';
+
+export const PAYMENT_SCHEMES: readonly PaymentScheme[] = [
+  'downpayment',
+  'full',
+];
+
 /** Mirrors the server's DOWNPAYMENT_EXPIRED_CANCELLATION_REASON - the
  * `cancellation_reason` applyDownpaymentExpiry writes when it sweeps an
  * unpaid pencil booking. Lets deriveBookingConfirmationState show that case
@@ -515,7 +527,7 @@ export interface CreateBookingPayload {
    * the initial charge transaction to the down payment (balance recorded
    * later on the Transactions page); 'full' / policy-off charges the whole
    * net total. */
-  payment_scheme?: 'downpayment' | 'full';
+  payment_scheme?: PaymentScheme;
   // Staff-only (money-handling roles) - see booking.service.ts's
   // resolveDiscountAndPromo.
   discount_id?: string;

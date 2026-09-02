@@ -175,6 +175,13 @@ export type BookingSource = 'Online' | 'Walk-in';
 
 export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 
+/** The payment scheme a booking is created under. 'downpayment' (only when the
+ * branch down-payment policy is on) charges just the down payment up front and
+ * creates a separate 'balance' transaction for the rest; 'full' charges the
+ * whole net total as one transaction. */
+export const PAYMENT_SCHEMES = ['downpayment', 'full'] as const;
+export type PaymentScheme = (typeof PAYMENT_SCHEMES)[number];
+
 export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
   'Pending',
   'Partially Paid',

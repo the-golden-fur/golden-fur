@@ -256,8 +256,6 @@ describe('booking.service (#51)', () => {
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
       { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
 
@@ -280,10 +278,12 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  // Payment model rework: every non-Veterinary booking emits an initial
-  // Pending booking_payment charge transaction (createInitialBookingCharge);
-  // Veterinary is priced during the visit, so it gets none.
-  it('emits an initial Pending booking_payment charge for a normal Grooming booking', async () => {
+  // Payment model rework: every non-Veterinary booking emits its initial
+  // Pending booking_payment charge(s) via the create_initial_booking_charge
+  // RPC; Veterinary is priced during the visit, so it gets none. A 'full'
+  // scheme (here - DEFAULT_POLICY has downpayment off) is one charge for the
+  // whole net total.
+  it('emits an initial full-payment charge via create_initial_booking_charge for a normal Grooming booking', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -293,22 +293,16 @@ describe('booking.service (#51)', () => {
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
       { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
 
     await createBooking({ requesterId: CUSTOMER_ID, input: BASE_INPUT });
 
-    const txn = recordedWrites.find(
-      (write) => write.table === 'transactions' && write.method === 'insert'
-    );
-    expect(txn?.payload).toMatchObject({
-      booking_id: 'booking-1',
-      transaction_type: 'booking_payment',
-      payment_status: 'Pending',
-      total_amount: 350,
-      payment_choice: 'full',
+    expect(supabase.rpc).toHaveBeenCalledWith('create_initial_booking_charge', {
+      p_booking_id: 'booking-1',
+      p_scheme: 'full',
+      p_net_total: 350,
+      p_downpayment_amount: null,
     });
   });
 
@@ -368,8 +362,6 @@ describe('booking.service (#51)', () => {
         ],
         error: null,
       }, // post-insert re-count (always runs now, regardless of status) - winner
-      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       {
         data: { ...INSERTED_BOOKING, id: 'booking-2', status: 'Pending' },
         error: null,
@@ -624,8 +616,6 @@ describe('booking.service (#51)', () => {
       }, // insert
       { data: null, error: null }, // booking_items insert
       { data: [{ id: 'booking-3' }], error: null }, // re-count winner
-      { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-      { data: null, error: null }, // initial booking charge: transaction_line_items insert
       { data: INSERTED_BOOKING, error: null } // final fetch
     );
 
@@ -716,8 +706,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -763,8 +751,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1369,8 +1355,6 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1469,8 +1453,6 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1547,8 +1529,6 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1586,8 +1566,6 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1639,8 +1617,6 @@ describe('booking.service (#51)', () => {
         // NOTE: no post-insert re-count here - down-payment slot gate: an
         // unpaid customer down-payment booking is a pencil booking, so it
         // skips confirmCapacityAfterInsert (it holds no slot to race for).
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1657,6 +1633,35 @@ describe('booking.service (#51)', () => {
         downpayment_required: true,
         downpayment_amount: 150, // the flat per-transaction amount, not derived from any item
       });
+    });
+
+    it('scheme "downpayment" asks create_initial_booking_charge for two charges (down payment + remaining balance)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveEffectivePolicy
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        // pencil booking - skips the post-insert re-count
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: { ...BASE_INPUT, payment_scheme: 'downpayment' },
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith(
+        'create_initial_booking_charge',
+        {
+          p_booking_id: 'booking-1',
+          p_scheme: 'downpayment',
+          p_net_total: 350,
+          p_downpayment_amount: 150,
+        }
+      );
     });
 
     it('a Percentage-type policy computes downpayment_amount as a percentage of the whole booking total_price (2-item booking), not any single item', async () => {
@@ -1683,8 +1688,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         // pencil booking (unpaid customer down payment) - skips the re-count
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1722,8 +1725,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1741,7 +1742,7 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('falls back to DOCUMENTED_DEFAULTS (downpayment disabled) when no policy_configurations row exists at all', async () => {
+    it('falls back to DOCUMENTED_DEFAULTS (downpayment on at 50%) when no policy_configurations row exists at all', async () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null },
@@ -1750,9 +1751,7 @@ describe('booking.service (#51)', () => {
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
-        { data: [{ id: 'booking-1' }], error: null },
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
+        // pencil booking (downpayment required, unpaid) - skips the re-count
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1772,8 +1771,8 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({
-        downpayment_required: false,
-        downpayment_amount: null,
+        downpayment_required: true,
+        downpayment_amount: 175, // 50% of the 350 net total
       });
     });
 
@@ -1791,8 +1790,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         // pencil booking (unpaid customer down payment) - skips the re-count
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1829,8 +1826,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null },
         { data: null, error: null },
         // NOTE: no post-insert re-count - pencil booking skips it
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null }
       );
 
@@ -1895,8 +1890,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 
@@ -1927,8 +1920,6 @@ describe('booking.service (#51)', () => {
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
         { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
-        { data: { id: 'txn-init' }, error: null }, // initial booking charge: transactions insert
-        { data: null, error: null }, // initial booking charge: transaction_line_items insert
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
 

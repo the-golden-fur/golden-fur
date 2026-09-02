@@ -37,9 +37,12 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   credit_expiry_fixed_date: null,
   cancellation_credit_conversion_rate: 100,
   online_payments_enabled: true,
-  downpayment_enabled: false,
-  downpayment_type: null,
-  downpayment_amount: null,
+  // Mirrors the seeded system-default row (20260902161): downpayment enabled
+  // system-wide at 50% of the discounted net total. Only used if that row is
+  // deleted out-of-band.
+  downpayment_enabled: true,
+  downpayment_type: 'Percentage',
+  downpayment_amount: 50,
   downpayment_hold_hours: 24,
 };
 
