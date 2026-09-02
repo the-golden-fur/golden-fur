@@ -26,6 +26,11 @@ interface SlotPickerProps {
   viewerMode: 'customer' | 'staff';
   selectedSlot: SelectedSlot | null;
   onSelect: (slot: SelectedSlot) => void;
+  /** Which notice-period floor applies. 'new_booking' (default) uses the new
+   * booking_notice_period_days (default 0 - same-day allowed); 'reschedule'
+   * keeps the stricter notice_period_days. Passed straight through to the
+   * availability endpoint. */
+  intent?: 'new_booking' | 'reschedule';
   /** Walk-in booking flow: the customer/pet is physically at the branch
    * right now, so this picker stops browsing entirely - it selects a slot
    * that STARTS AT THE CURRENT TIME (rounded down to the minute) for the
@@ -85,6 +90,7 @@ export function SlotPicker({
   viewerMode,
   selectedSlot,
   onSelect,
+  intent = 'new_booking',
   lockToNow = false,
   onAvailabilityChange,
 }: SlotPickerProps) {
@@ -131,6 +137,7 @@ export function SlotPicker({
       date,
       slotDurationMinutes,
       petWeightClass,
+      intent,
     }).then((result) => {
       if (!isMounted) return;
 
@@ -173,6 +180,7 @@ export function SlotPicker({
     date,
     slotDurationMinutes,
     petWeightClass,
+    intent,
     lockToNow,
   ]);
 

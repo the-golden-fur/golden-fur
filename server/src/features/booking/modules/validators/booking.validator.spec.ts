@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  availabilityQueryValidator,
   cancelBookingValidator,
   createBookingValidator,
   overrideBookingStatusValidator,
@@ -312,6 +313,16 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
   });
 
+  it('accepts booking_notice_period_days (the new-booking notice knob) and rejects a negative one', () => {
+    expect(
+      updatePolicyValidator.safeParse({ booking_notice_period_days: 2 }).success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ booking_notice_period_days: -1 })
+        .success
+    ).toBe(false);
+  });
+
   it('accepts enabling a per-transaction downpayment (Flat)', () => {
     expect(
       updatePolicyValidator.safeParse({
@@ -387,6 +398,38 @@ describe('updatePolicyValidator', () => {
         credit_expiry_mode: 'fixed_date',
         credit_expiry_fixed_date: '12/31/2026',
       }).success
+    ).toBe(false);
+  });
+});
+
+describe('availabilityQueryValidator', () => {
+  const BASE_QUERY = {
+    branch_id: BASE_BOOKING.branch_id,
+    service_category: 'Grooming' as const,
+    date: '2026-08-10',
+    slot_duration_minutes: '60',
+  };
+
+  it('defaults intent to undefined and accepts an explicit new_booking / reschedule', () => {
+    expect(availabilityQueryValidator.safeParse(BASE_QUERY).success).toBe(true);
+    expect(
+      availabilityQueryValidator.safeParse({
+        ...BASE_QUERY,
+        intent: 'reschedule',
+      }).success
+    ).toBe(true);
+    expect(
+      availabilityQueryValidator.safeParse({
+        ...BASE_QUERY,
+        intent: 'new_booking',
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects an unknown intent', () => {
+    expect(
+      availabilityQueryValidator.safeParse({ ...BASE_QUERY, intent: 'walk_in' })
+        .success
     ).toBe(false);
   });
 });

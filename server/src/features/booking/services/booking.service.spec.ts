@@ -135,6 +135,9 @@ const DEFAULT_POLICY = {
   // aren't exercising the minimum-notice lead time - see the dedicated
   // "minimum-notice lead time" describe block for the enabled case.
   notice_enforcement_enabled: false,
+  // New-booking notice floor: 0 = same-day allowed. See the dedicated
+  // "minimum-notice lead time" describe block for the enabled case.
+  booking_notice_period_days: 0,
   staff_picker_enabled_grooming: true,
   staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,
@@ -1848,12 +1851,15 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  describe('minimum-notice lead time (advisor addendum)', () => {
+  describe('minimum-notice lead time', () => {
+    // The NEW-booking floor is its own knob now (booking_notice_period_days);
+    // notice_period_days stays the reschedule/cancel notice. See
+    // reschedule.service.spec.ts for that side.
     const ENFORCED_POLICY = {
       ...DEFAULT_POLICY,
-      notice_enforcement_enabled: true,
-      notice_period_days: 3,
+      booking_notice_period_days: 3,
     };
+    const BRANCH_TZ = { data: { timezone: 'Asia/Manila' }, error: null };
     const soonIso = (days: number) =>
       new Date(Date.now() + days * 864e5).toISOString();
 
@@ -1861,7 +1867,8 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null }, // pet ownership
-        { data: [ENFORCED_POLICY], error: null } // effective policy (notice + downpayment)
+        { data: [ENFORCED_POLICY], error: null }, // effective policy (notice + downpayment)
+        BRANCH_TZ // assertMeetsBookingLeadTime branch timezone lookup
       );
 
       await expect(
@@ -1885,6 +1892,7 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [ENFORCED_POLICY], error: null }, // effective policy
+        BRANCH_TZ, // assertMeetsBookingLeadTime branch timezone lookup
         { data: [ENFORCED_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
@@ -1899,6 +1907,35 @@ describe('booking.service (#51)', () => {
           ...BASE_INPUT,
           scheduled_start: soonIso(10),
           scheduled_end: soonIso(10.05),
+        },
+      });
+
+      expect(
+        recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBeDefined();
+    });
+
+    it('accepts an Online booking for tomorrow at the default floor (0)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // booking_notice_period_days: 0 - no branch tz lookup
+        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // staff_picker_preferences insert
+        { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count: winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          scheduled_start: soonIso(1),
+          scheduled_end: soonIso(1.05),
         },
       });
 

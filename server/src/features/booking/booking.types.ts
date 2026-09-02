@@ -387,9 +387,17 @@ export interface AvailableStaff {
 export interface PolicyConfiguration {
   id: string;
   branch_id: string | null;
+  /** Reschedule/cancellation notice, in whole days - see evaluateNoticePeriod
+   * (reschedule.service.ts) and cancellation.service.ts. NOT a new-booking
+   * floor; that is booking_notice_period_days. Default 3. */
   notice_period_days: number;
   notice_enforcement_mode: EnforcementMode;
   notice_enforcement_enabled: boolean;
+  /** Minimum whole days ahead of "now" (branch tz) that a NEW online booking
+   * must be scheduled. 0 = same-day allowed (default). Independent of
+   * notice_period_days. Read by bookingLeadDays/assertMeetsBookingLeadTime in
+   * staffPicker.service.ts. */
+  booking_notice_period_days: number;
   staff_picker_enabled_grooming: boolean;
   staff_picker_enabled_veterinary: boolean;
   /** Fixed daily lunch break - no bookings/staff availability during this
@@ -445,6 +453,7 @@ export type EffectivePolicy = Pick<
   | 'notice_period_days'
   | 'notice_enforcement_mode'
   | 'notice_enforcement_enabled'
+  | 'booking_notice_period_days'
   | 'staff_picker_enabled_grooming'
   | 'staff_picker_enabled_veterinary'
   | 'lunch_break_enabled'

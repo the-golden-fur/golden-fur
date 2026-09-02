@@ -31,7 +31,7 @@ import {
   confirmCapacityAfterInsert,
 } from './capacity.service.ts';
 import {
-  assertMeetsNoticeLeadTime,
+  assertMeetsBookingLeadTime,
   autoAssignStaff,
   isStaffPickerEnabled,
   listAvailableStaff,
@@ -830,13 +830,19 @@ export async function createBooking({
 
   if (bookingSource === 'Online') {
     // One effective-policy resolve feeds both the down-payment config and
-    // the minimum-notice lead time (advisor addendum): an Online booking's
-    // slot must sit at least notice_period_days out. This is the
-    // authoritative gate behind the Slot Picker's own floored calendar - a
-    // direct API call can't book inside the window.
+    // the new-online-booking notice period: an Online booking's slot must
+    // sit at least booking_notice_period_days out (default 0 - same-day
+    // allowed; Admin-configurable on Settings > Config > Policies). This is
+    // the authoritative gate behind the Slot Picker's own floored calendar -
+    // a direct API call can't book inside the window. Reschedules keep the
+    // stricter notice_period_days (see reschedule.service.ts).
     const policy = await resolveEffectivePolicy(input.branch_id);
 
-    assertMeetsNoticeLeadTime(policy, input.scheduled_start);
+    await assertMeetsBookingLeadTime(
+      policy,
+      input.scheduled_start,
+      input.branch_id
+    );
 
     downpaymentRequired = policy.downpayment_enabled;
     downpaymentHoldHours = policy.downpayment_hold_hours ?? 24;

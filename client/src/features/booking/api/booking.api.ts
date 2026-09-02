@@ -137,12 +137,17 @@ export interface AvailabilityQuery {
   date: string;
   slotDurationMinutes: number;
   petWeightClass?: string;
+  /** Which notice-period floor to apply. Omitted = 'new_booking' (uses
+   * booking_notice_period_days, default 0). Pass 'reschedule' from a
+   * reschedule picker to keep the stricter notice_period_days. */
+  intent?: 'new_booking' | 'reschedule';
 }
 
 export interface DayAvailability {
   slots: SlotAvailability[];
   window: OperatingWindow | null;
-  /** Minimum-notice lead time (policy_configurations.notice_period_days when
+  /** Minimum-notice lead time for the requested intent (new booking:
+   * booking_notice_period_days; reschedule: notice_period_days when
    * enforcement is on, else 0): the Slot Picker floors its calendar this many
    * days out so the browsable range opens on the first bookable day. */
   minNoticeDays: number;
@@ -161,6 +166,10 @@ export async function getDayAvailability(
 
   if (query.petWeightClass) {
     params.set('pet_weight_class', query.petWeightClass);
+  }
+
+  if (query.intent) {
+    params.set('intent', query.intent);
   }
 
   const response = await fetch(

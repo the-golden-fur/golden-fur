@@ -8,11 +8,17 @@ import {
   type WeightClass,
 } from './capacity.service.ts';
 import {
+  bookingLeadDays,
   listAvailableStaff,
   noticeLeadDays,
+  resolveBookingLeadDays,
   resolveEffectivePolicy,
-  resolveNoticeLeadDays,
 } from './staffPicker.service.ts';
+
+/** Which notice-period floor getDaySlots applies: a new booking uses
+ * booking_notice_period_days (default 0); a reschedule keeps the stricter
+ * notice_period_days (default 3). */
+export type BookingIntent = 'new_booking' | 'reschedule';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -63,6 +69,8 @@ export interface GetDaySlotsParams {
   slotDurationMinutes: number;
   /** Required (and only meaningful) for Hotel. */
   petWeightClass?: WeightClass;
+  /** Which notice-period floor to apply. Omitted = 'new_booking'. */
+  intent?: BookingIntent;
 }
 
 interface BranchRow {
@@ -198,6 +206,7 @@ export async function getDaySlots({
   date,
   slotDurationMinutes,
   petWeightClass,
+  intent = 'new_booking',
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
   if (serviceCategory === 'Hotel' && !petWeightClass) {
     throwWithStatus(400, 'pet_weight_class is required for Hotel availability');
@@ -233,14 +242,16 @@ export async function getDaySlots({
   // minimum-notice date floor here and the lunch-break filter further down.
   const policy = await resolveEffectivePolicy(branchId);
 
-  // Minimum-notice lead time (advisor addendum): when notice enforcement is
-  // on, the earliest bookable calendar date is N days out - every earlier
-  // day comes back empty, exactly like a closed day, so the Slot Picker and
-  // findNextAvailableSlot both skip past the notice window as a date range
-  // rather than showing pinned, unbookable near-term days. Day-granular (not
-  // an instant) so there is no confusing half-open first day. Walk-ins never
-  // reach this path (their slot is "now", not browsed).
-  const minLeadDays = noticeLeadDays(policy);
+  // Minimum-notice lead time: the earliest bookable calendar date is N days
+  // out - every earlier day comes back empty, exactly like a closed day, so
+  // the Slot Picker and findNextAvailableSlot both skip past the notice
+  // window as a date range rather than showing pinned, unbookable near-term
+  // days. Day-granular (not an instant) so there is no confusing half-open
+  // first day. A NEW booking uses booking_notice_period_days (default 0 -
+  // same-day allowed); a reschedule keeps the stricter notice_period_days
+  // (default 3). Walk-ins never reach this path (their slot is "now").
+  const minLeadDays =
+    intent === 'reschedule' ? noticeLeadDays(policy) : bookingLeadDays(policy);
 
   if (
     minLeadDays > 0 &&
@@ -327,17 +338,19 @@ export async function getDaySlots({
     );
   }
 
-  // A slot whose start time is already in the past is never a real option
-  // (e.g. 8:00 AM showing as bookable at 3:00 PM) - applies to every
-  // category, Hotel included now that Hotel offers real arrival-time
-  // candidates rather than a single day-level flag. The same filter also
-  // enforces the minimum-notice lead time to the exact instant, so the
-  // first bookable day's earlier slots (before now + N days) drop out
-  // rather than being offered here and then 422'd by assertMeetsNoticeLeadTime.
-  const earliestStartMs = Date.now() + minLeadDays * 24 * 60 * 60 * 1000;
-  const futureCandidates = lunchCandidates.filter(
-    (candidate) => candidate.start.getTime() > earliestStartMs
-  );
+  // "Is this start time already in the past?" only makes sense for TODAY -
+  // for any future date every candidate is a real option, so a future date
+  // shows the branch's whole operating-hours-minus-lunch slate. (Previously
+  // this filter ran for every date against `now + minLeadDays`, which shifted
+  // a future day's slots by the current time-of-day, e.g. picking tomorrow at
+  // 1 PM only offered 2 PM onward.) The day-level minimum-notice floor is
+  // already fully enforced above, so nothing here needs the lead-time term.
+  const futureCandidates =
+    date === todayInBranchTz
+      ? lunchCandidates.filter(
+          (candidate) => candidate.start.getTime() > Date.now()
+        )
+      : lunchCandidates;
 
   const role = CATEGORY_STAFF_ROLE[serviceCategory];
 
@@ -452,8 +465,10 @@ export async function findNextAvailableSlot({
 }: FindNextAvailableSlotParams): Promise<NextAvailableSlot | null> {
   // The minimum-notice window (getDaySlots returns [] for every day inside
   // it) is skipped for free rather than eating into lookaheadDays - the
-  // caller asked for N bookable days of look-ahead, not N days total.
-  const minLeadDays = await resolveNoticeLeadDays(branchId);
+  // caller asked for N bookable days of look-ahead, not N days total. This
+  // pre-warning is for the NEW-booking flow, so it uses the new-booking
+  // notice floor (booking_notice_period_days, default 0).
+  const minLeadDays = await resolveBookingLeadDays(branchId);
   let cursor = fromDate;
 
   for (let i = 0; i < lookaheadDays + minLeadDays; i += 1) {
