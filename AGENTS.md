@@ -29,9 +29,15 @@ schemas, seeds, and edge functions.
 
 - **`docs/`** is dev-facing documentation only — setup guides, architecture,
   anything a new developer needs to build/run/ship the project.
-- **Working notes, test logs, meeting notes, and per-issue/per-request
-  verification docs belong in the sibling `../golden-fur-vault` repo**, under
-  `Projects/golden-fur/`, not in this repo.
+- **Working notes, meeting notes, and every session's record belong in the
+  sibling `../golden-fur-vault` repo**, not here. Each request thread that
+  changes this app gets a `Projects/golden-fur/sessions/NN-<slug>/` there — a
+  near-beginner plan, a click-by-click test script, copied context, and the
+  `code-reviewer` passes — written by the vault's `session-documenter` agent
+  (the `Stop` hook nudges it). Project-wide context / decisions / design live
+  under `Projects/golden-fur/shared/`; business-process workflow docs under
+  `Library/golden-fur/features/<feature>/` (human) and
+  `Reference/golden-fur/features/<feature>/` (machine).
 - **`temp/`** is scratch space (context files, design assets) used while
   working a request; it's gitignored.
 - **Reusable skills (multi-tool)** — this repo's own git workflow
@@ -100,28 +106,26 @@ browser; use `dev-servers` first to confirm the processes are up, then
 first via `scripts/free-ports.mjs`, and `npm run free-ports` does it on
 demand) and `pre-commit-checks` (run every
 `(check)`/`(fix)`-labeled VS Code task — lint and format, client and
-server — auto-fixing what it can; a step of the PR skills via
-`ci-verifier`, also invocable standalone, but **not** run on every
-commit). Any AI coding tool working in this repo should read the relevant
-file under `.agent/` before doing that kind of task.
+server — auto-fixing what it can; **standalone-on-request only** now — no
+longer a pipeline step, `ci-fixer-agent` owns lint/format at PR time). Any
+AI coding tool working in this repo should read the relevant file under
+`.agent/` before doing that kind of task.
 
-`pr-to-dev` and `pr-dev-to-main` each have mandatory subagent steps before
-the PR is opened (see "Domain agents & skills" below): the read-only
-`ci-verifier` agent, which runs the `✅ CI: Verify All` task (tests, lint,
-format, build) for **both** `golden-fur` and `golden-fur-vault` and must
-come back green; and the read-only `code-reviewer` agent, for an unbiased
-review of the diff. **`commit` runs no gate at all** — not
-`pre-commit-checks`, not `ci-verifier`, not `code-reviewer`. Lint, format,
-CI parity, and the unbiased review all happen when a PR is actually being
+**`pr-to-dev` and `pr-dev-to-main` are the "session is finished" finish
+pipeline**, run in a locked order (see the skill files and "Auto-run
+wiring" below): `branch-naming` (if on `dev`) → `ci-verifier` (both repos)
+→ `ci-fixer-agent` if red, re-verify → `code-reviewer` (resolve Blocking)
+→ `workflow-doc-sync` → confirm the session record (`session-documenter`)
+→ `commit` → push → `gh pr create` → then the vault PR. **`commit` on its
+own runs no gate at all** — not `pre-commit-checks`, not `ci-verifier`, not
+`code-reviewer`. Everything gated happens only when a PR is actually being
 opened. (Line endings are handled by `.gitattributes` — `* text=auto
-eol=lf` — so local format no longer churns hundreds of files.)
-As a personal backstop you can add a `PreToolUse` hook to your own
-(gitignored) `.claude/settings.local.json` that blocks a direct
-`gh pr create` when `client/src`, `server/src`, or `supabase/` changed and
-no matching review exists for the branch under
-`../golden-fur-vault/Projects/golden-fur/testing/reviews/` — see the vault
-decision record
-`Projects/golden-fur/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
+eol=lf`.) The `pr-guard` hook (checked in — see "Auto-run wiring") blocks a
+direct `gh pr create` until `ci-verifier` has left `.git/ci-verifier-pass`
+for `HEAD` and a `code-reviewer` report exists in the branch's
+`../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/` — see
+the vault decision record
+`Projects/golden-fur/shared/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
 
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:
@@ -168,9 +172,9 @@ noted):
   the diff itself. No `Edit`; `Bash` limited to read-only git inspection;
   `Write` used only for its one report file, which it places in the sibling
   vault at
-  `../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`
+  `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-<trigger>.md`
   (never in this repo — same "no working docs in the code repo" rule as the
-  testing docs). Fix its **Blocking** findings before opening the PR; skip
+  session record). Fix its **Blocking** findings before opening the PR; skip
   the gate only for a pure formatting/non-functional diff, and say so.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
@@ -201,8 +205,9 @@ code as a task closes — see "Auto-run wiring" below):
 - `ci-fixer-agent` — the write-side counterpart to `ci-verifier`: takes a
   red `✅ CI: Verify All` and fixes the failures (format, lint, build,
   tests) until green, across both repos, without ever weakening a check.
-  Spawn it when the `ci-verifier` gate in `pr-to-dev` / `pr-dev-to-main`
-  (or a hand-run `ci-verifier`) comes back red.
+  **Auto-invoked** as step 3 of the `pr-to-dev` / `pr-dev-to-main` pipeline
+  the moment `ci-verifier` reports red; also absorbs what `pre-commit-checks`
+  used to do at PR time (the lint + format auto-fix pass).
 - `domain-doc-sync-agent` — reconciles the domain agents/skills above with
   the business-rule code they describe (capacity thresholds, enums, role
   lists, status machines, file layout) when that code moves. Docs-only,
@@ -223,33 +228,49 @@ spawning a subagent):
   first.
 - `workflow-doc-sync` — **run once when a PR is opened** (`pr-to-dev` step),
   over the whole branch diff: matches the changed paths against each vault
-  machine-workflow file's `source:` frontmatter to find stale workflow
-  docs, then hands off to the vault's `workflow-documenter` agent (the only
-  thing allowed to rewrite them). Not per commit / per task — spawning the
-  vault agent repeatedly mid-work is the session-budget cost this avoids.
-  Never writes to the vault — the `golden-fur` ⇄ `golden-fur-vault` write
-  boundary still holds.
+  machine-workflow file's `source:` frontmatter
+  (`../golden-fur-vault/Reference/golden-fur/features/**/workflows/*.md`) to
+  find stale workflow docs, then hands off to the vault's
+  `workflow-documenter` agent (the only thing allowed to rewrite them). Not
+  per commit / per task. Never writes to the vault.
 
 ### Auto-run wiring
 
-`.claude/settings.json` (checked in) has `PostToolUse` + `Stop` hooks that
-watch the diff and _remind_ the session to run the right maintenance step
-— they never mutate anything themselves:
+`.claude/settings.json` (checked in) wires four Claude Code hooks. Hooks are
+Claude-specific — other AI tools replicate the intent via their own
+mechanisms.
 
-- a migration or a seeded-table change under `supabase/` → run
-  `seed-sync-agent`, and (at task end) `supabase-migration-push`;
-- changes to code a domain skill's rules depend on → run
-  `domain-doc-sync-agent`.
+**`session-router`** (`UserPromptSubmit`) — deterministically routes the
+session by matching the prompt text; injects guidance, never blocks:
 
-The reminders fire on `Stop` (task boundary) so they don't interrupt
-mid-edit. A red `ci-verifier` in the PR skills points at `ci-fixer-agent`.
+- "just plan" / "don't touch code" / "no code yet" / `/plan` → the vault's
+  `plan` skill; edit no code; write only `sessions/<NN-slug>/plan.md`.
+- "open a PR" / "ship it" / "pr this" / `/pr` → the locked finish pipeline
+  (`branch-naming` → `ci-verifier` → `ci-fixer-agent` if red → `code-reviewer`
+  → `workflow-doc-sync` → session record → `commit` → push → `gh pr create`
+  → vault PR).
 
-**PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of
-`commit` or a branch push): `ci-verifier`, `code-reviewer`, and
-`workflow-doc-sync`. The `Stop` hook no longer nags about workflow-doc
-drift on every task — it's one pass over the whole branch diff at PR time.
-The `testing-documenter` agent (in the vault) is unaffected: it still runs
-as the closing step of any golden-fur change made in response to a request.
+**`pr-guard`** (`PreToolUse` on `Bash`) — blocks `gh pr create` until
+`ci-verifier` has left `.git/ci-verifier-pass` for the current `HEAD` **and**
+a `code-reviewer` report exists in the branch's `sessions/<NN-slug>/reviews/`. This is the enforcement half of "review + verify only
+happen at PR time, but must happen".
+
+**`maintenance-reminders.sh`** (`Stop`) — inspects the diff and _reminds_
+(never mutates): a migration / seeded-table change under `supabase/` → run
+`seed-sync-agent` then `supabase-migration-push` at task end; code a domain
+skill's rules depend on moved → run `domain-doc-sync-agent`; `client/src` /
+`server/src` changed but no vault `sessions/**` path touched → run
+`session-documenter` (the near-beginner plan + click-by-click testing +
+copied context) as the closing step.
+
+**`gitkeep-sweep.sh`** (`Stop`) — adds a `.gitkeep` to any tracked-scope dir
+left empty, removes it once the dir has other files; stages the change.
+
+**PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of `commit`
+or a branch push): `ci-verifier`, `ci-fixer-agent`, `code-reviewer`,
+`workflow-doc-sync`. The `session-documenter` agent (in the vault) runs at
+implementation-finish (the `Stop` hook nudges it), then just updates the
+same `sessions/NN-<slug>/` on later requests in the session.
 
 ### Why two PR skills instead of one
 

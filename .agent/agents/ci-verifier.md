@@ -22,8 +22,9 @@ session and nothing has changed since in either repo — that pass still
 counts. Also fine to skip for a diff that is exclusively vault prose with
 no `.md`/`.json`/`.yaml` formatting impact, but when in doubt, run it.
 
-`pre-commit-checks` (the auto-fixer for lint + format) should have run
-first, so those two are already clean by the time you verify.
+You are the first gate in the finish pipeline — nothing runs `pre-commit-checks`
+before you now. If lint/format is red, that's `ci-fixer-agent`'s job (step 3
+of `pr-to-dev` / `pr-dev-to-main`): report it and hand back.
 
 ## What "Verify All" means in each repo
 
@@ -73,7 +74,12 @@ each repo's `.github/workflows/ci.yml` exactly.
      build red → the actual failure needs a code fix, hand back to the
      caller.
 5. **Do not fix anything yourself.** Even a one-line formatting fix — report
-   it and let the caller (or `pre-commit-checks`) handle it, then re-run.
+   it and let the caller (or `ci-fixer-agent`) handle it, then re-run.
+6. **On a fully green pass, drop the marker** so the `pr-guard` hook can see
+   it: in **each** repo you verified green, write its current `HEAD` sha to
+   `.git/ci-verifier-pass` (`git rev-parse HEAD > .git/ci-verifier-pass`).
+   `.git/` is not tracked, so this is invisible to the diff. If any check is
+   red, do **not** write (or do remove) the marker in that repo.
 
 ## Tool restrictions
 

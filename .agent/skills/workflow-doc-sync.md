@@ -9,7 +9,7 @@ vault `workflow-documenter` agent repeatedly mid-work burns session
 budget). Fine to run by hand any time you want the drift check.
 
 The workflow docs live in the **sibling `../golden-fur-vault` repo**
-(`Library/golden-fur/workflows/` + `Projects/golden-fur/docs/workflows/`),
+(`Library/golden-fur/features/<feature>/workflows/` + `Reference/golden-fur/features/<feature>/workflows/`),
 as a matched human (Mermaid) + machine (YAML step graph) pair per workflow,
 grouped by module M01–M14. Each machine file's frontmatter has a `source:`
 list of the exact code files it was built from.
@@ -24,7 +24,7 @@ _delegates_; the actual doc edit is done by the vault's own
 1. **Collect the changed code paths** in this task (`git diff --name-only`
    against the base branch, plus staged).
 2. **Scan the vault's machine workflow files.** For each
-   `../golden-fur-vault/Projects/golden-fur/docs/workflows/*.md`, read the
+   `../golden-fur-vault/Reference/golden-fur/features/**/workflows/*.md`, read the
    `source:` frontmatter list. Any overlap with a changed path → that
    workflow (both its files, same `<Code>-<slug>` basename) is a refresh
    candidate.

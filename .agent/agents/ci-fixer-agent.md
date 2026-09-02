@@ -12,9 +12,12 @@ broke. Never commits, never pushes, never opens a PR — it hands back a
 green tree for the caller's git workflow to proceed.
 
 **Use whenever** `ci-verifier` (or CI on a PR) comes back red and the
-failure is not a deliberate work-in-progress. Runs as the remediation step
-after the `pr-to-dev` / `pr-dev-to-main` skills' `ci-verifier` gate fails
-(or after a hand-run `ci-verifier`).
+failure is not a deliberate work-in-progress. It is **auto-invoked** as
+step 3 of the `pr-to-dev` / `pr-dev-to-main` finish pipeline the moment
+`ci-verifier` reports red — the caller re-runs `ci-verifier` after and
+loops until green. It also now owns what `pre-commit-checks` used to do at
+PR time: the lint + format auto-fix pass is part of this agent's job, not a
+separate earlier step.
 
 ## Process
 
