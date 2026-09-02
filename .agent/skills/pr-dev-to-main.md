@@ -11,11 +11,13 @@ skill instead — the two directions use different merge strategies.
 2. **Verify CI parity across both repos** — spawn the `ci-verifier`
    subagent (`.agent/agents/ci-verifier.md`) against `dev`; tests, lint,
    format, and build must be green in `golden-fur` and `golden-fur-vault`
-   before promoting.
+   before promoting. If red, spawn `ci-fixer-agent` and re-verify until
+   green (same auto-chain as `pr-to-dev`). `ci-verifier` writes the
+   `.git/ci-verifier-pass` marker the `pr-guard` hook checks.
 3. **Confirm each feature/fix branch merged into `dev` since the last
    promotion was reviewed** by the `code-reviewer` subagent
    (`.agent/agents/code-reviewer.md`) at `pre-pr` time — its reports live
-   under `../golden-fur-vault/Projects/golden-fur/testing/reviews/`. If any
+   under that branch's `sessions/<NN-slug>/reviews/` folder. If any
    branch has no review on record, run the `code-reviewer` on that PR's
    diff now (trigger `pre-pr`) and resolve any **Blocking** findings before
    promoting. A `dev` → `main` promotion adds no new code, so it needs no

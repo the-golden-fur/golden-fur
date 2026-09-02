@@ -6,12 +6,14 @@ to catch and auto-correct issues locally instead of surfacing them later.
 
 **Use whenever:**
 
-- **As a step of `pr-to-dev` / `pr-dev-to-main`** (it's folded into the
-  `ci-verifier` "✅ CI: Verify All" run there) — not on every commit.
-  A plain `commit` / `git push` has no lint/format gate.
-- On request, standalone — "run the checks", "lint this", "run the CI
+- **On request, standalone** — "run the checks", "lint this", "run the CI
   tasks locally" — at any point while working, e.g. mid-task on a larger
-  change or just before opening a PR.
+  change or when you just want lint + format tidy.
+
+**Not** a pipeline step any more. The `pr-to-dev` / `pr-dev-to-main` finish
+pipeline runs `ci-verifier` first (which reports lint/format red) and then
+`ci-fixer-agent` (which fixes it) — this skill is no longer wired in
+between. A plain `commit` / `git push` still has no lint/format gate.
 
 ## Process
 

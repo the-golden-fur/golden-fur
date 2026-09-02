@@ -17,7 +17,8 @@ for read-only git inspection only (`git diff`/`log`/`show`/`status`/
 `merge-base`/`branch`) — never `add`/`commit`/`push`/`checkout`/`reset`,
 never tests/builds/linters/installs. `Write` creates exactly one file: the
 review report under
-`../golden-fur-vault/Projects/golden-fur/testing/reviews/<branch>/<YYYY-MM-DD-HHmm>-<trigger>.md`.
+`../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-<trigger>.md`
+(the session folder whose `plan.md` names the current branch).
 Never write into this repo.
 
 Return one line to the caller: the verdict and blocking-finding count, plus
