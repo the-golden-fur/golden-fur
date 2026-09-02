@@ -196,6 +196,36 @@ describe('staffPicker.service (#52)', () => {
         )
       ).resolves.toBeUndefined();
     });
+
+    it('assertMeetsBookingLeadTime compares branch-tz calendar days, not the UTC day', async () => {
+      vi.useFakeTimers();
+      // 23:30 Asia/Manila on 2026-08-03 (still 15:30 UTC, same UTC day).
+      vi.setSystemTime(new Date('2026-08-03T15:30:00.000Z'));
+
+      // Floor 1 => earliest is 2026-08-04 Manila. A slot at 09:00 Manila on
+      // the 4th (01:00 UTC) is on the earliest allowed Manila day - accepted,
+      // even though it is a different UTC calendar day from "now".
+      queueFromResults({ data: { timezone: 'Asia/Manila' }, error: null });
+      await expect(
+        assertMeetsBookingLeadTime(
+          { ...DEFAULT_POLICY, booking_notice_period_days: 1 } as never,
+          '2026-08-04T01:00:00.000Z',
+          'branch-1'
+        )
+      ).resolves.toBeUndefined();
+
+      // A slot still on 2026-08-03 Manila (23:45) is inside the window - 422.
+      queueFromResults({ data: { timezone: 'Asia/Manila' }, error: null });
+      await expect(
+        assertMeetsBookingLeadTime(
+          { ...DEFAULT_POLICY, booking_notice_period_days: 1 } as never,
+          '2026-08-03T15:45:00.000Z',
+          'branch-1'
+        )
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      vi.useRealTimers();
+    });
   });
 
   describe('isStaffPickerEnabled', () => {

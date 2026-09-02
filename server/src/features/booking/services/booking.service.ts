@@ -44,6 +44,11 @@ import {
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
+/** How far before "now" an Online booking's scheduled_start may still land -
+ * absorbs clock skew and the seconds between the availability fetch and the
+ * submit, without allowing a genuinely past slot. */
+const PAST_SLOT_GRACE_MS = 15 * 60_000;
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -829,13 +834,28 @@ export async function createBooking({
   let downpaymentHoldHours = 24;
 
   if (bookingSource === 'Online') {
-    // One effective-policy resolve feeds both the down-payment config and
-    // the new-online-booking notice period: an Online booking's slot must
-    // sit at least booking_notice_period_days out (default 0 - same-day
-    // allowed; Admin-configurable on Settings > Config > Policies). This is
-    // the authoritative gate behind the Slot Picker's own floored calendar -
-    // a direct API call can't book inside the window. Reschedules keep the
-    // stricter notice_period_days (see reschedule.service.ts).
+    // A slot that has already started is never a valid Online booking. The
+    // Slot Picker never offers one (past dates come back empty, today filters
+    // out past starts), but a direct POST /bookings has to be rejected here
+    // too - this is independent of the configurable notice floor below, which
+    // is a no-op at its default of 0. Small grace for clock skew and the gap
+    // between the availability fetch and submit.
+    if (
+      new Date(input.scheduled_start).getTime() <
+      Date.now() - PAST_SLOT_GRACE_MS
+    ) {
+      throwWithStatus(
+        422,
+        'That time has already passed — please choose a later slot'
+      );
+    }
+
+    // One effective-policy resolve feeds the down-payment config and the
+    // new-online-booking notice period (booking_notice_period_days, default
+    // 0 - same-day allowed; Admin-configurable on Settings > Config >
+    // Policies). Together with the past-slot check above this is the
+    // server-side backstop behind the Slot Picker's floored calendar.
+    // Reschedules keep the stricter notice_period_days (reschedule.service.ts).
     const policy = await resolveEffectivePolicy(input.branch_id);
 
     await assertMeetsBookingLeadTime(

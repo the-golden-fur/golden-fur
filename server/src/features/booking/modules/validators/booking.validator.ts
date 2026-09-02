@@ -534,7 +534,6 @@ export const nextAvailableSlotQueryValidator = z
     slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
     pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
     lookahead_days: z.coerce.number().int().min(1).max(60).optional(),
-    intent: z.enum(BOOKING_INTENTS).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

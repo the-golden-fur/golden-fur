@@ -215,13 +215,18 @@ const GROOMER = {
   profile_photo_url: null,
 };
 
+// Relative to "now" so the createBooking past-slot guard (Online bookings
+// can't be scheduled in the past) never trips on the shared fixture - tests
+// that exercise the notice window or a deliberately past slot set their own
+// scheduled_start.
+const BASE_START_MS = Date.now() + 7 * 864e5;
 const BASE_INPUT = {
   pet_id: PET.id,
   branch_id: 'branch-1',
   service_category: 'Grooming' as const,
   items: [{ service_id: 'service-groom' }],
-  scheduled_start: '2026-08-03T01:00:00+00:00',
-  scheduled_end: '2026-08-03T02:00:00+00:00',
+  scheduled_start: new Date(BASE_START_MS).toISOString(),
+  scheduled_end: new Date(BASE_START_MS + 60 * 60_000).toISOString(),
 };
 
 const INSERTED_BOOKING = {
@@ -1541,9 +1546,11 @@ describe('booking.service (#51)', () => {
           ...BASE_INPUT,
           service_category: 'Hotel',
           items: [{ service_id: 'service-hotel' }],
-          scheduled_start: '2026-08-03T01:00:00+00:00',
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
           // 3 nights (3 x 1440 minutes) after scheduled_start.
-          scheduled_end: '2026-08-06T01:00:00+00:00',
+          scheduled_end: new Date(
+            BASE_START_MS + 3 * 1440 * 60_000
+          ).toISOString(),
         },
       });
 
@@ -1578,8 +1585,8 @@ describe('booking.service (#51)', () => {
           ...BASE_INPUT,
           service_category: 'Hotel',
           items: [{ service_id: 'service-hotel' }],
-          scheduled_start: '2026-08-03T01:00:00+00:00',
-          scheduled_end: '2026-08-04T01:00:00+00:00',
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
+          scheduled_end: new Date(BASE_START_MS + 1440 * 60_000).toISOString(),
         },
       });
 
@@ -1862,6 +1869,28 @@ describe('booking.service (#51)', () => {
     const BRANCH_TZ = { data: { timezone: 'Asia/Manila' }, error: null };
     const soonIso = (days: number) =>
       new Date(Date.now() + days * 864e5).toISOString();
+
+    it('rejects a past-dated Online booking with a 422 even at the default floor (0)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      queueFromResults(
+        { data: PET, error: null } // pet ownership - rejected before the policy resolve
+      );
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            scheduled_start: soonIso(-1), // yesterday
+            scheduled_end: soonIso(-0.95),
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      expect(
+        recordedWrites.find((write) => write.table === 'bookings')
+      ).toBeUndefined();
+    });
 
     it('rejects an Online booking whose slot is inside the notice window with a 422', async () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
