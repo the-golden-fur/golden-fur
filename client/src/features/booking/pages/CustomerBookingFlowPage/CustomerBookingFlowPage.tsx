@@ -139,7 +139,7 @@ const DEFAULT_DURATION_MINUTES: Record<ServiceCategory, number> = {
   Veterinary: 60,
   Daycare: 60,
   Hotel: 1440,
-  Misc: 60,
+  Assessment: 60,
 };
 
 const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
@@ -147,7 +147,7 @@ const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
   Hotel: BedDouble,
   Daycare: Sun,
   Veterinary: Stethoscope,
-  Misc: ClipboardList,
+  Assessment: ClipboardList,
 };
 
 /** A general, plain-language definition of what each service type is, shown
@@ -164,7 +164,8 @@ const CATEGORY_DESCRIPTIONS: Record<ServiceCategory, string> = {
     "Daytime care and supervision for your pet while you're out, with pick-up on the same day.",
   Veterinary:
     'Medical care for your pet - check-ups, vaccinations and treatment by a licensed veterinarian.',
-  Misc: "Other services that don't fall under grooming, boarding, daycare or veterinary care.",
+  Assessment:
+    "Recording your pet's weight class and coat type on-site, required once before Grooming/Hotel/Daycare/Veterinary can be booked.",
 };
 
 const MEAL_TIMES: HotelBookingPreferenceFeeding['meal_time'][] = [
@@ -959,12 +960,12 @@ export function CustomerBookingFlowPage() {
   );
 
   const availableCategories = useMemo(() => {
-    // An unassessed pet can only ever book a Misc service flagged
+    // An unassessed pet can only ever book an Assessment service flagged
     // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
     // Daycare/Veterinary are always dead ends for it, so don't even offer
     // those tabs.
     if (!isSelectedPetAssessed) {
-      return ['Misc'] as ServiceCategory[];
+      return ['Assessment'] as ServiceCategory[];
     }
 
     // Seeded categories that drive real category-specific behavior
@@ -1010,7 +1011,8 @@ export function CustomerBookingFlowPage() {
     }
 
     const assessmentService = allServices.find(
-      (service) => service.category === 'Misc' && !service.requires_assessed_pet
+      (service) =>
+        service.category === 'Assessment' && !service.requires_assessed_pet
     );
 
     if (!assessmentService) return;
@@ -1019,8 +1021,8 @@ export function CustomerBookingFlowPage() {
     // set-state-in-effect pattern) so these updates never run synchronously
     // inside the effect body itself.
     void Promise.resolve().then(() => {
-      handleCategorySelect('Misc');
-      updateCategorySelection('Misc', () => ({
+      handleCategorySelect('Assessment');
+      updateCategorySelection('Assessment', () => ({
         serviceIds: [assessmentService.id],
         packageIds: [],
       }));
@@ -1497,9 +1499,9 @@ export function CustomerBookingFlowPage() {
 
     setSelectedPetId(petId);
     // Clears every category's selections - important since an unassessed
-    // pet can only book Misc's Initial Assessment, so a selection valid for
-    // one pet may not be for another (mirrors handleBranchSelect's own
-    // reset below).
+    // pet can only book Assessment's Initial Assessment, so a selection
+    // valid for one pet may not be for another (mirrors handleBranchSelect's
+    // own reset below).
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});

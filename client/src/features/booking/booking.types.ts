@@ -40,21 +40,22 @@ export const OVERRIDABLE_BOOKING_STATUSES = [
   'Completed',
 ] as const;
 
-/** Misc: administrative bookings (Initial Assessment/Reassessment) with no
- * staff-assignment or capacity contention. */
+/** Assessment (renamed from Misc): administrative bookings (Initial
+ * Assessment/Reassessment) with no staff-assignment or capacity
+ * contention. */
 export type ServiceCategory =
   | 'Grooming'
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ];
 
 /**

@@ -13,6 +13,7 @@ import {
   LogIn,
   PawPrint,
   Receipt,
+  Scale,
   Scissors,
   Stethoscope,
   UserCog,
@@ -124,6 +125,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Branch-wide booking queue - view every status, reschedule, or cancel.',
             to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Assessment Queue',
+            description:
+              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
+            to: '/staff/assessment/queue',
           },
           {
             title: 'Cage Occupancy',
@@ -292,6 +299,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/bookings/queue',
           },
           {
+            title: 'Assessment Queue',
+            description:
+              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
+            to: '/staff/assessment/queue',
+          },
+          {
             title: 'Boarding Checklist',
             description: 'End-of-day uncompleted care log flags.',
             to: '/staff/hotel/care-log',
@@ -343,6 +356,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Bookings Queue',
             description: "Today's confirmed bookings for the front desk.",
             to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Assessment Queue',
+            description:
+              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
+            to: '/staff/assessment/queue',
           },
           {
             title: 'Cage Occupancy',
@@ -521,6 +540,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Customer Management': UserSearch,
   'Days Off Approval Queue': ClipboardCheck,
   'Bookings Queue': CalendarCheck,
+  'Assessment Queue': Scale,
   Archive,
   'Hotel Queue': LogIn,
   'Daycare Queue': LogIn,

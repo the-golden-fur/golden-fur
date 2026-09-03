@@ -26,7 +26,7 @@ export type DiscountCategory =
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 /** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability
  * - replaces the discount's original single branch_id column. */

@@ -9,14 +9,14 @@ export type ServiceCategory =
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ];
 
 /** Same vocabulary as M02 pets.weight_class / pets.coat_type. */

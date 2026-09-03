@@ -12,7 +12,7 @@ const CATEGORIES = [
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ] as const;
 const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;

@@ -61,15 +61,16 @@ export const OVERRIDABLE_BOOKING_STATUSES = [
   'Completed',
 ] as const;
 
-/** Misc: administrative bookings (Initial Assessment/Reassessment) with no
- * staff-assignment or capacity contention - falls through both checks in
- * booking.service.ts automatically since neither is keyed on this value. */
+/** Assessment (renamed from Misc): administrative bookings (Initial
+ * Assessment/Reassessment) with no staff-assignment or capacity contention -
+ * falls through both checks in booking.service.ts automatically since
+ * neither is keyed on this value. */
 export type ServiceCategory =
   | 'Grooming'
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 /**
  * Unified booking lifecycle (booking-status revision): no manual "staff
