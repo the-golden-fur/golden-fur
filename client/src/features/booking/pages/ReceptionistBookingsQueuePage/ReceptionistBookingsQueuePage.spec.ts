@@ -20,13 +20,11 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
-  listServices: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
-  updatePet: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -34,8 +32,6 @@ vi.mock('../../api/booking.api', () => ({
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
   startBooking: vi.fn(),
-  completeBooking: vi.fn(),
-  overrideBookingStatus: vi.fn(),
 }));
 
 // Reschedule button gating (#24) reads policy_configurations - only the
@@ -162,10 +158,6 @@ describe('ReceptionistBookingsQueuePage', () => {
         { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
         { id: 'branch-southwoods', name: 'Southwoods', is_vet_branch: false },
       ],
-      error: null,
-    });
-    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
-      data: [],
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -841,6 +833,30 @@ describe('ReceptionistBookingsQueuePage', () => {
       // Still Pending, still offering Check In again.
       expect(screen.getByText('Check In')).toBeInTheDocument();
     });
+
+    it('does not show Check In for a Pending Assessment-category booking - starting one skips the mandatory pet-assessment capture that only AssessmentQueuePage does', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({
+            service_category: 'Assessment',
+            status: 'Pending',
+            payment_status: 'Fully Paid',
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+    });
   });
 
   // Confirmation status (advisory: the receptionist queue speaks
@@ -945,152 +961,6 @@ describe('ReceptionistBookingsQueuePage', () => {
       expect(screen.getAllByRole('listitem')[0].textContent).toContain(
         'Unconfirmed'
       );
-    });
-  });
-
-  describe('Misc-category controls (folded back from the deleted Payments Queue)', () => {
-    it('starts a Misc booking via its own Start button, capturing the pet assessment first', async () => {
-      const user = userEvent.setup();
-      vi.mocked(staffApi.listStaff).mockResolvedValue({
-        data: [buildViewer('Receptionist')],
-        error: null,
-      });
-      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
-        data: [
-          {
-            id: 'svc-misc-1',
-            category: 'Misc',
-            captures_pet_assessment: true,
-          } as never,
-        ],
-        error: null,
-      });
-      vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [
-          buildBooking({
-            service_category: 'Misc',
-            status: 'Pending',
-            payment_status: 'Fully Paid',
-            booking_items: [
-              {
-                id: 'bi-1',
-                booking_id: 'booking-1',
-                service_id: 'svc-misc-1',
-                package_id: null,
-                price_at_booking: 0,
-                duration_minutes_at_booking: 30,
-              },
-            ],
-          }),
-        ],
-        error: null,
-      });
-      vi.mocked(customerApi.updatePet).mockResolvedValue({
-        data: {
-          id: 'pet-12345678',
-          weight_class: 'M',
-          coat_type: 'SC',
-        } as never,
-        error: null,
-      });
-      vi.mocked(bookingApi.startBooking).mockResolvedValue({
-        data: buildBooking({ service_category: 'Misc', status: 'In Progress' }),
-        error: null,
-      });
-
-      renderPage();
-
-      await user.click(await screen.findByRole('button', { name: 'Start' }));
-
-      const dialog = await screen.findByRole('dialog');
-      await user.selectOptions(
-        within(dialog).getByLabelText('Weight class'),
-        'M'
-      );
-      await user.selectOptions(
-        within(dialog).getByLabelText('Coat type'),
-        'SC'
-      );
-      await user.click(
-        within(dialog).getByRole('button', { name: 'Save & Start' })
-      );
-
-      await waitFor(() =>
-        expect(customerApi.updatePet).toHaveBeenCalledWith(
-          'pet-12345678',
-          'token',
-          { weight_class: 'M', coat_type: 'SC' }
-        )
-      );
-      await waitFor(() =>
-        expect(bookingApi.startBooking).toHaveBeenCalledWith(
-          'booking-1',
-          'token'
-        )
-      );
-    });
-
-    it('gives an Admin a status-override dropdown for a Misc booking', async () => {
-      const user = userEvent.setup();
-      vi.mocked(staffApi.listStaff).mockResolvedValue({
-        data: [buildViewer('Admin')],
-        error: null,
-      });
-      vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [
-          buildBooking({
-            service_category: 'Misc',
-            status: 'Pending',
-            payment_status: 'Fully Paid',
-          }),
-        ],
-        error: null,
-      });
-      vi.mocked(bookingApi.overrideBookingStatus).mockResolvedValue({
-        data: buildBooking({ service_category: 'Misc', status: 'Completed' }),
-        error: null,
-      });
-
-      renderPage();
-
-      const row = await screen.findByRole('listitem');
-      await user.selectOptions(
-        within(row).getByLabelText('Status'),
-        'Completed'
-      );
-
-      await waitFor(() =>
-        expect(bookingApi.overrideBookingStatus).toHaveBeenCalledWith(
-          'booking-1',
-          'Completed',
-          'token'
-        )
-      );
-    });
-
-    it('shows no Start/Complete for a non-Misc booking', async () => {
-      vi.mocked(staffApi.listStaff).mockResolvedValue({
-        data: [buildViewer('Receptionist')],
-        error: null,
-      });
-      vi.mocked(bookingApi.listBookings).mockResolvedValue({
-        data: [
-          buildBooking({ service_category: 'Grooming', status: 'Pending' }),
-        ],
-        error: null,
-      });
-
-      renderPage();
-
-      await waitFor(() =>
-        expect(screen.getByText('View details')).toBeInTheDocument()
-      );
-      expect(
-        screen.queryByRole('button', { name: 'Start' })
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Complete' })
-      ).not.toBeInTheDocument();
     });
   });
 });

@@ -180,7 +180,7 @@ function downpaymentNettingLines(booking: BookingForBilling): DraftLineItem[] {
  * stays 'service' for all of them; 'addon' remains a valid DraftLineItem
  * value for historical rows but is no longer produced going forward.
  *
- * Shared by Grooming and Misc - neither category has any billing logic
+ * Shared by Grooming and Assessment - neither category has any billing logic
  * beyond "list what was selected", unlike Hotel/Daycare/Veterinary below.
  */
 async function getItemBasedLineItems(
@@ -356,7 +356,7 @@ export async function getServiceLineItems(
 ): Promise<DraftLineItem[]> {
   switch (booking.service_category) {
     case 'Grooming':
-    case 'Misc':
+    case 'Assessment':
       return getItemBasedLineItems(booking);
     case 'Hotel':
       return getHotelLineItems(booking);

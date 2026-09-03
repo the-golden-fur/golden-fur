@@ -14,14 +14,14 @@ export type DiscountCategory =
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 export const DISCOUNT_CATEGORIES: DiscountCategory[] = [
   'Grooming',
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ];
 
 /** Custom change: mirrors ServiceBranchAvailability/PackageBranchAvailability

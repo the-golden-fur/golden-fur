@@ -22,7 +22,7 @@ const SERVICE_CATEGORIES = [
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ];
 
 const PAYMENT_CHOICE_OPTIONS = [

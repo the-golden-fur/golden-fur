@@ -44,8 +44,9 @@ that pattern.
 | `promos`, `promo_branch_availability`, `vet_medication_catalog`, `vet_procedure_catalog`                                                  | module-5 |
 
 **Seeded by a migration, not a seed script** (change the migration, not
-`supabase/seeds/`): base `services` + `service_pricing_tiers` + Misc
-assessment services (`20260715034`, `20260802076`, `20260803080`),
+`supabase/seeds/`): base `services` + `service_pricing_tiers` + Assessment
+(renamed from Misc) assessment services (`20260715034`, `20260802076`,
+`20260803080`, `20260903167`),
 `service_types` + `service_type_branch_availability` (`20260809113`,
 `20260818133`), `policy_configurations` defaults, `promo_cap_configuration`
 default row, `pricing_configuration`.

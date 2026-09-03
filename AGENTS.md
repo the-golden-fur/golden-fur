@@ -104,12 +104,17 @@ shadow Claude Code's own built-in `run` skill, which drives the app in a
 browser; use `dev-servers` first to confirm the processes are up, then
 `run` to actually look at a page; `npm run dev`'s `predev` frees the port
 first via `scripts/free-ports.mjs`, and `npm run free-ports` does it on
-demand) and `pre-commit-checks` (run every
+demand), `pre-commit-checks` (run every
 `(check)`/`(fix)`-labeled VS Code task — lint and format, client and
 server — auto-fixing what it can; **standalone-on-request only** now — no
-longer a pipeline step, `ci-fixer-agent` owns lint/format at PR time). Any
-AI coding tool working in this repo should read the relevant file under
-`.agent/` before doing that kind of task.
+longer a pipeline step, `ci-fixer-agent` owns lint/format at PR time), and
+`gitkeep-empty-dir` (add a `.gitkeep` to one specific directory that's
+**deliberately, permanently** meant to ship empty — explicit-request only,
+never for a directory that's simply not filled in yet mid-task; see "Auto-run
+wiring" below for the automatic half of this, which only ever removes a
+stray `.gitkeep`, never adds one). Any AI coding tool working in this repo
+should read the relevant file under `.agent/` before doing that kind of
+task.
 
 **`pr-to-dev` and `pr-dev-to-main` are the "session is finished" finish
 pipeline**, run in a locked order (see the skill files and "Auto-run
@@ -263,8 +268,13 @@ skill's rules depend on moved → run `domain-doc-sync-agent`; `client/src` /
 `session-documenter` (the near-beginner plan + click-by-click testing +
 copied context) as the closing step.
 
-**`gitkeep-sweep.sh`** (`Stop`) — adds a `.gitkeep` to any tracked-scope dir
-left empty, removes it once the dir has other files; stages the change.
+**`gitkeep-cleanup.sh`** (`Stop`) — removal only: if a directory holds a
+`.gitkeep` _and_ now has other tracked/addable files, removes the
+now-redundant `.gitkeep` and stages the change. Deliberately does **not**
+add a `.gitkeep` to an empty directory it finds — it can't tell "meant to
+be empty" apart from "an AI hasn't filled this in yet," so that decision is
+never automatic. Adding one is the `gitkeep-empty-dir` skill, run only on
+an explicit request.
 
 **PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of `commit`
 or a branch push): `ci-verifier`, `ci-fixer-agent`, `code-reviewer`,

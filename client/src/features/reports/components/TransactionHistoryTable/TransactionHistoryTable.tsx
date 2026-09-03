@@ -42,7 +42,7 @@ const SERVICE_CATEGORIES = [
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ];
 
 const TRANSACTION_TYPE_OPTIONS = [

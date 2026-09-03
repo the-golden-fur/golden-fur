@@ -25,7 +25,7 @@ export type ServiceCategory =
   | 'Hotel'
   | 'Daycare'
   | 'Veterinary'
-  | 'Misc';
+  | 'Assessment';
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 

@@ -248,7 +248,7 @@ const GROOMING_SERVICE = {
 
 const ASSESSMENT_SERVICE = {
   id: 'service-assessment-1',
-  category: 'Misc' as const,
+  category: 'Assessment' as const,
   name: 'Initial Assessment',
   base_price: 0,
   duration_minutes: 30,
@@ -520,9 +520,11 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
 
-    // Only the Misc tab is offered - Grooming/Hotel/Daycare/Veterinary are
-    // always dead ends for an unassessed pet.
-    await waitFor(() => expect(screen.getByText('Misc')).toBeInTheDocument());
+    // Only the Assessment tab is offered - Grooming/Hotel/Daycare/Veterinary
+    // are always dead ends for an unassessed pet.
+    await waitFor(() =>
+      expect(screen.getByText('Assessment')).toBeInTheDocument()
+    );
     expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
     expect(screen.queryByText('Hotel')).not.toBeInTheDocument();
 
