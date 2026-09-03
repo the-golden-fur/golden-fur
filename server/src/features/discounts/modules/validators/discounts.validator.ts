@@ -7,7 +7,7 @@ const CATEGORIES = [
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ] as const;
 
 /**

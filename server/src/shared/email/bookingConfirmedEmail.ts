@@ -13,7 +13,7 @@ export interface BookingConfirmedEmailParams {
  * Issue #97/#98: fires on every successful booking creation. Includes
  * service type, branch, date, time, and assigned staff name per
  * Modules-Features - staffName is omitted from the body for
- * Hotel/Daycare/Misc bookings, which have no assigned_staff_id.
+ * Hotel/Daycare/Assessment bookings, which have no assigned_staff_id.
  */
 export async function sendBookingConfirmedEmail({
   to,

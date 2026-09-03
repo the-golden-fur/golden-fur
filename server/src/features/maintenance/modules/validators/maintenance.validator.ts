@@ -5,7 +5,7 @@ const CATEGORIES = [
   'Hotel',
   'Daycare',
   'Veterinary',
-  'Misc',
+  'Assessment',
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;

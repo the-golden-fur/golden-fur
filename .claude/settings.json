@@ -34,7 +34,7 @@
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gitkeep-sweep.sh\" 2>/dev/null || true",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gitkeep-cleanup.sh\" 2>/dev/null || true",
             "timeout": 15
           }
         ]

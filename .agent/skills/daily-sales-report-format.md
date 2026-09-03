@@ -30,8 +30,8 @@ uncollected charge):
 - A **Miscellaneous Sales total** — transactions with no booking record
   (`booking_id` NULL, `transaction_type = miscellaneous_sale`), used
   mainly for credit redemption against non-inventory retail items. This is
-  distinct from the _Misc_ `service_category` (Initial
-  Assessment/Reassessment), which does have a booking record and is
+  distinct from the _Assessment_ `service_category` (renamed from Misc;
+  Initial Assessment/Reassessment), which does have a booking record and is
   settled per-transaction on the Transactions page like any other booking
   payment.
 - Passing no `branch` returns a **Superadmin combined-branches view.**
