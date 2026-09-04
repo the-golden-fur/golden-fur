@@ -13,6 +13,7 @@ import {
   noticeLeadDays,
   resolveBookingLeadDays,
   resolveEffectivePolicy,
+  resolveServiceTypeStaffConfig,
 } from './staffPicker.service.ts';
 
 /** Which notice-period floor getDaySlots applies: a new booking uses
@@ -35,11 +36,6 @@ function throwWithStatus(statusCode: number, message: string): never {
  * candidate slots, generated from the branch's operating_hours (#49's RPC
  * already reads the same jsonb column for its own Check 1).
  */
-
-const CATEGORY_STAFF_ROLE: Partial<Record<ServiceCategory, string>> = {
-  Grooming: 'Groomer',
-  Veterinary: 'Veterinarian',
-};
 
 /** Arrival-time granularity for Hotel candidates - independent of the stay's
  * own duration (slotDurationMinutes), which only sets how far `end` extends. */
@@ -129,13 +125,17 @@ function zonedTimeToUtc(date: string, time: string, timeZone: string): Date {
 
 async function countActiveRoster(
   branchId: string,
-  role: string
+  roles: string[]
 ): Promise<number> {
+  // .in() with an empty array is unreliable in PostgREST - short-circuit
+  // instead of sending a degenerate query.
+  if (roles.length === 0) return 0;
+
   const { count, error } = await supabase
     .from('staff_profiles')
     .select('id', { count: 'exact', head: true })
     .eq('branch_id', branchId)
-    .eq('role', role)
+    .in('role', roles)
     .eq('is_active', true);
 
   if (error) throwWithStatus(400, error.message);
@@ -352,10 +352,11 @@ export async function getDaySlots({
         )
       : lunchCandidates;
 
-  const role = CATEGORY_STAFF_ROLE[serviceCategory];
+  const { eligible_staff_roles: roles } =
+    await resolveServiceTypeStaffConfig(serviceCategory);
 
-  if (role) {
-    const roster = await countActiveRoster(branchId, role);
+  if (roles.length > 0) {
+    const roster = await countActiveRoster(branchId, roles);
 
     const slots = await Promise.all(
       futureCandidates.map(async ({ start, end }) => {
@@ -364,6 +365,9 @@ export async function getDaySlots({
           serviceCategory,
           scheduledStart: start.toISOString(),
           scheduledEnd: end.toISOString(),
+          // Already resolved once above for the roster count - skip
+          // listAvailableStaff's own service_types lookup per candidate slot.
+          eligibleStaffRoles: roles,
         });
 
         return {

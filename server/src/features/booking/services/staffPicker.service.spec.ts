@@ -73,8 +73,6 @@ const DEFAULT_POLICY = {
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
   booking_notice_period_days: 0,
-  staff_picker_enabled_grooming: true,
-  staff_picker_enabled_veterinary: true,
   lunch_break_enabled: true,
   lunch_break_start: '12:00:00',
   lunch_break_end: '13:00:00',
@@ -89,8 +87,22 @@ const BRANCH_POLICY = {
   ...DEFAULT_POLICY,
   id: 'policy-branch',
   branch_id: 'branch-1',
-  staff_picker_enabled_grooming: false,
+  notice_period_days: 5,
 };
+
+/** service_types row shape resolveServiceTypeStaffConfig selects. */
+function serviceTypeStaffRow(
+  eligibleStaffRoles: string[],
+  staffPickerEnabled = true
+) {
+  return {
+    data: {
+      staff_picker_enabled: staffPickerEnabled,
+      eligible_staff_roles: eligibleStaffRoles,
+    },
+    error: null,
+  };
+}
 
 const GROOMERS = [
   { staff_id: 'groomer-1', display_name: 'Ana', profile_photo_url: null },
@@ -118,7 +130,7 @@ describe('staffPicker.service (#52)', () => {
 
       const policy = await resolveEffectivePolicy('branch-1');
 
-      expect(policy.staff_picker_enabled_grooming).toBe(false);
+      expect(policy.notice_period_days).toBe(5);
     });
 
     it('falls back to the seeded default row when no branch row exists', async () => {
@@ -126,7 +138,6 @@ describe('staffPicker.service (#52)', () => {
 
       const policy = await resolveEffectivePolicy('branch-2');
 
-      expect(policy.staff_picker_enabled_grooming).toBe(true);
       expect(policy.notice_period_days).toBe(3);
     });
 
@@ -136,7 +147,7 @@ describe('staffPicker.service (#52)', () => {
       const policy = await resolveEffectivePolicy('branch-1');
 
       expect(policy.notice_enforcement_mode).toBe('Strict');
-      expect(policy.staff_picker_enabled_veterinary).toBe(true);
+      expect(policy.lunch_break_enabled).toBe(true);
     });
   });
 
@@ -229,21 +240,28 @@ describe('staffPicker.service (#52)', () => {
   });
 
   describe('isStaffPickerEnabled', () => {
-    it('is always false for Hotel/Daycare without touching the database', async () => {
-      expect(await isStaffPickerEnabled('branch-1', 'Hotel')).toBe(false);
-      expect(await isStaffPickerEnabled('branch-1', 'Daycare')).toBe(false);
-      expect(supabase.from).not.toHaveBeenCalled();
+    it('reflects the service_types row staff_picker_enabled flag - true', async () => {
+      queueFromResults(serviceTypeStaffRow(['Groomer']));
+
+      expect(await isStaffPickerEnabled('Grooming')).toBe(true);
     });
 
-    it('follows the per-branch Grooming toggle', async () => {
-      queueFromResults({ data: [DEFAULT_POLICY, BRANCH_POLICY], error: null });
+    it('reflects the service_types row staff_picker_enabled flag - false (e.g. Hotel/Daycare by default)', async () => {
+      queueFromResults(serviceTypeStaffRow([], false));
 
-      expect(await isStaffPickerEnabled('branch-1', 'Grooming')).toBe(false);
+      expect(await isStaffPickerEnabled('Hotel')).toBe(false);
+    });
+
+    it('degrades to false when no matching service_types row is found', async () => {
+      queueFromResults({ data: null, error: null });
+
+      expect(await isStaffPickerEnabled('Grooming')).toBe(false);
     });
   });
 
   describe('listAvailableStaff', () => {
-    it('maps Grooming -> Groomer and passes the window to the #49 RPC', async () => {
+    it('reads Grooming eligible roles from service_types and passes the window to the #49 RPC', async () => {
+      queueFromResults(serviceTypeStaffRow(['Groomer']));
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: GROOMERS,
         error: null,
@@ -258,14 +276,15 @@ describe('staffPicker.service (#52)', () => {
       expect(supabase.rpc).toHaveBeenCalledWith(
         'get_staff_availability',
         expect.objectContaining({
-          p_role: 'Groomer',
+          p_roles: ['Groomer'],
           p_branch_id: 'branch-1',
           p_staff_id: null,
         })
       );
     });
 
-    it('maps Veterinary -> Veterinarian (#52 AC-4)', async () => {
+    it('reads Veterinary eligible roles from service_types (#52 AC-4)', async () => {
+      queueFromResults(serviceTypeStaffRow(['Veterinarian']));
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: [],
         error: null,
@@ -275,11 +294,13 @@ describe('staffPicker.service (#52)', () => {
 
       expect(supabase.rpc).toHaveBeenCalledWith(
         'get_staff_availability',
-        expect.objectContaining({ p_role: 'Veterinarian' })
+        expect.objectContaining({ p_roles: ['Veterinarian'] })
       );
     });
 
-    it('rejects categories with no staff-role mapping', async () => {
+    it('rejects categories with no eligible roles configured', async () => {
+      queueFromResults(serviceTypeStaffRow([], false));
+
       await expect(
         listAvailableStaff({ ...WINDOW, serviceCategory: 'Hotel' })
       ).rejects.toMatchObject({ statusCode: 400 });
@@ -288,7 +309,7 @@ describe('staffPicker.service (#52)', () => {
 
   describe('getStaffPickerOptions', () => {
     it('AC-3: when the toggle is disabled, no staff list is ever exposed (RPC not called)', async () => {
-      queueFromResults({ data: [DEFAULT_POLICY, BRANCH_POLICY], error: null });
+      queueFromResults(serviceTypeStaffRow(['Groomer'], false));
 
       const result = await getStaffPickerOptions({
         ...WINDOW,
@@ -300,7 +321,12 @@ describe('staffPicker.service (#52)', () => {
     });
 
     it('AC-4: when enabled, "No preference" is always present and first', async () => {
-      queueFromResults({ data: [DEFAULT_POLICY], error: null });
+      // isStaffPickerEnabled and listAvailableStaff each independently
+      // resolve the service_types row - two queued fetches.
+      queueFromResults(
+        serviceTypeStaffRow(['Groomer']),
+        serviceTypeStaffRow(['Groomer'])
+      );
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: GROOMERS,
         error: null,
@@ -319,6 +345,13 @@ describe('staffPicker.service (#52)', () => {
 
   describe('autoAssignStaff', () => {
     it('picks a random eligible staff member (not always the RPC-ordered first), or null when none', async () => {
+      // One service_types fetch per autoAssignStaff -> listAvailableStaff call
+      // below (three calls total).
+      queueFromResults(
+        serviceTypeStaffRow(['Groomer']),
+        serviceTypeStaffRow(['Groomer']),
+        serviceTypeStaffRow(['Groomer'])
+      );
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: GROOMERS,
         error: null,
@@ -383,7 +416,7 @@ describe('staffPicker.service (#52)', () => {
         {
           data: {
             ...BRANCH_POLICY,
-            staff_picker_enabled_veterinary: false,
+            lunch_break_enabled: false,
           },
           error: null,
         } // insert
@@ -392,7 +425,7 @@ describe('staffPicker.service (#52)', () => {
       const created = await updatePolicyConfiguration({
         input: {
           branch_id: 'branch-1',
-          staff_picker_enabled_veterinary: false,
+          lunch_break_enabled: false,
         },
       });
 
@@ -402,9 +435,8 @@ describe('staffPicker.service (#52)', () => {
 
       expect(insert?.payload).toMatchObject({
         branch_id: 'branch-1',
-        staff_picker_enabled_veterinary: false,
+        lunch_break_enabled: false,
         // seeded from the effective policy, not silently reset
-        staff_picker_enabled_grooming: true,
         notice_period_days: 3,
       });
     });

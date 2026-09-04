@@ -245,6 +245,10 @@ export interface ServiceType {
   is_active: boolean;
   staff_picker_enabled: boolean;
   cage_picker_enabled: boolean;
+  /** Which staff roles may be offered by the Staff Picker for this type -
+   * e.g. Grooming -> ['Groomer'], Veterinary -> ['Veterinarian']. Replaces
+   * the old hardcoded CATEGORY_STAFF_ROLE map in staffPicker.service.ts. */
+  eligible_staff_roles: string[];
   created_by: string | null;
   updated_by: string | null;
   created_at: string;

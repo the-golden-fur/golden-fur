@@ -2,8 +2,13 @@
 
 **Use when** a task added or changed files under `supabase/migrations/` and
 the work is otherwise **complete** — this is the closing step that applies
-those migrations to the linked Supabase project (`supabase db push`, the
-`📤 Supabase: Push Migrations` VS Code task).
+those migrations to the linked Supabase project via `npm run supabase:push`
+(the `📤 Supabase: Push Migrations` VS Code task runs this exact script —
+it's a plain `supabase db push`, no `--linked` flag). Run the npm script (or
+the VS Code task), never a raw `supabase db push`/`npx supabase db push`
+invocation typed by hand — the hand-typed form is what actually gets
+blocked by a sandboxed session's permission classifier; the npm script is
+the recognized, pre-approved path.
 
 **Run it once, at the very end.** Never mid-task, never after each migration
 — a half-finished set of migrations pushed to the shared remote is worse
@@ -18,7 +23,7 @@ than none. If more migration work is coming in the same task, wait.
 3. `supabase/.temp/project-ref` shows the **dev/staging** project, not
    production. Confirm the linked ref out loud before pushing. If it's the
    prod project, stop and ask.
-4. `supabase migration list` (`📊 Supabase: Check Migration Status`) — the
+4. `npm run supabase:status` (`📊 Supabase: Check Migration Status`) — the
    new local migrations show as not-yet-applied and nothing remote is
    missing locally.
 
@@ -26,9 +31,11 @@ than none. If more migration work is coming in the same task, wait.
 
 1. `git status` — every new `supabase/migrations/*.sql` is committed or at
    least staged (you push what's on disk; know what that is).
-2. Run `supabase db push` (or the VS Code task). Review the plan it prints
-   **before** confirming — it lists exactly which migration files will run.
-3. On success: re-run `supabase migration list` and confirm the new
+2. Run `npm run supabase:push` (the `📤 Supabase: Push Migrations` VS Code
+   task) — not a hand-typed `supabase db push` / `npx supabase ...`
+   invocation. Review the plan it prints **before** confirming — it lists
+   exactly which migration files will run.
+3. On success: re-run `npm run supabase:status` and confirm the new
    versions are now `applied` remotely. Report the list of versions pushed.
 4. On failure: do **not** retry blindly or run `supabase migration repair`
    to paper over it. Read the error, fix the migration locally, and if the

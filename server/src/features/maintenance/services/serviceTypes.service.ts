@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type {
   ServiceType,
@@ -35,6 +36,13 @@ export async function listServiceTypes(): Promise<ServiceType[]> {
  * service_type_branch_availability row for every branch - same "disable is
  * opt-out, not opt-in" convention as createService's own branch-availability
  * seeding.
+ *
+ * `key` is no longer client-supplied (admin backlog: it was redundant
+ * busywork alongside the auto-generated `id`, and showed up unhelpfully in
+ * the admin list) - it's generated here instead. It still does real internal
+ * work as the join point cagePicker.service.ts and the customer-facing
+ * booking flow use to match a row to its ServiceCategory, so it can't just
+ * disappear - only its admin-facing presence does.
  */
 export async function createServiceType(
   input: CreateServiceTypeInput,
@@ -43,10 +51,11 @@ export async function createServiceType(
   const { data, error } = await supabase
     .from('service_types')
     .insert({
-      key: input.key,
+      key: randomUUID(),
       name: input.name,
       staff_picker_enabled: input.staff_picker_enabled ?? false,
       cage_picker_enabled: input.cage_picker_enabled ?? false,
+      eligible_staff_roles: input.eligible_staff_roles ?? [],
       created_by: requesterId,
       updated_by: requesterId,
     })
@@ -55,10 +64,9 @@ export async function createServiceType(
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      throwWithStatus(
-        409,
-        `A service type with key "${input.key}" already exists`
-      );
+      // Practically unreachable with a randomUUID() key - kept as
+      // defense-in-depth against a manual/out-of-band insert.
+      throwWithStatus(409, 'A service type with that key already exists');
     }
     throwWithStatus(400, error.message);
   }

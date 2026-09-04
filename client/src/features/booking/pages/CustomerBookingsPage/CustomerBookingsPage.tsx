@@ -286,11 +286,13 @@ export function CustomerBookingsPage() {
                 ? (pets.find((pet) => pet.id === booking.pet_id)
                     ?.weight_class ?? undefined)
                 : undefined;
+            // Custom change: Staff Picker eligibility addendum - was
+            // hardcoded to Grooming/Veterinary; now StaffPickerList
+            // resolves eligibility itself (staff_picker_enabled per
+            // service_types row) and self-hides via onUnavailable, so no
+            // client-side category check is needed here.
             const showStaffPicker =
-              (booking.service_category === 'Grooming' ||
-                booking.service_category === 'Veterinary') &&
-              rescheduleSlot !== null &&
-              !staffPickerUnavailable;
+              rescheduleSlot !== null && !staffPickerUnavailable;
 
             const menuItems = [
               ...(canReschedule
@@ -345,9 +347,7 @@ export function CustomerBookingsPage() {
                       <StaffPickerList
                         accessToken={accessToken}
                         branchId={booking.branch_id}
-                        serviceCategory={
-                          booking.service_category as 'Grooming' | 'Veterinary'
-                        }
+                        serviceCategory={booking.service_category}
                         scheduledStart={rescheduleSlot.start}
                         scheduledEnd={rescheduleSlot.end}
                         selected={rescheduleStaffPreference}

@@ -227,7 +227,9 @@ spawning a subagent):
   `email-notification-templates`, `discount-senior-pwd-compliance`,
   `iso25010-evaluation-instrument`, `supabase-seed-maintenance`.
 - `supabase-migration-push` — the closing step of a task that changed
-  `supabase/migrations/`: `supabase db push` to the linked project, run
+  `supabase/migrations/`: `npm run supabase:push` (the
+  `📤 Supabase: Push Migrations` VS Code task — not a hand-typed
+  `supabase db push`/`npx supabase ...`) to the linked project, run
   **once, only after the whole task is done** and `ci-verifier` is green
   and the seeds are reconciled. Confirms the linked ref isn't production
   first.

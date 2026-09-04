@@ -64,6 +64,10 @@ describe('capacity.service (#51)', () => {
 
   describe('checkCapacity - Grooming/Veterinary (staff-count path)', () => {
     it('AC-2: available when at least one staff member passes the #49 RPC', async () => {
+      queueFromResults({
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      });
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: [GROOMER],
         error: null,
@@ -79,6 +83,13 @@ describe('capacity.service (#51)', () => {
     });
 
     it('AC-2: rejected with a staff-capacity reason when nobody is eligible', async () => {
+      queueFromResults({
+        data: {
+          staff_picker_enabled: true,
+          eligible_staff_roles: ['Veterinarian'],
+        },
+        error: null,
+      });
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: [],
         error: null,
@@ -94,6 +105,10 @@ describe('capacity.service (#51)', () => {
     });
 
     it('re-verifies a single specific staff member when staffId is passed (#49 AC-5 shape)', async () => {
+      queueFromResults({
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      });
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: [],
         error: null,

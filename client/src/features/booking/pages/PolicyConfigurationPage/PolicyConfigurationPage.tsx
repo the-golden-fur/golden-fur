@@ -30,8 +30,6 @@ interface FormState {
   notice_enforcement_mode: EnforcementMode;
   notice_enforcement_enabled: boolean;
   booking_notice_period_days: number;
-  staff_picker_enabled_grooming: boolean;
-  staff_picker_enabled_veterinary: boolean;
   lunch_break_enabled: boolean;
   lunch_break_start: string;
   lunch_break_end: string;
@@ -62,8 +60,6 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     notice_enforcement_mode: policy.notice_enforcement_mode,
     notice_enforcement_enabled: policy.notice_enforcement_enabled,
     booking_notice_period_days: policy.booking_notice_period_days,
-    staff_picker_enabled_grooming: policy.staff_picker_enabled_grooming,
-    staff_picker_enabled_veterinary: policy.staff_picker_enabled_veterinary,
     lunch_break_enabled: policy.lunch_break_enabled,
     lunch_break_start: policy.lunch_break_start.slice(0, 5),
     lunch_break_end: policy.lunch_break_end.slice(0, 5),
@@ -91,8 +87,6 @@ const DOCUMENTED_DEFAULTS: FormState = {
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
   booking_notice_period_days: 0,
-  staff_picker_enabled_grooming: true,
-  staff_picker_enabled_veterinary: true,
   lunch_break_enabled: true,
   lunch_break_start: '12:00',
   lunch_break_end: '13:00',
@@ -118,12 +112,13 @@ const DOCUMENTED_DEFAULTS: FormState = {
  * resolveEffectivePolicy/updatePolicyConfiguration) which previously had no
  * client consumer at all. Lets Admin/Superadmin configure the reschedule
  * notice period (read by reschedule.service.ts and the Bookings Queue's
- * Reschedule button gate), Staff Picker visibility, and the fixed lunch
- * break - system-wide default or per-branch override, same branch-selector
- * UX as System Configuration. (The Daycare overnight fee briefly lived here
- * too - Custom change: Daycare fee configuration - but moved to be
- * per-service instead, on live follow-up feedback, so each Daycare service
- * can set its own; see AdminServicesPage.)
+ * Reschedule button gate) and the fixed lunch break - system-wide default or
+ * per-branch override, same branch-selector UX as System Configuration. (The
+ * Daycare overnight fee briefly lived here too - Custom change: Daycare fee
+ * configuration - but moved to be per-service instead, on live follow-up
+ * feedback, so each Daycare service can set its own; see AdminServicesPage.
+ * Staff Picker visibility/eligible roles similarly moved out - it's now
+ * per-service-type, see AdminServiceTypesPage.)
  */
 export function PolicyConfigurationPage() {
   const { user, accessToken } = useAuth();
@@ -255,8 +250,6 @@ export function PolicyConfigurationPage() {
       notice_enforcement_mode: form.notice_enforcement_mode,
       notice_enforcement_enabled: form.notice_enforcement_enabled,
       booking_notice_period_days: form.booking_notice_period_days,
-      staff_picker_enabled_grooming: form.staff_picker_enabled_grooming,
-      staff_picker_enabled_veterinary: form.staff_picker_enabled_veterinary,
       lunch_break_enabled: form.lunch_break_enabled,
       lunch_break_start: form.lunch_break_start,
       lunch_break_end: form.lunch_break_end,
@@ -351,9 +344,9 @@ export function PolicyConfigurationPage() {
         <h1 className={styles.title}>Policies</h1>
         <p className={styles.copy}>
           Reschedule notice period and fee, new online booking notice period,
-          Staff Picker visibility, the fixed lunch break, online payments and
-          downpayment, cancellation credit, and credit expiry - system-wide
-          default, or a per-branch override.
+          the fixed lunch break, online payments and downpayment, cancellation
+          credit, and credit expiry - system-wide default, or a per-branch
+          override.
         </p>
 
         <label className={styles.field}>
@@ -466,40 +459,6 @@ export function PolicyConfigurationPage() {
               brand-new online bookings (customer self-service and receptionist
               New Booking), never to walk-ins.
             </p>
-          </section>
-
-          <section aria-labelledby="staff-picker-heading">
-            <h2 className={styles.sectionTitle} id="staff-picker-heading">
-              Staff Picker visibility
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.staff_picker_enabled_grooming}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    staff_picker_enabled_grooming: event.target.checked,
-                  }))
-                }
-              />
-              <span>Enabled for Grooming</span>
-            </label>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.staff_picker_enabled_veterinary}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    staff_picker_enabled_veterinary: event.target.checked,
-                  }))
-                }
-              />
-              <span>Enabled for Veterinary</span>
-            </label>
           </section>
 
           <section aria-labelledby="lunch-heading">

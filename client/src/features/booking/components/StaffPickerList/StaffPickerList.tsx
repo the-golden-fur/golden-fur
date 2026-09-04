@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getStaffPickerOptions } from '../../api/booking.api';
 import type {
+  ServiceCategory,
   StaffPickerOption,
   StaffPreferenceInput,
 } from '../../booking.types';
@@ -9,7 +10,11 @@ import styles from './StaffPickerList.module.css';
 interface StaffPickerListProps {
   accessToken: string;
   branchId: string;
-  serviceCategory: 'Grooming' | 'Veterinary';
+  /** Any category with staff_picker_enabled + at least one
+   * eligible_staff_roles entry on its service_types row - no longer
+   * restricted to Grooming/Veterinary now that this is admin-configurable
+   * per service type (Admin Settings > Service Types). */
+  serviceCategory: ServiceCategory;
   scheduledStart: string;
   scheduledEnd: string;
   selected: StaffPreferenceInput | null;

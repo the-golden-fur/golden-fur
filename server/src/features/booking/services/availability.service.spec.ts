@@ -64,8 +64,6 @@ const POLICY_ROW_LUNCH_DISABLED = {
       notice_enforcement_mode: 'Strict',
       notice_enforcement_enabled: false,
       booking_notice_period_days: 0,
-      staff_picker_enabled_grooming: true,
-      staff_picker_enabled_veterinary: true,
       lunch_break_enabled: false,
       lunch_break_start: '12:00:00',
       lunch_break_end: '13:00:00',
@@ -136,6 +134,10 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     queueFromResults(
       BRANCH_ROW, // branch lookup
       POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
+      {
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      }, // resolveServiceTypeStaffConfig lookup
       { data: null, error: null, count: 1 } // roster count (1 groomer)
     );
 

@@ -640,7 +640,16 @@ async function resolveStaffAssignment(
 ): Promise<StaffResolution> {
   const category = input.service_category;
 
-  if (category !== 'Grooming' && category !== 'Veterinary') {
+  // Data-driven now (service_types.staff_picker_enabled/eligible_staff_roles,
+  // via isStaffPickerEnabled) - no longer hardcoded to Grooming/Veterinary.
+  // isStaffPickerEnabled already degrades to false for any category with no
+  // matching service_types row (e.g. Assessment, which deliberately has
+  // none) or an empty eligible_staff_roles set, so this naturally still
+  // skips staff assignment for Hotel/Daycare/Assessment today, but will
+  // pick it up automatically the moment an admin configures one of them.
+  const pickerEnabled = await isStaffPickerEnabled(category);
+
+  if (!pickerEnabled) {
     return {
       assignedStaffId: null,
       preferenceType: null,
@@ -649,8 +658,7 @@ async function resolveStaffAssignment(
     };
   }
 
-  const pickerEnabled = await isStaffPickerEnabled(input.branch_id, category);
-  const preference = pickerEnabled ? input.staff_preference : undefined;
+  const preference = input.staff_preference;
 
   if (preference?.type === 'specific') {
     const verified = await listAvailableStaff({

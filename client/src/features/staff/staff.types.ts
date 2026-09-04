@@ -8,6 +8,20 @@ export type StaffRole =
   | 'Cashier'
   | 'Pet Assistant';
 
+/** Kept in sync with server ALL_STAFF_ROLES (staff.types.ts) and the
+ * staff_role Postgres enum (supabase/migrations/20260625004_m01_create_
+ * staff_role_enum.sql) - update all three together if roles ever change. */
+export const ALL_STAFF_ROLES: readonly StaffRole[] = [
+  'Superadmin',
+  'Admin',
+  'Supervisor',
+  'Receptionist',
+  'Groomer',
+  'Veterinarian',
+  'Cashier',
+  'Pet Assistant',
+];
+
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
 export interface StaffProfile {

@@ -4,12 +4,14 @@ import {
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
+  createServiceTypeValidator,
   createServiceValidator,
   updateBreedValidator,
   updatePackagePricingConfigurationValidator,
   updatePackageValidator,
   updatePricingConfigurationValidator,
   updatePromoValidator,
+  updateServiceTypeValidator,
   updateServiceValidator,
   upsertPromoCapConfigurationValidator,
 } from './maintenance.validator.ts';
@@ -118,6 +120,65 @@ describe('updateServiceValidator', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('createServiceTypeValidator (staff-role multi-select)', () => {
+  it('accepts a name-only payload - key is server-generated, not client-supplied', () => {
+    expect(
+      createServiceTypeValidator.safeParse({ name: 'Boarding' }).success
+    ).toBe(true);
+  });
+
+  it('rejects a key field - no longer part of the schema', () => {
+    expect(
+      createServiceTypeValidator.safeParse({
+        name: 'Boarding',
+        key: 'boarding',
+      }).success
+    ).toBe(false);
+  });
+
+  it('accepts real staff roles in eligible_staff_roles', () => {
+    const result = createServiceTypeValidator.safeParse({
+      name: 'Boarding',
+      eligible_staff_roles: ['Groomer', 'Pet Assistant'],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a value outside the staff_role enum', () => {
+    const result = createServiceTypeValidator.safeParse({
+      name: 'Boarding',
+      eligible_staff_roles: ['Groomer', 'Manager'],
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateServiceTypeValidator (staff-role multi-select)', () => {
+  it('accepts eligible_staff_roles on its own', () => {
+    expect(
+      updateServiceTypeValidator.safeParse({
+        eligible_staff_roles: ['Veterinarian'],
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a value outside the staff_role enum', () => {
+    expect(
+      updateServiceTypeValidator.safeParse({
+        eligible_staff_roles: ['NotARole'],
+      }).success
+    ).toBe(false);
+  });
+
+  it('still rejects key - immutable after creation', () => {
+    expect(
+      updateServiceTypeValidator.safeParse({ key: 'boarding' }).success
+    ).toBe(false);
   });
 });
 

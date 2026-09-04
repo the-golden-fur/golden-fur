@@ -51,6 +51,13 @@ A slot must pass **both**:
    Progress, and Completed all hold it — Cancelled and No-show release it),
    and approved unavailability blocks/leave.
 
+Which staff roles are eligible for a category's Staff Picker is
+admin-configurable per service type (`service_types.eligible_staff_roles`,
+set in Admin Settings > Service Types alongside `staff_picker_enabled`) —
+not implied by the category name. `resolveServiceTypeStaffConfig()`
+(`staffPicker.service.ts`) is the single resolution point both the Staff
+Picker and `get_staff_availability`'s caller use to look this up.
+
 Don't conflate the two, and don't skip either one when adding a new
 capacity check.
 

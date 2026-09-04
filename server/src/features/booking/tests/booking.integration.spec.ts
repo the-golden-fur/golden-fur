@@ -86,8 +86,6 @@ const DEFAULT_POLICY = {
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
   booking_notice_period_days: 0,
-  staff_picker_enabled_grooming: true,
-  staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
@@ -181,6 +179,10 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         error: null,
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
       { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+      {
+        data: { staff_picker_enabled: false, eligible_staff_roles: [] },
+        error: null,
+      }, // resolveStaffAssignment -> isStaffPickerEnabled('Daycare') - disabled
       { data: [], error: null }, // pre-insert daycare capacity overlap - empty
       { data: PENDING_BOOKING, error: null }, // insert
       { data: null, error: null }, // booking_items insert
@@ -266,14 +268,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
   it('#52 AC-3: staff-picker endpoint returns no staff list when the toggle is disabled', async () => {
     mockCaller(CUSTOMER_ID);
     queueFromResults({
-      data: [
-        {
-          ...DEFAULT_POLICY,
-          id: 'policy-branch',
-          branch_id: CREATE_PAYLOAD.branch_id,
-          staff_picker_enabled_grooming: false,
-        },
-      ],
+      data: { staff_picker_enabled: false, eligible_staff_roles: [] },
       error: null,
     });
 
@@ -294,7 +289,18 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
 
   it('#52 AC-4: staff-picker endpoint lists "No preference" first when enabled', async () => {
     mockCaller(CUSTOMER_ID);
-    queueFromResults({ data: [DEFAULT_POLICY], error: null });
+    // isStaffPickerEnabled and listAvailableStaff each independently resolve
+    // the service_types row - two queued fetches.
+    queueFromResults(
+      {
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      },
+      {
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      }
+    );
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: [
         { staff_id: 'groomer-1', display_name: 'Ana', profile_photo_url: null },
@@ -324,7 +330,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
     const res = await request(app)
       .patch('/bookings/policy')
       .set('Authorization', 'Bearer token')
-      .send({ staff_picker_enabled_grooming: false });
+      .send({ lunch_break_enabled: false });
 
     expect(res.status).toBe(403);
   });
@@ -335,7 +341,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       { data: { role: 'Admin' }, error: null }, // requireRole
       { data: DEFAULT_POLICY, error: null }, // existing row lookup
       {
-        data: { ...DEFAULT_POLICY, staff_picker_enabled_grooming: false },
+        data: { ...DEFAULT_POLICY, lunch_break_enabled: false },
         error: null,
       } // update
     );
@@ -343,10 +349,10 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
     const res = await request(app)
       .patch('/bookings/policy')
       .set('Authorization', 'Bearer token')
-      .send({ staff_picker_enabled_grooming: false });
+      .send({ lunch_break_enabled: false });
 
     expect(res.status).toBe(200);
-    expect(res.body.policy.staff_picker_enabled_grooming).toBe(false);
+    expect(res.body.policy.lunch_break_enabled).toBe(false);
   });
 
   it('#54 AC-2: a Strict-mode reschedule missing notice is rejected with a clear 422', async () => {

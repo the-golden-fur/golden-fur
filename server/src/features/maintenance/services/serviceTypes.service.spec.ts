@@ -11,6 +11,8 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
 }));
 
+vi.mock('node:crypto', () => ({ randomUUID: vi.fn(() => 'generated-key') }));
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -32,8 +34,14 @@ function queueFromResults(...results: QueryResult[]) {
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
-    builder.insert = vi.fn(() => builder);
-    builder.update = vi.fn(() => builder);
+    builder.insert = vi.fn((payload?: unknown) => {
+      (builder as { insertPayload?: unknown }).insertPayload = payload;
+      return builder;
+    });
+    builder.update = vi.fn((payload?: unknown) => {
+      (builder as { updatePayload?: unknown }).updatePayload = payload;
+      return builder;
+    });
     builder.upsert = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
@@ -76,7 +84,7 @@ describe('serviceTypes.service', () => {
     it('Custom change: creates a service type, defaulting the picker toggles to false, and seeds an available row for every branch', async () => {
       queueFromResults(
         {
-          data: { id: 'type-1', key: 'Boarding', name: 'Boarding' },
+          data: { id: 'type-1', key: 'generated-key', name: 'Boarding' },
           error: null,
         }, // insert
         {
@@ -87,8 +95,9 @@ describe('serviceTypes.service', () => {
         {
           data: {
             id: 'type-1',
-            key: 'Boarding',
+            key: 'generated-key',
             name: 'Boarding',
+            eligible_staff_roles: ['Groomer', 'Pet Assistant'],
             service_type_branch_availability: [
               {
                 service_type_id: 'type-1',
@@ -107,22 +116,31 @@ describe('serviceTypes.service', () => {
       );
 
       const result = await createServiceType(
-        { key: 'Boarding', name: 'Boarding' },
+        {
+          name: 'Boarding',
+          eligible_staff_roles: ['Groomer', 'Pet Assistant'],
+        },
         'staff-1'
       );
 
       expect(result.id).toBe('type-1');
       expect(result.service_type_branch_availability).toHaveLength(2);
+      expect(result.eligible_staff_roles).toEqual(['Groomer', 'Pet Assistant']);
+      // key is no longer client-supplied - generated server-side (randomUUID,
+      // mocked above), not typed into the create form.
+      expect(
+        (builders[0] as { insertPayload?: { key?: string } }).insertPayload?.key
+      ).toBe('generated-key');
     });
 
-    it('rejects a duplicate key with a 409', async () => {
+    it('rejects a duplicate (randomUUID-collision) key with a 409, without referencing client input', async () => {
       queueFromResults({
         data: null,
         error: { code: '23505', message: 'duplicate key value' },
       });
 
       await expect(
-        createServiceType({ key: 'Grooming', name: 'Grooming' }, 'staff-1')
+        createServiceType({ name: 'Grooming' }, 'staff-1')
       ).rejects.toMatchObject({ statusCode: 409 });
     });
   });

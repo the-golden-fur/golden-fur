@@ -1062,11 +1062,13 @@ export function ReceptionistBookingsQueuePage() {
                   new Date(booking.scheduled_start).getTime()) /
                   60000
               );
+              // Custom change: Staff Picker eligibility addendum - was
+              // hardcoded to Grooming/Veterinary; now StaffPickerList
+              // resolves eligibility itself (staff_picker_enabled per
+              // service_types row) and self-hides via onUnavailable, so no
+              // client-side category check is needed here.
               const showStaffPicker =
-                (booking.service_category === 'Grooming' ||
-                  booking.service_category === 'Veterinary') &&
-                rescheduleSlot !== null &&
-                !staffPickerUnavailable;
+                rescheduleSlot !== null && !staffPickerUnavailable;
 
               return (
                 <li key={booking.id} className={styles.bookingRow}>
@@ -1178,11 +1180,7 @@ export function ReceptionistBookingsQueuePage() {
                         <StaffPickerList
                           accessToken={accessToken}
                           branchId={booking.branch_id}
-                          serviceCategory={
-                            booking.service_category as
-                              | 'Grooming'
-                              | 'Veterinary'
-                          }
+                          serviceCategory={booking.service_category}
                           scheduledStart={rescheduleSlot.start}
                           scheduledEnd={rescheduleSlot.end}
                           selected={rescheduleStaffPreference}

@@ -36,6 +36,7 @@ function buildServiceType(overrides: Partial<ServiceType> = {}): ServiceType {
     is_active: true,
     staff_picker_enabled: true,
     cage_picker_enabled: false,
+    eligible_staff_roles: ['Groomer'],
     created_by: null,
     updated_by: null,
     created_at: '2026-07-15T00:00:00.000Z',
@@ -211,7 +212,6 @@ describe('AdminServiceTypesPage', () => {
     await user.click(screen.getByRole('button', { name: 'New service type' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Add service type' });
-    await user.type(within(dialog).getByLabelText('Key'), 'boarding');
     await user.type(within(dialog).getByLabelText('Name'), 'Boarding');
 
     const southwoods = within(dialog).getByRole('checkbox', {
@@ -306,6 +306,7 @@ describe('AdminServiceTypesPage', () => {
           name: 'Grooming & Spa',
           staff_picker_enabled: true,
           cage_picker_enabled: true,
+          eligible_staff_roles: ['Groomer'],
         }
       );
     });
