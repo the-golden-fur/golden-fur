@@ -64,12 +64,38 @@ interface RecordedWrite {
 
 const recordedWrites: RecordedWrite[] = [];
 
+// Per-category answer for every resolveServiceTypeStaffConfig() lookup
+// (staffPicker.service.ts) - intercepted out-of-band by category (read off
+// the `.eq('key', category)` call), not consumed from the sequential queue
+// below, matching real seed defaults (Grooming/Veterinary enabled, every
+// other category - Hotel/Daycare/Assessment/anything else - disabled).
+// resolveStaffAssignment (booking.service.ts) is no longer hardcoded to
+// Grooming/Veterinary itself - it defers entirely to this lookup - so a
+// flat "always enabled" stub here would wrongly attempt staff assignment
+// (and an unmocked #49 RPC call) for every other category's tests too.
+function serviceTypeStaffConfigFor(category: string) {
+  const enabled = category === 'Grooming' || category === 'Veterinary';
+  return {
+    data: {
+      staff_picker_enabled: enabled,
+      eligible_staff_roles: enabled
+        ? [category === 'Grooming' ? 'Groomer' : 'Veterinarian']
+        : [],
+    },
+    error: null,
+  };
+}
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
 
   vi.mocked(supabase.from).mockImplementation(((table: string) => {
-    const result = queue.shift() ?? { data: null, error: null };
+    const isServiceTypes = table === 'service_types';
+    const result = isServiceTypes
+      ? null // resolved lazily in maybeSingle() below, once .eq('key', ...) is known
+      : (queue.shift() ?? { data: null, error: null });
     const builder: Record<string, unknown> = {};
+    let requestedKey: string | undefined;
 
     for (const method of [
       'select',
@@ -83,7 +109,10 @@ function queueFromResults(...results: QueryResult[]) {
       'gte',
       'order',
     ]) {
-      builder[method] = vi.fn(() => builder);
+      builder[method] = vi.fn((column?: string, value?: string) => {
+        if (isServiceTypes && column === 'key') requestedKey = value;
+        return builder;
+      });
     }
 
     for (const method of ['insert', 'update', 'upsert', 'delete']) {
@@ -93,9 +122,16 @@ function queueFromResults(...results: QueryResult[]) {
       });
     }
 
-    builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+    builder.maybeSingle = vi.fn(() =>
+      Promise.resolve(
+        isServiceTypes ? serviceTypeStaffConfigFor(requestedKey ?? '') : result
+      )
+    );
     builder.single = vi.fn(() => Promise.resolve(result));
-    builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
+    builder.then = (resolve: (_result: QueryResult) => void) =>
+      resolve(
+        isServiceTypes ? serviceTypeStaffConfigFor(requestedKey ?? '') : result
+      );
 
     return builder;
   }) as never);
@@ -138,8 +174,6 @@ const DEFAULT_POLICY = {
   // New-booking notice floor: 0 = same-day allowed. See the dedicated
   // "minimum-notice lead time" describe block for the enabled case.
   booking_notice_period_days: 0,
-  staff_picker_enabled_grooming: true,
-  staff_picker_enabled_veterinary: true,
   downpayment_enabled: false,
   downpayment_hold_hours: 24,
 };
@@ -259,7 +293,6 @@ describe('booking.service (#51)', () => {
     queueFromResults(
       { data: PET, error: null }, // pet ownership
       { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // bookings insert
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
@@ -296,7 +329,6 @@ describe('booking.service (#51)', () => {
     queueFromResults(
       { data: PET, error: null }, // pet ownership
       { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
-      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // bookings insert
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // staff_picker_preferences insert
@@ -323,7 +355,6 @@ describe('booking.service (#51)', () => {
         error: null,
       }, // #53 guard
       { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
-      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       {
         data: { ...INSERTED_BOOKING, service_category: 'Veterinary' },
         error: null,
@@ -401,7 +432,6 @@ describe('booking.service (#51)', () => {
         error: null,
       }, // #53 guard
       { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       {
         data: { ...INSERTED_BOOKING, service_category: 'Veterinary' },
         error: null,
@@ -507,7 +537,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: UNASSESSED_PET, error: null }, // pet ownership
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         {
           data: { ...INSERTED_BOOKING, id: 'booking-4', total_price: 0 },
           error: null,
@@ -541,7 +570,6 @@ describe('booking.service (#51)', () => {
     queueFromResults(
       { data: PET, error: null }, // pet ownership
       { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-      { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
       { data: INSERTED_BOOKING, error: null }, // insert
       { data: null, error: null }, // booking_items insert
       { data: null, error: null }, // preference insert
@@ -575,8 +603,7 @@ describe('booking.service (#51)', () => {
     } as never);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
-      { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-      { data: [DEFAULT_POLICY], error: null } // staff picker toggle
+      { data: [DEFAULT_POLICY], error: null } // resolveDownpaymentPolicy
     );
 
     await expect(
@@ -699,8 +726,10 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         // NOTE: no resolveDownpaymentPolicy query here at all (skipped) -
-        // the very next query is the staff picker toggle.
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
+        // isStaffPickerEnabled no longer queries policy_configurations
+        // either (it resolves service_types instead, intercepted
+        // out-of-band by SERVICE_TYPE_STAFF_CONFIG above), so the very next
+        // query is the bookings insert.
         {
           data: {
             ...INSERTED_BOOKING,
@@ -740,13 +769,14 @@ describe('booking.service (#51)', () => {
         (insert?.payload as { started_at?: string }).started_at
       ).toBeTruthy();
 
-      // resolveDownpaymentPolicy and the staff picker toggle both query
-      // 'policy_configurations' - exactly one such call means only the
-      // staff picker toggle ran, not resolveDownpaymentPolicy.
+      // resolveDownpaymentPolicy is the only thing that queries
+      // 'policy_configurations' in this path now (isStaffPickerEnabled
+      // resolves service_types instead) - zero such calls confirms it was
+      // genuinely skipped for this Walk-in booking.
       const policyQueries = vi
         .mocked(supabase.from)
         .mock.calls.filter(([table]) => table === 'policy_configurations');
-      expect(policyQueries).toHaveLength(1);
+      expect(policyQueries).toHaveLength(0);
     });
 
     it('an Online booking (default, unaffected) still calls resolveDownpaymentPolicy and persists booking_source Online', async () => {
@@ -754,7 +784,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -779,7 +808,7 @@ describe('booking.service (#51)', () => {
       const policyQueries = vi
         .mocked(supabase.from)
         .mock.calls.filter(([table]) => table === 'policy_configurations');
-      expect(policyQueries).toHaveLength(2);
+      expect(policyQueries).toHaveLength(1);
     });
 
     it('rejects booking_source Walk-in from a non-staff (customer) requester', async () => {
@@ -1620,7 +1649,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1650,7 +1678,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveEffectivePolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1693,7 +1720,6 @@ describe('booking.service (#51)', () => {
           ],
           error: null,
         }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1730,7 +1756,6 @@ describe('booking.service (#51)', () => {
           data: [{ ...DEFAULT_POLICY, downpayment_enabled: false }],
           error: null,
         }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1757,7 +1782,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null },
         { data: [], error: null }, // resolveDownpaymentPolicy - no rows, falls back to DOCUMENTED_DEFAULTS
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1795,7 +1819,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1831,7 +1854,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null },
         { data: [FLAT_DOWNPAYMENT_POLICY], error: null }, // resolveDownpaymentPolicy
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: null, error: null },
@@ -1922,7 +1944,6 @@ describe('booking.service (#51)', () => {
         { data: PET, error: null }, // pet ownership
         { data: [ENFORCED_POLICY], error: null }, // effective policy
         BRANCH_TZ, // assertMeetsBookingLeadTime branch timezone lookup
-        { data: [ENFORCED_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1951,7 +1972,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         { data: [DEFAULT_POLICY], error: null }, // booking_notice_period_days: 0 - no branch tz lookup
-        { data: [DEFAULT_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert
@@ -1981,7 +2001,6 @@ describe('booking.service (#51)', () => {
       queueFromResults(
         { data: PET, error: null }, // pet ownership
         // no notice/downpayment policy query - walk-in skips the whole block
-        { data: [ENFORCED_POLICY], error: null }, // staff picker toggle
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert

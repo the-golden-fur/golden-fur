@@ -450,6 +450,9 @@ export interface ServiceType {
   is_active: boolean;
   staff_picker_enabled: boolean;
   cage_picker_enabled: boolean;
+  /** Which staff roles may be offered by the Staff Picker for this type -
+   * e.g. Grooming -> ['Groomer'], Veterinary -> ['Veterinarian']. */
+  eligible_staff_roles: string[];
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -457,11 +460,13 @@ export interface ServiceType {
   service_type_branch_availability?: ServiceTypeBranchAvailability[];
 }
 
+/** `key` is deliberately absent - it's generated server-side now (was
+ * redundant admin-facing busywork alongside the auto-generated `id`). */
 export interface CreateServiceTypePayload {
-  key: string;
   name: string;
   staff_picker_enabled?: boolean;
   cage_picker_enabled?: boolean;
+  eligible_staff_roles?: string[];
 }
 
 /** is_active is deliberately absent - derived from branch availability, not
@@ -470,6 +475,7 @@ export interface UpdateServiceTypePayload {
   name?: string;
   staff_picker_enabled?: boolean;
   cage_picker_enabled?: boolean;
+  eligible_staff_roles?: string[];
 }
 
 export interface UpdateBreedPayload {

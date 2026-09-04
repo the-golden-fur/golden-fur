@@ -959,6 +959,14 @@ export function CustomerBookingFlowPage() {
     [serviceTypes]
   );
 
+  // Custom change: Staff Picker eligibility addendum - was hardcoded to
+  // Grooming/Veterinary only; now driven by each service type's own
+  // staff_picker_enabled flag (Admin Settings > Service Types), same map as
+  // availableCategories above. A candidate absent from the map (fetch
+  // failed, or never seeded) degrades to "no picker", not "always on".
+  const staffPickerAppliesToCategory =
+    serviceTypeByKey.get(category)?.staff_picker_enabled ?? false;
+
   const availableCategories = useMemo(() => {
     // An unassessed pet can only ever book an Assessment service flagged
     // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
@@ -1302,8 +1310,7 @@ export function CustomerBookingFlowPage() {
     const availabilityLabel =
       category === 'Hotel'
         ? 'Cage & Date'
-        : (category === 'Grooming' || category === 'Veterinary') &&
-            !staffPickerUnavailable
+        : staffPickerAppliesToCategory && !staffPickerUnavailable
           ? 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
@@ -1323,7 +1330,12 @@ export function CustomerBookingFlowPage() {
     list.push({ key: 'payment', label: 'Review' });
 
     return list;
-  }, [isReceptionistMode, category, staffPickerUnavailable]);
+  }, [
+    isReceptionistMode,
+    category,
+    staffPickerUnavailable,
+    staffPickerAppliesToCategory,
+  ]);
 
   const currentStepIndex = Math.max(
     0,
@@ -1380,7 +1392,7 @@ export function CustomerBookingFlowPage() {
       case 'availability':
         return (
           selectedSlot !== null &&
-          ((category !== 'Grooming' && category !== 'Veterinary') ||
+          (!staffPickerAppliesToCategory ||
             staffPickerUnavailable ||
             staffPreference !== null)
         );
@@ -2251,12 +2263,12 @@ export function CustomerBookingFlowPage() {
             />
 
             {selectedSlot &&
-            (category === 'Grooming' || category === 'Veterinary') &&
+            staffPickerAppliesToCategory &&
             !staffPickerUnavailable ? (
               <StaffPickerList
                 accessToken={accessToken!}
                 branchId={selectedBranchId}
-                serviceCategory={category as 'Grooming' | 'Veterinary'}
+                serviceCategory={category as ServiceCategory}
                 scheduledStart={selectedSlot.start}
                 scheduledEnd={selectedSlot.end}
                 selected={staffPreference}

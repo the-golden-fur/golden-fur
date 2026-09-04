@@ -427,13 +427,16 @@ export const updateBreedValidator = z
   })
   .strict();
 
-/** Custom change: Service Types admin CRUD. */
+/** Custom change: Service Types admin CRUD. `key` is no longer accepted
+ * from the client - it's generated server-side (serviceTypes.service.ts)
+ * since it was redundant admin-facing busywork alongside the auto-generated
+ * `id`. */
 export const createServiceTypeValidator = z
   .object({
-    key: z.string().trim().min(1, 'Key is required'),
     name: z.string().trim().min(1, 'Name is required'),
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
+    eligible_staff_roles: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -445,6 +448,7 @@ export const updateServiceTypeValidator = z
     name: z.string().trim().min(1).optional(),
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
+    eligible_staff_roles: z.array(z.string()).optional(),
   })
   .strict();
 

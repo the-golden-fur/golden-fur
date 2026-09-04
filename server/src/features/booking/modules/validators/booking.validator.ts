@@ -319,8 +319,6 @@ export const updatePolicyValidator = z
     notice_enforcement_mode: z.enum(ENFORCEMENT_MODES).optional(),
     notice_enforcement_enabled: z.boolean().optional(),
     booking_notice_period_days: z.number().int().min(0).optional(),
-    staff_picker_enabled_grooming: z.boolean().optional(),
-    staff_picker_enabled_veterinary: z.boolean().optional(),
     lunch_break_enabled: z.boolean().optional(),
     lunch_break_start: z
       .string()

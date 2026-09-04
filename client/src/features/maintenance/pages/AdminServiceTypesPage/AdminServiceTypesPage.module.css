@@ -178,11 +178,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.typeKey {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-}
-
 .smallButtonSecondary {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);

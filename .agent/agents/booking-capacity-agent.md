@@ -40,3 +40,6 @@ read it before writing or reviewing any capacity logic, not just once.
 5. Capacity and staff-availability (`get_staff_availability()` — branch
    hours, lunch break, existing bookings, approved unavailability blocks)
    are two independent gates that both must pass; don't conflate them.
+   Eligible staff roles per category are admin-configurable
+   (`service_types.eligible_staff_roles`), resolved via
+   `resolveServiceTypeStaffConfig()` — not fixed by category name.

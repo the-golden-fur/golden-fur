@@ -301,7 +301,11 @@ describe('reschedule.service (#54)', () => {
         },
         error: null,
       },
-      { data: [policyRow()], error: null }
+      { data: [policyRow()], error: null },
+      {
+        data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+        error: null,
+      }
     );
 
     await expect(

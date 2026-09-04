@@ -31,10 +31,70 @@ vi.mock('../../api/booking.api', () => ({
   getBookingCatalog: vi.fn(),
   createBooking: vi.fn(),
   getNextAvailableSlot: vi.fn(),
-  // Custom change: Service Types addendum - default to an empty list so
-  // every existing test keeps seeing every ServiceCategory under its plain
-  // literal label (today's behavior, unchanged).
-  listServiceTypes: vi.fn().mockResolvedValue({ data: [], error: null }),
+  // Custom change: Service Types addendum - default to the built-in 4 rows
+  // with their production seed values (Grooming/Veterinary staff-picker
+  // enabled, Hotel/Daycare not) so every existing test keeps seeing every
+  // ServiceCategory under its plain literal label AND the Staff Picker
+  // still renders for Grooming/Veterinary by default (staff_picker_enabled
+  // is now what gates it, not a hardcoded category check - see
+  // staffPickerAppliesToCategory in CustomerBookingFlowPage.tsx).
+  listServiceTypes: vi.fn().mockResolvedValue({
+    data: [
+      {
+        id: 'st-grooming',
+        key: 'Grooming',
+        name: 'Grooming',
+        is_active: true,
+        staff_picker_enabled: true,
+        cage_picker_enabled: false,
+        eligible_staff_roles: ['Groomer'],
+        created_by: null,
+        updated_by: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'st-hotel',
+        key: 'Hotel',
+        name: 'Hotel',
+        is_active: true,
+        staff_picker_enabled: false,
+        cage_picker_enabled: true,
+        eligible_staff_roles: [],
+        created_by: null,
+        updated_by: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'st-daycare',
+        key: 'Daycare',
+        name: 'Daycare',
+        is_active: true,
+        staff_picker_enabled: false,
+        cage_picker_enabled: false,
+        eligible_staff_roles: [],
+        created_by: null,
+        updated_by: null,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: 'st-veterinary',
+        key: 'Veterinary',
+        name: 'Veterinary',
+        is_active: true,
+        staff_picker_enabled: true,
+        cage_picker_enabled: false,
+        eligible_staff_roles: ['Veterinarian'],
+        created_by: null,
+        updated_by: null,
+        created_at: '',
+        updated_at: '',
+      },
+    ],
+    error: null,
+  }),
   // Custom change: duplicate-booking prevention - default to no conflicts
   // so every existing test's pet selection is unaffected.
   getPetBookingConflicts: vi.fn().mockResolvedValue({ data: [], error: null }),
@@ -943,13 +1003,27 @@ describe('CustomerBookingFlowPage', () => {
     name?: string;
     is_active?: boolean;
   }) {
+    // Defaults match the production seed (Grooming/Veterinary staff-picker
+    // enabled) rather than a flat `false` - this mock's `.mockResolvedValue`
+    // override isn't undone by the file's `vi.clearAllMocks()` beforeEach
+    // (that only clears call history, not implementations), so it leaks
+    // forward into every later test in this file that doesn't set its own
+    // listServiceTypes mock. A flat `false` here previously had no effect
+    // (staff-picker used to gate on a hardcoded category check, not this
+    // data), but now that it's data-driven it must stay realistic.
+    const isStaffCategory =
+      overrides.key === 'Grooming' || overrides.key === 'Veterinary';
+
     return {
       id: `st-${overrides.key}`,
       key: overrides.key,
       name: overrides.name ?? overrides.key,
       is_active: overrides.is_active ?? true,
-      staff_picker_enabled: false,
+      staff_picker_enabled: isStaffCategory,
       cage_picker_enabled: false,
+      eligible_staff_roles: isStaffCategory
+        ? [overrides.key === 'Grooming' ? 'Groomer' : 'Veterinarian']
+        : [],
       created_by: null,
       updated_by: null,
       created_at: '',

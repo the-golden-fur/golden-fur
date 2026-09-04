@@ -298,7 +298,7 @@ describe('updatePolicyValidator', () => {
     expect(
       updatePolicyValidator.safeParse({
         branch_id: BASE_BOOKING.branch_id,
-        staff_picker_enabled_grooming: false,
+        lunch_break_enabled: false,
       }).success
     ).toBe(true);
   });

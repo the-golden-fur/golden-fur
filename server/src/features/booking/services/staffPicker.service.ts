@@ -24,8 +24,6 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   notice_enforcement_mode: 'Strict',
   notice_enforcement_enabled: true,
   booking_notice_period_days: 0,
-  staff_picker_enabled_grooming: true,
-  staff_picker_enabled_veterinary: true,
   lunch_break_enabled: true,
   lunch_break_start: '12:00',
   lunch_break_end: '13:00',
@@ -47,11 +45,35 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   downpayment_hold_hours: 24,
 };
 
-/** Grooming -> Groomer, Veterinary -> Veterinarian (#52 AC-4). */
-const CATEGORY_STAFF_ROLE: Partial<Record<ServiceCategory, string>> = {
-  Grooming: 'Groomer',
-  Veterinary: 'Veterinarian',
-};
+export interface ServiceTypeStaffConfig {
+  staff_picker_enabled: boolean;
+  eligible_staff_roles: string[];
+}
+
+/**
+ * Single resolution point for "does this category offer a Staff Picker, and
+ * which roles may fill it" - replaces the old hardcoded CATEGORY_STAFF_ROLE
+ * map (Grooming -> Groomer, Veterinary -> Veterinarian, #52 AC-4) now that
+ * both are admin-configurable per service_types row (Admin Settings >
+ * Service Types). No row / query error degrades to disabled+empty, same
+ * shape as cagePicker.service.ts's isCagePickerEnabled.
+ */
+export async function resolveServiceTypeStaffConfig(
+  serviceCategory: ServiceCategory
+): Promise<ServiceTypeStaffConfig> {
+  const { data, error } = await supabase
+    .from('service_types')
+    .select('staff_picker_enabled, eligible_staff_roles')
+    .eq('key', serviceCategory)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  return {
+    staff_picker_enabled: data?.staff_picker_enabled ?? false,
+    eligible_staff_roles: data?.eligible_staff_roles ?? [],
+  };
+}
 
 export interface AvailabilityWindowParams {
   branchId: string;
@@ -62,6 +84,14 @@ export interface AvailabilityWindowParams {
   staffId?: string;
   /** #54 reschedule re-check: don't let a booking collide with itself. */
   excludeBookingId?: string;
+  /** Lets a caller that already resolved service_types once (e.g.
+   * availability.service.ts's getDaySlots, once per whole day) skip
+   * listAvailableStaff's own resolveServiceTypeStaffConfig lookup - avoids
+   * an extra service_types round-trip per candidate slot in that day-level
+   * loop. Callers that only ever check one window (getStaffPickerOptions,
+   * autoAssignStaff, reschedule.service.ts) can omit this and let
+   * listAvailableStaff resolve it itself. */
+  eligibleStaffRoles?: string[];
 }
 
 /**
@@ -93,23 +123,18 @@ export async function resolveEffectivePolicy(
 
 /**
  * Single resolution point the booking-creation flow and the Slot/Staff Picker
- * endpoints all call: should the Staff Picker step render for this branch +
- * service type? Hotel/Daycare never have a picker; Grooming/Veterinary follow
- * the per-branch toggle (default: enabled).
+ * endpoints all call: should the Staff Picker step render for this service
+ * type? Driven entirely by service_types.staff_picker_enabled now - not
+ * branch-scoped (the old per-branch policy_configurations toggle that used
+ * to gate Grooming/Veterinary specifically has been removed as redundant now
+ * that this covers every category).
  */
 export async function isStaffPickerEnabled(
-  branchId: string,
   serviceCategory: ServiceCategory
 ): Promise<boolean> {
-  if (serviceCategory !== 'Grooming' && serviceCategory !== 'Veterinary') {
-    return false;
-  }
+  const config = await resolveServiceTypeStaffConfig(serviceCategory);
 
-  const policy = await resolveEffectivePolicy(branchId);
-
-  return serviceCategory === 'Grooming'
-    ? policy.staff_picker_enabled_grooming
-    : policy.staff_picker_enabled_veterinary;
+  return config.staff_picker_enabled;
 }
 
 /**
@@ -265,9 +290,10 @@ export async function resolveBookingLeadDays(
 }
 
 /**
- * Wraps the #49 RPC: eligible staff for a branch/role/time window, filtered
+ * Wraps the #49 RPC: eligible staff for a branch/roles/time window, filtered
  * by all three availability conditions in the database. Only meaningful for
- * Grooming/Veterinary - other categories have no staff-role mapping.
+ * categories with at least one role configured in
+ * service_types.eligible_staff_roles.
  */
 export async function listAvailableStaff({
   branchId,
@@ -276,10 +302,13 @@ export async function listAvailableStaff({
   scheduledEnd,
   staffId,
   excludeBookingId,
+  eligibleStaffRoles,
 }: AvailabilityWindowParams): Promise<AvailableStaff[]> {
-  const role = CATEGORY_STAFF_ROLE[serviceCategory];
+  const roles =
+    eligibleStaffRoles ??
+    (await resolveServiceTypeStaffConfig(serviceCategory)).eligible_staff_roles;
 
-  if (!role) {
+  if (roles.length === 0) {
     throwWithStatus(
       400,
       `Staff availability does not apply to ${serviceCategory} bookings`
@@ -287,7 +316,7 @@ export async function listAvailableStaff({
   }
 
   const { data, error } = await supabase.rpc('get_staff_availability', {
-    p_role: role,
+    p_roles: roles,
     p_branch_id: branchId,
     p_requested_start: scheduledStart,
     p_requested_end: scheduledEnd,
@@ -315,10 +344,7 @@ export interface StaffPickerOptionsResult {
 export async function getStaffPickerOptions(
   params: AvailabilityWindowParams
 ): Promise<StaffPickerOptionsResult> {
-  const enabled = await isStaffPickerEnabled(
-    params.branchId,
-    params.serviceCategory
-  );
+  const enabled = await isStaffPickerEnabled(params.serviceCategory);
 
   if (!enabled) {
     return { staff_picker_enabled: false, options: [] };
@@ -518,8 +544,6 @@ export async function updatePolicyConfiguration({
     notice_enforcement_mode: resolved.notice_enforcement_mode,
     notice_enforcement_enabled: resolved.notice_enforcement_enabled,
     booking_notice_period_days: resolved.booking_notice_period_days,
-    staff_picker_enabled_grooming: resolved.staff_picker_enabled_grooming,
-    staff_picker_enabled_veterinary: resolved.staff_picker_enabled_veterinary,
     lunch_break_enabled: resolved.lunch_break_enabled,
     lunch_break_start: resolved.lunch_break_start,
     lunch_break_end: resolved.lunch_break_end,

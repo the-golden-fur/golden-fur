@@ -399,8 +399,6 @@ export interface PolicyConfiguration {
    * notice_period_days. Read by bookingLeadDays/assertMeetsBookingLeadTime in
    * staffPicker.service.ts. */
   booking_notice_period_days: number;
-  staff_picker_enabled_grooming: boolean;
-  staff_picker_enabled_veterinary: boolean;
   /** Fixed daily lunch break - no bookings/staff availability during this
    * window, "HH:MM:SS" (Postgres `time`). Default 12:00-13:00. */
   lunch_break_enabled: boolean;
@@ -455,8 +453,6 @@ export type EffectivePolicy = Pick<
   | 'notice_enforcement_mode'
   | 'notice_enforcement_enabled'
   | 'booking_notice_period_days'
-  | 'staff_picker_enabled_grooming'
-  | 'staff_picker_enabled_veterinary'
   | 'lunch_break_enabled'
   | 'lunch_break_start'
   | 'lunch_break_end'

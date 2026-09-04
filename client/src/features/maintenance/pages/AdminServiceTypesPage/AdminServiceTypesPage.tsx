@@ -19,6 +19,7 @@ import {
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
+import { StaffRoleMultiSelect } from '../../components/StaffRoleMultiSelect/StaffRoleMultiSelect';
 import type { BranchSummary, ServiceType } from '../../maintenance.types';
 import styles from './AdminServiceTypesPage.module.css';
 
@@ -33,18 +34,18 @@ const SORT_OPTIONS: SortOption<ServiceTypeSortKey>[] = [
 ];
 
 interface CreateFormState {
-  key: string;
   name: string;
   staffPickerEnabled: boolean;
   cagePickerEnabled: boolean;
+  eligibleStaffRoles: string[];
   branchIds: string[];
 }
 
 const EMPTY_CREATE_FORM: CreateFormState = {
-  key: '',
   name: '',
   staffPickerEnabled: false,
   cagePickerEnabled: false,
+  eligibleStaffRoles: [],
   branchIds: [],
 };
 
@@ -52,6 +53,7 @@ interface EditFormState {
   name: string;
   staffPickerEnabled: boolean;
   cagePickerEnabled: boolean;
+  eligibleStaffRoles: string[];
   branchIds: string[];
 }
 
@@ -64,11 +66,15 @@ function availableBranchIds(serviceType: ServiceType): string[] {
 /**
  * Custom change: Service Types admin CRUD. Grooming/Hotel/Daycare/
  * Veterinary are still hardcoded ServiceCategory values everywhere they
- * drive real behavior (availability, capacity, pricing, vet eligibility) -
- * this page only controls each type's customer-facing display name,
- * whether it's offered at all (Active), and whether the Staff Picker/Cage
- * Picker steps are offered for it. A row added here with a brand new `key`
- * shows up as selectable but has no matching category-specific behavior
+ * drive real behavior (availability, capacity, pricing) - this page
+ * controls each type's customer-facing display name, whether it's offered
+ * at all (Active), whether the Staff Picker/Cage Picker steps are offered
+ * for it, and (new) which staff roles the Staff Picker offers when it's on
+ * - see resolveServiceTypeStaffConfig in staffPicker.service.ts. `key` is
+ * generated server-side, not entered here - it's the internal join to
+ * ServiceCategory (cagePicker.service.ts, the booking flow's category
+ * tabs), not admin-facing. A row added here shows up as selectable but has
+ * no matching category-specific availability/capacity/pricing behavior
  * until that's separately built in code.
  */
 export function AdminServiceTypesPage() {
@@ -96,6 +102,7 @@ export function AdminServiceTypesPage() {
     name: '',
     staffPickerEnabled: false,
     cagePickerEnabled: false,
+    eligibleStaffRoles: [],
     branchIds: [],
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -198,8 +205,7 @@ export function AdminServiceTypesPage() {
   >({
     items: serviceTypes,
     matchesQuery: (serviceType, query) =>
-      serviceType.name.toLowerCase().includes(query) ||
-      serviceType.key.toLowerCase().includes(query),
+      serviceType.name.toLowerCase().includes(query),
     comparators,
     initialSortKey: 'name-asc',
   });
@@ -317,8 +323,8 @@ export function AdminServiceTypesPage() {
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!accessToken || !createForm.key.trim() || !createForm.name.trim()) {
-      setFormError('Key and name are required.');
+    if (!accessToken || !createForm.name.trim()) {
+      setFormError('Name is required.');
       return;
     }
 
@@ -326,10 +332,10 @@ export function AdminServiceTypesPage() {
     setIsSubmitting(true);
 
     const result = await createServiceType(accessToken, {
-      key: createForm.key.trim(),
       name: createForm.name.trim(),
       staff_picker_enabled: createForm.staffPickerEnabled,
       cage_picker_enabled: createForm.cagePickerEnabled,
+      eligible_staff_roles: createForm.eligibleStaffRoles,
     });
 
     if (result.error || !result.data) {
@@ -369,6 +375,7 @@ export function AdminServiceTypesPage() {
       name: serviceType.name,
       staffPickerEnabled: serviceType.staff_picker_enabled,
       cagePickerEnabled: serviceType.cage_picker_enabled,
+      eligibleStaffRoles: serviceType.eligible_staff_roles,
       branchIds: availableBranchIds(serviceType),
     });
     setRowError(null);
@@ -394,6 +401,7 @@ export function AdminServiceTypesPage() {
       name: editForm.name.trim(),
       staff_picker_enabled: editForm.staffPickerEnabled,
       cage_picker_enabled: editForm.cagePickerEnabled,
+      eligible_staff_roles: editForm.eligibleStaffRoles,
     });
 
     if (result.error || !result.data) {
@@ -443,10 +451,11 @@ export function AdminServiceTypesPage() {
         <p className={styles.copy}>
           The service lines customers choose between at booking time (Grooming,
           Hotel, Daycare, Veterinary). Rename a type's customer-facing label,
-          manage which branches offer it, or turn on the Staff Picker/Cage
-          Picker step for it. Adding a brand new type only makes it selectable
-          here - real booking behavior for it (availability, pricing, etc.)
-          still needs to be built separately.
+          manage which branches offer it, turn on the Staff Picker/Cage Picker
+          step for it, and pick which staff roles the Staff Picker offers.
+          Adding a brand new type only makes it selectable here - real booking
+          behavior for it (availability, pricing, etc.) still needs to be built
+          separately.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -497,7 +506,6 @@ export function AdminServiceTypesPage() {
                       <span className={styles.typeName}>
                         {serviceType.name}
                       </span>
-                      <span className={styles.typeKey}>{serviceType.key}</span>
                       {serviceType.staff_picker_enabled ? (
                         <span className={styles.pickerBadge}>
                           Staff picker enabled
@@ -541,20 +549,6 @@ export function AdminServiceTypesPage() {
           onSubmit={(event) => void handleCreate(event)}
         >
           <label className={styles.field}>
-            <span className={styles.label}>Key</span>
-            <input
-              className={styles.input}
-              value={createForm.key}
-              onChange={(event) =>
-                setCreateForm((prev) => ({
-                  ...prev,
-                  key: event.target.value,
-                }))
-              }
-              placeholder="e.g. Boarding"
-            />
-          </label>
-          <label className={styles.field}>
             <span className={styles.label}>Name</span>
             <input
               className={styles.input}
@@ -595,6 +589,14 @@ export function AdminServiceTypesPage() {
             />
             <span>Cage picker enabled</span>
           </label>
+
+          <StaffRoleMultiSelect
+            label="Eligible staff roles"
+            selectedRoles={createForm.eligibleStaffRoles}
+            onChange={(eligibleStaffRoles) =>
+              setCreateForm((prev) => ({ ...prev, eligibleStaffRoles }))
+            }
+          />
 
           <BranchMultiSelect
             label="Available at"
@@ -677,6 +679,14 @@ export function AdminServiceTypesPage() {
                   ...prev,
                   cagePickerEnabled: checked,
                 }))
+              }
+            />
+
+            <StaffRoleMultiSelect
+              label="Eligible staff roles"
+              selectedRoles={editForm.eligibleStaffRoles}
+              onChange={(eligibleStaffRoles) =>
+                setEditForm((prev) => ({ ...prev, eligibleStaffRoles }))
               }
             />
 
