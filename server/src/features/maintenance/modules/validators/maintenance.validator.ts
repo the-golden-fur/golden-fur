@@ -7,6 +7,19 @@ const CATEGORIES = [
   'Veterinary',
   'Assessment',
 ] as const;
+/** Mirrors the staff_role Postgres enum and server/client ALL_STAFF_ROLES -
+ * feature-local redeclaration (same convention as CATEGORIES above and
+ * daycare.types.ts) rather than a cross-feature import. */
+const STAFF_ROLES = [
+  'Superadmin',
+  'Admin',
+  'Supervisor',
+  'Receptionist',
+  'Groomer',
+  'Veterinarian',
+  'Cashier',
+  'Pet Assistant',
+] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
@@ -436,7 +449,7 @@ export const createServiceTypeValidator = z
     name: z.string().trim().min(1, 'Name is required'),
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
-    eligible_staff_roles: z.array(z.string()).optional(),
+    eligible_staff_roles: z.array(z.enum(STAFF_ROLES)).optional(),
   })
   .strict();
 
@@ -448,7 +461,7 @@ export const updateServiceTypeValidator = z
     name: z.string().trim().min(1).optional(),
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
-    eligible_staff_roles: z.array(z.string()).optional(),
+    eligible_staff_roles: z.array(z.enum(STAFF_ROLES)).optional(),
   })
   .strict();
 

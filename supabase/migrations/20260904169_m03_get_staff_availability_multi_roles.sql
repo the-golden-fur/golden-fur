@@ -17,6 +17,14 @@
 -- clobbered by parallel same-day migrations branching off a stale copy -
 -- confirm no other migration redefines it between 20260901156 and here
 -- before basing a future change on this one.
+--
+-- code-reviewer catch (pre-PR, this session): DROP FUNCTION discards every
+-- grant on the old object, and a freshly CREATEd function defaults to
+-- PUBLIC (anon included) having EXECUTE - the revoke/grant pair originally
+-- set in 20260718036 (locking this down to authenticated/service_role
+-- only) has to be re-applied under the new signature here, since every
+-- prior redefinition was a same-signature CREATE OR REPLACE that never
+-- touched the function object's identity and so never needed to.
 
 drop function public.get_staff_availability(
   public.staff_role, uuid, timestamptz, timestamptz, uuid, uuid
@@ -170,3 +178,13 @@ begin
   order by sp.display_name, sp.id;
 end;
 $$;
+
+revoke all on function public.get_staff_availability(
+  public.staff_role[], uuid, timestamptz, timestamptz, uuid, uuid
+) from public;
+grant execute on function public.get_staff_availability(
+  public.staff_role[], uuid, timestamptz, timestamptz, uuid, uuid
+) to authenticated;
+grant execute on function public.get_staff_availability(
+  public.staff_role[], uuid, timestamptz, timestamptz, uuid, uuid
+) to service_role;
