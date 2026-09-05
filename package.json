@@ -13,6 +13,7 @@
     "client": "npm --prefix client run dev",
     "server": "npm --prefix server run dev",
     "free-ports": "node scripts/free-ports.mjs 3000 5173",
+    "clean": "npm run clean --prefix client && npm run clean --prefix server",
     "=== SETUP ===": "",
     "install:all": "npm install && npm --prefix client install && npm --prefix server install",
     "=== CODE QUALITY ===": "",

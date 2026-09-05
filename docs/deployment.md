@@ -53,8 +53,8 @@ eats a 30–60s cold start. `render.yaml` at the repo root documents the
 service (it is not auto-applied to the existing one — reconcile by hand).
 
 - **Root Directory**: `server`
-- **Build Command**: `npm install`
-- **Start Command**: `npm start` &nbsp;(`tsx src/app.ts` — no build step; `tsx` runs the TypeScript directly and is a runtime dependency)
+- **Build Command**: `npm ci && npm run build` &nbsp;(esbuild bundles `src/app.ts` into `dist/app.js`)
+- **Start Command**: `npm start` &nbsp;(`node dist/app.js` — runs the compiled bundle; `tsx` is dev-only now, used by `npm run dev` for its watch mode)
 - **Health Check Path**: `/health`
 - **Auto-Deploy**: On Commit
 - **Port**: Render injects `PORT`; `app.ts` binds `SERVER_PORT || PORT || 3000`, so no port variable needs setting on Render.
