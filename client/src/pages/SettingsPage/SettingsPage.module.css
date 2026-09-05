@@ -1,48 +1,14 @@
+/* Custom change: Settings renders full-bleed inside AppShell's own content
+   area (no backdrop/floating card) rather than as a dialog over everything
+   - the dashboard Sidebar it sits beside stays visible and interactive
+   (collapsed for the duration, see the useSidebarCollapse effect in
+   SettingsPage.tsx), so this reads as "a page", not "a modal". */
 .page {
-  display: contents;
-}
-
-/* Custom change: VSCode-style settings modal. The route itself renders this
-   backdrop+panel shell rather than a plain page - Fullscreen (below) swaps
-   .modalPanel for .modalPanelFullscreen, which drops the backdrop dimming/
-   inset and lets the panel fill the viewport like a normal page. */
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(17 24 39 / 55%);
-  padding: var(--space-4);
-}
-
-.modalPanel {
   composes: animate-fade-in from global;
   display: flex;
   flex-direction: column;
-  width: min(64rem, 100%);
-  height: min(40rem, 100%);
+  height: 100%;
   background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
-/* Custom change (fix): fullscreen is no longer just a bigger .modalPanel
-   inside the same dimmed .backdrop - it's its own fixed, full-viewport
-   element (no backdrop wrapper at all, see SettingsPage.tsx), so it reads
-   as "you're on a page" rather than "the modal got bigger". */
-.modalPanelFullscreen {
-  composes: modalPanel;
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  width: 100vw;
-  height: 100vh;
-  border-radius: 0;
-  border: 0;
 }
 
 .panelHeader {
