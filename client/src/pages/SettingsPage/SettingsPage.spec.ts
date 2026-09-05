@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement, Fragment } from 'react';
 import { MemoryRouter, useLocation, useSearchParams } from 'react-router';
+import { Wrench } from 'lucide-react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../shared/auth/providers/AuthProvider/AuthContext';
@@ -70,12 +71,14 @@ vi.mock('./configTiles.config', () => ({
       title: 'Discounts',
       description: 'Manage discounts.',
       to: '/staff/admin/discounts',
+      icon: Wrench,
       Component: EmbeddedDiscountsStub,
     },
     {
       title: 'Cages',
       description: 'Manage cages.',
       to: '/staff/admin/hotel/cages',
+      icon: Wrench,
       Component: () => createElement('p', null, 'Embedded Cages Page'),
     },
   ],
@@ -83,6 +86,7 @@ vi.mock('./configTiles.config', () => ({
     title: 'System Configuration',
     description: 'Branch config.',
     to: '/staff/admin/maintenance/system-configuration',
+    icon: Wrench,
     Component: () => createElement('p', null, 'Embedded System Config Page'),
   },
 }));
@@ -143,7 +147,7 @@ describe('SettingsPage', () => {
     window.localStorage.clear();
   });
 
-  it('custom change: renders as a modal dialog with a fullscreen toggle and close button', async () => {
+  it('custom change: renders full-bleed (no backdrop/dialog chrome) with a close button', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Groomer', mfa_enrolled: true },
       error: null,
@@ -152,32 +156,17 @@ describe('SettingsPage', () => {
     renderPage('staff');
 
     expect(
-      await screen.findByRole('dialog', { name: 'Settings' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Enter full screen' })
+      await screen.findByRole('heading', { name: 'Settings' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Close settings' })
     ).toBeInTheDocument();
-  });
-
-  it('custom change: the fullscreen toggle flips into an exit-full-screen state', async () => {
-    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
-      error: null,
-    });
-
-    renderPage('staff');
-    const user = userEvent.setup();
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Enter full screen' })
-    );
-
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('presentation')).not.toBeInTheDocument();
+    // Nothing to pop out to its own route until a Config tile is embedded.
     expect(
-      screen.getByRole('button', { name: 'Exit full screen' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Open as a full page' })
+    ).not.toBeInTheDocument();
   });
 
   it('custom change: the sort menu reorders the sidebar sections alphabetically', async () => {
@@ -268,27 +257,6 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('custom change: Fullscreen still just resizes the panel for a plain section (no Config subitem active)', async () => {
-    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
-      error: null,
-    });
-
-    renderPage('staff');
-    const user = userEvent.setup();
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Enter full screen' })
-    );
-
-    expect(
-      screen.getByRole('button', { name: 'Exit full screen' })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/^NAVIGATED_TO:/)).toHaveTextContent(
-      'NAVIGATED_TO:/'
-    );
-  });
-
   it('fix: an embedded Config page changing its own query params does not knock Settings back to Profile', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Admin', mfa_enrolled: true },
@@ -312,27 +280,6 @@ describe('SettingsPage', () => {
       'true'
     );
     expect(screen.getByRole('button', { name: /foo=bar/ })).toBeInTheDocument();
-  });
-
-  it('fix: Fullscreen for a plain section drops the dimmed backdrop entirely (it is not just a bigger modal)', async () => {
-    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
-      error: null,
-    });
-
-    renderPage('staff');
-    const user = userEvent.setup();
-
-    expect(screen.getByRole('presentation')).toBeInTheDocument();
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Enter full screen' })
-    );
-
-    expect(screen.queryByRole('presentation')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('dialog', { name: 'Settings' })
-    ).toBeInTheDocument();
   });
 
   it('custom change: Config subitems get their own Custom/Alphabetical/Recent sort, independent of the top level', async () => {
