@@ -164,7 +164,8 @@
         "🔍 Client: Lint (check)",
         "🔍 Server: Lint (check)",
         "🎨 Format: Check",
-        "🏗️ Client: Build"
+        "🏗️ Client: Build",
+        "🏗️ Server: Build"
       ],
       "dependsOrder": "parallel",
       "presentation": {
@@ -178,6 +179,17 @@
       "type": "npm",
       "script": "build",
       "path": "client",
+      "presentation": {
+        "group": "build",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🏗️ Server: Build",
+      "type": "npm",
+      "script": "build",
+      "path": "server",
       "presentation": {
         "group": "build",
         "panel": "dedicated",
