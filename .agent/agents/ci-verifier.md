@@ -34,14 +34,15 @@ each repo's `.github/workflows/ci.yml` exactly.
 
 ### golden-fur (repo root)
 
-| #   | Check        | Command                            | Notes                                                                                                  |
-| --- | ------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1   | Client tests | `npm --prefix client run test:run` |                                                                                                        |
-| 2   | Server tests | `npm --prefix server test`         | env `NODE_ENV=test`, `CORS_ALLOWED_ORIGINS=http://localhost:5173`                                      |
-| 3   | Client lint  | `npm --prefix client run lint`     |                                                                                                        |
-| 4   | Server lint  | `npm --prefix server run lint`     |                                                                                                        |
-| 5   | Format check | `npm run format:check`             | run from repo root                                                                                     |
-| 6   | Client build | `npm --prefix client run build`    | env `VITE_SUPABASE_URL=https://placeholder.supabase.co`, `VITE_SUPABASE_ANON_KEY=placeholder-anon-key` |
+| #   | Check        | Command                            | Notes                                                                                                                                                                                           |
+| --- | ------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Client tests | `npm --prefix client run test:run` |                                                                                                                                                                                                 |
+| 2   | Server tests | `npm --prefix server test`         | env `NODE_ENV=test`, `CORS_ALLOWED_ORIGINS=http://localhost:5173`                                                                                                                               |
+| 3   | Client lint  | `npm --prefix client run lint`     |                                                                                                                                                                                                 |
+| 4   | Server lint  | `npm --prefix server run lint`     |                                                                                                                                                                                                 |
+| 5   | Format check | `npm run format:check`             | run from repo root                                                                                                                                                                              |
+| 6   | Client build | `npm --prefix client run build`    | env `VITE_SUPABASE_URL=https://placeholder.supabase.co`, `VITE_SUPABASE_ANON_KEY=placeholder-anon-key`                                                                                          |
+| 7   | Server build | `npm --prefix server run build`    | esbuild bundles `src/app.ts` into `dist/app.js` — this is what actually runs on Render, so a bad relative import or similar bundle-time break belongs here, not just in `tsc --noEmit`/`vitest` |
 
 ### golden-fur-vault (repo root)
 

@@ -53,8 +53,9 @@ eats a 30–60s cold start. `render.yaml` at the repo root documents the
 service (it is not auto-applied to the existing one — reconcile by hand).
 
 - **Root Directory**: `server`
-- **Build Command**: `npm install`
-- **Start Command**: `npm start` &nbsp;(`tsx src/app.ts` — no build step; `tsx` runs the TypeScript directly and is a runtime dependency)
+- **Build Command**: `npm ci && npm run build` &nbsp;(esbuild bundles `src/app.ts` into `dist/app.js`)
+- **Start Command**: `npm start` &nbsp;(`node dist/app.js` — runs the compiled bundle; `tsx` is dev-only now, used by `npm run dev` for its watch mode)
+- **Why `esbuild` sits in `dependencies`, not `devDependencies`**: this build command runs with `NODE_ENV=production` set (see the env vars table below), and `npm ci`/`npm install` skip `devDependencies` whenever that variable is present during install. If `esbuild` were a devDependency, the Render build would fail with "esbuild: command not found." Don't move it back.
 - **Health Check Path**: `/health`
 - **Auto-Deploy**: On Commit
 - **Port**: Render injects `PORT`; `app.ts` binds `SERVER_PORT || PORT || 3000`, so no port variable needs setting on Render.

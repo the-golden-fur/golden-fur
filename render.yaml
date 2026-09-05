@@ -17,7 +17,7 @@ services:
     region: virginia
     branch: main
     rootDir: server
-    buildCommand: npm install
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true

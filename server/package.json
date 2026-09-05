@@ -11,7 +11,9 @@
     "=== CORE WORKFLOW ===": "",
     "predev": "node ../scripts/free-ports.mjs 3000",
     "dev": "cross-env NODE_ENV=development tsx watch src/app.ts",
-    "start": "tsx src/app.ts",
+    "build": "esbuild src/app.ts --bundle --platform=node --format=esm --target=node20 --packages=external --sourcemap --outfile=dist/app.js",
+    "start": "node dist/app.js",
+    "clean": "rimraf dist",
     "=== TESTING ===": "",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,12 +26,12 @@
     "@supabase/supabase-js": "^2.49.8",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
+    "esbuild": "^0.25.0",
     "express": "^4.22.1",
     "golden-fur": "file:..",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "resend": "^4.8.0",
-    "tsx": "^4.22.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -45,7 +47,9 @@
     "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
     "globals": "^16.5.0",
+    "rimraf": "^6.0.1",
     "supertest": "^7.2.2",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   }
