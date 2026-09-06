@@ -7,16 +7,15 @@
 // the matching staff_profiles row keyed to the returned user id.
 //
 // A pure-SQL alternative that produces the same shape of data lives
-// alongside this file at module-1-staff-auth.seed.sql, for when you'd rather
+// alongside this file at m01-staff-auth.seed.sql, for when you'd rather
 // run it via the Supabase SQL Editor / psql than a Node script. Unlike the
 // .sql file, this script is idempotent (safe to re-run against a database
 // that already has these rows) - the .sql file mirrors the original
 // dev-convenience seed.sql exactly and is meant to run once against a
 // freshly-reset database.
 //
-// Run manually - not wired into `npm run dev`:
-//
-//   npm run seed:module-1
+// Run via `npm run seed:all` (which invokes every m*/*.seed.ts in order) -
+// not wired into `npm run dev`.
 //
 // Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (read from server/.env).
 //

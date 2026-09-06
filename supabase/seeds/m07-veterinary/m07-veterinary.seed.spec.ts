@@ -1,37 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  seedPromos,
   seedVetMedicationCatalog,
   seedVetProcedureCatalog,
-  PROMO_SEEDS,
   VET_MEDICATION_SEEDS,
   VET_PROCEDURE_SEEDS,
-} from './module-5-promos-vet-catalog.seed.ts';
+} from './m07-veterinary.seed.ts';
 
 const VET_ID = 'vet-1';
 
-interface PromoRow {
-  id: string;
-  name: string;
-  discount_type: string;
-  value: number;
-  scope_type: string;
-  condition_note: string;
-  is_active: boolean;
-}
-
 function createMockSupabase() {
   const state = {
-    branches: [
-      { id: 'branch-makati', name: 'Makati' },
-      { id: 'branch-southwoods', name: 'Southwoods' },
-    ],
-    promos: new Map<string, PromoRow>(),
-    promoBranchAvailability: [] as Array<{
-      promo_id: string;
-      branch_id: string;
-      is_available: boolean;
-    }>,
     vetMedication: [] as Array<{ veterinarian_id: string; name: string }>,
     vetProcedure: [] as Array<{
       veterinarian_id: string;
@@ -40,67 +18,8 @@ function createMockSupabase() {
     }>,
   };
 
-  let promoSeq = 0;
-
   const supabase = {
     from: vi.fn((table: string) => {
-      if (table === 'branches') {
-        return {
-          select: () => Promise.resolve({ data: state.branches, error: null }),
-        };
-      }
-
-      if (table === 'promos') {
-        return {
-          select: () => ({
-            eq: (_c: string, name: string) => ({
-              maybeSingle: () =>
-                Promise.resolve({
-                  data:
-                    Array.from(state.promos.values()).find(
-                      (p) => p.name === name
-                    ) ?? null,
-                  error: null,
-                }),
-            }),
-          }),
-          insert: (row: Omit<PromoRow, 'id'>) => ({
-            select: () => ({
-              maybeSingle: () => {
-                promoSeq += 1;
-                const inserted = { ...row, id: `promo-${promoSeq}` };
-                state.promos.set(inserted.id, inserted);
-                return Promise.resolve({ data: inserted, error: null });
-              },
-            }),
-          }),
-        };
-      }
-
-      if (table === 'promo_branch_availability') {
-        return {
-          select: () => ({
-            eq: (_c: string, promoId: string) =>
-              Promise.resolve({
-                data: state.promoBranchAvailability.filter(
-                  (r) => r.promo_id === promoId
-                ),
-                error: null,
-              }),
-          }),
-          insert: (
-            rows: Array<{
-              promo_id: string;
-              branch_id: string;
-              is_available: boolean;
-            }>
-          ) => {
-            state.promoBranchAvailability.push(...rows);
-            return Promise.resolve({ error: null });
-          },
-        };
-      }
-
       if (table === 'vet_medication_catalog') {
         return {
           select: () => ({
@@ -164,36 +83,11 @@ function createMockSupabase() {
   return supabase;
 }
 
-describe('module-5-promos-vet-catalog seed', () => {
+describe('m07-veterinary seed', () => {
   let supabase: ReturnType<typeof createMockSupabase>;
 
   beforeEach(() => {
     supabase = createMockSupabase();
-  });
-
-  describe('seedPromos', () => {
-    it('creates every planned promo, each available at every branch', async () => {
-      await seedPromos(supabase as never);
-
-      expect(supabase.state.promos.size).toBe(PROMO_SEEDS.length);
-      expect(supabase.state.promoBranchAvailability.length).toBe(
-        PROMO_SEEDS.length * 2
-      );
-      for (const promo of supabase.state.promos.values()) {
-        expect(promo.is_active).toBe(true);
-        expect(promo.scope_type).toBe('all_services');
-      }
-    });
-
-    it('is idempotent: re-running does not duplicate rows', async () => {
-      await seedPromos(supabase as never);
-      await seedPromos(supabase as never);
-
-      expect(supabase.state.promos.size).toBe(PROMO_SEEDS.length);
-      expect(supabase.state.promoBranchAvailability.length).toBe(
-        PROMO_SEEDS.length * 2
-      );
-    });
   });
 
   describe('seedVetMedicationCatalog / seedVetProcedureCatalog', () => {

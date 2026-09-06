@@ -3,7 +3,7 @@ import {
   seedCages,
   seedFoodCatalog,
   seedMedicationCatalog,
-} from './module-4-hotel.seed.ts';
+} from './m05-hotel.seed.ts';
 
 interface ProductCatalogRow {
   name: string;
@@ -110,7 +110,7 @@ function catalogSize(
   ).length;
 }
 
-describe('module-4-hotel seed', () => {
+describe('m05-hotel seed', () => {
   let supabase: ReturnType<typeof createMockSupabase>;
 
   beforeEach(() => {

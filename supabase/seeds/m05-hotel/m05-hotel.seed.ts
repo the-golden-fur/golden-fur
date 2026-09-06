@@ -4,27 +4,20 @@
 // options out of the box instead of an empty dropdown.
 //
 // Seeds public.cages: a handful of cages per size category, per branch,
-// matching the plan in module-4-hotel.seed.sql.
+// matching the plan in m05-hotel.seed.sql.
 //
 // A pure-SQL alternative that produces the same shape of data lives
-// alongside this file at module-4-hotel.seed.sql. Unlike the .sql file,
+// alongside this file at m05-hotel.seed.sql. Unlike the .sql file,
 // this script is idempotent (safe to re-run against a database that
 // already has these rows) via per-row existence checks rather than
-// ON CONFLICT, matching module-3-maintenance.seed.ts's own convention.
+// ON CONFLICT, matching the other m*/*.seed.ts scripts' convention.
 //
-// Folder numbering note: named module-4 (the 4th seed batch added), not
-// module-5 - module-1/2/3's own numbers already track creation order, not
-// the Modules-Features module number (module-3-maintenance covers M13/M12,
-// not M03), so this one stays consistent with that sequence even though
-// the underlying feature is M05.
-//
-// Run manually - not wired into `npm run dev`:
-//
-//   npm run seed:module-4
+// Run via `npm run seed:all` (which invokes every m*/*.seed.ts in order) -
+// not wired into `npm run dev`.
 //
 // Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (read from
-// server/.env), and requires migration 20260727050 (cages table), module-1's
-// seed (branches), and module-2's seed (customer1@goldenfur.com) to have
+// server/.env), and requires migration 20260727050 (cages table), m01's
+// seed (branches), and m02's seed (customer1@goldenfur.com) to have
 // already run - the food/medication catalog rows are now seeded as
 // customer1's own entries (see the comment above FOOD_CATALOG_PLAN) rather
 // than global staff-managed rows.
@@ -95,7 +88,7 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
 
   if (error || !data?.length) {
     console.error(
-      `skip: could not list branches - has module-1's seed run? (${error?.message ?? 'no branches found'})`
+      `skip: could not list branches - has m01's seed run? (${error?.message ?? 'no branches found'})`
     );
     return [];
   }
@@ -104,7 +97,7 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
 }
 
 /** The customer id that owns the seeded food/medication catalog rows -
- * mirrors resolveAssessorId's pattern in module-2-customers-pets.seed.ts. */
+ * mirrors resolveAssessorId's pattern in m02-customers-pets.seed.ts. */
 async function resolveCatalogOwnerId(
   supabase: ReturnType<typeof createClient>
 ): Promise<string | null> {
@@ -116,7 +109,7 @@ async function resolveCatalogOwnerId(
 
   if (!data?.id) {
     console.error(
-      `skip: could not find ${CATALOG_SEED_OWNER_EMAIL} in customer_profiles - has module-2's seed run?`
+      `skip: could not find ${CATALOG_SEED_OWNER_EMAIL} in customer_profiles - has m02's seed run?`
     );
     return null;
   }
@@ -125,7 +118,7 @@ async function resolveCatalogOwnerId(
 }
 
 /** 7 cages per branch (2xS, 2xM, 2xL, 1xXL), labeled `<Branch>-<Size>-<seq>`,
- * e.g. 'Makati-S-01' - matching module-4-hotel.seed.sql's plan exactly. */
+ * e.g. 'Makati-S-01' - matching m05-hotel.seed.sql's plan exactly. */
 export async function seedCages(supabase: ReturnType<typeof createClient>) {
   const branches = await getBranches(supabase);
   if (branches.length === 0) return;

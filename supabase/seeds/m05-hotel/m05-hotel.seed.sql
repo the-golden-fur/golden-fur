@@ -7,7 +7,7 @@
 -- category='food'|'medication', service_scope='hotel'.
 --
 -- Runs automatically on `supabase db reset` (see supabase/config.toml
--- [db.seed] sql_paths, ordered after module-1's AND module-2's seeds, so
+-- [db.seed] sql_paths, ordered after m01's AND m02's seeds, so
 -- both branches.id values and customer1@goldenfur.com exist). Idempotent -
 -- guarded by NOT EXISTS / ON CONFLICT, safe to re-run.
 --

@@ -1,6 +1,6 @@
 -- M01 Staff Auth & Access Control - Sprint 1 reference seed data (Issue #38).
 --
--- Pure-SQL alternative to module-1-staff-auth.seed.ts, for when you'd rather
+-- Pure-SQL alternative to m01-staff-auth.seed.ts, for when you'd rather
 -- paste this into the Supabase SQL Editor / run it via psql than a Node
 -- script. This is the original dev-convenience seed content (previously
 -- supabase/seed.sql, rewritten at the time because it inserted a
@@ -14,7 +14,7 @@
 -- against one that already has these rows (re-running will hit the unique
 -- constraints on branches.name / staff_profiles.registered_email). If you
 -- need a version that's safe to re-run against a live database, use
--- module-1-staff-auth.seed.ts instead.
+-- m01-staff-auth.seed.ts instead.
 --
 -- All accounts use the password: password123
 -- Staff: <branch>.<role>N@goldenfur.com (e.g. makati.admin2@goldenfur.com)

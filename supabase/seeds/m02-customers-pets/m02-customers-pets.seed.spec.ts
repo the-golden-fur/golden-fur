@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { seedCustomers } from './module-2-customers-pets.seed.ts';
+import { seedCustomers } from './m02-customers-pets.seed.ts';
 
 const ASSESSOR_ID = 'staff-receptionist-1';
 
@@ -82,7 +82,7 @@ function createMockSupabase() {
   return supabase;
 }
 
-describe('module-2-customers-pets seed', () => {
+describe('m02-customers-pets seed', () => {
   let supabase: ReturnType<typeof createMockSupabase>;
 
   beforeEach(() => {

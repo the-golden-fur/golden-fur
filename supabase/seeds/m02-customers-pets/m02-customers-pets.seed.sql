@@ -1,7 +1,7 @@
 -- M02 Customer Portal & Pet Management - Sprint 1 reference seed data
 -- (Issue #38).
 --
--- Pure-SQL alternative to module-2-customers-pets.seed.ts, for when you'd
+-- Pure-SQL alternative to m02-customers-pets.seed.ts, for when you'd
 -- rather paste this into the Supabase SQL Editor / run it via psql than a
 -- Node script. The customer block below is the original dev-convenience
 -- seed content (previously supabase/seed.sql), moved here as part of
@@ -16,7 +16,7 @@
 -- one that already has these rows (re-running will hit the unique
 -- constraint on customer_profiles.account_email). If you need a version
 -- that's safe to re-run against a live database, use
--- module-2-customers-pets.seed.ts instead.
+-- m02-customers-pets.seed.ts instead.
 --
 -- All accounts use the password: password123
 -- Customer: customerN@goldenfur.com
@@ -133,7 +133,7 @@ begin
   select id into v_assessor_id from public.staff_profiles where role = 'Receptionist' limit 1;
 
   if v_assessor_id is null then
-    raise notice 'module-2 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = NULL (has module-1''s seed run first?)';
+    raise notice 'm02 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = NULL (has m01''s seed run first?)';
   end if;
 
   for v_customer in
