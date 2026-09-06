@@ -7,62 +7,64 @@ skill instead — the two directions use different merge strategies.
 ## Process — the locked finish pipeline
 
 Run these in order. This whole sequence is the "session is finished, open a
-PR" pipeline — none of it (`ci-verifier`, `ci-fixer-agent`, `code-reviewer`,
-`workflow-doc-sync`) runs earlier, on a plain `commit` or `git push`. The
-`golden-fur` `session-router` hook injects this same list when it sees a
-"open a PR" prompt; the `pr-guard` hook blocks `gh pr create` until steps 2
-and 4 have left their evidence.
+PR" pipeline — none of it (`ci-verifier`, `ci-fixer-agent`, the `code-review`
+pass) runs earlier, on a plain `commit` or `git push`. The `golden-fur`
+`session-router` hook injects this same list when it sees an "open a PR"
+prompt; the `pr-guard` hook blocks `gh pr create` until steps 2 and 4 have
+left their evidence.
 
 1. **Branch.** If `HEAD` is `dev` (or `main`), run
    `.agent/skills/branch-naming.md` to create and push the feature/fix
    branch first. Uncommitted work is expected here — it's committed at
-   step 7.
+   step 6.
 2. **Verify CI parity across both repos** — spawn the `ci-verifier` subagent
-   (`.agent/agents/ci-verifier.md`) against the working tree; tests, lint,
-   format, build, both repos, all green. It writes `.git/ci-verifier-pass`
-   (the verified `HEAD` sha) on success — `pr-guard` checks that. A green
-   pass from earlier this session with nothing changed since counts.
+   (`.agent/agents/ci-verifier.md`) **once** against the working tree;
+   tests, lint, format, build, both repos, all green. It writes
+   `.git/ci-verifier-pass` (the verified `HEAD` sha) on success — `pr-guard`
+   checks that. A green pass from earlier this session with nothing changed
+   since counts.
 3. **If `ci-verifier` came back red — spawn `ci-fixer-agent`**
    (`.agent/agents/ci-fixer-agent.md`) to fix format/lint/build/test
    failures without weakening any check, then **re-run `ci-verifier`** until
    green. (`ci-fixer-agent` also does what `pre-commit-checks` used to do at
    PR time — no separate `pre-commit-checks` step here.)
-4. **Unbiased code review of the whole branch** — spawn `code-reviewer`
-   (`.agent/agents/code-reviewer.md`, trigger `pre-pr`) on the full
-   `dev...HEAD` diff + working tree. Read-only; files its report into the
-   session's own
-   `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/`.
+4. **Code review of the whole branch** — invoke the built-in `code-review`
+   skill (`Skill(code-review, "high")`) **in-session** on the full
+   `dev...HEAD` diff + working tree. Do **not** spawn a review subagent.
    Resolve every **Blocking** finding (edits happen here); fold anything
-   still worth noting into the PR's **Testing**/**How** sections. A pass
-   from earlier this session with nothing changed under `client/src` /
-   `server/src` / `supabase/` since counts.
-5. **Workflow-doc drift** — if the branch touched `client/src` /
-   `server/src` / `supabase/migrations` and `workflow-doc-sync` hasn't run
-   this session, run it once over the whole `dev...HEAD` diff. It detects
-   drift and hands off to the vault's `workflow-documenter`; note candidates
-   in the PR's **How** section.
-6. **Session record** — confirm
+   still worth noting into the PR's **Testing**/**How** sections. Then write
+   a short findings summary (verdict + blocking count + notes actioned) to
+   `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-pre-pr.md`
+   — `pr-guard` requires a file in that folder before it lets the PR open.
+   A review from earlier this session with nothing changed under
+   `client/src` / `server/src` / `supabase/` since counts.
+5. **Session record** — confirm
    `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/` has this
-   session's `plan.md` + `testing/testing.md` and they're current. If the
-   session doc was never written (or is stale), spawn `session-documenter`
-   now. Normally it already ran at implementation-finish (the `Stop` hook
-   nudges it) — this is a backstop.
-7. **Commit** — run `.agent/skills/commit.md` for `golden-fur`. One commit
-   captures the implementation + `ci-fixer-agent` fixes + `code-reviewer`
-   fixes. (An extra commit right after step 3 is fine if the review is
-   expected to be large.)
-8. **Push** the branch.
-9. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
+   session's `plan.md` + `testing/testing.md` and they're current. It
+   normally already exists — `session-documenter` runs at
+   implementation-finish. If it was never written (or is stale), **stop and
+   ask the user to run `session-documenter`** before retrying — do not spawn
+   it inside the PR flow.
+6. **Commit** — run `.agent/skills/commit.md` for `golden-fur`. One commit
+   captures the implementation + `ci-fixer-agent` fixes + code-review fixes.
+   (An extra commit right after step 3 is fine if the review is expected to
+   be large.)
+7. **Push** the branch.
+8. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
    (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
    Pre-Merge Checklist) and open it:
    `gh pr create --base dev --head <branch> --title "..." --body "..."`.
-10. Recommend label(s) and note the Milestone / Development (linked issues)
-    fields — GitHub sidebar fields, set with `gh pr edit --add-label ...`
-    or left for the user.
-11. **Vault side** — commit + push the `golden-fur-vault` changes this
-    session produced (`sessions/NN-<slug>/`, any `Reference/golden-fur/` workflow refresh) and
-    open the vault PR with the `pr` skill there. The vault's own
-    `ci-verifier` + `pr-guard` gate that PR.
+9. Recommend label(s) and note the Milestone / Development (linked issues)
+   fields — GitHub sidebar fields, set with `gh pr edit --add-label ...`
+   or left for the user.
+10. **Vault side** — commit + push the `golden-fur-vault` changes this
+    session produced (`sessions/NN-<slug>/`) and open the vault PR with the
+    `pr` skill there. Reuse step 2's green `ci-verifier` pass — don't spawn
+    `ci-verifier` again for the vault PR.
+
+**Workflow-doc drift** (`workflow-doc-sync`) is no longer a pipeline step —
+it spawned a subagent (sometimes two) every PR. Run it by hand when you
+actually want the drift check.
 
 ## Merge strategy: squash only
 

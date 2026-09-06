@@ -51,6 +51,7 @@ instruction) can tell those two states apart, so adding a `.gitkeep` is
 gated on exactly that.
 
 The **removal** side is not gated the same way — a `.gitkeep` sitting next
-to real tracked files is always redundant regardless of intent, so cleaning
-those up automatically stays safe. That half still runs on every `Stop` via
-`.claude/hooks/gitkeep-cleanup.sh` (see AGENTS.md "Auto-run wiring").
+to real tracked files is always redundant regardless of intent. There used
+to be a `Stop` hook (`gitkeep-cleanup.sh`) that stripped those
+automatically; it was removed 2026-09-06. If you notice a redundant
+`.gitkeep` while working, just `git rm` it.

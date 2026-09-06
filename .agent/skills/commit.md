@@ -25,7 +25,7 @@ for the user to paste.
 
 > **No verification gates run at commit or branch-publish time** —
 > `pre-commit-checks` (lint + format), `ci-verifier` (full CI parity), and
-> `code-reviewer` are all steps of `pr-to-dev` / `pr-dev-to-main` only, run
+> the `code-review` pass are all steps of `pr-to-dev` / `pr-dev-to-main` only, run
 > when a PR is actually being opened. Committing and pushing a branch has
 > no gate. Run `pre-commit-checks` by hand any time you want lint/format
 > fixed mid-work.

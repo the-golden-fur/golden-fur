@@ -48,15 +48,15 @@ fi
 if printf '%s' "$lc" | grep -qE "(^|[^a-z])(/pr|open (a|the) pr|make (a|the) pr|create (a|the) pull request|raise (a|the) pr|pr this|ready to pr|let'?s pr|ship it|finish (up )?and pr)([^a-z]|$)"; then
   emit "SESSION-FINISH MODE (session-router hook matched this prompt). Run the locked pipeline in order - do not skip a step, do not run these earlier for a non-PR request:
 1. branch: if HEAD is dev/main, run \`branch-naming\` to create+push a branch first.
-2. verify: spawn \`ci-verifier\` across BOTH repos.
+2. verify: spawn \`ci-verifier\` once, across BOTH repos.
 3. ci-fixer: if verify is red, spawn \`ci-fixer-agent\`, then re-run \`ci-verifier\` until green.
-4. code review: spawn \`code-reviewer\` on dev...HEAD + working tree; resolve every Blocking finding.
-5. workflow docs: if client/src|server/src|supabase/migrations changed and workflow-doc-sync hasn't run this session, run it now.
-6. session record: confirm golden-fur-vault/Projects/golden-fur/sessions/NN-<slug>/ (plan.md + testing/ + reviews/ + context/) exists and is current (session-documenter) - write/update it if not.
-7. commit: run the \`commit\` skill (captures impl + ci-fixer + review fixes).
-8. push.
-9. PR: \`pr-to-dev\` (feature->dev) or \`pr-dev-to-main\` (dev->main).
-10. vault: commit + push + \`pr\` for the sessions/ + reviews/ + Reference/ changes.
+4. code review: invoke the \`code-review\` skill (args: high) on dev...HEAD + working tree IN-SESSION - do not spawn a review subagent. Resolve every Blocking finding, then write a short findings summary (verdict + blocking count + notes) to golden-fur-vault/Projects/golden-fur/sessions/NN-<slug>/reviews/<YYYY-MM-DD-HHmm>-pre-pr.md so pr-guard sees its evidence.
+5. session record: confirm golden-fur-vault/Projects/golden-fur/sessions/NN-<slug>/ (plan.md + testing/testing.md + reviews/ + context/) already exists and is current. If it does NOT, stop and tell the user to run the \`session-documenter\` agent first - do NOT spawn it inside the PR flow.
+6. commit: run the \`commit\` skill (captures impl + ci-fixer + review fixes).
+7. push.
+8. PR: \`pr-to-dev\` (feature->dev) or \`pr-dev-to-main\` (dev->main).
+9. vault: commit + push + \`pr\` for the sessions/ + reviews/ changes. Reuse step 2's green \`ci-verifier\` pass - do NOT spawn \`ci-verifier\` again for the vault PR.
+Workflow-doc drift (\`workflow-doc-sync\`) is no longer a pipeline step - run it by hand when you want that check.
 The \`pr-guard\` hook will block \`gh pr create\` until steps 2 and 4 have left their evidence."
   exit 0
 fi

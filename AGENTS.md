@@ -32,10 +32,11 @@ schemas, seeds, and edge functions.
 - **Working notes, meeting notes, and every session's record belong in the
   sibling `../golden-fur-vault` repo**, not here. Each request thread that
   changes this app gets a `Projects/golden-fur/sessions/NN-<slug>/` there — a
-  near-beginner plan, a click-by-click test script, copied context, and the
-  `code-reviewer` passes — written by the vault's `session-documenter` agent
-  (the `Stop` hook nudges it). Project-wide context / decisions / design live
-  under `Projects/golden-fur/shared/`; business-process workflow docs under
+  near-beginner plan, a click-by-click test script, copied context (written
+  by the vault's `session-documenter` agent at implementation-finish), and
+  the PR-time `code-review` summary. Project-wide context / decisions /
+  design live under `Projects/golden-fur/shared/`; business-process workflow
+  docs under
   `Library/golden-fur/features/<feature>/` (human) and
   `Reference/golden-fur/features/<feature>/` (machine).
 - **`temp/`** is scratch space (context files, design assets) used while
@@ -46,15 +47,15 @@ schemas, seeds, and edge functions.
   `.agent/skills/`, with thin per-tool adapters in `.claude/skills/`,
   `.gemini/commands/`,
   `.codex/prompts/`. The vault's own
-  skills/agents (`note-filing`, `vault-librarian`, `weekly-reviewer`) stay in
-  `../golden-fur-vault` since they operate on vault content — see
+  skills/agents (`note-filing`, `vault-librarian`, `session-documenter`) stay
+  in `../golden-fur-vault` since they operate on vault content — see
   [golden-fur-vault/AGENTS.md](../golden-fur-vault/AGENTS.md). Details on
   this repo's own skills, and why `pr-to-dev`/`pr-dev-to-main` are split, are
   in the "Reusable skills" section below.
 - **Dev-time domain agents/skills** — subagents and reference material for
   this project's own business logic (booking capacity, payments, RBAC,
-  reports, notifications, discounts, QA, schema) live in `.agent/agents/`
-  and `.agent/skills/`, with the same thin-adapter pattern per tool. See
+  schema) live in `.agent/agents/` and `.agent/skills/`, with the same
+  thin-adapter pattern per tool. See
   "Domain agents & skills" below. These are developer tooling only — they
   run locally while writing code and are never deployed or reachable by
   end users; their output is ordinary source code you review and commit.
@@ -110,27 +111,30 @@ server — auto-fixing what it can; **standalone-on-request only** now — no
 longer a pipeline step, `ci-fixer-agent` owns lint/format at PR time), and
 `gitkeep-empty-dir` (add a `.gitkeep` to one specific directory that's
 **deliberately, permanently** meant to ship empty — explicit-request only,
-never for a directory that's simply not filled in yet mid-task; see "Auto-run
-wiring" below for the automatic half of this, which only ever removes a
-stray `.gitkeep`, never adds one). Any AI coding tool working in this repo
-should read the relevant file under `.agent/` before doing that kind of
-task.
+never for a directory that's simply not filled in yet mid-task; there is no
+longer an automatic counterpart — the `gitkeep-cleanup` `Stop` hook was
+removed 2026-09-06). Any AI coding tool working in this repo should read the
+relevant file under `.agent/` before doing that kind of task.
 
 **`pr-to-dev` and `pr-dev-to-main` are the "session is finished" finish
 pipeline**, run in a locked order (see the skill files and "Auto-run
-wiring" below): `branch-naming` (if on `dev`) → `ci-verifier` (both repos)
-→ `ci-fixer-agent` if red, re-verify → `code-reviewer` (resolve Blocking)
-→ `workflow-doc-sync` → confirm the session record (`session-documenter`)
-→ `commit` → push → `gh pr create` → then the vault PR. **`commit` on its
-own runs no gate at all** — not `pre-commit-checks`, not `ci-verifier`, not
-`code-reviewer`. Everything gated happens only when a PR is actually being
-opened. (Line endings are handled by `.gitattributes` — `* text=auto
-eol=lf`.) The `pr-guard` hook (checked in — see "Auto-run wiring") blocks a
-direct `gh pr create` until `ci-verifier` has left `.git/ci-verifier-pass`
-for `HEAD` and a `code-reviewer` report exists in the branch's
+wiring" below): `branch-naming` (if on `dev`) → `ci-verifier` once (both
+repos) → `ci-fixer-agent` if red, re-verify → the `code-review` skill
+in-session (resolve Blocking, drop a summary in the session's `reviews/`)
+→ confirm the session record already exists (`session-documenter` ran at
+implementation-finish) → `commit` → push → `gh pr create` → then the vault
+PR. **`commit` on its own runs no gate at all** — not `pre-commit-checks`,
+not `ci-verifier`, not the review. Everything gated happens only when a PR
+is actually being opened. (Line endings are handled by `.gitattributes` —
+`* text=auto eol=lf`.) The `pr-guard` hook (checked in — see "Auto-run
+wiring") blocks a direct `gh pr create` until `ci-verifier` has left
+`.git/ci-verifier-pass` for `HEAD` and a review file exists in the branch's
 `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/` — see
 the vault decision record
-`Projects/golden-fur/shared/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`.
+`Projects/golden-fur/shared/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`
+(the bespoke `code-reviewer` subagent was retired 2026-09-06 in favour of
+the built-in `code-review` skill, run in-session — same gate, one fewer
+cold subagent per PR).
 
 Tool-specific directories are thin adapters over that same content, wired
 up per tool's own discovery mechanism:
@@ -170,17 +174,18 @@ noted):
   reports one pass/fail with the failing output, never fixes or commits.
   Keeps the full suite/build output out of the main session. Still fine to
   run by hand any time.
-- `code-reviewer` — unbiased, **read-only** review of the current branch's
-  diff. Runs automatically **only as a step of the PR workflow**
-  (`pr-to-dev` / `pr-dev-to-main`, trigger `pre-pr`) — not on commit or
-  branch publish. It did not write the code and gets no rationale beyond
-  the diff itself. No `Edit`; `Bash` limited to read-only git inspection;
-  `Write` used only for its one report file, which it places in the sibling
-  vault at
-  `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-<trigger>.md`
-  (never in this repo — same "no working docs in the code repo" rule as the
-  session record). Fix its **Blocking** findings before opening the PR; skip
-  the gate only for a pure formatting/non-functional diff, and say so.
+- **Code review at PR time** uses the built-in `code-review` skill
+  (`Skill(code-review, "high")`), run **in-session** as step 4 of
+  `pr-to-dev` / `pr-dev-to-main` — not a spawned subagent. Resolve every
+  **Blocking** finding, then write a short summary (verdict + blocking count
+  - notes actioned) to
+    `../golden-fur-vault/Projects/golden-fur/sessions/<NN-slug>/reviews/<YYYY-MM-DD-HHmm>-pre-pr.md`
+    — `pr-guard` requires a file there. Skip the gate only for a pure
+    formatting/non-functional diff, and say so. (The old bespoke
+    `code-reviewer` subagent was retired 2026-09-06 — the built-in gives the
+    same gate without a cold subagent boot per PR; the rationale in
+    `Projects/golden-fur/shared/decisions/2026-08-30-unbiased-code-reviewer-subagent.md`
+    still stands for why review happens at PR time at all.)
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
 - `payment-billing-agent` — PayMongo webhook handling and the Credit
@@ -188,16 +193,12 @@ noted):
 - `auth-access-agent` — RBAC, TOTP MFA, OAuth account-merge. Read-mostly
   (`Read`, `Grep`, `Glob`, `Edit` — no `Write`/`Bash`) so it can't touch
   production config.
-- `report-generator-agent` — Daily Sales Report and related
-  report-generation code.
-- `notification-agent` — the transactional notification triggers/templates.
-- `discount-compliance-agent` — the Discount Module (live end-to-end,
-  including Senior/PWD statutory handling), with an emphasis on
-  compliance readiness (ID-verification logging, statutory-rate
-  protection, test coverage) rather than basic scaffolding.
-- `qa-iso25010-agent` — test cases plus the ISO/IEC 25010 evaluation
-  questionnaire (the latter is a vault deliverable, not code).
 - `db-schema-agent` — Supabase migrations and multi-branch data isolation.
+
+(Dormant-module agents — `report-generator-agent`, `notification-agent`,
+`discount-compliance-agent`, `qa-iso25010-agent`, plus their backing
+reference skills — were removed 2026-09-06 while those modules aren't in
+active build. Recreate from git history when one goes live.)
 
 **Maintenance agents** (keep generated/derived artifacts in step with the
 code as a task closes — see "Auto-run wiring" below):
@@ -213,19 +214,12 @@ code as a task closes — see "Auto-run wiring" below):
   **Auto-invoked** as step 3 of the `pr-to-dev` / `pr-dev-to-main` pipeline
   the moment `ci-verifier` reports red; also absorbs what `pre-commit-checks`
   used to do at PR time (the lint + format auto-fix pass).
-- `domain-doc-sync-agent` — reconciles the domain agents/skills above with
-  the business-rule code they describe (capacity thresholds, enums, role
-  lists, status machines, file layout) when that code moves. Docs-only,
-  no `Bash`.
-
-**Skills** (auto-invoked reference material — each backs the matching
-agent above, and applies equally when working the same area without
-spawning a subagent):
+  **Skills** (auto-invoked reference material — each backs the matching
+  agent above, and applies equally when working the same area without
+  spawning a subagent):
 
 - `paymongo-webhook-handling`, `capacity-based-scheduling`,
-  `rbac-totp-setup`, `credit-balance-ledger`, `daily-sales-report-format`,
-  `email-notification-templates`, `discount-senior-pwd-compliance`,
-  `iso25010-evaluation-instrument`, `supabase-seed-maintenance`.
+  `rbac-totp-setup`, `credit-balance-ledger`, `supabase-seed-maintenance`.
 - `supabase-migration-push` — the closing step of a task that changed
   `supabase/migrations/`: `npm run supabase:push` (the
   `📤 Supabase: Push Migrations` VS Code task — not a hand-typed
@@ -233,19 +227,25 @@ spawning a subagent):
   **once, only after the whole task is done** and `ci-verifier` is green
   and the seeds are reconciled. Confirms the linked ref isn't production
   first.
-- `workflow-doc-sync` — **run once when a PR is opened** (`pr-to-dev` step),
-  over the whole branch diff: matches the changed paths against each vault
+- `workflow-doc-sync` — **explicit-request only** (no longer a PR step — it
+  spawned the vault `workflow-documenter`, sometimes twice, every PR for a
+  check that rarely found drift). Run it by hand over the whole branch diff
+  when you want the check: it matches changed paths against each vault
   machine-workflow file's `source:` frontmatter
-  (`../golden-fur-vault/Reference/golden-fur/features/**/workflows/*.md`) to
-  find stale workflow docs, then hands off to the vault's
-  `workflow-documenter` agent (the only thing allowed to rewrite them). Not
-  per commit / per task. Never writes to the vault.
+  (`../golden-fur-vault/Reference/golden-fur/features/**/workflows/*.md`),
+  then hands off to the vault's `workflow-documenter` agent (the only thing
+  allowed to rewrite them). Never writes to the vault.
 
 ### Auto-run wiring
 
-`.claude/settings.json` (checked in) wires four Claude Code hooks. Hooks are
+`.claude/settings.json` (checked in) wires two Claude Code hooks. Hooks are
 Claude-specific — other AI tools replicate the intent via their own
-mechanisms.
+mechanisms. (Three `Stop` hooks — `maintenance-reminders.sh`,
+`gitkeep-cleanup.sh` here and `gitkeep-sweep.sh` in the vault — were removed
+2026-09-06: they ran shell work on every turn end and, in the case of
+`maintenance-reminders`, nudged the session into spawning agents mid-task.
+Their intent now lives in the skill descriptions and the two surviving
+hooks.)
 
 **`session-router`** (`UserPromptSubmit`) — deterministically routes the
 session by matching the prompt text; injects guidance, never blocks:
@@ -253,36 +253,23 @@ session by matching the prompt text; injects guidance, never blocks:
 - "just plan" / "don't touch code" / "no code yet" / `/plan` → the vault's
   `plan` skill; edit no code; write only `sessions/<NN-slug>/plan.md`.
 - "open a PR" / "ship it" / "pr this" / `/pr` → the locked finish pipeline
-  (`branch-naming` → `ci-verifier` → `ci-fixer-agent` if red → `code-reviewer`
-  → `workflow-doc-sync` → session record → `commit` → push → `gh pr create`
-  → vault PR).
+  (`branch-naming` → `ci-verifier` once → `ci-fixer-agent` if red → the
+  `code-review` skill in-session → confirm the session record exists →
+  `commit` → push → `gh pr create` → vault PR).
 
 **`pr-guard`** (`PreToolUse` on `Bash`) — blocks `gh pr create` until
 `ci-verifier` has left `.git/ci-verifier-pass` for the current `HEAD` **and**
-a `code-reviewer` report exists in the branch's `sessions/<NN-slug>/reviews/`. This is the enforcement half of "review + verify only
-happen at PR time, but must happen".
-
-**`maintenance-reminders.sh`** (`Stop`) — inspects the diff and _reminds_
-(never mutates): a migration / seeded-table change under `supabase/` → run
-`seed-sync-agent` then `supabase-migration-push` at task end; code a domain
-skill's rules depend on moved → run `domain-doc-sync-agent`; `client/src` /
-`server/src` changed but no vault `sessions/**` path touched → run
-`session-documenter` (the near-beginner plan + click-by-click testing +
-copied context) as the closing step.
-
-**`gitkeep-cleanup.sh`** (`Stop`) — removal only: if a directory holds a
-`.gitkeep` _and_ now has other tracked/addable files, removes the
-now-redundant `.gitkeep` and stages the change. Deliberately does **not**
-add a `.gitkeep` to an empty directory it finds — it can't tell "meant to
-be empty" apart from "an AI hasn't filled this in yet," so that decision is
-never automatic. Adding one is the `gitkeep-empty-dir` skill, run only on
-an explicit request.
+a review file exists in the branch's `sessions/<NN-slug>/reviews/`. This is
+the enforcement half of "review + verify only happen at PR time, but must
+happen".
 
 **PR-time only** (steps of `pr-to-dev` / `pr-dev-to-main`, never of `commit`
-or a branch push): `ci-verifier`, `ci-fixer-agent`, `code-reviewer`,
-`workflow-doc-sync`. The `session-documenter` agent (in the vault) runs at
-implementation-finish (the `Stop` hook nudges it), then just updates the
-same `sessions/NN-<slug>/` on later requests in the session.
+or a branch push): `ci-verifier`, `ci-fixer-agent`, and the in-session
+`code-review` pass. `workflow-doc-sync` is no longer among them —
+explicit-request only. The `session-documenter` agent (in the vault) runs at
+implementation-finish, then just updates the same `sessions/NN-<slug>/` on
+later requests in the session; the PR flow only _checks_ the folder exists,
+it doesn't spawn the agent.
 
 ### Why two PR skills instead of one
 
