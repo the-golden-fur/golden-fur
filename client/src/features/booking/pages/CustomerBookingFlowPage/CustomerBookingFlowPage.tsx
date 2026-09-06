@@ -1376,7 +1376,17 @@ export function CustomerBookingFlowPage() {
       if (discount.scope_type === 'package') {
         return groupPackageIds.includes(discount.scope_package_id ?? '');
       }
-      return groupCategories.has(discount.scope_category as ServiceCategory);
+      // Mirrors the server's own uniformCategory rule exactly
+      // (bookingGroup.service.ts's resolveDiscountAndPromo call) - a
+      // category-scoped discount only ever matches a group whose every
+      // booking is that ONE category, never "any booking in the cart
+      // happens to be this category" - a mixed-category cart would
+      // otherwise let the customer select a discount here that the server
+      // always rejects at submit (code review finding #5).
+      return (
+        groupCategories.size === 1 &&
+        groupCategories.has(discount.scope_category as ServiceCategory)
+      );
     });
   }, [
     canApplyDiscounts,

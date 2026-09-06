@@ -1895,7 +1895,7 @@ export async function recomputeBookingGroupPaymentStatus(
   // alerts or re-run its capacity check).
   const { data: memberBookingsBefore, error: membersError } = await supabase
     .from('bookings')
-    .select('id, payment_status')
+    .select('id, payment_status, status')
     .eq('booking_group_id', bookingGroupId);
 
   if (membersError) throwWithStatus(400, membersError.message);
@@ -1903,21 +1903,41 @@ export async function recomputeBookingGroupPaymentStatus(
   const membersBefore = (memberBookingsBefore ?? []) as Array<{
     id: string;
     payment_status: PaymentStatus;
+    status: Booking['status'];
   }>;
 
-  const { error: bulkUpdateError } = await supabase
-    .from('bookings')
-    .update({
-      payment_status: nextStatus,
-      ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
-      updated_at: nowIso,
-    })
-    .eq('booking_group_id', bookingGroupId);
+  // Code review finding #3: the bulk mirror must never touch a sibling that
+  // already left the active lifecycle (Cancelled/No-show) - a booking
+  // that was individually cancelled (e.g. #1's group-unaware
+  // cancellation path) must not have its payment_status silently
+  // overwritten to whatever the group's shared payment happens to settle
+  // to next, which downstream DSR/queue/report code reads as "this
+  // booking is settled". Completed is deliberately NOT excluded here -
+  // a Completed booking's balance can still legitimately get paid later,
+  // same as the single-booking path.
+  const activeMemberIds = membersBefore
+    .filter((row) => row.status !== 'Cancelled' && row.status !== 'No-show')
+    .map((row) => row.id);
+
+  const { error: bulkUpdateError } =
+    activeMemberIds.length > 0
+      ? await supabase
+          .from('bookings')
+          .update({
+            payment_status: nextStatus,
+            ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
+            updated_at: nowIso,
+          })
+          .in('id', activeMemberIds)
+      : { error: null };
 
   if (bulkUpdateError) throwWithStatus(400, bulkUpdateError.message);
 
   const previouslyPending = membersBefore.filter(
-    (row) => row.payment_status === 'Pending'
+    (row) =>
+      row.payment_status === 'Pending' &&
+      row.status !== 'Cancelled' &&
+      row.status !== 'No-show'
   );
   const failures: BookingGroupSideEffectFailure[] = [];
 
