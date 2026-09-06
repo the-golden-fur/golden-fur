@@ -68,19 +68,18 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-# Seeds are grouped by module (Issue #38) - each module folder owns its own
-# tables; module-1 (branches, staff_profiles) runs before module-2
-# (customer_profiles, pets) since ordering doesn't matter functionally here
-# but mirrors the module numbering. module-3 (Sprint 2 Epic A, #44) MUST run
-# after module-1: it seeds branch-dependent maintenance data (service branch
-# availability, Golden Package, SC/PWD discounts) via
-# public.seed_m13_branch_data(), which needs the branches rows to exist.
+# Seeds are grouped by Modules-Features module number (M01-M14) - each folder
+# owns its own tables and is named for the module it seeds. m01 (branches,
+# staff_profiles) MUST run first: every other folder's branch-dependent /
+# staff-dependent data needs those rows. The rest are ordered by module
+# number; ordering among them doesn't matter functionally.
 sql_paths = [
-  "./seeds/module-1-staff-auth/*.sql",
-  "./seeds/module-2-customers-pets/*.sql",
-  "./seeds/module-3-maintenance/*.sql",
-  "./seeds/module-4-hotel/*.sql",
-  "./seeds/module-5-promos-vet-catalog/*.sql",
+  "./seeds/m01-staff-auth/*.sql",
+  "./seeds/m02-customers-pets/*.sql",
+  "./seeds/m05-hotel/*.sql",
+  "./seeds/m07-veterinary/*.sql",
+  "./seeds/m12-discounts/*.sql",
+  "./seeds/m13-maintenance/*.sql",
 ]
 
 [db.network_restrictions]

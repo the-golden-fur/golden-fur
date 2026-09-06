@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { seedBranches, seedStaff } from './module-1-staff-auth.seed.ts';
+import { seedBranches, seedStaff } from './m01-staff-auth.seed.ts';
 
 // Mimics the real PostgrestFilterBuilder: `.select(...)` returns a builder
 // that is both awaitable (resolves to { data: <all rows>, error }) and
@@ -85,7 +85,7 @@ async function seedFullModule(supabase: ReturnType<typeof createMockSupabase>) {
   await seedStaff(supabase as never);
 }
 
-describe('module-1-staff-auth seed', () => {
+describe('m01-staff-auth seed', () => {
   let supabase: ReturnType<typeof createMockSupabase>;
 
   beforeEach(() => {

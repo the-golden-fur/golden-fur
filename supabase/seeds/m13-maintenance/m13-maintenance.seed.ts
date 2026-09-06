@@ -1,26 +1,33 @@
-// M13 Maintenance + M12 Discounts - Sprint 2 Epic A branch-dependent seed
-// data (Issue #44).
+// M13 Maintenance (Packages, Services & Promos) - branch-dependent reference
+// seed data (Issues #44, #40).
 //
-// Seeds public.service_branch_availability, public.packages/
-// package_services (the Golden Package), and public.discounts (Senior
-// Citizen + PWD) - the three pieces of Issue #44's seed data that need real
-// branches.id values, which only exist once module-1's seed has run.
-// Migration 20260715034 seeds the branch-independent base service catalog
-// + pricing tiers this script assumes already exist.
+// Seeds the M13 pieces that need real branches.id values, which only exist
+// once m01's seed has run:
+//   - public.service_branch_availability: every base service (migration
+//     20260715034) available at every branch.
+//   - public.packages / package_services / package_branch_availability: the
+//     Golden Package, one shared row available at every branch.
+//   - public.promos (+ promo_branch_availability): two always-on,
+//     all-services promos, available at every branch, so the Promos admin
+//     page has real rows out of the box.
+//
+// Migration 20260715034 seeds the branch-independent base service catalog +
+// pricing tiers this script assumes already exist.
+//
+// The M12 Senior Citizen / PWD discount rows used to live here too; they
+// moved to ../m12-discounts/ when the seed folders were renamed to match the
+// Modules-Features module numbers (M01-M14).
 //
 // A pure-SQL alternative that produces the same shape of data lives
-// alongside this file at module-3-maintenance.seed.sql. Unlike the .sql
-// file, this script is idempotent (safe to re-run against a database that
-// already has these rows) via per-row existence checks rather than ON
-// CONFLICT, since the SDK's .insert() doesn't expose ON CONFLICT directly.
+// alongside this file at m13-maintenance.seed.sql. Unlike the .sql file,
+// this script is idempotent (safe to re-run against a database that already
+// has these rows) via per-row existence checks rather than ON CONFLICT.
 //
-// Run manually - not wired into `npm run dev`:
-//
-//   npm run seed:module-3
-//
-// Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (read from
-// server/.env), and requires migration 20260715034 (base service catalog)
-// plus module-1's seed (branches) to have already run.
+// Run via `npm run seed:all` (which invokes every m*/*.seed.ts in order) -
+// not wired into `npm run dev`. Requires SUPABASE_URL and
+// SUPABASE_SERVICE_ROLE_KEY (read from server/.env), migration 20260715034
+// (base service catalog), 20260715032 / 20260820141 (promos +
+// promo_branch_availability), plus m01's seed (branches).
 
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
@@ -38,14 +45,29 @@ const GOLDEN_PACKAGE_SERVICE_IDS = [
   'a1300000-0000-4000-a000-000000000003',
 ];
 
-const SERVICE_CATEGORIES = [
-  'Grooming',
-  'Hotel',
-  'Daycare',
-  'Veterinary',
-] as const;
+interface PromoSeed {
+  name: string;
+  discountType: 'Percentage' | 'Flat';
+  value: number;
+  conditionNote: string;
+}
 
-const MANDATED_DISCOUNTS = ['Senior Citizen Discount', 'PWD Discount'] as const;
+// Both are condition-based (no start/end date) so promoExpiry.job.ts never
+// auto-deactivates them - keeps the seeded set stable across resets.
+export const PROMO_SEEDS: PromoSeed[] = [
+  {
+    name: 'Loyalty Reward',
+    discountType: 'Percentage',
+    value: 10,
+    conditionNote: 'Returning customer - 3rd visit onward',
+  },
+  {
+    name: 'Weekday Walk-in',
+    discountType: 'Flat',
+    value: 100,
+    conditionNote: 'Walk-in booking, Monday to Thursday',
+  },
+];
 
 function getClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -65,7 +87,7 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
 
   if (error || !data?.length) {
     console.error(
-      `skip: could not list branches - has module-1's seed run? (${error?.message ?? 'no branches found'})`
+      `skip: could not list branches - has m01's seed run? (${error?.message ?? 'no branches found'})`
     );
     return [];
   }
@@ -227,70 +249,65 @@ export async function seedGoldenPackage(
   }
 }
 
-/**
- * Senior Citizen + PWD, one row per category (8 rows total, custom change:
- * down from the original 16 branch x type x category rows now that
- * discounts moved off a single branch_id column onto the many-to-many
- * discount_branch_availability table - migration 20260820140, mirroring
- * package_branch_availability's own seedGoldenPackage above). Each row is
- * made available at every branch so 'Senior Citizen - Veterinary' still
- * toggles independently per branch (via Branch Availability), just no
- * longer needs a whole separate discount row to do it.
- *
- * Custom change (unify active/available): is_active is no longer an
- * independent switch anywhere in the Discounts model - it always equals
- * "available at >= 1 branch" (discounts.service.ts keeps it in sync on
- * every branch-availability write). Since every row here is seeded
- * available at every branch, it is seeded active too - there is no longer
- * a separate "seeded but a staff member must still switch it on" step for
- * Senior Citizen/PWD; toggling a specific branch off in Branch Availability
- * is what takes it out of service there.
- */
-export async function seedMandatedDiscounts(
-  supabase: ReturnType<typeof createClient>
-) {
+/** Two always-on, all-services promos, each made available at every branch
+ * via promo_branch_availability (the many-to-many join that replaced the old
+ * promos.branch_scope enum - migration 20260820141). */
+export async function seedPromos(supabase: ReturnType<typeof createClient>) {
   const branches = await getBranches(supabase);
   if (branches.length === 0) return;
 
   let created = 0;
 
-  for (const name of MANDATED_DISCOUNTS) {
-    for (const category of SERVICE_CATEGORIES) {
-      const { data: existing } = await supabase
-        .from('discounts')
-        .select('id')
-        .eq('name', name)
-        .eq('scope_category', category)
-        .maybeSingle();
+  for (const promo of PROMO_SEEDS) {
+    const { data: existing } = await supabase
+      .from('promos')
+      .select('id')
+      .eq('name', promo.name)
+      .maybeSingle();
 
-      if (existing) continue;
+    let promoId = existing?.id as string | undefined;
 
+    if (!promoId) {
       const { data: inserted, error } = await supabase
-        .from('discounts')
+        .from('promos')
         .insert({
-          name,
-          is_mandated: true,
-          discount_type: 'Percentage',
-          value: 20,
-          scope_type: 'category',
-          scope_category: category,
+          name: promo.name,
+          discount_type: promo.discountType,
+          value: promo.value,
+          scope_type: 'all_services',
+          condition_note: promo.conditionNote,
           is_active: true,
         })
         .select('id')
         .maybeSingle();
 
       if (error || !inserted) {
-        console.error(
-          `discount insert failed (${name} / ${category}): ${error?.message}`
-        );
+        console.error(`promo insert failed (${promo.name}): ${error?.message}`);
         continue;
       }
 
+      promoId = inserted.id as string;
+      created += 1;
+    }
+
+    const { data: existingAvailability } = await supabase
+      .from('promo_branch_availability')
+      .select('branch_id')
+      .eq('promo_id', promoId);
+
+    const availableBranchIds = new Set(
+      (existingAvailability ?? []).map((row) => row.branch_id as string)
+    );
+    const missingBranches = branches.filter(
+      (branch) => !availableBranchIds.has(branch.id)
+    );
+
+    if (missingBranches.length > 0) {
       const { error: availabilityError } = await supabase
-        .from('discount_branch_availability')
+        .from('promo_branch_availability')
         .insert(
-          branches.map((branch) => ({
-            discount_id: (inserted as { id: string }).id,
+          missingBranches.map((branch) => ({
+            promo_id: promoId,
             branch_id: branch.id,
             is_available: true,
           }))
@@ -298,17 +315,14 @@ export async function seedMandatedDiscounts(
 
       if (availabilityError) {
         console.error(
-          `discount branch availability insert failed (${name} / ${category}): ${availabilityError.message}`
+          `promo_branch_availability insert failed (${promo.name}): ${availabilityError.message}`
         );
-        continue;
       }
-
-      created += 1;
     }
   }
 
   console.log(
-    `ensured mandated discounts exist for ${MANDATED_DISCOUNTS.length} type(s) x ${SERVICE_CATEGORIES.length} categories, available at ${branches.length} branch(es) (${created} row(s) created)`
+    `ensured ${PROMO_SEEDS.length} promo(s) exist, available at ${branches.length} branch(es) (${created} row(s) created)`
   );
 }
 
@@ -316,7 +330,7 @@ async function main() {
   const supabase = getClient();
   await seedServiceBranchAvailability(supabase);
   await seedGoldenPackage(supabase);
-  await seedMandatedDiscounts(supabase);
+  await seedPromos(supabase);
 }
 
 if (process.env.VITEST === undefined) {

@@ -9,14 +9,13 @@
 // by that customer's pets rows.
 //
 // A pure-SQL alternative that produces the same shape of data lives
-// alongside this file at module-2-customers-pets.seed.sql, for when you'd
+// alongside this file at m02-customers-pets.seed.sql, for when you'd
 // rather run it via the Supabase SQL Editor / psql than a Node script.
 // Unlike the .sql file, this script is idempotent (safe to re-run against a
 // database that already has these rows).
 //
-// Run manually - not wired into `npm run dev`:
-//
-//   npm run seed:module-2
+// Run via `npm run seed:all` (which invokes every m*/*.seed.ts in order,
+// m01 first) - not wired into `npm run dev`.
 //
 // Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (read from server/.env).
 //
@@ -153,7 +152,7 @@ async function resolveAssessorId(
 
   if (!data?.id) {
     console.warn(
-      'module-2 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = null (has module-1 seeded first?)'
+      'm02 pet seed: no Receptionist found in staff_profiles - seeded "assessed" pets will have assessed_by = null (has m01 seeded first?)'
     );
   }
 

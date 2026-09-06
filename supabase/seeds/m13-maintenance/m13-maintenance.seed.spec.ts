@@ -1,15 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   seedGoldenPackage,
-  seedMandatedDiscounts,
+  seedPromos,
   seedServiceBranchAvailability,
-} from './module-3-maintenance.seed.ts';
+  PROMO_SEEDS,
+} from './m13-maintenance.seed.ts';
 
 const GOLDEN_PACKAGE_SERVICE_IDS = [
   'a1300000-0000-4000-a000-000000000001',
   'a1300000-0000-4000-a000-000000000002',
   'a1300000-0000-4000-a000-000000000003',
 ];
+
+interface PromoRow {
+  id: string;
+  name: string;
+  discount_type: string;
+  value: number;
+  scope_type: string;
+  condition_note: string;
+  is_active: boolean;
+}
 
 function createMockSupabase() {
   const state = {
@@ -22,22 +33,16 @@ function createMockSupabase() {
     packages: new Map<string, { id: string; name: string }>(),
     packageBranchAvailability: new Map<string, Set<string>>(),
     packageServices: new Map<string, Set<string>>(),
-    discounts: new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        is_mandated: boolean;
-        value: number;
-        scope_category: string;
-        is_active: boolean;
-      }
-    >(),
-    discountBranchAvailability: new Map<string, Set<string>>(),
+    promos: new Map<string, PromoRow>(),
+    promoBranchAvailability: [] as Array<{
+      promo_id: string;
+      branch_id: string;
+      is_available: boolean;
+    }>,
   };
 
   let packageCounter = 0;
-  let discountCounter = 0;
+  let promoSeq = 0;
 
   const supabase = {
     from: vi.fn((table: string) => {
@@ -163,55 +168,52 @@ function createMockSupabase() {
         };
       }
 
-      if (table === 'discounts') {
+      if (table === 'promos') {
         return {
           select: () => ({
-            eq: (_c1: string, name: string) => ({
-              eq: (_c2: string, category: string) => ({
-                maybeSingle: () =>
-                  Promise.resolve({
-                    data: state.discounts.get(`${name}:${category}`) ?? null,
-                    error: null,
-                  }),
-              }),
+            eq: (_c: string, name: string) => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data:
+                    Array.from(state.promos.values()).find(
+                      (p) => p.name === name
+                    ) ?? null,
+                  error: null,
+                }),
             }),
           }),
-          insert: (row: {
-            name: string;
-            is_mandated: boolean;
-            value: number;
-            scope_category: string;
-            is_active: boolean;
-          }) => {
-            discountCounter += 1;
-            const created = { id: `discount-${discountCounter}`, ...row };
-            state.discounts.set(`${row.name}:${row.scope_category}`, created);
-            return {
-              select: () => ({
-                maybeSingle: () =>
-                  Promise.resolve({ data: created, error: null }),
-              }),
-            };
-          },
+          insert: (row: Omit<PromoRow, 'id'>) => ({
+            select: () => ({
+              maybeSingle: () => {
+                promoSeq += 1;
+                const inserted = { ...row, id: `promo-${promoSeq}` };
+                state.promos.set(inserted.id, inserted);
+                return Promise.resolve({ data: inserted, error: null });
+              },
+            }),
+          }),
         };
       }
 
-      if (table === 'discount_branch_availability') {
+      if (table === 'promo_branch_availability') {
         return {
+          select: () => ({
+            eq: (_c: string, promoId: string) =>
+              Promise.resolve({
+                data: state.promoBranchAvailability.filter(
+                  (r) => r.promo_id === promoId
+                ),
+                error: null,
+              }),
+          }),
           insert: (
-            rows: {
-              discount_id: string;
+            rows: Array<{
+              promo_id: string;
               branch_id: string;
               is_available: boolean;
-            }[]
+            }>
           ) => {
-            for (const row of rows) {
-              const set =
-                state.discountBranchAvailability.get(row.discount_id) ??
-                new Set<string>();
-              set.add(row.branch_id);
-              state.discountBranchAvailability.set(row.discount_id, set);
-            }
+            state.promoBranchAvailability.push(...rows);
             return Promise.resolve({ error: null });
           },
         };
@@ -225,7 +227,7 @@ function createMockSupabase() {
   return supabase;
 }
 
-describe('module-3-maintenance seed', () => {
+describe('m13-maintenance seed', () => {
   let supabase: ReturnType<typeof createMockSupabase>;
 
   beforeEach(() => {
@@ -287,33 +289,28 @@ describe('module-3-maintenance seed', () => {
     });
   });
 
-  describe('seedMandatedDiscounts', () => {
-    it('AC-3: creates Senior Citizen + PWD per category, each available at every branch, inactive', async () => {
-      await seedMandatedDiscounts(supabase as never);
+  describe('seedPromos', () => {
+    it('creates every planned promo, each available at every branch', async () => {
+      await seedPromos(supabase as never);
 
-      // Custom change: one row per discount name x category (2 x 4 = 8),
-      // not per branch - see migration 20260820140. Each row still gets an
-      // availability row per branch.
-      expect(supabase.state.discounts.size).toBe(8);
-
-      for (const discount of supabase.state.discounts.values()) {
-        expect(discount.is_mandated).toBe(true);
-        // Custom change (unify active/available): is_active mirrors branch
-        // availability everywhere now - every row here is seeded available
-        // at every branch, so it's seeded active too.
-        expect(discount.is_active).toBe(true);
-        expect(Number(discount.value)).toBe(20);
-        expect(
-          supabase.state.discountBranchAvailability.get(discount.id)?.size
-        ).toBe(supabase.state.branches.length);
+      expect(supabase.state.promos.size).toBe(PROMO_SEEDS.length);
+      expect(supabase.state.promoBranchAvailability.length).toBe(
+        PROMO_SEEDS.length * supabase.state.branches.length
+      );
+      for (const promo of supabase.state.promos.values()) {
+        expect(promo.is_active).toBe(true);
+        expect(promo.scope_type).toBe('all_services');
       }
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
-      await seedMandatedDiscounts(supabase as never);
-      await seedMandatedDiscounts(supabase as never);
+      await seedPromos(supabase as never);
+      await seedPromos(supabase as never);
 
-      expect(supabase.state.discounts.size).toBe(8);
+      expect(supabase.state.promos.size).toBe(PROMO_SEEDS.length);
+      expect(supabase.state.promoBranchAvailability.length).toBe(
+        PROMO_SEEDS.length * supabase.state.branches.length
+      );
     });
   });
 });
