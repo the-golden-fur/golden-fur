@@ -1,12 +1,12 @@
 # Workflow doc sync
 
-**Use when a PR is being opened** (`pr-to-dev` / `pr-dev-to-main`) and the
-branch changed `client/src` / `server/src` / `supabase/migrations` code
-that a documented business-process workflow describes — to find which vault
-workflow docs are now stale and get them refreshed. It runs **once per PR,
-over the whole branch diff**, not after every task or commit (spawning the
-vault `workflow-documenter` agent repeatedly mid-work burns session
-budget). Fine to run by hand any time you want the drift check.
+**Explicit-request only** — run this by hand when you want a workflow-doc
+drift check after changing `client/src` / `server/src` / `supabase/migrations`
+code that a documented business-process workflow describes. It is **no
+longer a step of `pr-to-dev` / `pr-dev-to-main`**: it spawned the vault
+`workflow-documenter` agent (sometimes twice) on every PR, which burned
+session budget for a check that rarely found drift. When you do run it, run
+it **once over the whole branch diff**, not per task or commit.
 
 The workflow docs live in the **sibling `../golden-fur-vault` repo**
 (`Library/golden-fur/features/<feature>/workflows/` + `Reference/golden-fur/features/<feature>/workflows/`),

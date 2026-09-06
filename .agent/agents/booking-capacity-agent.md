@@ -36,7 +36,7 @@ read it before writing or reviewing any capacity logic, not just once.
    four size tiers (S/M/L/XL) and its Available/Occupied/Reserved/Under
    Maintenance status enum. Cage size is a check-in/capacity concern only —
    never reintroduce it as a pricing input; pricing is flat-rate per
-   service (see `daily-sales-report-format.md` for how this is reported).
+   service.
 5. Capacity and staff-availability (`get_staff_availability()` — branch
    hours, lunch break, existing bookings, approved unavailability blocks)
    are two independent gates that both must pass; don't conflate them.

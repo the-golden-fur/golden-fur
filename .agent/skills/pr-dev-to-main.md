@@ -9,20 +9,19 @@ skill instead — the two directions use different merge strategies.
 1. Make sure `dev` is up to date and includes everything intended for this
    release/promotion.
 2. **Verify CI parity across both repos** — spawn the `ci-verifier`
-   subagent (`.agent/agents/ci-verifier.md`) against `dev`; tests, lint,
-   format, and build must be green in `golden-fur` and `golden-fur-vault`
-   before promoting. If red, spawn `ci-fixer-agent` and re-verify until
-   green (same auto-chain as `pr-to-dev`). `ci-verifier` writes the
-   `.git/ci-verifier-pass` marker the `pr-guard` hook checks.
+   subagent (`.agent/agents/ci-verifier.md`) **once** against `dev`; tests,
+   lint, format, and build must be green in `golden-fur` and
+   `golden-fur-vault` before promoting. If red, spawn `ci-fixer-agent` and
+   re-verify until green (same auto-chain as `pr-to-dev`). `ci-verifier`
+   writes the `.git/ci-verifier-pass` marker the `pr-guard` hook checks.
 3. **Confirm each feature/fix branch merged into `dev` since the last
-   promotion was reviewed** by the `code-reviewer` subagent
-   (`.agent/agents/code-reviewer.md`) at `pre-pr` time — its reports live
-   under that branch's `sessions/<NN-slug>/reviews/` folder. If any
-   branch has no review on record, run the `code-reviewer` on that PR's
-   diff now (trigger `pre-pr`) and resolve any **Blocking** findings before
+   promotion was reviewed** at `pre-pr` time — a review file lives under
+   that branch's `sessions/<NN-slug>/reviews/` folder. If any branch has no
+   review on record, run the `code-review` skill (`Skill(code-review,
+"high")`) on that PR's diff now, resolve any **Blocking** findings, and
+   drop a short summary into that session's `reviews/` folder before
    promoting. A `dev` → `main` promotion adds no new code, so it needs no
-   fresh full-tree review — and no `workflow-doc-sync` pass either, since
-   that already ran per feature branch at `pr-to-dev` time.
+   fresh full-tree review — and no `workflow-doc-sync` pass either.
 4. Title/body summarize what's shipping — this can aggregate several
    feature/fix PRs merged into `dev` since the last promotion, not just one
    change. Sections: Summary, What Changed (notable features/fixes since
