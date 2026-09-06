@@ -25,11 +25,13 @@ import type {
   ServiceType,
 } from '../../../maintenance/maintenance.types';
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
+import { BookingCountBadge } from '../../components/BookingCountBadge/BookingCountBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
 import {
   createBooking,
+  createBookingGroup,
   getBookingCatalog,
   getDownpaymentStatus,
   getNextAvailableSlot,
@@ -42,12 +44,16 @@ import {
   BOOKING_MARK_PAID_ROLES,
   SERVICE_CATEGORIES,
   type Booking,
+  type BookingGroup,
   type BookingSource,
   type CagePreferenceInput,
+  type CreateBookingGroupPayload,
+  type CreateBookingPayload,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
+  type HotelBookingPreferences,
   type PaymentScheme,
   type PetBookingConflict,
   type ServiceCategory,
@@ -115,6 +121,18 @@ function deriveHotelCageSize(
   return null;
 }
 
+/** Module-level (not inside the component) so calling Date.now()/
+ * Math.random() as its fallback never trips the React Compiler's render-
+ * purity check - mirrors NewWalkInCustomerForm's generateTemporaryPassword.
+ * Only ever called from an event handler (commitCurrentBookingDraft, itself
+ * only reachable via goNext), never during render. */
+function generateSubBookingId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 interface StepDef {
   key:
     | 'customer'
@@ -125,8 +143,65 @@ interface StepDef {
     | 'availability'
     | 'items'
     | 'hotelDetails'
+    // Multi-booking checkout: shown once, right before Review, listing every
+    // booking committed so far in this checkout (see SubBookingDraft below).
+    // "Add another booking" jumps back to 'pet' (a new pet/category/items/
+    // date-time/staff-or-cage pass) while the branch/discount/promo/payment
+    // scheme stay shared across the whole list - see the "OR to make things
+    // easier" decision this feature is built from.
+    | 'bookingsList'
     | 'payment';
   label: string;
+}
+
+/** One committed entry in the multi-booking checkout list - a frozen
+ * snapshot of everything the working draft above tracks for ONE booking
+ * (own pet/category/items/date-time/staff-or-cage), taken the moment the
+ * customer/receptionist leaves that booking's last step ('items' or
+ * 'hotelDetails') and lands on the 'bookingsList' step. Discount/promo/
+ * payment scheme are deliberately NOT part of this - those become shared,
+ * group-level choices on the Review step once bookingsList.length > 1 (see
+ * the group pricing aggregates below and createBookingGroup server-side). */
+interface SubBookingDraft {
+  /** Client-generated, for React keys and removal - never sent to the
+   * server. */
+  id: string;
+  petId: string;
+  /** Denormalized at commit time so the list row doesn't need to re-look up
+   * a pet that may since have been removed from the `pets` list. */
+  petName: string;
+  category: ServiceCategory;
+  selectionMode: 'service' | 'package';
+  selectionsByCategory: Partial<
+    Record<ServiceCategory, { serviceIds: string[]; packageIds: string[] }>
+  >;
+  selectedServiceIds: string[];
+  selectedPackageIds: string[];
+  /** Denormalized display names, so the list row and the group pricing
+   * summary don't need to re-resolve ids against `allServices`/`packages`. */
+  selectedServiceNames: string[];
+  selectedPackageNames: string[];
+  bookingSource: BookingSource;
+  selectedSlot: { start: string; end: string } | null;
+  finalScheduledEnd: string | null;
+  hotelNights: number;
+  staffPreference: StaffPreferenceInput | null;
+  cagePreference: CagePreferenceInput | null;
+  specialInstructions: string;
+  hotelFeeding: HotelFeedingRowState[];
+  hotelWalking: Array<typeof EMPTY_HOTEL_WALKING_ROW>;
+  hotelPlaying: Array<typeof EMPTY_HOTEL_PLAYING_ROW>;
+  hotelMedications: Array<typeof EMPTY_HOTEL_MEDICATION_ROW>;
+  hotelUniformInstructions: boolean;
+  /** Precomputed the same way the live `hotelPreferencesPayload` memo below
+   * is (via buildHotelPreferencesPayload) - used directly when this entry is
+   * submitted. */
+  hotelPreferencesPayload: HotelBookingPreferences | undefined;
+  /** This booking's own items subtotal (services + packages, already
+   * multiplied by hotelNightsMultiplier where relevant) - snapshotted from
+   * `itemsTotal` at commit time. Summed across every entry for the shared
+   * Review step's group pricing. */
+  itemsSubtotal: number;
 }
 
 /** #22 follow-up: fixed stand-in duration for the availability step's
@@ -268,6 +343,9 @@ interface PersistedBookingDraft {
   // bookingDraftStorageKey), so the picked walk-in customer has to travel
   // inside the payload itself rather than in the key.
   walkInCustomer: CustomerProfile | null;
+  // Multi-booking checkout: every booking already committed in this
+  // checkout, ahead of the one still being configured in the fields above.
+  bookingsList: SubBookingDraft[];
 }
 
 /** Customer self-booking is keyed off the customer's own id; receptionist
@@ -595,9 +673,28 @@ export function CustomerBookingFlowPage() {
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(
+  // Plural because a multi-booking checkout confirms several bookings at
+  // once (see bookingsList below) - a standalone single booking still ends
+  // up here too, just wrapped as a one-element array, so the confirmation
+  // screen only ever needs to handle one shape.
+  const [confirmedBookings, setConfirmedBookings] = useState<Booking[] | null>(
     null
   );
+  // Set only when a multi-booking group was actually created (bookingsList
+  // had more than one entry at submit time) - carries the shared downpayment/
+  // payment_status the confirmation screen shows once, instead of the
+  // per-booking notice a standalone Booking would show. Null for a lone
+  // booking (group-of-1 bypasses booking_groups entirely).
+  const [confirmedBookingGroup, setConfirmedBookingGroup] =
+    useState<BookingGroup | null>(null);
+
+  // Multi-booking checkout ("OR to make things easier" decision): every
+  // booking already committed in this checkout session, ahead of the one
+  // still being configured in the fields above. A list of exactly one (the
+  // common case - nobody clicked "Add another booking") still goes through
+  // the plain single-booking createBooking API, unchanged - see
+  // handleSubmit.
+  const [bookingsList, setBookingsList] = useState<SubBookingDraft[]>([]);
 
   // #22: "fully booked" warning, checked live as the customer browses dates
   // inside the availability step - only for a day that actually has real
@@ -835,6 +932,7 @@ export function CustomerBookingFlowPage() {
       if (isReceptionistMode && draft.walkInCustomer) {
         setWalkInCustomer(draft.walkInCustomer);
       }
+      setBookingsList(draft.bookingsList ?? []);
       // discountIdVerified is deliberately NOT restored - it's an onsite ID
       // check attestation, not something that should survive a page reload.
       setShowRestoredBanner(true);
@@ -845,7 +943,7 @@ export function CustomerBookingFlowPage() {
   // localStorage synchronously on every change - only the settled value
   // 500ms after the last change gets written.
   useEffect(() => {
-    if (!draftStorageKey || confirmedBooking) return;
+    if (!draftStorageKey || confirmedBookings) return;
 
     const timeoutId = window.setTimeout(() => {
       writeBookingDraft(draftStorageKey, {
@@ -869,13 +967,14 @@ export function CustomerBookingFlowPage() {
         currentStepKey,
         reachedStepKeys: Array.from(reachedStepKeys),
         walkInCustomer: isReceptionistMode ? walkInCustomer : null,
+        bookingsList,
       });
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
   }, [
     draftStorageKey,
-    confirmedBooking,
+    confirmedBookings,
     selectedPetId,
     selectedBranchId,
     category,
@@ -896,6 +995,7 @@ export function CustomerBookingFlowPage() {
     reachedStepKeys,
     isReceptionistMode,
     walkInCustomer,
+    bookingsList,
   ]);
 
   /** Clears the persisted draft and resets every field it covers back to
@@ -923,6 +1023,7 @@ export function CustomerBookingFlowPage() {
     setSpecialInstructions('');
     resetHotelPreferences();
     if (isReceptionistMode) setWalkInCustomer(null);
+    setBookingsList([]);
 
     const startKey = isReceptionistMode ? 'customer' : 'pet';
     setCurrentStepKey(startKey);
@@ -935,6 +1036,30 @@ export function CustomerBookingFlowPage() {
     () => pets.find((pet) => pet.id === selectedPetId) ?? null,
     [pets, selectedPetId]
   );
+
+  // Multi-booking checkout: the windows this same pet already occupies via
+  // another booking already committed in the cart (see bookingsList) -
+  // passed to SlotPicker as `excludedWindows` so it can't be scheduled into
+  // two overlapping services within one checkout. Deliberately scoped to
+  // Online only (mirrors this codebase's existing walk-in-gets-fewer-
+  // restrictions pattern - no lead time, no downpayment, etc.) - a
+  // receptionist physically walking a pet through two services back-to-back
+  // knows what they're doing and needs no client-side guardrail here. Never
+  // touches real capacity, so it's purely a same-cart, same-pet UI guard -
+  // other customers (and this same pet's other, unrelated checkouts) can
+  // still book the exact same slot.
+  const samePetBundleWindows = useMemo(() => {
+    if (bookingSource === 'Walk-in' || !selectedPetId) return undefined;
+
+    const windows = bookingsList
+      .filter((entry) => entry.petId === selectedPetId && entry.selectedSlot)
+      .map((entry) => ({
+        start: entry.selectedSlot!.start,
+        end: entry.finalScheduledEnd ?? entry.selectedSlot!.end,
+      }));
+
+    return windows.length > 0 ? windows : undefined;
+  }, [bookingsList, selectedPetId, bookingSource]);
 
   // Client interview finding: a pet with no recorded weight_class/coat_type
   // has never been staff-assessed onsite, and can only book a service
@@ -1162,12 +1287,42 @@ export function CustomerBookingFlowPage() {
       selectedPackages.reduce((sum, pkg) => sum + pkg.bundled_price, 0)) *
     hotelNightsMultiplier;
 
-  const subtotal = itemsTotal;
+  // ---- Multi-booking checkout: group-level pricing (Review step) ----
+  //
+  // Everything below this point (applicablePromos through showPaymentChoice)
+  // used to be computed off the single in-progress working draft
+  // (selectedServiceIds/selectedPackageIds/category/itemsTotal above). It
+  // now reads bookingsList instead - by the time the wizard reaches
+  // 'payment', the draft being configured has already been committed into
+  // bookingsList and the working-draft fields above have been reset to
+  // blank (see commitCurrentBookingDraft/resetForNextBooking below), so
+  // selectedServiceIds etc. would otherwise read as empty here. itemsTotal/
+  // selectedServices/selectedPackages themselves are left untouched above -
+  // the 'items' step still shows a running total for whichever booking is
+  // currently being configured, which is exactly what those describe.
+  const groupServiceIds = useMemo(
+    () => bookingsList.flatMap((entry) => entry.selectedServiceIds),
+    [bookingsList]
+  );
+  const groupPackageIds = useMemo(
+    () => bookingsList.flatMap((entry) => entry.selectedPackageIds),
+    [bookingsList]
+  );
+  const groupCategories = useMemo(
+    () => new Set(bookingsList.map((entry) => entry.category)),
+    [bookingsList]
+  );
+  const groupSubtotal = useMemo(
+    () => bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0),
+    [bookingsList]
+  );
 
   // Selectable at the payment step (booking-time discount/promo revision) -
-  // every promo whose scope matches the current selection, not just a single
-  // auto-picked preview. Anyone can pick a promo (self-service, like a
-  // coupon code); no role or payment-method gate.
+  // every promo whose scope matches ANY booking in the list, not just a
+  // single auto-picked preview - applied once against the combined total
+  // (requirement: "one shared discount + promo for the whole list"). Anyone
+  // can pick a promo (self-service, like a coupon code); no role or
+  // payment-method gate.
   const applicablePromos = useMemo(() => {
     if (!selectedBranch) return [];
 
@@ -1185,11 +1340,11 @@ export function CustomerBookingFlowPage() {
 
       return (promo.promo_scope ?? []).some(
         (scope) =>
-          selectedServiceIds.includes(scope.service_id ?? '') ||
-          selectedPackageIds.includes(scope.package_id ?? '')
+          groupServiceIds.includes(scope.service_id ?? '') ||
+          groupPackageIds.includes(scope.package_id ?? '')
       );
     });
-  }, [promos, selectedBranch, selectedServiceIds, selectedPackageIds]);
+  }, [promos, selectedBranch, groupServiceIds, groupPackageIds]);
 
   const selectedPromo = useMemo(
     () =>
@@ -1199,13 +1354,16 @@ export function CustomerBookingFlowPage() {
 
   const promoDiscount = selectedPromo
     ? selectedPromo.discount_type === 'Percentage'
-      ? subtotal * (selectedPromo.value / 100)
-      : Math.min(selectedPromo.value, subtotal)
+      ? groupSubtotal * (selectedPromo.value / 100)
+      : Math.min(selectedPromo.value, groupSubtotal)
     : 0;
 
   // Discounts (Cash-only, staff-verified ID) - only shown/selectable once
   // Cash is chosen as the payment method (canApplyDiscounts already gates
   // whether any discounts were even fetched - see the discounts effect).
+  // Matches ANY booking in the list, applied once against the combined
+  // total - same "one shared discount for the whole list" requirement as
+  // applicablePromos above.
   const applicableDiscounts = useMemo(() => {
     if (!canApplyDiscounts) return [];
 
@@ -1213,19 +1371,19 @@ export function CustomerBookingFlowPage() {
       if (!discount.is_active) return false;
 
       if (discount.scope_type === 'service') {
-        return selectedServiceIds.includes(discount.scope_service_id ?? '');
+        return groupServiceIds.includes(discount.scope_service_id ?? '');
       }
       if (discount.scope_type === 'package') {
-        return selectedPackageIds.includes(discount.scope_package_id ?? '');
+        return groupPackageIds.includes(discount.scope_package_id ?? '');
       }
-      return discount.scope_category === category;
+      return groupCategories.has(discount.scope_category as ServiceCategory);
     });
   }, [
     canApplyDiscounts,
     discounts,
-    selectedServiceIds,
-    selectedPackageIds,
-    category,
+    groupServiceIds,
+    groupPackageIds,
+    groupCategories,
   ]);
 
   const selectedDiscount = useMemo(
@@ -1238,19 +1396,29 @@ export function CustomerBookingFlowPage() {
 
   const discountAmount = selectedDiscount
     ? selectedDiscount.discount_type === 'Percentage'
-      ? subtotal * (selectedDiscount.value / 100)
-      : Math.min(selectedDiscount.value, subtotal)
+      ? groupSubtotal * (selectedDiscount.value / 100)
+      : Math.min(selectedDiscount.value, groupSubtotal)
     : 0;
 
-  const estimatedTotal = Math.max(0, subtotal - discountAmount - promoDiscount);
+  const estimatedTotal = Math.max(
+    0,
+    groupSubtotal - discountAmount - promoDiscount
+  );
 
-  const requiresPayment = category !== 'Veterinary';
+  // True if ANY booking in the list requires payment (a mixed group still
+  // shows/collects a shared charge even though a Veterinary entry's own
+  // share is excluded server-side - see createBookingGroup's
+  // requiresUpfrontCharge handling).
+  const requiresPayment = bookingsList.some(
+    (entry) => entry.category !== 'Veterinary'
+  );
 
   // Custom change: downpayment moved from a per-catalog-item flag to a
   // single per-transaction policy_configurations config (see
   // resolveDownpaymentPolicy/createBooking server-side for the
   // authoritative version of this same math), applied once against the
-  // whole booking.
+  // whole booking - and, for a multi-booking checkout, once against the
+  // combined discounted total of every booking in the list.
   //
   // Down-payment slot gate (§7 / advisor: "discounts and promos apply
   // before downpayment is calculated"): the down payment is a percentage
@@ -1259,13 +1427,11 @@ export function CustomerBookingFlowPage() {
   //
   // Walk-in booking flow: createBooking forces downpayment_required=false
   // server-side for a Walk-in booking regardless of policy_configurations
-  // (no slot-holding risk - the customer/pet is already here), so this
-  // mirrors that here too - never true for a Walk-in booking, which also
-  // hides the downpayment breakdown/toggle UI below (showPaymentChoice) and
-  // keeps payment_choice out of the submitted payload, matching the
-  // server's own skip.
+  // (no slot-holding risk - the customer/pet is already here); mirrored
+  // here as "skip only if EVERY booking in the list is Walk-in" - a group
+  // with even one Online booking still needs the down-payment decision.
   const downpaymentRequired =
-    bookingSource !== 'Walk-in' &&
+    bookingsList.some((entry) => entry.bookingSource !== 'Walk-in') &&
     (downpaymentStatus?.downpayment_enabled ?? false);
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
@@ -1273,7 +1439,7 @@ export function CustomerBookingFlowPage() {
       : Math.min(downpaymentStatus?.downpayment_amount ?? 0, estimatedTotal)
     : null;
   // Shown whenever the branch requires a down payment: the customer picks
-  // whether the booking's initial charge is the down payment (balance
+  // whether the checkout's initial charge is the down payment (balance
   // recorded later at the counter) or the full amount. No payment method is
   // chosen here any more - that happens per transaction on the Transactions
   // page.
@@ -1326,6 +1492,12 @@ export function CustomerBookingFlowPage() {
     if (category === 'Hotel' || category === 'Daycare') {
       list.push({ key: 'hotelDetails', label: 'Care Instructions' });
     }
+
+    // Multi-booking checkout: always present exactly once, right after
+    // whichever of 'items'/'hotelDetails' is last for the category - shows
+    // every booking committed so far and offers "Add another booking"
+    // (jumps back to 'pet') before moving on to the shared Review step.
+    list.push({ key: 'bookingsList', label: 'Your bookings' });
 
     list.push({ key: 'payment', label: 'Review' });
 
@@ -1400,6 +1572,14 @@ export function CustomerBookingFlowPage() {
         return selectedServiceIds.length + selectedPackageIds.length > 0;
       case 'hotelDetails':
         return true;
+      case 'bookingsList':
+        // Same pattern as 'items' above - at least one booking must be
+        // committed before moving on to the shared Review step. In
+        // practice this is always already true by the time this step is
+        // reached (goNext commits the in-progress draft the moment 'items'/
+        // 'hotelDetails' is left), but the guard stays consistent with
+        // every other step's own validity check.
+        return bookingsList.length > 0;
       case 'payment':
         return !selectedDiscount?.is_mandated || discountIdVerified;
       default:
@@ -1419,6 +1599,22 @@ export function CustomerBookingFlowPage() {
 
   function goNext() {
     if (!isCurrentStepValid) return;
+
+    // Multi-booking checkout: leaving this booking's LAST step ('items' for
+    // Grooming/Veterinary/Assessment, 'hotelDetails' for Hotel/Daycare)
+    // commits it into bookingsList right here, before advancing - checked
+    // via the step actually being landed on next, not the current step's
+    // own key, since 'items' is NOT last for Hotel/Daycare (hotelDetails
+    // still follows it). By the time the wizard lands on 'bookingsList',
+    // the booking just configured is already its newest entry -
+    // commitCurrentBookingDraft reads the working-draft state as it stands
+    // right now (still populated - resetForNextBooking runs after, not
+    // before).
+    if (steps[currentStepIndex + 1]?.key === 'bookingsList') {
+      commitCurrentBookingDraft();
+      resetForNextBooking();
+    }
+
     advanceTo(currentStepIndex + 1);
   }
 
@@ -1482,6 +1678,36 @@ export function CustomerBookingFlowPage() {
   }
 
   function goBack() {
+    // Multi-booking checkout: leaving 'bookingsList' backward undoes the
+    // most recent commit rather than landing on a step with nothing left to
+    // show - pop the last entry back into the working draft and return to
+    // whichever step it was last configured on.
+    if (currentStep.key === 'bookingsList') {
+      setBookingsList((prev) => {
+        if (prev.length === 0) return prev;
+        const last = prev[prev.length - 1];
+        restoreDraftFromEntry(last);
+        setCurrentStepKey(
+          last.category === 'Hotel' || last.category === 'Daycare'
+            ? 'hotelDetails'
+            : 'items'
+        );
+        return prev.slice(0, -1);
+      });
+      return;
+    }
+
+    // Multi-booking checkout: "Add another booking" jumps straight to
+    // 'pet', skipping back over 'branch'/'customer' - so leaving 'pet'
+    // backward on a 2nd+ pass (bookingsList already has entries) returns to
+    // the list instead of whatever precedes 'pet' in the array. A first
+    // pass (bookingsList still empty) falls through to the normal
+    // one-step-back behavior.
+    if (currentStep.key === 'pet' && bookingsList.length > 0) {
+      setCurrentStepKey('bookingsList');
+      return;
+    }
+
     const key = steps[Math.max(0, currentStepIndex - 1)]?.key;
     if (key) setCurrentStepKey(key);
   }
@@ -1491,6 +1717,15 @@ export function CustomerBookingFlowPage() {
       const key = steps[index]?.key;
       if (key) setCurrentStepKey(key);
     }
+  }
+
+  /** "Add another booking" (bookingsList step): clears the working draft
+   * and jumps back to 'pet' for a new pass - branch/discount/promo/payment
+   * scheme stay shared, unaffected by resetForNextBooking. */
+  function handleAddAnotherBooking() {
+    resetForNextBooking();
+    const petIndex = steps.findIndex((step) => step.key === 'pet');
+    advanceTo(petIndex === -1 ? currentStepIndex : petIndex);
   }
 
   // ---- Selection handlers (reset dependent state on change, AC-2) ----
@@ -1798,15 +2033,143 @@ export function CustomerBookingFlowPage() {
     hotelUniformInstructions,
   ]);
 
+  /** Commits the working draft (the booking currently being configured) as
+   * one entry in bookingsList - called from goNext() the moment the
+   * customer/receptionist leaves that booking's last step ('items' or
+   * 'hotelDetails'). See SubBookingDraft's own doc comment for what is and
+   * isn't captured. Declared after hotelPreferencesPayload (rather than up
+   * with the other selection handlers) so it can read that memo directly. */
+  function commitCurrentBookingDraft() {
+    if (!category) return;
+
+    const entry: SubBookingDraft = {
+      id: generateSubBookingId(),
+      petId: selectedPetId,
+      petName: selectedPet?.name ?? 'Pet',
+      category,
+      selectionMode,
+      selectionsByCategory,
+      selectedServiceIds,
+      selectedPackageIds,
+      selectedServiceNames: selectedServices.map((service) => service.name),
+      selectedPackageNames: selectedPackages.map((pkg) => pkg.name),
+      bookingSource,
+      selectedSlot,
+      finalScheduledEnd,
+      hotelNights,
+      staffPreference,
+      cagePreference,
+      specialInstructions,
+      hotelFeeding,
+      hotelWalking,
+      hotelPlaying,
+      hotelMedications,
+      hotelUniformInstructions,
+      hotelPreferencesPayload,
+      itemsSubtotal: itemsTotal,
+    };
+
+    setBookingsList((prev) => [...prev, entry]);
+  }
+
+  /** Restores a previously-committed list entry back into the working
+   * draft, for editing - the exact inverse of commitCurrentBookingDraft.
+   * Used by "Back" from the bookingsList step (undo the most recent
+   * commit) and by a future "Edit" action on a list row. Does NOT touch
+   * selectedBranchId - branch is shared across the whole checkout, never
+   * part of a SubBookingDraft. */
+  function restoreDraftFromEntry(entry: SubBookingDraft) {
+    setSelectedPetId(entry.petId);
+    setCategory(entry.category);
+    setSelectionMode(entry.selectionMode);
+    setSelectionsByCategory(entry.selectionsByCategory);
+    setBookingSource(entry.bookingSource);
+    setSelectedSlot(entry.selectedSlot);
+    setHotelNights(entry.hotelNights);
+    setStaffPreference(entry.staffPreference);
+    setCagePreference(entry.cagePreference);
+    setSpecialInstructions(entry.specialInstructions);
+    setHotelFeeding(entry.hotelFeeding);
+    setHotelWalking(entry.hotelWalking);
+    setHotelPlaying(entry.hotelPlaying);
+    setHotelMedications(entry.hotelMedications);
+    setHotelUniformInstructions(entry.hotelUniformInstructions);
+  }
+
+  /** "Add another booking": clears the working draft back to blank (every
+   * field a SubBookingDraft captures) so the wizard can be walked through
+   * again for a new pet/category/items/date-time/staff-or-cage - everything
+   * NOT captured by SubBookingDraft (selectedBranchId, walkInCustomer,
+   * bookingSource default aside) is deliberately left alone, since it's
+   * shared across the whole checkout. Mirrors handlePetSelect/
+   * handleBranchSelect's own reset lists. */
+  function resetForNextBooking() {
+    setSelectedPetId('');
+    setCategory('');
+    setSelectionMode('service');
+    setSelectionsByCategory({});
+    setBookingSource('Online');
+    setSelectedSlot(null);
+    setHotelNights(1);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    setCagePreference(null);
+    setCagePickerUnavailable(false);
+    setSpecialInstructions('');
+    resetHotelPreferences();
+  }
+
+  function removeBookingFromList(id: string) {
+    setBookingsList((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
+  /** Maps one committed list entry to the shape a per-booking payload needs -
+   * everything CreateBookingPayload has EXCEPT the five fields that are
+   * shared across the whole checkout (customer_id/branch_id/discount_id/
+   * promo_id/payment_scheme), which the caller below attaches once, either
+   * directly on a lone CreateBookingPayload or on the group payload's
+   * top level. */
+  function subBookingDraftToPayload(
+    entry: SubBookingDraft
+  ): Omit<
+    CreateBookingPayload,
+    'customer_id' | 'branch_id' | 'discount_id' | 'promo_id' | 'payment_scheme'
+  > {
+    return {
+      pet_id: entry.petId,
+      service_category: entry.category,
+      // Walk-in booking flow: always sent explicitly (matches the server
+      // default of 'Online' either way, but is simpler than omitting it
+      // only in receptionist mode - the customer portal never renders the
+      // 'bookingType' step, so bookingSource never leaves 'Online' there).
+      booking_source: entry.bookingSource,
+      items: [
+        ...entry.selectedServiceIds.map((service_id) => ({ service_id })),
+        ...entry.selectedPackageIds.map((package_id) => ({ package_id })),
+      ],
+      scheduled_start: entry.selectedSlot!.start,
+      scheduled_end: entry.finalScheduledEnd!,
+      ...(entry.staffPreference
+        ? { staff_preference: entry.staffPreference }
+        : {}),
+      ...(entry.cagePreference
+        ? { cage_preference: entry.cagePreference }
+        : {}),
+      ...(entry.specialInstructions.trim()
+        ? { special_instructions: entry.specialInstructions.trim() }
+        : {}),
+      ...(entry.hotelPreferencesPayload
+        ? { hotel_preferences: entry.hotelPreferencesPayload }
+        : {}),
+    };
+  }
+
   async function handleSubmit() {
-    if (
-      !accessToken ||
-      !selectedPetId ||
-      !selectedBranchId ||
-      !category ||
-      !selectedSlot ||
-      selectedServiceIds.length + selectedPackageIds.length === 0
-    ) {
+    // Multi-booking checkout: by the time 'payment' is reached, the booking
+    // that was being configured has already been committed into
+    // bookingsList (see goNext) - handleSubmit reads only from that list,
+    // never from the (now blank) working-draft fields.
+    if (!accessToken || !selectedBranchId || bookingsList.length === 0) {
       return;
     }
 
@@ -1819,43 +2182,50 @@ export function CustomerBookingFlowPage() {
     // button silently stuck disabled with no visible error - exactly the
     // "clicking Confirm booking doesn't advance or error" symptom.
     try {
-      const result = await createBooking(accessToken, {
+      const sharedFields = {
         ...(isReceptionistMode && walkInCustomer
           ? { customer_id: walkInCustomer.id }
           : {}),
-        pet_id: selectedPetId,
-        branch_id: selectedBranchId,
-        service_category: category,
-        // Walk-in booking flow: always sent explicitly (matches the server
-        // default of 'Online' either way, but is simpler than omitting it
-        // only in receptionist mode - the customer portal never renders the
-        // 'bookingType' step, so bookingSource never leaves 'Online' there).
-        booking_source: bookingSource,
-        items: [
-          ...selectedServiceIds.map((service_id) => ({ service_id })),
-          ...selectedPackageIds.map((package_id) => ({ package_id })),
-        ],
-        scheduled_start: selectedSlot.start,
-        scheduled_end: finalScheduledEnd!,
-        ...(staffPreference ? { staff_preference: staffPreference } : {}),
-        ...(cagePreference ? { cage_preference: cagePreference } : {}),
         ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
         ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
-        ...(specialInstructions.trim()
-          ? { special_instructions: specialInstructions.trim() }
-          : {}),
-        ...(hotelPreferencesPayload
-          ? { hotel_preferences: hotelPreferencesPayload }
-          : {}),
-      });
+      };
 
-      if (result.error || !result.data) {
-        setSubmitError(friendlyBookingError(result.error));
-        return;
+      // A list of exactly one booking (nobody clicked "Add another
+      // booking") still goes through the plain single-booking endpoint,
+      // unchanged - see the "group-of-1 bypasses booking_groups entirely"
+      // decision.
+      if (bookingsList.length === 1) {
+        const result = await createBooking(accessToken, {
+          ...sharedFields,
+          branch_id: selectedBranchId,
+          ...subBookingDraftToPayload(bookingsList[0]),
+        });
+
+        if (result.error || !result.data) {
+          setSubmitError(friendlyBookingError(result.error));
+          return;
+        }
+
+        setConfirmedBookings([result.data]);
+      } else {
+        const groupPayload: CreateBookingGroupPayload = {
+          ...sharedFields,
+          branch_id: selectedBranchId,
+          bookings: bookingsList.map(subBookingDraftToPayload),
+        };
+
+        const result = await createBookingGroup(accessToken, groupPayload);
+
+        if (result.error || !result.data) {
+          setSubmitError(friendlyBookingError(result.error));
+          return;
+        }
+
+        setConfirmedBookings(result.data.bookings);
+        setConfirmedBookingGroup(result.data.booking_group);
       }
 
-      setConfirmedBooking(result.data);
       if (draftStorageKey) clearBookingDraft(draftStorageKey);
     } catch {
       setSubmitError(
@@ -1878,43 +2248,83 @@ export function CustomerBookingFlowPage() {
     );
   }
 
-  if (confirmedBooking) {
+  if (confirmedBookings) {
+    // Multi-booking checkout: confirmedBookingGroup is set only when these
+    // bookings share one payment - its own downpayment/payment_status is
+    // shown once, instead of each booking's own (which are null/'Fully
+    // Paid'/zeroed on a grouped booking - see createBookingGroup).
+    const isGroup = confirmedBookingGroup !== null;
+
     return (
       <main className={styles.page}>
-        <h1 className={styles.title}>Booking confirmed</h1>
-        <p className={styles.copy}>
-          Status: {confirmedBooking.status}. Your appointment is booked for{' '}
-          {new Date(confirmedBooking.scheduled_start).toLocaleString(
-            undefined,
-            {
+        <h1 className={styles.title}>
+          {confirmedBookings.length > 1
+            ? 'Bookings confirmed'
+            : 'Booking confirmed'}
+        </h1>
+        {confirmedBookings.map((booking) => (
+          <p key={booking.id} className={styles.copy}>
+            Status: {booking.status}. Your appointment is booked for{' '}
+            {new Date(booking.scheduled_start).toLocaleString(undefined, {
               dateStyle: 'medium',
               timeStyle: 'short',
-            }
-          )}
-          .{' '}
-          {requiresPayment
-            ? confirmedBooking.payment_status === 'Fully Paid'
-              ? 'Your payment has been received.'
-              : 'Payment is due at the counter.'
-            : "You're all set!"}
-        </p>
-        {/* Down-payment slot gate: an unpaid down-payment booking holds no
-            slot and is released if the deadline passes - tell the customer
-            plainly so they pay in time. */}
-        {confirmedBooking.downpayment_required &&
-        confirmedBooking.payment_status === 'Pending' &&
-        confirmedBooking.downpayment_due_at ? (
-          <p className={styles.errorBanner} role="alert">
-            This time slot is not reserved yet. Pay your down payment of PHP{' '}
-            {(confirmedBooking.downpayment_amount ?? 0).toFixed(2)} by{' '}
-            {new Date(confirmedBooking.downpayment_due_at).toLocaleString(
-              undefined,
-              { dateStyle: 'medium', timeStyle: 'short' }
-            )}{' '}
-            from “My bookings”, or the booking is automatically cancelled and
-            the slot released.
+            })}
+            .{' '}
+            {!isGroup
+              ? requiresPayment
+                ? booking.payment_status === 'Fully Paid'
+                  ? 'Your payment has been received.'
+                  : 'Payment is due at the counter.'
+                : "You're all set!"
+              : null}
+          </p>
+        ))}
+        {isGroup ? (
+          <p className={styles.copy}>
+            {requiresPayment
+              ? confirmedBookingGroup.payment_status === 'Fully Paid'
+                ? 'Your payment for these bookings has been received.'
+                : 'Payment for these bookings is due at the counter.'
+              : "You're all set!"}
           </p>
         ) : null}
+        {/* Down-payment slot gate: an unpaid down-payment booking/group
+            holds no slot and is released if the deadline passes - tell the
+            customer plainly so they pay in time. */}
+        {isGroup
+          ? confirmedBookingGroup.downpayment_required &&
+            confirmedBookingGroup.payment_status === 'Pending' &&
+            confirmedBookingGroup.downpayment_due_at && (
+              <p className={styles.errorBanner} role="alert">
+                These time slots are not reserved yet. Pay your down payment of
+                PHP {(confirmedBookingGroup.downpayment_amount ?? 0).toFixed(2)}{' '}
+                by{' '}
+                {new Date(
+                  confirmedBookingGroup.downpayment_due_at
+                ).toLocaleString(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}{' '}
+                from “My bookings”, or the bookings are automatically cancelled
+                and the slots released.
+              </p>
+            )
+          : confirmedBookings.map((booking) =>
+              booking.downpayment_required &&
+              booking.payment_status === 'Pending' &&
+              booking.downpayment_due_at ? (
+                <p key={booking.id} className={styles.errorBanner} role="alert">
+                  This time slot is not reserved yet. Pay your down payment of
+                  PHP {(booking.downpayment_amount ?? 0).toFixed(2)} by{' '}
+                  {new Date(booking.downpayment_due_at).toLocaleString(
+                    undefined,
+                    { dateStyle: 'medium', timeStyle: 'short' }
+                  )}{' '}
+                  from “My bookings”, or the booking is automatically cancelled
+                  and the slot released.
+                </p>
+              ) : null
+            )}
         <button
           type="button"
           className={styles.primaryButton}
@@ -2260,6 +2670,7 @@ export function CustomerBookingFlowPage() {
               onSelect={(slot) => setSelectedSlot(slot)}
               lockToNow={isReceptionistMode && bookingSource === 'Walk-in'}
               onAvailabilityChange={handleSlotAvailabilityChange}
+              excludedWindows={samePetBundleWindows}
             />
 
             {selectedSlot &&
@@ -2866,43 +3277,104 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
+      case 'bookingsList':
+        return (
+          <div className={styles.bookingsListStep}>
+            {bookingsList.length === 0 ? (
+              // Shouldn't normally be reachable - goNext commits the
+              // booking just configured before ever landing here.
+              <p className={styles.copy}>No bookings yet.</p>
+            ) : (
+              bookingsList.map((entry) => {
+                const itemNames =
+                  [
+                    ...entry.selectedServiceNames,
+                    ...entry.selectedPackageNames,
+                  ].join(', ') || 'No items selected';
+                const staffOrCage =
+                  entry.category === 'Hotel'
+                    ? entry.cagePreference?.type === 'specific'
+                      ? 'Specific cage requested'
+                      : 'No cage preference'
+                    : entry.staffPreference?.type === 'specific'
+                      ? 'Specific staff requested'
+                      : entry.staffPreference?.type === 'no_preference'
+                        ? 'No staff preference'
+                        : 'No staff selection needed';
+
+                return (
+                  <div key={entry.id} className={styles.instructionBlock}>
+                    <div className={styles.bookingListRowHeader}>
+                      <span className={styles.sectionTitle}>
+                        {entry.petName} — {entry.category}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => removeBookingFromList(entry.id)}
+                      >
+                        Cancel booking
+                      </button>
+                    </div>
+                    <p className={styles.bookingListRowMeta}>{itemNames}</p>
+                    <p className={styles.bookingListRowMeta}>
+                      {entry.selectedSlot
+                        ? new Date(entry.selectedSlot.start).toLocaleString(
+                            undefined,
+                            { dateStyle: 'medium', timeStyle: 'short' }
+                          )
+                        : 'No date/time selected'}
+                      {' · '}
+                      {staffOrCage}
+                    </p>
+                    <div className={styles.pricingRow}>
+                      <span>Subtotal</span>
+                      <span>PHP {entry.itemsSubtotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleAddAnotherBooking}
+            >
+              Add another booking
+            </button>
+          </div>
+        );
+
       case 'payment':
         return (
           <div className={styles.paymentStep}>
             <section className={styles.pricingSummary}>
-              {selectedServices.map((service) => (
-                <div key={service.id} className={styles.pricingRow}>
-                  <span>
-                    {service.name}
-                    {hotelNightsMultiplier > 1
-                      ? ` × ${hotelNightsMultiplier} nights`
-                      : ''}
-                  </span>
-                  <span>
-                    PHP{' '}
-                    {(service.base_price * hotelNightsMultiplier).toFixed(2)}
-                  </span>
+              {bookingsList.map((entry) => (
+                <div key={entry.id}>
+                  <p className={styles.bookingListRowMeta}>
+                    {entry.petName} — {entry.category}
+                  </p>
+                  {[
+                    ...entry.selectedServiceNames,
+                    ...entry.selectedPackageNames,
+                  ].map((name) => (
+                    <div key={name} className={styles.pricingRow}>
+                      <span>{name}</span>
+                    </div>
+                  ))}
+                  <div className={styles.pricingRow}>
+                    <span>Subtotal</span>
+                    <span>PHP {entry.itemsSubtotal.toFixed(2)}</span>
+                  </div>
+                  {entry.category === 'Grooming' &&
+                  entry.selectedServiceNames.length > 0 ? (
+                    <p className={styles.copy}>
+                      Grooming price may be adjusted for your pet's size and
+                      coat at confirmation.
+                    </p>
+                  ) : null}
                 </div>
               ))}
-              {selectedPackages.map((pkg) => (
-                <div key={pkg.id} className={styles.pricingRow}>
-                  <span>
-                    {pkg.name}
-                    {hotelNightsMultiplier > 1
-                      ? ` × ${hotelNightsMultiplier} nights`
-                      : ''}
-                  </span>
-                  <span>
-                    PHP {(pkg.bundled_price * hotelNightsMultiplier).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-              {category === 'Grooming' && selectedServices.length > 0 ? (
-                <p className={styles.copy}>
-                  Grooming price may be adjusted for your pet's size and coat at
-                  confirmation.
-                </p>
-              ) : null}
               {selectedDiscount ? (
                 <div className={styles.pricingRow}>
                   <span>{selectedDiscount.name}</span>
@@ -3125,6 +3597,7 @@ export function CustomerBookingFlowPage() {
         furthestCompletedIndex={maxReachedIndex}
         onStepSelect={handleStepperSelect}
       />
+      <BookingCountBadge count={bookingsList.length} />
 
       <div className={styles.stepContent}>{renderStepContent()}</div>
 

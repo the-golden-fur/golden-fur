@@ -260,6 +260,72 @@ export const createBookingValidator = z
     }
   });
 
+/**
+ * Multi-booking checkout (bookingGroup.service.ts): several independent
+ * sub-bookings created together, sharing ONE payment. Each sub-booking's
+ * shape mirrors createBookingValidator's own per-booking fields exactly
+ * (reusing the same bookingItemValidator/staffPreferenceValidator/
+ * cagePreferenceValidator/hotelPreferencesValidator pieces and the same
+ * duplicate-item/end-after-start checks) except customer_id (resolved once,
+ * group-wide) and discount_id/promo_id/payment_scheme, which move UP to the
+ * group level since a discount/promo/payment scheme applies once across the
+ * whole checkout, not per sub-booking.
+ */
+const bookingGroupItemValidator = z
+  .object({
+    pet_id: z.uuid(),
+    service_category: z.enum(CATEGORIES),
+    booking_source: z.enum(BOOKING_SOURCES).optional(),
+    items: z
+      .array(bookingItemValidator)
+      .min(1, 'At least one service or package must be selected'),
+    scheduled_start: isoDatetime,
+    scheduled_end: isoDatetime,
+    staff_preference: staffPreferenceValidator.optional(),
+    cage_preference: cagePreferenceValidator.optional(),
+    special_instructions: z.string().trim().min(1).optional(),
+    hotel_preferences: hotelPreferencesValidator.optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    requireNoDuplicateItems(input, ctx);
+    requireEndAfterStart(input, ctx);
+
+    if (
+      input.hotel_preferences &&
+      input.service_category !== 'Hotel' &&
+      input.service_category !== 'Daycare'
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['hotel_preferences'],
+        message:
+          'hotel_preferences is only valid for Hotel or Daycare bookings',
+      });
+    }
+  });
+
+export const createBookingGroupValidator = z
+  .object({
+    // Required when a staff member books on behalf of a walk-in/phone-in
+    // customer - same rule as createBookingValidator's own customer_id,
+    // enforced in bookingGroup.service.ts where the requester's role is
+    // known.
+    customer_id: z.uuid().optional(),
+    branch_id: z.uuid(),
+    bookings: z
+      .array(bookingGroupItemValidator)
+      .min(1, 'At least one booking is required'),
+    // Shared, group-level: one discount/promo/payment scheme applies to the
+    // combined net total across every sub-booking, not per sub-booking - see
+    // resolveDiscountAndPromo's group-scoped call in
+    // bookingGroup.service.ts.
+    payment_scheme: z.enum(PAYMENT_SCHEMES).optional(),
+    discount_id: z.uuid().optional(),
+    promo_id: z.uuid().optional(),
+  })
+  .strict();
+
 export const rescheduleBookingValidator = z
   .object({
     scheduled_start: isoDatetime,
@@ -577,6 +643,9 @@ export const overrideBookingStatusValidator = z
   .strict();
 
 export type CreateBookingInput = z.infer<typeof createBookingValidator>;
+export type CreateBookingGroupInput = z.infer<
+  typeof createBookingGroupValidator
+>;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;

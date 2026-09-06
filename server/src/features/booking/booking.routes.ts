@@ -9,6 +9,7 @@ import {
   catalogController,
   completeBookingController,
   createBookingController,
+  createBookingGroupController,
   addBalancePaymentController,
   downpaymentStatusController,
   getBookingController,
@@ -72,6 +73,13 @@ const statusOverride = [
 
 // Booking creation + capacity enforcement (#51)
 router.post('/bookings', jwtMiddleware, createBookingController);
+
+// Multi-booking checkout: several bookings sharing one payment (see
+// bookingGroup.service.ts). Grouped with the other POST /bookings route
+// above it, mirroring the header note's "static paths before /bookings/:id"
+// convention even though a POST here can't actually collide with GET
+// /bookings/:id below.
+router.post('/bookings/groups', jwtMiddleware, createBookingGroupController);
 
 // List: a customer's own bookings, or (staff) a branch queue - supporting
 // infra for #59/#60, neither of which had a list endpoint to call against.

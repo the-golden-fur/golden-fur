@@ -2,7 +2,13 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 // Payment/transactions rework: replaces the deleted advancePaymentStage -
 // the RPCs recompute bookings.payment_status for staff-recorded payments;
 // this is the customer-initiated (webhook-confirmed) path's equivalent.
-import { recomputeBookingPaymentStatus } from '../../booking/services/booking.service.ts';
+// Multi-booking checkout: a customer-initiated online payment against a
+// GROUP transaction (booking_id null, booking_group_id set) rolls up the
+// whole booking_groups cart instead, via recomputeBookingGroupPaymentStatus.
+import {
+  recomputeBookingGroupPaymentStatus,
+  recomputeBookingPaymentStatus,
+} from '../../booking/services/booking.service.ts';
 import type { PaymongoWebhookEvent } from './paymongo.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -48,7 +54,7 @@ export async function confirmPaymongoWebhookEvent(
     })
     .eq('payment_reference', event.sourceId)
     .eq('payment_status', 'Pending')
-    .select('id, booking_id, initiated_by')
+    .select('id, booking_id, booking_group_id, initiated_by')
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
@@ -68,6 +74,21 @@ export async function confirmPaymongoWebhookEvent(
       // eslint-disable-next-line no-console
       console.error(
         `Failed to recompute payment_status for booking ${updated.booking_id} after webhook confirmation:`,
+        stageError
+      );
+    }
+  } else if (updated?.initiated_by === 'customer' && updated.booking_group_id) {
+    // Multi-booking checkout: a customer-initiated online payment against a
+    // group transaction (booking_id null, booking_group_id set) rolls up the
+    // booking_groups cart + mirrors the result onto every sibling booking,
+    // same best-effort/logged-not-rethrown treatment as the single-booking
+    // branch above.
+    try {
+      await recomputeBookingGroupPaymentStatus(updated.booking_group_id);
+    } catch (stageError) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `Failed to recompute payment_status for booking group ${updated.booking_group_id} after webhook confirmation:`,
         stageError
       );
     }

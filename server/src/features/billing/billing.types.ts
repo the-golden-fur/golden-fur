@@ -79,6 +79,11 @@ export type LineItemType =
 export interface Transaction {
   id: string;
   booking_id: string | null;
+  /** Multi-booking checkout (booking_groups - 20260906173/174): set instead
+   * of booking_id for a transaction that covers a whole booking_groups cart
+   * rather than one booking - never both (transactions_booking_id_matches_type
+   * CHECK). Null for every pre-existing/single-booking transaction. */
+  booking_group_id: string | null;
   customer_id: string;
   branch_id: string;
   transaction_type: TransactionType;

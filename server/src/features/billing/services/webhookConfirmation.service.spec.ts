@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { confirmPaymongoWebhookEvent } from './webhookConfirmation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { recomputeBookingPaymentStatus } from '../../booking/services/booking.service.ts';
+import {
+  recomputeBookingGroupPaymentStatus,
+  recomputeBookingPaymentStatus,
+} from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -9,6 +12,7 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 
 vi.mock('../../booking/services/booking.service.ts', () => ({
   recomputeBookingPaymentStatus: vi.fn().mockResolvedValue(undefined),
+  recomputeBookingGroupPaymentStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -111,6 +115,50 @@ describe('webhookConfirmation.service (#83 AC-2/AC-3)', () => {
     });
 
     expect(recomputeBookingPaymentStatus).toHaveBeenCalledWith('booking-1');
+  });
+
+  it('a customer-initiated payment against a GROUP transaction recomputes the booking group payment status instead', async () => {
+    queueFromResults({
+      data: {
+        id: 'txn-group-1',
+        booking_id: null,
+        booking_group_id: 'group-1',
+        initiated_by: 'customer',
+      },
+      error: null,
+    });
+
+    await confirmPaymongoWebhookEvent({
+      eventId: 'evt-1',
+      sourceId: 'src_123',
+      status: 'paid',
+    });
+
+    expect(recomputeBookingGroupPaymentStatus).toHaveBeenCalledWith('group-1');
+    expect(recomputeBookingPaymentStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the webhook if recomputing the booking group payment status throws', async () => {
+    vi.mocked(recomputeBookingGroupPaymentStatus).mockRejectedValueOnce(
+      new Error('a sub-booking lost its slot')
+    );
+    queueFromResults({
+      data: {
+        id: 'txn-group-1',
+        booking_id: null,
+        booking_group_id: 'group-1',
+        initiated_by: 'customer',
+      },
+      error: null,
+    });
+
+    const result = await confirmPaymongoWebhookEvent({
+      eventId: 'evt-1',
+      sourceId: 'src_123',
+      status: 'paid',
+    });
+
+    expect(result).toEqual({ handled: true, transactionId: 'txn-group-1' });
   });
 
   it('does not fail the webhook if recomputing the booking payment status throws', async () => {

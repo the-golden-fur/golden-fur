@@ -343,6 +343,35 @@ export interface Booking {
   updated_at: string;
   booking_items?: BookingItem[];
   staff_picker_preferences?: StaffPickerPreference[];
+  /** NULL for a standalone booking; set when created as part of a
+   * multi-booking checkout (several bookings sharing one payment/discount/
+   * promo/downpayment) - see BookingGroup below. */
+  booking_group_id: string | null;
+}
+
+/** Multi-booking checkout: several independent bookings (own pet/category/
+ * services/date-time/staff-or-cage each) that share ONE payment - one
+ * discount, one promo, one downpayment/payment-scheme decision, settled via
+ * one transaction (or downpayment+balance transaction pair). Mirrors the
+ * discount/promo/downpayment fields that live on a standalone Booking, just
+ * hoisted to cover the whole group instead of one booking. */
+export interface BookingGroup {
+  id: string;
+  customer_id: string;
+  branch_id: string;
+  created_by_staff_id: string | null;
+  selected_discount_id: string | null;
+  selected_promo_id: string | null;
+  discount_amount: number;
+  promo_amount: number;
+  net_total: number;
+  downpayment_amount: number | null;
+  downpayment_required: boolean;
+  downpayment_due_at: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BookingItem {
@@ -538,6 +567,36 @@ export interface CreateBookingPayload {
   promo_id?: string;
   special_instructions?: string;
   hotel_preferences?: HotelBookingPreferences;
+}
+
+/** Multi-booking checkout payload: one shared branch/discount/promo/payment
+ * scheme, plus a list of otherwise-independent per-booking payloads (own
+ * pet/category/items/date-time/staff-or-cage each). Every field a standalone
+ * CreateBookingPayload has that becomes shared at the group level
+ * (customer_id/branch_id/discount_id/promo_id/payment_scheme) is omitted
+ * from each entry in `bookings` and lives once at the top level instead -
+ * see the "OR to make things easier" pre-payment booking list decision. */
+export interface CreateBookingGroupPayload {
+  customer_id?: string;
+  branch_id: string;
+  bookings: Array<
+    Omit<
+      CreateBookingPayload,
+      | 'customer_id'
+      | 'branch_id'
+      | 'discount_id'
+      | 'promo_id'
+      | 'payment_scheme'
+    >
+  >;
+  discount_id?: string;
+  promo_id?: string;
+  payment_scheme?: PaymentScheme;
+}
+
+export interface CreateBookingGroupResult {
+  booking_group: BookingGroup;
+  bookings: Booking[];
 }
 
 export interface RescheduleBookingPayload {

@@ -1007,6 +1007,115 @@ describe('booking.service (#51)', () => {
       );
     });
 
+    it('group down-payment slot gate: auto-cancels every sibling booking of an expired unpaid down-payment group', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-a',
+              status: 'Pending',
+              booking_group_id: 'group-1',
+              downpayment_required: false,
+              payment_status: 'Pending',
+              downpayment_due_at: null,
+              scheduled_start: '2099-01-01T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }, // list query
+        {
+          data: [
+            { id: 'group-1', downpayment_due_at: '2020-01-01T00:00:00.000Z' },
+          ],
+          error: null,
+        }, // booking_groups candidate lookup
+        {
+          data: [
+            {
+              id: 'booking-a',
+              status: 'Cancelled',
+              booking_group_id: 'group-1',
+              scheduled_start: '2099-01-01T00:00:00.000Z',
+              cancellation_reason:
+                'Down payment not received before the reservation deadline',
+            },
+          ],
+          error: null,
+        } // the group-expiry bulk-update's own .select()
+      );
+
+      const result = await listBookings({
+        requesterId: 'staff-1',
+        filters: {},
+      });
+
+      expect(result[0]).toMatchObject({
+        id: 'booking-a',
+        status: 'Cancelled',
+      });
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({ status: 'Cancelled' });
+    });
+
+    it('group down-payment slot gate: leaves an unpaid down-payment group alone before its deadline', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-b',
+              status: 'Pending',
+              booking_group_id: 'group-2',
+              downpayment_required: false,
+              payment_status: 'Pending',
+              downpayment_due_at: null,
+              scheduled_start: '2099-01-02T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }, // list query
+        {
+          data: [
+            { id: 'group-2', downpayment_due_at: '2099-01-01T00:00:00.000Z' },
+          ],
+          error: null,
+        } // booking_groups candidate lookup - still ahead, nothing expires
+      );
+
+      const result = await listBookings({
+        requesterId: 'staff-1',
+        filters: {},
+      });
+
+      expect(result[0].status).toBe('Pending');
+      expect(recordedWrites.some((write) => write.table === 'bookings')).toBe(
+        false
+      );
+    });
+
+    it('never queries booking_groups when no returned booking belongs to one', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-solo',
+            status: 'Pending',
+            booking_group_id: null,
+            scheduled_start: '2099-01-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      await listBookings({ requesterId: 'staff-1', filters: {} });
+
+      expect(supabase.from).not.toHaveBeenCalledWith('booking_groups');
+    });
+
     it('applies a date_from/date_to range as an inclusive [start, end+1day) window', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults({ data: [], error: null });

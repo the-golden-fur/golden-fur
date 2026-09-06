@@ -19,6 +19,7 @@ import {
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   OVERRIDABLE_BOOKING_STATUSES,
   type Booking,
+  type BookingGroup,
   type BookingSource,
   type PaymentScheme,
   type PaymentStatus,
@@ -67,7 +68,7 @@ export interface PetRow {
  * (...073_m02_pets_assessment_lock.sql) and start out NULL - a pet in that
  * state can only book a service flagged requires_assessed_pet = false (the
  * seeded "Initial Assessment" service), never a package. */
-function isPetAssessed(pet: PetRow): boolean {
+export function isPetAssessed(pet: PetRow): boolean {
   return pet.weight_class !== null && pet.coat_type !== null;
 }
 
@@ -121,7 +122,7 @@ export function resolveServicePrice(
   return Number(service.base_price);
 }
 
-interface ResolvedBookingItem {
+export interface ResolvedBookingItem {
   service_id: string | null;
   package_id: string | null;
   price_at_booking: number;
@@ -323,7 +324,7 @@ export async function resolvePackagePrice(
   return cell?.price ?? Number(pkg.bundled_price);
 }
 
-async function resolveBookingItems(
+export async function resolveBookingItems(
   items: CreateBookingInput['items'],
   pet: PetRow,
   petAssessed: boolean,
@@ -354,11 +355,11 @@ async function resolveBookingItems(
   return resolved;
 }
 
-function round2(value: number): number {
+export function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-interface FreePackageAward {
+export interface FreePackageAward {
   packageId: string;
   packageName: string;
   nights: number;
@@ -377,7 +378,7 @@ interface FreePackageAward {
  * 20260818134_custom_package_branch_availability.sql), so a name match alone
  * isn't enough to confirm it's actually offered at this branch.
  */
-async function resolveFreePackageAward(
+export async function resolveFreePackageAward(
   input: CreateBookingInput
 ): Promise<FreePackageAward | null> {
   if (input.service_category !== 'Hotel') return null;
@@ -473,7 +474,7 @@ async function getPromoCapAmount(
     : Number(capRow.cap_value);
 }
 
-interface DiscountPromoResolution {
+export interface DiscountPromoResolution {
   selectedDiscountId: string | null;
   discountAmount: number;
   selectedPromoId: string | null;
@@ -493,7 +494,7 @@ interface DiscountPromoResolution {
  * evaluations of the same rules could disagree and would be confusing to
  * reconcile at the register.
  */
-async function resolveDiscountAndPromo(
+export async function resolveDiscountAndPromo(
   input: CreateBookingInput,
   staffRole: string | null,
   resolvedItems: ResolvedBookingItem[],
@@ -619,7 +620,7 @@ async function resolveDiscountAndPromo(
   return { selectedDiscountId, discountAmount, selectedPromoId, promoAmount };
 }
 
-interface StaffResolution {
+export interface StaffResolution {
   assignedStaffId: string | null;
   preferenceType: 'no_preference' | 'specific' | null;
   preferredStaffId: string | null;
@@ -635,7 +636,7 @@ interface StaffResolution {
  *   behave identically per #52 AC-3) auto-assigns the next eligible staff
  *   member.
  */
-async function resolveStaffAssignment(
+export async function resolveStaffAssignment(
   input: CreateBookingInput
 ): Promise<StaffResolution> {
   const category = input.service_category;
@@ -1265,7 +1266,10 @@ export async function getBookingById({
   }
 
   const [withExpiry] = await applyDownpaymentExpiry([booking]);
-  const [withNoShow] = await applyNoShowTransition([withExpiry]);
+  const [withGroupExpiry] = await applyBookingGroupDownpaymentExpiry([
+    withExpiry,
+  ]);
+  const [withNoShow] = await applyNoShowTransition([withGroupExpiry]);
   return withNoShow;
 }
 
@@ -1382,7 +1386,8 @@ export async function listBookings({
   if (error) throwWithStatus(400, error.message);
 
   const withExpiry = await applyDownpaymentExpiry((data ?? []) as Booking[]);
-  const withNoShow = await applyNoShowTransition(withExpiry);
+  const withGroupExpiry = await applyBookingGroupDownpaymentExpiry(withExpiry);
+  const withNoShow = await applyNoShowTransition(withGroupExpiry);
 
   // A row flipped to No-show / Cancelled by a lazy transition above may no
   // longer match an explicit status filter the caller asked for (e.g.
@@ -1427,6 +1432,105 @@ async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
       updated_at: now.toISOString(),
     })
     .in('id', expiredIds)
+    .select(BOOKING_SELECT);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const updatedById = new Map(
+    ((data ?? []) as Booking[]).map((row) => [row.id, row])
+  );
+
+  return bookings.map((booking) => updatedById.get(booking.id) ?? booking);
+}
+
+/**
+ * Group counterpart of applyDownpaymentExpiry - multi-booking checkout
+ * (bookingGroup.service.ts) forces every grouped booking's own
+ * downpayment_required to false and downpayment_due_at to null (those live
+ * only on booking_groups now - see the BookingGroup dev note in
+ * booking.types.ts), so applyDownpaymentExpiry's own per-booking predicate
+ * can never match a grouped booking - an abandoned, never-paid
+ * downpayment-required booking GROUP would otherwise sit Pending forever,
+ * holding no slot but never getting swept either.
+ *
+ * Same lazy, read-time shape as applyDownpaymentExpiry (no cron infra
+ * exists in this app), but queried and applied at the GROUP level: any
+ * `booking_groups` row that's Pending, downpayment_required, and past its
+ * own downpayment_due_at cancels every one of its member `bookings` rows
+ * (queried fresh by booking_group_id, not limited to whatever subset of
+ * siblings happens to be in the `bookings` array passed in - a list/detail
+ * read that only surfaces one sibling of an expired group still sweeps
+ * every other sibling, it just doesn't return them here).
+ *
+ * Design decision (documented per this feature's own instructions):
+ * booking_groups is deliberately NOT given its own terminal "Cancelled"
+ * state here. It has no `status` column at all (only `payment_status`,
+ * which only ever holds Pending / Partially Paid / Fully Paid - none of
+ * which means "cancelled"), and forcing payment_status into one of those
+ * three to represent "expired" would misrepresent the group's actual
+ * payment state to any other reader of that column (e.g. a future report
+ * that sums Pending vs Partially Paid vs Fully Paid group totals). Every
+ * member booking's own `status` already flips to 'Cancelled' (with the
+ * same DOWNPAYMENT_EXPIRED_CANCELLATION_REASON single-booking expiry
+ * uses), which is what every existing queue/report actually reads - "every
+ * sibling booking is Cancelled" is a complete, unambiguous signal on its
+ * own, so booking_groups.payment_status is left exactly as it was
+ * (Pending) rather than adding a schema column or enum value this feature
+ * doesn't otherwise need. If a later feature needs to list "expired
+ * groups" directly (without joining through bookings), that's the point to
+ * revisit this decision - not before.
+ */
+async function applyBookingGroupDownpaymentExpiry(
+  bookings: Booking[]
+): Promise<Booking[]> {
+  const now = new Date();
+  const candidateGroupIds = [
+    ...new Set(
+      bookings
+        .filter(
+          (booking) =>
+            booking.booking_group_id != null && booking.status === 'Pending'
+        )
+        .map((booking) => booking.booking_group_id as string)
+    ),
+  ];
+
+  if (candidateGroupIds.length === 0) return bookings;
+
+  const { data: groupRows, error: groupError } = await supabase
+    .from('booking_groups')
+    .select('id, downpayment_due_at')
+    .in('id', candidateGroupIds)
+    .eq('payment_status', 'Pending')
+    .eq('downpayment_required', true);
+
+  if (groupError) throwWithStatus(400, groupError.message);
+
+  const expiredGroupIds = (
+    (groupRows ?? []) as Array<{
+      id: string;
+      downpayment_due_at: string | null;
+    }>
+  )
+    .filter(
+      (row) =>
+        row.downpayment_due_at !== null &&
+        new Date(row.downpayment_due_at).getTime() < now.getTime()
+    )
+    .map((row) => row.id);
+
+  if (expiredGroupIds.length === 0) return bookings;
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({
+      status: 'Cancelled',
+      cancelled_at: now.toISOString(),
+      cancellation_reason: DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
+      updated_at: now.toISOString(),
+    })
+    .in('booking_group_id', expiredGroupIds)
+    .eq('status', 'Pending')
     .select(BOOKING_SELECT);
 
   if (error) throwWithStatus(400, error.message);
@@ -1671,6 +1775,174 @@ export async function recomputeBookingPaymentStatus(
     paymentStatusBeforePayment: booking.payment_status,
     revertOnCapacityConflict: true,
   });
+}
+
+/**
+ * Group counterpart of recomputeBookingPaymentStatus - multi-booking
+ * checkout (bookingGroup.service.ts) shares ONE payment across N `bookings`
+ * rows via `booking_groups`, so the payment rollup itself is computed once,
+ * against the group's own `net_total` and `booking_payment` transactions
+ * (`transactions.booking_group_id`), then bulk-propagated to every member
+ * booking's own `payment_status` column (still read by that booking's own
+ * queue/capacity gating, unaware it's part of a group).
+ *
+ * A payment module companion (server/src/features/billing/**) calls this
+ * from the PayMongo webhook / settlement paths the same way the
+ * single-booking path calls recomputeBookingPaymentStatus - this function
+ * itself stays inside booking.service.ts (booking-capacity-agent scope),
+ * mirroring recomputeBookingPaymentStatus's own placement.
+ *
+ * New territory (a "partially-confirmed group"): applyFirstBookingPayment-
+ * SideEffects's capacity re-check is inherently PER BOOKING (a down-payment
+ * slot only exists per booking, not per group), even though the payment
+ * that unlocked it was shared. So one member booking losing its slot race
+ * must not swallow the others - every formerly-Pending member booking gets
+ * its own side-effects call, failures are collected rather than thrown on
+ * the first one, and the caller sees the full count (see
+ * BookingGroupSideEffectFailure below) so it can decide how to surface a
+ * group that ended up only partially confirmed.
+ */
+export interface BookingGroupSideEffectFailure {
+  bookingId: string;
+  error: unknown;
+}
+
+export class BookingGroupPartialConfirmationError extends Error {
+  statusCode = 409;
+  failures: BookingGroupSideEffectFailure[];
+
+  constructor(
+    failures: BookingGroupSideEffectFailure[],
+    totalConsidered: number
+  ) {
+    super(
+      failures.length === totalConsidered
+        ? 'Every booking in this group lost its slot before payment was confirmed — please reschedule the group'
+        : `${failures.length} of ${totalConsidered} booking(s) in this group lost their slot before payment was confirmed — the rest confirmed normally; please review and reschedule the affected booking(s)`
+    );
+    this.name = 'BookingGroupPartialConfirmationError';
+    this.failures = failures;
+  }
+}
+
+export async function recomputeBookingGroupPaymentStatus(
+  bookingGroupId: string
+): Promise<BookingGroup> {
+  const { data: groupRow, error: groupError } = await supabase
+    .from('booking_groups')
+    .select('*')
+    .eq('id', bookingGroupId)
+    .maybeSingle();
+
+  if (groupError) throwWithStatus(400, groupError.message);
+  if (!groupRow) throwWithStatus(404, 'Booking group not found');
+
+  const bookingGroup = groupRow as BookingGroup;
+
+  const { data: paidRows, error: paidError } = await supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq('booking_group_id', bookingGroupId)
+    .eq('transaction_type', 'booking_payment')
+    .neq('payment_status', 'Pending');
+
+  if (paidError) throwWithStatus(400, paidError.message);
+
+  const settled = round2(
+    (paidRows ?? []).reduce(
+      (sum, row) =>
+        sum + Number((row as { total_amount: number }).total_amount),
+      0
+    )
+  );
+
+  const nextStatus: PaymentStatus =
+    settled <= 0
+      ? 'Pending'
+      : settled >= bookingGroup.net_total
+        ? 'Fully Paid'
+        : 'Partially Paid';
+
+  if (nextStatus === bookingGroup.payment_status) {
+    return bookingGroup;
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: updatedGroup, error: updateGroupError } = await supabase
+    .from('booking_groups')
+    .update({
+      payment_status: nextStatus,
+      ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
+      updated_at: nowIso,
+    })
+    .eq('id', bookingGroupId)
+    .select('*')
+    .maybeSingle();
+
+  if (updateGroupError || !updatedGroup) {
+    throwWithStatus(
+      400,
+      updateGroupError?.message ?? 'Failed to update booking group'
+    );
+  }
+
+  // Snapshot every member booking's payment_status BEFORE the bulk update -
+  // applyFirstBookingPaymentSideEffects needs to know which ones are
+  // actually transitioning out of 'Pending' because of this payment (a
+  // sub-booking that was already 'Fully Paid'/'Partially Paid' from some
+  // other source, if that ever happens, must not re-fire its confirmation
+  // alerts or re-run its capacity check).
+  const { data: memberBookingsBefore, error: membersError } = await supabase
+    .from('bookings')
+    .select('id, payment_status')
+    .eq('booking_group_id', bookingGroupId);
+
+  if (membersError) throwWithStatus(400, membersError.message);
+
+  const membersBefore = (memberBookingsBefore ?? []) as Array<{
+    id: string;
+    payment_status: PaymentStatus;
+  }>;
+
+  const { error: bulkUpdateError } = await supabase
+    .from('bookings')
+    .update({
+      payment_status: nextStatus,
+      ...(nextStatus === 'Fully Paid' ? { paid_at: nowIso } : {}),
+      updated_at: nowIso,
+    })
+    .eq('booking_group_id', bookingGroupId);
+
+  if (bulkUpdateError) throwWithStatus(400, bulkUpdateError.message);
+
+  const previouslyPending = membersBefore.filter(
+    (row) => row.payment_status === 'Pending'
+  );
+  const failures: BookingGroupSideEffectFailure[] = [];
+
+  for (const row of previouslyPending) {
+    try {
+      // Deliberately sequential (not Promise.all): each booking's own
+      // capacity re-check must not race the next one.
+      await applyFirstBookingPaymentSideEffects({
+        bookingId: row.id,
+        paymentStatusBeforePayment: 'Pending',
+        revertOnCapacityConflict: true,
+      });
+    } catch (error) {
+      failures.push({ bookingId: row.id, error });
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new BookingGroupPartialConfirmationError(
+      failures,
+      previouslyPending.length
+    );
+  }
+
+  return updatedGroup as BookingGroup;
 }
 
 /**

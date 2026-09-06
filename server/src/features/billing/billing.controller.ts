@@ -2,7 +2,9 @@ import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
   buildCheckoutPreview,
+  buildGroupCheckoutPreview,
   checkoutBooking,
+  checkoutBookingGroup,
 } from './services/checkoutAggregation.service.ts';
 import {
   createMiscSale,
@@ -11,7 +13,10 @@ import {
   listMiscSales,
   updateMiscSale,
 } from './services/miscSale.service.ts';
-import { listBookingTransactions } from './services/bookingTransactions.service.ts';
+import {
+  listBookingGroupTransactions,
+  listBookingTransactions,
+} from './services/bookingTransactions.service.ts';
 import { getPaymongoServiceFeeRate } from './services/paymongo.service.ts';
 import {
   addBookingPayment,
@@ -20,6 +25,7 @@ import {
 } from './services/transactionPayment.service.ts';
 import {
   addBookingPaymentValidator,
+  checkoutGroupValidator,
   checkoutValidator,
   createMiscSaleValidator,
   recordTransactionPaymentValidator,
@@ -101,6 +107,51 @@ export async function checkoutController(
   }
 }
 
+/** Multi-booking checkout: group counterpart of previewCheckoutController -
+ * read-only preview backing the cashier checkout screen for a booking
+ * group's cart. */
+export async function previewGroupCheckoutController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const bookingGroupId = paramId(req, 'bookingGroupId');
+
+  try {
+    const preview = await buildGroupCheckoutPreview(bookingGroupId);
+    return res.status(200).json(preview);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Multi-booking checkout: group counterpart of checkoutController - creates
+ * ONE transaction covering the whole booking_groups cart. */
+export async function checkoutGroupController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = checkoutGroupValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await checkoutBookingGroup(requesterId, parsed.data);
+    return res.status(201).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function createMiscSaleController(
   req: AuthenticatedRequest,
   res: Response
@@ -164,6 +215,23 @@ export async function listBookingTransactionsController(
   try {
     const transactions = await listBookingTransactions(
       paramId(req, 'bookingId')
+    );
+    return res.status(200).json({ transactions });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Multi-booking checkout: group counterpart of
+ * listBookingTransactionsController - payment history for a whole
+ * booking_groups cart's shared transactions. */
+export async function listBookingGroupTransactionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const transactions = await listBookingGroupTransactions(
+      paramId(req, 'bookingGroupId')
     );
     return res.status(200).json({ transactions });
   } catch (error) {

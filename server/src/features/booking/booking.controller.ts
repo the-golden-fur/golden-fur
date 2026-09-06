@@ -9,6 +9,7 @@ import {
   overrideBookingStatus,
   startBooking,
 } from './services/booking.service.ts';
+import { createBookingGroup } from './services/bookingGroup.service.ts';
 import {
   getStaffPickerOptions,
   isOnlinePaymentsEnabled,
@@ -37,6 +38,7 @@ import {
   cagePickerQueryValidator,
   cancelBookingValidator,
   catalogQueryValidator,
+  createBookingGroupValidator,
   createBookingValidator,
   downpaymentStatusQueryValidator,
   listBookingsQueryValidator,
@@ -97,6 +99,40 @@ export async function createBookingController(
   try {
     const booking = await createBooking({ requesterId, input: parsed.data });
     return res.status(201).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Multi-booking checkout - several independent bookings sharing one
+ * discount/promo/downpayment decision and one initial charge. See
+ * bookingGroup.service.ts's createBookingGroup for the full pipeline.
+ */
+export async function createBookingGroupController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = createBookingGroupValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const { booking_group, bookings } = await createBookingGroup({
+      requesterId,
+      input: parsed.data,
+    });
+    return res.status(201).json({ booking_group, bookings });
   } catch (error) {
     return sendServiceError(res, error);
   }
