@@ -837,6 +837,14 @@ describe('CustomerBookingFlowPage', () => {
 
     await user.click(screen.getByText('Next'));
 
+    // Multi-booking checkout: lands on the new "Your bookings" list step
+    // before Review - one more Next continues past it (a list of exactly
+    // one booking still goes through the plain single-booking endpoint).
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -959,6 +967,12 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Next'));
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Next'));
+
+    // Multi-booking checkout: lands on "Your bookings" before Review.
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('Next'));
 
     expect(screen.getByText('Confirm booking')).toBeInTheDocument();
@@ -1318,6 +1332,12 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Bath'));
     await user.click(screen.getByText('Next'));
 
+    // Multi-booking checkout: lands on "Your bookings" before Review.
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1452,6 +1472,12 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Bath'));
     await user.click(screen.getByText('Next'));
 
+    // Multi-booking checkout: lands on "Your bookings" before Review.
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1481,6 +1507,12 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath')); // base_price 300
+    await user.click(screen.getByText('Next'));
+
+    // Multi-booking checkout: lands on "Your bookings" before Review.
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
@@ -1598,6 +1630,12 @@ describe('CustomerBookingFlowPage', () => {
       await user.click(screen.getByText('Bath'));
       await user.click(screen.getByText('Next'));
 
+      // Multi-booking checkout: lands on "Your bookings" before Review.
+      await waitFor(() =>
+        expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
       await waitFor(() =>
         expect(screen.getByText('Confirm booking')).toBeInTheDocument()
       );
@@ -1652,6 +1690,12 @@ describe('CustomerBookingFlowPage', () => {
 
       await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
       await user.click(screen.getByText('Bath'));
+      await user.click(screen.getByText('Next'));
+
+      // Multi-booking checkout: lands on "Your bookings" before Review.
+      await waitFor(() =>
+        expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
       await user.click(screen.getByText('Next'));
 
       await waitFor(() =>

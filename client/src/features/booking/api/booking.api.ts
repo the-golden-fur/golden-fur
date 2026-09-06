@@ -4,6 +4,8 @@ import type {
   CagePickerOptionsResult,
   CancelBookingPayload,
   CancellationResult,
+  CreateBookingGroupPayload,
+  CreateBookingGroupResult,
   CreateBookingPayload,
   DownpaymentType,
   ListBookingsFilters,
@@ -76,6 +78,29 @@ export async function createBooking(
 
   const result = await parseBody<{ booking: Booking }>(response);
   return { data: result.data?.booking ?? null, error: result.error };
+}
+
+// Multi-booking checkout ("Your bookings" list step, added right before
+// Review): several otherwise-independent bookings (own pet/category/items/
+// date-time/staff-or-cage each) sharing one payment/discount/promo/
+// downpayment decision. Used only when the wizard's bookingsList has more
+// than one entry - a list of exactly one still goes through createBooking
+// above, unchanged.
+export async function createBookingGroup(
+  accessToken: string,
+  payload: CreateBookingGroupPayload
+): Promise<BookingApiResult<CreateBookingGroupResult>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/groups`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<CreateBookingGroupResult>(response);
 }
 
 export async function getBooking(

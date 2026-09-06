@@ -359,6 +359,44 @@ export interface Booking {
   updated_at: string;
   booking_items?: BookingItem[];
   staff_picker_preferences?: StaffPickerPreference[];
+  /** NULL for a standalone booking; set when created as part of a
+   * multi-booking checkout group (bookingGroup.service.ts) — see
+   * BookingGroup. */
+  booking_group_id: string | null;
+}
+
+/**
+ * Multi-booking checkout (bookingGroup.service.ts): several independent
+ * `bookings` rows (each its own pet/category/services/date-time/staff/cage,
+ * created via `bookings.booking_group_id`) sharing ONE payment - one
+ * discount, one promo, one downpayment/payment-scheme decision, and one
+ * transaction (or downpayment+balance transaction pair). This row is the
+ * shared payment unit: `net_total`/`payment_status`/`paid_at` roll up every
+ * member booking's charge, the same way a single booking's own
+ * `payment_status` rolls up its own `transactions` rows (see
+ * recomputeBookingGroupPaymentStatus, the group counterpart of
+ * recomputeBookingPaymentStatus). A member booking's own
+ * selected_discount_id/selected_promo_id/discount_amount/promo_amount/
+ * downpayment_* columns are always null/0/false for a grouped booking -
+ * those values live here instead.
+ */
+export interface BookingGroup {
+  id: string;
+  customer_id: string;
+  branch_id: string;
+  created_by_staff_id: string | null;
+  selected_discount_id: string | null;
+  selected_promo_id: string | null;
+  discount_amount: number;
+  promo_amount: number;
+  net_total: number;
+  downpayment_amount: number | null;
+  downpayment_required: boolean;
+  downpayment_due_at: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BookingItem {

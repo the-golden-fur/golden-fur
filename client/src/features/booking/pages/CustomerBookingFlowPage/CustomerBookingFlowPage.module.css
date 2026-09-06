@@ -544,3 +544,21 @@
   box-shadow: 0 0 0 3px
     color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
 }
+
+/* Multi-booking checkout: "Your bookings" list step. */
+.bookingsListStep {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bookingListRowHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.bookingListRowMeta {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}

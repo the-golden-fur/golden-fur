@@ -70,6 +70,50 @@ describe('SlotPicker', () => {
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
   });
 
+  it('multi-booking checkout: a slot overlapping excludedWindows is shown/disabled as unavailable, even though the server reported it available', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: { slots: SLOTS, window: WINDOW },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'staff',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+        // Overlaps SLOTS[0] (01:00-02:00) - this same pet already has
+        // another booking in the cart right in that window.
+        excludedWindows: [
+          {
+            start: '2026-08-03T01:30:00.000Z',
+            end: '2026-08-03T02:30:00.000Z',
+          },
+        ],
+      })
+    );
+
+    await waitFor(() => screen.getByLabelText('Appointment time'));
+    openDropdown();
+
+    const options = await waitFor(() => screen.getAllByRole('option'));
+    expect(options).toHaveLength(SLOTS.length);
+
+    // SLOTS[0] is disabled despite the server reporting it available and
+    // having a positive eligible_staff_count - the override strips that
+    // field too, so staff mode doesn't show a stale "2 slots available"
+    // next to a disabled button.
+    const firstOption = within(options[0]).getByRole('button');
+    expect(firstOption).toBeDisabled();
+    expect(within(options[0]).getByText('Unavailable')).toBeInTheDocument();
+    expect(
+      within(options[0]).queryByText('2 slots available')
+    ).not.toBeInTheDocument();
+  });
+
   it('defaults intent to new_booking and forwards an explicit reschedule intent', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
       data: { slots: SLOTS, window: WINDOW, minNoticeDays: 0 },
