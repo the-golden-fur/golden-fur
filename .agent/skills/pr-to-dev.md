@@ -50,13 +50,24 @@ left their evidence.
    (An extra commit right after step 3 is fine if the review is expected to
    be large.)
 7. **Push** the branch.
-8. Fill in the PR using `.github/PULL_REQUEST_TEMPLATE.md`'s sections
-   (Summary, What Changed, Screenshots/Demo, What, Why, How, Testing,
-   Pre-Merge Checklist) and open it:
-   `gh pr create --base dev --head <branch> --title "..." --body "..."`.
-9. Recommend label(s) and note the Milestone / Development (linked issues)
-   fields — GitHub sidebar fields, set with `gh pr edit --add-label ...`
-   or left for the user.
+8. **Open the PR with every field set — never leave the title, body,
+   assignee, or labels for the user to fill in.** Write the body from
+   `.github/PULL_REQUEST_TEMPLATE.md`'s sections (Summary, What Changed,
+   Screenshots/Demo, What, Why, How, Testing, Pre-Merge Checklist) to a
+   file, pick the label(s) from the **Labels** rule below, then
+   `gh pr create --base dev --head <branch> --title "<type>(<scope>): <subject>" --body-file <file> --assignee @me --label <label>[,<label>]`.
+   - **A PR for this branch usually already exists** — this repo auto-opens
+     an empty one on first push, so `gh pr create` will error with the
+     number. Apply the same fields to that PR instead:
+     `gh pr edit <n> --title "..." --body-file <file> --add-assignee @me --add-label <label>`,
+     then confirm with `gh pr view <n> --json title,assignees,labels`.
+   - Assignee is `@me` unless the user explicitly named someone else.
+   - Create a missing label first with `gh label create`.
+9. **Milestone + linked issues** — set on the same PR, not handed back as a
+   suggestion. Milestone: `gh pr edit <n> --milestone "<name>"` (format in
+   the **Milestone** rule); only skip it when the repo genuinely has no
+   matching milestone, and say so when you hand back the PR link. Linked
+   issues: a `Closes #<n>` line per issue in the body.
 10. **Vault side** — commit + push the `golden-fur-vault` changes this
     session produced (`sessions/NN-<slug>/`) and open the vault PR with the
     `pr` skill there. Reuse step 2's green `ci-verifier` pass — don't spawn
