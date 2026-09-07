@@ -1,7 +1,10 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
-import { applyFirstBookingPaymentSideEffects } from '../../booking/services/booking.service.ts';
+import {
+  applyFirstBookingPaymentSideEffects,
+  recomputeBookingGroupPaymentStatus,
+} from '../../booking/services/booking.service.ts';
 import type { PaymentStatus } from '../../booking/booking.types.ts';
 import type { PaymentMethod, Transaction } from '../billing.types.ts';
 
@@ -16,21 +19,29 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** Ids of the booking's current Pending 'balance' booking_payment rows -
- * snapshotted before a settle so loadSpawnedLeftover can spot the one a
- * partial settlement adds. */
+/** Ids of the booking's (or, for a group transaction, the booking group's)
+ * current Pending 'balance' booking_payment rows - snapshotted before a
+ * settle so loadSpawnedLeftover can spot the one a partial settlement adds.
+ * Multi-booking checkout: settle_transaction/pay_transaction_with_credit
+ * spawn a group transaction's leftover row against booking_group_id rather
+ * than booking_id (20260906176/177) - exactly one of the two ids is ever
+ * non-null for a real caller (mirrors transactions_booking_id_matches_type). */
 async function pendingBalanceTxnIds(
-  bookingId: string | null
+  bookingId: string | null,
+  bookingGroupId: string | null
 ): Promise<Set<string>> {
-  if (!bookingId) return new Set();
+  if (!bookingId && !bookingGroupId) return new Set();
 
-  const { data } = await supabase
+  const query = supabase
     .from('transactions')
     .select('id')
-    .eq('booking_id', bookingId)
     .eq('transaction_type', 'booking_payment')
     .eq('payment_status', 'Pending')
     .eq('payment_choice', 'balance');
+
+  const { data } = bookingId
+    ? await query.eq('booking_id', bookingId)
+    : await query.eq('booking_group_id', bookingGroupId as string);
 
   return new Set((data ?? []).map((row) => (row as { id: string }).id));
 }
@@ -44,18 +55,22 @@ async function pendingBalanceTxnIds(
  */
 async function loadSpawnedLeftover(
   bookingId: string | null,
+  bookingGroupId: string | null,
   before: Set<string>
 ): Promise<Transaction | null> {
-  if (!bookingId) return null;
+  if (!bookingId && !bookingGroupId) return null;
 
-  const { data } = await supabase
+  const query = supabase
     .from('transactions')
     .select('*')
-    .eq('booking_id', bookingId)
     .eq('transaction_type', 'booking_payment')
     .eq('payment_status', 'Pending')
     .eq('payment_choice', 'balance')
     .order('created_at', { ascending: false });
+
+  const { data } = bookingId
+    ? await query.eq('booking_id', bookingId)
+    : await query.eq('booking_group_id', bookingGroupId as string);
 
   const spawned = (data ?? []).find(
     (row) => !before.has((row as { id: string }).id)
@@ -187,7 +202,10 @@ export async function recordTransactionPayment({
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
-  const balanceIdsBefore = await pendingBalanceTxnIds(transaction.booking_id);
+  const balanceIdsBefore = await pendingBalanceTxnIds(
+    transaction.booking_id,
+    transaction.booking_group_id
+  );
 
   const { data, error } = await supabase.rpc('settle_transaction', {
     p_transaction_id: transactionId,
@@ -201,21 +219,33 @@ export async function recordTransactionPayment({
 
   if (error) throwWithStatus(400, error.message);
 
-  let booking = firstRow<Record<string, unknown>>(data);
+  // settle_transaction returns NULL for a group transaction (20260906176) -
+  // there is no single `bookings` row to hand back for a group settlement.
+  let booking: unknown = firstRow<Record<string, unknown>>(data);
 
-  // settle_transaction did the SQL rollup; run the app-side first-payment
-  // side-effects (slot re-check + confirmation alerts) the webhook path gets.
+  // settle_transaction did the SQL rollup for a single booking; run the
+  // app-side first-payment side-effects (slot re-check + confirmation
+  // alerts) the webhook path gets. A group transaction has no rollup done in
+  // SQL at all (settle_transaction skips it entirely) - roll the whole
+  // group + every sibling booking up here instead, the same way the webhook
+  // path calls recomputeBookingGroupPaymentStatus for a group-keyed
+  // customer payment.
   if (transaction.booking_id && paymentStatusBefore) {
-    booking = (await applyFirstBookingPaymentSideEffects({
+    booking = await applyFirstBookingPaymentSideEffects({
       bookingId: transaction.booking_id,
       paymentStatusBeforePayment: paymentStatusBefore,
       revertOnCapacityConflict: false,
-    })) as unknown as Record<string, unknown>;
+    });
+  } else if (transaction.booking_group_id) {
+    booking = await recomputeBookingGroupPaymentStatus(
+      transaction.booking_group_id
+    );
   }
 
   const settled = await loadTransaction(transactionId);
   const leftover = await loadSpawnedLeftover(
     transaction.booking_id,
+    transaction.booking_group_id,
     balanceIdsBefore
   );
 
@@ -311,7 +341,10 @@ export async function payTransactionWithCredit({
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
-  const balanceIdsBefore = await pendingBalanceTxnIds(transaction.booking_id);
+  const balanceIdsBefore = await pendingBalanceTxnIds(
+    transaction.booking_id,
+    transaction.booking_group_id
+  );
 
   const chargeAmount = round2(Number(transaction.total_amount));
   const available = await getAvailableCredit(
@@ -338,14 +371,20 @@ export async function payTransactionWithCredit({
   );
 
   if (rpcError) throwWithStatus(400, rpcError.message);
-  let booking = firstRow<Record<string, unknown>>(rpcData);
+  // pay_transaction_with_credit returns NULL for a group transaction
+  // (20260906177) - same reasoning as settle_transaction.
+  let booking: unknown = firstRow<Record<string, unknown>>(rpcData);
 
   if (transaction.booking_id && paymentStatusBefore) {
-    booking = (await applyFirstBookingPaymentSideEffects({
+    booking = await applyFirstBookingPaymentSideEffects({
       bookingId: transaction.booking_id,
       paymentStatusBeforePayment: paymentStatusBefore,
       revertOnCapacityConflict: false,
-    })) as unknown as Record<string, unknown>;
+    });
+  } else if (transaction.booking_group_id) {
+    booking = await recomputeBookingGroupPaymentStatus(
+      transaction.booking_group_id
+    );
   }
 
   const { data: creditRow } = await supabase
@@ -360,6 +399,7 @@ export async function payTransactionWithCredit({
   const settled = await loadTransaction(transactionId);
   const leftover = await loadSpawnedLeftover(
     transaction.booking_id,
+    transaction.booking_group_id,
     balanceIdsBefore
   );
 

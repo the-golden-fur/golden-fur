@@ -35,6 +35,7 @@ export function ConfigTab({ isSuperadmin, onSelectTile }: ConfigTabProps) {
           key={tile.title}
           title={tile.title}
           description={tile.description}
+          icon={tile.icon}
           onSelect={() => onSelectTile(tile)}
         />
       ))}

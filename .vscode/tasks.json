@@ -291,51 +291,12 @@
       }
     },
 
-    // ── Seed Data (Issue #38 - grouped by module) ──────────────
-    {
-      "label": "🌱 Seed: Module 1 - Staff Auth",
-      "type": "npm",
-      "script": "seed:module-1",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-    {
-      "label": "🌱 Seed: Module 2 - Customers & Pets",
-      "type": "npm",
-      "script": "seed:module-2",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-    {
-      "label": "🌱 Seed: Module 3 - Maintenance",
-      "type": "npm",
-      "script": "seed:module-3",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-    {
-      "label": "🌱 Seed: Module 4 - Hotel",
-      "type": "npm",
-      "script": "seed:module-4",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
+    // ── Seed Data (folders named for the Modules-Features module) ──
     {
       "label": "🌱 Seed: All Modules",
       "type": "npm",
       "script": "seed:all",
+      "detail": "Runs every supabase/seeds/m*/*.seed.ts in order (m01 first). Idempotent - safe to re-run.",
       "presentation": {
         "group": "seed",
         "panel": "shared",

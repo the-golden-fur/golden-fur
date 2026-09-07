@@ -41,18 +41,17 @@ before editing any seed file, not just once.
      column/table; the "is idempotent: re-running does not duplicate rows"
      test must still pass.
 3. **For a brand-new table that needs seeding** — prefer extending the
-   nearest existing module seed. Only create a new `module-N-<slug>/` folder
-   when the table belongs to a genuinely new area; if you do, wire it in
-   exactly two places: `package.json` `seed:all` (append
-   `&& tsx supabase/seeds/module-N-<slug>/module-N-<slug>.seed.ts` — no
-   standalone `seed:module-N` script) and `supabase/config.toml` `sql_paths`
-   (in dependency order). No per-module VS Code task; `🌱 Seed: All Modules`
-   is the only seed task. Follow the folder-numbering note in the existing
-   seeds' header comments (numbers track _creation order_, not the Mxx
-   module number).
+   nearest existing `mNN-<slug>/` folder (by Modules-Features module
+   number). Only create a new folder when the table belongs to a genuinely
+   new module; if you do, name it `mNN-<slug>/` and wire it in exactly two
+   places: `package.json` `seed:all` (append
+   `&& tsx supabase/seeds/mNN-<slug>/mNN-<slug>.seed.ts` in module-number
+   order — there are no standalone `seed:mNN` scripts) and
+   `supabase/config.toml` `sql_paths` (after `m01`). `🌱 Seed: All Modules`
+   is the only seed task.
 4. **Respect FK ordering.** A seed that needs `branches.id` /
-   `staff_profiles.id` / `customer_profiles.id` must run after module-1 /
-   module-2; resolve those ids by lookup (`.eq('name', …)` /
+   `staff_profiles.id` / `customer_profiles.id` must run after `m01` /
+   `m02`; resolve those ids by lookup (`.eq('name', …)` /
    `.eq('account_email', …)`), never hardcode a uuid unless a migration
    seeds that exact fixed id (the `a1300000-…` service ids do).
 5. **Do not seed transactional tables** unless explicitly asked —

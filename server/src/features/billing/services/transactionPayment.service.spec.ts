@@ -6,7 +6,10 @@ import {
 } from './transactionPayment.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
-import { applyFirstBookingPaymentSideEffects } from '../../booking/services/booking.service.ts';
+import {
+  applyFirstBookingPaymentSideEffects,
+  recomputeBookingGroupPaymentStatus,
+} from '../../booking/services/booking.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -16,13 +19,17 @@ vi.mock('./creditStub.service.ts', () => ({
   getAvailableCredit: vi.fn(),
 }));
 
-// The first-payment side-effects (slot re-check + confirmation alerts) are
-// booking.service's own concern, covered by its spec - stub it here so this
-// spec stays a unit test of the settlement flow.
+// The first-payment side-effects (slot re-check + confirmation alerts) and
+// the group payment rollup are booking.service's own concern, covered by its
+// spec - stub both here so this spec stays a unit test of the settlement
+// flow.
 vi.mock('../../booking/services/booking.service.ts', () => ({
   applyFirstBookingPaymentSideEffects: vi
     .fn()
     .mockResolvedValue({ id: 'booking-1', payment_status: 'Fully Paid' }),
+  recomputeBookingGroupPaymentStatus: vi
+    .fn()
+    .mockResolvedValue({ id: 'group-1', payment_status: 'Fully Paid' }),
 }));
 
 interface QueryResult {
@@ -55,6 +62,21 @@ function queueFrom(...results: QueryResult[]) {
 const PENDING_BOOKING_TXN = {
   id: 'txn-1',
   booking_id: 'booking-1',
+  booking_group_id: null,
+  customer_id: 'customer-1',
+  branch_id: 'branch-1',
+  transaction_type: 'booking_payment',
+  payment_status: 'Pending',
+  total_amount: 500,
+};
+
+/** Multi-booking checkout: a group transaction has booking_id null and
+ * booking_group_id set instead (create_initial_booking_group_charge -
+ * 20260906175). */
+const PENDING_GROUP_TXN = {
+  id: 'txn-group-1',
+  booking_id: null,
+  booking_group_id: 'group-1',
   customer_id: 'customer-1',
   branch_id: 'branch-1',
   transaction_type: 'booking_payment',
@@ -110,6 +132,72 @@ describe('transactionPayment.service', () => {
       paymentStatusBeforePayment: 'Pending',
       revertOnCapacityConflict: false,
     });
+  });
+
+  it('records a cash payment against a GROUP transaction: settles it and rolls up the whole booking group instead of a single booking', async () => {
+    queueFrom(
+      { data: PENDING_GROUP_TXN, error: null }, // loadTransaction
+      // loadBookingPaymentStatus is skipped entirely - booking_id is null.
+      { data: [], error: null }, // pendingBalanceTxnIds (before, keyed off booking_group_id)
+      {
+        data: { ...PENDING_GROUP_TXN, payment_status: 'Fully Paid' },
+        error: null,
+      }, // reload
+      { data: [], error: null } // loadSpawnedLeftover (none - full settle)
+    );
+    // settle_transaction returns NULL for a group transaction (20260906176).
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: null,
+      error: null,
+    } as never);
+
+    const result = await recordTransactionPayment({
+      requesterId: 'staff-1',
+      transactionId: 'txn-group-1',
+      paymentMethod: 'Cash',
+      cashTendered: 500,
+    });
+
+    expect(applyFirstBookingPaymentSideEffects).not.toHaveBeenCalled();
+    expect(recomputeBookingGroupPaymentStatus).toHaveBeenCalledWith('group-1');
+    expect(result.booking).toEqual({
+      id: 'group-1',
+      payment_status: 'Fully Paid',
+    });
+    expect(result.transaction.payment_status).toBe('Fully Paid');
+    expect(result.leftover).toBeNull();
+  });
+
+  it('surfaces a BookingGroupPartialConfirmationError from recomputeBookingGroupPaymentStatus (a sub-booking lost its slot) rather than swallowing it', async () => {
+    queueFrom(
+      { data: PENDING_GROUP_TXN, error: null },
+      { data: [], error: null },
+      {
+        data: { ...PENDING_GROUP_TXN, payment_status: 'Fully Paid' },
+        error: null,
+      },
+      { data: [], error: null }
+    );
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: null,
+      error: null,
+    } as never);
+    const conflictError = Object.assign(
+      new Error('Every booking in this group lost its slot'),
+      { statusCode: 409 }
+    );
+    vi.mocked(recomputeBookingGroupPaymentStatus).mockRejectedValueOnce(
+      conflictError
+    );
+
+    await expect(
+      recordTransactionPayment({
+        requesterId: 'staff-1',
+        transactionId: 'txn-group-1',
+        paymentMethod: 'Cash',
+        cashTendered: 500,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('partial cash payment: passes amount_applied and returns the spawned leftover balance transaction', async () => {
@@ -304,6 +392,46 @@ describe('transactionPayment.service', () => {
       id: 'credit-txn-1',
       amount: -500,
     });
+  });
+
+  it('pays a GROUP transaction fully from credit and rolls up the booking group instead of a single booking', async () => {
+    queueFrom(
+      { data: PENDING_GROUP_TXN, error: null }, // loadTransaction
+      // loadBookingPaymentStatus is skipped entirely - booking_id is null.
+      { data: [], error: null }, // pendingBalanceTxnIds (before, keyed off booking_group_id)
+      { data: { id: 'credit-txn-1', amount: -500 }, error: null }, // credit_transactions lookup
+      {
+        data: {
+          ...PENDING_GROUP_TXN,
+          payment_status: 'Fully Paid',
+          credit_applied_amount: 500,
+        },
+        error: null,
+      }, // reload
+      { data: [], error: null } // loadSpawnedLeftover (none - full cover)
+    );
+    vi.mocked(getAvailableCredit).mockResolvedValue(800);
+    // pay_transaction_with_credit returns NULL for a group transaction
+    // (20260906177).
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: null,
+      error: null,
+    } as never);
+
+    const result = await payTransactionWithCredit({
+      requesterId: 'staff-1',
+      transactionId: 'txn-group-1',
+      isStaff: true,
+    });
+
+    expect(applyFirstBookingPaymentSideEffects).not.toHaveBeenCalled();
+    expect(recomputeBookingGroupPaymentStatus).toHaveBeenCalledWith('group-1');
+    expect(result.booking).toEqual({
+      id: 'group-1',
+      payment_status: 'Fully Paid',
+    });
+    expect(result.transaction.payment_status).toBe('Fully Paid');
+    expect(result.leftover).toBeNull();
   });
 
   it('rejects pay-with-credit when the customer has no credit balance', async () => {

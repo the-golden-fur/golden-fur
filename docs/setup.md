@@ -102,11 +102,11 @@ with:
 npm run seed:all
 ```
 
-Or one module at a time (`npm run seed:module-1`, `-2`, `-3` — see
-`package.json` for what each covers). Seeded staff accounts use the password
-`password123` with usernames like `makati.groomer1` or
-`southwoods.receptionist1` — check the seed scripts in `supabase/seeds/` for
-the full list.
+`seed:all` runs every `supabase/seeds/mNN-<slug>/` folder in order (`m01`
+first) — each folder is named for the Modules-Features module it seeds and
+is safe to re-run. Seeded staff accounts use the password `password123` with
+usernames like `makati.groomer1` or `southwoods.receptionist1` — check the
+seed scripts in `supabase/seeds/` for the full list.
 
 ## 7. Run the app
 

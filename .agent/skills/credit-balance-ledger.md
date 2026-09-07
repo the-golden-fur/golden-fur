@@ -119,5 +119,4 @@ end-to-end since the payment/transactions rework:
   balance — **full-cover only** this round; a charge the balance can't
   cover has to be split first. It settles the transaction as payment
   method `'Credit'` and stamps `credit_applied_amount`.
-- Daily Sales Report credit-usage figures now read real redemption rows
-  (see `daily-sales-report-format.md`).
+- Daily Sales Report credit-usage figures now read real redemption rows.

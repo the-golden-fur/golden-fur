@@ -96,6 +96,26 @@ export const checkoutValidator = z
 export type CheckoutInput = z.infer<typeof checkoutValidator>;
 
 /**
+ * Multi-booking checkout (booking_groups - 20260906173): the group
+ * counterpart of checkoutValidator above, for POST
+ * /billing/checkout/group/:bookingGroupId. No senior_citizen_eligible/
+ * pwd_eligible fields - unlike a single booking, a group's discount/promo
+ * are always locked in once at booking-group creation
+ * (createBookingGroup always calls resolveDiscountAndPromo), never
+ * re-evaluated at checkout time (see buildGroupCheckoutPreview's own dev
+ * note in checkoutAggregation.service.ts).
+ */
+export const checkoutGroupValidator = z
+  .object({
+    booking_group_id: z.uuid(),
+    ...basePaymentSchema,
+  })
+  .strict()
+  .superRefine(validatePaymentShape);
+
+export type GroupCheckoutInput = z.infer<typeof checkoutGroupValidator>;
+
+/**
  * Exactly one of (product_catalog_id + quantity) or (description + amount) -
  * the same "hybrid dropdown/freetext" shape CatalogComboBox already uses on
  * the client (#85 dev notes: reuses the same credit-application code path,

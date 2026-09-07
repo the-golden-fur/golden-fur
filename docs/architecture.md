@@ -66,9 +66,11 @@ find on both sides:
   Row-Level Security policies defined alongside its creation migration.
 - **`schemas/`** — declarative schema definitions used for local schema
   diffing.
-- **`seeds/`** — TypeScript seed scripts (`npm run seed:module-1/2/3`) that
-  populate realistic sample data (branches, staff, customers, pets,
-  services/packages) for local development and testing.
+- **`seeds/`** — TypeScript seed scripts, one `mNN-<slug>/` folder per
+  Modules-Features module that has reference data (`npm run seed:all` runs
+  them all), populating realistic sample data (branches, staff, customers,
+  pets, services/packages, promos, discounts, vet catalog) for local
+  development and testing.
 - **`tests/`** — database-level tests.
 - **`functions/`** — Supabase Edge Functions (reserved for future use).
 

@@ -21,7 +21,8 @@ before it merges.
    (`branch_id` + RLS). Confirm new tables follow the same pattern unless
    there's a deliberate reason not to (e.g. genuinely system-wide config).
 4. After writing a migration, run it locally (`npm run supabase:push`) and
-   update/extend the matching seed script (`npm run seed:module-*`) so the
-   new schema has realistic sample data for the rest of the team.
+   update/extend the matching `supabase/seeds/mNN-*/` folder (all folders
+   run via `npm run seed:all`) so the new schema has realistic sample data
+   for the rest of the team.
 5. Update the declarative definitions in `supabase/schemas` to match, so
    local schema diffing stays accurate.

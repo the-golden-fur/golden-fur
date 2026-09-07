@@ -13,15 +13,22 @@ import {
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
 import { initiatePaymongoPayment } from './paymongo.service.ts';
-import { recomputeBookingPaymentStatus } from '../../booking/services/booking.service.ts';
+import {
+  recomputeBookingGroupPaymentStatus,
+  recomputeBookingPaymentStatus,
+} from '../../booking/services/booking.service.ts';
 import { createNotification } from '../../notifications/services/notification.service.ts';
 import { sendPaymentConfirmedEmail } from '../../../shared/email/paymentConfirmedEmail.ts';
-import type { CheckoutInput } from '../modules/validators/billing.validator.ts';
+import type {
+  CheckoutInput,
+  GroupCheckoutInput,
+} from '../modules/validators/billing.validator.ts';
 import type {
   DraftLineItem,
   Transaction,
   TransactionLineItem,
 } from '../billing.types.ts';
+import type { BookingGroup } from '../../booking/booking.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -359,6 +366,343 @@ export async function checkoutBooking(
     // eslint-disable-next-line no-console
     console.error(
       `checkoutBooking: failed to roll up payment_status for booking ${input.booking_id}:`,
+      rollupError
+    );
+  }
+
+  return {
+    transaction: transaction as Transaction,
+    lineItems: (lineItems ?? []) as TransactionLineItem[],
+    changeAmount,
+    paymongoCheckoutUrl,
+  };
+}
+
+export interface GroupCheckoutPreview {
+  bookingGroup: BookingGroup;
+  bookings: BookingForBilling[];
+  serviceLines: DraftLineItem[];
+  discountLines: DraftLineItem[];
+  promoLines: DraftLineItem[];
+  subtotal: number;
+  discountAmount: number;
+  promoAmount: number;
+  preCreditTotal: number;
+}
+
+/**
+ * Multi-booking checkout (booking_groups - 20260906173): the group
+ * counterpart of buildCheckoutPreview above - the cashier "collect payment"
+ * screen for a group whose bookings need a checkout-computed charge instead
+ * of the pre-created one create_initial_booking_group_charge produces (an
+ * all-/mixed-Veterinary group never gets that upfront charge at all, mirroring
+ * a single Veterinary booking's own requiresUpfrontCharge = false - see
+ * bookingGroup.service.ts's own dev note). Combines every member booking's
+ * own line items (each run through getBookingForBilling/getServiceLineItems
+ * unmodified - same per-category M04/M05/M06/M07 sources a single-booking
+ * checkout already uses) into one receipt.
+ *
+ * Discount/promo are NOT re-evaluated here the way buildCheckoutPreview falls
+ * back to evaluateDiscounts/evaluatePromos for a booking with nothing
+ * pre-selected: createBookingGroup ALWAYS calls resolveDiscountAndPromo once,
+ * up front (there is no legacy "group created before this feature existed"
+ * case to fall back for, unlike a single booking), so the group's own stored
+ * selected_discount_id/discount_amount/selected_promo_id/promo_amount are
+ * authoritative, full stop - and evaluateDiscounts/evaluatePromos are built
+ * around one BookingForBilling's own service_category/id anyway, which
+ * doesn't generalize cleanly to a multi-category cart (bookingGroup.service.ts
+ * hits the identical category-ambiguity issue for its own discount scope
+ * match and resolves it the same way: fail safe rather than guess).
+ */
+export async function buildGroupCheckoutPreview(
+  bookingGroupId: string
+): Promise<GroupCheckoutPreview> {
+  const { data: groupRow, error: groupError } = await supabase
+    .from('booking_groups')
+    .select('*')
+    .eq('id', bookingGroupId)
+    .maybeSingle();
+
+  if (groupError) throwWithStatus(400, groupError.message);
+  if (!groupRow) throwWithStatus(404, 'Booking group not found');
+
+  const bookingGroup = groupRow as BookingGroup;
+
+  const { data: memberRows, error: membersError } = await supabase
+    .from('bookings')
+    .select('id')
+    .eq('booking_group_id', bookingGroupId);
+
+  if (membersError) throwWithStatus(400, membersError.message);
+
+  const memberIds = ((memberRows ?? []) as Array<{ id: string }>).map(
+    (row) => row.id
+  );
+
+  if (memberIds.length === 0) {
+    throwWithStatus(404, 'No bookings found for this booking group');
+  }
+
+  // Sequential, not Promise.all: getBookingForBilling throws a 409 naming
+  // the specific booking that isn't Completed yet - clearer for the cashier
+  // than an out-of-order Promise.all rejection.
+  const bookings: BookingForBilling[] = [];
+  const serviceLines: DraftLineItem[] = [];
+
+  for (const memberId of memberIds) {
+    const booking = await getBookingForBilling(memberId);
+    bookings.push(booking);
+    serviceLines.push(...(await getServiceLineItems(booking)));
+  }
+
+  const subtotal = round2(
+    serviceLines
+      .filter(
+        (line) =>
+          line.line_item_type === 'service' || line.line_item_type === 'addon'
+      )
+      .reduce((sum, line) => sum + line.line_total, 0)
+  );
+
+  const discountLines: DraftLineItem[] = bookingGroup.selected_discount_id
+    ? [
+        {
+          line_item_type: 'discount',
+          reference_id: bookingGroup.selected_discount_id,
+          description: 'Discount',
+          quantity: 1,
+          unit_price: -bookingGroup.discount_amount,
+          line_total: -bookingGroup.discount_amount,
+        },
+      ]
+    : [];
+
+  const promoLines: DraftLineItem[] = bookingGroup.selected_promo_id
+    ? [
+        {
+          line_item_type: 'promo',
+          reference_id: bookingGroup.selected_promo_id,
+          description: 'Promo',
+          quantity: 1,
+          unit_price: -bookingGroup.promo_amount,
+          line_total: -bookingGroup.promo_amount,
+        },
+      ]
+    : [];
+
+  const nonServiceDiscountLines = serviceLines.filter(
+    (line) => line.line_item_type === 'discount'
+  );
+  const discountAmount = round2(
+    [...nonServiceDiscountLines, ...discountLines].reduce(
+      (sum, line) => sum - line.line_total,
+      0
+    )
+  );
+  const promoAmount = round2(
+    promoLines.reduce((sum, line) => sum - line.line_total, 0)
+  );
+
+  const preCreditTotal = round2(
+    [...serviceLines, ...discountLines, ...promoLines].reduce(
+      (sum, line) => sum + line.line_total,
+      0
+    )
+  );
+
+  return {
+    bookingGroup,
+    bookings,
+    serviceLines,
+    discountLines,
+    promoLines,
+    subtotal,
+    discountAmount,
+    promoAmount,
+    preCreditTotal,
+  };
+}
+
+export interface GroupCheckoutResult {
+  transaction: Transaction;
+  lineItems: TransactionLineItem[];
+  changeAmount: number | null;
+  paymongoCheckoutUrl: string | null;
+}
+
+/**
+ * Group counterpart of checkoutBooking above - same "supersede any still-
+ * Pending estimate charge, real settled record 409s" reconciliation, same
+ * credit/payment-method/persistence pipeline, keyed by booking_group_id
+ * instead of booking_id and writing exactly ONE transaction row
+ * (booking_id null, booking_group_id set) covering the whole cart. Without
+ * this, a Veterinary-inclusive group's charge (never created upfront by
+ * create_initial_booking_group_charge) could never actually be collected -
+ * see this feature's own top-level rationale.
+ */
+export async function checkoutBookingGroup(
+  requesterId: string,
+  input: GroupCheckoutInput
+): Promise<GroupCheckoutResult> {
+  const { data: existingTransactions, error: existingError } = await supabase
+    .from('transactions')
+    .select('id, payment_status')
+    .eq('booking_group_id', input.booking_group_id);
+
+  if (existingError) throwWithStatus(400, existingError.message);
+
+  const settledRows = (existingTransactions ?? []).filter(
+    (t) => t.payment_status !== 'Pending'
+  );
+  if (settledRows.length > 0) {
+    throwWithStatus(
+      409,
+      `This booking group already has a payment record (${settledRows[0].payment_status})`
+    );
+  }
+
+  const staleChargeIds = (existingTransactions ?? []).map((t) => t.id);
+  if (staleChargeIds.length > 0) {
+    await supabase
+      .from('transaction_line_items')
+      .delete()
+      .in('transaction_id', staleChargeIds);
+    await supabase.from('transactions').delete().in('id', staleChargeIds);
+  }
+
+  const {
+    bookingGroup,
+    serviceLines,
+    discountLines,
+    promoLines,
+    subtotal,
+    discountAmount,
+    promoAmount,
+    preCreditTotal,
+  } = await buildGroupCheckoutPreview(input.booking_group_id);
+
+  const availableCredit = await getAvailableCredit(
+    bookingGroup.customer_id,
+    bookingGroup.branch_id
+  );
+  const requestedCredit = Math.max(
+    0,
+    Math.min(input.credit_to_apply, availableCredit, preCreditTotal)
+  );
+  const creditResult = await applyCredit(
+    bookingGroup.customer_id,
+    bookingGroup.branch_id,
+    requestedCredit
+  );
+  const creditAppliedAmount = creditResult.appliedAmount;
+
+  const amountDue = round2(preCreditTotal - creditAppliedAmount);
+
+  const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
+    paymentMethod: input.payment_method,
+    onlineChannel: input.online_channel,
+    amountDue,
+    cashTendered: input.cash_tendered,
+  });
+
+  let paymentReference = input.payment_reference ?? null;
+  let paymongoCheckoutUrl: string | null = null;
+
+  if (paymentStatus === 'Pending') {
+    const initiated = await initiatePaymongoPayment({
+      paymentMethod: input.payment_method as 'GCash' | 'Maya',
+      amount: amountDue,
+      description: `Booking group payment - ${bookingGroup.id}`,
+      redirectSuccessUrl: process.env.PAYMONGO_REDIRECT_SUCCESS_URL ?? '',
+      redirectFailedUrl: process.env.PAYMONGO_REDIRECT_FAILED_URL ?? '',
+    });
+    paymentReference = initiated.sourceId;
+    paymongoCheckoutUrl = initiated.checkoutUrl;
+  }
+
+  const allLines: DraftLineItem[] = [
+    ...serviceLines,
+    ...discountLines,
+    ...promoLines,
+  ];
+
+  if (creditAppliedAmount > 0) {
+    allLines.push({
+      line_item_type: 'discount',
+      reference_id: null,
+      description: 'Credit applied',
+      quantity: 1,
+      unit_price: -creditAppliedAmount,
+      line_total: -creditAppliedAmount,
+    });
+  }
+
+  const totalAmount = round2(
+    allLines.reduce((sum, line) => sum + line.line_total, 0)
+  );
+
+  const { data: transaction, error: transactionError } = await supabase
+    .from('transactions')
+    .insert({
+      booking_id: null,
+      booking_group_id: bookingGroup.id,
+      customer_id: bookingGroup.customer_id,
+      branch_id: bookingGroup.branch_id,
+      transaction_type: 'booking_payment',
+      payment_method: input.payment_method,
+      bank_name: input.bank_name ?? null,
+      payment_status: paymentStatus,
+      subtotal_amount: subtotal,
+      discount_amount: discountAmount,
+      promo_amount: promoAmount,
+      credit_applied_amount: creditAppliedAmount,
+      total_amount: totalAmount,
+      payment_reference: paymentReference,
+      processed_by_staff_id: paymentStatus === 'Pending' ? null : requesterId,
+    })
+    .select('*')
+    .maybeSingle();
+
+  if (transactionError || !transaction) {
+    throwWithStatus(
+      400,
+      transactionError?.message ?? 'Failed to create transaction'
+    );
+  }
+
+  const { data: lineItems, error: lineItemsError } = await supabase
+    .from('transaction_line_items')
+    .insert(
+      allLines.map((line) => ({ ...line, transaction_id: transaction.id }))
+    )
+    .select('*');
+
+  if (lineItemsError) throwWithStatus(400, lineItemsError.message);
+
+  if (bookingGroup.selected_promo_id) {
+    const now = new Date().toISOString();
+    await supabase.from('transaction_promo_selections').insert({
+      transaction_id: transaction.id,
+      promo_id: bookingGroup.selected_promo_id,
+      is_activated: true,
+      activated_at: now,
+    });
+  }
+
+  if ((transaction as Transaction).payment_status === 'Fully Paid') {
+    await sendPaymentConfirmedNotification(transaction as Transaction);
+  }
+
+  // Roll the whole group + every sibling booking up from the transaction
+  // just written - group counterpart of checkoutBooking's own
+  // recomputeBookingPaymentStatus call. Best-effort, same reasoning: a
+  // failure here must not fail an otherwise-complete checkout.
+  try {
+    await recomputeBookingGroupPaymentStatus(input.booking_group_id);
+  } catch (rollupError) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `checkoutBookingGroup: failed to roll up payment_status for booking group ${input.booking_group_id}:`,
       rollupError
     );
   }

@@ -31,3 +31,24 @@ export async function listBookingTransactions(
 
   return (data ?? []) as Transaction[];
 }
+
+/**
+ * Multi-booking checkout (booking_groups - 20260906173): group counterpart
+ * of listBookingTransactions - every payment recorded against the whole
+ * shared cart (the downpayment/balance pair or the single full charge, plus
+ * anything settle_transaction spawns), for a grouped booking's own "View
+ * payments" drill-down. Staff-only (route-gated), a plain read.
+ */
+export async function listBookingGroupTransactions(
+  bookingGroupId: string
+): Promise<Transaction[]> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('booking_group_id', bookingGroupId)
+    .order('created_at', { ascending: true });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as Transaction[];
+}

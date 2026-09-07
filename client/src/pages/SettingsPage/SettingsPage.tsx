@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Maximize2,
-  Minimize2,
   Shield,
   SlidersHorizontal,
   UserCog,
@@ -21,6 +20,7 @@ import {
   type MoreOptionsMenuItem,
 } from '../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useResizableWidth } from '../../shared/hooks/useResizableWidth/useResizableWidth';
+import { useSidebarCollapse } from '../../shared/hooks/useSidebarCollapse/useSidebarCollapse';
 import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import type { MfaStatusResponse } from '../../shared/auth/mfa.types';
 import { ProfileTab } from './tabs/ProfileTab';
@@ -165,40 +165,36 @@ function applyCustomOrder<T extends string>(ids: T[], order: T[] | null): T[] {
  * since it gates both the Config tab's visibility and reflects account-wide
  * state Security itself needs to render.
  *
- * Custom change: renders as a VSCode-settings-style modal - a centered
- * panel over a backdrop, with the old horizontal tab strip now a resizable
+ * Custom change: renders full-bleed inside AppShell's own content area (no
+ * backdrop/floating card) - the old horizontal tab strip is a resizable
  * vertical sidebar (still role="tab" - ARIA's tablist pattern doesn't
- * require a horizontal layout) that can be sorted Custom/Alphabetical/
- * Recently-accessed. The persistent app Navbar swaps to a minimal
- * "Settings" bar for the duration (see Navbar.tsx).
+ * require a horizontal layout, sortable Custom/Alphabetical/Recently-
+ * accessed) that reads as a *second* sidebar sitting right beside the real
+ * dashboard Sidebar, which this page force-collapses for the duration (see
+ * the useSidebarCollapse effect below) to make room. The persistent app
+ * Navbar swaps to a minimal "Settings" bar for the duration (see
+ * Navbar.tsx).
  *
  * Custom change (Config subtiles): Config expands like a VSCode settings
  * category, listing every admin-config page underneath it (independently
  * sortable, same as the top level). Selecting one embeds that page's real
  * component directly in the content pane (no navigation - `configTarget`
- * tracks which one); Fullscreen then means something different while one is
- * selected - it navigates to that page's real route instead of resizing the
- * panel, since these are full, independently-routed admin pages, not
- * Settings-owned content.
+ * tracks which one); a button in the header instead navigates to that
+ * page's real standalone route, since these are full, independently-routed
+ * admin pages, not Settings-owned content.
  *
- * Custom change (fix): `activeTab`/`configTarget`/`isFullscreen` are plain
- * component state, not `useSearchParams` or router `location.state` -
- * several embedded Config pages (e.g. AdminServicesAndPackagesPage) own
- * their own `?section=` query param, and *any* `navigate()`/
- * `setSearchParams()` call anywhere in the tree - including one an embedded
- * page makes for its own unrelated state - creates a new location with a
- * fresh `state` (React Router does not merge it forward), which was
- * silently wiping this page's own selection out from under it (the reported
- * "clicking Service Types redirects to Profile" bug - `location.state`
- * turned out to have exactly the same failure mode as `useSearchParams`,
- * not a fix for it). Plain `useState` is immune to any of that: it isn't
- * tied to the URL at all, so Settings no longer supports deep-linking to a
- * specific tab, but Fullscreen still drops the backdrop/dimming/rounded-
- * panel treatment entirely (see the render branch below) so it still reads
- * as "you're on a page", not "the modal got bigger" - it just isn't a real
- * router navigation for the generic (non-Config-tile) case, since nothing
- * shareable-by-URL can survive an embedded page's own independent
- * navigation.
+ * Custom change (fix): `activeTab`/`configTarget` are plain component
+ * state, not `useSearchParams` or router `location.state` - several
+ * embedded Config pages (e.g. AdminServicesAndPackagesPage) own their own
+ * `?section=` query param, and *any* `navigate()`/`setSearchParams()` call
+ * anywhere in the tree - including one an embedded page makes for its own
+ * unrelated state - creates a new location with a fresh `state` (React
+ * Router does not merge it forward), which was silently wiping this page's
+ * own selection out from under it (the reported "clicking Service Types
+ * redirects to Profile" bug - `location.state` turned out to have exactly
+ * the same failure mode as `useSearchParams`, not a fix for it). Plain
+ * `useState` is immune to any of that: it isn't tied to the URL at all, so
+ * Settings no longer supports deep-linking to a specific tab.
  */
 export function SettingsPage({ role }: SettingsPageProps) {
   const { user, accessToken } = useAuth();
@@ -207,7 +203,11 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTabState] = useState<SettingsTab>('profile');
   const [configTarget, setConfigTarget] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const {
+    collapsed: dashboardSidebarCollapsed,
+    setCollapsed: setDashboardSidebarCollapsed,
+  } = useSidebarCollapse();
+  const initialSidebarCollapsedRef = useRef(dashboardSidebarCollapsed);
   const [sortMode, setSortMode] = useState<SidebarSortMode>(() =>
     readStoredSort(`settings-sidebar-sort-${role}`)
   );
@@ -256,6 +256,15 @@ export function SettingsPage({ role }: SettingsPageProps) {
       isMounted = false;
     };
   }, [role, accessToken, refreshKey]);
+
+  // Auto-collapse the real dashboard sidebar for the duration of Settings
+  // (it becomes a second sidebar's neighbor, not something to browse), then
+  // restore whatever the user had before opening it.
+  useEffect(() => {
+    const wasCollapsed = initialSidebarCollapsedRef.current;
+    setDashboardSidebarCollapsed(true);
+    return () => setDashboardSidebarCollapsed(wasCollapsed);
+  }, [setDashboardSidebarCollapsed]);
 
   const isAdmin =
     role === 'staff' &&
@@ -410,16 +419,13 @@ export function SettingsPage({ role }: SettingsPageProps) {
 
   const closeSettings = () => navigate(HOME_PATH_BY_ROLE[role]);
 
-  // Fullscreen means something different while an embedded Config page is
-  // active: since that page is a real, independently-routed admin page
-  // (not Settings-owned content), "fullscreen" is a genuine navigation to
-  // its own route rather than resizing this panel.
-  const handleFullscreenToggle = () => {
+  // Since an embedded Config page is a real, independently-routed admin
+  // page (not Settings-owned content), this navigates to its own route
+  // rather than doing anything to this panel.
+  const openActiveTileFullPage = () => {
     if (activeConfigTile) {
       navigate(activeConfigTile.to);
-      return;
     }
-    setIsFullscreen((current) => !current);
   };
 
   const sortMenuItems: MoreOptionsMenuItem[] = SORT_OPTIONS.map((option) => ({
@@ -438,16 +444,16 @@ export function SettingsPage({ role }: SettingsPageProps) {
 
   if (!user?.id || !accessToken) {
     return (
-      <main className={styles.page}>
+      <div className={styles.page}>
         <p className={styles.errorBanner} role="alert">
           Unable to load your settings.
         </p>
-      </main>
+      </div>
     );
   }
 
-  const panelBody = (
-    <>
+  return (
+    <div className={styles.page}>
       <div className={styles.panelHeader}>
         <h1 className={styles.title}>Settings</h1>
         <div className={styles.panelHeaderActions}>
@@ -455,24 +461,16 @@ export function SettingsPage({ role }: SettingsPageProps) {
             label="Sort settings sections"
             items={sortMenuItems}
           />
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label={
-              activeConfigTile
-                ? 'Open as a full page'
-                : isFullscreen
-                  ? 'Exit full screen'
-                  : 'Enter full screen'
-            }
-            onClick={handleFullscreenToggle}
-          >
-            {!activeConfigTile && isFullscreen ? (
-              <Minimize2 size={16} aria-hidden="true" />
-            ) : (
+          {activeConfigTile ? (
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Open as a full page"
+              onClick={openActiveTileFullPage}
+            >
               <Maximize2 size={16} aria-hidden="true" />
-            )}
-          </button>
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.iconButton}
@@ -564,48 +562,52 @@ export function SettingsPage({ role }: SettingsPageProps) {
 
                 {isConfig && isConfigExpanded ? (
                   <div className={styles.sidebarSubitems}>
-                    {orderedConfigTiles.map((tile, tileIndex) => (
-                      <div key={tile.to} className={styles.sidebarItemRow}>
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={activeConfigTile?.to === tile.to}
-                          className={
-                            activeConfigTile?.to === tile.to
-                              ? `${styles.sidebarSubitem} ${styles.sidebarItemActive}`
-                              : styles.sidebarSubitem
-                          }
-                          onClick={() => selectConfigTile(tile.to)}
-                        >
-                          {tile.title}
-                        </button>
-                        {configSortMode === 'custom' &&
-                        orderedConfigTiles.length > 1 ? (
-                          <div className={styles.reorderButtons}>
-                            <button
-                              type="button"
-                              className={styles.reorderButton}
-                              aria-label={`Move ${tile.title} up`}
-                              disabled={tileIndex === 0}
-                              onClick={() => moveConfigTile(tile.to, -1)}
-                            >
-                              <ChevronUp size={12} aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.reorderButton}
-                              aria-label={`Move ${tile.title} down`}
-                              disabled={
-                                tileIndex === orderedConfigTiles.length - 1
-                              }
-                              onClick={() => moveConfigTile(tile.to, 1)}
-                            >
-                              <ChevronDown size={12} aria-hidden="true" />
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
+                    {orderedConfigTiles.map((tile, tileIndex) => {
+                      const TileIcon = tile.icon;
+                      return (
+                        <div key={tile.to} className={styles.sidebarItemRow}>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeConfigTile?.to === tile.to}
+                            className={
+                              activeConfigTile?.to === tile.to
+                                ? `${styles.sidebarSubitem} ${styles.sidebarItemActive}`
+                                : styles.sidebarSubitem
+                            }
+                            onClick={() => selectConfigTile(tile.to)}
+                          >
+                            <TileIcon size={14} aria-hidden="true" />
+                            {tile.title}
+                          </button>
+                          {configSortMode === 'custom' &&
+                          orderedConfigTiles.length > 1 ? (
+                            <div className={styles.reorderButtons}>
+                              <button
+                                type="button"
+                                className={styles.reorderButton}
+                                aria-label={`Move ${tile.title} up`}
+                                disabled={tileIndex === 0}
+                                onClick={() => moveConfigTile(tile.to, -1)}
+                              >
+                                <ChevronUp size={12} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.reorderButton}
+                                aria-label={`Move ${tile.title} down`}
+                                disabled={
+                                  tileIndex === orderedConfigTiles.length - 1
+                                }
+                                onClick={() => moveConfigTile(tile.to, 1)}
+                              >
+                                <ChevronDown size={12} aria-hidden="true" />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>
@@ -661,41 +663,6 @@ export function SettingsPage({ role }: SettingsPageProps) {
           ) : null}
         </div>
       </div>
-    </>
-  );
-
-  if (isFullscreen && !activeConfigTile) {
-    return (
-      <main className={styles.page}>
-        <div
-          className={styles.modalPanelFullscreen}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Settings"
-        >
-          {panelBody}
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className={styles.page}>
-      <div
-        className={styles.backdrop}
-        role="presentation"
-        onClick={closeSettings}
-      >
-        <div
-          className={styles.modalPanel}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Settings"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {panelBody}
-        </div>
-      </div>
-    </main>
+    </div>
   );
 }

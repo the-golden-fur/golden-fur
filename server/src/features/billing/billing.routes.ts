@@ -6,14 +6,17 @@ import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBra
 import {
   addBookingPaymentController,
   checkoutController,
+  checkoutGroupController,
   createMiscSaleController,
   deleteMiscSaleController,
   getMiscSaleController,
+  listBookingGroupTransactionsController,
   listBookingTransactionsController,
   listMiscSalesController,
   payTransactionWithCreditController,
   paymongoFeeRateController,
   previewCheckoutController,
+  previewGroupCheckoutController,
   recordTransactionPaymentController,
   updateMiscSaleController,
 } from './billing.controller.ts';
@@ -57,6 +60,24 @@ router.post(
   checkoutController
 );
 
+// Multi-booking checkout (booking_groups - 20260906173): group counterparts
+// of the two routes above, for a booking group's shared cart (needed for a
+// Veterinary-inclusive/only group, which never gets an upfront charge from
+// create_initial_booking_group_charge - see checkoutBookingGroup's own dev
+// note).
+router.get(
+  '/billing/checkout/group/:bookingGroupId/preview',
+  ...staffAccess,
+  previewGroupCheckoutController
+);
+
+router.post(
+  '/billing/checkout/group',
+  ...staffAccess,
+  requireBranch,
+  checkoutGroupController
+);
+
 // Issue #85: full CRUD, per explicit request. Create is open to every
 // money-handling role (BILLING_STAFF_ROLES); update/delete are Admin/
 // Superadmin only (BILLING_ADMIN_ROLES), mirrored by the RLS policies on
@@ -74,6 +95,13 @@ router.get(
   '/billing/booking/:bookingId/transactions',
   ...staffAccess,
   listBookingTransactionsController
+);
+
+// Multi-booking checkout: group counterpart of the route above.
+router.get(
+  '/billing/booking-group/:bookingGroupId/transactions',
+  ...staffAccess,
+  listBookingGroupTransactionsController
 );
 
 // Payment/transactions rework: record a counter payment against a Pending

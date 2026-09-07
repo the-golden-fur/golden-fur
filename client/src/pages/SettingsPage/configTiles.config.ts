@@ -1,4 +1,17 @@
 import type { ComponentType } from 'react';
+import {
+  BadgePercent,
+  Calculator,
+  DoorOpen,
+  Dog,
+  Package,
+  Percent,
+  Receipt,
+  ScrollText,
+  Settings2,
+  ShoppingBag,
+  type LucideIcon,
+} from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
 import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
@@ -14,11 +27,12 @@ export interface ConfigTileConfig {
   title: string;
   description: string;
   to: string;
+  icon: LucideIcon;
   /** The real page this tile's `to` route renders - rendered inline inside
-   * the Settings modal's content pane when the tile is selected (custom
-   * change: "selecting a tile in admin settings > config will open it in
-   * the modal"), and what the Fullscreen toggle navigates to instead of
-   * just resizing the panel, once one of these is active. */
+   * Settings' content pane when the tile is selected (custom change:
+   * "selecting a tile in admin settings > config will open it inline"),
+   * and what the "Open as a full page" button navigates to once one of
+   * these is active. */
   Component: ComponentType;
 }
 
@@ -34,24 +48,28 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     title: 'Services and Packages',
     description: 'Manage services, service types, and packages.',
     to: '/staff/admin/maintenance/services-and-packages',
+    icon: Package,
     Component: AdminServicesAndPackagesPage,
   },
   {
     title: 'Pricing Configuration',
     description: 'Set the shared grooming size/coat pricing calculation.',
     to: '/staff/admin/maintenance/pricing-configuration',
+    icon: Calculator,
     Component: PricingConfigurationPage,
   },
   {
     title: 'Promos',
     description: 'Configure time-limited promotions.',
     to: '/staff/admin/maintenance/promos',
+    icon: BadgePercent,
     Component: AdminPromoConfigPage,
   },
   {
     title: 'Breed Management',
     description: 'Add, rename, or remove breeds available on pet profiles.',
     to: '/staff/admin/maintenance/breeds',
+    icon: Dog,
     Component: AdminBreedsPage,
   },
   {
@@ -59,18 +77,21 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     description:
       'Manage hotel-suppliable food/medication and other sellable products, by category.',
     to: '/staff/admin/product-catalog',
+    icon: ShoppingBag,
     Component: ProductCatalogPage,
   },
   {
     title: 'Discounts',
     description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
     to: '/staff/admin/discounts',
+    icon: Percent,
     Component: AdminDiscountManagementPage,
   },
   {
     title: 'Miscellaneous Sales',
     description: 'Review, edit, or remove recorded miscellaneous sales.',
     to: '/staff/admin/misc-sales',
+    icon: Receipt,
     Component: MiscSaleManagementPage,
   },
   {
@@ -78,12 +99,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     description:
       'Reschedule & new-booking notice periods, reschedule fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
     to: '/staff/admin/maintenance/policies',
+    icon: ScrollText,
     Component: PolicyConfigurationPage,
   },
   {
     title: 'Cages',
     description: 'Add, edit, delete, or mark a cage Under Maintenance.',
     to: '/staff/admin/hotel/cages',
+    icon: DoorOpen,
     Component: AdminCagesPage,
   },
 ];
@@ -92,5 +115,6 @@ export const SYSTEM_CONFIG_TILE: ConfigTileConfig = {
   title: 'System Configuration',
   description: 'Branch name, address, and operating hours.',
   to: '/staff/admin/maintenance/system-configuration',
+  icon: Settings2,
   Component: SystemConfigurationPage,
 };

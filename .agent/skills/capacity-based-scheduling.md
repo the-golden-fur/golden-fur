@@ -35,7 +35,7 @@ be relaxed.
   class.
 - **Cage size is decoupled from pricing.** It's purely a check-in/capacity
   concern — never reintroduce a price-per-cage-size model. Pricing is a
-  flat rate per service (see `daily-sales-report-format.md`).
+  flat rate per service.
 - A cage that's Occupied or Reserved can't be deleted from the admin Cages
   page.
 

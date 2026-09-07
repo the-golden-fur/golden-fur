@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Outlet } from 'react-router';
 import { Navbar } from '../Navbar/Navbar';
 import { Sidebar, type SidebarSection } from '../Sidebar/Sidebar';
 import { HelpMascot } from '../HelpMascot/HelpMascot';
+import { SidebarCollapseProvider } from '../../providers/SidebarCollapseProvider/SidebarCollapseProvider';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './AppShell.module.css';
 
@@ -62,54 +63,61 @@ export function AppShell({
     readStoredCollapsed(storageKey)
   );
 
-  const toggleCollapse = () => {
-    setCollapsed((current) => {
-      const next = !current;
+  const setCollapsedPersist = useCallback(
+    (next: boolean) => {
+      setCollapsed(next);
       try {
         window.localStorage.setItem(storageKey, String(next));
       } catch {
         // Best-effort only - a private-browsing quota error shouldn't block
         // the toggle from working for the rest of the session.
       }
-      return next;
-    });
-  };
+    },
+    [storageKey]
+  );
+
+  const toggleCollapse = () => setCollapsedPersist(!collapsed);
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.navbarWrapper}>
-        <Navbar
-          role={role}
-          brandLabel={brandLabel}
-          identity={identity}
-          notificationBell={notificationBell}
-          composeButton={composeButton}
-          creditIndicator={creditIndicator}
-        />
-      </div>
-      <div className={styles.body}>
-        <Sidebar
-          sections={sidebarSections}
-          collapsed={collapsed}
-          onToggleCollapse={toggleCollapse}
-          role={role}
-        />
-        <main className={styles.main}>
-          {children}
-          <Outlet />
-        </main>
-      </div>
+    <SidebarCollapseProvider
+      collapsed={collapsed}
+      setCollapsed={setCollapsedPersist}
+    >
+      <div className={styles.shell}>
+        <div className={styles.navbarWrapper}>
+          <Navbar
+            role={role}
+            brandLabel={brandLabel}
+            identity={identity}
+            notificationBell={notificationBell}
+            composeButton={composeButton}
+            creditIndicator={creditIndicator}
+          />
+        </div>
+        <div className={styles.body}>
+          <Sidebar
+            sections={sidebarSections}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapse}
+            role={role}
+          />
+          <main className={styles.main}>
+            {children}
+            <Outlet />
+          </main>
+        </div>
 
-      {role === 'customer' ? (
-        <HelpMascot
-          links={[
-            onContactSupport
-              ? { label: 'Contact support', onClick: onContactSupport }
-              : { label: 'Contact support', href: '#' },
-            { label: 'My Bookings', href: '/portal/bookings' },
-          ]}
-        />
-      ) : null}
-    </div>
+        {role === 'customer' ? (
+          <HelpMascot
+            links={[
+              onContactSupport
+                ? { label: 'Contact support', onClick: onContactSupport }
+                : { label: 'Contact support', href: '#' },
+              { label: 'My Bookings', href: '/portal/bookings' },
+            ]}
+          />
+        ) : null}
+      </div>
+    </SidebarCollapseProvider>
   );
 }

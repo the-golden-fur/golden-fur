@@ -54,6 +54,17 @@ interface SlotPickerProps {
     hasAnyAvailable: boolean;
     hasAnySlots: boolean;
   }) => void;
+  /** Multi-booking checkout: windows this same pet already occupies via
+   * another booking already committed in the current cart (see
+   * bookingsList in CustomerBookingFlowPage) - a candidate slot overlapping
+   * one of these is shown/disabled exactly like a genuinely unavailable one
+   * (same "Unavailable" label, same disabled button), so the pet can't be
+   * scheduled into two overlapping services within one checkout. Purely a
+   * same-cart, same-pet UI guard - it never touches real capacity, so other
+   * customers (and this pet's OTHER checkouts) can still book the same
+   * slot. Only meaningful when there's more than one booking for this pet
+   * in the cart; the caller passes undefined/empty otherwise. */
+  excludedWindows?: SelectedSlot[];
 }
 
 /** Browser-LOCAL calendar date, not UTC - `.toISOString()` reports the UTC
@@ -93,6 +104,7 @@ export function SlotPicker({
   intent = 'new_booking',
   lockToNow = false,
   onAvailabilityChange,
+  excludedWindows,
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
   const [slots, setSlots] = useState<SlotAvailability[]>([]);
@@ -184,9 +196,44 @@ export function SlotPicker({
     lockToNow,
   ]);
 
+  // Multi-booking checkout: any fetched slot that overlaps a window this
+  // same pet already occupies elsewhere in the current cart is downgraded
+  // to unavailable here - server-reported availability (eligible_staff_count/
+  // cage capacity) is stripped off an overridden slot too, so a staff
+  // viewer never sees a disabled button still claiming "3 slots available"
+  // (TimeSlotInput's availabilityText reads those fields independently of
+  // `.available`). Real availability itself is never touched - this is a
+  // client-only same-pet self-conflict guard, not a capacity change.
+  const visibleSlots = useMemo(() => {
+    if (!excludedWindows || excludedWindows.length === 0) return slots;
+
+    return slots.map((slot) => {
+      if (!slot.available) return slot;
+
+      const slotStart = new Date(slot.start).getTime();
+      const slotEnd = new Date(slot.end).getTime();
+
+      const conflictsWithOwnPet = excludedWindows.some((window) => {
+        const windowStart = new Date(window.start).getTime();
+        const windowEnd = new Date(window.end).getTime();
+        return slotStart < windowEnd && windowStart < slotEnd;
+      });
+
+      if (!conflictsWithOwnPet) return slot;
+
+      return {
+        ...slot,
+        available: false,
+        eligible_staff_count: undefined,
+        cage_capacity_remaining: undefined,
+        cage_capacity_total: undefined,
+      };
+    });
+  }, [slots, excludedWindows]);
+
   const availableCount = useMemo(
-    () => slots.filter((slot) => slot.available).length,
-    [slots]
+    () => visibleSlots.filter((slot) => slot.available).length,
+    [visibleSlots]
   );
 
   // Walk-in booking flow: the slot IS the current moment - start at now
@@ -326,7 +373,7 @@ export function SlotPicker({
 
       {!lockToNow && !isLoading && !error && slots.length > 0 ? (
         <TimeSlotInput
-          slots={slots}
+          slots={visibleSlots}
           operatingWindow={operatingWindow}
           viewerMode={viewerMode}
           selectedStart={selectedSlot?.start ?? null}
