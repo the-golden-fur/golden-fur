@@ -418,3 +418,186 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
     expect(res.body.policy_violation).toBe(false);
   });
 });
+
+describe('GET /bookings/:id/details (View details surface)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: [],
+      error: null,
+    } as never);
+  });
+
+  const DETAIL_BOOKING = {
+    ...PENDING_BOOKING,
+    id: 'booking-9',
+    service_category: 'Grooming',
+    status: 'Completed',
+    assigned_staff_id: 'staff-9',
+    preferred_cage_id: null,
+    booking_group_id: null,
+    selected_discount_id: null,
+    selected_promo_id: null,
+    discount_amount: 0,
+    promo_amount: 0,
+    downpayment_amount: null,
+    downpayment_required: false,
+    payment_status: 'Fully Paid',
+    total_price: 100,
+    booking_items: [
+      {
+        id: 'item-1',
+        booking_id: 'booking-9',
+        service_id: 'svc-1',
+        package_id: null,
+        price_at_booking: 100,
+        duration_minutes_at_booking: 60,
+      },
+    ],
+  };
+
+  function queueHydration() {
+    queueFromResults(
+      { data: DETAIL_BOOKING, error: null }, // getBookingById -> bookings
+      {
+        data: {
+          id: DETAIL_BOOKING.branch_id,
+          name: 'Makati',
+          address: '1 Main St',
+          contact_number: '123',
+        },
+        error: null,
+      }, // branches
+      {
+        data: {
+          id: DETAIL_BOOKING.pet_id,
+          name: 'Luna',
+          weight_class: 'S',
+          coat_type: 'SC',
+        },
+        error: null,
+      }, // pets
+      { data: { id: CUSTOMER_ID, full_name: 'Alex Cruz' }, error: null }, // customer_profiles
+      { data: [{ id: 'svc-1', name: 'Full Groom' }], error: null }, // services (item names)
+      { data: { id: 'staff-9', display_name: 'Jamie' }, error: null }, // staff_profiles
+      {
+        data: [
+          {
+            id: 'txn-1',
+            total_amount: 100,
+            payment_choice: 'full',
+            payment_status: 'Fully Paid',
+            payment_method: 'GCash',
+            bank_name: null,
+            credit_applied_amount: 0,
+            payment_reference: null,
+            created_at: '2026-07-18T00:00:00Z',
+            webhook_confirmed_at: '2026-07-18T00:05:00Z',
+          },
+        ],
+        error: null,
+      } // transactions
+    );
+  }
+
+  it('requires authentication', async () => {
+    const res = await request(app).get('/bookings/booking-9/details');
+    expect(res.status).toBe(401);
+  });
+
+  it('hydrates branch, pet, assigned staff, item names and payments for the owning customer', async () => {
+    mockCaller(CUSTOMER_ID);
+    queueHydration();
+
+    const res = await request(app)
+      .get('/bookings/booking-9/details')
+      .set('Authorization', 'Bearer token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.details.branch.name).toBe('Makati');
+    expect(res.body.details.pet.name).toBe('Luna');
+    expect(res.body.details.assigned_staff.display_name).toBe('Jamie');
+    expect(res.body.details.items[0].name).toBe('Full Groom');
+    expect(res.body.details.transactions).toHaveLength(1);
+    expect(res.body.details.payments_visible).toBe(true);
+    expect(res.body.details.pricing.amount_paid).toBe(100);
+    expect(res.body.details.pricing.balance_due).toBe(0);
+  });
+
+  it('returns 403 for a different customer who is not staff', async () => {
+    mockCaller('someone-else');
+    queueFromResults(
+      { data: DETAIL_BOOKING, error: null }, // bookings - owned by CUSTOMER_ID
+      { data: null, error: null } // getStaffRoleOrNull - not staff
+    );
+
+    const res = await request(app)
+      .get('/bookings/booking-9/details')
+      .set('Authorization', 'Bearer token');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('allows a Cashier to view any booking with its payments (Payments Queue drill-down)', async () => {
+    mockCaller('cashier-1');
+    queueFromResults(
+      { data: DETAIL_BOOKING, error: null }, // bookings
+      { data: { role: 'Cashier' }, error: null }, // getStaffRoleOrNull (getBookingById)
+      { data: { role: 'Cashier' }, error: null }, // getStaffRoleOrNull (payments gate)
+      { data: { id: DETAIL_BOOKING.branch_id, name: 'Makati' }, error: null },
+      { data: { id: DETAIL_BOOKING.pet_id, name: 'Luna' }, error: null },
+      { data: { id: CUSTOMER_ID, full_name: 'Alex Cruz' }, error: null },
+      { data: [{ id: 'svc-1', name: 'Full Groom' }], error: null },
+      { data: { id: 'staff-9', display_name: 'Jamie' }, error: null },
+      {
+        data: [
+          {
+            id: 'txn-1',
+            total_amount: 100,
+            payment_choice: 'full',
+            payment_status: 'Fully Paid',
+            payment_method: 'GCash',
+            bank_name: null,
+            credit_applied_amount: 0,
+            payment_reference: 'ref-1',
+            created_at: '2026-07-18T00:00:00Z',
+            webhook_confirmed_at: null,
+          },
+        ],
+        error: null,
+      } // transactions
+    );
+
+    const res = await request(app)
+      .get('/bookings/booking-9/details')
+      .set('Authorization', 'Bearer token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.details.payments_visible).toBe(true);
+    expect(res.body.details.transactions).toHaveLength(1);
+  });
+
+  it('withholds the payment list from a non-billing staff role (Groomer)', async () => {
+    mockCaller('groomer-1');
+    queueFromResults(
+      { data: DETAIL_BOOKING, error: null }, // bookings
+      { data: { role: 'Groomer' }, error: null }, // getStaffRoleOrNull (getBookingById)
+      { data: { role: 'Groomer' }, error: null }, // getStaffRoleOrNull (payments gate)
+      { data: { id: DETAIL_BOOKING.branch_id, name: 'Makati' }, error: null },
+      { data: { id: DETAIL_BOOKING.pet_id, name: 'Luna' }, error: null },
+      { data: { id: CUSTOMER_ID, full_name: 'Alex Cruz' }, error: null },
+      { data: [{ id: 'svc-1', name: 'Full Groom' }], error: null },
+      { data: { id: 'staff-9', display_name: 'Jamie' }, error: null }
+      // no transactions query - withheld for a non-billing role
+    );
+
+    const res = await request(app)
+      .get('/bookings/booking-9/details')
+      .set('Authorization', 'Bearer token');
+
+    expect(res.status).toBe(200);
+    expect(res.body.details.assigned_staff.display_name).toBe('Jamie');
+    expect(res.body.details.payments_visible).toBe(false);
+    expect(res.body.details.transactions).toEqual([]);
+  });
+});

@@ -29,6 +29,7 @@ import {
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
+import { getBookingDetails } from './services/bookingDetails.service.ts';
 import {
   addCustomerBalancePayment,
   payForBooking,
@@ -155,6 +156,34 @@ export async function getBookingController(
     });
 
     return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Fully-hydrated single booking for the read-only "View details" views
+ * (customer My Bookings modal + staff Booking Details page). Same
+ * jwtMiddleware-only gate as GET /bookings/:id - ownership (or staff role)
+ * is enforced inside getBookingById, which getBookingDetails delegates to.
+ */
+export async function getBookingDetailsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const details = await getBookingDetails({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+    });
+
+    return res.status(200).json({ details });
   } catch (error) {
     return sendServiceError(res, error);
   }
