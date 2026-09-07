@@ -52,14 +52,17 @@ async function isAuthorizedForPetArchive(
  * Broader than CUSTOMER_MANAGER_ROLES, for single-record lookup only (GET
  * /pets/:id) - mirrors customer.controller.ts's own
  * isAuthorizedForProfileLookup: a Groomer/Veterinarian needs to see whose
- * pet they're servicing in their own queue, but that's not the same as the
- * broader CUSTOMER_MANAGER_ROLES-gated ability to list/create/update/delete
- * any customer's pets.
+ * pet they're servicing in their own queue, and a Cashier needs to see
+ * whose pet a booking is for when taking payment (Bookings Queue / Booking
+ * Details / Payments Queue), but that's not the same as the broader
+ * CUSTOMER_MANAGER_ROLES-gated ability to list/create/update/delete any
+ * customer's pets.
  */
 const PET_LOOKUP_ROLES: readonly string[] = [
   ...CUSTOMER_MANAGER_ROLES,
   'Groomer',
   'Veterinarian',
+  'Cashier',
 ];
 
 async function isAuthorizedForPetLookup(requesterId: string): Promise<boolean> {

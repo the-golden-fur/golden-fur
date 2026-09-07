@@ -52,13 +52,16 @@ async function isAuthorizedStaff(requesterId: string): Promise<boolean> {
  * (vaccinationRecord.service.ts) of extending a narrow, read-only action to
  * a role that legitimately needs it: a Groomer/Veterinarian needs to see
  * whose pet they're servicing in their own queue (GroomerDashboardPage/
- * VeterinaryConsolePage), but that's not the same as the broader
- * CUSTOMER_MANAGER_ROLES-gated ability to list/edit every customer.
+ * VeterinaryConsolePage), and a Cashier needs to see whose booking they're
+ * taking payment for (Bookings Queue / Booking Details / Payments Queue) -
+ * but that's not the same as the broader CUSTOMER_MANAGER_ROLES-gated
+ * ability to list/edit every customer.
  */
 const PROFILE_LOOKUP_ROLES: readonly string[] = [
   ...CUSTOMER_MANAGER_ROLES,
   'Groomer',
   'Veterinarian',
+  'Cashier',
 ];
 
 async function isAuthorizedForProfileLookup(
