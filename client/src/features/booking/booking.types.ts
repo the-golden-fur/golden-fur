@@ -429,6 +429,88 @@ export interface CagePickerOptionsResult {
   options: CagePickerOption[];
 }
 
+/**
+ * Client mirror of the server's BookingDetails - the fully-hydrated single
+ * booking behind the read-only "View details" surfaces (the customer My
+ * Bookings modal and the staff Booking Details page). Everything a booking
+ * only stores as an id is resolved server-side in GET /bookings/:id/details.
+ */
+export interface HydratedBookingItem extends BookingItem {
+  name: string;
+}
+
+export interface BookingDetailsBranch {
+  id: string;
+  name: string;
+  address: string | null;
+  contact_number: string | null;
+}
+
+export interface BookingDetailsPet {
+  id: string;
+  name: string;
+  weight_class: string | null;
+  coat_type: string | null;
+}
+
+export interface BookingDetailsOwner {
+  id: string;
+  full_name: string;
+}
+
+export interface BookingDetailsStaff {
+  id: string;
+  display_name: string;
+}
+
+export interface BookingDetailsCage {
+  id: string;
+  cage_label: string;
+  size: string;
+}
+
+export interface BookingDetailsTransaction {
+  id: string;
+  total_amount: number;
+  /** 'full' | 'downpayment' | 'balance' | null (older rows). */
+  payment_choice: string | null;
+  payment_status: PaymentStatus;
+  payment_method: string | null;
+  bank_name: string | null;
+  credit_applied_amount: number;
+  payment_reference: string | null;
+  created_at: string;
+  webhook_confirmed_at: string | null;
+}
+
+export interface BookingDetailsPricing {
+  items_subtotal: number;
+  discount_amount: number;
+  promo_amount: number;
+  total: number;
+  downpayment_amount: number | null;
+  downpayment_required: boolean;
+  amount_paid: number;
+  balance_due: number;
+}
+
+export interface BookingDetails {
+  booking: Booking;
+  branch: BookingDetailsBranch | null;
+  pet: BookingDetailsPet | null;
+  owner: BookingDetailsOwner | null;
+  items: HydratedBookingItem[];
+  assigned_staff: BookingDetailsStaff | null;
+  cage: BookingDetailsCage | null;
+  discount_name: string | null;
+  promo_name: string | null;
+  group: BookingGroup | null;
+  /** False for a staff caller outside the billing roles - payments withheld. */
+  payments_visible: boolean;
+  pricing: BookingDetailsPricing;
+  transactions: BookingDetailsTransaction[];
+}
+
 export interface PolicyConfiguration {
   id: string;
   branch_id: string | null;

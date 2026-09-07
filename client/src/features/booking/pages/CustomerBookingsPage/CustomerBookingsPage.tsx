@@ -10,6 +10,7 @@ import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
+import { BookingDetailsModal } from '../../components/BookingDetailsModal/BookingDetailsModal';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
@@ -59,6 +60,7 @@ export function CustomerBookingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
   const [rescheduleSlot, setRescheduleSlot] = useState<{
     start: string;
@@ -295,6 +297,10 @@ export function CustomerBookingsPage() {
               rescheduleSlot !== null && !staffPickerUnavailable;
 
             const menuItems = [
+              {
+                label: 'View details',
+                onSelect: () => setDetailsBookingId(booking.id),
+              },
               ...(canReschedule
                 ? [
                     {
@@ -388,6 +394,11 @@ export function CustomerBookingsPage() {
           })}
         </ul>
       )}
+
+      <BookingDetailsModal
+        bookingId={detailsBookingId}
+        onClose={() => setDetailsBookingId(null)}
+      />
 
       <ConfirmDialog
         isOpen={cancelTarget !== undefined}

@@ -550,3 +550,98 @@ export type CagePickerOption =
       cage_label: string;
       size: string;
     };
+
+/**
+ * Fully-hydrated single booking for the read-only "View details" surface -
+ * the customer's My Bookings modal (BookingDetailsModal) and the staff
+ * Booking Details page (BookingDetailsPage), which both only ever had bare
+ * ids to work with otherwise. Assembled server-side by
+ * bookingDetails.service.ts on the service-role client (the customer session
+ * can't read services/packages/staff_profiles/cages/transactions directly -
+ * same read-through rationale as catalog.service.ts).
+ */
+export interface HydratedBookingItem extends BookingItem {
+  /** Resolved service or package name; falls back to a generic label if the
+   * catalog row is somehow missing. */
+  name: string;
+}
+
+export interface BookingDetailsBranch {
+  id: string;
+  name: string;
+  address: string | null;
+  contact_number: string | null;
+}
+
+export interface BookingDetailsPet {
+  id: string;
+  name: string;
+  weight_class: string | null;
+  coat_type: string | null;
+}
+
+export interface BookingDetailsOwner {
+  id: string;
+  full_name: string;
+}
+
+export interface BookingDetailsStaff {
+  id: string;
+  display_name: string;
+}
+
+export interface BookingDetailsCage {
+  id: string;
+  cage_label: string;
+  size: string;
+}
+
+export interface BookingDetailsTransaction {
+  id: string;
+  total_amount: number;
+  /** 'full' | 'downpayment' | 'balance' | null (older rows). */
+  payment_choice: string | null;
+  payment_status: PaymentStatus;
+  payment_method: string | null;
+  bank_name: string | null;
+  credit_applied_amount: number;
+  payment_reference: string | null;
+  created_at: string;
+  webhook_confirmed_at: string | null;
+}
+
+/** Effective pricing for the booking - the group's shared values when the
+ * booking is part of a multi-booking checkout, otherwise the booking's own. */
+export interface BookingDetailsPricing {
+  items_subtotal: number;
+  discount_amount: number;
+  promo_amount: number;
+  total: number;
+  downpayment_amount: number | null;
+  downpayment_required: boolean;
+  /** Sum of settled (Fully/Partially Paid) transaction amounts. */
+  amount_paid: number;
+  /** total - amount_paid, floored at 0. */
+  balance_due: number;
+}
+
+export interface BookingDetails {
+  booking: Booking;
+  branch: BookingDetailsBranch | null;
+  pet: BookingDetailsPet | null;
+  owner: BookingDetailsOwner | null;
+  items: HydratedBookingItem[];
+  assigned_staff: BookingDetailsStaff | null;
+  cage: BookingDetailsCage | null;
+  discount_name: string | null;
+  promo_name: string | null;
+  /** Present only when the booking belongs to a multi-booking checkout. */
+  group: BookingGroup | null;
+  /** False for a staff caller outside BILLING_STAFF_ROLES - the payment list
+   * and the paid/balance rollup are withheld and `transactions` is empty. */
+  payments_visible: boolean;
+  pricing: BookingDetailsPricing;
+  /** This booking's payments, or the whole group's when grouped, oldest first.
+   * Empty when `payments_visible` is false. */
+  transactions: BookingDetailsTransaction[];
+}

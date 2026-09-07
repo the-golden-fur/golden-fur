@@ -1,5 +1,6 @@
 import type {
   Booking,
+  BookingDetails,
   BookingStatus,
   CagePickerOptionsResult,
   CancelBookingPayload,
@@ -117,6 +118,30 @@ export async function getBooking(
 
   const result = await parseBody<{ booking: Booking }>(response);
   return { data: result.data?.booking ?? null, error: result.error };
+}
+
+/**
+ * Fully-hydrated single booking for the read-only "View details" surfaces
+ * (BookingDetailsModal, BookingDetailsPage) - GET /bookings/:id/details
+ * resolves branch/pet/staff/cage/item-names/discount-promo/payments
+ * server-side, so a customer session gets them without hitting the
+ * staff-only maintenance/billing endpoints.
+ */
+export async function getBookingDetails(
+  bookingId: string,
+  accessToken: string
+): Promise<BookingApiResult<BookingDetails>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/details`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ details: BookingDetails }>(response);
+  return { data: result.data?.details ?? null, error: result.error };
 }
 
 export async function listBookings(

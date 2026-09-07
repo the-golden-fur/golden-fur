@@ -25,6 +25,7 @@ vi.mock('../../api/booking.api', () => ({
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
   payForBooking: vi.fn(),
+  getBookingDetails: vi.fn(),
   getOnlinePaymentsStatus: vi.fn().mockResolvedValue({
     data: { online_payments_enabled: true },
     error: null,
@@ -294,6 +295,59 @@ describe('CustomerBookingsPage', () => {
     );
     expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
+  });
+
+  it('offers "View details" on every booking - even a Cancelled one - and opens the details modal', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Cancelled' })],
+      error: null,
+    });
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: {
+        booking: buildBooking({ status: 'Cancelled' }),
+        branch: {
+          id: 'branch-1',
+          name: 'Makati',
+          address: null,
+          contact_number: null,
+        },
+        pet: { id: 'pet-1', name: 'Rex', weight_class: null, coat_type: null },
+        owner: { id: 'cust-1', full_name: 'Sam Owner' },
+        items: [],
+        assigned_staff: null,
+        cage: null,
+        discount_name: null,
+        promo_name: null,
+        group: null,
+        payments_visible: true,
+        pricing: {
+          items_subtotal: 500,
+          discount_amount: 0,
+          promo_amount: 0,
+          total: 500,
+          downpayment_amount: null,
+          downpayment_required: false,
+          amount_paid: 0,
+          balance_due: 500,
+        },
+        transactions: [],
+      },
+      error: null,
+    });
+
+    renderPage();
+
+    await openMenu(user);
+    await user.click(screen.getByText('View details'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Booking details')).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Rex/)).toBeInTheDocument();
+    expect(bookingApi.getBookingDetails).toHaveBeenCalledWith(
+      'booking-1',
+      'token'
+    );
   });
 
   it('never shows a Pay action - paying moved to the Transaction History page', async () => {

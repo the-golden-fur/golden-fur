@@ -13,6 +13,7 @@ import {
   addBalancePaymentController,
   downpaymentStatusController,
   getBookingController,
+  getBookingDetailsController,
   listBookingsController,
   listPolicyConfigurationsController,
   nextAvailableSlotController,
@@ -161,6 +162,12 @@ router.patch(
 );
 
 router.get('/bookings/:id', jwtMiddleware, getBookingController);
+
+// Fully-hydrated single booking (branch/pet/staff/cage/items/payments
+// resolved server-side) for the read-only "View details" surfaces - the
+// customer My Bookings modal and the staff Booking Details page. Ownership
+// enforced in getBookingById, same as GET /bookings/:id above.
+router.get('/bookings/:id/details', jwtMiddleware, getBookingDetailsController);
 
 // Reschedule / cancellation (#54)
 router.post(
