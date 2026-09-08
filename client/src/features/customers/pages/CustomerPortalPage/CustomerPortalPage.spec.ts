@@ -7,11 +7,17 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import { CreditBalanceContext } from '../../../credits/providers/CreditBalanceContext';
 import type { CreditBalanceContextValue } from '../../../credits/providers/CreditBalanceContext';
 import type { CreditBalance } from '../../../credits/credits.types';
-import { getCustomerProfile } from '../../api/customer.api';
+import { getCustomerProfile, listCustomerPets } from '../../api/customer.api';
+import { listNotifications } from '../../../notifications/api/notifications.api';
 import { CustomerPortalPage } from './CustomerPortalPage';
 
 vi.mock('../../api/customer.api', () => ({
   getCustomerProfile: vi.fn(),
+  listCustomerPets: vi.fn(),
+}));
+
+vi.mock('../../../notifications/api/notifications.api', () => ({
+  listNotifications: vi.fn(),
 }));
 
 function balance(overrides: Partial<CreditBalance> = {}): CreditBalance {
@@ -70,9 +76,11 @@ describe('CustomerPortalPage', () => {
       data: null,
       error: 'pending',
     });
+    vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listNotifications).mockResolvedValue({ data: [], error: null });
   });
 
-  it('greets the customer by name once their profile loads, instead of a navigation tile grid', async () => {
+  it('greets the customer by name once their profile loads', async () => {
     vi.mocked(getCustomerProfile).mockResolvedValue({
       data: {
         id: 'customer-1',
@@ -97,9 +105,6 @@ describe('CustomerPortalPage', () => {
         name: 'Welcome back, Jane Dela Cruz!',
       })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /book a service/i })
-    ).not.toBeInTheDocument();
   });
 
   it('shows a generic welcome before the profile has loaded', () => {
@@ -110,7 +115,28 @@ describe('CustomerPortalPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links to the dedicated credits page when the customer has credit', () => {
+  it('renders the dashboard widgets with links to their pages', () => {
+    renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'Notification Board' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /book a service/i })
+    ).toHaveAttribute('href', '/portal/book');
+    expect(
+      screen.getByRole('link', { name: /view transactions/i })
+    ).toHaveAttribute('href', '/portal/transactions');
+    expect(
+      screen.getByRole('heading', { name: 'My Pets' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute(
+      'href',
+      '/portal/pets'
+    );
+  });
+
+  it('shows the account credit total in the credits widget', () => {
     renderPage({ total: 500, balances: [balance({ balance: 500 })] });
 
     const link = screen.getByRole('link', { name: /account credit/i });
@@ -118,10 +144,30 @@ describe('CustomerPortalPage', () => {
     expect(link).toHaveTextContent('₱500.00');
   });
 
-  it('shows no credit summary when the customer has no credit anywhere', () => {
+  it('lists the customer notifications on the board', async () => {
+    vi.mocked(listNotifications).mockResolvedValue({
+      data: [
+        {
+          id: 'n-1',
+          recipient_staff_id: null,
+          recipient_customer_id: 'customer-1',
+          event_type: 'booking_confirmed',
+          title: 'Booking confirmed',
+          message: 'Your grooming appointment is set.',
+          related_booking_id: 'b-1',
+          related_thread_id: null,
+          is_read: false,
+          is_starred: false,
+          is_deleted: false,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
     renderPage();
 
-    expect(screen.queryByText(/account credit/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/₱/)).not.toBeInTheDocument();
+    const row = await screen.findByRole('link', { name: /booking confirmed/i });
+    expect(row).toHaveAttribute('href', '/portal/notifications?open=n-1');
   });
 });
