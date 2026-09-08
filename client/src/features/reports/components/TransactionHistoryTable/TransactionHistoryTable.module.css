@@ -65,6 +65,23 @@
   text-align: left;
 }
 
+/* Custom change (transaction history visibility): a booking-payment row is a
+   button that opens the booking-details popup. Misc-sale rows have no booking
+   and stay inert. */
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover td,
+.clickableRow:focus-visible td {
+  background: var(--color-portal-nav-hover-bg);
+}
+
+.clickableRow:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: -2px;
+}
+
 .payButton {
   border: 1px solid var(--color-accent-gold-primary);
   border-radius: var(--radius-md);
