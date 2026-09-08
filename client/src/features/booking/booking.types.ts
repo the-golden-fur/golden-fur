@@ -410,6 +410,11 @@ export type StaffPickerOption =
 export interface StaffPickerOptionsResult {
   staff_picker_enabled: boolean;
   options: StaffPickerOption[];
+  /** How many overlapping bookings one staff member may hold
+   * (policy_configurations.max_concurrent_bookings_per_staff). The
+   * multi-booking checkout uses this to grey out a staff member already
+   * picked this many times for an overlapping window elsewhere in the cart. */
+  max_concurrent_per_staff: number;
 }
 
 /** Custom change: Cage Picker addendum - mirrors StaffPickerOption/
@@ -557,6 +562,9 @@ export interface PolicyConfiguration {
    * down-payment-required Online booking auto-cancels and its (unheld)
    * slot is released. NOT NULL, default 24. */
   downpayment_hold_hours: number;
+  /** How many overlapping Grooming/Veterinary bookings one staff member may be
+   * assigned at once. 1 = one pet at a time (default). */
+  max_concurrent_bookings_per_staff: number;
   created_at: string;
   updated_at: string;
 }
@@ -583,6 +591,7 @@ export type EffectivePolicy = Pick<
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'max_concurrent_bookings_per_staff'
 >;
 
 export interface UpdatePolicyPayload {
@@ -607,6 +616,7 @@ export interface UpdatePolicyPayload {
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;
   downpayment_hold_hours?: number;
+  max_concurrent_bookings_per_staff?: number;
 }
 
 export interface StaffPreferenceInput {

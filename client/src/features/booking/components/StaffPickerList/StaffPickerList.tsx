@@ -30,6 +30,15 @@ interface StaffPickerListProps {
    * both the customer flow (#55/#59) and staff surfaces (#60).
    */
   onUnavailable?: () => void;
+  /**
+   * Multi-booking checkout only: staff_id -> how many bookings already
+   * committed in this cart have picked that staff member for a window
+   * overlapping the one being configured now. A staff member is greyed out
+   * (with a hint) once this reaches the branch's max_concurrent_bookings_per_
+   * staff, so the customer can't build a cart that only fails on Confirm.
+   * Undefined for single bookings / walk-ins.
+   */
+  cartStaffOverlapCounts?: Record<string, number>;
 }
 
 type SortKey = 'default' | 'name-asc' | 'name-desc';
@@ -77,8 +86,10 @@ export function StaffPickerList({
   selected,
   onSelect,
   onUnavailable,
+  cartStaffOverlapCounts,
 }: StaffPickerListProps) {
   const [options, setOptions] = useState<StaffPickerOption[]>([]);
+  const [maxConcurrentPerStaff, setMaxConcurrentPerStaff] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
@@ -127,6 +138,7 @@ export function StaffPickerList({
       }
 
       setError(null);
+      setMaxConcurrentPerStaff(result.data.max_concurrent_per_staff);
 
       if (!result.data.staff_picker_enabled) {
         setIsUnavailable(true);
@@ -177,6 +189,32 @@ export function StaffPickerList({
     return [...noPreference, ...specific];
   }, [options, search, sortKey]);
 
+  // Multi-booking checkout: a specific staff member is "full" once this cart's
+  // overlapping bookings have already picked them max_concurrent_per_staff
+  // times. "No preference" is never full (the server auto-assigns someone
+  // still free).
+  const staffIdIsCartFull = (staffId: string): boolean =>
+    (cartStaffOverlapCounts?.[staffId] ?? 0) >= maxConcurrentPerStaff;
+
+  // If the customer went back and changed a slot so their previously-chosen
+  // staff member is now cart-full, fall back to "No preference" rather than
+  // carrying a selection the Confirm step would reject. Gated on !isLoading so
+  // it never fires against the default maxConcurrentPerStaff of 1 before the
+  // real per-branch value has loaded (which would wrongly clear a valid pick
+  // at a branch whose capacity is >= 2).
+  useEffect(() => {
+    if (isLoading) return;
+    if (
+      selected?.type === 'specific' &&
+      selected.staff_id &&
+      staffIdIsCartFull(selected.staff_id)
+    ) {
+      onSelectRef.current({ type: 'no_preference' });
+    }
+    // staffIdIsCartFull is a stable closure over the values in the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, cartStaffOverlapCounts, maxConcurrentPerStaff, isLoading]);
+
   if (isUnavailable) {
     return null;
   }
@@ -226,12 +264,22 @@ export function StaffPickerList({
                 ? 'no_preference'
                 : option.staff_id;
             const active = isSelected(option, selected);
+            const cartFull =
+              option.type === 'specific' && staffIdIsCartFull(option.staff_id);
 
             return (
               <button
                 key={key}
                 type="button"
-                className={`${styles.card} ${active ? styles.selected : ''}`}
+                disabled={cartFull}
+                title={
+                  cartFull
+                    ? 'Already assigned to another pet in this checkout at this time'
+                    : undefined
+                }
+                className={`${styles.card} ${active ? styles.selected : ''} ${
+                  cartFull ? styles.disabled : ''
+                }`}
                 onClick={() =>
                   onSelect(
                     option.type === 'no_preference'
@@ -260,6 +308,11 @@ export function StaffPickerList({
                     ? 'No preference'
                     : option.display_name}
                 </span>
+                {cartFull ? (
+                  <span className={styles.cartFullHint}>
+                    Booked for another pet in this checkout
+                  </span>
+                ) : null}
               </button>
             );
           })}

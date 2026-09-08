@@ -477,6 +477,11 @@ export interface PolicyConfiguration {
    * unpaid down-payment-required Online booking auto-cancels. NOT NULL,
    * default 24. Snapshotted onto bookings.downpayment_due_at at creation. */
   downpayment_hold_hours: number;
+  /** How many overlapping Grooming/Veterinary bookings one staff member may be
+   * assigned at once (20260908178). 1 = one pet at a time (default). Read by
+   * the get_staff_availability RPC (Check 2) and confirmCapacityAfterInsert;
+   * also gates the multi-booking checkout's in-request claimWindowOrThrow. */
+  max_concurrent_bookings_per_staff: number;
   created_at: string;
   updated_at: string;
 }
@@ -507,6 +512,7 @@ export type EffectivePolicy = Pick<
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'max_concurrent_bookings_per_staff'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

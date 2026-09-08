@@ -17,3 +17,13 @@ export function getHotelNightDates(
 
   return dates;
 }
+
+/** Short, timezone-stable label for a YYYY-MM-DD night ("Sep 12") - shared by
+ * NightTabs and the wizard's incomplete-row banner. */
+export function formatNightLabel(dateIso: string): string {
+  return new Date(`${dateIso}T00:00:00Z`).toLocaleDateString(undefined, {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+  });
+}

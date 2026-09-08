@@ -323,6 +323,17 @@ describe('updatePolicyValidator', () => {
     ).toBe(false);
   });
 
+  it('accepts max_concurrent_bookings_per_staff >= 1 and rejects 0', () => {
+    expect(
+      updatePolicyValidator.safeParse({ max_concurrent_bookings_per_staff: 2 })
+        .success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ max_concurrent_bookings_per_staff: 0 })
+        .success
+    ).toBe(false);
+  });
+
   it('accepts enabling a per-transaction downpayment (Flat)', () => {
     expect(
       updatePolicyValidator.safeParse({

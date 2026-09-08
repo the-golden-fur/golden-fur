@@ -651,6 +651,18 @@ export async function resolveStaffAssignment(
   const pickerEnabled = await isStaffPickerEnabled(category);
 
   if (!pickerEnabled) {
+    // A `specific` preference can only get here if the client showed a Staff
+    // Picker this category's service_types row says shouldn't exist (a stale
+    // staff_picker_enabled flag on the client, diverging from the server).
+    // Silently dropping it used to strand the booking with no staff and no
+    // signal - reject loudly instead so the mismatch surfaces.
+    if (input.staff_preference?.type === 'specific') {
+      throwWithStatus(
+        409,
+        'Staff selection is not available for this service — please go back and continue without choosing a staff member'
+      );
+    }
+
     return {
       assignedStaffId: null,
       preferenceType: null,
@@ -841,6 +853,11 @@ export async function createBooking({
   let downpaymentRequired = false;
   let downpaymentAmount: number | null = null;
   let downpaymentHoldHours = 24;
+  // policy_configurations.max_concurrent_bookings_per_staff (20260908178) -
+  // passed to the post-insert race check below. Resolved from the effective
+  // policy on the Online path; Walk-ins keep the default of 1 (see
+  // confirmCapacityAfterInsert's own note on why that's fine).
+  let staffConcurrency = 1;
 
   if (bookingSource === 'Online') {
     // A slot that has already started is never a valid Online booking. The
@@ -882,6 +899,7 @@ export async function createBooking({
             : Math.min(policy.downpayment_amount ?? 0, netTotal)
         )
       : null;
+    staffConcurrency = policy.max_concurrent_bookings_per_staff;
   }
 
   const status: Booking['status'] =
@@ -1064,7 +1082,7 @@ export async function createBooking({
   // (SLOT_HOLD_PAID_OR_FILTER). Its capacity is re-verified when it pays
   // (recomputeBookingPaymentStatus after the first settled transaction).
   if (holdsSlot) {
-    const won = await confirmCapacityAfterInsert(booking);
+    const won = await confirmCapacityAfterInsert(booking, staffConcurrency);
 
     if (!won) {
       await supabase.from('bookings').delete().eq('id', booking.id);
