@@ -279,9 +279,20 @@ export async function checkCapacity(
  * winner: rank all overlapping Confirmed rows by (created_at, id) and keep
  * only the first `capacity` of them. The caller deletes the row when this
  * returns false, so exactly one of two racers survives.
+ *
+ * For Grooming/Veterinary, `staffConcurrency` is
+ * policy_configurations.max_concurrent_bookings_per_staff for the booking's
+ * branch (20260908178) - how many overlapping bookings one staff member may
+ * hold. Defaults to 1; createBooking passes the value it already resolved
+ * from the effective policy for Online bookings. (Walk-ins and the
+ * down-payment settlement re-check keep the default of 1 - a walk-in or a
+ * settlement racing another submission for a staff member at a branch that
+ * has raised this above 1 is not a real scenario; the pre-insert
+ * get_staff_availability RPC still honours the configured number for them.)
  */
 export async function confirmCapacityAfterInsert(
-  booking: Booking
+  booking: Booking,
+  staffConcurrency = 1
 ): Promise<boolean> {
   if (
     booking.service_category === 'Grooming' ||
@@ -306,7 +317,10 @@ export async function confirmCapacityAfterInsert(
 
     const rows = (data ?? []) as Array<{ id: string }>;
 
-    return rows.length > 0 && rows[0].id === booking.id;
+    // Same "rank by (created_at, id), keep the first `capacity`" tie-break the
+    // Hotel/Daycare branches below use - capacity 1 unless an admin raised
+    // max_concurrent_bookings_per_staff for this branch.
+    return rows.slice(0, staffConcurrency).some((row) => row.id === booking.id);
   }
 
   const baseParams: CapacityCheckParams = {

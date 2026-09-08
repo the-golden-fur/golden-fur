@@ -43,6 +43,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   downpayment_type: 'Percentage',
   downpayment_amount: 50,
   downpayment_hold_hours: 24,
+  // Mirrors the column default (20260908178): one staff member, one pet at a
+  // time. Only used if the seeded default row is deleted out-of-band.
+  max_concurrent_bookings_per_staff: 1,
 };
 
 export interface ServiceTypeStaffConfig {
@@ -332,6 +335,13 @@ export async function listAvailableStaff({
 export interface StaffPickerOptionsResult {
   staff_picker_enabled: boolean;
   options: StaffPickerOption[];
+  /** policy_configurations.max_concurrent_bookings_per_staff for this branch
+   * (20260908178) - how many overlapping bookings one staff member may hold.
+   * Surfaced here (a customer-accessible endpoint) so the multi-booking
+   * checkout can grey out a staff member already picked `capacity` times for
+   * an overlapping window in the same cart, without needing the staff-only
+   * GET /bookings/policy. */
+  max_concurrent_per_staff: number;
 }
 
 /**
@@ -347,10 +357,19 @@ export async function getStaffPickerOptions(
   const enabled = await isStaffPickerEnabled(params.serviceCategory);
 
   if (!enabled) {
-    return { staff_picker_enabled: false, options: [] };
+    // Picker isn't rendered, so max_concurrent_per_staff is moot - skip the
+    // policy read and report the default.
+    return {
+      staff_picker_enabled: false,
+      options: [],
+      max_concurrent_per_staff: 1,
+    };
   }
 
-  const staff = await listAvailableStaff(params);
+  const [staff, policy] = await Promise.all([
+    listAvailableStaff(params),
+    resolveEffectivePolicy(params.branchId),
+  ]);
 
   return {
     staff_picker_enabled: true,
@@ -363,6 +382,7 @@ export async function getStaffPickerOptions(
         profile_photo_url: member.profile_photo_url,
       })),
     ],
+    max_concurrent_per_staff: policy.max_concurrent_bookings_per_staff,
   };
 }
 
@@ -561,6 +581,8 @@ export async function updatePolicyConfiguration({
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,
     downpayment_hold_hours: resolved.downpayment_hold_hours,
+    max_concurrent_bookings_per_staff:
+      resolved.max_concurrent_bookings_per_staff,
   };
 
   const { data, error } = await supabase

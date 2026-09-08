@@ -270,6 +270,29 @@ describe('capacity.service (#51)', () => {
       expect(await confirmCapacityAfterInsert(daycareBooking)).toBe(false);
     });
 
+    it('wins when ranked within a raised staffConcurrency (max_concurrent_bookings_per_staff)', async () => {
+      queueFromResults({
+        data: [{ id: 'booking-racer' }, { id: 'booking-mine' }],
+        error: null,
+      });
+
+      // Default capacity 1 -> loses; capacity 2 -> the second row still wins.
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 2)).toBe(true);
+    });
+
+    it('still loses past a raised staffConcurrency', async () => {
+      queueFromResults({
+        data: [
+          { id: 'booking-r1' },
+          { id: 'booking-r2' },
+          { id: 'booking-mine' },
+        ],
+        error: null,
+      });
+
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 2)).toBe(false);
+    });
+
     it('excludes unpaid down-payment holds from the staff overlap re-count (down-payment slot gate)', async () => {
       queueFromResults({ data: [{ id: 'booking-mine' }], error: null });
 

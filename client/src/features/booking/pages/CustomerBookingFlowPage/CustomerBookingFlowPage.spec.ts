@@ -868,6 +868,81 @@ describe('CustomerBookingFlowPage', () => {
     );
   });
 
+  it('Care Instructions: a blank row is dropped silently, a half-filled row blocks Next', async () => {
+    const DAYCARE_SERVICE = {
+      id: 'service-daycare-1',
+      category: 'Daycare' as const,
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      is_active: true,
+      requires_assessed_pet: true,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      daycare_overnight_fee: 850,
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    await advanceThroughAvailability(user, { staff: false });
+
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await user.click(screen.getByText('Next'));
+
+    // Add a feeding row, pick a food, then clear the quantity - now it's
+    // half-filled and blocks Next with a banner.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Add feeding time' })
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole('button', { name: 'Add feeding time' }));
+    const foodInput = await screen.findByPlaceholderText('Food type');
+    await user.click(foodInput);
+    await user.click(await screen.findByText('Premium Kibble'));
+    await user.clear(screen.getByPlaceholderText('Quantity'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByText(/Finish or remove .* entry before continuing/i)
+    ).toBeInTheDocument();
+    expect(bookingApi.createBooking).not.toHaveBeenCalled();
+
+    // Restore the quantity - Next proceeds and the row is submitted.
+    await user.type(screen.getByPlaceholderText('Quantity'), '2');
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+  });
+
   it('Hotel: selecting a second cage replaces the first (one cage per booking)', async () => {
     const SMALL_CAGE = {
       id: 'service-hotel-2',

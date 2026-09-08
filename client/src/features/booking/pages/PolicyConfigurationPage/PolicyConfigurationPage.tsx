@@ -52,6 +52,7 @@ interface FormState {
   downpayment_type: DownpaymentType;
   downpayment_amount: number;
   downpayment_hold_hours: number;
+  max_concurrent_bookings_per_staff: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -79,6 +80,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     downpayment_type: policy.downpayment_type ?? 'Flat',
     downpayment_amount: policy.downpayment_amount ?? 0,
     downpayment_hold_hours: policy.downpayment_hold_hours,
+    max_concurrent_bookings_per_staff: policy.max_concurrent_bookings_per_staff,
   };
 }
 
@@ -104,6 +106,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   downpayment_type: 'Flat',
   downpayment_amount: 0,
   downpayment_hold_hours: 24,
+  max_concurrent_bookings_per_staff: 1,
 };
 
 /**
@@ -274,6 +277,7 @@ export function PolicyConfigurationPage() {
         ? form.downpayment_amount
         : null,
       downpayment_hold_hours: form.downpayment_hold_hours,
+      max_concurrent_bookings_per_staff: form.max_concurrent_bookings_per_staff,
     });
 
     setIsSubmitting(false);
@@ -458,6 +462,39 @@ export function PolicyConfigurationPage() {
               Separate from the reschedule notice above. Applies only to
               brand-new online bookings (customer self-service and receptionist
               New Booking), never to walk-ins.
+            </p>
+          </section>
+
+          <section aria-labelledby="staff-concurrency-heading">
+            <h2 className={styles.sectionTitle} id="staff-concurrency-heading">
+              Staff concurrency
+            </h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Max concurrent bookings per staff member (1 = one pet at a time)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                value={form.max_concurrent_bookings_per_staff}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    max_concurrent_bookings_per_staff: Number(
+                      event.target.value
+                    ),
+                  }))
+                }
+              />
+            </label>
+            <p className={styles.copy}>
+              How many overlapping Grooming or Veterinary bookings one groomer /
+              vet can be assigned in the same time window. Raise it to let one
+              staff member handle several pets at once (e.g. two small dogs);
+              the Staff Picker and the overbooking checks both honour this
+              number.
             </p>
           </section>
 

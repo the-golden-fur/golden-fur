@@ -91,14 +91,20 @@ function claimWindowOrThrow(
   key: string,
   start: number,
   end: number,
-  subjectLabel: 'staff' | 'cage' | 'pet'
+  subjectLabel: 'staff' | 'cage' | 'pet',
+  // How many overlapping claims this key may hold before the NEXT one is
+  // rejected. 1 for cage/pet (never shareable); for staff it's
+  // policy_configurations.max_concurrent_bookings_per_staff (20260908178),
+  // so an admin who allows one groomer to take N pets at once doesn't get a
+  // spurious in-request 409 that the DB-backed check would have let through.
+  capacity = 1
 ): void {
   const existing = claims.get(key) ?? [];
-  const conflict = existing.some(
+  const overlapping = existing.filter(
     (window) => start < window.end && window.start < end
   );
 
-  if (conflict) {
+  if (overlapping.length >= capacity) {
     const message =
       subjectLabel === 'pet'
         ? 'This pet already has another booking in this checkout at an overlapping time — please choose a different time for one of them'
@@ -433,7 +439,10 @@ export async function createBookingGroup({
   // decision: either every online sub-booking holds its slot, or none do).
   if (holdsSlot) {
     for (const booking of insertedBookingRows) {
-      const won = await confirmCapacityAfterInsert(booking);
+      const won = await confirmCapacityAfterInsert(
+        booking,
+        policy?.max_concurrent_bookings_per_staff ?? 1
+      );
 
       if (!won) {
         await rollbackBookingGroup(bookingGroup.id, insertedBookingIds);
@@ -671,12 +680,17 @@ async function resolveSubBooking({
   }
 
   if (staffResolution.assignedStaffId) {
+    // `policy` is only null for an all-Walk-in group (see createBookingGroup) -
+    // those keep the strict capacity of 1; a receptionist bundling several
+    // walk-ins onto one staff member at the same instant is already an
+    // unusual case and the stricter guard is the safe default.
     claimWindowOrThrow(
       claimedStaffWindows,
       staffResolution.assignedStaffId,
       startMs,
       endMs,
-      'staff'
+      'staff',
+      policy?.max_concurrent_bookings_per_staff ?? 1
     );
   }
 

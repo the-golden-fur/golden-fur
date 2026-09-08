@@ -29,6 +29,26 @@ const THREE_OPTIONS = [
   },
 ];
 
+/** getStaffPickerOptions success body - max_concurrent_per_staff defaults to
+ * 1 unless a test overrides it. */
+function pickerOk(
+  body: Partial<{
+    staff_picker_enabled: boolean;
+    options: typeof OPTIONS;
+    max_concurrent_per_staff: number;
+  }>
+) {
+  return {
+    data: {
+      staff_picker_enabled: true,
+      options: OPTIONS,
+      max_concurrent_per_staff: 1,
+      ...body,
+    },
+    error: null,
+  };
+}
+
 describe('StaffPickerList', () => {
   it('AC-2: "No preference" appears first', async () => {
     vi.mocked(bookingApi.getStaffPickerOptions).mockResolvedValue({
@@ -212,6 +232,60 @@ describe('StaffPickerList', () => {
     expect(buttons[0]).toHaveTextContent('No preference');
     expect(buttons[1]).toHaveTextContent('Ben Reyes');
     expect(buttons[2]).toHaveTextContent('Ana Cruz');
+  });
+
+  it('disables a staff member already at capacity for an overlapping cart booking, and drops them if selected', async () => {
+    vi.mocked(bookingApi.getStaffPickerOptions).mockResolvedValue(
+      pickerOk({ options: THREE_OPTIONS, max_concurrent_per_staff: 1 })
+    );
+    const onSelect = vi.fn();
+
+    render(
+      createElement(StaffPickerList, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        scheduledStart: '2026-08-03T01:00:00Z',
+        scheduledEnd: '2026-08-03T02:00:00Z',
+        selected: { type: 'specific', staff_id: 'staff-1' },
+        onSelect,
+        // staff-1 already picked once elsewhere in the cart; capacity is 1.
+        cartStaffOverlapCounts: { 'staff-1': 1 },
+      })
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+
+    const anaButton = screen.getByText('Ana Cruz').closest('button');
+    expect(anaButton).toBeDisabled();
+    // staff-2 is untouched.
+    expect(screen.getByText('Ben Reyes').closest('button')).not.toBeDisabled();
+    // the now-invalid selection is cleared back to "No preference".
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith({ type: 'no_preference' })
+    );
+  });
+
+  it('does not disable a staff member still below capacity', async () => {
+    vi.mocked(bookingApi.getStaffPickerOptions).mockResolvedValue(
+      pickerOk({ options: THREE_OPTIONS, max_concurrent_per_staff: 2 })
+    );
+
+    render(
+      createElement(StaffPickerList, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        scheduledStart: '2026-08-03T01:00:00Z',
+        scheduledEnd: '2026-08-03T02:00:00Z',
+        selected: null,
+        onSelect: vi.fn(),
+        cartStaffOverlapCounts: { 'staff-1': 1 },
+      })
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+    expect(screen.getByText('Ana Cruz').closest('button')).not.toBeDisabled();
   });
 
   it('renders nothing and calls onUnavailable when the picker is disabled for this branch+service type', async () => {

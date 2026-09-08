@@ -77,7 +77,7 @@ import {
 } from '../../../catalog/api/catalog.api';
 import type { ProductCatalogItem } from '../../../catalog/catalog.types';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
-import { getHotelNightDates } from '../../utils/hotelNights';
+import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import styles from './CustomerBookingFlowPage.module.css';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
@@ -306,6 +306,47 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   medication_catalog_id: null as string | null,
   stay_date: null as string | null,
 };
+
+/** A care-instruction row's fill state. 'empty' = nothing the user meant to
+ * keep (safe to drop silently); 'partial' = some required fields filled but
+ * not all (would 400 server-side - block Next and point at it); 'complete' =
+ * send it. Mirrors the server Zod rules in booking.validator.ts's
+ * hotelPreferencesValidator (food_type/quantity, medication_name/dose,
+ * duration_minutes > 0). */
+type HotelCareRowStatus = 'empty' | 'partial' | 'complete';
+
+function classifyPair(a: boolean, b: boolean): HotelCareRowStatus {
+  if (!a && !b) return 'empty';
+  return a && b ? 'complete' : 'partial';
+}
+
+/** food_type is the field that means "the user actually wants a feeding entry"
+ * (quantity is pre-filled to 1), so a row with no food_type is just an
+ * unfinished add - dropped silently, never a blocker. */
+function hotelFeedingRowStatus(row: HotelFeedingRowState): HotelCareRowStatus {
+  if (row.food_type.trim() === '') return 'empty';
+  return row.quantity.trim() !== '' ? 'complete' : 'partial';
+}
+
+function hotelMedicationRowStatus(
+  row: typeof EMPTY_HOTEL_MEDICATION_ROW
+): HotelCareRowStatus {
+  return classifyPair(
+    row.medication_name.trim() !== '',
+    row.dose.trim() !== ''
+  );
+}
+
+/** Walking/Playing rows have valid enum + numeric defaults, so a freshly
+ * added one is already 'complete' - it only turns 'partial' if the user
+ * clears the duration to 0/NaN. */
+function hotelWalkPlayRowStatus(row: {
+  duration_minutes: number;
+}): HotelCareRowStatus {
+  return Number.isInteger(row.duration_minutes) && row.duration_minutes > 0
+    ? 'complete'
+    : 'partial';
+}
 
 // Browser-close-safe wizard progress (localStorage, not sessionStorage - a
 // closed tab must not lose the draft). Only the wizard's own form state is
@@ -609,6 +650,41 @@ export function CustomerBookingFlowPage() {
   const [hotelUniformInstructions, setHotelUniformInstructions] =
     useState(true);
   const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
+
+  // Care-instruction rows the user started but didn't finish (e.g. a Feeding
+  // row with a food type but no quantity, or a row half-added on a per-night
+  // tab that's now hidden). These would 400 server-side, so isStepValid
+  // ('hotelDetails') blocks Next while any exist and the step shows a banner
+  // that jumps to the offending night. Complete rows submit; fully-empty rows
+  // are dropped silently (see hotelPreferencesPayload).
+  const hotelCareIncompleteRows = useMemo(() => {
+    if (category !== 'Hotel' && category !== 'Daycare') {
+      return [] as Array<{ section: string; stayDate: string | null }>;
+    }
+
+    const issues: Array<{ section: string; stayDate: string | null }> = [];
+    for (const row of hotelFeeding) {
+      if (hotelFeedingRowStatus(row) === 'partial') {
+        issues.push({ section: 'Feeding', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelWalking) {
+      if (hotelWalkPlayRowStatus(row) === 'partial') {
+        issues.push({ section: 'Walking', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelPlaying) {
+      if (hotelWalkPlayRowStatus(row) === 'partial') {
+        issues.push({ section: 'Playtime', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelMedications) {
+      if (hotelMedicationRowStatus(row) === 'partial') {
+        issues.push({ section: 'Medications', stayDate: row.stay_date });
+      }
+    }
+    return issues;
+  }, [category, hotelFeeding, hotelWalking, hotelPlaying, hotelMedications]);
 
   // A customer's own saved food/medication types (#22), fetched only when
   // Hotel or Daycare is the selected category (the two categories with a
@@ -1270,6 +1346,41 @@ export function CustomerBookingFlowPage() {
       ).toISOString()
     : null;
 
+  // Multi-booking checkout: how many bookings already committed in this cart
+  // have picked each specific staff member for a window that overlaps the
+  // booking currently being configured. Passed to StaffPickerList, which greys
+  // a staff member out once this reaches the branch's
+  // max_concurrent_bookings_per_staff - mirroring samePetBundleWindows above,
+  // and the server's claimedStaffWindows guard in bookingGroup.service.ts, so
+  // the customer can't build a cart that only fails on the final Confirm.
+  // Online only (same walk-in exemption as samePetBundleWindows) and never
+  // touches real capacity - purely a same-cart UI guard.
+  const cartStaffOverlapCounts = useMemo(() => {
+    if (bookingSource === 'Walk-in' || !selectedSlot) return undefined;
+
+    const draftStart = new Date(selectedSlot.start).getTime();
+    const draftEnd = new Date(finalScheduledEnd ?? selectedSlot.end).getTime();
+
+    const counts: Record<string, number> = {};
+    for (const entry of bookingsList) {
+      const staffId =
+        entry.staffPreference?.type === 'specific'
+          ? entry.staffPreference.staff_id
+          : undefined;
+      if (!staffId || !entry.selectedSlot) continue;
+
+      const entryStart = new Date(entry.selectedSlot.start).getTime();
+      const entryEnd = new Date(
+        entry.finalScheduledEnd ?? entry.selectedSlot.end
+      ).getTime();
+
+      if (draftStart < entryEnd && entryStart < draftEnd) {
+        counts[staffId] = (counts[staffId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [bookingsList, selectedSlot, finalScheduledEnd, bookingSource]);
+
   const hotelCheckInTime = selectedSlot
     ? getDayOneMinTime(selectedSlot.start)
     : null;
@@ -1581,7 +1692,10 @@ export function CustomerBookingFlowPage() {
       case 'items':
         return selectedServiceIds.length + selectedPackageIds.length > 0;
       case 'hotelDetails':
-        return true;
+        // Optional step - but a row the user half-filled would fail the
+        // server's hotelPreferencesValidator, so block Next until it's
+        // completed or removed (the step's own banner points at it).
+        return hotelCareIncompleteRows.length === 0;
       case 'bookingsList':
         // Same pattern as 'items' above - at least one booking must be
         // committed before moving on to the shared Review step. In
@@ -1971,8 +2085,14 @@ export function CustomerBookingFlowPage() {
   const hotelPreferencesPayload = useMemo(() => {
     if (category !== 'Hotel' && category !== 'Daycare') return undefined;
 
-    const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding.map(
-      (row) => ({
+    // Only fully-filled rows are sent - a half-added row (common when
+    // per-night tabs hide a row on another night's tab) would fail the
+    // server's hotelPreferencesValidator with an opaque "Invalid payload".
+    // isStepValid('hotelDetails') separately blocks Next while any row is
+    // still 'partial', so nothing the user cares about is silently dropped.
+    const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding
+      .filter((row) => hotelFeedingRowStatus(row) === 'complete')
+      .map((row) => ({
         meal_time: row.meal_time,
         food_type: row.food_type,
         quantity: row.quantity,
@@ -1983,29 +2103,29 @@ export function CustomerBookingFlowPage() {
           ? { food_catalog_id: row.food_catalog_id }
           : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const walking: HotelBookingPreferenceWalking[] = hotelWalking.map(
-      (row) => ({
+    const walking: HotelBookingPreferenceWalking[] = hotelWalking
+      .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
+      .map((row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const playing: HotelBookingPreferencePlaying[] = hotelPlaying.map(
-      (row) => ({
+    const playing: HotelBookingPreferencePlaying[] = hotelPlaying
+      .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
+      .map((row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const medications: HotelBookingPreferenceMedication[] =
-      hotelMedications.map((row) => ({
+    const medications: HotelBookingPreferenceMedication[] = hotelMedications
+      .filter((row) => hotelMedicationRowStatus(row) === 'complete')
+      .map((row) => ({
         medication_name: row.medication_name,
         dose: row.dose,
         scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
@@ -2695,6 +2815,7 @@ export function CustomerBookingFlowPage() {
                 selected={staffPreference}
                 onSelect={setStaffPreference}
                 onUnavailable={() => setStaffPickerUnavailable(true)}
+                cartStaffOverlapCounts={cartStaffOverlapCounts}
               />
             ) : null}
 
@@ -2918,12 +3039,57 @@ export function CustomerBookingFlowPage() {
             {category === 'Hotel' &&
             !hotelUniformInstructions &&
             selectedSlot ? (
-              <NightTabs
-                nights={getHotelNightDates(selectedSlot.start, hotelNights)}
-                activeDate={activeNightDate}
-                onSelect={setActiveNightDate}
-              />
+              <>
+                <NightTabs
+                  nights={getHotelNightDates(selectedSlot.start, hotelNights)}
+                  activeDate={activeNightDate}
+                  onSelect={setActiveNightDate}
+                  allNightsLabel="Default (all nights)"
+                />
+                <p className={styles.copy}>
+                  Entries on <strong>Default (all nights)</strong> apply to
+                  every night. Pick a night to add instructions that override
+                  the default for just that night.
+                </p>
+              </>
             ) : null}
+
+            {hotelCareIncompleteRows.length > 0
+              ? (() => {
+                  const first = hotelCareIncompleteRows[0];
+                  const where = first.stayDate
+                    ? `the ${first.section} entry for ${formatNightLabel(
+                        first.stayDate
+                      )}`
+                    : `a ${first.section} entry`;
+                  // In per-night mode the row is hidden whenever its scope
+                  // (a date, or null for "Default (all nights)") isn't the
+                  // active tab - offer a jump to wherever it lives.
+                  const rowHidden =
+                    !hotelUniformInstructions &&
+                    first.stayDate !== activeNightDate;
+
+                  return (
+                    <div className={styles.errorBanner} role="alert">
+                      Finish or remove {where} before continuing.
+                      {rowHidden ? (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => setActiveNightDate(first.stayDate)}
+                          >
+                            {first.stayDate
+                              ? 'Go to that night'
+                              : 'Go to Default (all nights)'}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })()
+              : null}
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Feeding</span>

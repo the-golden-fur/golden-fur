@@ -568,6 +568,75 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     expect(result.bookings).toHaveLength(2);
   });
 
+  it('(b4) two sub-bookings can share one staff member + window when max_concurrent_bookings_per_staff is raised to 2', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+
+    const CAPACITY_2_POLICY = {
+      ...DEFAULT_POLICY,
+      max_concurrent_bookings_per_staff: 2,
+    };
+
+    queueFromResults(
+      { data: [CAPACITY_2_POLICY], error: null }, // resolveEffectivePolicy
+      { data: PET, error: null }, // sub1 pet ownership
+      { data: PET_B, error: null }, // sub2 pet ownership
+      { data: groupRow({}), error: null }, // booking_groups insert
+      {
+        data: bookingRow({ id: 'booking-b1', assigned_staff_id: 'groomer-1' }),
+        error: null,
+      }, // sub1 insert
+      { data: null, error: null }, // sub1 items insert
+      { data: null, error: null }, // sub1 staff_picker_preferences insert
+      {
+        data: bookingRow({ id: 'booking-b2', assigned_staff_id: 'groomer-1' }),
+        error: null,
+      }, // sub2 insert
+      { data: null, error: null }, // sub2 items insert
+      { data: null, error: null }, // sub2 staff_picker_preferences insert
+      { data: [{ id: 'booking-b1' }], error: null }, // confirmCapacityAfterInsert sub1
+      {
+        data: [{ id: 'booking-b1' }, { id: 'booking-b2' }],
+        error: null,
+      }, // confirmCapacityAfterInsert sub2 - still within capacity 2
+      { data: bookingRow({ id: 'booking-b1' }), error: null }, // final fetch sub1
+      { data: bookingRow({ id: 'booking-b2' }), error: null } // final fetch sub2
+    );
+
+    const result = await createBookingGroup({
+      requesterId: CUSTOMER_ID,
+      input: {
+        branch_id: 'branch-1',
+        bookings: [
+          {
+            pet_id: PET.id,
+            service_category: 'Grooming',
+            items: [{ service_id: 'service-groom' }],
+            scheduled_start: isoAt(0),
+            scheduled_end: isoAt(hours(1)),
+            staff_preference: { type: 'specific', staff_id: 'groomer-1' },
+          },
+          {
+            pet_id: PET_B.id,
+            service_category: 'Grooming',
+            items: [{ service_id: 'service-groom' }],
+            scheduled_start: isoAt(0),
+            scheduled_end: isoAt(hours(1)),
+            staff_preference: { type: 'specific', staff_id: 'groomer-1' },
+          },
+        ],
+      } as never,
+    });
+
+    expect(result.bookings).toHaveLength(2);
+    const bookingInserts = recordedWrites.filter(
+      (write) => write.table === 'bookings' && write.method === 'insert'
+    );
+    expect(bookingInserts).toHaveLength(2);
+    for (const write of bookingInserts) {
+      expect(write.payload).toMatchObject({ assigned_staff_id: 'groomer-1' });
+    }
+  });
+
   it('(c) one sub-booking losing the post-insert capacity race rolls back the entire group', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
 

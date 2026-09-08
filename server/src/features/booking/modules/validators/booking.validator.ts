@@ -421,6 +421,9 @@ export const updatePolicyValidator = z
     // unpaid down-payment-required Online booking auto-cancels. NOT NULL in
     // the DB (default 24), so no null here - just a positive integer.
     downpayment_hold_hours: z.number().int().positive().optional(),
+    // Staff concurrency (20260908178): overlapping bookings one staff member
+    // may hold. NOT NULL in the DB (default 1, CHECK >= 1).
+    max_concurrent_bookings_per_staff: z.number().int().min(1).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

@@ -87,6 +87,7 @@ const DEFAULT_POLICY = {
   notice_enforcement_enabled: true,
   booking_notice_period_days: 0,
   downpayment_enabled: false,
+  max_concurrent_bookings_per_staff: 1,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
 };
@@ -283,14 +284,19 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       .set('Authorization', 'Bearer token');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ staff_picker_enabled: false, options: [] });
+    expect(res.body).toEqual({
+      staff_picker_enabled: false,
+      options: [],
+      max_concurrent_per_staff: 1,
+    });
     expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
   it('#52 AC-4: staff-picker endpoint lists "No preference" first when enabled', async () => {
     mockCaller(CUSTOMER_ID);
     // isStaffPickerEnabled and listAvailableStaff each independently resolve
-    // the service_types row - two queued fetches.
+    // the service_types row (two queued fetches), then resolveEffectivePolicy
+    // reads policy_configurations for max_concurrent_per_staff (third).
     queueFromResults(
       {
         data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
@@ -299,7 +305,8 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       {
         data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
         error: null,
-      }
+      },
+      { data: [DEFAULT_POLICY], error: null }
     );
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: [
