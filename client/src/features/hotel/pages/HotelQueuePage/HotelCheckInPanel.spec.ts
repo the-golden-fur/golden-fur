@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -98,18 +98,22 @@ function setupMocks() {
 }
 
 function renderPanel(booking: unknown = BOOKING) {
-  return render(
-    createElement(
-      MemoryRouter,
-      null,
-      createElement(HotelCheckInPanel, {
-        accessToken: 'token',
-        role: 'Receptionist',
-        booking: booking as never,
-        onCheckedIn: vi.fn(),
-      })
-    )
-  );
+  const onCheckedIn = vi.fn();
+  return {
+    onCheckedIn,
+    ...render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(HotelCheckInPanel, {
+          accessToken: 'token',
+          role: 'Receptionist',
+          booking: booking as never,
+          onCheckedIn,
+        })
+      )
+    ),
+  };
 }
 
 describe('HotelCheckInPanel', () => {
@@ -168,13 +172,15 @@ describe('HotelCheckInPanel', () => {
       data: { stay: { id: 'stay-1' } },
       error: null,
     } as never);
-    renderPanel(BOOKING_WITH_FREETEXT_FEEDING);
+    const { onCheckedIn } = renderPanel(BOOKING_WITH_FREETEXT_FEEDING);
 
     await screen.findByText(/Suggested size: S/);
 
     fireEvent.click(screen.getByRole('button', { name: /Check in/ }));
 
-    await screen.findByText('Pet checked in successfully.');
+    // No success screen here anymore - the panel hands control straight
+    // back to its parent, which navigates away and shows the queue's modal.
+    await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
 
     expect(checkInHotelStay).toHaveBeenCalledWith(
       'token',
