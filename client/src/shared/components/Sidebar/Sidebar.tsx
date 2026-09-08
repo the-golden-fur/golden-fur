@@ -546,7 +546,11 @@ function SidebarCategory({
             <MoreOptionsMenu
               label={isCategory ? `Sort ${section.label}` : 'Sort'}
               items={sortMenuItems}
-              menuAlign="left"
+              // Category headers push the trigger to the row's right edge
+              // (the toggle takes the space); a left-aligned menu there
+              // expands off the sidebar's right edge and gets clipped by its
+              // overflow. Flat headers keep the trigger at the left.
+              menuAlign={isCategory ? 'right' : 'left'}
             />
           </>
         ) : null}
@@ -807,7 +811,7 @@ export function Sidebar({
             <MoreOptionsMenu
               label="Sort categories"
               items={categorySortMenuItems}
-              menuAlign="left"
+              menuAlign="right"
             />
           </div>
         ) : null}

@@ -41,12 +41,31 @@
   padding: var(--space-2);
 }
 
+.goalSection {
+  width: 100%;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
 .widgetsSection {
   display: grid;
   align-content: start;
   gap: var(--space-3);
   width: 100%;
   padding: 0 var(--space-2) var(--space-4);
+}
+
+/* Section link above the four queue widgets. */
+.queuesLink {
+  justify-self: start;
+  margin-bottom: calc(-1 * var(--space-2));
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.queuesLink:hover {
+  text-decoration: underline;
 }
 
 /* Masonry-like flex row: equal-grow columns from a 280px basis (not a rigid
