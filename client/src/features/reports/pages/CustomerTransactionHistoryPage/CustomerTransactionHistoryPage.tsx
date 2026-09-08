@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Columns3, Table } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ViewSwitcher } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { getMyTransactionHistory } from '../../api/reports.api';
 import { payTransactionWithCredit } from '../../../billing/api/billing.api';
 import {
@@ -16,30 +22,23 @@ import {
 } from '../../utils/payableBalances';
 import { notifyCreditBalanceChanged } from '../../../credits/providers/creditBalanceEvents';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
+import { TransactionBoard } from '../../components/TransactionHistoryTable/TransactionBoard';
+import {
+  COMPARATORS,
+  CUSTOMER_FILTER_FIELDS,
+  CUSTOMER_SORT_FIELDS,
+  deriveServerParams,
+  deriveSortKey,
+  deriveStatusFilter,
+} from '../../components/TransactionHistoryTable/transactionFilterFields';
+import {
+  paymentChoiceLabel,
+  paymentStatusLabel,
+  transactionTypeLabel,
+} from '../../components/TransactionHistoryTable/transactionDisplay';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
-const SERVICE_CATEGORIES = [
-  'Grooming',
-  'Hotel',
-  'Daycare',
-  'Veterinary',
-  'Assessment',
-];
-
-const PAYMENT_CHOICE_OPTIONS = [
-  { value: '', label: 'Full & down payments' },
-  { value: 'full', label: 'Full payment' },
-  { value: 'downpayment', label: 'Down payment' },
-];
-
-type SortKey = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
-
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'newest', label: 'Sort: Date (newest)' },
-  { value: 'oldest', label: 'Sort: Date (oldest)' },
-  { value: 'amount-high', label: 'Sort: Amount (high to low)' },
-  { value: 'amount-low', label: 'Sort: Amount (low to high)' },
-];
+type ViewMode = 'table' | 'board';
 
 /** Modes a customer can pay a Pending transaction with. */
 type PayMode = 'credit' | 'GCash' | 'Maya';
@@ -49,17 +48,6 @@ const PAY_MODES: Array<{ value: PayMode; label: string }> = [
   { value: 'GCash', label: 'GCash' },
   { value: 'Maya', label: 'Maya' },
 ];
-
-function paymentChoiceLabel(record: TransactionRecord): string {
-  if (record.payment_choice === 'downpayment') return 'Down payment';
-  if (record.payment_choice === 'full') return 'Full payment';
-  if (record.payment_choice === 'balance') return 'Balance payment';
-  return '-';
-}
-
-function paymentStatusLabel(status: string): string {
-  return status === 'Pending' ? 'Due payment' : status;
-}
 
 function isPayable(t: TransactionRecord): boolean {
   return (
@@ -72,25 +60,23 @@ function isPayable(t: TransactionRecord): boolean {
 /**
  * Custom change (P-1 roadmap item: transaction history visibility) - the
  * customer-facing counterpart to TransactionHistoryTable.tsx, reusing its
- * styles. Payment/transactions rework: this is where a customer pays an
- * outstanding charge - "Pay" on a Pending booking_payment row opens a modal
- * to choose account credit / GCash / Maya. Credit settles immediately;
- * GCash/Maya redirect to PayMongo.
+ * styles and (post-remaster) its Notion-style FilterSortBar + Board view.
+ * "Pay" on a Pending booking_payment row opens a modal to choose account
+ * credit / GCash / Maya. Credit settles immediately; GCash/Maya redirect to
+ * PayMongo.
  */
 export function CustomerTransactionHistoryPage() {
   const { accessToken } = useAuth();
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [serviceCategory, setServiceCategory] = useState('');
-  const [paymentChoice, setPaymentChoice] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-
-  const [pendingOnly, setPendingOnly] = useState(false);
 
   // The booking whose full details are shown in the popup (null = closed).
   const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
@@ -106,6 +92,15 @@ export function CustomerTransactionHistoryPage() {
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceSubmitting, setBalanceSubmitting] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const serverFilterKey = useMemo(
+    () => JSON.stringify(deriveServerParams(filterTiles)),
+    [filterTiles]
+  );
+  const serverParams = useMemo(
+    () => JSON.parse(serverFilterKey) as ReturnType<typeof deriveServerParams>,
+    [serverFilterKey]
+  );
 
   const openBalance = (target: PayableBalance) => {
     setBalanceTarget(target);
@@ -190,64 +185,76 @@ export function CustomerTransactionHistoryPage() {
 
     void getMyTransactionHistory(
       {
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        serviceCategory: serviceCategory || undefined,
-        paymentChoice: paymentChoice || undefined,
+        dateFrom: serverParams.dateFrom,
+        dateTo: serverParams.dateTo,
+        serviceCategory: serverParams.serviceCategory,
+        paymentChoice: serverParams.paymentChoice,
       },
       accessToken
-    ).then((result) => {
-      if (!isMounted) return;
+    )
+      .then((result) => {
+        if (!isMounted) return;
 
-      setIsLoading(false);
+        setIsLoading(false);
 
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
 
-      setTransactions(result.data ?? []);
-    });
+        setError(null);
+        setTransactions(result.data ?? []);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
+        setError('Could not load your transactions. Please try again.');
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [
-    accessToken,
-    dateFrom,
-    dateTo,
-    serviceCategory,
-    paymentChoice,
-    reloadKey,
-  ]);
+  }, [accessToken, serverParams, reloadKey]);
 
-  const {
-    search,
-    setSearch,
-    sortKey,
-    setSortKey,
-    result: visibleTransactions,
-  } = useSearchAndSort<TransactionRecord, SortKey>({
-    items: transactions,
-    matchesQuery: (record, query) =>
-      (record.misc_sale_description ?? '').toLowerCase().includes(query) ||
-      record.payment_method.toLowerCase().includes(query) ||
-      record.payment_status.toLowerCase().includes(query) ||
-      (record.bookings?.service_category ?? '').toLowerCase().includes(query),
-    comparators: {
-      newest: (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      oldest: (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      'amount-high': (a, b) => b.total_amount - a.total_amount,
-      'amount-low': (a, b) => a.total_amount - b.total_amount,
-    },
-    initialSortKey: 'newest',
-  });
+  function handleAddFilter(fieldId: string) {
+    const field = CUSTOMER_FILTER_FIELDS.find((entry) => entry.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-  const rows = pendingOnly
-    ? visibleTransactions.filter((t) => t.payment_status === 'Pending')
-    : visibleTransactions;
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  const statusFilter = deriveStatusFilter(filterTiles);
+  const sortKey = deriveSortKey(sortTile);
+
+  const rows = useMemo(() => {
+    let list = transactions;
+
+    if (statusFilter) {
+      list = list.filter((t) => t.payment_status === statusFilter);
+    }
+
+    const query = search.trim().toLowerCase();
+    if (query) {
+      list = list.filter(
+        (t) =>
+          (t.misc_sale_description ?? '').toLowerCase().includes(query) ||
+          t.payment_method.toLowerCase().includes(query) ||
+          t.payment_status.toLowerCase().includes(query) ||
+          (t.bookings?.service_category ?? '').toLowerCase().includes(query)
+      );
+    }
+
+    return [...list].sort(COMPARATORS[sortKey]);
+  }, [transactions, statusFilter, search, sortKey]);
 
   const payable = payableBalances(transactions);
 
@@ -265,77 +272,29 @@ export function CustomerTransactionHistoryPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>Transaction History</h1>
 
-      <div className={styles.filters}>
-        <label className={styles.field}>
-          From
-          <input
-            className={styles.control}
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-          />
-        </label>
-
-        <label className={styles.field}>
-          To
-          <input
-            className={styles.control}
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-          />
-        </label>
-
-        <label className={styles.field}>
-          Service type
-          <select
-            className={styles.control}
-            value={serviceCategory}
-            onChange={(event) => setServiceCategory(event.target.value)}
-          >
-            <option value="">All services</option>
-            {SERVICE_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.field}>
-          Payment
-          <select
-            className={styles.control}
-            value={paymentChoice}
-            onChange={(event) => setPaymentChoice(event.target.value)}
-          >
-            {PAYMENT_CHOICE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className={styles.filters}>
-        <SearchSortBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search by method, status, service..."
-          sortValue={sortKey}
-          onSortChange={setSortKey}
-          sortOptions={SORT_OPTIONS}
+      <FilterSortBar
+        filterFields={CUSTOMER_FILTER_FIELDS}
+        filterTiles={filterTiles}
+        onAddFilter={handleAddFilter}
+        onChangeFilter={handleChangeFilter}
+        onRemoveFilter={handleRemoveFilter}
+        sortFields={CUSTOMER_SORT_FIELDS}
+        sortTile={sortTile}
+        onChangeSort={setSortTile}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by method, status, service..."
+      >
+        <ViewSwitcher
+          ariaLabel="Transactions view"
+          options={[
+            { value: 'table', label: 'Table', icon: Table },
+            { value: 'board', label: 'Board', icon: Columns3 },
+          ]}
+          value={view}
+          onChange={setView}
         />
-        <label className={styles.field}>
-          <input
-            type="checkbox"
-            checked={pendingOnly}
-            onChange={(event) => setPendingOnly(event.target.checked)}
-          />{' '}
-          Due payments only
-        </label>
-      </div>
+      </FilterSortBar>
 
       {payable.length > 0 ? (
         <div className={styles.filters}>
@@ -361,6 +320,27 @@ export function CustomerTransactionHistoryPage() {
         </p>
       ) : rows.length === 0 ? (
         <p className={styles.copy}>No transactions match these filters.</p>
+      ) : view === 'board' ? (
+        <TransactionBoard
+          transactions={rows}
+          showCustomer={false}
+          onCardActivate={(transaction) => {
+            if (transaction.booking_id) {
+              setDetailsBookingId(transaction.booking_id);
+            }
+          }}
+          renderActions={(transaction) =>
+            isPayable(transaction) ? (
+              <button
+                type="button"
+                className={styles.payButton}
+                onClick={() => openPay(transaction)}
+              >
+                Pay
+              </button>
+            ) : null
+          }
+        />
       ) : (
         <table className={styles.table}>
           <thead>
@@ -409,11 +389,7 @@ export function CustomerTransactionHistoryPage() {
                   <td>
                     {new Date(transaction.created_at).toLocaleDateString()}
                   </td>
-                  <td>
-                    {transaction.transaction_type === 'miscellaneous_sale'
-                      ? transaction.misc_sale_description
-                      : 'Booking payment'}
-                  </td>
+                  <td>{transactionTypeLabel(transaction)}</td>
                   <td>{transaction.bookings?.service_category ?? '-'}</td>
                   <td>{paymentChoiceLabel(transaction)}</td>
                   <td>

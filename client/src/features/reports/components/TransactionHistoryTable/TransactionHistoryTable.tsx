@@ -1,16 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
+import { Columns3, Table } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ViewSwitcher } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   listCustomerPets,
   listCustomers,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
-import { getTransactionHistory } from '../../api/reports.api';
+import {
+  getTransactionHistory,
+  type TransactionHistoryFilters,
+} from '../../api/reports.api';
 import type { TransactionRecord } from '../../reports.types';
 import { PaymentMethodForm } from '../../../billing/components/PaymentMethodForm/PaymentMethodForm';
 import {
@@ -27,6 +39,20 @@ import {
   payableBalances,
   type PayableBalance,
 } from '../../utils/payableBalances';
+import { TransactionBoard } from './TransactionBoard';
+import {
+  COMPARATORS,
+  buildStaffFilterFields,
+  deriveServerParams,
+  deriveSortKey,
+  deriveStatusFilter,
+  STAFF_SORT_FIELDS,
+} from './transactionFilterFields';
+import {
+  paymentChoiceLabel,
+  paymentStatusLabel,
+  transactionTypeLabel,
+} from './transactionDisplay';
 import styles from './TransactionHistoryTable.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -37,64 +63,19 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Cashier',
 ]);
 
-const SERVICE_CATEGORIES = [
-  'Grooming',
-  'Hotel',
-  'Daycare',
-  'Veterinary',
-  'Assessment',
-];
-
-const TRANSACTION_TYPE_OPTIONS = [
-  { value: '', label: 'All types' },
-  { value: 'booking_payment', label: 'Booking payment' },
-  { value: 'miscellaneous_sale', label: 'Miscellaneous sale' },
-];
-
-const PAYMENT_CHOICE_OPTIONS = [
-  { value: '', label: 'Full & down payments' },
-  { value: 'full', label: 'Full payment' },
-  { value: 'downpayment', label: 'Down payment' },
-  { value: 'balance', label: 'Balance payment' },
-];
-
 /** The Record-payment modal lets a cashier settle straight from the
  * customer's account credit too (routed to the pay-with-credit endpoint),
  * on top of the usual counter methods. */
 const PAY_MODAL_METHODS = [...PAYMENT_METHODS, 'Credit'] as const;
 
-type SortKey = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
-
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'newest', label: 'Sort: Date (newest)' },
-  { value: 'oldest', label: 'Sort: Date (oldest)' },
-  { value: 'amount-high', label: 'Sort: Amount (high to low)' },
-  { value: 'amount-low', label: 'Sort: Amount (low to high)' },
-];
-
-function paymentChoiceLabel(record: TransactionRecord): string {
-  if (record.payment_choice === 'downpayment') return 'Down payment';
-  if (record.payment_choice === 'full') return 'Full payment';
-  if (record.payment_choice === 'balance') return 'Balance payment';
-  return '-';
-}
-
-/** DB stores 'Pending' for an unsettled online payment - "Due payment"
- * reads better next to "Partially Paid" / "Fully Paid". */
-function paymentStatusLabel(status: string): string {
-  return status === 'Pending' ? 'Due payment' : status;
-}
+type ViewMode = 'table' | 'board';
 
 /**
- * Issue #105: filterable transaction history - customer, pet, date range,
- * and service type (AC-2), all composable client-side form state driving
- * server-side query params against transactionHistory.service.ts (#102).
- *
- * Advisory follow-up ("search, filter and sort all customer transactions,
- * e.g. downpayment, full"): adds a transaction-type / payment-choice filter
- * (server-side), a free-text search + date/amount sort (client-side, via the
- * shared useSearchAndSort), and a link from each booking-payment row to the
- * booking it belongs to.
+ * Issue #105 + advisory follow-up: search, filter and sort every customer
+ * transaction, each linked to a booking. Remaster: the filter/sort controls
+ * are now Notion-style tiles (one "Filter" + one "Sort" button spawn removable
+ * pills - see FilterSortBar), there is a Customer column, and a Board view
+ * grouped by payment status (how a cashier works the "Due payment" pile).
  */
 export function TransactionHistoryTable() {
   const { user, accessToken } = useAuth();
@@ -104,7 +85,6 @@ export function TransactionHistoryTable() {
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [reloadKey, setReloadKey] = useState(0);
-  const [pendingOnly, setPendingOnly] = useState(false);
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
   const [payFields, setPayFields] = useState<PaymentFields>({
     payment_method: 'Cash',
@@ -119,6 +99,36 @@ export function TransactionHistoryTable() {
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const [customers, setCustomers] = useState<CustomerProfile[]>([]);
+  const [pets, setPets] = useState<Pet[]>([]);
+
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const customerTile = filterTiles.find((tile) => tile.fieldId === 'customer');
+  const hasCustomerFilter = Boolean(customerTile);
+  const selectedCustomerId =
+    customerTile && typeof customerTile.value === 'string'
+      ? customerTile.value
+      : '';
+
+  // Only re-fetch when a server-backed filter actually changes value - a
+  // client-side tile (status) or a sort change must not trigger a round trip.
+  const serverFilterKey = useMemo(
+    () => JSON.stringify(deriveServerParams(filterTiles)),
+    [filterTiles]
+  );
+  const serverParams = useMemo<TransactionHistoryFilters>(
+    () => JSON.parse(serverFilterKey),
+    [serverFilterKey]
+  );
 
   const openBalance = (target: PayableBalance) => {
     setBalanceTarget(target);
@@ -209,20 +219,6 @@ export function TransactionHistoryTable() {
     setReloadKey((k) => k + 1);
   };
 
-  const [customers, setCustomers] = useState<CustomerProfile[]>([]);
-  const [pets, setPets] = useState<Pet[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [selectedPetId, setSelectedPetId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [serviceCategory, setServiceCategory] = useState('');
-  const [transactionType, setTransactionType] = useState('');
-  const [paymentChoice, setPaymentChoice] = useState('');
-
-  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
     if (!accessToken || !user?.id) return;
 
@@ -262,89 +258,122 @@ export function TransactionHistoryTable() {
     };
   }, [accessToken, selectedCustomerId]);
 
-  // Clearing pets/selectedPetId lives in this handler (a synchronous UI
-  // event), not in the effect above, alongside the customer change itself -
-  // resetting derived state from an effect body triggers cascading renders.
-  function handleCustomerChange(customerId: string) {
-    setSelectedCustomerId(customerId);
-    setSelectedPetId('');
-    setPets([]);
-  }
-
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) return;
 
     let isMounted = true;
 
-    void getTransactionHistory(
-      {
-        customerId: selectedCustomerId || undefined,
-        petId: selectedPetId || undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        serviceCategory: serviceCategory || undefined,
-        transactionType: transactionType || undefined,
-        paymentChoice: paymentChoice || undefined,
-      },
-      accessToken
-    ).then((result) => {
-      if (!isMounted) return;
+    void getTransactionHistory(serverParams, accessToken)
+      .then((result) => {
+        if (!isMounted) return;
 
-      setIsLoading(false);
+        setIsLoading(false);
 
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
 
-      setTransactions(result.data ?? []);
-    });
+        setError(null);
+        setTransactions(result.data ?? []);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
+        setError('Could not load transactions. Please try again.');
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [
-    accessToken,
-    isAllowedViewer,
-    selectedCustomerId,
-    selectedPetId,
-    dateFrom,
-    dateTo,
-    serviceCategory,
-    transactionType,
-    paymentChoice,
-    reloadKey,
-  ]);
+  }, [accessToken, isAllowedViewer, serverParams, reloadKey]);
 
-  const {
-    search,
-    setSearch,
-    sortKey,
-    setSortKey,
-    result: visibleTransactions,
-  } = useSearchAndSort<TransactionRecord, SortKey>({
-    items: transactions,
-    matchesQuery: (record, query) =>
-      (record.misc_sale_description ?? '').toLowerCase().includes(query) ||
-      record.payment_method.toLowerCase().includes(query) ||
-      record.payment_status.toLowerCase().includes(query) ||
-      (record.bookings?.service_category ?? '').toLowerCase().includes(query),
-    comparators: {
-      newest: (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      oldest: (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      'amount-high': (a, b) => b.total_amount - a.total_amount,
-      'amount-low': (a, b) => a.total_amount - b.total_amount,
-    },
-    initialSortKey: 'newest',
-  });
+  const filterFields = useMemo(
+    () => buildStaffFilterFields({ customers, pets, hasCustomerFilter }),
+    [customers, pets, hasCustomerFilter]
+  );
 
-  const rows = pendingOnly
-    ? visibleTransactions.filter((t) => t.payment_status === 'Pending')
-    : visibleTransactions;
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((entry) => entry.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => {
+        if (tile.fieldId === fieldId) return { ...tile, value };
+        // A different customer invalidates any pet already picked.
+        if (fieldId === 'customer' && tile.fieldId === 'pet') {
+          return { ...tile, value: '' };
+        }
+        return tile;
+      })
+    );
+    if (fieldId === 'customer') setPets([]);
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) =>
+      prev.filter((tile) => {
+        if (tile.fieldId === fieldId) return false;
+        // Removing the Customer filter also removes the now-orphaned Pet one.
+        if (fieldId === 'customer' && tile.fieldId === 'pet') return false;
+        return true;
+      })
+    );
+    if (fieldId === 'customer') setPets([]);
+  }
+
+  const statusFilter = deriveStatusFilter(filterTiles);
+  const sortKey = deriveSortKey(sortTile);
+
+  const rows = useMemo(() => {
+    let list = transactions;
+
+    if (statusFilter) {
+      list = list.filter((t) => t.payment_status === statusFilter);
+    }
+
+    const query = search.trim().toLowerCase();
+    if (query) {
+      list = list.filter(
+        (t) =>
+          (t.customer_name ?? '').toLowerCase().includes(query) ||
+          (t.misc_sale_description ?? '').toLowerCase().includes(query) ||
+          t.payment_method.toLowerCase().includes(query) ||
+          t.payment_status.toLowerCase().includes(query) ||
+          (t.bookings?.service_category ?? '').toLowerCase().includes(query)
+      );
+    }
+
+    return [...list].sort(COMPARATORS[sortKey]);
+  }, [transactions, statusFilter, search, sortKey]);
 
   const payable = payableBalances(transactions);
+
+  function buildMenuItems(
+    transaction: TransactionRecord
+  ): MoreOptionsMenuItem[] {
+    const canPay =
+      transaction.payment_status === 'Pending' &&
+      transaction.transaction_type === 'booking_payment' &&
+      Boolean(transaction.booking_id);
+    return [
+      ...(transaction.booking_id
+        ? [
+            {
+              label: 'View booking',
+              onSelect: () =>
+                navigate(`/staff/bookings/${transaction.booking_id}`),
+            },
+          ]
+        : []),
+      ...(canPay
+        ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
+        : []),
+    ];
+  }
 
   if (isRoleLoading) {
     return <p>Loading...</p>;
@@ -358,125 +387,29 @@ export function TransactionHistoryTable() {
     <main className={styles.page}>
       <h1 className={styles.title}>Transactions</h1>
 
-      <div className={styles.filters}>
-        <label className={styles.field}>
-          Customer
-          <select
-            className={styles.control}
-            value={selectedCustomerId}
-            onChange={(event) => handleCustomerChange(event.target.value)}
-          >
-            <option value="">All customers</option>
-            {customers.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.full_name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.field}>
-          Pet
-          <select
-            className={styles.control}
-            value={selectedPetId}
-            onChange={(event) => setSelectedPetId(event.target.value)}
-            disabled={!selectedCustomerId}
-          >
-            <option value="">All pets</option>
-            {pets.map((pet) => (
-              <option key={pet.id} value={pet.id}>
-                {pet.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.field}>
-          From
-          <input
-            className={styles.control}
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-          />
-        </label>
-
-        <label className={styles.field}>
-          To
-          <input
-            className={styles.control}
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-          />
-        </label>
-
-        <label className={styles.field}>
-          Service type
-          <select
-            className={styles.control}
-            value={serviceCategory}
-            onChange={(event) => setServiceCategory(event.target.value)}
-          >
-            <option value="">All services</option>
-            {SERVICE_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.field}>
-          Transaction type
-          <select
-            className={styles.control}
-            value={transactionType}
-            onChange={(event) => setTransactionType(event.target.value)}
-          >
-            {TRANSACTION_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.field}>
-          Payment
-          <select
-            className={styles.control}
-            value={paymentChoice}
-            onChange={(event) => setPaymentChoice(event.target.value)}
-          >
-            {PAYMENT_CHOICE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className={styles.filters}>
-        <SearchSortBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search by method, status, service..."
-          sortValue={sortKey}
-          onSortChange={setSortKey}
-          sortOptions={SORT_OPTIONS}
+      <FilterSortBar
+        filterFields={filterFields}
+        filterTiles={filterTiles}
+        onAddFilter={handleAddFilter}
+        onChangeFilter={handleChangeFilter}
+        onRemoveFilter={handleRemoveFilter}
+        sortFields={STAFF_SORT_FIELDS}
+        sortTile={sortTile}
+        onChangeSort={setSortTile}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by customer, method, status..."
+      >
+        <ViewSwitcher
+          ariaLabel="Transactions view"
+          options={[
+            { value: 'table', label: 'Table', icon: Table },
+            { value: 'board', label: 'Board', icon: Columns3 },
+          ]}
+          value={view}
+          onChange={setView}
         />
-        <label className={styles.field}>
-          <input
-            type="checkbox"
-            checked={pendingOnly}
-            onChange={(event) => setPendingOnly(event.target.checked)}
-          />{' '}
-          Due payments only
-        </label>
-      </div>
+      </FilterSortBar>
 
       {payable.length > 0 ? (
         <div className={styles.filters}>
@@ -502,11 +435,25 @@ export function TransactionHistoryTable() {
         </p>
       ) : rows.length === 0 ? (
         <p className={styles.copy}>No transactions match these filters.</p>
+      ) : view === 'board' ? (
+        <TransactionBoard
+          transactions={rows}
+          renderActions={(transaction) => {
+            const items = buildMenuItems(transaction);
+            return items.length > 0 ? (
+              <MoreOptionsMenu
+                label="Options for this transaction"
+                items={items}
+              />
+            ) : null;
+          }}
+        />
       ) : (
         <table className={styles.table}>
           <thead>
             <tr>
               <th>Date</th>
+              <th>Customer</th>
               <th>Type</th>
               <th>Service</th>
               <th>Payment</th>
@@ -518,34 +465,14 @@ export function TransactionHistoryTable() {
           </thead>
           <tbody>
             {rows.map((transaction) => {
-              const canPay =
-                transaction.payment_status === 'Pending' &&
-                transaction.transaction_type === 'booking_payment' &&
-                Boolean(transaction.booking_id);
-              const menuItems = [
-                ...(transaction.booking_id
-                  ? [
-                      {
-                        label: 'View booking',
-                        onSelect: () =>
-                          navigate(`/staff/bookings/${transaction.booking_id}`),
-                      },
-                    ]
-                  : []),
-                ...(canPay
-                  ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
-                  : []),
-              ];
+              const menuItems = buildMenuItems(transaction);
               return (
                 <tr key={transaction.id}>
                   <td>
                     {new Date(transaction.created_at).toLocaleDateString()}
                   </td>
-                  <td>
-                    {transaction.transaction_type === 'miscellaneous_sale'
-                      ? transaction.misc_sale_description
-                      : 'Booking payment'}
-                  </td>
+                  <td>{transaction.customer_name ?? '—'}</td>
+                  <td>{transactionTypeLabel(transaction)}</td>
                   <td>{transaction.bookings?.service_category ?? '-'}</td>
                   <td>{paymentChoiceLabel(transaction)}</td>
                   <td>

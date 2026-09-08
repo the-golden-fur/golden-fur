@@ -26,6 +26,7 @@ function buildRecord(
     id: 'txn-1',
     booking_id: 'booking-1',
     customer_id: 'cust-1',
+    customer_name: 'Ada Lovelace',
     branch_id: 'branch-1',
     transaction_type: 'booking_payment',
     payment_method: 'Cash',
@@ -163,6 +164,26 @@ describe('CustomerTransactionHistoryPage', () => {
       within(dialog).queryByRole('heading', { name: 'Booking details' })
     ).not.toBeInTheDocument();
     expect(bookingApi.getBookingDetails).not.toHaveBeenCalled();
+  });
+
+  it('renders the Board view and opens booking details from a card', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: null,
+      error: 'stub',
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+
+    expect(screen.getByText('Due payment')).toBeInTheDocument();
+    await user.click(screen.getByText('Grooming'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: 'Booking details' })
+    ).toBeInTheDocument();
   });
 
   it('shows no Pay button on a settled transaction', async () => {
