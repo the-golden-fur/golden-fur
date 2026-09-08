@@ -23,7 +23,6 @@ import { getCagePickerOptions } from './services/cagePicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
-  findNextAvailableSlot,
   getDaySlots,
   partsOfDayWithinOperatingHours,
   resolveOperatingWindow,
@@ -43,7 +42,6 @@ import {
   createBookingValidator,
   downpaymentStatusQueryValidator,
   listBookingsQueryValidator,
-  nextAvailableSlotQueryValidator,
   onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
   partsOfDayQueryValidator,
@@ -274,40 +272,6 @@ export async function availabilityController(
     return res
       .status(200)
       .json({ slots, window, min_notice_days: minNoticeDays });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function nextAvailableSlotController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const requesterId = req.user?.sub;
-
-  if (!requesterId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = nextAvailableSlotQueryValidator.safeParse(req.query);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid query', details: parsed.error.issues });
-  }
-
-  try {
-    const next = await findNextAvailableSlot({
-      branchId: parsed.data.branch_id,
-      serviceCategory: parsed.data.service_category,
-      fromDate: parsed.data.from_date,
-      slotDurationMinutes: parsed.data.slot_duration_minutes,
-      petWeightClass: parsed.data.pet_weight_class,
-      lookaheadDays: parsed.data.lookahead_days,
-    });
-
-    return res.status(200).json({ next });
   } catch (error) {
     return sendServiceError(res, error);
   }

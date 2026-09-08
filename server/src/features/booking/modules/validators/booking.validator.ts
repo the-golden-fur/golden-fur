@@ -592,32 +592,6 @@ export const partsOfDayQueryValidator = z
   })
   .strict();
 
-/**
- * #22: powers the "fully booked" warning shown right after the customer
- * picks a service, before they ever reach the Slot Picker - same shape as
- * availabilityQueryValidator, just `date` -> `from_date` (the search start,
- * not a single day to inspect) plus an optional lookahead window.
- */
-export const nextAvailableSlotQueryValidator = z
-  .object({
-    branch_id: z.uuid(),
-    service_category: z.enum(CATEGORIES),
-    from_date: z.iso.date(),
-    slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
-    pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
-    lookahead_days: z.coerce.number().int().min(1).max(60).optional(),
-  })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['pet_weight_class'],
-        message: 'pet_weight_class is required for Hotel availability',
-      });
-    }
-  });
-
 export const catalogQueryValidator = z.object({
   branch_id: z.uuid(),
   category: z.enum(CATEGORIES).optional(),
