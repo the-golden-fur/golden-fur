@@ -8,6 +8,7 @@ import {
   addBalancePaymentForBooking,
   payForBooking,
 } from '../../../booking/api/booking.api';
+import { BookingDetailsModal } from '../../../booking/components/BookingDetailsModal/BookingDetailsModal';
 import type { TransactionRecord } from '../../reports.types';
 import {
   payableBalances,
@@ -90,6 +91,9 @@ export function CustomerTransactionHistoryPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [pendingOnly, setPendingOnly] = useState(false);
+
+  // The booking whose full details are shown in the popup (null = closed).
+  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
 
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
   const [payMode, setPayMode] = useState<PayMode>('credit');
@@ -372,36 +376,71 @@ export function CustomerTransactionHistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((transaction) => (
-              <tr key={transaction.id}>
-                <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
-                <td>
-                  {transaction.transaction_type === 'miscellaneous_sale'
-                    ? transaction.misc_sale_description
-                    : 'Booking payment'}
-                </td>
-                <td>{transaction.bookings?.service_category ?? '-'}</td>
-                <td>{paymentChoiceLabel(transaction)}</td>
-                <td>
-                  {transaction.payment_status === 'Pending'
-                    ? '—'
-                    : transaction.payment_method}
-                </td>
-                <td>{paymentStatusLabel(transaction.payment_status)}</td>
-                <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                <td>
-                  {isPayable(transaction) ? (
-                    <button
-                      type="button"
-                      className={styles.payButton}
-                      onClick={() => openPay(transaction)}
-                    >
-                      Pay
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+            {rows.map((transaction) => {
+              const bookingId = transaction.booking_id;
+              const openDetails = () => {
+                if (bookingId) setDetailsBookingId(bookingId);
+              };
+              return (
+                <tr
+                  key={transaction.id}
+                  className={bookingId ? styles.clickableRow : undefined}
+                  role={bookingId ? 'button' : undefined}
+                  tabIndex={bookingId ? 0 : undefined}
+                  aria-label={
+                    bookingId
+                      ? `View booking details for this ${
+                          transaction.bookings?.service_category ?? ''
+                        } transaction`.replace(/\s+/g, ' ')
+                      : undefined
+                  }
+                  onClick={bookingId ? openDetails : undefined}
+                  onKeyDown={
+                    bookingId
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openDetails();
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  <td>
+                    {new Date(transaction.created_at).toLocaleDateString()}
+                  </td>
+                  <td>
+                    {transaction.transaction_type === 'miscellaneous_sale'
+                      ? transaction.misc_sale_description
+                      : 'Booking payment'}
+                  </td>
+                  <td>{transaction.bookings?.service_category ?? '-'}</td>
+                  <td>{paymentChoiceLabel(transaction)}</td>
+                  <td>
+                    {transaction.payment_status === 'Pending'
+                      ? '—'
+                      : transaction.payment_method}
+                  </td>
+                  <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                  <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                  <td>
+                    {isPayable(transaction) ? (
+                      <button
+                        type="button"
+                        className={styles.payButton}
+                        onClick={(event) => {
+                          // Don't also open the details popup underneath.
+                          event.stopPropagation();
+                          openPay(transaction);
+                        }}
+                      >
+                        Pay
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -520,6 +559,11 @@ export function CustomerTransactionHistoryPage() {
           </section>
         </div>
       ) : null}
+
+      <BookingDetailsModal
+        bookingId={detailsBookingId}
+        onClose={() => setDetailsBookingId(null)}
+      />
     </main>
   );
 }

@@ -14,7 +14,10 @@ vi.mock('../../api/reports.api', () => ({ getMyTransactionHistory: vi.fn() }));
 vi.mock('../../../billing/api/billing.api', () => ({
   payTransactionWithCredit: vi.fn(),
 }));
-vi.mock('../../../booking/api/booking.api', () => ({ payForBooking: vi.fn() }));
+vi.mock('../../../booking/api/booking.api', () => ({
+  payForBooking: vi.fn(),
+  getBookingDetails: vi.fn(),
+}));
 
 function buildRecord(
   overrides: Partial<TransactionRecord> = {}
@@ -121,6 +124,45 @@ describe('CustomerTransactionHistoryPage', () => {
         { payment_method: 'GCash', pay_in_full: true }
       )
     );
+  });
+
+  it('opens the booking details popup when a booking-payment row is clicked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: null,
+      error: 'stub',
+    });
+
+    renderPage();
+
+    const row = (await screen.findByText('PHP 500.00')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(within(row).getByText('Grooming'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: 'Booking details' })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(bookingApi.getBookingDetails).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      )
+    );
+  });
+
+  it('does not open the details popup when the row Pay button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).queryByRole('heading', { name: 'Booking details' })
+    ).not.toBeInTheDocument();
+    expect(bookingApi.getBookingDetails).not.toHaveBeenCalled();
   });
 
   it('shows no Pay button on a settled transaction', async () => {
