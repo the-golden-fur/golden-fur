@@ -34,11 +34,9 @@ import {
   createBookingGroup,
   getBookingCatalog,
   getDownpaymentStatus,
-  getNextAvailableSlot,
   getPetBookingConflicts,
   listServiceTypes,
   type DownpaymentStatus,
-  type NextAvailableSlot,
 } from '../../api/booking.api';
 import {
   BOOKING_MARK_PAID_ROLES,
@@ -771,18 +769,6 @@ export function CustomerBookingFlowPage() {
   // the plain single-booking createBooking API, unchanged - see
   // handleSubmit.
   const [bookingsList, setBookingsList] = useState<SubBookingDraft[]>([]);
-
-  // #22: "fully booked" warning, checked live as the customer browses dates
-  // inside the availability step - only for a day that actually has real
-  // candidate slots (time/staff/cage) that are ALL taken, never for a day
-  // with no candidates at all (branch closed that weekday, or today's
-  // hours have already passed) - see handleSlotAvailabilityChange. undefined
-  // = not showing, null = nothing available in the lookahead window,
-  // otherwise the earliest open day/slot found.
-  const [fullyBookedNotice, setFullyBookedNotice] = useState<
-    NextAvailableSlot | null | undefined
-  >(undefined);
-  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   // resetHotelPreferences/handleCategorySelect are declared ahead of the
   // auto-select-assessment effect below (rather than alongside the other
@@ -1740,65 +1726,6 @@ export function CustomerBookingFlowPage() {
     }
 
     advanceTo(currentStepIndex + 1);
-  }
-
-  /** #22 follow-up: fired by SlotPicker (inside the 'availability' step)
-   * every time the currently-viewed date's availability resolves. Only
-   * warns when that day actually had real candidate slots (time/staff/
-   * cage) and every one of them is taken - hasAnySlots is false both when
-   * the branch has no hours that weekday and when today's hours have
-   * already passed (getDaySlots drops any candidate whose start is already
-   * in the past), neither of which is a meaningful "fully booked" signal,
-   * so both are silently skipped rather than shown as a warning. */
-  function handleSlotAvailabilityChange({
-    date,
-    hasAnyAvailable,
-    hasAnySlots,
-  }: {
-    date: string;
-    hasAnyAvailable: boolean;
-    hasAnySlots: boolean;
-  }) {
-    if (
-      !hasAnySlots ||
-      hasAnyAvailable ||
-      !accessToken ||
-      !selectedBranchId ||
-      !category
-    ) {
-      return;
-    }
-
-    setIsCheckingAvailability(true);
-
-    // date itself is already confirmed full - start the lookahead the day
-    // after it instead of redundantly re-checking the same day.
-    const [year, month, day] = date.split('-').map(Number);
-    const searchFromDate = new Date(Date.UTC(year, month - 1, day + 1))
-      .toISOString()
-      .slice(0, 10);
-
-    void getNextAvailableSlot(accessToken, {
-      branchId: selectedBranchId,
-      serviceCategory: category as ServiceCategory,
-      fromDate: searchFromDate,
-      slotDurationMinutes:
-        DEFAULT_DURATION_MINUTES[category as ServiceCategory],
-      petWeightClass:
-        category === 'Hotel'
-          ? (selectedPet?.weight_class ?? undefined)
-          : undefined,
-    }).then((result) => {
-      setIsCheckingAvailability(false);
-      // Fails open: a lookup error never shows a false "fully booked" claim.
-      if (!result.error) {
-        setFullyBookedNotice(result.data);
-      }
-    });
-  }
-
-  function dismissFullyBookedNotice() {
-    setFullyBookedNotice(undefined);
   }
 
   function goBack() {
@@ -2799,7 +2726,6 @@ export function CustomerBookingFlowPage() {
               selectedSlot={selectedSlot}
               onSelect={(slot) => setSelectedSlot(slot)}
               lockToNow={isReceptionistMode && bookingSource === 'Walk-in'}
-              onAvailabilityChange={handleSlotAvailabilityChange}
               excludedWindows={samePetBundleWindows}
             />
 
@@ -3790,12 +3716,10 @@ export function CustomerBookingFlowPage() {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={
-              !isCurrentStepValid || isLastStep || isCheckingAvailability
-            }
+            disabled={!isCurrentStepValid || isLastStep}
             onClick={goNext}
           >
-            {isCheckingAvailability ? 'Checking availability...' : 'Next'}
+            Next
           </button>
         </div>
       ) : (
@@ -3810,64 +3734,6 @@ export function CustomerBookingFlowPage() {
           </button>
         </div>
       )}
-
-      {fullyBookedNotice !== undefined ? (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modal}>
-            {fullyBookedNotice === null ? (
-              <>
-                <h2 className={styles.modalTitle}>No availability found</h2>
-                <p className={styles.copy}>
-                  This branch has no open slots for this service in the next
-                  couple of weeks. Try a different branch or service.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className={styles.modalTitle}>This looks fully booked</h2>
-                <p className={styles.copy}>
-                  The earliest opening we found is{' '}
-                  {new Date(fullyBookedNotice.date).toLocaleDateString()}, from{' '}
-                  {new Date(
-                    fullyBookedNotice.earliestSlot.start
-                  ).toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}{' '}
-                  to{' '}
-                  {new Date(
-                    fullyBookedNotice.earliestSlot.end
-                  ).toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                  .
-                </p>
-              </>
-            )}
-            <div className={styles.navRow}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => {
-                  dismissFullyBookedNotice();
-                  setCurrentStepKey('category');
-                  setReachedStepKeys((prev) => new Set(prev).add('category'));
-                }}
-              >
-                Change branch/service
-              </button>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={dismissFullyBookedNotice}
-              >
-                Keep browsing
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

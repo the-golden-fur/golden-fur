@@ -30,7 +30,6 @@ vi.mock('../../../catalog/api/catalog.api', () => ({
 vi.mock('../../api/booking.api', () => ({
   getBookingCatalog: vi.fn(),
   createBooking: vi.fn(),
-  getNextAvailableSlot: vi.fn(),
   // Custom change: Service Types addendum - default to the built-in 4 rows
   // with their production seed values (Grooming/Veterinary staff-picker
   // enabled, Hotel/Daycare not) so every existing test keeps seeing every
@@ -121,15 +120,9 @@ vi.mock('../../../discounts/api/discounts.api', () => ({
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
   SlotPicker: ({
     onSelect,
-    onAvailabilityChange,
     lockToNow,
   }: {
     onSelect: (slot: { start: string; end: string }) => void;
-    onAvailabilityChange?: (info: {
-      date: string;
-      hasAnyAvailable: boolean;
-      hasAnySlots: boolean;
-    }) => void;
     // Walk-in booking flow: surfaced by the mock so page-level tests can
     // assert it's actually threaded through from bookingSource, without
     // re-testing SlotPicker's own lockToNow behavior (covered by
@@ -157,32 +150,6 @@ vi.mock('../../components/SlotPicker/SlotPicker', () => ({
             }),
         },
         'Select slot'
-      ),
-      createElement(
-        'button',
-        {
-          type: 'button',
-          onClick: () =>
-            onAvailabilityChange?.({
-              date: '2026-08-03',
-              hasAnyAvailable: false,
-              hasAnySlots: true,
-            }),
-        },
-        'Simulate day fully booked'
-      ),
-      createElement(
-        'button',
-        {
-          type: 'button',
-          onClick: () =>
-            onAvailabilityChange?.({
-              date: '2026-08-03',
-              hasAnyAvailable: false,
-              hasAnySlots: false,
-            }),
-        },
-        'Simulate empty day (closed/past hours)'
       )
     ),
 }));
@@ -431,13 +398,6 @@ describe('CustomerBookingFlowPage', () => {
         promos: [],
       },
       error: null,
-    });
-    // #22: fails open by default (error, not a real "fully booked" result)
-    // so the fully-booked modal doesn't interfere with tests that aren't
-    // exercising that feature - goNext() advances straight through on error.
-    vi.mocked(bookingApi.getNextAvailableSlot).mockResolvedValue({
-      data: null,
-      error: 'not mocked in this test',
     });
     const FOOD_ITEM = {
       id: 'food-1',
@@ -1329,61 +1289,7 @@ describe('CustomerBookingFlowPage', () => {
     );
   });
 
-  it('#22 follow-up: an empty day (branch closed or past hours) never shows the fully-booked modal', async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await goToCategoryStep(user);
-    await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(
-        screen.getByText('Simulate empty day (closed/past hours)')
-      ).toBeInTheDocument()
-    );
-    await user.click(
-      screen.getByText('Simulate empty day (closed/past hours)')
-    );
-
-    expect(bookingApi.getNextAvailableSlot).not.toHaveBeenCalled();
-    expect(
-      screen.queryByText('This looks fully booked')
-    ).not.toBeInTheDocument();
-  });
-
-  it('#22 follow-up: a day with real slots all taken shows the fully-booked modal and searches from the next day', async () => {
-    vi.mocked(bookingApi.getNextAvailableSlot).mockResolvedValue({
-      data: {
-        date: '2026-08-05',
-        earliestSlot: {
-          start: '2026-08-05T00:00:00.000Z',
-          end: '2026-08-05T01:00:00.000Z',
-        },
-      },
-      error: null,
-    });
-
-    const user = userEvent.setup();
-    renderPage();
-    await goToCategoryStep(user);
-    await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(screen.getByText('Simulate day fully booked')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Simulate day fully booked'));
-
-    expect(
-      await screen.findByText('This looks fully booked')
-    ).toBeInTheDocument();
-    expect(bookingApi.getNextAvailableSlot).toHaveBeenCalledWith(
-      'token',
-      expect.objectContaining({ fromDate: '2026-08-04' })
-    );
-  });
-
-  it('#22 follow-up regression: toggling a service/package on the Services step no longer wipes the already-picked slot (submit actually fires)', async () => {
+  it('regression: toggling a service/package on the Services step no longer wipes the already-picked slot (submit actually fires)', async () => {
     vi.mocked(bookingApi.createBooking).mockResolvedValue({
       data: {
         id: 'booking-1',
