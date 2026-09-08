@@ -26,8 +26,14 @@ skill instead — the two directions use different merge strategies.
    feature/fix PRs merged into `dev` since the last promotion, not just one
    change. Sections: Summary, What Changed (notable features/fixes since
    the last dev → main promotion), Testing.
-5. Open it directly: `gh pr create --base main --head dev --title "..."
---body "..."`.
+5. Open it with every field set — title, body, assignee, label(s) — never
+   left for the user:
+   `gh pr create --base main --head dev --title "release: ..." --body-file <file> --assignee @me --label <label>`.
+   If a `dev → main` PR is already open (this repo auto-opens one), apply
+   the same fields with `gh pr edit <n> --title ... --body-file <file> --add-assignee @me --add-label <label>` and confirm with
+   `gh pr view <n> --json title,assignees,labels`. Label is usually
+   `feature` (or whichever type dominates the promotion); set a milestone
+   with `gh pr edit <n> --milestone "<name>"` when one matches.
 
 ## Merge strategy: rebase first, merge as fallback — never squash
 
