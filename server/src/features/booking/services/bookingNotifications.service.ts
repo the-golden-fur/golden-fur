@@ -1,6 +1,10 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { createNotification } from '../../notifications/services/notification.service.ts';
+import {
+  createNotification,
+  isEmailNotificationEnabled,
+} from '../../notifications/services/notification.service.ts';
 import { sendBookingConfirmedEmail } from '../../../shared/email/bookingConfirmedEmail.ts';
+import { sendBookingGroupConfirmedEmail } from '../../../shared/email/bookingGroupConfirmedEmail.ts';
 import { sendBookingRescheduledEmail } from '../../../shared/email/bookingRescheduledEmail.ts';
 import { sendBookingCancelledEmail } from '../../../shared/email/bookingCancelledEmail.ts';
 import type { Booking } from '../booking.types.ts';
@@ -32,7 +36,8 @@ function formatTime(iso: string): string {
  * in every test's sequential mock queue.
  */
 export async function sendBookingConfirmedNotification(
-  booking: Booking
+  booking: Booking,
+  options: { skipEmail?: boolean } = {}
 ): Promise<void> {
   try {
     const [{ data: customer }, { data: branch }] = await Promise.all([
@@ -69,20 +74,105 @@ export async function sendBookingConfirmedNotification(
         `Your ${booking.service_category} booking on ${scheduledDate} at ${scheduledTime} has been confirmed.` +
         (staffName ? ` Assigned staff: ${staffName}.` : ''),
       relatedBookingId: booking.id,
-      sendEmail: customer?.account_email
-        ? () =>
-            sendBookingConfirmedEmail({
-              to: customer.account_email,
-              serviceCategory: booking.service_category,
-              branchName: branch?.name ?? '',
-              scheduledDate,
-              scheduledTime,
-              staffName,
-            })
-        : undefined,
+      sendEmail:
+        !options.skipEmail && customer?.account_email
+          ? () =>
+              sendBookingConfirmedEmail({
+                to: customer.account_email,
+                serviceCategory: booking.service_category,
+                branchName: branch?.name ?? '',
+                scheduledDate,
+                scheduledTime,
+                staffName,
+              })
+          : undefined,
     });
   } catch (error) {
     console.error('Failed to send booking_confirmed notification:', error);
+  }
+}
+
+/**
+ * The ONE combined confirmation email for a multi-booking checkout, used when
+ * policy_configurations.booking_group_email_mode is 'combined' (default). The
+ * per-booking in-app notification rows are written separately by
+ * sendBookingConfirmedNotification(booking, { skipEmail: true }) calls - this
+ * only sends the single email, gated on the customer's booking_confirmed
+ * email preference (createNotification isn't involved, so that gate is
+ * applied explicitly here). Best-effort, same as every other sender in this
+ * module.
+ */
+export async function sendCombinedBookingGroupConfirmedEmail(
+  customerId: string,
+  branchId: string,
+  bookings: Booking[]
+): Promise<void> {
+  if (bookings.length === 0) return;
+
+  try {
+    const emailEnabled = await isEmailNotificationEnabled({
+      recipientCustomerId: customerId,
+      eventType: 'booking_confirmed',
+    });
+    if (!emailEnabled) return;
+
+    const [{ data: customer }, { data: branch }] = await Promise.all([
+      supabase
+        .from('customer_profiles')
+        .select('account_email')
+        .eq('id', customerId)
+        .maybeSingle(),
+      supabase.from('branches').select('name').eq('id', branchId).maybeSingle(),
+    ]);
+
+    if (!customer?.account_email) return;
+
+    const staffIds = [
+      ...new Set(
+        bookings
+          .map((booking) => booking.assigned_staff_id)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const petIds = [...new Set(bookings.map((booking) => booking.pet_id))];
+
+    const [{ data: staffRows }, { data: petRows }] = await Promise.all([
+      staffIds.length > 0
+        ? supabase
+            .from('staff_profiles')
+            .select('id, display_name')
+            .in('id', staffIds)
+        : Promise.resolve({
+            data: [] as { id: string; display_name: string }[],
+          }),
+      supabase.from('pets').select('id, name').in('id', petIds),
+    ]);
+
+    const staffNameById = new Map(
+      (staffRows ?? []).map((row) => [row.id as string, row.display_name])
+    );
+    const petNameById = new Map(
+      (petRows ?? []).map((row) => [row.id as string, row.name as string])
+    );
+
+    await sendBookingGroupConfirmedEmail({
+      to: customer.account_email,
+      branchName: branch?.name ?? '',
+      bookings: bookings.map((booking) => ({
+        petName: petNameById.get(booking.pet_id) ?? null,
+        serviceCategory: booking.service_category,
+        scheduledDate: formatDate(booking.scheduled_start),
+        scheduledTime: formatTime(booking.scheduled_start),
+        staffName: booking.assigned_staff_id
+          ? (staffNameById.get(booking.assigned_staff_id) ?? null)
+          : null,
+      })),
+    });
+  } catch (error) {
+    console.error(
+      'Failed to send combined booking_group confirmed email:',
+      error
+    );
   }
 }
 

@@ -73,7 +73,10 @@ export async function runAppointmentReminderJob(
   const { data, error } = await supabase
     .from('bookings')
     .select('id, customer_id, branch_id, service_category, scheduled_start')
-    .in('status', ['Pending', 'In Progress'])
+    // Only Pending bookings: an 'In Progress' booking is already checked in /
+    // under way, so a "your appointment is coming up" reminder for it is just
+    // noise - and a wasted send against the Brevo daily quota.
+    .eq('status', 'Pending')
     .is('reminder_sent_at', null)
     .gte('scheduled_start', now.toISOString())
     .lt('scheduled_start', windowEnd);

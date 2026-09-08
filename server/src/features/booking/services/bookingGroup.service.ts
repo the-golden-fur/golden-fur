@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import {
   sendBookingConfirmedNotification,
+  sendCombinedBookingGroupConfirmedEmail,
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import {
@@ -455,7 +456,18 @@ export async function createBookingGroup({
   }
 
   // Step 11: confirmation notifications, per sub-booking, same rule as
-  // createBooking (isConfirmedAtCreation).
+  // createBooking (isConfirmedAtCreation). Email is collapsed to ONE combined
+  // send for the whole cart unless the branch policy opts into per-booking
+  // (booking_group_email_mode) - the per-booking in-app rows are written
+  // either way. `policy` is null only for an all-Walk-in group, so resolve
+  // the mode directly in that case.
+  // `policy` is the full row whenever any sub-booking is Online; only an
+  // all-Walk-in group leaves it null and needs a dedicated resolve here.
+  const emailMode = (policy ?? (await resolveEffectivePolicy(input.branch_id)))
+    .booking_group_email_mode;
+  const combineGroupEmail = emailMode === 'combined';
+  const confirmedAtCreation: Booking[] = [];
+
   for (let i = 0; i < insertedBookingRows.length; i += 1) {
     const booking = insertedBookingRows[i];
     const sub = resolvedSubBookings[i];
@@ -464,12 +476,23 @@ export async function createBookingGroup({
       booking.service_category === 'Veterinary';
 
     if (isConfirmedAtCreation) {
-      await sendBookingConfirmedNotification(booking);
+      await sendBookingConfirmedNotification(booking, {
+        skipEmail: combineGroupEmail,
+      });
+      confirmedAtCreation.push(booking);
 
       if (sub.staffResolution.preferenceType === 'specific') {
         await sendStaffAssignedNotification(booking);
       }
     }
+  }
+
+  if (combineGroupEmail && confirmedAtCreation.length > 0) {
+    await sendCombinedBookingGroupConfirmedEmail(
+      customerId,
+      input.branch_id,
+      confirmedAtCreation
+    );
   }
 
   // Step 12: ONE initial charge for the whole group (best-effort - a

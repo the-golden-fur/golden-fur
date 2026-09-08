@@ -53,6 +53,9 @@ interface FormState {
   downpayment_amount: number;
   downpayment_hold_hours: number;
   max_concurrent_bookings_per_staff: number;
+  booking_group_email_mode: 'combined' | 'per_booking';
+  care_log_task_email_enabled: boolean;
+  care_log_daily_report_enabled: boolean;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -81,6 +84,9 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     downpayment_amount: policy.downpayment_amount ?? 0,
     downpayment_hold_hours: policy.downpayment_hold_hours,
     max_concurrent_bookings_per_staff: policy.max_concurrent_bookings_per_staff,
+    booking_group_email_mode: policy.booking_group_email_mode,
+    care_log_task_email_enabled: policy.care_log_task_email_enabled,
+    care_log_daily_report_enabled: policy.care_log_daily_report_enabled,
   };
 }
 
@@ -107,6 +113,9 @@ const DOCUMENTED_DEFAULTS: FormState = {
   downpayment_amount: 0,
   downpayment_hold_hours: 24,
   max_concurrent_bookings_per_staff: 1,
+  booking_group_email_mode: 'combined',
+  care_log_task_email_enabled: false,
+  care_log_daily_report_enabled: true,
 };
 
 /**
@@ -278,6 +287,9 @@ export function PolicyConfigurationPage() {
         : null,
       downpayment_hold_hours: form.downpayment_hold_hours,
       max_concurrent_bookings_per_staff: form.max_concurrent_bookings_per_staff,
+      booking_group_email_mode: form.booking_group_email_mode,
+      care_log_task_email_enabled: form.care_log_task_email_enabled,
+      care_log_daily_report_enabled: form.care_log_daily_report_enabled,
     });
 
     setIsSubmitting(false);
@@ -858,6 +870,85 @@ export function PolicyConfigurationPage() {
               form.credit_expiry_fixed_date < todayIso
                 ? ' The date you picked is already past — that credit will be expired on the next sweep.'
                 : ''}
+            </p>
+          </section>
+
+          <section aria-labelledby="email-notifications-heading">
+            <h2
+              className={styles.sectionTitle}
+              id="email-notifications-heading"
+            >
+              Customer email notifications
+            </h2>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Bundled checkout confirmation email
+              </span>
+              <select
+                className={styles.input}
+                value={form.booking_group_email_mode}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    booking_group_email_mode: event.target.value as
+                      | 'combined'
+                      | 'per_booking',
+                  }))
+                }
+              >
+                <option value="combined">
+                  One combined email for the whole checkout
+                </option>
+                <option value="per_booking">
+                  One email per booking in the checkout
+                </option>
+              </select>
+            </label>
+            <p className={styles.copy}>
+              When a customer books several pets/services in one checkout, send
+              a single &quot;your bookings are confirmed&quot; email instead of
+              one per booking. The in-app notification is always one per booking
+              either way.
+            </p>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.care_log_task_email_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    care_log_task_email_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>
+                Email the customer as each hotel care task is completed
+              </span>
+            </label>
+            <p className={styles.copy}>
+              Off by default - a busy hotel day logs many tasks per pet. The
+              in-app notification still fires for each; leave this off and the
+              nightly summary below covers the customer instead.
+            </p>
+
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={form.care_log_daily_report_enabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    care_log_daily_report_enabled: event.target.checked,
+                  }))
+                }
+              />
+              <span>Send a nightly care summary for each hotel stay</span>
+            </label>
+            <p className={styles.copy}>
+              One email per active hotel stay each evening, listing that
+              day&apos;s completed, missed, and still-scheduled care tasks.
             </p>
           </section>
 

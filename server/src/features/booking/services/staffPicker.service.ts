@@ -46,6 +46,11 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   // Mirrors the column default (20260908178): one staff member, one pet at a
   // time. Only used if the seeded default row is deleted out-of-band.
   max_concurrent_bookings_per_staff: 1,
+  // Mirrors the column defaults (20260908181): one combined checkout email,
+  // per-task care-log email off, nightly care summary on.
+  booking_group_email_mode: 'combined',
+  care_log_task_email_enabled: false,
+  care_log_daily_report_enabled: true,
 };
 
 export interface ServiceTypeStaffConfig {
@@ -583,6 +588,9 @@ export async function updatePolicyConfiguration({
     downpayment_hold_hours: resolved.downpayment_hold_hours,
     max_concurrent_bookings_per_staff:
       resolved.max_concurrent_bookings_per_staff,
+    booking_group_email_mode: resolved.booking_group_email_mode,
+    care_log_task_email_enabled: resolved.care_log_task_email_enabled,
+    care_log_daily_report_enabled: resolved.care_log_daily_report_enabled,
   };
 
   const { data, error } = await supabase

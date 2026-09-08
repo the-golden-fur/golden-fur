@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import {
   sendBookingConfirmedNotification,
+  sendCombinedBookingGroupConfirmedEmail,
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
@@ -1959,18 +1960,48 @@ export async function recomputeBookingGroupPaymentStatus(
   );
   const failures: BookingGroupSideEffectFailure[] = [];
 
+  // Collapse the per-member confirmation email into one combined send for the
+  // cart unless the branch policy opts into per-booking emails
+  // (booking_group_email_mode). In-app rows are one per member regardless.
+  const emailMode = (await resolveEffectivePolicy(bookingGroup.branch_id))
+    .booking_group_email_mode;
+  const combineGroupEmail = emailMode === 'combined';
+  const newlyConfirmed: Booking[] = [];
+
   for (const row of previouslyPending) {
     try {
       // Deliberately sequential (not Promise.all): each booking's own
       // capacity re-check must not race the next one.
-      await applyFirstBookingPaymentSideEffects({
+      const updated = await applyFirstBookingPaymentSideEffects({
         bookingId: row.id,
         paymentStatusBeforePayment: 'Pending',
         revertOnCapacityConflict: true,
+        suppressConfirmationEmail: combineGroupEmail,
       });
+      // Mirror applyFirstBookingPaymentSideEffects's own send guard exactly:
+      // it only fires the confirmation when the payment actually left
+      // 'Pending' (updated.payment_status !== 'Pending'). Without that check a
+      // payment reversal - which drops every member back to 'Pending' and
+      // sends nothing - would still push already-confirmed Online bookings
+      // here and re-email the customer a stale "bookings confirmed".
+      if (
+        updated.payment_status !== 'Pending' &&
+        updated.status === 'Pending' &&
+        updated.booking_source === 'Online'
+      ) {
+        newlyConfirmed.push(updated);
+      }
     } catch (error) {
       failures.push({ bookingId: row.id, error });
     }
+  }
+
+  if (combineGroupEmail && newlyConfirmed.length > 0) {
+    await sendCombinedBookingGroupConfirmedEmail(
+      bookingGroup.customer_id,
+      bookingGroup.branch_id,
+      newlyConfirmed
+    );
   }
 
   if (failures.length > 0) {
@@ -2005,10 +2036,16 @@ export async function applyFirstBookingPaymentSideEffects({
   bookingId,
   paymentStatusBeforePayment,
   revertOnCapacityConflict,
+  suppressConfirmationEmail = false,
 }: {
   bookingId: string;
   paymentStatusBeforePayment: PaymentStatus;
   revertOnCapacityConflict: boolean;
+  /** Multi-booking checkout in 'combined' email mode: the in-app
+   * booking_confirmed row still fires per member, but the confirmation email
+   * is sent once for the whole cart by the caller instead of once per
+   * member. Has no effect on the staff_assigned alert. */
+  suppressConfirmationEmail?: boolean;
 }): Promise<Booking> {
   const updated = await getRawBookingById(bookingId);
 
@@ -2042,7 +2079,9 @@ export async function applyFirstBookingPaymentSideEffects({
   // - fire the alerts createBooking held back while it was Unconfirmed.
   if (updated.status === 'Pending' && updated.booking_source === 'Online') {
     try {
-      await sendBookingConfirmedNotification(updated);
+      await sendBookingConfirmedNotification(updated, {
+        skipEmail: suppressConfirmationEmail,
+      });
 
       const preferences = Array.isArray(updated.staff_picker_preferences)
         ? updated.staff_picker_preferences
