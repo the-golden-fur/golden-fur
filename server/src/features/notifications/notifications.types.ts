@@ -90,7 +90,7 @@ export interface CreateNotificationParams {
    * the 8 event types needs different template params, so notification.
    * service.ts stays decoupled from all six templates' specific shapes)
    * and hands it here as a thunk. Omitted entirely for password_reset (no
-   * Resend template exists for that event - see Sprint6-EpicA-Guide's Spec
+   * Brevo template exists for that event - see Sprint6-EpicA-Guide's Spec
    * Tensions). Never blocks or rolls back the notification row - a
    * rejection is caught and logged, not rethrown.
    */

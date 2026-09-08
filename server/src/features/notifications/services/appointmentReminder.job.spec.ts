@@ -16,16 +16,26 @@ interface QueryResult {
   error: unknown;
 }
 
+/** Every `.eq(column, value)` call across every builder this test run made,
+ * in order - lets a test assert the status filter without reaching into a
+ * per-`from()` throwaway spy. */
+let eqCalls: Array<[string, unknown]> = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  eqCalls = [];
 
   vi.mocked(supabase.from).mockImplementation((() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'in', 'gte', 'lt', 'is', 'update']) {
+    for (const method of ['select', 'in', 'gte', 'lt', 'is', 'update']) {
       builder[method] = vi.fn(() => builder);
     }
+    builder.eq = vi.fn((column: string, value: unknown) => {
+      eqCalls.push([column, value]);
+      return builder;
+    });
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
@@ -63,6 +73,18 @@ describe('appointmentReminder.job (configurable offset)', () => {
     // Only the main bookings query ran - no customer_profiles lookup for an
     // empty result set.
     expect(supabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it('only considers Pending bookings - an In Progress booking is already under way', async () => {
+    queueFromResults({ data: [], error: null });
+
+    await runAppointmentReminderJob(NOW);
+
+    expect(eqCalls).toContainEqual(['status', 'Pending']);
+    expect(eqCalls.some(([column]) => column === 'status')).toBe(true);
+    expect(
+      eqCalls.filter(([column]) => column === 'status')
+    ).not.toContainEqual(['status', 'In Progress']);
   });
 
   it('does not send when now is still before the fire time (default 1-day offset, booking is 23h out)', async () => {

@@ -482,6 +482,18 @@ export interface PolicyConfiguration {
    * the get_staff_availability RPC (Check 2) and confirmCapacityAfterInsert;
    * also gates the multi-booking checkout's in-request claimWindowOrThrow. */
   max_concurrent_bookings_per_staff: number;
+  /** Multi-booking checkout confirmation email (20260908181): 'combined' =
+   * one email listing every booking in the cart (default); 'per_booking' =
+   * one email per booking. In-app rows are always one per booking. */
+  booking_group_email_mode: 'combined' | 'per_booking';
+  /** When true, email the customer as each hotel care-log task is completed.
+   * Default false - the in-app notification still fires; the nightly summary
+   * (below) is what reaches the customer's inbox instead (20260908181). */
+  care_log_task_email_enabled: boolean;
+  /** When true (default), send one nightly summary email per active hotel
+   * stay listing that day's completed / missed / still-open care tasks
+   * (20260908181, care_log_daily_reports ledger). */
+  care_log_daily_report_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -513,6 +525,9 @@ export type EffectivePolicy = Pick<
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
   | 'max_concurrent_bookings_per_staff'
+  | 'booking_group_email_mode'
+  | 'care_log_task_email_enabled'
+  | 'care_log_daily_report_enabled'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

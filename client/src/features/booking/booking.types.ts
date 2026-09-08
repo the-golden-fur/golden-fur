@@ -565,6 +565,14 @@ export interface PolicyConfiguration {
   /** How many overlapping Grooming/Veterinary bookings one staff member may be
    * assigned at once. 1 = one pet at a time (default). */
   max_concurrent_bookings_per_staff: number;
+  /** Multi-booking checkout confirmation email: 'combined' = one email for
+   * the whole cart (default); 'per_booking' = one email per booking. */
+  booking_group_email_mode: 'combined' | 'per_booking';
+  /** Email the customer as each hotel care task is completed. Default false -
+   * the nightly summary covers them instead. */
+  care_log_task_email_enabled: boolean;
+  /** Send one nightly summary email per active hotel stay (default true). */
+  care_log_daily_report_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -592,6 +600,9 @@ export type EffectivePolicy = Pick<
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
   | 'max_concurrent_bookings_per_staff'
+  | 'booking_group_email_mode'
+  | 'care_log_task_email_enabled'
+  | 'care_log_daily_report_enabled'
 >;
 
 export interface UpdatePolicyPayload {
@@ -617,6 +628,9 @@ export interface UpdatePolicyPayload {
   downpayment_amount?: number | null;
   downpayment_hold_hours?: number;
   max_concurrent_bookings_per_staff?: number;
+  booking_group_email_mode?: 'combined' | 'per_booking';
+  care_log_task_email_enabled?: boolean;
+  care_log_daily_report_enabled?: boolean;
 }
 
 export interface StaffPreferenceInput {

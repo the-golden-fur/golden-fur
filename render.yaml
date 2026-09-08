@@ -41,11 +41,13 @@ services:
       # base64 key that decodes to exactly 32 bytes: openssl rand -base64 32
       - key: STAFF_TEMP_CREDENTIAL_KEY
         sync: false
-      # Transactional email. Resend today, migrating to Brevo. Leave unset on
-      # environments where email isn't provisioned yet (sends will error).
-      - key: RESEND_API_KEY
+      # Transactional email (Brevo). The prod API key is not provisioned yet -
+      # leave unset until it is; email-triggering flows will error, which is
+      # expected, not a regression. BREVO_FROM_EMAIL must be a verified Brevo
+      # sender.
+      - key: BREVO_API_KEY
         sync: false
-      - key: RESEND_FROM_EMAIL
+      - key: BREVO_FROM_EMAIL
         sync: false
       # PayMongo - dormant until the client provisions an account. Leave unset;
       # online-payment paths stay inactive.

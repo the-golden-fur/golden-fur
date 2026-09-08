@@ -264,7 +264,7 @@ export async function listStaff(
 
 /**
  * Issue #74: re-sends the existing account_created credential email
- * (via Resend) as-is - does not regenerate the temporary password.
+ * (via Brevo) as-is - does not regenerate the temporary password.
  */
 export async function resendAccountEmail(
   staffId: string,

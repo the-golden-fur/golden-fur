@@ -424,6 +424,11 @@ export const updatePolicyValidator = z
     // Staff concurrency (20260908178): overlapping bookings one staff member
     // may hold. NOT NULL in the DB (default 1, CHECK >= 1).
     max_concurrent_bookings_per_staff: z.number().int().min(1).optional(),
+    // Transactional-email behaviour (20260908181). All NOT NULL in the DB
+    // with documented defaults - just booleans + the two-value mode enum.
+    booking_group_email_mode: z.enum(['combined', 'per_booking']).optional(),
+    care_log_task_email_enabled: z.boolean().optional(),
+    care_log_daily_report_enabled: z.boolean().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

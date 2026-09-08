@@ -48,11 +48,31 @@ async function getRecipientPreferences(
 }
 
 /**
+ * Standalone "may we email this recipient for this event?" check, for the
+ * handful of senders that don't go through createNotification's own email
+ * thunk - currently the combined multi-booking confirmation email
+ * (bookingNotifications.service.ts) and the nightly care-log summary
+ * (careLogDailyReport.job.ts), both of which write their in-app rows
+ * separately (one per booking / handled elsewhere) but still owe the same
+ * Settings > Preferences opt-out respect for the single email they send.
+ */
+export async function isEmailNotificationEnabled(params: {
+  recipientStaffId?: string | null;
+  recipientCustomerId?: string | null;
+  eventType: CreateNotificationParams['eventType'];
+}): Promise<boolean> {
+  const preferences = await getRecipientPreferences(
+    params as CreateNotificationParams
+  );
+  return preferences.email;
+}
+
+/**
  * Issue #97: the ONE write path every event-triggering module calls into
  * (Issues #98, #99, plus the account_created/password_reset call sites this
  * issue adds directly) - writes the notifications row first, unconditionally,
  * then best-effort sends the email leg where the caller supplied one. A
- * Resend failure is logged for admin review but never rolls back the row or
+ * Brevo failure is logged for admin review but never rolls back the row or
  * rethrows, mirroring Modules-Features' own "a failed send is logged for
  * admin review but does not roll back any system state" requirement and the
  * non-blocking pattern already established for account_created's email
