@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getDayAvailability } from '../../api/booking.api';
 import type {
   OperatingWindow,
@@ -39,21 +39,6 @@ interface SlotPickerProps {
    * staff are actually free right now is the StaffPickerList's job (it stays
    * interactive alongside this component). */
   lockToNow?: boolean;
-  /** #22 follow-up: fired every time this date's availability resolves, so a
-   * caller can react to "the day currently being viewed has zero open
-   * slots" (e.g. show a fully-booked warning) without duplicating this
-   * component's own fetch/availableCount logic. hasAnySlots is false both
-   * when the branch has no operating_hours entry for that day AND when
-   * every candidate for today has already passed (current time is past
-   * closing) - getDaySlots returns an empty list either way, and neither
-   * case is a real "fully booked" (capacity/staff/cage all taken)
-   * situation, so callers should treat hasAnySlots === false as "nothing
-   * to warn about here", not as a warning of its own. */
-  onAvailabilityChange?: (info: {
-    date: string;
-    hasAnyAvailable: boolean;
-    hasAnySlots: boolean;
-  }) => void;
   /** Multi-booking checkout: windows this same pet already occupies via
    * another booking already committed in the current cart (see
    * bookingsList in CustomerBookingFlowPage) - a candidate slot overlapping
@@ -103,7 +88,6 @@ export function SlotPicker({
   onSelect,
   intent = 'new_booking',
   lockToNow = false,
-  onAvailabilityChange,
   excludedWindows,
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
@@ -115,13 +99,6 @@ export function SlotPicker({
   // Minimum-notice lead time, reported by the availability endpoint. Until
   // the first fetch resolves it stays 0 (no floor), matching prior behavior.
   const [minNoticeDays, setMinNoticeDays] = useState(0);
-
-  // Identity read via ref so a fresh arrow function on every parent render
-  // never forces a re-fetch - only the actual query params below should.
-  const onAvailabilityChangeRef = useRef(onAvailabilityChange);
-  useEffect(() => {
-    onAvailabilityChangeRef.current = onAvailabilityChange;
-  }, [onAvailabilityChange]);
 
   useEffect(() => {
     // Walk-in: nothing to fetch - the slot is "now", not something browsed
@@ -174,12 +151,6 @@ export function SlotPicker({
       if (date < earliest) {
         setDate(earliest);
       }
-
-      onAvailabilityChangeRef.current?.({
-        date,
-        hasAnyAvailable: result.data.slots.some((slot) => slot.available),
-        hasAnySlots: result.data.slots.length > 0,
-      });
     });
 
     return () => {

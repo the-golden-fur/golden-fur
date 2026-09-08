@@ -9,11 +9,14 @@ import { HotelCheckInPanel } from '../HotelQueuePage/HotelCheckInPanel';
 import styles from './HotelCheckInFormPage.module.css';
 
 /**
- * Custom change: the check-in form used to pop up inline at the bottom of
- * HotelQueuePage's Check In tab once a booking was picked - it's now a real
- * routed page (reached by HotelBookingPicker's onSelect on that tab), so
- * editing a check-in has its own URL/back button instead of scrolling to a
- * form appended below the picker. Re-runs the same role gate
+ * Custom change: the queue's "Check in" button now checks the pet in on the
+ * spot, so this page is no longer in that path - it's the "View booking
+ * details" destination from a queue row's "..." menu, for staff who need to
+ * see or correct the auto-suggested cage and the booking's care
+ * instructions (Edit toggle at the bottom) before checking in. Checking in
+ * from here redirects back to the queue with `?checkedIn=success` so the
+ * queue shows the same success modal the one-click path does - no "go to
+ * checkout / check in another pet" landing page. Re-runs the same role gate
  * HotelQueuePage does (HOTEL_QUEUE_VIEWER_ROLES) rather than inheriting
  * one, since this is its own route now, not a tab panel.
  */
@@ -124,16 +127,14 @@ export function HotelCheckInFormPage() {
         <Link className={styles.backLink} to="/staff/hotel/queue">
           &larr; Back to Hotel Queue
         </Link>
-        <h1 className={styles.title}>Check in</h1>
+        <h1 className={styles.title}>Booking details</h1>
 
         <HotelCheckInPanel
           key={booking.id}
           accessToken={accessToken}
           role={role ?? ''}
           booking={booking}
-          onCheckedIn={(stayId) =>
-            navigate(`/staff/hotel/queue?tab=check-out&stayId=${stayId}`)
-          }
+          onCheckedIn={() => navigate('/staff/hotel/queue?checkedIn=success')}
         />
       </div>
     </main>

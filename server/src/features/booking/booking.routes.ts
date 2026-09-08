@@ -16,7 +16,6 @@ import {
   getBookingDetailsController,
   listBookingsController,
   listPolicyConfigurationsController,
-  nextAvailableSlotController,
   onlinePaymentsStatusController,
   overrideBookingStatusController,
   partsOfDayController,
@@ -90,16 +89,6 @@ router.get('/bookings', jwtMiddleware, listBookingsController);
 // wrapping the same checkCapacity()/get_staff_availability() logic #51/#49
 // already run at submission time, read-only and ahead of it.
 router.get('/bookings/availability', jwtMiddleware, availabilityController);
-
-// #22: "fully booked" warning support - the earliest available day/slot
-// looking forward from a given date, so the booking flow can warn right
-// after service selection instead of only once the customer reaches the
-// Slot Picker.
-router.get(
-  '/bookings/availability/next-slot',
-  jwtMiddleware,
-  nextAvailableSlotController
-);
 
 // #22: which Morning/Afternoon/Evening walk/play blocks a branch's
 // operating hours actually permit for a given date - the hotel Care

@@ -11,7 +11,6 @@ import {
   bookingLeadDays,
   listAvailableStaff,
   noticeLeadDays,
-  resolveBookingLeadDays,
   resolveEffectivePolicy,
   resolveServiceTypeStaffConfig,
 } from './staffPicker.service.ts';
@@ -421,23 +420,6 @@ export async function getDaySlots({
   );
 }
 
-const DEFAULT_LOOKAHEAD_DAYS = 14;
-
-export interface FindNextAvailableSlotParams {
-  branchId: string;
-  serviceCategory: ServiceCategory;
-  /** YYYY-MM-DD, branch-local - search starts here (inclusive). */
-  fromDate: string;
-  slotDurationMinutes: number;
-  petWeightClass?: WeightClass;
-  lookaheadDays?: number;
-}
-
-export interface NextAvailableSlot {
-  date: string;
-  earliestSlot: { start: string; end: string };
-}
-
 function nextDateString(date: string): string {
   return addDaysToDateString(date, 1);
 }
@@ -449,53 +431,6 @@ function addDaysToDateString(date: string, days: number): string {
   return new Date(Date.UTC(year, month - 1, day + days))
     .toISOString()
     .slice(0, 10);
-}
-
-/**
- * #22: lets the booking flow warn a customer "fully booked" before they
- * reach the Slot Picker step, by walking getDaySlots forward day by day
- * until it finds one with at least one available candidate (or exhausts
- * lookaheadDays). Reuses getDaySlots as-is rather than a parallel capacity
- * query, so this always agrees with what the Slot Picker itself would show
- * for that date.
- */
-export async function findNextAvailableSlot({
-  branchId,
-  serviceCategory,
-  fromDate,
-  slotDurationMinutes,
-  petWeightClass,
-  lookaheadDays = DEFAULT_LOOKAHEAD_DAYS,
-}: FindNextAvailableSlotParams): Promise<NextAvailableSlot | null> {
-  // The minimum-notice window (getDaySlots returns [] for every day inside
-  // it) is skipped for free rather than eating into lookaheadDays - the
-  // caller asked for N bookable days of look-ahead, not N days total. This
-  // pre-warning is for the NEW-booking flow, so it uses the new-booking
-  // notice floor (booking_notice_period_days, default 0).
-  const minLeadDays = await resolveBookingLeadDays(branchId);
-  let cursor = fromDate;
-
-  for (let i = 0; i < lookaheadDays + minLeadDays; i += 1) {
-    const slots = await getDaySlots({
-      branchId,
-      serviceCategory,
-      date: cursor,
-      slotDurationMinutes,
-      petWeightClass,
-    });
-
-    const earliest = slots.find((slot) => slot.available);
-    if (earliest) {
-      return {
-        date: cursor,
-        earliestSlot: { start: earliest.start, end: earliest.end },
-      };
-    }
-
-    cursor = nextDateString(cursor);
-  }
-
-  return null;
 }
 
 const PART_OF_DAY_BANDS: Record<
