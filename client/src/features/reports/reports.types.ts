@@ -42,6 +42,11 @@ export interface TransactionRecord {
   id: string;
   booking_id: string | null;
   customer_id: string;
+  /** The owner's display name (customer_profiles.full_name), resolved
+   * server-side by listTransactionHistory. Null only if that profile row is
+   * missing. Both /reports/transaction-history and /my-transaction-history
+   * now send this. */
+  customer_name: string | null;
   branch_id: string;
   transaction_type: string;
   payment_method: string;

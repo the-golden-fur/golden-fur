@@ -1,0 +1,121 @@
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--column-count, 3), minmax(15rem, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  overflow-x: auto;
+}
+
+.column {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  border-top: 3px solid var(--color-border);
+  padding: var(--space-2);
+  min-width: 14rem;
+}
+
+.columnPending {
+  border-top-color: var(--color-status-neutral-text);
+}
+
+.columnPartial {
+  border-top-color: var(--color-warning-text, var(--color-accent-gold-primary));
+}
+
+.columnPaid {
+  border-top-color: var(--color-success-text, var(--color-accent-gold-primary));
+}
+
+.columnTitle {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.columnCount {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-2);
+}
+
+.cardBody,
+.cardBodyClickable {
+  display: grid;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+
+.cardBodyClickable {
+  cursor: pointer;
+}
+
+.cardBodyClickable:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.cardHeadline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.customer {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+}
+
+.amount {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.detail {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+}
+
+.meta {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.cardActions {
+  flex-shrink: 0;
+}
+
+@media (max-width: 60rem) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
