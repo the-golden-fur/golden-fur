@@ -7,6 +7,7 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../api/staff.api';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as reportsApi from '../../../reports/api/reports.api';
+import * as bookingApi from '../../../booking/api/booking.api';
 import * as groomingApi from '../../../grooming/api/grooming.api';
 import * as hotelApi from '../../../hotel/api/hotel.api';
 import * as daycareApi from '../../../daycare/api/daycare.api';
@@ -26,6 +27,10 @@ vi.mock('../../../reports/api/reports.api', () => ({
   getAnalyticsSummary: vi.fn(),
   getCageOccupancyReport: vi.fn(),
   getTransactionHistory: vi.fn(),
+}));
+
+vi.mock('../../../booking/api/booking.api', () => ({
+  listBookings: vi.fn(),
 }));
 
 vi.mock('../../../grooming/api/grooming.api', () => ({
@@ -176,6 +181,10 @@ describe('StaffDashboardPage', () => {
       data: [],
       error: null,
     });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
     vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
       data: { sessions: [] },
       error: null,
@@ -199,6 +208,15 @@ describe('StaffDashboardPage', () => {
       await screen.findByRole('heading', { name: 'Welcome back, Sam Admin!' })
     ).toBeInTheDocument();
     expect(
+      await screen.findByRole('heading', { name: 'Appointments booked' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'By service' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Revenue' })
+    ).toBeInTheDocument();
+    expect(
       await screen.findByRole('heading', { name: 'Cage Availability' })
     ).toBeInTheDocument();
     expect(
@@ -207,6 +225,9 @@ describe('StaffDashboardPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Makati vs Southwoods Revenue' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'View all queues' })
+    ).toHaveAttribute('href', '/staff/bookings/queue');
     expect(
       screen.getByRole('heading', { name: 'Grooming Queue' })
     ).toBeInTheDocument();
@@ -233,6 +254,9 @@ describe('StaffDashboardPage', () => {
 
     await screen.findByRole('heading', { name: 'Welcome back, Ada Min!' });
 
+    expect(
+      screen.queryByRole('heading', { name: 'Appointments booked' })
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Cage Availability' })
     ).not.toBeInTheDocument();

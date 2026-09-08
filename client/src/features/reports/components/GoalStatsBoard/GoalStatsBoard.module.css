@@ -1,0 +1,108 @@
+/*
+ * Superadmin dashboard "goal" header - three side-by-side tables (total
+ * appointments / per-service appointments / revenue), each comparing this
+ * month, last month and a growth goal. Wraps to fewer columns on narrow
+ * viewports.
+ */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+/* 3 up on wide screens, 1 up once they'd get cramped. */
+@media (max-width: 68rem) {
+  .board {
+    grid-template-columns: 1fr;
+    max-width: 32rem;
+  }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--space-1) var(--space-1);
+  text-align: right;
+}
+
+.table thead th {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* First column (metric / service name) reads as a row label, left-aligned. */
+.table thead th:first-child,
+.table tbody th {
+  text-align: left;
+}
+
+.table tbody th {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.table tbody tr + tr th,
+.table tbody tr + tr td {
+  border-top: 1px solid var(--color-border);
+}
+
+.value {
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.value[data-met='true'] {
+  color: var(--color-success-text);
+  font-weight: var(--weight-semibold);
+}
+
+.goal {
+  color: var(--color-accent-gold-primary);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
