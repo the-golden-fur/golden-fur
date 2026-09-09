@@ -19,10 +19,10 @@ interface SelectedSlot {
   end: string;
 }
 
-/** Matches CustomerBookingFlowPage's own DEFAULT_DURATION_MINUTES.Veterinary
- * stand-in - a fixed duration for the availability check before any
- * service is chosen, replaced with the real item duration at submit time
- * (below). */
+/** A fixed duration for the availability check in this follow-up modal,
+ * where no service is picked before the slot - replaced with the real item
+ * duration at submit time (below). The main booking wizard instead reorders
+ * Services ahead of Date & Time and passes the real accumulated duration. */
 const STAND_IN_DURATION_MINUTES = 60;
 
 export interface ScheduleFollowUpModalProps {

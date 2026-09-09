@@ -35,17 +35,25 @@
 
 insert into public.services (id, category, name, base_price, duration_minutes)
 values
-  -- Grooming (slot-based; base_price = S/SC tier, matrix below)
-  ('a1300000-0000-4000-a000-000000000001', 'Grooming', 'Bath', 300.00, null),
-  ('a1300000-0000-4000-a000-000000000002', 'Grooming', 'Blow-dry', 250.00, null),
-  ('a1300000-0000-4000-a000-000000000003', 'Grooming', 'Brushing', 150.00, null),
-  ('a1300000-0000-4000-a000-000000000004', 'Grooming', 'Nail Trim', 150.00, null),
-  ('a1300000-0000-4000-a000-000000000005', 'Grooming', 'Teeth Brushing', 150.00, null),
-  ('a1300000-0000-4000-a000-000000000006', 'Grooming', 'Ear Cleaning', 150.00, null),
-  ('a1300000-0000-4000-a000-000000000007', 'Grooming', 'Anal Drain', 200.00, null),
-  ('a1300000-0000-4000-a000-000000000008', 'Grooming', 'Face Trim', 150.00, null),
-  ('a1300000-0000-4000-a000-000000000009', 'Grooming', 'Dematting', 350.00, null),
-  ('a1300000-0000-4000-a000-000000000010', 'Grooming', 'Poodle Feet', 200.00, null),
+  -- Grooming (slot-based; base_price = S/SC tier, matrix below).
+  -- duration_minutes is the average service time - it sets how long a
+  -- booking for this service runs and feeds the package duration roll-up
+  -- (Architectural-Change-History: "set average time of service"). These
+  -- are first-draft values, admin-editable from Admin Settings > Services.
+  -- On a database already past this migration these values land via the
+  -- idempotent 20260910183_m13_backfill_service_average_duration.sql instead
+  -- (this insert is ON CONFLICT DO NOTHING and never re-runs); the two files
+  -- carry the same numbers.
+  ('a1300000-0000-4000-a000-000000000001', 'Grooming', 'Bath', 300.00, 45),
+  ('a1300000-0000-4000-a000-000000000002', 'Grooming', 'Blow-dry', 250.00, 30),
+  ('a1300000-0000-4000-a000-000000000003', 'Grooming', 'Brushing', 150.00, 20),
+  ('a1300000-0000-4000-a000-000000000004', 'Grooming', 'Nail Trim', 150.00, 15),
+  ('a1300000-0000-4000-a000-000000000005', 'Grooming', 'Teeth Brushing', 150.00, 15),
+  ('a1300000-0000-4000-a000-000000000006', 'Grooming', 'Ear Cleaning', 150.00, 15),
+  ('a1300000-0000-4000-a000-000000000007', 'Grooming', 'Anal Drain', 200.00, 15),
+  ('a1300000-0000-4000-a000-000000000008', 'Grooming', 'Face Trim', 150.00, 20),
+  ('a1300000-0000-4000-a000-000000000009', 'Grooming', 'Dematting', 350.00, 60),
+  ('a1300000-0000-4000-a000-000000000010', 'Grooming', 'Poodle Feet', 200.00, 20),
   -- Daycare (per-hour block; M06 charges P100 first hour + P50 succeeding)
   ('a1300000-0000-4000-a000-000000000011', 'Daycare', 'Daycare (per hour)', 100.00, 60),
   -- Hotel (per-night, priced by cage size)
@@ -56,12 +64,12 @@ values
   -- Veterinary (Makati-only at booking time - enforced by M03 in Epic B,
   -- not by branch availability rows; both branches stay toggled on here and
   -- Admins can disable per branch from the #45 UI)
-  ('a1300000-0000-4000-a000-000000000016', 'Veterinary', 'Wellness Exam', 500.00, null),
-  ('a1300000-0000-4000-a000-000000000017', 'Veterinary', 'Vaccination', 450.00, null),
-  ('a1300000-0000-4000-a000-000000000018', 'Veterinary', 'Laboratory Test', 700.00, null),
-  ('a1300000-0000-4000-a000-000000000019', 'Veterinary', 'Dental Cleaning', 1500.00, null),
-  ('a1300000-0000-4000-a000-000000000020', 'Veterinary', 'Surgery', 3000.00, null),
-  ('a1300000-0000-4000-a000-000000000021', 'Veterinary', 'Emergency Consultation', 1000.00, null)
+  ('a1300000-0000-4000-a000-000000000016', 'Veterinary', 'Wellness Exam', 500.00, 30),
+  ('a1300000-0000-4000-a000-000000000017', 'Veterinary', 'Vaccination', 450.00, 15),
+  ('a1300000-0000-4000-a000-000000000018', 'Veterinary', 'Laboratory Test', 700.00, 20),
+  ('a1300000-0000-4000-a000-000000000019', 'Veterinary', 'Dental Cleaning', 1500.00, 60),
+  ('a1300000-0000-4000-a000-000000000020', 'Veterinary', 'Surgery', 3000.00, 120),
+  ('a1300000-0000-4000-a000-000000000021', 'Veterinary', 'Emergency Consultation', 1000.00, 45)
 on conflict (id) do nothing;
 
 -- Full size x coat matrix for every Grooming service (#44 AC-1): placeholder
