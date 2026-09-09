@@ -97,9 +97,60 @@ describe('CustomerTransactionHistoryPage', () => {
     await waitFor(() =>
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
-        'token'
+        'token',
+        undefined
       )
     );
+  });
+
+  it('sends a partial "Amount paid" as the credit amount and previews the balance', async () => {
+    const user = userEvent.setup();
+    vi.mocked(billingApi.payTransactionWithCredit).mockResolvedValue({
+      data: { transaction: {} as never, booking: null },
+      error: null,
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+    const dialog = screen.getByRole('dialog');
+    const amountField = within(dialog).getByLabelText(/amount paid/i);
+    expect(amountField).toHaveValue(500);
+    await user.clear(amountField);
+    await user.type(amountField, '200');
+    expect(
+      within(dialog).getByText(/does not cover will be left as a balance/i)
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Pay with credit' })
+    );
+
+    await waitFor(() =>
+      expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
+        'txn-1',
+        'token',
+        200
+      )
+    );
+  });
+
+  it('locks the "Amount paid" field to the full amount for GCash / Maya', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+    const dialog = screen.getByRole('dialog');
+    const amountField = within(dialog).getByLabelText(/amount paid/i);
+    await user.clear(amountField);
+    await user.type(amountField, '200');
+    await user.click(within(dialog).getByLabelText('GCash'));
+
+    expect(amountField).toBeDisabled();
+    expect(amountField).toHaveValue(500);
+    expect(
+      within(dialog).getByText(/must pay the full amount/i)
+    ).toBeInTheDocument();
   });
 
   it('routes a GCash choice through payForBooking', async () => {

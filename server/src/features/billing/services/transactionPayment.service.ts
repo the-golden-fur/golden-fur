@@ -1,6 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
-import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
 import {
   applyFirstBookingPaymentSideEffects,
   recomputeBookingGroupPaymentStatus,
@@ -17,6 +16,28 @@ function throwWithStatus(statusCode: number, message: string): never {
 /** Rounds to the nearest centavo - matches numeric(10,2) column precision. */
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * How much is being paid against a transaction now: the caller's amount
+ * (rounded) or the whole `total` when they gave none. Must be positive and
+ * no more than the total - both the counter-cash and pay-with-credit paths
+ * enforce the same bounds before touching the database.
+ */
+function resolveAmountApplied(
+  amountApplied: number | null | undefined,
+  total: number
+): number {
+  const applied = amountApplied != null ? round2(amountApplied) : round2(total);
+
+  if (applied <= 0) {
+    throwWithStatus(400, 'Amount paid must be more than zero');
+  }
+  if (applied > total + 0.001) {
+    throwWithStatus(400, 'Amount paid cannot exceed the transaction total');
+  }
+
+  return applied;
 }
 
 /** Ids of the booking's (or, for a group transaction, the booking group's)
@@ -126,8 +147,7 @@ export interface RecordTransactionPaymentParams {
   paymentMethod: PaymentMethod;
   bankName?: string | null;
   paymentReference?: string | null;
-  cashTendered?: number | null;
-  /** Amount actually collected. Defaults to the transaction's full
+  /** Amount actually paid now. Defaults to the transaction's full
    * total_amount; when less, settle_transaction settles this row for the
    * partial amount and spawns a Pending 'balance' transaction for the rest. */
   amountApplied?: number | null;
@@ -136,7 +156,6 @@ export interface RecordTransactionPaymentParams {
 export interface RecordTransactionPaymentResult {
   transaction: Transaction;
   booking: unknown;
-  changeAmount: number | null;
   /** The Pending 'balance' transaction created for the unpaid remainder when
    * this was a partial settlement; null otherwise. */
   leftover: Transaction | null;
@@ -145,12 +164,12 @@ export interface RecordTransactionPaymentResult {
 /**
  * Payment/transactions rework: a cashier records a counter payment against a
  * Pending booking_payment transaction (Cash/Card/Bank Transfer/Grabmart/
- * Pickaroo). Reuses resolvePaymentConfirmation to validate the cash tender
- * and compute change, then hands off to the settle_transaction RPC, which
- * flips the transaction to Fully Paid and recomputes bookings.payment_status
- * atomically. GCash/Maya are out of scope here (portal = webhook-confirmed;
- * walk-in-QR = settled through checkout); 'Credit' goes through
- * payTransactionWithCredit.
+ * Pickaroo). One money field only - amountApplied, how much is being paid now
+ * (there is no cash-tendered/change concept; the transaction stores neither).
+ * Hands off to the settle_transaction RPC, which flips the transaction to
+ * Fully Paid and recomputes bookings.payment_status atomically. GCash/Maya
+ * are out of scope here (portal = webhook-confirmed; walk-in-QR = settled
+ * through checkout); 'Credit' goes through payTransactionWithCredit.
  */
 export async function recordTransactionPayment({
   requesterId,
@@ -158,7 +177,6 @@ export async function recordTransactionPayment({
   paymentMethod,
   bankName,
   paymentReference,
-  cashTendered,
   amountApplied,
 }: RecordTransactionPaymentParams): Promise<RecordTransactionPaymentResult> {
   const transaction = await loadTransaction(transactionId);
@@ -174,30 +192,13 @@ export async function recordTransactionPayment({
     );
   }
 
-  const transactionTotal = Number(transaction.total_amount);
-  // How much is actually being collected now - the whole transaction by
-  // default, or a smaller amount (settle_transaction then spawns a Pending
-  // 'balance' row for the remainder). Never more than the transaction total.
-  const applied =
-    amountApplied != null ? round2(amountApplied) : transactionTotal;
-
-  if (applied <= 0) {
-    throwWithStatus(400, 'Amount to collect must be more than zero');
-  }
-  if (applied > transactionTotal + 0.001) {
-    throwWithStatus(
-      400,
-      'Amount to collect cannot exceed the transaction total'
-    );
-  }
-
-  // The cash-tender check + change are against the amount being collected
-  // now, not the full transaction total.
-  const { changeAmount } = resolvePaymentConfirmation({
-    paymentMethod,
-    amountDue: applied,
-    cashTendered: cashTendered ?? undefined,
-  });
+  // How much is being paid now - the whole transaction by default, or a
+  // smaller amount (settle_transaction then spawns a Pending 'balance' row
+  // for the remainder). Never more than the transaction total.
+  const applied = resolveAmountApplied(
+    amountApplied,
+    Number(transaction.total_amount)
+  );
 
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
@@ -212,7 +213,9 @@ export async function recordTransactionPayment({
     p_payment_method: paymentMethod,
     p_bank_name: bankName ?? null,
     p_payment_reference: paymentReference ?? null,
-    p_cash_tendered: cashTendered ?? null,
+    // Kept for call-site symmetry with the RPC signature - the transaction
+    // stores no tendered/change figure and the RPC ignores this param.
+    p_cash_tendered: null,
     p_processed_by: requesterId,
     p_amount_applied: applied,
   });
@@ -249,7 +252,7 @@ export async function recordTransactionPayment({
     balanceIdsBefore
   );
 
-  return { transaction: settled, booking, changeAmount, leftover };
+  return { transaction: settled, booking, leftover };
 }
 
 export interface AddBookingPaymentParams {
@@ -293,6 +296,11 @@ export interface PayTransactionWithCreditParams {
    * behalf - recorded as processed_by on the settle. A customer paying their
    * own transaction passes false and leaves processed_by null. */
   isStaff: boolean;
+  /** Caps how much credit is applied. Defaults to the whole transaction; a
+   * smaller value settles it partially and pay_transaction_with_credit spawns
+   * a Pending 'balance' transaction for the rest. Still bounded by the
+   * customer's available credit. */
+  amountApplied?: number | null;
 }
 
 export interface PayTransactionWithCreditResult {
@@ -320,6 +328,7 @@ export async function payTransactionWithCredit({
   requesterId,
   transactionId,
   isStaff,
+  amountApplied,
 }: PayTransactionWithCreditParams): Promise<PayTransactionWithCreditResult> {
   const transaction = await loadTransaction(transactionId);
 
@@ -338,6 +347,15 @@ export async function payTransactionWithCredit({
     );
   }
 
+  // How much the caller wants to put against the transaction now - the whole
+  // charge by default, or a smaller amount (the RPC then spawns a Pending
+  // 'balance' row for the remainder). Bounds-checked before any DB work,
+  // like the counter-cash path.
+  const requested = resolveAmountApplied(
+    amountApplied,
+    Number(transaction.total_amount)
+  );
+
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
@@ -346,12 +364,11 @@ export async function payTransactionWithCredit({
     transaction.booking_group_id
   );
 
-  const chargeAmount = round2(Number(transaction.total_amount));
   const available = await getAvailableCredit(
     transaction.customer_id,
     transaction.branch_id
   );
-  const amount = round2(Math.min(available, chargeAmount));
+  const amount = round2(Math.min(available, requested));
 
   if (amount <= 0) {
     throwWithStatus(400, 'No credit available to apply');

@@ -140,10 +140,9 @@ export interface RecordPaymentPayload {
   payment_method: string;
   bank_name?: string;
   payment_reference?: string;
-  cash_tendered?: number;
-  /** Amount collected now; omit to settle the whole transaction. A smaller
-   * value settles it partially and creates a Pending 'balance' transaction
-   * for the remainder. */
+  /** Amount paid now; omit to settle the whole transaction. A smaller value
+   * settles it partially and creates a Pending 'balance' transaction for the
+   * remainder. */
   amount_applied?: number;
 }
 
@@ -157,7 +156,6 @@ export async function recordTransactionPayment(
   BillingApiResult<{
     transaction: Transaction;
     booking: unknown;
-    changeAmount: number | null;
     leftover: Transaction | null;
   }>
 > {
@@ -199,12 +197,14 @@ export async function addBookingPayment(
   return parseBody(response);
 }
 
-/** Pays a Pending transaction from the customer's credit balance. Partial
- * cover settles it for the available credit and spawns a Pending 'balance'
- * transaction for the rest. */
+/** Pays a Pending transaction from the customer's credit balance. `amountApplied`
+ * caps how much is applied (omit to pay the whole transaction); a smaller value -
+ * or credit that only partly covers the charge - settles it for that amount and
+ * spawns a Pending 'balance' transaction for the rest. */
 export async function payTransactionWithCredit(
   transactionId: string,
-  accessToken: string
+  accessToken: string,
+  amountApplied?: number
 ): Promise<
   BillingApiResult<{
     transaction: Transaction;
@@ -214,7 +214,14 @@ export async function payTransactionWithCredit(
 > {
   const response = await fetch(
     `${API_BASE_URL}/billing/transactions/${transactionId}/pay-with-credit`,
-    { method: 'POST', headers: jsonHeaders(accessToken) }
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body:
+        amountApplied === undefined
+          ? undefined
+          : JSON.stringify({ amount_applied: amountApplied }),
+    }
   );
 
   if (!response.ok) {

@@ -14,6 +14,10 @@ interface PaymentMethodFormProps {
    * Transactions page passes [...PAYMENT_METHODS, 'Credit'] so a cashier can
    * settle a booking payment straight from account credit here. */
   methods?: readonly string[];
+  /** Transactions "Mark as paid" modal: it has its own single "Amount paid"
+   * field, so suppress the Cash-tendered input and the computed-change line
+   * (the transaction stores neither). Checkout / misc-sale leave this off. */
+  hideCashTendered?: boolean;
 }
 
 /**
@@ -31,6 +35,7 @@ export function PaymentMethodForm({
   onChange,
   amountDue,
   methods = PAYMENT_METHODS,
+  hideCashTendered = false,
 }: PaymentMethodFormProps) {
   const isOnlineMethod = (ONLINE_PAYMENT_METHODS as readonly string[]).includes(
     value.payment_method
@@ -45,8 +50,9 @@ export function PaymentMethodForm({
     !isCredit &&
     (!isOnlineMethod || value.online_channel === 'walk_in_qr');
 
+  const showCashTendered = isCash && !hideCashTendered;
   const change =
-    isCash && value.cash_tendered !== undefined
+    showCashTendered && value.cash_tendered !== undefined
       ? Math.max(0, value.cash_tendered - amountDue)
       : null;
 
@@ -103,7 +109,7 @@ export function PaymentMethodForm({
         </label>
       ) : null}
 
-      {isCash ? (
+      {showCashTendered ? (
         <>
           <label className={styles.field}>
             <span className={styles.label}>Cash tendered (PHP)</span>
