@@ -57,4 +57,18 @@ describe('PaymentMethodForm', () => {
     expect(screen.getByLabelText(/reference number/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/reference number/i), 'ref-1');
   });
+
+  it('hideCashTendered drops the cash field, the change line and any reference field for Cash', () => {
+    render(
+      <PaymentMethodForm
+        value={{ payment_method: 'Cash', cash_tendered: 800 }}
+        onChange={vi.fn()}
+        amountDue={693}
+        hideCashTendered
+      />
+    );
+    expect(screen.queryByLabelText(/cash tendered/i)).toBeNull();
+    expect(screen.queryByText(/^Change:/i)).toBeNull();
+    expect(screen.queryByLabelText(/reference number/i)).toBeNull();
+  });
 });

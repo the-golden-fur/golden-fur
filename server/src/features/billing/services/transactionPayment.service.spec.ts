@@ -89,7 +89,7 @@ describe('transactionPayment.service', () => {
     vi.clearAllMocks();
   });
 
-  it('records a cash payment: settles the transaction and returns the computed change', async () => {
+  it('records a cash payment: settles the transaction for the amount paid', async () => {
     queueFrom(
       { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
       { data: { payment_status: 'Pending' }, error: null }, // loadBookingPaymentStatus
@@ -109,7 +109,6 @@ describe('transactionPayment.service', () => {
       requesterId: 'staff-1',
       transactionId: 'txn-1',
       paymentMethod: 'Cash',
-      cashTendered: 600,
     });
 
     expect(supabase.rpc).toHaveBeenCalledWith(
@@ -117,12 +116,11 @@ describe('transactionPayment.service', () => {
       expect.objectContaining({
         p_transaction_id: 'txn-1',
         p_payment_method: 'Cash',
-        p_cash_tendered: 600,
+        p_cash_tendered: null,
         p_processed_by: 'staff-1',
         p_amount_applied: 500,
       })
     );
-    expect(result.changeAmount).toBe(100);
     expect(result.leftover).toBeNull();
     expect(result.transaction.payment_status).toBe('Fully Paid');
     // The counter path must run the same first-payment side-effects (slot
@@ -155,7 +153,6 @@ describe('transactionPayment.service', () => {
       requesterId: 'staff-1',
       transactionId: 'txn-group-1',
       paymentMethod: 'Cash',
-      cashTendered: 500,
     });
 
     expect(applyFirstBookingPaymentSideEffects).not.toHaveBeenCalled();
@@ -195,7 +192,6 @@ describe('transactionPayment.service', () => {
         requesterId: 'staff-1',
         transactionId: 'txn-group-1',
         paymentMethod: 'Cash',
-        cashTendered: 500,
       })
     ).rejects.toMatchObject({ statusCode: 409 });
   });
@@ -234,7 +230,6 @@ describe('transactionPayment.service', () => {
       requesterId: 'staff-1',
       transactionId: 'txn-1',
       paymentMethod: 'Cash',
-      cashTendered: 200,
       amountApplied: 200,
     });
 
@@ -242,8 +237,6 @@ describe('transactionPayment.service', () => {
       'settle_transaction',
       expect.objectContaining({ p_amount_applied: 200 })
     );
-    // Cash tender is checked against the amount being collected (200), not 500.
-    expect(result.changeAmount).toBe(0);
     expect(result.leftover).toMatchObject({
       id: 'txn-leftover',
       total_amount: 300,
@@ -275,7 +268,6 @@ describe('transactionPayment.service', () => {
         requesterId: 'staff-1',
         transactionId: 'txn-1',
         paymentMethod: 'Cash',
-        cashTendered: 600,
       })
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(supabase.rpc).not.toHaveBeenCalled();
@@ -496,6 +488,67 @@ describe('transactionPayment.service', () => {
       id: 'txn-leftover',
       total_amount: 300,
     });
+  });
+
+  it('caps p_amount at a caller-supplied amountApplied even when more credit is available', async () => {
+    queueFrom(
+      { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
+      { data: { payment_status: 'Pending' }, error: null }, // loadBookingPaymentStatus
+      { data: [{ id: 'txn-1' }], error: null }, // pendingBalanceTxnIds (before)
+      { data: { id: 'credit-txn-1', amount: -200 }, error: null }, // credit_transactions lookup
+      {
+        data: {
+          ...PENDING_BOOKING_TXN,
+          total_amount: 200,
+          payment_status: 'Fully Paid',
+        },
+        error: null,
+      }, // reload
+      {
+        data: [
+          {
+            id: 'txn-leftover',
+            payment_status: 'Pending',
+            payment_choice: 'balance',
+            total_amount: 300,
+          },
+          { id: 'txn-1' },
+        ],
+        error: null,
+      } // loadSpawnedLeftover (after)
+    );
+    vi.mocked(getAvailableCredit).mockResolvedValue(999);
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: { id: 'booking-1', payment_status: 'Partially Paid' },
+      error: null,
+    } as never);
+
+    await payTransactionWithCredit({
+      requesterId: 'customer-1',
+      transactionId: 'txn-1',
+      isStaff: false,
+      amountApplied: 200,
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith('pay_transaction_with_credit', {
+      p_transaction_id: 'txn-1',
+      p_amount: 200,
+      p_processed_by: null,
+    });
+  });
+
+  it('rejects an amountApplied above the transaction total for pay-with-credit', async () => {
+    queueFrom({ data: PENDING_BOOKING_TXN, error: null });
+
+    await expect(
+      payTransactionWithCredit({
+        requesterId: 'customer-1',
+        transactionId: 'txn-1',
+        isStaff: false,
+        amountApplied: 999,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
   it('rejects a customer paying someone else’s transaction with 403', async () => {

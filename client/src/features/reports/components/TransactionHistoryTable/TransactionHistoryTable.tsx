@@ -165,12 +165,9 @@ export function TransactionHistoryTable() {
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
-    setPayFields({
-      payment_method: 'Cash',
-      // Prefill the cash box with the amount due - the common case is the
-      // customer handing over the exact amount.
-      cash_tendered: t.total_amount,
-    });
+    setPayFields({ payment_method: 'Cash' });
+    // Prefill "Amount paid" with the transaction total - the common case is
+    // settling the whole thing; a smaller value spawns a balance transaction.
     setPayAmount(String(t.total_amount));
     setPayError(null);
   };
@@ -182,30 +179,30 @@ export function TransactionHistoryTable() {
   const confirmPay = async () => {
     if (!payTarget || !accessToken) return;
 
-    const collecting = Number(payAmount);
-    if (!Number.isFinite(collecting) || collecting <= 0) {
+    const paying = Number(payAmount);
+    if (!Number.isFinite(paying) || paying <= 0) {
       setPayError('Enter an amount greater than zero.');
       return;
     }
-    if (collecting > payTarget.total_amount + 0.001) {
-      setPayError('Amount to collect cannot exceed the transaction total.');
+    if (paying > payTarget.total_amount + 0.001) {
+      setPayError('Amount paid cannot exceed the transaction total.');
       return;
     }
 
     setPayBusy(true);
     setPayError(null);
 
+    const partialAmount = paying < payTarget.total_amount ? paying : undefined;
+
     const result = payIsCredit
-      ? await payTransactionWithCredit(payTarget.id, accessToken)
+      ? await payTransactionWithCredit(payTarget.id, accessToken, partialAmount)
       : await recordTransactionPayment(
           payTarget.id,
           {
             payment_method: payFields.payment_method,
             bank_name: payFields.bank_name,
             payment_reference: payFields.payment_reference,
-            cash_tendered: payFields.cash_tendered,
-            amount_applied:
-              collecting < payTarget.total_amount ? collecting : undefined,
+            amount_applied: partialAmount,
           },
           accessToken
         );
@@ -508,26 +505,28 @@ export function TransactionHistoryTable() {
             <h2 id="record-payment-title" className={styles.modalTitle}>
               Mark as paid — PHP {payTarget.total_amount.toFixed(2)}
             </h2>
-            {payIsCredit ? null : (
-              <label className={styles.field}>
-                Amount to collect (PHP)
-                <input
-                  className={styles.control}
-                  type="number"
-                  min={0.01}
-                  max={payTarget.total_amount}
-                  step="0.01"
-                  value={payAmount}
-                  onChange={(event) => setPayAmount(event.target.value)}
-                />
-              </label>
-            )}
-            {!payIsCredit &&
-            Number(payAmount) > 0 &&
+            <label className={styles.field}>
+              Amount paid (PHP)
+              <input
+                className={styles.control}
+                type="number"
+                min={0.01}
+                max={payTarget.total_amount}
+                step="0.01"
+                value={payAmount}
+                onChange={(event) => setPayAmount(event.target.value)}
+              />
+            </label>
+            {Number(payAmount) > 0 &&
             Number(payAmount) < payTarget.total_amount ? (
               <p className={styles.copy}>
-                A PHP {(payTarget.total_amount - Number(payAmount)).toFixed(2)}{' '}
-                balance payment will be created for the rest.
+                {payIsCredit
+                  ? 'Whatever the available credit does not cover will be left as a balance payment.'
+                  : `A PHP ${(
+                      payTarget.total_amount - Number(payAmount)
+                    ).toFixed(
+                      2
+                    )} balance payment will be created for the rest.`}
               </p>
             ) : null}
             <PaymentMethodForm
@@ -535,6 +534,7 @@ export function TransactionHistoryTable() {
               onChange={setPayFields}
               amountDue={Number(payAmount) || payTarget.total_amount}
               methods={PAY_MODAL_METHODS}
+              hideCashTendered
             />
             {payError ? (
               <p className={styles.errorBanner} role="alert">

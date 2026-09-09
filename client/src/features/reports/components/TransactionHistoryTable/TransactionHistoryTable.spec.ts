@@ -123,7 +123,6 @@ describe('TransactionHistoryTable', () => {
       data: {
         transaction: null,
         booking: null,
-        changeAmount: 0,
         leftover: null,
       },
       error: null,
@@ -150,11 +149,13 @@ describe('TransactionHistoryTable', () => {
     await screen.findByRole('dialog');
   }
 
-  it('the Pay modal prefills cash tendered, offers Credit, and settles via one "Mark as paid" button', async () => {
+  it('the Pay modal prefills a single "Amount paid" field, offers Credit, and settles via one "Mark as paid" button', async () => {
     await openPayModal();
 
-    // Cash tendered is prefilled to the transaction total.
-    expect(screen.getByLabelText(/cash tendered/i)).toHaveValue(693);
+    // One money field, prefilled to the transaction total. No cash-tendered.
+    expect(screen.getByLabelText(/amount paid/i)).toHaveValue(693);
+    expect(screen.queryByLabelText(/cash tendered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Change:/i)).not.toBeInTheDocument();
     // Credit is an available method here (routed to the credit endpoint).
     expect(screen.getByRole('option', { name: 'Credit' })).toBeInTheDocument();
 
@@ -174,10 +175,10 @@ describe('TransactionHistoryTable', () => {
     ).toBeUndefined();
   });
 
-  it('a partial "Amount to collect" is sent as amount_applied and previews the balance charge', async () => {
+  it('a partial "Amount paid" is sent as amount_applied and previews the balance charge', async () => {
     await openPayModal();
 
-    const amountField = screen.getByLabelText(/amount to collect/i);
+    const amountField = screen.getByLabelText(/amount paid/i);
     await userEvent.clear(amountField);
     await userEvent.type(amountField, '200');
 
@@ -205,10 +206,29 @@ describe('TransactionHistoryTable', () => {
     await waitFor(() =>
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
-        'token'
+        'token',
+        undefined
       )
     );
     expect(billingApi.recordTransactionPayment).not.toHaveBeenCalled();
+  });
+
+  it('a partial amount with Credit routes to pay-with-credit with the amount', async () => {
+    await openPayModal();
+
+    await userEvent.selectOptions(screen.getByLabelText('Method'), 'Credit');
+    const amountField = screen.getByLabelText(/amount paid/i);
+    await userEvent.clear(amountField);
+    await userEvent.type(amountField, '200');
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
+        'txn-1',
+        'token',
+        200
+      )
+    );
   });
 
   it('adds a Transaction type filter tile and passes it to the API', async () => {

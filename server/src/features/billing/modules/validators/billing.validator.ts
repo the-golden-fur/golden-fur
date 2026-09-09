@@ -166,23 +166,22 @@ export type CreateMiscSaleInput = z.infer<typeof createMiscSaleValidator>;
 /**
  * Payment/transactions rework: the cashier's "record a payment" action on a
  * Pending booking_payment transaction (POST /billing/transactions/:id/pay).
- * bank_name / cash_tendered follow the same per-method rules validatePayment
- * Shape enforces for checkout - GCash/Maya are deliberately excluded (their
- * portal channel is webhook-confirmed, their walk-in-QR channel is settled
- * through checkout, not here).
+ * One money field only: amount_applied (how much is being paid against the
+ * transaction now) - there is no separate cash-tendered/change concept, the
+ * transaction stores neither. bank_name follows the same per-method rule
+ * validatePaymentShape enforces for checkout. Any PAYMENT_METHODS value is
+ * accepted and settles the row immediately (a GCash/Maya value here means the
+ * cashier confirmed a counter QR payment); 'Credit' has its own
+ * pay-with-credit path.
  */
 export const recordTransactionPaymentValidator = z
   .object({
-    // Cashier can settle with any method: the 5 counter methods plus GCash/
-    // Maya (cashier-confirmed walk-in QR - Fully Paid immediately, see
-    // resolvePaymentConfirmation). 'Credit' has its own pay-with-credit path.
     payment_method: z.enum(PAYMENT_METHODS),
     bank_name: z.enum(BANK_NAMES).optional(),
     payment_reference: z.string().trim().min(1).optional(),
-    cash_tendered: z.number().nonnegative().optional(),
-    // Amount actually collected now (defaults to the whole transaction).
-    // A smaller value settles this transaction partially and spawns a
-    // Pending 'balance' transaction for the remainder.
+    // Amount actually paid now (defaults to the whole transaction). A smaller
+    // value settles this transaction partially and spawns a Pending 'balance'
+    // transaction for the remainder.
     amount_applied: z.number().positive().optional(),
   })
   .strict()
@@ -203,18 +202,27 @@ export const recordTransactionPaymentValidator = z
           "bank_name is only valid when payment_method is 'Bank Transfer'",
       });
     }
-
-    if (input.payment_method === 'Cash' && input.cash_tendered === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['cash_tendered'],
-        message: "cash_tendered is required when payment_method is 'Cash'",
-      });
-    }
   });
 
 export type RecordTransactionPaymentInput = z.infer<
   typeof recordTransactionPaymentValidator
+>;
+
+/**
+ * Payment/transactions rework: optional body for POST
+ * /billing/transactions/:id/pay-with-credit. amount_applied caps how much
+ * credit is applied (defaults to the whole transaction); a smaller value
+ * settles it partially and pay_transaction_with_credit spawns a Pending
+ * 'balance' transaction for the rest. An empty body is valid (pay in full).
+ */
+export const payTransactionWithCreditValidator = z
+  .object({
+    amount_applied: z.number().positive().optional(),
+  })
+  .strict();
+
+export type PayTransactionWithCreditInput = z.infer<
+  typeof payTransactionWithCreditValidator
 >;
 
 /**

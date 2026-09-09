@@ -83,6 +83,9 @@ export function CustomerTransactionHistoryPage() {
 
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
   const [payMode, setPayMode] = useState<PayMode>('credit');
+  // "Amount paid" - editable only when paying with account credit (that path
+  // spawns a remaining-balance transaction). GCash/Maya always pay in full.
+  const [payAmount, setPayAmount] = useState('');
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -139,16 +142,45 @@ export function CustomerTransactionHistoryPage() {
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
     setPayMode('credit');
+    setPayAmount(String(t.total_amount));
     setPayError(null);
+  };
+
+  const selectPayMode = (mode: PayMode) => {
+    setPayMode(mode);
+    // GCash/Maya always pay the whole transaction - snap the field back so a
+    // stale partial amount can't carry over.
+    if (mode !== 'credit' && payTarget) {
+      setPayAmount(String(payTarget.total_amount));
+    }
   };
 
   const confirmPay = async () => {
     if (!accessToken || !payTarget) return;
+
+    const paying = Number(payAmount);
+    if (payMode === 'credit') {
+      if (!Number.isFinite(paying) || paying <= 0) {
+        setPayError('Enter an amount greater than zero.');
+        return;
+      }
+      if (paying > payTarget.total_amount + 0.001) {
+        setPayError('Amount paid cannot exceed the transaction total.');
+        return;
+      }
+    }
+
     setPaySubmitting(true);
     setPayError(null);
 
     if (payMode === 'credit') {
-      const result = await payTransactionWithCredit(payTarget.id, accessToken);
+      const partialAmount =
+        paying < payTarget.total_amount ? paying : undefined;
+      const result = await payTransactionWithCredit(
+        payTarget.id,
+        accessToken,
+        partialAmount
+      );
       setPaySubmitting(false);
       if (result.error) {
         setPayError(result.error);
@@ -441,12 +473,38 @@ export function CustomerTransactionHistoryPage() {
                     type="radio"
                     name="pay-mode"
                     checked={payMode === mode.value}
-                    onChange={() => setPayMode(mode.value)}
+                    onChange={() => selectPayMode(mode.value)}
                   />
                   {mode.label}
                 </label>
               ))}
             </fieldset>
+
+            <label className={styles.field}>
+              Amount paid (PHP)
+              <input
+                className={styles.control}
+                type="number"
+                min={0.01}
+                max={payTarget.total_amount}
+                step="0.01"
+                value={payAmount}
+                disabled={payMode !== 'credit'}
+                onChange={(event) => setPayAmount(event.target.value)}
+              />
+            </label>
+            {payMode !== 'credit' ? (
+              <p className={styles.copy}>
+                GCash and Maya must pay the full amount. Use account credit to
+                pay part of this transaction.
+              </p>
+            ) : Number(payAmount) > 0 &&
+              Number(payAmount) < payTarget.total_amount ? (
+              <p className={styles.copy}>
+                Whatever your available credit does not cover will be left as a
+                balance payment you can settle later.
+              </p>
+            ) : null}
 
             {payError ? (
               <p className={styles.errorBanner} role="alert">
