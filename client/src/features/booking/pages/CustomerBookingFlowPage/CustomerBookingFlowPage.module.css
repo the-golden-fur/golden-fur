@@ -467,6 +467,23 @@
   gap: var(--space-3);
 }
 
+/* Derived end time + duration for the picked start - a plain caption below
+   the time picker (Architectural-Change-History: "At the bottom, not in
+   select; separate label"), never an editable control. */
+.slotSummary {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.slotSummary strong {
+  font-weight: var(--weight-medium);
+}
+
 .nightsField {
   display: flex;
   align-items: flex-end;

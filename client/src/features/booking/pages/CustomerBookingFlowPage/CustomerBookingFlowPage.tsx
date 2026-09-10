@@ -76,6 +76,7 @@ import {
 import type { ProductCatalogItem } from '../../../catalog/catalog.types';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
+import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
@@ -201,19 +202,6 @@ interface SubBookingDraft {
    * Review step's group pricing. */
   itemsSubtotal: number;
 }
-
-/** #22 follow-up: fixed stand-in duration for the availability step's
- * capacity/staff check, run before any specific service/package is chosen
- * (so the real item-derived duration isn't known yet). Hotel's 1440 isn't
- * an approximation - it's always a full night regardless of item, matching
- * availability.service.ts's existing day-level Hotel convention. */
-const DEFAULT_DURATION_MINUTES: Record<ServiceCategory, number> = {
-  Grooming: 60,
-  Veterinary: 60,
-  Daycare: 60,
-  Hotel: 1440,
-  Assessment: 60,
-};
 
 const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
   Grooming: Scissors,
@@ -396,9 +384,12 @@ function bookingDraftStorageKey(
   isReceptionistMode: boolean,
   userId: string
 ): string {
+  // v2: the step order changed (Branch-first, Services before Date & Time) -
+  // a draft saved under the old order would rehydrate onto a mismatched
+  // stepper, so bump the key to let stale drafts lapse instead.
   return isReceptionistMode
-    ? `booking-draft:staff:${userId}`
-    : `booking-draft:customer:${userId}`;
+    ? `booking-draft:staff:v2:${userId}`
+    : `booking-draft:customer:v2:${userId}`;
 }
 
 function readBookingDraft(key: string): PersistedBookingDraft | null {
@@ -738,11 +729,10 @@ export function CustomerBookingFlowPage() {
   // resolve to whatever step slid into that same slot instead of the step
   // the user actually meant to be on (previously caused Date & Time to
   // jump straight to Review instead of Staff whenever this happened).
-  const [currentStepKey, setCurrentStepKey] = useState<StepDef['key']>(() =>
-    isReceptionistMode ? 'customer' : 'pet'
-  );
+  const [currentStepKey, setCurrentStepKey] =
+    useState<StepDef['key']>('branch');
   const [reachedStepKeys, setReachedStepKeys] = useState<Set<StepDef['key']>>(
-    () => new Set([isReceptionistMode ? 'customer' : 'pet'])
+    () => new Set<StepDef['key']>(['branch'])
   );
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -810,6 +800,21 @@ export function CustomerBookingFlowPage() {
     setCagePreference(null);
     setCagePickerUnavailable(false);
     resetHotelPreferences();
+  }
+
+  /** Drop a slot/staff/cage pick made on the Date & Time step - called
+   * whenever the item set changes, since that changes the booking's length
+   * (slotDurationMinutes) and a slot picked against the old, shorter window
+   * may no longer fit. No-op until a slot has actually been picked, so
+   * building the item list on the way IN to the Date & Time step costs
+   * nothing. */
+  function resetSlotForItemChange() {
+    if (!selectedSlot) return;
+    setSelectedSlot(null);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    setCagePreference(null);
+    setCagePickerUnavailable(false);
   }
 
   // ---- Data loads ----
@@ -1087,9 +1092,8 @@ export function CustomerBookingFlowPage() {
     if (isReceptionistMode) setWalkInCustomer(null);
     setBookingsList([]);
 
-    const startKey = isReceptionistMode ? 'customer' : 'pet';
-    setCurrentStepKey(startKey);
-    setReachedStepKeys(new Set([startKey]));
+    setCurrentStepKey('branch');
+    setReachedStepKeys(new Set<StepDef['key']>(['branch']));
   }
 
   // ---- Derived data ----
@@ -1318,13 +1322,13 @@ export function CustomerBookingFlowPage() {
         0
       ) || 60;
 
-  /** #22 follow-up: the real scheduled_end, computed from the item-derived
-   * slotDurationMinutes rather than SlotPicker's own selectedSlot.end -
-   * SlotPicker now runs at the 'availability' step, before any service/
-   * package is picked, so its own end time only reflects the fixed
-   * DEFAULT_DURATION_MINUTES stand-in and is never accurate enough to
-   * submit. Reused here (not just in handleSubmit) so the Hotel care-
-   * schedule bounds below judge against the stay actually being booked. */
+  /** The real scheduled_end, computed from the item-derived
+   * slotDurationMinutes (Services is picked before the 'availability' step,
+   * so this is known there) plus the Hotel nights multiplier. SlotPicker's
+   * own selectedSlot.end already carries the same value for a single-night/
+   * same-day booking, but not the Hotel multi-night case - so this is the
+   * one submitted (handleSubmit) and shown as the Date & Time step's
+   * end-time caption, and it also bounds the Hotel care schedule below. */
   const finalScheduledEnd = selectedSlot
     ? new Date(
         new Date(selectedSlot.start).getTime() +
@@ -1554,26 +1558,31 @@ export function CustomerBookingFlowPage() {
 
   // ---- Steps ----
 
-  // #22 follow-up: staff/cage availability is checked BEFORE specific
-  // services/packages are picked (category alone is enough to know whether
-  // Grooming/Veterinary needs a Staff Picker or Hotel needs a Cage Picker),
-  // so the customer learns early if nothing is available rather than after
-  // investing effort picking exact items. Grooming/Veterinary's staff
-  // choice and Hotel's cage-capacity display both live inside the single
-  // 'availability' step alongside Date & Time (merged, not a separate
-  // stepper entry) - Daycare gets Date & Time alone there, same as today.
+  // Order (Architectural-Change-History, "Rearrange booking steps"):
+  //   Branch > Customer > Pet > Service Type > Services/Packages >
+  //   Online/Walk-in > Date & Time (+ Staff/Cage) > Confirmation.
+  // Services now precede the availability step so the real, item-derived
+  // slot duration (slotDurationMinutes, accumulating across every selected
+  // service/package) is known when the slot is picked - the availability
+  // step feeds it straight to SlotPicker instead of a fixed stand-in, and
+  // shows the resulting end time + duration as a caption. Grooming/
+  // Veterinary's staff choice and Hotel's cage-capacity display both live
+  // inside the single 'availability' step alongside Date & Time (merged,
+  // not a separate stepper entry) - Daycare gets Date & Time alone there.
   const steps: StepDef[] = useMemo(() => {
     const list: StepDef[] = [];
+
+    list.push({ key: 'branch', label: 'Branch' });
 
     if (isReceptionistMode) {
       list.push({ key: 'customer', label: 'Customer' });
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    list.push({ key: 'branch', label: 'Branch' });
     list.push({ key: 'category', label: 'Service Type' });
+    list.push({ key: 'items', label: 'Services' });
 
-    // Walk-in booking flow: receptionist-only, inserted right before Date &
+    // Walk-in booking flow: receptionist-only, sits right before Date &
     // Time - a remote customer booking from home never sees this step at
     // all (walk-in definitionally requires being on-site).
     if (isReceptionistMode) {
@@ -1587,8 +1596,6 @@ export function CustomerBookingFlowPage() {
           ? 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
-
-    list.push({ key: 'items', label: 'Services' });
 
     // "make daycare the same as hotel" (#27) - Daycare gets the same
     // optional Care Instructions preview step as Hotel; the "Same
@@ -1710,16 +1717,16 @@ export function CustomerBookingFlowPage() {
   function goNext() {
     if (!isCurrentStepValid) return;
 
-    // Multi-booking checkout: leaving this booking's LAST step ('items' for
-    // Grooming/Veterinary/Assessment, 'hotelDetails' for Hotel/Daycare)
-    // commits it into bookingsList right here, before advancing - checked
-    // via the step actually being landed on next, not the current step's
-    // own key, since 'items' is NOT last for Hotel/Daycare (hotelDetails
-    // still follows it). By the time the wizard lands on 'bookingsList',
-    // the booking just configured is already its newest entry -
-    // commitCurrentBookingDraft reads the working-draft state as it stands
-    // right now (still populated - resetForNextBooking runs after, not
-    // before).
+    // Multi-booking checkout: leaving this booking's LAST configured step
+    // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
+    // Hotel/Daycare) commits it into bookingsList right here, before
+    // advancing - checked via the step actually being landed on next, not
+    // the current step's own key, since 'availability' is NOT last for
+    // Hotel/Daycare (hotelDetails still follows it). By the time the wizard
+    // lands on 'bookingsList', the booking just configured is already its
+    // newest entry - commitCurrentBookingDraft reads the working-draft state
+    // as it stands right now (still populated - resetForNextBooking runs
+    // after, not before).
     if (steps[currentStepIndex + 1]?.key === 'bookingsList') {
       commitCurrentBookingDraft();
       resetForNextBooking();
@@ -1741,7 +1748,7 @@ export function CustomerBookingFlowPage() {
         setCurrentStepKey(
           last.category === 'Hotel' || last.category === 'Daycare'
             ? 'hotelDetails'
-            : 'items'
+            : 'availability'
         );
         return prev.slice(0, -1);
       });
@@ -1856,14 +1863,12 @@ export function CustomerBookingFlowPage() {
     // guards against it directly too).
     if (servicesCoveredByPackages.has(serviceId)) return;
 
-    // #22 follow-up: no longer resets selectedSlot/staffPreference here -
-    // that made sense when items were picked BEFORE availability (the real
-    // item-derived duration used to drive the slot/staff check directly),
-    // but items are now picked AFTER availability, which already ran
-    // against a fixed placeholder duration independent of which items get
-    // chosen. Resetting here silently wiped out an already-confirmed slot,
-    // which then made handleSubmit's `!selectedSlot` guard fail silently -
-    // Confirm booking looked like it did nothing at all.
+    // Services precede the Date & Time step again, so changing the item set
+    // changes the slot's real length (slotDurationMinutes / finalScheduledEnd)
+    // - drop any already-picked slot and staff preference so the user re-picks
+    // against the correct window instead of the server rejecting a now-too-long
+    // booking at the final Confirm.
+    resetSlotForItemChange();
     if (selectedServiceIds.includes(serviceId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -1887,8 +1892,8 @@ export function CustomerBookingFlowPage() {
   function togglePackageSelect(packageId: string) {
     if (!category) return;
 
-    // #22 follow-up: see toggleServiceSelect's comment above - the
-    // selectedSlot/staffPreference reset was removed for the same reason.
+    // See toggleServiceSelect - a package changes the slot length too.
+    resetSlotForItemChange();
     if (selectedPackageIds.includes(packageId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -2092,10 +2097,11 @@ export function CustomerBookingFlowPage() {
 
   /** Commits the working draft (the booking currently being configured) as
    * one entry in bookingsList - called from goNext() the moment the
-   * customer/receptionist leaves that booking's last step ('items' or
-   * 'hotelDetails'). See SubBookingDraft's own doc comment for what is and
-   * isn't captured. Declared after hotelPreferencesPayload (rather than up
-   * with the other selection handlers) so it can read that memo directly. */
+   * customer/receptionist leaves that booking's last configured step
+   * ('availability' or 'hotelDetails'). See SubBookingDraft's own doc
+   * comment for what is and isn't captured. Declared after
+   * hotelPreferencesPayload (rather than up with the other selection
+   * handlers) so it can read that memo directly. */
   function commitCurrentBookingDraft() {
     if (!category) return;
 
@@ -2714,9 +2720,19 @@ export function CustomerBookingFlowPage() {
               accessToken={accessToken!}
               branchId={selectedBranchId}
               serviceCategory={category as ServiceCategory}
-              slotDurationMinutes={
-                DEFAULT_DURATION_MINUTES[category as ServiceCategory]
-              }
+              // Clamped to the availability endpoint's own accepted range
+              // (availabilityQueryValidator: slot_duration_minutes 15-1440) -
+              // an accumulated service/package pile below 15 or above 1440
+              // would otherwise 400 the whole Date & Time step. The submitted
+              // window (finalScheduledEnd) still uses the true sum; a pile
+              // over 1440 min (>24h of same-day services) is checked against a
+              // shorter window than it occupies, but that is not a real
+              // grooming/vet scenario - Hotel's length rides the nights
+              // multiplier, not this sum.
+              slotDurationMinutes={Math.min(
+                1440,
+                Math.max(15, slotDurationMinutes)
+              )}
               petWeightClass={
                 category === 'Hotel'
                   ? (selectedPet?.weight_class ?? undefined)
@@ -2729,6 +2745,40 @@ export function CustomerBookingFlowPage() {
               excludedWindows={samePetBundleWindows}
             />
 
+            {/* Derived end of the booking for the picked start - the task
+                asks for this as a plain caption "at the bottom, not in the
+                select". Length comes from the selected services'/packages'
+                configured durations (slotDurationMinutes), so it accumulates
+                as more items are added; Hotel shows the checkout date and
+                night count instead. */}
+            {selectedSlot && finalScheduledEnd ? (
+              <p className={styles.slotSummary}>
+                {category === 'Hotel' ? (
+                  <>
+                    Check-out{' '}
+                    <strong>
+                      {new Date(finalScheduledEnd).toLocaleDateString(
+                        undefined,
+                        { month: 'short', day: 'numeric' }
+                      )}
+                    </strong>{' '}
+                    · {hotelNights} night{hotelNights === 1 ? '' : 's'}
+                  </>
+                ) : (
+                  <>
+                    Ends{' '}
+                    <strong>
+                      {new Date(finalScheduledEnd).toLocaleTimeString(
+                        undefined,
+                        { hour: 'numeric', minute: '2-digit' }
+                      )}
+                    </strong>{' '}
+                    · {formatDuration(slotDurationMinutes)}
+                  </>
+                )}
+              </p>
+            ) : null}
+
             {selectedSlot &&
             staffPickerAppliesToCategory &&
             !staffPickerUnavailable ? (
@@ -2737,7 +2787,7 @@ export function CustomerBookingFlowPage() {
                 branchId={selectedBranchId}
                 serviceCategory={category as ServiceCategory}
                 scheduledStart={selectedSlot.start}
-                scheduledEnd={selectedSlot.end}
+                scheduledEnd={finalScheduledEnd ?? selectedSlot.end}
                 selected={staffPreference}
                 onSelect={setStaffPreference}
                 onUnavailable={() => setStaffPickerUnavailable(true)}

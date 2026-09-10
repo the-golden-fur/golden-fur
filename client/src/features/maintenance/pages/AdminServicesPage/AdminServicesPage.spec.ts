@@ -305,9 +305,10 @@ describe('AdminServicesPage', () => {
     );
 
     // The derived preview shows the computed price, with no editable inputs
-    // of its own (only the Name/Base price form fields remain spinbuttons).
+    // of its own (only the Base price and Average service time form fields
+    // remain spinbuttons).
     expect(screen.getByText('PHP 350.00')).toBeInTheDocument();
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(1);
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Save service' }));
 
@@ -323,6 +324,43 @@ describe('AdminServicesPage', () => {
     });
 
     expect(await screen.findByText('Service created.')).toBeInTheDocument();
+  });
+
+  it('Architectural-Change-History: the "average service time" field shows for every category and is submitted', async () => {
+    vi.mocked(maintenanceApi.createService).mockResolvedValue({
+      data: buildService({ id: 'service-new', name: 'Full Groom' }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'New service' })
+    );
+
+    // Grooming (the default category) now exposes the duration input - it
+    // used to be Hotel/Daycare only.
+    const durationField = screen.getByLabelText(
+      'Average service time (minutes)'
+    );
+    await user.type(screen.getByLabelText('Name'), 'Full Groom');
+    await user.type(screen.getByLabelText('Base price (PHP)'), '900');
+    await user.type(durationField, '90');
+
+    await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.createService).toHaveBeenCalledWith('token', {
+        name: 'Full Groom',
+        category: 'Grooming',
+        base_price: 900,
+        duration_minutes: 90,
+        requires_assessed_pet: true,
+        captures_pet_assessment: false,
+        use_pricing_matrix: false,
+      });
+    });
   });
 
   it('the pricing matrix preview is opt-in for Grooming and hidden entirely for non-Grooming categories', async () => {
