@@ -94,8 +94,9 @@ export function PetWeightAssessmentFields({
       ? deriveWeightClass(canonicalKg, cutoffs)
       : '';
   const hasWeight = canonicalKg !== null;
-  const selectDisabled = hasWeight && !overridden;
-  const selectValue = overridden ? weightClass : derivedClass;
+  const canDerive = cutoffs !== null;
+  const selectDisabled = hasWeight && canDerive && !overridden;
+  const selectValue = overridden || !canDerive ? weightClass : derivedClass;
 
   const changeEntryUnit = (unit: WeightUnitPreference) => {
     // Keep the same real weight - reinterpret the visible number into the new

@@ -57,11 +57,11 @@ describe('AssessmentModal', () => {
     expect(classSelect).not.toBeDisabled();
   });
 
-  it('keeps Save & Start disabled until a positive weight and a coat type are set', async () => {
+  it('keeps Confirm disabled until a positive weight and a coat type are set', async () => {
     const user = userEvent.setup();
     render(createElement(Harness, { onConfirm: vi.fn() }));
 
-    const save = screen.getByRole('button', { name: 'Save & Start' });
+    const save = screen.getByRole('button', { name: 'Confirm' });
     expect(save).toBeDisabled();
 
     await user.type(screen.getByLabelText(/Weight \(kg\)/), '25');

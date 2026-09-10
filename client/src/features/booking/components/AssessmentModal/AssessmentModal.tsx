@@ -48,13 +48,12 @@ export interface AssessmentModalProps {
 }
 
 /**
- * Extracted from the inline "Save & Start" modal that used to live directly
- * in ReceptionistBookingsQueuePage (folded back from the deleted Payments
- * Queue). Now used by AssessmentQueuePage: starting an Initial Assessment /
- * Reassessment booking records the pet's weight and coat type first. The
- * weight class is derived from the recorded weight via the Admin-configured
- * cut-offs (Architectural-Change-History) and shown read-only, with an
- * override for the unusual pet a receptionist re-classes by hand.
+ * Used by AssessmentQueuePage: clicking an Assessment row opens this modal to
+ * record the pet's weight and coat type; Confirm saves the assessment and
+ * carries the booking straight through to Completed. The weight class is
+ * derived from the recorded weight via the Admin-configured cut-offs
+ * (Architectural-Change-History) and shown read-only, with an override for
+ * the unusual pet a receptionist re-classes by hand.
  */
 export function AssessmentModal({
   pet,
@@ -80,8 +79,12 @@ export function AssessmentModal({
     canonicalKg !== null && cutoffs
       ? deriveWeightClass(canonicalKg, cutoffs)
       : '';
-  const classSelectDisabled = hasWeight && !weightClassOverridden;
-  const classSelectValue = weightClassOverridden ? weightClass : derivedClass;
+  // When the cut-offs haven't loaded, fall back to a plain manual picker
+  // rather than a disabled empty select.
+  const canDerive = cutoffs !== null;
+  const classSelectDisabled = hasWeight && canDerive && !weightClassOverridden;
+  const classSelectValue =
+    weightClassOverridden || !canDerive ? weightClass : derivedClass;
 
   return (
     <div className={styles.modalBackdrop} role="presentation">
@@ -95,9 +98,9 @@ export function AssessmentModal({
           Record pet assessment
         </h2>
         <p className={styles.modalBody}>
-          {pet?.name ?? 'This pet'}&apos;s weight and coat type are recorded as
-          part of starting this booking. The weight class is worked out from the
-          weight. Starting will save the assessment first.
+          Record {pet?.name ?? 'this pet'}&apos;s weight and coat type. The
+          weight class is worked out from the weight. Confirming saves the
+          assessment and completes this booking.
         </p>
 
         <label className={styles.filterField}>
@@ -215,7 +218,7 @@ export function AssessmentModal({
             disabled={!hasWeight || !classSelectValue || !coatType || isSaving}
             onClick={onConfirm}
           >
-            {isSaving ? 'Saving...' : 'Save & Start'}
+            {isSaving ? 'Saving...' : 'Confirm'}
           </button>
         </div>
       </section>

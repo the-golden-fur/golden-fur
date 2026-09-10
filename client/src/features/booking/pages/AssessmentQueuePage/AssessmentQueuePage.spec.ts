@@ -224,39 +224,14 @@ describe('AssessmentQueuePage', () => {
     );
   });
 
-  it('starts an Assessment booking via its own Start button, capturing the pet assessment first', async () => {
+  it('records the assessment and carries the booking through to Completed when a row is clicked', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewer('Receptionist'),
       error: null,
     });
-    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
-      data: [
-        {
-          id: 'svc-assessment-1',
-          category: 'Assessment',
-          captures_pet_assessment: true,
-        } as never,
-      ],
-      error: null,
-    });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        buildBooking({
-          status: 'Pending',
-          payment_status: 'Fully Paid',
-          booking_items: [
-            {
-              id: 'bi-1',
-              booking_id: 'booking-1',
-              service_id: 'svc-assessment-1',
-              package_id: null,
-              price_at_booking: 0,
-              duration_minutes_at_booking: 30,
-            },
-          ],
-        }),
-      ],
+      data: [buildBooking({ status: 'Pending', payment_status: 'Fully Paid' })],
       error: null,
     });
     vi.mocked(customerApi.updatePet).mockResolvedValue({
@@ -272,10 +247,18 @@ describe('AssessmentQueuePage', () => {
       data: buildBooking({ status: 'In Progress' }),
       error: null,
     });
+    vi.mocked(bookingApi.completeBooking).mockResolvedValue({
+      data: buildBooking({ status: 'Completed' }),
+      error: null,
+    });
 
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Start' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Click to record the assessment/,
+      })
+    );
 
     const dialog = await screen.findByRole('dialog');
     // Enter a weight in the M band (9.5-22 kg) - the weight class is derived,
@@ -285,9 +268,7 @@ describe('AssessmentQueuePage', () => {
     await waitFor(() =>
       expect(within(dialog).getByLabelText('Weight class')).toHaveValue('M')
     );
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Save & Start' })
-    );
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() =>
       expect(customerApi.updatePet).toHaveBeenCalledWith(
@@ -302,9 +283,57 @@ describe('AssessmentQueuePage', () => {
     await waitFor(() =>
       expect(bookingApi.startBooking).toHaveBeenCalledWith('booking-1', 'token')
     );
+    await waitFor(() =>
+      expect(bookingApi.completeBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      )
+    );
   });
 
-  it('gives an Admin a status-override dropdown instead of Start/Complete', async () => {
+  it('an In Progress row skips Start and only completes on Confirm', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewer('Receptionist'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({ status: 'In Progress', payment_status: 'Fully Paid' }),
+      ],
+      error: null,
+    });
+    vi.mocked(customerApi.updatePet).mockResolvedValue({
+      data: { id: 'pet-12345678', weight_kg: 30, weight_class: 'L' } as never,
+      error: null,
+    });
+    vi.mocked(bookingApi.completeBooking).mockResolvedValue({
+      data: buildBooking({ status: 'Completed' }),
+      error: null,
+    });
+
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Click to record the assessment/,
+      })
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Weight \(kg\)/), '30');
+    await user.selectOptions(within(dialog).getByLabelText('Coat type'), 'LC');
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() =>
+      expect(bookingApi.completeBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      )
+    );
+    expect(bookingApi.startBooking).not.toHaveBeenCalled();
+  });
+
+  it('gives an Admin a status-override dropdown, no clickable assess row', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewer('Admin'),
@@ -323,7 +352,9 @@ describe('AssessmentQueuePage', () => {
 
     const row = await screen.findByRole('listitem');
     expect(
-      within(row).queryByRole('button', { name: 'Start' })
+      within(row).queryByRole('button', {
+        name: /Click to record the assessment/,
+      })
     ).not.toBeInTheDocument();
 
     await user.selectOptions(within(row).getByLabelText('Status'), 'Completed');
@@ -332,35 +363,6 @@ describe('AssessmentQueuePage', () => {
       expect(bookingApi.overrideBookingStatus).toHaveBeenCalledWith(
         'booking-1',
         'Completed',
-        'token'
-      )
-    );
-  });
-
-  it('completes an In Progress booking via the Complete button', async () => {
-    const user = userEvent.setup();
-    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewer('Receptionist'),
-      error: null,
-    });
-    vi.mocked(bookingApi.listBookings).mockResolvedValue({
-      data: [
-        buildBooking({ status: 'In Progress', payment_status: 'Fully Paid' }),
-      ],
-      error: null,
-    });
-    vi.mocked(bookingApi.completeBooking).mockResolvedValue({
-      data: buildBooking({ status: 'Completed' }),
-      error: null,
-    });
-
-    renderPage();
-
-    await user.click(await screen.findByRole('button', { name: 'Complete' }));
-
-    await waitFor(() =>
-      expect(bookingApi.completeBooking).toHaveBeenCalledWith(
-        'booking-1',
         'token'
       )
     );
