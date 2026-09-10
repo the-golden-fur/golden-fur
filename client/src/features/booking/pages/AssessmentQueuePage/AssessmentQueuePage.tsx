@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
+  getPetWeightClassConfiguration,
   listBranches,
   listServices,
 } from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
+  PetWeightClassConfiguration,
   Service,
 } from '../../../maintenance/maintenance.types';
+import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
+import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
+import { toCanonicalKg } from '../../../../shared/utils/petWeight';
 import {
   getCustomerProfile,
   getPet,
@@ -153,7 +158,16 @@ export function AssessmentQueuePage() {
   const [assessWeightClass, setAssessWeightClass] = useState<
     PetWeightClass | ''
   >('');
+  const [assessWeightKg, setAssessWeightKg] = useState<number | ''>('');
+  const [assessWeightClassOverridden, setAssessWeightClassOverridden] =
+    useState(false);
   const [assessCoatType, setAssessCoatType] = useState<PetCoatType | ''>('');
+
+  const { weightUnit } = useContext(ThemeContext);
+  const [assessEntryUnit, setAssessEntryUnit] =
+    useState<WeightUnitPreference>(weightUnit);
+  const [weightClassCutoffs, setWeightClassCutoffs] =
+    useState<PetWeightClassConfiguration | null>(null);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -205,6 +219,20 @@ export function AssessmentQueuePage() {
     }).then((result) => {
       if (result.data) setAssessmentServices(result.data);
     });
+  }, [roleStatus, accessToken]);
+
+  // The S/M/L/XL kg cut-offs, so the modal can show the derived class as the
+  // receptionist types a weight (Architectural-Change-History).
+  useEffect(() => {
+    if (roleStatus !== 'ok' || !accessToken) return;
+
+    void getPetWeightClassConfiguration(accessToken)
+      .then((result) => {
+        if (result.data) setWeightClassCutoffs(result.data);
+      })
+      .catch(() => {
+        // Non-fatal - the server still derives the class on save.
+      });
   }, [roleStatus, accessToken]);
 
   const assessmentServiceIds = useMemo(
@@ -468,6 +496,9 @@ export function AssessmentQueuePage() {
   function openAssessment(booking: Booking) {
     const pet = pets[booking.pet_id];
     setAssessWeightClass(pet?.weight_class ?? '');
+    setAssessWeightKg(pet?.weight_kg ?? '');
+    setAssessWeightClassOverridden(false);
+    setAssessEntryUnit(weightUnit);
     setAssessCoatType(pet?.coat_type ?? '');
     setAdvanceError(null);
     setAssessTargetBookingId(booking.id);
@@ -476,14 +507,27 @@ export function AssessmentQueuePage() {
   // Saves the pet's assessment first, then starts the booking - only on a
   // successful save does it proceed to Start.
   async function confirmAssessment(booking: Booking) {
-    if (!accessToken || !assessWeightClass || !assessCoatType) return;
+    if (
+      !accessToken ||
+      assessWeightKg === '' ||
+      assessWeightKg <= 0 ||
+      !assessCoatType
+    ) {
+      return;
+    }
 
     setAdvancingBookingId(booking.id);
     setAdvanceError(null);
 
+    // Always send the recorded weight; the server derives weight_class from
+    // it. Only send weight_class too when the receptionist explicitly chose
+    // to override the derived value.
     const petResult = await updatePet(booking.pet_id, accessToken, {
-      weight_class: assessWeightClass,
+      weight_kg: toCanonicalKg(assessWeightKg, assessEntryUnit),
       coat_type: assessCoatType,
+      ...(assessWeightClassOverridden && assessWeightClass
+        ? { weight_class: assessWeightClass }
+        : {}),
     });
 
     if (petResult.error || !petResult.data) {
@@ -708,8 +752,15 @@ export function AssessmentQueuePage() {
       {assessmentModalBooking ? (
         <AssessmentModal
           pet={pets[assessmentModalBooking.pet_id]}
+          weightKg={assessWeightKg}
+          onWeightKgChange={setAssessWeightKg}
+          entryUnit={assessEntryUnit}
+          onEntryUnitChange={setAssessEntryUnit}
+          cutoffs={weightClassCutoffs}
           weightClass={assessWeightClass}
           onWeightClassChange={setAssessWeightClass}
+          weightClassOverridden={assessWeightClassOverridden}
+          onWeightClassOverriddenChange={setAssessWeightClassOverridden}
           coatType={assessCoatType}
           onCoatTypeChange={setAssessCoatType}
           isSaving={advancingBookingId === assessmentModalBooking.id}

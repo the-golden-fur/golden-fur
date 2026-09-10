@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { updatePet, uploadPetPhoto } from '../../../api/customer.api';
 import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
+import { formatWeight } from '../../../../../shared/utils/petWeight';
+import { ThemeContext } from '../../../../../shared/providers/ThemeProvider/themeContext';
 import { PetHealthConditionBadge } from '../../badges/PetHealthConditionBadge/PetHealthConditionBadge';
 import { BreedSelect } from '../../forms/BreedSelect/BreedSelect';
+import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import { MedicalNoteList } from '../../lists/MedicalNoteList/MedicalNoteList';
 import { VaccinationRecordList } from '../../lists/VaccinationRecordList/VaccinationRecordList';
 import type {
@@ -16,7 +19,6 @@ import styles from './PetDetailPanel.module.css';
 
 const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
 interface PetDetailPanelProps {
@@ -51,6 +53,7 @@ export function PetDetailPanel({
   isStaff = false,
   onUpdated,
 }: PetDetailPanelProps) {
+  const { weightUnit } = useContext(ThemeContext);
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(pet.name);
   const [petType, setPetType] = useState<PetType>(pet.pet_type);
@@ -60,6 +63,9 @@ export function PetDetailPanel({
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>(
     pet.weight_class ?? ''
   );
+  const [weightKg, setWeightKg] = useState<number | null>(pet.weight_kg);
+  const [weightClassOverridden, setWeightClassOverridden] = useState(false);
+  const [weightFieldsKey, setWeightFieldsKey] = useState(0);
   const [coatType, setCoatType] = useState<PetCoatType | ''>(
     pet.coat_type ?? ''
   );
@@ -74,6 +80,9 @@ export function PetDetailPanel({
     setGender(pet.gender ?? '');
     setDateOfBirth(pet.date_of_birth ?? '');
     setWeightClass(pet.weight_class ?? '');
+    setWeightKg(pet.weight_kg);
+    setWeightClassOverridden(false);
+    setWeightFieldsKey((key) => key + 1);
     setCoatType(pet.coat_type ?? '');
     setPhotoFile(null);
     setError(null);
@@ -95,7 +104,12 @@ export function PetDetailPanel({
       breed_id: breedId,
       gender: gender || undefined,
       date_of_birth: dateOfBirth || undefined,
-      ...(isStaff && weightClass ? { weight_class: weightClass } : {}),
+      ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
+      // Send an explicit class only when the server can't derive it (no
+      // weight recorded) or staff deliberately overrode the derived value.
+      ...(isStaff && weightClass && (weightKg == null || weightClassOverridden)
+        ? { weight_class: weightClass }
+        : {}),
       ...(isStaff && coatType ? { coat_type: coatType } : {}),
     });
 
@@ -205,23 +219,19 @@ export function PetDetailPanel({
             </label>
             {isStaff ? (
               <>
-                <label className={styles.field}>
-                  <span className={styles.label}>Weight class</span>
-                  <select
-                    className={styles.input}
-                    value={weightClass}
-                    onChange={(event) =>
-                      setWeightClass(event.target.value as PetWeightClass)
-                    }
-                  >
-                    <option value="">Not yet assessed</option>
-                    {WEIGHT_CLASS_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <PetWeightAssessmentFields
+                  key={weightFieldsKey}
+                  accessToken={accessToken}
+                  initialKg={weightKg}
+                  onCanonicalKgChange={setWeightKg}
+                  weightClass={weightClass}
+                  onWeightClassChange={setWeightClass}
+                  overridden={weightClassOverridden}
+                  onOverriddenChange={setWeightClassOverridden}
+                  fieldClassName={styles.field}
+                  labelClassName={styles.label}
+                  inputClassName={styles.input}
+                />
                 <label className={styles.field}>
                   <span className={styles.label}>Coat type</span>
                   <select
@@ -286,6 +296,14 @@ export function PetDetailPanel({
                   <dd className={styles.attributeValue}>{pet.date_of_birth}</dd>
                 </div>
               ) : null}
+              <div className={styles.attribute}>
+                <dt className={styles.attributeLabel}>Weight</dt>
+                <dd className={styles.attributeValue}>
+                  {pet.weight_kg != null
+                    ? formatWeight(pet.weight_kg, weightUnit)
+                    : 'Not recorded'}
+                </dd>
+              </div>
               <div className={styles.attribute}>
                 <dt className={styles.attributeLabel}>Weight class</dt>
                 <dd className={styles.attributeValue}>

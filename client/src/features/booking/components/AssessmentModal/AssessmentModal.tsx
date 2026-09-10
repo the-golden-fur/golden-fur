@@ -3,6 +3,15 @@ import type {
   PetCoatType,
   PetWeightClass,
 } from '../../../customers/customer.types';
+import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
+import {
+  deriveWeightClass,
+  type WeightClassCutoffs,
+} from '../../../maintenance/utils/deriveWeightClass';
+import {
+  toCanonicalKg,
+  weightUnitLabel,
+} from '../../../../shared/utils/petWeight';
 import styles from './AssessmentModal.module.css';
 
 // Same option lists as PetDetailPanel's/PetForm's staff-only assessment
@@ -10,13 +19,26 @@ import styles from './AssessmentModal.module.css';
 // precedent (see PetDetailPanel.tsx/PetForm.tsx).
 const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const ENTRY_UNITS: WeightUnitPreference[] = ['kg', 'lbs'];
 
 export interface AssessmentModalProps {
   /** The pet being assessed, if already known - used only for the display
    * name in the body copy; null/undefined falls back to "This pet". */
   pet: Pet | null | undefined;
+  /** Numeric weight the staff member typed, in `entryUnit`. '' = not entered. */
+  weightKg: number | '';
+  onWeightKgChange: (value: number | '') => void;
+  /** The unit the number above is entered in - defaults to the viewer's
+   * preference, not persisted. */
+  entryUnit: WeightUnitPreference;
+  onEntryUnitChange: (unit: WeightUnitPreference) => void;
+  /** The admin-configured S/M/L/XL cut-offs; null until loaded. */
+  cutoffs: WeightClassCutoffs | null;
+  /** Only used when `weightClassOverridden` - the manual class choice. */
   weightClass: PetWeightClass | '';
   onWeightClassChange: (value: PetWeightClass | '') => void;
+  weightClassOverridden: boolean;
+  onWeightClassOverriddenChange: (overridden: boolean) => void;
   coatType: PetCoatType | '';
   onCoatTypeChange: (value: PetCoatType | '') => void;
   isSaving: boolean;
@@ -29,12 +51,22 @@ export interface AssessmentModalProps {
  * Extracted from the inline "Save & Start" modal that used to live directly
  * in ReceptionistBookingsQueuePage (folded back from the deleted Payments
  * Queue). Now used by AssessmentQueuePage: starting an Initial Assessment /
- * Reassessment booking records the pet's weight class + coat type first.
+ * Reassessment booking records the pet's weight and coat type first. The
+ * weight class is derived from the recorded weight via the Admin-configured
+ * cut-offs (Architectural-Change-History) and shown read-only, with an
+ * override for the unusual pet a receptionist re-classes by hand.
  */
 export function AssessmentModal({
   pet,
+  weightKg,
+  onWeightKgChange,
+  entryUnit,
+  onEntryUnitChange,
+  cutoffs,
   weightClass,
   onWeightClassChange,
+  weightClassOverridden,
+  onWeightClassOverriddenChange,
   coatType,
   onCoatTypeChange,
   isSaving,
@@ -42,6 +74,15 @@ export function AssessmentModal({
   onCancel,
   onConfirm,
 }: AssessmentModalProps) {
+  const hasWeight = weightKg !== '' && weightKg > 0;
+  const canonicalKg = hasWeight ? toCanonicalKg(weightKg, entryUnit) : null;
+  const derivedClass =
+    canonicalKg !== null && cutoffs
+      ? deriveWeightClass(canonicalKg, cutoffs)
+      : '';
+  const classSelectDisabled = hasWeight && !weightClassOverridden;
+  const classSelectValue = weightClassOverridden ? weightClass : derivedClass;
+
   return (
     <div className={styles.modalBackdrop} role="presentation">
       <section
@@ -54,16 +95,57 @@ export function AssessmentModal({
           Record pet assessment
         </h2>
         <p className={styles.modalBody}>
-          {pet?.name ?? 'This pet'}&apos;s weight class and coat type are
-          recorded as part of starting this booking. Starting will save the
-          assessment first.
+          {pet?.name ?? 'This pet'}&apos;s weight and coat type are recorded as
+          part of starting this booking. The weight class is worked out from the
+          weight. Starting will save the assessment first.
         </p>
+
+        <label className={styles.filterField}>
+          <span className={styles.filterLabel}>
+            Weight ({weightUnitLabel(entryUnit)})
+          </span>
+          <input
+            className={styles.filterSelect}
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={weightKg}
+            onChange={(event) =>
+              onWeightKgChange(
+                event.target.value === '' ? '' : Number(event.target.value)
+              )
+            }
+          />
+        </label>
+
+        <div
+          className={styles.filterField}
+          role="radiogroup"
+          aria-label="Weight entry unit"
+        >
+          <span className={styles.filterLabel}>Entered in</span>
+          <div className={styles.inlineOptions}>
+            {ENTRY_UNITS.map((unit) => (
+              <label key={unit}>
+                <input
+                  type="radio"
+                  name="assessment-entry-unit"
+                  checked={entryUnit === unit}
+                  onChange={() => onEntryUnitChange(unit)}
+                />
+                {weightUnitLabel(unit)}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>Weight class</span>
           <select
             className={styles.filterSelect}
-            value={weightClass}
+            value={classSelectValue}
+            disabled={classSelectDisabled}
             onChange={(event) =>
               onWeightClassChange(event.target.value as PetWeightClass | '')
             }
@@ -76,6 +158,24 @@ export function AssessmentModal({
             ))}
           </select>
         </label>
+
+        {hasWeight ? (
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={weightClassOverridden}
+              onChange={(event) => {
+                onWeightClassOverriddenChange(event.target.checked);
+                if (event.target.checked && derivedClass) {
+                  onWeightClassChange(derivedClass);
+                }
+              }}
+            />
+            <span className={styles.derivedHint}>
+              Override the derived weight class
+            </span>
+          </label>
+        ) : null}
 
         <label className={styles.filterField}>
           <span className={styles.filterLabel}>Coat type</span>
@@ -112,7 +212,7 @@ export function AssessmentModal({
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!weightClass || !coatType || isSaving}
+            disabled={!hasWeight || !classSelectValue || !coatType || isSaving}
             onClick={onConfirm}
           >
             {isSaving ? 'Saving...' : 'Save & Start'}

@@ -106,6 +106,24 @@ describe('m02-customers-pets seed', () => {
     expect(new Set(allPets.map((p) => p.coat_type)).size).toBeGreaterThan(1);
   });
 
+  it('records a numeric weight_kg on assessed pets and leaves it null otherwise', async () => {
+    await seedCustomers(supabase as never);
+
+    const allPets = [...supabase.state.pets.values()].flat() as {
+      weight_class: string | null;
+      weight_kg: number | null;
+    }[];
+
+    for (const pet of allPets) {
+      if (pet.weight_class !== null) {
+        expect(typeof pet.weight_kg).toBe('number');
+        expect(pet.weight_kg).toBeGreaterThan(0);
+      } else {
+        expect(pet.weight_kg).toBe(null);
+      }
+    }
+  });
+
   it('each customer gets at least one assessed and one unassessed pet', async () => {
     await seedCustomers(supabase as never);
 

@@ -98,6 +98,41 @@ describe('createPetValidatorStaff', () => {
 
     expect(result.success).toBe(true);
   });
+
+  it('accepts a numeric weight_kg', () => {
+    const result = createPetValidatorStaff.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+      weight_kg: 14.2,
+      coat_type: 'SC',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a zero, negative or absurd weight_kg', () => {
+    for (const weight_kg of [0, -3, 500, 9999]) {
+      expect(
+        createPetValidatorStaff.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          weight_kg,
+        }).success
+      ).toBe(false);
+    }
+  });
+});
+
+describe('createPetValidator (customer-facing) - weight_kg', () => {
+  it('rejects weight_kg - staff-only, manipulable pricing/cage field', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+      weight_kg: 4,
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updatePetValidator (customer-facing)', () => {

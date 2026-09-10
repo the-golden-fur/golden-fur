@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getFontSizePreference,
   getThemePreference,
+  getWeightUnitPreference,
   updateFontSizePreference,
   updateThemePreference,
+  updateWeightUnitPreference,
 } from '../../api/preferences.api';
 import {
   ThemeContext,
   type ColorMode,
   type FontSizePreference,
   type ThemeRole,
+  type WeightUnitPreference,
 } from './themeContext';
 
 interface ThemeProviderProps {
@@ -18,6 +21,16 @@ interface ThemeProviderProps {
   accessToken?: string | null;
   children: React.ReactNode;
 }
+
+/*
+ * NOTE: this provider has outgrown its name - alongside colour mode and font
+ * size it now also owns the per-user "view pet weights in kg/lbs" preference
+ * (Architectural-Change-History), which is not a theme concern. It stays here
+ * because the wiring is identical (one mount in App.tsx with userId +
+ * accessToken, load-on-mount, optimistic local state, fire-and-forget PATCH)
+ * and duplicating it for one enum wasn't worth a second provider. A rename to
+ * UserPreferencesProvider is a sensible future follow-up.
+ */
 
 /** Unitless multiplier consumed by --font-scale (typography.css), which
  * every --text-* size is expressed in terms of - so this one value scales
@@ -51,6 +64,7 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
   const [mode, setModeState] = useState<ColorMode>('system');
   const [fontSize, setFontSizeState] = useState<FontSizePreference>('medium');
+  const [weightUnit, setWeightUnitState] = useState<WeightUnitPreference>('kg');
 
   // Role-based palette (data-theme='staff'/'customer') is selected by route and
   // stays untouched by the light/dark/system mode layered on top below.
@@ -74,6 +88,12 @@ export function ThemeProvider({
     getFontSizePreference(theme, userId).then((preference) => {
       if (!cancelled && preference) {
         setFontSizeState(preference);
+      }
+    });
+
+    getWeightUnitPreference(theme, userId).then((preference) => {
+      if (!cancelled && preference) {
+        setWeightUnitState(preference);
       }
     });
 
@@ -135,9 +155,26 @@ export function ThemeProvider({
     [theme, accessToken]
   );
 
+  const setWeightUnit = useCallback(
+    (nextWeightUnit: WeightUnitPreference) => {
+      setWeightUnitState(nextWeightUnit);
+      if (accessToken) {
+        void updateWeightUnitPreference(theme, accessToken, nextWeightUnit);
+      }
+    },
+    [theme, accessToken]
+  );
+
   const value = useMemo(
-    () => ({ theme: { role: theme, mode }, setMode, fontSize, setFontSize }),
-    [theme, mode, setMode, fontSize, setFontSize]
+    () => ({
+      theme: { role: theme, mode },
+      setMode,
+      fontSize,
+      setFontSize,
+      weightUnit,
+      setWeightUnit,
+    }),
+    [theme, mode, setMode, fontSize, setFontSize, weightUnit, setWeightUnit]
   );
 
   return (

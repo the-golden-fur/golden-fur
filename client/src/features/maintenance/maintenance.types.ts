@@ -96,6 +96,27 @@ export interface UpdatePackagePricingConfigurationPayload {
   bundle_discount_percentage: number;
 }
 
+/**
+ * Architectural-Change-History: the singleton kg cut-offs that derive a
+ * pet's S/M/L/XL weight_class from its recorded weight_kg (lower bound
+ * inclusive: S < m_min_kg <= M < l_min_kg <= L < xl_min_kg <= XL). Mirrors
+ * server PetWeightClassConfiguration.
+ */
+export interface PetWeightClassConfiguration {
+  id: string;
+  m_min_kg: number;
+  l_min_kg: number;
+  xl_min_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePetWeightClassConfigurationPayload {
+  m_min_kg?: number;
+  l_min_kg?: number;
+  xl_min_kg?: number;
+}
+
 /** 'count' caps how many promos may combine on one transaction (cap_value
  * is then a whole number of promos), instead of capping their combined
  * PHP/percentage amount. */

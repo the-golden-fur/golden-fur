@@ -103,26 +103,26 @@ declare
   v_assessor_id uuid;
   v_pets_by_email jsonb := '{
     "customer1@goldenfur.com": [
-      {"name": "Max", "pet_type": "Dog", "weight_class": "M", "coat_type": "SC", "assessed_days_ago": 45},
-      {"name": "Luna", "pet_type": "Cat", "weight_class": "S", "coat_type": "LC", "assessed_days_ago": 10},
+      {"name": "Max", "pet_type": "Dog", "weight_class": "M", "weight_kg": 14.2, "coat_type": "SC", "assessed_days_ago": 45},
+      {"name": "Luna", "pet_type": "Cat", "weight_class": "S", "weight_kg": 4.1, "coat_type": "LC", "assessed_days_ago": 10},
       {"name": "Cooper", "pet_type": "Dog"}
     ],
     "customer2@goldenfur.com": [
-      {"name": "Rex", "pet_type": "Dog", "weight_class": "L", "coat_type": "LC", "assessed_days_ago": 90},
+      {"name": "Rex", "pet_type": "Dog", "weight_class": "L", "weight_kg": 27.6, "coat_type": "LC", "assessed_days_ago": 90},
       {"name": "Whiskers", "pet_type": "Cat"}
     ],
     "customer3@goldenfur.com": [
-      {"name": "Bruno", "pet_type": "Dog", "weight_class": "XL", "coat_type": "SC", "assessed_days_ago": 200},
-      {"name": "Mimi", "pet_type": "Cat", "weight_class": "M", "coat_type": "LC", "assessed_days_ago": 5},
+      {"name": "Bruno", "pet_type": "Dog", "weight_class": "XL", "weight_kg": 48.3, "coat_type": "SC", "assessed_days_ago": 200},
+      {"name": "Mimi", "pet_type": "Cat", "weight_class": "M", "weight_kg": 10.4, "coat_type": "LC", "assessed_days_ago": 5},
       {"name": "Nala", "pet_type": "Cat"}
     ],
     "customer4@goldenfur.com": [
-      {"name": "Coco", "pet_type": "Cat", "weight_class": "L", "coat_type": "SC", "assessed_days_ago": 400},
+      {"name": "Coco", "pet_type": "Cat", "weight_class": "L", "weight_kg": 23.1, "coat_type": "SC", "assessed_days_ago": 400},
       {"name": "Buddy", "pet_type": "Dog"}
     ],
     "customer5@goldenfur.com": [
-      {"name": "Bella", "pet_type": "Dog", "weight_class": "S", "coat_type": "LC", "assessed_days_ago": 20},
-      {"name": "Simba", "pet_type": "Cat", "weight_class": "XL", "coat_type": "SC", "assessed_days_ago": 60},
+      {"name": "Bella", "pet_type": "Dog", "weight_class": "S", "weight_kg": 6.7, "coat_type": "LC", "assessed_days_ago": 20},
+      {"name": "Simba", "pet_type": "Cat", "weight_class": "XL", "weight_kg": 42.5, "coat_type": "SC", "assessed_days_ago": 60},
       {"name": "Milo", "pet_type": "Cat"}
     ]
   }'::jsonb;
@@ -144,13 +144,14 @@ begin
       -- breed_id intentionally left NULL (nullable per Issue #71) - none of
       -- these seed rows need a specific seeded breed.
       insert into public.pets (
-        customer_id, name, pet_type, weight_class, coat_type, assessed_by, assessed_at
+        customer_id, name, pet_type, weight_class, weight_kg, coat_type, assessed_by, assessed_at
       )
       values (
         v_customer.id,
         v_pet ->> 'name',
         (v_pet ->> 'pet_type')::public.pet_type,
         (v_pet ->> 'weight_class')::public.pet_weight_class,
+        (v_pet ->> 'weight_kg')::numeric,
         (v_pet ->> 'coat_type')::public.pet_coat_type,
         case when v_pet ? 'assessed_days_ago' then v_assessor_id else null end,
         case

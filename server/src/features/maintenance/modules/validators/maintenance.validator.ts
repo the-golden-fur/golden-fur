@@ -206,6 +206,58 @@ export const updatePricingConfigurationValidator = z
     );
   });
 
+/**
+ * Architectural-Change-History: the S/M/L/XL kg cut-offs. Every field
+ * optional (PATCH semantics for the singleton). Ordering among the fields
+ * present in this request is checked here; the full m < l < xl invariant
+ * against the merge of supplied + stored values is enforced in
+ * petWeightClassConfiguration.service.ts (which has the stored row) and, as a
+ * final backstop, by the pet_weight_class_configuration_ordered_check DB
+ * constraint.
+ */
+export const updatePetWeightClassConfigurationValidator = z
+  .object({
+    m_min_kg: z.number().positive().max(499).optional(),
+    l_min_kg: z.number().positive().max(499).optional(),
+    xl_min_kg: z.number().positive().max(499).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (
+      input.m_min_kg !== undefined &&
+      input.l_min_kg !== undefined &&
+      input.m_min_kg >= input.l_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['l_min_kg'],
+        message: 'L cut-off must be greater than the M cut-off',
+      });
+    }
+    if (
+      input.l_min_kg !== undefined &&
+      input.xl_min_kg !== undefined &&
+      input.l_min_kg >= input.xl_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['xl_min_kg'],
+        message: 'XL cut-off must be greater than the L cut-off',
+      });
+    }
+    if (
+      input.m_min_kg !== undefined &&
+      input.xl_min_kg !== undefined &&
+      input.m_min_kg >= input.xl_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['xl_min_kg'],
+        message: 'XL cut-off must be greater than the M cut-off',
+      });
+    }
+  });
+
 /** Epic B (#82): fraction of the included services' base_price sum. */
 export const updatePackagePricingConfigurationValidator = z
   .object({
@@ -483,6 +535,9 @@ export type UpdatePricingConfigurationInput = z.infer<
 >;
 export type UpdatePackagePricingConfigurationInput = z.infer<
   typeof updatePackagePricingConfigurationValidator
+>;
+export type UpdatePetWeightClassConfigurationInput = z.infer<
+  typeof updatePetWeightClassConfigurationValidator
 >;
 export type UpsertPromoCapConfigurationInput = z.infer<
   typeof upsertPromoCapConfigurationValidator

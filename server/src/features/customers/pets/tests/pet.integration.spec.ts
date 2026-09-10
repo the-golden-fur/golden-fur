@@ -318,6 +318,81 @@ describe('pet CRUD (Issue #32)', () => {
       ).toBeTruthy();
     });
 
+    it('derives weight_class from a submitted weight_kg and stamps the assessment', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Receptionist' }, error: null },
+        // pet_weight_class_configuration singleton
+        {
+          data: { id: 'wcc-1', m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 },
+          error: null,
+        },
+        {
+          data: { id: 'pet-1', weight_kg: 14, weight_class: 'M' },
+          error: null,
+        }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 14, coat_type: 'SC' });
+
+      expect(res.status).toBe(200);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        weight_kg: 14,
+        weight_class: 'M',
+        coat_type: 'SC',
+        assessed_by: 'staff-1',
+      });
+    });
+
+    it('keeps an explicit weight_class override even when weight_kg is also sent', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        {
+          data: {
+            id: 'pet-1',
+            customer_id: 'customer-1',
+            weight_class: 'M',
+            coat_type: 'SC',
+          },
+          error: null,
+        },
+        { data: { role: 'Admin' }, error: null },
+        { data: { id: 'pet-1', weight_class: 'S' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 40, weight_class: 'S' });
+
+      expect(res.status).toBe(200);
+      // Explicit override wins - no config lookup, class is 'S' not the
+      // derived 'XL'.
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        weight_kg: 40,
+        weight_class: 'S',
+      });
+    });
+
+    it('rejects weight_kg when the pet owner PATCHes it (staff-only)', async () => {
+      mockCaller('customer-1');
+      queueFromResults({
+        data: { id: 'pet-1', customer_id: 'customer-1' },
+        error: null,
+      });
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 5 });
+
+      expect(res.status).toBe(400);
+    });
+
     it('does not re-stamp when staff resends the same weight_class/coat_type the pet already has (no real change)', async () => {
       mockCaller('staff-1');
       queueFromResults(

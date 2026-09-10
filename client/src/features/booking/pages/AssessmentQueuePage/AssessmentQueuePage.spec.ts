@@ -20,6 +20,7 @@ vi.mock('../../../staff/api/staff.api', () => ({
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
   listServices: vi.fn(),
+  getPetWeightClassConfiguration: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
@@ -141,6 +142,17 @@ describe('AssessmentQueuePage', () => {
       data: [],
       error: null,
     });
+    vi.mocked(maintenanceApi.getPetWeightClassConfiguration).mockResolvedValue({
+      data: {
+        id: 'weight-class-config',
+        m_min_kg: 9.5,
+        l_min_kg: 22,
+        xl_min_kg: 41,
+        updated_by_staff_id: null,
+        updated_at: new Date().toISOString(),
+      },
+      error: null,
+    });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking()],
       error: null,
@@ -250,6 +262,7 @@ describe('AssessmentQueuePage', () => {
     vi.mocked(customerApi.updatePet).mockResolvedValue({
       data: {
         id: 'pet-12345678',
+        weight_kg: 14,
         weight_class: 'M',
         coat_type: 'SC',
       } as never,
@@ -265,11 +278,13 @@ describe('AssessmentQueuePage', () => {
     await user.click(await screen.findByRole('button', { name: 'Start' }));
 
     const dialog = await screen.findByRole('dialog');
-    await user.selectOptions(
-      within(dialog).getByLabelText('Weight class'),
-      'M'
-    );
+    // Enter a weight in the M band (9.5-22 kg) - the weight class is derived,
+    // not picked.
+    await user.type(within(dialog).getByLabelText(/Weight \(kg\)/), '14');
     await user.selectOptions(within(dialog).getByLabelText('Coat type'), 'SC');
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('Weight class')).toHaveValue('M')
+    );
     await user.click(
       within(dialog).getByRole('button', { name: 'Save & Start' })
     );
@@ -279,7 +294,7 @@ describe('AssessmentQueuePage', () => {
         'pet-12345678',
         'token',
         {
-          weight_class: 'M',
+          weight_kg: 14,
           coat_type: 'SC',
         }
       )

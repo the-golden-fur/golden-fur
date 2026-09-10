@@ -3,6 +3,7 @@ import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { AdminServicesAndPackagesPage } from './pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from './pages/PricingConfigurationPage/PricingConfigurationPage';
+import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
 import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
@@ -23,6 +24,10 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/pricing-configuration"
         element={<PricingConfigurationPage />}
+      />
+      <Route
+        path="/staff/admin/maintenance/weight-classes"
+        element={<WeightClassConfigurationPage />}
       />
       <Route
         path="/staff/admin/maintenance/promos"

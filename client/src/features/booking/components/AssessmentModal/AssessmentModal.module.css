@@ -61,6 +61,37 @@
   width: 100%;
 }
 
+.filterSelect:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.inlineOptions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.inlineOptions label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.derivedHint {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
 .errorBanner {
   margin: 0 0 var(--space-2);
   background: var(--color-error-bg);

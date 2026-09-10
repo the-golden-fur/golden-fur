@@ -1,5 +1,6 @@
 import { ThemeToggle } from '../../../shared/components/ThemeToggle/ThemeToggle';
 import { FontSizeSlider } from '../../../shared/components/FontSizeSlider/FontSizeSlider';
+import { WeightUnitToggle } from '../../../shared/components/WeightUnitToggle/WeightUnitToggle';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import { NotificationPreferencesGrid } from './NotificationPreferencesGrid';
 import styles from '../SettingsPage.module.css';
@@ -36,6 +37,13 @@ export function PreferencesTab({
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>Font size</h2>
         <FontSizeSlider />
+      </section>
+      <section className={styles.panel}>
+        <h2 className={styles.sectionTitle}>Pet weight</h2>
+        <p className={styles.copy}>
+          Choose the unit pet weights are shown in across the app.
+        </p>
+        <WeightUnitToggle />
       </section>
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>Notifications</h2>
