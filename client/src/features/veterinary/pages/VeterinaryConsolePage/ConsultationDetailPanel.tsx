@@ -71,7 +71,11 @@ export function ConsultationDetailPanel({
   // different consultation is selected, with no synchronizing effect needed.
   // consultation.weight is stored canonically in kilograms; it is shown and
   // entered in the viewer's kg/lbs preference (Architectural-Change-History).
-  const { weightUnit } = useContext(ThemeContext);
+  // Captured once at mount (with the consultation.id key remount) so the
+  // field's value, its label, and the save-time conversion always name the
+  // same unit even if the preference resolves a moment later.
+  const { weightUnit: liveWeightUnit } = useContext(ThemeContext);
+  const [weightUnit] = useState(liveWeightUnit);
   const [temperature, setTemperature] = useState(
     () => consultation.temperature?.toString() ?? ''
   );

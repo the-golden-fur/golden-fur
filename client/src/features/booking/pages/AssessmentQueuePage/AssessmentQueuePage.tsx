@@ -12,7 +12,10 @@ import type {
 } from '../../../maintenance/maintenance.types';
 import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
 import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
-import { toCanonicalKg } from '../../../../shared/utils/petWeight';
+import {
+  toCanonicalKg,
+  toDisplayValue,
+} from '../../../../shared/utils/petWeight';
 import {
   getCustomerProfile,
   getPet,
@@ -471,7 +474,11 @@ export function AssessmentQueuePage() {
   function openAssessment(booking: Booking) {
     const pet = pets[booking.pet_id];
     setAssessWeightClass(pet?.weight_class ?? '');
-    setAssessWeightKg(pet?.weight_kg ?? '');
+    // The pet's weight is stored in kg; show it in the receptionist's unit,
+    // which is also the entry unit we seed below.
+    setAssessWeightKg(
+      pet?.weight_kg != null ? toDisplayValue(pet.weight_kg, weightUnit) : ''
+    );
     setAssessWeightClassOverridden(false);
     setAssessEntryUnit(weightUnit);
     setAssessCoatType(pet?.coat_type ?? '');

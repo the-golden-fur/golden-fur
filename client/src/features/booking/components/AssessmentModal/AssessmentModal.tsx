@@ -10,6 +10,7 @@ import {
 } from '../../../maintenance/utils/deriveWeightClass';
 import {
   toCanonicalKg,
+  toDisplayValue,
   weightUnitLabel,
 } from '../../../../shared/utils/petWeight';
 import styles from './AssessmentModal.module.css';
@@ -86,6 +87,15 @@ export function AssessmentModal({
   const classSelectValue =
     weightClassOverridden || !canDerive ? weightClass : derivedClass;
 
+  // Switching kg<->lb reinterprets the number already typed so the real
+  // weight the receptionist is recording doesn't silently change.
+  const changeEntryUnit = (unit: WeightUnitPreference) => {
+    if (canonicalKg !== null) {
+      onWeightKgChange(toDisplayValue(canonicalKg, unit));
+    }
+    onEntryUnitChange(unit);
+  };
+
   return (
     <div className={styles.modalBackdrop} role="presentation">
       <section
@@ -135,7 +145,7 @@ export function AssessmentModal({
                   type="radio"
                   name="assessment-entry-unit"
                   checked={entryUnit === unit}
-                  onChange={() => onEntryUnitChange(unit)}
+                  onChange={() => changeEntryUnit(unit)}
                 />
                 {weightUnitLabel(unit)}
               </label>

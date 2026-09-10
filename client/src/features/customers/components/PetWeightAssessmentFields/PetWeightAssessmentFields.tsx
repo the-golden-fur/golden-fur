@@ -54,6 +54,9 @@ export function PetWeightAssessmentFields({
   inputClassName,
 }: PetWeightAssessmentFieldsProps) {
   const { weightUnit } = useContext(ThemeContext);
+  // Seeded from the account preference at mount; the field's own label always
+  // names this unit, so it stays self-consistent even if the preference
+  // resolves later. Staff can switch it explicitly with the toggle below.
   const [entryUnit, setEntryUnit] = useState<WeightUnitPreference>(weightUnit);
   const [rawValue, setRawValue] = useState<string>(() =>
     initialKg != null ? String(toDisplayValue(initialKg, weightUnit)) : ''

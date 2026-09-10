@@ -14,7 +14,7 @@ vi.mock('../../../api/customer.api', () => ({
   uploadPetPhoto: vi.fn(),
 }));
 
-vi.mock('../../../maintenance/api/maintenance.api', () => ({
+vi.mock('../../../../maintenance/api/maintenance.api', () => ({
   getPetWeightClassConfiguration: vi.fn().mockResolvedValue({
     data: {
       id: 'weight-class-config',

@@ -107,20 +107,22 @@ function resolveAssessmentStamp(
 /**
  * The weight_class to persist for a create/update. An explicit weight_class
  * in the payload is a deliberate staff override and always wins; otherwise,
- * when a numeric weight_kg is supplied, weight_class is derived from it via
- * the Admin-configured cut-offs (pet_weight_class_configuration). Returns
- * undefined when neither is present - the caller then leaves the column
- * untouched. Only reachable on the staff validator path (the customer
- * variants reject both keys).
+ * when the numeric weight_kg is supplied *and differs from what's stored*,
+ * weight_class is (re-)derived from it via the Admin-configured cut-offs
+ * (pet_weight_class_configuration). Returns undefined when neither applies -
+ * the caller then leaves the column untouched, so a previously stored manual
+ * override survives an unrelated edit that merely re-sends the same weight.
+ * Only reachable on the staff validator path (the customer variants reject
+ * both keys).
  */
-async function resolveFinalWeightClass(submitted: {
-  weight_class?: string;
-  weight_kg?: number | null;
-}): Promise<PetWeightClass | undefined> {
+async function resolveFinalWeightClass(
+  submitted: { weight_class?: string; weight_kg?: number | null },
+  storedWeightKg?: number | null
+): Promise<PetWeightClass | undefined> {
   if (submitted.weight_class !== undefined) {
     return submitted.weight_class as PetWeightClass;
   }
-  if (submitted.weight_kg != null) {
+  if (submitted.weight_kg != null && submitted.weight_kg !== storedWeightKg) {
     const cutoffs = await getPetWeightClassConfiguration();
     return deriveWeightClass(submitted.weight_kg, cutoffs);
   }
@@ -324,8 +326,12 @@ export async function updatePetController(
 
     // weight_class is derived from a submitted weight_kg (or taken from an
     // explicit override) - see resolveFinalWeightClass. undefined means the
-    // payload carried neither, so the stored class stands.
-    const finalWeightClass = await resolveFinalWeightClass(submitted);
+    // payload carried neither a new weight nor an override, so the stored
+    // class stands (an existing manual override is not clobbered).
+    const finalWeightClass = await resolveFinalWeightClass(
+      submitted,
+      pet.weight_kg
+    );
     const effectiveWeightClass =
       finalWeightClass !== undefined ? finalWeightClass : pet.weight_class;
 
