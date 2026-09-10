@@ -13,6 +13,7 @@ import {
   deleteBreedController,
   getPackageController,
   getPackagePricingConfigurationController,
+  getPetWeightClassConfigurationController,
   getPricingConfigurationController,
   getPromoController,
   getServiceController,
@@ -35,6 +36,7 @@ import {
   updateBreedController,
   updatePackageController,
   updatePackagePricingConfigurationController,
+  updatePetWeightClassConfigurationController,
   updatePricingConfigurationController,
   updatePromoController,
   updateServiceController,
@@ -147,6 +149,18 @@ router.patch(
   '/maintenance/pricing-configuration',
   adminWrite,
   updatePricingConfigurationController
+);
+
+// Pet weight class configuration (Architectural-Change-History: S/M/L/XL kg cut-offs)
+router.get(
+  '/maintenance/pet-weight-class-configuration',
+  staffRead,
+  getPetWeightClassConfigurationController
+);
+router.patch(
+  '/maintenance/pet-weight-class-configuration',
+  adminWrite,
+  updatePetWeightClassConfigurationController
 );
 
 // Package pricing configuration (Epic B #82/#83)

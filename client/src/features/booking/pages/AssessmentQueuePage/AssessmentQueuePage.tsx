@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
+  getPetWeightClassConfiguration,
   listBranches,
-  listServices,
 } from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
-  Service,
+  PetWeightClassConfiguration,
 } from '../../../maintenance/maintenance.types';
+import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
+import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
+import {
+  toCanonicalKg,
+  toDisplayValue,
+} from '../../../../shared/utils/petWeight';
 import {
   getCustomerProfile,
   getPet,
@@ -139,7 +145,6 @@ export function AssessmentQueuePage() {
 
   // Own in-flight/error state, scoped to the row being advanced - same
   // shape ReceptionistBookingsQueuePage used before this was extracted.
-  const [assessmentServices, setAssessmentServices] = useState<Service[]>([]);
   const [advancingBookingId, setAdvancingBookingId] = useState<string | null>(
     null
   );
@@ -153,7 +158,16 @@ export function AssessmentQueuePage() {
   const [assessWeightClass, setAssessWeightClass] = useState<
     PetWeightClass | ''
   >('');
+  const [assessWeightKg, setAssessWeightKg] = useState<number | ''>('');
+  const [assessWeightClassOverridden, setAssessWeightClassOverridden] =
+    useState(false);
   const [assessCoatType, setAssessCoatType] = useState<PetCoatType | ''>('');
+
+  const { weightUnit } = useContext(ThemeContext);
+  const [assessEntryUnit, setAssessEntryUnit] =
+    useState<WeightUnitPreference>(weightUnit);
+  const [weightClassCutoffs, setWeightClassCutoffs] =
+    useState<PetWeightClassConfiguration | null>(null);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -193,36 +207,28 @@ export function AssessmentQueuePage() {
     });
   }, [roleStatus]);
 
-  // This queue only ever advances Assessment bookings, so only Assessment
-  // services' captures_pet_assessment flag is worth fetching. includeInactive
-  // covers a booking whose service was later deactivated.
+  // The S/M/L/XL kg cut-offs, so the modal can show the derived class as the
+  // receptionist types a weight (Architectural-Change-History).
   useEffect(() => {
     if (roleStatus !== 'ok' || !accessToken) return;
 
-    void listServices(accessToken, {
-      category: 'Assessment',
-      includeInactive: true,
-    }).then((result) => {
-      if (result.data) setAssessmentServices(result.data);
-    });
+    void getPetWeightClassConfiguration(accessToken)
+      .then((result) => {
+        if (result.data) setWeightClassCutoffs(result.data);
+      })
+      .catch(() => {
+        // Non-fatal - the server still derives the class on save.
+      });
   }, [roleStatus, accessToken]);
 
-  const assessmentServiceIds = useMemo(
-    () =>
-      new Set(
-        assessmentServices
-          .filter((service) => service.captures_pet_assessment)
-          .map((service) => service.id)
-      ),
-    [assessmentServices]
-  );
-
-  function bookingNeedsAssessment(booking: Booking): boolean {
+  // Every row in this queue is an Assessment booking, so any row that hasn't
+  // finished yet is assessable - clicking it opens the weight/coat modal,
+  // whose Confirm both records the assessment and completes the booking.
+  function isAssessable(booking: Booking): boolean {
+    if (booking.status === 'In Progress') return true;
     return (
-      booking.booking_items?.some(
-        (item) =>
-          item.service_id !== null && assessmentServiceIds.has(item.service_id)
-      ) ?? false
+      booking.status === 'Pending' &&
+      deriveBookingConfirmationState(booking) === 'Confirmed'
     );
   }
 
@@ -468,22 +474,44 @@ export function AssessmentQueuePage() {
   function openAssessment(booking: Booking) {
     const pet = pets[booking.pet_id];
     setAssessWeightClass(pet?.weight_class ?? '');
+    // The pet's weight is stored in kg; show it in the receptionist's unit,
+    // which is also the entry unit we seed below.
+    setAssessWeightKg(
+      pet?.weight_kg != null ? toDisplayValue(pet.weight_kg, weightUnit) : ''
+    );
+    setAssessWeightClassOverridden(false);
+    setAssessEntryUnit(weightUnit);
     setAssessCoatType(pet?.coat_type ?? '');
     setAdvanceError(null);
     setAssessTargetBookingId(booking.id);
   }
 
-  // Saves the pet's assessment first, then starts the booking - only on a
-  // successful save does it proceed to Start.
+  // Records the pet's weight/coat, then carries the booking straight through
+  // to Completed (Pending -> In Progress -> Completed, or just the last hop
+  // for a walk-in that already started In Progress). Only advances on a
+  // successful save.
   async function confirmAssessment(booking: Booking) {
-    if (!accessToken || !assessWeightClass || !assessCoatType) return;
+    if (
+      !accessToken ||
+      assessWeightKg === '' ||
+      assessWeightKg <= 0 ||
+      !assessCoatType
+    ) {
+      return;
+    }
 
     setAdvancingBookingId(booking.id);
     setAdvanceError(null);
 
+    // Always send the recorded weight; the server derives weight_class from
+    // it. Only send weight_class too when the receptionist explicitly chose
+    // to override the derived value.
     const petResult = await updatePet(booking.pet_id, accessToken, {
-      weight_class: assessWeightClass,
+      weight_kg: toCanonicalKg(assessWeightKg, assessEntryUnit),
       coat_type: assessCoatType,
+      ...(assessWeightClassOverridden && assessWeightClass
+        ? { weight_class: assessWeightClass }
+        : {}),
     });
 
     if (petResult.error || !petResult.data) {
@@ -498,8 +526,13 @@ export function AssessmentQueuePage() {
     const savedPet = petResult.data;
     setPets((prev) => ({ ...prev, [savedPet.id]: savedPet }));
 
-    const started = await handleStart(booking);
-    if (started) setAssessTargetBookingId(null);
+    if (booking.status === 'Pending') {
+      const started = await handleStart(booking);
+      if (!started) return;
+    }
+
+    const completed = await handleComplete(booking);
+    if (completed) setAssessTargetBookingId(null);
   }
 
   if (!user?.id || !accessToken) {
@@ -599,14 +632,14 @@ export function AssessmentQueuePage() {
                 (OVERRIDABLE_BOOKING_STATUSES as readonly string[]).includes(
                   booking.status
                 );
-              const canAdvanceStatus =
-                !isStatusOverrideRole &&
-                (booking.status === 'Pending' ||
-                  booking.status === 'In Progress');
+              // Admins/Superadmins drive status with the override dropdown
+              // below; everyone else records the assessment by clicking the
+              // row, which also completes the booking.
+              const assessable = !isStatusOverrideRole && isAssessable(booking);
               const isAdvancing = advancingBookingId === booking.id;
 
-              return (
-                <li key={booking.id} className={styles.bookingRow}>
+              const summary = (
+                <>
                   <div className={styles.bookingHeader}>
                     <span className={styles.bookingTitle}>
                       {booking.service_category}
@@ -624,6 +657,30 @@ export function AssessmentQueuePage() {
                     {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
                     {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
+                  {assessable ? (
+                    <span className={styles.assessHint}>
+                      {isAdvancing
+                        ? 'Saving assessment...'
+                        : 'Click to record the assessment and complete this booking'}
+                    </span>
+                  ) : null}
+                </>
+              );
+
+              return (
+                <li key={booking.id} className={styles.bookingRow}>
+                  {assessable ? (
+                    <button
+                      type="button"
+                      className={styles.rowSummaryButton}
+                      disabled={isAdvancing}
+                      onClick={() => openAssessment(booking)}
+                    >
+                      {summary}
+                    </button>
+                  ) : (
+                    <div className={styles.rowSummary}>{summary}</div>
+                  )}
 
                   {confirmationState === 'Unconfirmed' ? (
                     <p className={styles.unconfirmedHint}>
@@ -664,32 +721,6 @@ export function AssessmentQueuePage() {
                         </select>
                       </label>
                     ) : null}
-                    {canAdvanceStatus && booking.status === 'Pending' ? (
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        disabled={
-                          isAdvancing || confirmationState !== 'Confirmed'
-                        }
-                        onClick={() =>
-                          bookingNeedsAssessment(booking)
-                            ? openAssessment(booking)
-                            : void handleStart(booking)
-                        }
-                      >
-                        {isAdvancing ? 'Starting...' : 'Start'}
-                      </button>
-                    ) : null}
-                    {canAdvanceStatus && booking.status === 'In Progress' ? (
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        disabled={isAdvancing}
-                        onClick={() => void handleComplete(booking)}
-                      >
-                        {isAdvancing ? 'Completing...' : 'Complete'}
-                      </button>
-                    ) : null}
                   </div>
 
                   {advanceError?.bookingId === booking.id &&
@@ -708,8 +739,15 @@ export function AssessmentQueuePage() {
       {assessmentModalBooking ? (
         <AssessmentModal
           pet={pets[assessmentModalBooking.pet_id]}
+          weightKg={assessWeightKg}
+          onWeightKgChange={setAssessWeightKg}
+          entryUnit={assessEntryUnit}
+          onEntryUnitChange={setAssessEntryUnit}
+          cutoffs={weightClassCutoffs}
           weightClass={assessWeightClass}
           onWeightClassChange={setAssessWeightClass}
+          weightClassOverridden={assessWeightClassOverridden}
+          onWeightClassOverriddenChange={setAssessWeightClassOverridden}
           coatType={assessCoatType}
           onCoatTypeChange={setAssessCoatType}
           isSaving={advancingBookingId === assessmentModalBooking.id}

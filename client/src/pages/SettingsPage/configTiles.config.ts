@@ -7,6 +7,7 @@ import {
   Package,
   Percent,
   Receipt,
+  Scale,
   ScrollText,
   Settings2,
   ShoppingBag,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
+import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
 import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
@@ -57,6 +59,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/maintenance/pricing-configuration',
     icon: Calculator,
     Component: PricingConfigurationPage,
+  },
+  {
+    title: 'Weight Classes',
+    description:
+      'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
+    to: '/staff/admin/maintenance/weight-classes',
+    icon: Scale,
+    Component: WeightClassConfigurationPage,
   },
   {
     title: 'Promos',

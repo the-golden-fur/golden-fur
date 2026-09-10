@@ -9,11 +9,11 @@ import type {
   PetWeightClass,
 } from '../../../customer.types';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
+import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
 
 const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
 interface PetFormProps {
@@ -50,7 +50,12 @@ export function PetForm({
   const [gender, setGender] = useState<PetGender | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>('');
+  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [weightClassOverridden, setWeightClassOverridden] = useState(false);
   const [coatType, setCoatType] = useState<PetCoatType | ''>('');
+  // Bumped after each successful create so PetWeightAssessmentFields (which
+  // owns its raw input/unit state) remounts clean for the next pet.
+  const [weightFieldsKey, setWeightFieldsKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -80,7 +85,12 @@ export function PetForm({
       breed_id: breedId,
       ...(gender ? { gender } : {}),
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
-      ...(isStaff && weightClass ? { weight_class: weightClass } : {}),
+      ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
+      // Send an explicit class only when the server can't derive it (no
+      // weight entered) or staff deliberately overrode the derived value.
+      ...(isStaff && weightClass && (weightKg == null || weightClassOverridden)
+        ? { weight_class: weightClass }
+        : {}),
       ...(isStaff && coatType ? { coat_type: coatType } : {}),
     };
 
@@ -112,6 +122,9 @@ export function PetForm({
     setGender('');
     setDateOfBirth('');
     setWeightClass('');
+    setWeightKg(null);
+    setWeightClassOverridden(false);
+    setWeightFieldsKey((key) => key + 1);
     setCoatType('');
     onCreated(pet);
   };
@@ -198,25 +211,19 @@ export function PetForm({
       </label>
       {isStaff ? (
         <>
-          <label className={styles.field}>
-            <span className={styles.label}>
-              Weight class (optional - leave blank if not yet weighed)
-            </span>
-            <select
-              className={styles.input}
-              value={weightClass}
-              onChange={(event) =>
-                setWeightClass(event.target.value as PetWeightClass)
-              }
-            >
-              <option value="">Not yet assessed</option>
-              {WEIGHT_CLASS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PetWeightAssessmentFields
+            key={weightFieldsKey}
+            accessToken={accessToken}
+            initialKg={weightKg}
+            onCanonicalKgChange={setWeightKg}
+            weightClass={weightClass}
+            onWeightClassChange={setWeightClass}
+            overridden={weightClassOverridden}
+            onOverriddenChange={setWeightClassOverridden}
+            fieldClassName={styles.field}
+            labelClassName={styles.label}
+            inputClassName={styles.input}
+          />
           <label className={styles.field}>
             <span className={styles.label}>
               Coat type (optional - leave blank if not yet assessed)

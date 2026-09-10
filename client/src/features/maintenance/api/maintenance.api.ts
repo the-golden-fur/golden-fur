@@ -12,6 +12,7 @@ import type {
   PackageBranchAvailability,
   PackagePricingConfiguration,
   PetType,
+  PetWeightClassConfiguration,
   PricingConfiguration,
   Promo,
   PromoBranchAvailability,
@@ -23,6 +24,7 @@ import type {
   UpdateBreedPayload,
   UpdatePackagePayload,
   UpdatePackagePricingConfigurationPayload,
+  UpdatePetWeightClassConfigurationPayload,
   UpdatePricingConfigurationPayload,
   UpdatePromoPayload,
   UpdateServicePayload,
@@ -562,6 +564,50 @@ export async function updatePricingConfiguration(
   const result = await parseBody<{ configuration: PricingConfiguration }>(
     response
   );
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+/** Architectural-Change-History: the singleton S/M/L/XL kg cut-offs. Read by
+ * the assessment/pet forms (live-derive the class as staff type a weight) and
+ * the WeightClassConfigurationPage. */
+export async function getPetWeightClassConfiguration(
+  accessToken: string
+): Promise<MaintenanceApiResult<PetWeightClassConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-weight-class-configuration`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    configuration: PetWeightClassConfiguration;
+  }>(response);
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+export async function updatePetWeightClassConfiguration(
+  accessToken: string,
+  payload: UpdatePetWeightClassConfigurationPayload
+): Promise<MaintenanceApiResult<PetWeightClassConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-weight-class-configuration`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    configuration: PetWeightClassConfiguration;
+  }>(response);
   return { data: result.data?.configuration ?? null, error: result.error };
 }
 

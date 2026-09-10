@@ -14,6 +14,20 @@ vi.mock('../../../api/customer.api', () => ({
   uploadPetPhoto: vi.fn(),
 }));
 
+vi.mock('../../../../maintenance/api/maintenance.api', () => ({
+  getPetWeightClassConfiguration: vi.fn().mockResolvedValue({
+    data: {
+      id: 'weight-class-config',
+      m_min_kg: 9.5,
+      l_min_kg: 22,
+      xl_min_kg: 41,
+      updated_by_staff_id: null,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    },
+    error: null,
+  }),
+}));
+
 const BREEDS = [
   {
     id: 'breed-1',

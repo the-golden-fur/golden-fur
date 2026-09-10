@@ -44,6 +44,10 @@ import {
   updatePackagePricingConfiguration,
 } from './services/packagePricing.service.ts';
 import {
+  getPetWeightClassConfiguration,
+  updatePetWeightClassConfiguration,
+} from './services/petWeightClassConfiguration.service.ts';
+import {
   listPromoCapConfigurations,
   upsertPromoCapConfiguration,
 } from './services/promoCap.service.ts';
@@ -63,6 +67,7 @@ import {
   updateBreedValidator,
   updatePackagePricingConfigurationValidator,
   updatePackageValidator,
+  updatePetWeightClassConfigurationValidator,
   updatePricingConfigurationValidator,
   updatePromoValidator,
   updateServiceTypeValidator,
@@ -591,6 +596,53 @@ export async function updatePricingConfigurationController(
 
   try {
     const configuration = await updatePricingConfiguration({
+      requesterId,
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pet weight class configuration (Architectural-Change-History: the S/M/L/XL
+// kg cut-offs used to derive a pet's weight_class from its weight_kg)
+// ---------------------------------------------------------------------------
+
+export async function getPetWeightClassConfigurationController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const configuration = await getPetWeightClassConfiguration();
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePetWeightClassConfigurationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePetWeightClassConfigurationValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const configuration = await updatePetWeightClassConfiguration({
       requesterId,
       updates: parsed.data,
     });

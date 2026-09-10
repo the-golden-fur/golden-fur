@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
+import { formatWeight } from '../../../../shared/utils/petWeight';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   MoreOptionsMenu,
@@ -84,6 +86,7 @@ function formatScheduledTime(iso: string): string {
 
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
+  const { weightUnit } = useContext(ThemeContext);
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
@@ -668,7 +671,12 @@ export function VeterinaryConsolePage() {
               <div className={styles.detailField}>
                 <span className={styles.detailLabel}>Weight</span>
                 <span className={styles.detailValue}>
-                  {viewDetailsRow.consultation.weight ?? '—'}
+                  {viewDetailsRow.consultation.weight != null
+                    ? formatWeight(
+                        viewDetailsRow.consultation.weight,
+                        weightUnit
+                      )
+                    : '—'}
                 </span>
               </div>
               <div className={styles.detailField}>

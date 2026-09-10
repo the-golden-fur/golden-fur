@@ -1,7 +1,8 @@
 import { cleanup, render } from '@testing-library/react';
-import { createElement } from 'react';
+import { createElement, useContext } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ThemeProvider } from './ThemeProvider';
+import { ThemeContext } from './themeContext';
 
 afterEach(() => {
   cleanup();
@@ -35,5 +36,19 @@ describe('ThemeProvider', () => {
     expect(
       document.documentElement.style.getPropertyValue('--font-scale')
     ).toBe('1');
+  });
+
+  it('defaults the weight unit to kg with no stored preference', () => {
+    let seen: string | undefined;
+    function Probe() {
+      seen = useContext(ThemeContext).weightUnit;
+      return null;
+    }
+
+    render(
+      createElement(ThemeProvider, { theme: 'customer' }, createElement(Probe))
+    );
+
+    expect(seen).toBe('kg');
   });
 });

@@ -83,6 +83,22 @@ export interface PackagePricingConfiguration {
   updated_at: string;
 }
 
+/**
+ * Architectural-Change-History: the singleton kg cut-offs that derive a
+ * pet's S/M/L/XL weight_class from its recorded weight_kg (lower bound
+ * inclusive: S < m_min_kg <= M < l_min_kg <= L < xl_min_kg <= XL). Same
+ * singleton/two-tier-RLS shape as PricingConfiguration; consumed by
+ * deriveWeightClass on every pet weight write.
+ */
+export interface PetWeightClassConfiguration {
+  id: string;
+  m_min_kg: number;
+  l_min_kg: number;
+  xl_min_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
 export type CapType = 'percentage' | 'flat';
 
 /** Epic B (#84): per-branch (NULL = both branches) promo cap. */

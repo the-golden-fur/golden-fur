@@ -48,6 +48,11 @@ export interface Pet {
   /** NULL until staff records a physical assessment onsite - a customer can
    * never set these (server-enforced, see pet.controller.ts). */
   weight_class: PetWeightClass | null;
+  /** Canonical weight in kilograms, recorded on-site during assessment. NULL
+   * = no numeric weight yet. weight_class is derived from this; a customer
+   * can never set it (server-enforced). Display it via the viewer's kg/lbs
+   * preference - see shared/utils/petWeight.ts. */
+  weight_kg: number | null;
   coat_type: PetCoatType | null;
   assessed_by: string | null;
   assessed_at: string | null;
@@ -68,6 +73,9 @@ export interface PetCreatePayload {
 }
 
 export interface PetCreatePayloadStaff extends PetCreatePayload {
+  /** Canonical kilograms. When sent, the server derives weight_class from it
+   * unless weight_class is also sent (an explicit staff override). */
+  weight_kg?: number;
   weight_class?: PetWeightClass;
   coat_type?: PetCoatType;
 }
