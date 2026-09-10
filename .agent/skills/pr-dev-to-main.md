@@ -4,36 +4,31 @@
 `main`. For a feature/fix branch into `dev`, use the separate `pr-to-dev`
 skill instead — the two directions use different merge strategies.
 
-## Process
+## Process — runs once, then done
+
+This skill only opens the **draft** release PR with every field set. It
+runs **no CI, test, build, or code-review check** — the user verifies the
+release manually after the PR exists. Do not spawn any verifier/fixer
+subagent, and do not loop.
 
 1. Make sure `dev` is up to date and includes everything intended for this
-   release/promotion.
-2. **Verify CI parity across both repos** — spawn the `ci-verifier`
-   subagent (`.agent/agents/ci-verifier.md`) **once** against `dev`; tests,
-   lint, format, and build must be green in `golden-fur` and
-   `golden-fur-vault` before promoting. If red, spawn `ci-fixer-agent` and
-   re-verify until green (same auto-chain as `pr-to-dev`). `ci-verifier`
-   writes the `.git/ci-verifier-pass` marker the `pr-guard` hook checks.
-3. **Confirm each feature/fix branch merged into `dev` since the last
-   promotion was reviewed** at `pre-pr` time — a review file lives under
-   that branch's `sessions/<NN-slug>/reviews/` folder. If any branch has no
-   review on record, run the `code-review` skill (`Skill(code-review,
-"high")`) on that PR's diff now, resolve any **Blocking** findings, and
-   drop a short summary into that session's `reviews/` folder before
-   promoting. A `dev` → `main` promotion adds no new code, so it needs no
-   fresh full-tree review — and no `workflow-doc-sync` pass either.
-4. Title/body summarize what's shipping — this can aggregate several
+   release/promotion (`git fetch` + confirm `origin/dev`).
+2. Title/body summarize what's shipping — this can aggregate several
    feature/fix PRs merged into `dev` since the last promotion, not just one
    change. Sections: Summary, What Changed (notable features/fixes since
    the last dev → main promotion), Testing.
-5. Open it with every field set — title, body, assignee, label(s) — never
-   left for the user:
-   `gh pr create --base main --head dev --title "release: ..." --body-file <file> --assignee @me --label <label>`.
+3. Open it as a draft with every field set — title, body, assignee,
+   label(s) — never left for the user:
+   `gh pr create --draft --base main --head dev --title "release: ..." --body-file <file> --assignee @me --label <label>`.
    If a `dev → main` PR is already open (this repo auto-opens one), apply
-   the same fields with `gh pr edit <n> --title ... --body-file <file> --add-assignee @me --add-label <label>` and confirm with
-   `gh pr view <n> --json title,assignees,labels`. Label is usually
+   the same fields with
+   `gh pr edit <n> --title ... --body-file <file> --add-assignee @me --add-label <label>`,
+   run `gh pr ready <n> --undo` to set it back to draft, and confirm with
+   `gh pr view <n> --json title,assignees,labels,isDraft`. Label is usually
    `feature` (or whichever type dominates the promotion); set a milestone
    with `gh pr edit <n> --milestone "<name>"` when one matches.
+
+Then hand back the PR link. You're done.
 
 ## Merge strategy: rebase first, merge as fallback — never squash
 
