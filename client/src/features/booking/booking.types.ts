@@ -339,6 +339,14 @@ export interface Booking {
   cancellation_reason: string | null;
   reschedule_count: number;
   pending_reschedule_fee_amount: number | null;
+  /** Slot-conflict notification: set when another customer's downpayment
+   * claimed this still-unpaid pencil booking's date/time/staff/cage slot
+   * first. NULL unless the customer currently needs to pick a new slot.
+   * Cleared by a successful reschedule. */
+  slot_conflict_at: string | null;
+  /** Short, customer-facing explanation shown alongside slot_conflict_at.
+   * NULL unless slot_conflict_at is set. */
+  conflict_notice: string | null;
   created_at: string;
   updated_at: string;
   booking_items?: BookingItem[];
@@ -751,6 +759,23 @@ export interface PetBookingConflict {
   booking_id: string;
   service_category: ServiceCategory;
   scheduled_start: string;
+}
+
+/** Slot-conflict notification: one of the logged-in customer's own
+ * still-Pending bookings that just lost its date/time/staff/cage slot to
+ * another customer's payment - see server's ConflictedBooking
+ * (booking.service.ts) and GET /bookings/conflicts/mine. */
+export interface ConflictedBooking {
+  id: string;
+  service_category: ServiceCategory;
+  pet_id: string;
+  pet_name: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+  branch_id: string;
+  branch_name: string | null;
+  conflict_notice: string | null;
+  slot_conflict_at: string;
 }
 
 /** #56/#60 supporting infra - server/src/features/booking/services/availability.service.ts. */

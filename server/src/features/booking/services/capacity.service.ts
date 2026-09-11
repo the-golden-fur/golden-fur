@@ -271,6 +271,61 @@ export async function checkCapacity(
       };
 }
 
+export interface PencilBookingRow {
+  id: string;
+  customer_id: string;
+  pet_id: string;
+  assigned_staff_id: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+  branch_id: string;
+  service_category: ServiceCategory;
+}
+
+/**
+ * Slot-conflict notification (20260911188): the mirror image of
+ * listOverlappingActiveBookings above - instead of the bookings that hold a
+ * slot, finds every OTHER still-Pending, unpaid, down-payment-required
+ * "pencil booking" overlapping the same branch/category/time window. Used
+ * right after some booking's payment settles and re-confirms it now holds
+ * ITS slot (booking.service.ts's flagSlotConflictsForOthers), to find the
+ * candidates who may have just lost the race for the same slot - each is
+ * then individually re-checked with checkCapacity() before being flagged, so
+ * this function alone doesn't decide who "lost," only who's in the running.
+ */
+export async function listOverlappingPencilBookings({
+  branchId,
+  serviceCategory,
+  scheduledStart,
+  scheduledEnd,
+  excludeBookingId,
+}: CapacityCheckParams): Promise<PencilBookingRow[]> {
+  let query = supabase
+    .from('bookings')
+    .select(
+      'id, customer_id, pet_id, assigned_staff_id, scheduled_start, scheduled_end, branch_id, service_category'
+    )
+    .eq('branch_id', branchId)
+    .eq('service_category', serviceCategory)
+    .eq('status', 'Pending')
+    .eq('payment_status', 'Pending')
+    .eq('downpayment_required', true)
+    .lt('scheduled_start', scheduledEnd)
+    .gt('scheduled_end', scheduledStart)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (excludeBookingId) {
+    query = query.neq('id', excludeBookingId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as PencilBookingRow[];
+}
+
 /**
  * Post-insert re-verification - the second half of #51's atomic-confirmation
  * requirement (AC-5). supabase-js has no client-side transactions, so two

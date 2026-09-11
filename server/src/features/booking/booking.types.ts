@@ -355,6 +355,16 @@ export interface Booking {
    * posted as a transaction_line_items row (that read side is Epic A
    * follow-up work, not built by this epic). */
   pending_reschedule_fee_amount: number | null;
+  /** Slot-conflict notification (20260911188): set when another customer's
+   * downpayment claimed this still-unpaid pencil booking's date/time/staff/
+   * cage slot first. NULL unless the customer currently needs to pick a new
+   * slot. See conflict_notice for the customer-facing explanation. Set by
+   * applyFirstBookingPaymentSideEffects (booking.service.ts), cleared by a
+   * successful reschedule (reschedule.service.ts). */
+  slot_conflict_at: string | null;
+  /** Short, customer-facing explanation shown alongside slot_conflict_at.
+   * NULL unless slot_conflict_at is set. */
+  conflict_notice: string | null;
   created_at: string;
   updated_at: string;
   booking_items?: BookingItem[];

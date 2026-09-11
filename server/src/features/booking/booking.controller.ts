@@ -5,6 +5,7 @@ import {
   createBooking,
   getBookingById,
   listBookings,
+  listConflictedBookingsForCustomer,
   listPetBookingConflicts,
   overrideBookingStatus,
   startBooking,
@@ -608,6 +609,31 @@ export async function petBookingConflictsController(
       requesterId,
       customerId: parsed.data.customer_id,
     });
+
+    return res.status(200).json({ conflicts });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Slot-conflict notification (20260911188): the logged-in customer's own
+ * still-Pending bookings that just lost their date/time/staff/cage slot to
+ * another customer's payment - the CustomerPortalPage dashboard popup's data
+ * source. Always scoped to the caller's own id (no customer_id query param,
+ * unlike petBookingConflictsController above) - this is a "what needs MY
+ * attention right now" surface, never a staff-assisted lookup. */
+export async function conflictedBookingsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const conflicts = await listConflictedBookingsForCustomer(requesterId);
 
     return res.status(200).json({ conflicts });
   } catch (error) {

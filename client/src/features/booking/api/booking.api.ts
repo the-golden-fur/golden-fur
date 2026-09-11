@@ -5,6 +5,7 @@ import type {
   CagePickerOptionsResult,
   CancelBookingPayload,
   CancellationResult,
+  ConflictedBooking,
   CreateBookingGroupPayload,
   CreateBookingGroupResult,
   CreateBookingPayload,
@@ -468,6 +469,25 @@ export async function getPetBookingConflicts(
   }
 
   const result = await parseBody<{ conflicts: PetBookingConflict[] }>(response);
+  return { data: result.data?.conflicts ?? null, error: result.error };
+}
+
+/** Slot-conflict notification: the logged-in customer's own still-Pending
+ * bookings that just lost their date/time/staff/cage slot to another
+ * customer's payment - powers the CustomerPortalPage dashboard popup and the
+ * notification bell's link-through for booking_slot_conflict rows. */
+export async function listMyConflictedBookings(
+  accessToken: string
+): Promise<BookingApiResult<ConflictedBooking[]>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/conflicts/mine`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ conflicts: ConflictedBooking[] }>(response);
   return { data: result.data?.conflicts ?? null, error: result.error };
 }
 

@@ -17,6 +17,10 @@ import {
 import { writeCancellationLog } from './cancellationLog.service.ts';
 import { calculateRescheduleFee } from './rescheduleFee.service.ts';
 import { sendBookingRescheduledNotification } from './bookingNotifications.service.ts';
+import {
+  isCagePickerEnabled,
+  verifyCagePreference,
+} from './cagePicker.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -111,7 +115,10 @@ export async function rescheduleBooking({
   bookingId,
   input,
 }: RescheduleParams): Promise<RescheduleResult> {
-  const { booking } = await loadBookingForChange(requesterId, bookingId);
+  const { booking, isStaff } = await loadBookingForChange(
+    requesterId,
+    bookingId
+  );
 
   if (!RESCHEDULABLE_BOOKING_STATUSES.includes(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be rescheduled`);
@@ -166,6 +173,12 @@ export async function rescheduleBooking({
   // Capacity re-check for the new slot (Guide dev notes), excluding this
   // booking so it never collides with itself.
   let assignedStaffId = booking.assigned_staff_id;
+  // Slot-conflict notification (20260911188): keeps the booking's current
+  // cage preference unless the caller explicitly sent a new one - mirrors
+  // assignedStaffId's own "unchanged unless a preference is given" default
+  // above. Only ever recomputed below for a Hotel booking with
+  // input.cage_preference set.
+  let preferredCageId = booking.preferred_cage_id;
 
   if (
     booking.service_category === 'Grooming' ||
@@ -236,6 +249,26 @@ export async function rescheduleBooking({
     if (!capacity.available) {
       throwWithStatus(409, capacity.reason ?? 'No capacity for the new slot');
     }
+
+    // Slot-conflict notification (20260911188): lets a Hotel booking flagged
+    // for a cage-size conflict pick a new cage preference during the same
+    // reschedule, not just a new date/time - advisory-only, same
+    // silently-degrades-to-null-or-unchanged shape as createBooking's own
+    // cage handling (booking.service.ts).
+    if (
+      booking.service_category === 'Hotel' &&
+      input.cage_preference &&
+      (await isCagePickerEnabled(booking.service_category))
+    ) {
+      preferredCageId =
+        input.cage_preference.type === 'specific'
+          ? await verifyCagePreference(
+              input.cage_preference.cage_id!,
+              targetBranchId,
+              isStaff ? undefined : ((pet.weight_class as string) ?? undefined)
+            )
+          : null;
+    }
   }
 
   // #92: calculated against the PRE-reschedule reschedule_count/total_price
@@ -251,8 +284,15 @@ export async function rescheduleBooking({
       scheduled_end: input.scheduled_end,
       branch_id: targetBranchId,
       assigned_staff_id: assignedStaffId,
+      preferred_cage_id: preferredCageId,
       reschedule_count: booking.reschedule_count + 1,
       pending_reschedule_fee_amount: feeAmount,
+      // Slot-conflict notification (20260911188): the customer has now
+      // picked a new date/time/staff/cage for this booking (re-validated for
+      // capacity above), so any earlier "you lost the race" flag no longer
+      // applies. Cleared unconditionally - a no-op when it was already NULL.
+      slot_conflict_at: null,
+      conflict_notice: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', booking.id)

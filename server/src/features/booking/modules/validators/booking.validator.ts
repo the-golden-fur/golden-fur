@@ -334,6 +334,14 @@ export const rescheduleBookingValidator = z
     // eligibility when it does.
     branch_id: z.uuid().optional(),
     staff_preference: staffPreferenceValidator.optional(),
+    // Slot-conflict notification (20260911188): a Hotel booking flagged with
+    // a cage-size conflict needs a way to change its cage preference too,
+    // not just date/time/staff - previously only createBookingValidator
+    // accepted this field. Omitted = keep the booking's current
+    // preferred_cage_id as-is (mirrors staff_preference's own
+    // omitted-means-unchanged-then-re-verified behavior in
+    // reschedule.service.ts).
+    cage_preference: cagePreferenceValidator.optional(),
   })
   .strict()
   .superRefine(requireEndAfterStart);

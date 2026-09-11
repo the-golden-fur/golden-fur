@@ -21,6 +21,11 @@ export const NOTIFICATION_EVENT_TYPES = [
    * groomer/vet for a booking - see bookingNotifications.service.ts's
    * sendStaffAssignedNotification. */
   'staff_assigned',
+  /** Custom change (slot-conflict notification, migration 20260911189):
+   * fires when another customer's downpayment claims a still-unpaid pencil
+   * booking's date/time/staff/cage slot first - see
+   * bookingNotifications.service.ts's sendSlotConflictNotification. */
+  'booking_slot_conflict',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

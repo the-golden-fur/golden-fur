@@ -268,6 +268,31 @@ export async function sendStaffAssignedNotification(
   }
 }
 
+/**
+ * Slot-conflict notification (20260911188): fires when another customer's
+ * downpayment claimed this still-unpaid pencil booking's date/time/staff/
+ * cage slot first - see flagSlotConflictsForOthers in booking.service.ts,
+ * the only caller. No email leg (matches sendStaffAssignedNotification's
+ * shape) - this is meant to be seen immediately via the dashboard popup
+ * (CustomerPortalPage) and the bell, not waited on in an inbox.
+ */
+export async function sendSlotConflictNotification(
+  booking: Booking,
+  notice: string
+): Promise<void> {
+  try {
+    await createNotification({
+      recipientCustomerId: booking.customer_id,
+      eventType: 'booking_slot_conflict',
+      title: 'Your booking slot is no longer available',
+      message: notice,
+      relatedBookingId: booking.id,
+    });
+  } catch (error) {
+    console.error('Failed to send booking_slot_conflict notification:', error);
+  }
+}
+
 export interface SendBookingCancelledNotificationParams {
   booking: Booking;
   noticePeriodMet: boolean;
