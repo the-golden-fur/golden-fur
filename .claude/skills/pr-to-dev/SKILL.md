@@ -1,6 +1,6 @@
 ---
 name: pr-to-dev
-description: Open a PR that merges a feature/fix/etc. branch into dev, filled out per this repo's PR template. Squash merge only for this direction. Use when opening a PR targeting dev.
+description: Open a DRAFT PR that merges a feature/fix/etc. branch into dev, filled out per this repo's PR template (title, body, labels, assignee, milestone). Branch + commit + push + create draft PR, then stop — no CI/lint/test/review step. Squash merge only for this direction. Use when opening a PR targeting dev.
 ---
 
 # PR to dev

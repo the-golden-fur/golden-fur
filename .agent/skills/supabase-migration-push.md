@@ -16,7 +16,8 @@ than none. If more migration work is coming in the same task, wait.
 
 ## Preconditions
 
-1. The task's code changes are done and `ci-verifier` is green.
+1. The task's code changes are done and the test/build suites pass locally
+   (run them yourself — there is no automated CI gate).
 2. `supabase-seed-maintenance` / `seed-sync-agent` has already reconciled
    `supabase/seeds/` with the new schema (a push that lands a table the
    seeds don't fill leaves the next `db reset` short).
