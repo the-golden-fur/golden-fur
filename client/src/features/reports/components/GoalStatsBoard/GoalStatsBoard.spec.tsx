@@ -34,6 +34,7 @@ function txn(overrides: Partial<TransactionRecord>): TransactionRecord {
   return {
     id: 't-1',
     booking_id: 'b-1',
+    booking_group_id: null,
     customer_id: 'c-1',
     branch_id: 'br-1',
     transaction_type: 'booking_payment',

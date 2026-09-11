@@ -352,10 +352,13 @@ export function TransactionHistoryTable() {
   function buildMenuItems(
     transaction: TransactionRecord
   ): MoreOptionsMenuItem[] {
+    // A multi-booking checkout transaction carries booking_group_id instead
+    // of booking_id (exactly one is ever set) - settling it is still valid,
+    // the settlement RPCs are already group-aware (transactionPayment.service.ts).
     const canPay =
       transaction.payment_status === 'Pending' &&
       transaction.transaction_type === 'booking_payment' &&
-      Boolean(transaction.booking_id);
+      Boolean(transaction.booking_id || transaction.booking_group_id);
     return [
       ...(transaction.booking_id
         ? [
