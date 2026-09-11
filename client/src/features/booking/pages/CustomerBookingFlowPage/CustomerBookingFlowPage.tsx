@@ -462,8 +462,11 @@ export function CustomerBookingFlowPage() {
   // this (same recipe ReceptionistBookingsQueuePage uses: the JWT's role is
   // just Postgres "authenticated", the app role only lives in
   // staff_profiles). Promos have no role gate, so the customer portal never
-  // needs this lookup.
+  // needs this lookup. viewerBranchId piggybacks on the same lookup - a
+  // Receptionist/Admin is tied to one branch (see isBranchLockedStaff
+  // below), unlike a Superadmin.
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isReceptionistMode || !accessToken || !user?.id) return;
@@ -474,6 +477,7 @@ export function CustomerBookingFlowPage() {
       if (!isMounted) return;
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -485,6 +489,14 @@ export function CustomerBookingFlowPage() {
     isReceptionistMode &&
     viewerRole !== null &&
     BOOKING_MARK_PAID_ROLES.includes(viewerRole);
+
+  // Receptionist/Admin accounts are tied to a single branch (their own
+  // staff_profiles.branch_id), so the Branch step is redundant for them -
+  // Superadmin isn't branch-locked and a customer picks from any branch, so
+  // both keep the step.
+  const isBranchLockedStaff =
+    isReceptionistMode &&
+    (viewerRole === 'Receptionist' || viewerRole === 'Admin');
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [isPetsLoading, setIsPetsLoading] = useState(true);
@@ -510,7 +522,20 @@ export function CustomerBookingFlowPage() {
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   // Custom change: Service Types addendum (Admin Settings > Service Types).
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState('');
+  // Raw state behind the interactive Branch-picker step only - a branch-
+  // locked Receptionist/Admin never sets this (that step doesn't render for
+  // them at all), so read `selectedBranchId` below instead, never this
+  // directly.
+  const [pickedBranchId, setPickedBranchId] = useState('');
+
+  // The branch actually in effect for this booking: a branch-locked
+  // Receptionist/Admin's own branch (see isBranchLockedStaff), or whatever
+  // was picked on the Branch step otherwise. A derived value rather than
+  // synced-via-effect state, so it can never drift out of sync with
+  // viewerBranchId resolving asynchronously after mount.
+  const selectedBranchId = isBranchLockedStaff
+    ? (viewerBranchId ?? '')
+    : pickedBranchId;
 
   const [category, setCategory] = useState<ServiceCategory | ''>('');
   const [selectionMode, setSelectionMode] = useState<'service' | 'package'>(
@@ -977,7 +1002,7 @@ export function CustomerBookingFlowPage() {
     // body itself.
     void Promise.resolve().then(() => {
       setSelectedPetId(draft.selectedPetId);
-      setSelectedBranchId(draft.selectedBranchId);
+      setPickedBranchId(draft.selectedBranchId);
       setCategory(draft.category);
       setSelectionMode(draft.selectionMode);
       setSelectionsByCategory(draft.selectionsByCategory);
@@ -1074,7 +1099,7 @@ export function CustomerBookingFlowPage() {
     setShowRestoredBanner(false);
 
     setSelectedPetId('');
-    setSelectedBranchId('');
+    setPickedBranchId('');
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});
@@ -1593,7 +1618,12 @@ export function CustomerBookingFlowPage() {
   const steps: StepDef[] = useMemo(() => {
     const list: StepDef[] = [];
 
-    list.push({ key: 'branch', label: 'Branch' });
+    // A branch-locked Receptionist/Admin has nothing to pick here - their
+    // own branch is filled in automatically (see the selectedBranchId
+    // effect above) - so the step itself would be redundant.
+    if (!isBranchLockedStaff) {
+      list.push({ key: 'branch', label: 'Branch' });
+    }
 
     if (isReceptionistMode) {
       list.push({ key: 'customer', label: 'Customer' });
@@ -1638,6 +1668,7 @@ export function CustomerBookingFlowPage() {
 
     return list;
   }, [
+    isBranchLockedStaff,
     isReceptionistMode,
     category,
     staffPickerUnavailable,
@@ -1854,7 +1885,7 @@ export function CustomerBookingFlowPage() {
   }
 
   function handleBranchSelect(branchId: string) {
-    setSelectedBranchId(branchId);
+    setPickedBranchId(branchId);
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});
