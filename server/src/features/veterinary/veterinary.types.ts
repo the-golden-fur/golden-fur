@@ -76,9 +76,14 @@ export interface CurrentPrescription {
 }
 
 /** "My Patients": one row per distinct pet a veterinarian has finished a
- * consultation for, with that pet's most recent finished-visit date. */
+ * consultation for, with that pet's most recent finished-visit date.
+ * customer_id (the pet's owner) is included so the Bookings Queue's New
+ * Booking flow can restrict a Veterinarian's Customer step to owners they've
+ * actually treated (vet-bookings-queue-access), without a separate
+ * pet-to-owner lookup. */
 export interface VeterinarianPatient {
   pet_id: string;
+  customer_id: string;
   last_visit_at: string;
 }
 

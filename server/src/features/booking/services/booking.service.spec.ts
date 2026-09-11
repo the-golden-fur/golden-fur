@@ -118,6 +118,7 @@ function queueFromResults(...results: QueryResult[]) {
         return builder;
       });
     }
+    builder.limit = vi.fn(() => Promise.resolve(result));
 
     for (const method of ['insert', 'update', 'upsert', 'delete']) {
       builder[method] = vi.fn((payload?: unknown) => {
@@ -627,6 +628,21 @@ describe('booking.service (#51)', () => {
     await expect(
       createBooking({ requesterId: 'recept-1', input: BASE_INPUT })
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('vet-bookings-queue-access: rejects a Veterinarian booking a customer they have never treated', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue('Veterinarian');
+    queueFromResults({ data: [], error: null }); // consultations lookup: no match
+
+    await expect(
+      createBooking({
+        requesterId: 'vet-1',
+        input: { ...BASE_INPUT, customer_id: CUSTOMER_ID },
+      })
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      message: expect.stringContaining('treated'),
+    });
   });
 
   it('books via a package with the bundled price and branch match', async () => {

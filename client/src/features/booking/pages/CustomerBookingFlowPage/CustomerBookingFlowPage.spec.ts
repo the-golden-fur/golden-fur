@@ -17,6 +17,7 @@ import * as catalogApi from '../../../catalog/api/catalog.api';
 import * as bookingApi from '../../api/booking.api';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
+import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
@@ -121,6 +122,10 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../discounts/api/discounts.api', () => ({
   listDiscounts: vi.fn(),
+}));
+
+vi.mock('../../../veterinary/api/veterinary.api', () => ({
+  listMyPatients: vi.fn(),
 }));
 
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
@@ -443,6 +448,10 @@ describe('CustomerBookingFlowPage', () => {
     );
     vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
       data: [],
       error: null,
     });
@@ -1930,6 +1939,110 @@ describe('CustomerBookingFlowPage', () => {
       await waitFor(() =>
         expect(screen.getByText('Makati')).toBeInTheDocument()
       );
+    });
+
+    it('a Veterinarian also never sees the Branch step', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Veterinarian')],
+        error: null,
+      });
+      // vet-bookings-queue-access also restricts the Customer step to
+      // treated customers - irrelevant to this test's own concern (the
+      // Branch step), so make Jamie Cruz a treated patient's owner here.
+      vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
+        data: [
+          {
+            pet_id: 'pet-1',
+            customer_id: CUSTOMER.id,
+            last_visit_at: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Makati')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('veterinarian bookings queue access (custom change)', () => {
+    function staffSelf(role: string) {
+      return {
+        id: 'staff-1',
+        branch_id: 'branch-1',
+        role,
+        username: 'staff1',
+        registered_email: 'staff1@goldenfur.com',
+        display_name: 'Staff One',
+        profile_photo_url: null,
+        phone_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      };
+    }
+
+    const UNTREATED_CUSTOMER = {
+      ...CUSTOMER,
+      id: 'cust-2',
+      full_name: 'Alex Untreated',
+    };
+
+    it('replacing the old ScheduleFollowUpModal: the Customer step shows only customers this vet has treated', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Veterinarian')],
+        error: null,
+      });
+      vi.mocked(customerApi.listCustomers).mockResolvedValue({
+        data: [CUSTOMER, UNTREATED_CUSTOMER],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
+        data: [
+          {
+            pet_id: 'pet-1',
+            customer_id: CUSTOMER.id,
+            last_visit_at: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      renderStaffPage();
+
+      expect(await screen.findByText('Jamie Cruz')).toBeInTheDocument();
+      expect(screen.queryByText('Alex Untreated')).not.toBeInTheDocument();
+    });
+
+    it('a Veterinarian with no treated customers yet sees the restricted empty state, not the full customer list', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Veterinarian')],
+        error: null,
+      });
+      vi.mocked(customerApi.listCustomers).mockResolvedValue({
+        data: [CUSTOMER],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
+        data: [],
+        error: null,
+      });
+
+      renderStaffPage();
+
+      expect(
+        await screen.findByText(
+          'No customers match your search. You can only book customers you have treated.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
     });
   });
 });

@@ -251,7 +251,7 @@ export async function listVeterinarianPatients(
   const { data, error } = await supabase
     .from('consultations')
     .select(
-      'pet_id, booking:bookings!booking_id!inner(status, completed_at, scheduled_start)'
+      'pet_id, booking:bookings!booking_id!inner(customer_id, status, completed_at, scheduled_start)'
     )
     .eq('veterinarian_id', veterinarianId)
     .in('booking.status', FINISHED_BOOKING_STATUSES);
@@ -261,6 +261,7 @@ export async function listVeterinarianPatients(
   const rows = (data ?? []) as unknown as Array<{
     pet_id: string;
     booking: {
+      customer_id: string;
       status: string;
       completed_at: string | null;
       scheduled_start: string;
@@ -279,6 +280,7 @@ export async function listVeterinarianPatients(
     ) {
       latestByPet.set(row.pet_id, {
         pet_id: row.pet_id,
+        customer_id: row.booking.customer_id,
         last_visit_at: visitAt,
       });
     }

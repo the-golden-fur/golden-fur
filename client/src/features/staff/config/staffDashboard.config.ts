@@ -432,6 +432,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/veterinary/console',
           },
           {
+            title: 'Bookings Queue',
+            description:
+              "Your branch's booking queue - book a follow-up visit for a patient you have treated.",
+            to: '/staff/bookings/queue',
+          },
+          {
             title: 'My Patients',
             description:
               'Pets you have treated, with a reference to their owner.',

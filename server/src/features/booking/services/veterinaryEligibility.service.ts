@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { ServiceCategory } from '../booking.types.ts';
+import {
+  FINISHED_BOOKING_STATUSES,
+  type ServiceCategory,
+} from '../booking.types.ts';
 
 interface VeterinaryEligibilityParams {
   branchId: string;
@@ -49,5 +52,45 @@ export async function assertVeterinaryBranchEligibility({
       `Veterinary services are not offered at the ${branch.name} branch — ` +
         'Veterinary bookings are exclusive to the Makati branch'
     );
+  }
+}
+
+interface VeterinarianTreatedCustomerParams {
+  veterinarianId: string;
+  customerId: string;
+}
+
+/**
+ * Custom change (vet-bookings-queue-access): a Veterinarian now has real
+ * access to the Bookings Queue / New Booking flow (replacing the old
+ * ScheduleFollowUpModal, which could only ever target the one pet/customer
+ * of the consultation it was opened from) - but still may only book a
+ * customer they've actually treated, i.e. one they have a finished
+ * consultation for (mirrors listVeterinarianPatients's own
+ * FINISHED_BOOKING_STATUSES scoping). The client's Customer step already
+ * filters to this same set (CustomerPicker's restrictToCustomerIds); this is
+ * the actual enforcement boundary, same relationship as the branch guard
+ * above.
+ *
+ * Any other staff role, and a customer booking for themselves, are
+ * unaffected - only called when the requester's staff role is
+ * 'Veterinarian' (see createBooking/createBookingGroup).
+ */
+export async function assertVeterinarianTreatedCustomer({
+  veterinarianId,
+  customerId,
+}: VeterinarianTreatedCustomerParams): Promise<void> {
+  const { data, error } = await supabase
+    .from('consultations')
+    .select('id, booking:bookings!booking_id!inner(customer_id, status)')
+    .eq('veterinarian_id', veterinarianId)
+    .eq('booking.customer_id', customerId)
+    .in('booking.status', FINISHED_BOOKING_STATUSES)
+    .limit(1);
+
+  if (error) throwWithStatus(400, error.message);
+
+  if (!data || data.length === 0) {
+    throwWithStatus(403, 'You can only book a customer you have treated');
   }
 }
