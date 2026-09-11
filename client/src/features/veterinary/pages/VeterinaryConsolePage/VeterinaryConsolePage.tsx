@@ -9,10 +9,7 @@ import {
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { getStaffProfile } from '../../../staff/api/staff.api';
-import {
-  FINISHED_BOOKING_STATUSES,
-  type BookingStatus,
-} from '../../../booking/booking.types';
+import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   getCustomerProfile,
@@ -44,7 +41,6 @@ import type {
   ProcedureInput,
 } from '../../veterinary.types';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
-import { ScheduleFollowUpModal } from '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal';
 import styles from './VeterinaryConsolePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -109,7 +105,6 @@ export function VeterinaryConsolePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
-  const [followUpTargetId, setFollowUpTargetId] = useState<string | null>(null);
   const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
 
   const dateRange = useMemo(
@@ -302,9 +297,6 @@ export function VeterinaryConsolePage() {
   const pendingStartRow = rows.find(
     (row) => row.consultation.id === pendingStartId
   );
-  const followUpTargetRow = rows.find(
-    (row) => row.consultation.id === followUpTargetId
-  );
   const viewDetailsRow = rows.find(
     (row) => row.consultation.id === viewDetailsId
   );
@@ -405,14 +397,6 @@ export function VeterinaryConsolePage() {
     );
   }
 
-  function handleFollowUpLinked(updated: Consultation) {
-    setConsultations((prev) =>
-      prev.map((consultation) =>
-        consultation.id === updated.id ? updated : consultation
-      )
-    );
-  }
-
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -486,13 +470,6 @@ export function VeterinaryConsolePage() {
                 <ul className={styles.rowList}>
                   {visibleRows.map((row) => {
                     const rowBookingStatus = row.consultation.booking?.status;
-                    const isRowCompleted = rowBookingStatus
-                      ? FINISHED_BOOKING_STATUSES.includes(rowBookingStatus)
-                      : false;
-                    const canScheduleFollowUp =
-                      canWrite &&
-                      isRowCompleted &&
-                      !row.consultation.follow_up_booking_id;
 
                     const rowMenuItems: MoreOptionsMenuItem[] = [
                       {
@@ -500,15 +477,6 @@ export function VeterinaryConsolePage() {
                         onSelect: () => setViewDetailsId(row.consultation.id),
                       },
                     ];
-                    if (canScheduleFollowUp) {
-                      rowMenuItems.push({
-                        label: 'Schedule Follow-up',
-                        onSelect: () => {
-                          selectConsultation(row.consultation.id);
-                          setFollowUpTargetId(row.consultation.id);
-                        },
-                      });
-                    }
 
                     return (
                       <li
@@ -616,23 +584,6 @@ export function VeterinaryConsolePage() {
           </button>
         </div>
       </Modal>
-
-      {followUpTargetRow?.consultation.booking ? (
-        <ScheduleFollowUpModal
-          accessToken={accessToken}
-          consultationId={followUpTargetRow.consultation.id}
-          petId={followUpTargetRow.consultation.pet_id}
-          petName={followUpTargetRow.petName}
-          customerId={followUpTargetRow.consultation.booking.customer_id}
-          ownerName={followUpTargetRow.ownerName}
-          branchId={followUpTargetRow.consultation.booking.branch_id}
-          originalSpecialInstructions={
-            followUpTargetRow.consultation.booking.special_instructions
-          }
-          onClose={() => setFollowUpTargetId(null)}
-          onLinked={handleFollowUpLinked}
-        />
-      ) : null}
 
       <Modal
         isOpen={viewDetailsRow !== undefined}

@@ -27,6 +27,12 @@ interface CustomerPickerProps {
   accessToken: string;
   onSelect: (customer: CustomerProfile) => void;
   selectedCustomerId?: string | null;
+  /** vet-bookings-queue-access: when set, only customers whose id is in this
+   * set are shown - used to limit a Veterinarian to customers they've
+   * actually treated. Undefined/null means no restriction (every other
+   * caller). An empty set is a real "you have no eligible customers yet"
+   * state, not "no restriction". */
+  restrictToCustomerIds?: Set<string> | null;
 }
 
 /**
@@ -43,6 +49,7 @@ export function CustomerPicker({
   accessToken,
   onSelect,
   selectedCustomerId,
+  restrictToCustomerIds,
 }: CustomerPickerProps) {
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +83,10 @@ export function CustomerPicker({
     const query = search.trim().toLowerCase();
 
     const matches = customers.filter((customer) => {
+      if (restrictToCustomerIds && !restrictToCustomerIds.has(customer.id)) {
+        return false;
+      }
+
       if (
         channelFilter !== 'All' &&
         customer.preferred_communication_channel !== channelFilter
@@ -110,7 +121,7 @@ export function CustomerPicker({
           return 0;
       }
     });
-  }, [customers, search, sortKey, channelFilter]);
+  }, [customers, search, sortKey, channelFilter, restrictToCustomerIds]);
 
   return (
     <div className={styles.wrapper}>
@@ -162,14 +173,16 @@ export function CustomerPicker({
             ? 'Loading customers...'
             : `${filteredCustomers.length} customer${filteredCustomers.length === 1 ? '' : 's'}`}
         </p>
-        <a
-          className={styles.createLink}
-          href="/staff/admin/customers"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Not on file? Create a new customer
-        </a>
+        {!restrictToCustomerIds ? (
+          <a
+            className={styles.createLink}
+            href="/staff/admin/customers"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Not on file? Create a new customer
+          </a>
+        ) : null}
       </div>
 
       {error ? (
@@ -179,7 +192,11 @@ export function CustomerPicker({
       ) : null}
 
       {!isLoading && filteredCustomers.length === 0 ? (
-        <p className={styles.copy}>No customers match your search.</p>
+        <p className={styles.copy}>
+          {restrictToCustomerIds
+            ? 'No customers match your search. You can only book customers you have treated.'
+            : 'No customers match your search.'}
+        </p>
       ) : (
         <div className={styles.grid}>
           {filteredCustomers.map((customer) => (

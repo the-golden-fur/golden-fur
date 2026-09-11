@@ -78,11 +78,6 @@ export interface UpdateConsultationPayload {
   vaccination?: VaccinationInput;
 }
 
-export interface LinkFollowUpBookingResult {
-  consultation: Consultation;
-  booking: Booking;
-}
-
 /** Issue #78: recorded/maintained from the consultation form only. */
 export interface PetHealthCondition {
   id: string;
@@ -94,9 +89,12 @@ export interface PetHealthCondition {
 
 /** "My Patients": one row per distinct pet the requesting veterinarian has
  * finished a consultation for, with that pet's most recent finished-visit
- * date. */
+ * date. customer_id (the pet's owner) lets the Bookings Queue's New Booking
+ * flow restrict a Veterinarian's Customer step to owners they've actually
+ * treated (vet-bookings-queue-access). */
 export interface VeterinarianPatient {
   pet_id: string;
+  customer_id: string;
   last_visit_at: string;
 }
 

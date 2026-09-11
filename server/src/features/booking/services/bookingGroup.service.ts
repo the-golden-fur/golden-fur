@@ -18,7 +18,10 @@ import type {
   ServiceCategory,
 } from '../booking.types.ts';
 import type { CreateBookingGroupInput } from '../modules/validators/booking.validator.ts';
-import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
+import {
+  assertVeterinarianTreatedCustomer,
+  assertVeterinaryBranchEligibility,
+} from './veterinaryEligibility.service.ts';
 import {
   checkCapacity,
   confirmCapacityAfterInsert,
@@ -175,6 +178,15 @@ export async function createBookingGroup({
 
     customerId = input.customer_id;
     createdByStaffId = requesterId;
+
+    // vet-bookings-queue-access: mirrors createBooking's own check - a
+    // Veterinarian may only book a customer they've actually treated.
+    if (staffRole === 'Veterinarian') {
+      await assertVeterinarianTreatedCustomer({
+        veterinarianId: requesterId,
+        customerId,
+      });
+    }
   } else {
     if (input.customer_id && input.customer_id !== requesterId) {
       throwWithStatus(403, 'Customers can only create their own bookings');

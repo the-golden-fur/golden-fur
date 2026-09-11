@@ -59,6 +59,7 @@ import {
 } from '../../booking.types';
 import { friendlyBookingError } from '../../bookingErrors';
 import { listStaff } from '../../../staff/api/staff.api';
+import { listMyPatients } from '../../../veterinary/api/veterinary.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
 import type { Discount } from '../../../discounts/discounts.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
@@ -490,13 +491,44 @@ export function CustomerBookingFlowPage() {
     viewerRole !== null &&
     BOOKING_MARK_PAID_ROLES.includes(viewerRole);
 
-  // Receptionist/Admin accounts are tied to a single branch (their own
-  // staff_profiles.branch_id), so the Branch step is redundant for them -
-  // Superadmin isn't branch-locked and a customer picks from any branch, so
-  // both keep the step.
+  // Receptionist/Admin/Veterinarian accounts are tied to a single branch
+  // (their own staff_profiles.branch_id), so the Branch step is redundant for
+  // them - Superadmin isn't branch-locked and a customer picks from any
+  // branch, so both keep the step.
   const isBranchLockedStaff =
     isReceptionistMode &&
-    (viewerRole === 'Receptionist' || viewerRole === 'Admin');
+    (viewerRole === 'Receptionist' ||
+      viewerRole === 'Admin' ||
+      viewerRole === 'Veterinarian');
+
+  // vet-bookings-queue-access: replaces the old ScheduleFollowUpModal (which
+  // could only ever target the one pet/customer of the consultation it was
+  // opened from) - a Veterinarian booking through this general flow may
+  // still only book a customer they've actually treated. null means "not
+  // yet known" (still loading, or not a Veterinarian) - the Customer step
+  // renders nothing until it resolves, rather than briefly flashing every
+  // customer.
+  const isVeterinarianStaff =
+    isReceptionistMode && viewerRole === 'Veterinarian';
+  const [treatedCustomerIds, setTreatedCustomerIds] =
+    useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!isVeterinarianStaff || !accessToken) return;
+
+    let isMounted = true;
+
+    void listMyPatients(accessToken).then((result) => {
+      if (!isMounted || !result.data) return;
+      setTreatedCustomerIds(
+        new Set(result.data.map((patient) => patient.customer_id))
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isVeterinarianStaff, accessToken]);
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [isPetsLoading, setIsPetsLoading] = useState(true);
@@ -2472,11 +2504,21 @@ export function CustomerBookingFlowPage() {
   function renderStepContent() {
     switch (currentStep.key) {
       case 'customer':
+        // A Veterinarian's restriction set has to actually resolve before
+        // CustomerPicker renders - passing `null` (still loading) as its
+        // restrictToCustomerIds would read as "no restriction" and briefly
+        // flash every customer.
+        if (isVeterinarianStaff && treatedCustomerIds === null) {
+          return <p className={styles.copy}>Loading your patients...</p>;
+        }
         return (
           <CustomerPicker
             accessToken={accessToken!}
             onSelect={handleCustomerSelect}
             selectedCustomerId={walkInCustomer?.id ?? null}
+            restrictToCustomerIds={
+              isVeterinarianStaff ? treatedCustomerIds : undefined
+            }
           />
         );
 
