@@ -50,6 +50,7 @@ function buildTransaction(
   return {
     id: 'txn-1',
     booking_id: 'booking-1',
+    booking_group_id: null,
     customer_id: 'cust-1',
     customer_name: 'Ada Lovelace',
     branch_id: 'branch-makati',
@@ -229,6 +230,29 @@ describe('TransactionHistoryTable', () => {
         200
       )
     );
+  });
+
+  it('still offers Pay on a multi-booking-checkout transaction (booking_id null, booking_group_id set)', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          payment_status: 'Pending',
+          booking_id: null,
+          booking_group_id: 'group-1',
+          total_amount: 4840,
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+
+    await screen.findByText('PHP 4840.00');
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    expect(screen.getByText('Pay')).toBeInTheDocument();
+    // No single booking to view for a group transaction.
+    expect(screen.queryByText('View booking')).not.toBeInTheDocument();
   });
 
   it('adds a Transaction type filter tile and passes it to the API', async () => {

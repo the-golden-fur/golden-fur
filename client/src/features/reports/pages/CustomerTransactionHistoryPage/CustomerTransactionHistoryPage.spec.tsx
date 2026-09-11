@@ -25,6 +25,7 @@ function buildRecord(
   return {
     id: 'txn-1',
     booking_id: 'booking-1',
+    booking_group_id: null,
     customer_id: 'cust-1',
     customer_name: 'Ada Lovelace',
     branch_id: 'branch-1',

@@ -6,6 +6,7 @@ function record(over: Partial<TransactionRecord>): TransactionRecord {
   return {
     id: 'txn',
     booking_id: 'booking-1',
+    booking_group_id: null,
     customer_id: 'cust-1',
     branch_id: 'branch-1',
     transaction_type: 'booking_payment',
