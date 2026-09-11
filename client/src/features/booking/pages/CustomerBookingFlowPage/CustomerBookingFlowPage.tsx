@@ -1269,6 +1269,27 @@ export function CustomerBookingFlowPage() {
     [packages, selectedPackageIds]
   );
 
+  /** Flattened services + packages for the in-progress booking, name +
+   * price only - feeds the persistent selection summary shown on every
+   * step after 'items' (see SelectedItemsSummary below) so a customer/
+   * receptionist doesn't have to jump back to the Services step just to
+   * recall what they picked. */
+  const selectedItemsSummary = useMemo(
+    () => [
+      ...selectedServices.map((service) => ({
+        id: service.id,
+        name: service.name,
+        price: service.base_price,
+      })),
+      ...selectedPackages.map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        price: pkg.bundled_price,
+      })),
+    ],
+    [selectedServices, selectedPackages]
+  );
+
   const serviceNameById = useMemo(
     () => new Map(allServices.map((service) => [service.id, service.name])),
     [allServices]
@@ -1634,6 +1655,18 @@ export function CustomerBookingFlowPage() {
   );
 
   const currentStep = steps[currentStepIndex] ?? steps[0];
+
+  // Persistent selection summary (below): only past the Services step, and
+  // only while there's actually something selected for the booking in
+  // progress - once it's committed to bookingsList, selectedServiceIds/
+  // selectedPackageIds reset for the next booking and this naturally stops
+  // showing (the 'Your bookings' and 'Review' steps already show their own,
+  // fuller breakdown per committed booking).
+  const itemsStepIndex = steps.findIndex((step) => step.key === 'items');
+  const showSelectedItemsSummary =
+    itemsStepIndex >= 0 &&
+    currentStepIndex > itemsStepIndex &&
+    selectedItemsSummary.length > 0;
 
   // Repairs `currentStepKey` when the step it points at just disappeared
   // from `steps` (e.g. the Staff step, once Staff Picker turns out to be
@@ -2919,6 +2952,11 @@ export function CustomerBookingFlowPage() {
                           /night if not picked up before closing
                         </span>
                       ) : null}
+                      {category !== 'Hotel' ? (
+                        <span className={styles.optionMeta}>
+                          {formatDuration(service.duration_minutes ?? 60)}
+                        </span>
+                      ) : null}
                       {coveredByPackageName !== undefined ? (
                         <span className={styles.optionMeta}>
                           Included in {coveredByPackageName}
@@ -2951,6 +2989,14 @@ export function CustomerBookingFlowPage() {
                           ? `PHP ${pkg.bundled_price.toFixed(2)}/night`
                           : `PHP ${pkg.bundled_price.toFixed(2)}`}
                       </span>
+                      {category !== 'Hotel' ? (
+                        <span className={styles.optionMeta}>
+                          {formatDuration(
+                            pkg.total_duration_minutes ??
+                              (pkg.package_services?.length ?? 1) * 60
+                          )}
+                        </span>
+                      ) : null}
                       <ul className={styles.readOnlyList}>
                         {(pkg.package_services ?? []).map((entry) => (
                           <li key={entry.service_id}>
@@ -2973,6 +3019,17 @@ export function CustomerBookingFlowPage() {
                     : ''}
                 </span>
                 <span>PHP {itemsTotal.toFixed(2)}</span>
+              </div>
+            ) : null}
+
+            {/* Total estimated duration, right below the price total - Hotel
+                is priced/scheduled by nights, not a duration, so it's
+                omitted there (mirrors the Date & Time step's own end-time
+                caption, which shows check-out date + nights instead). */}
+            {category && category !== 'Hotel' ? (
+              <div className={`${styles.pricingRow} ${styles.pricingRowMuted}`}>
+                <span>Estimated duration</span>
+                <span>{formatDuration(slotDurationMinutes)}</span>
               </div>
             ) : null}
 
@@ -3751,6 +3808,10 @@ export function CustomerBookingFlowPage() {
       />
       <BookingCountBadge count={bookingsList.length} />
 
+      {showSelectedItemsSummary ? (
+        <SelectedItemsSummary items={selectedItemsSummary} total={itemsTotal} />
+      ) : null}
+
       <div className={styles.stepContent}>{renderStepContent()}</div>
 
       {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
@@ -3785,5 +3846,41 @@ export function CustomerBookingFlowPage() {
         </div>
       )}
     </main>
+  );
+}
+
+/**
+ * Persistent "what have I picked so far" recap, shown on every step after
+ * Services for the booking currently being configured (see
+ * showSelectedItemsSummary above) - so a customer/receptionist doesn't have
+ * to jump back to the Services step just to recall the services/packages
+ * and running total already chosen. Deliberately minimal (a native
+ * <details>, collapsed by default) so it never crowds out the current
+ * step's own content, and deliberately a separate small component (rather
+ * than inlined where it's used) so it stays easy to extend later without
+ * touching the wizard's step-switch logic.
+ */
+function SelectedItemsSummary({
+  items,
+  total,
+}: {
+  items: { id: string; name: string; price: number }[];
+  total: number;
+}) {
+  return (
+    <details className={styles.selectedItemsSummary}>
+      <summary className={styles.selectedItemsSummaryTitle}>
+        {items.length} service{items.length === 1 ? '' : 's'} selected · PHP{' '}
+        {total.toFixed(2)}
+      </summary>
+      <ul className={styles.selectedItemsSummaryList}>
+        {items.map((item) => (
+          <li key={item.id} className={styles.pricingRow}>
+            <span>{item.name}</span>
+            <span>PHP {item.price.toFixed(2)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
