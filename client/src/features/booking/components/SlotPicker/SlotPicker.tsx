@@ -41,10 +41,13 @@ interface SlotPickerProps {
   lockToNow?: boolean;
   /** Multi-booking checkout: windows this same pet already occupies via
    * another booking already committed in the current cart (see
-   * bookingsList in CustomerBookingFlowPage) - a candidate slot overlapping
-   * one of these is shown/disabled exactly like a genuinely unavailable one
-   * (same "Unavailable" label, same disabled button), so the pet can't be
-   * scheduled into two overlapping services within one checkout. Purely a
+   * bookingsList in CustomerBookingFlowPage). In the interactive grid (not
+   * locked), a candidate slot overlapping one of these is shown/disabled
+   * exactly like a genuinely unavailable one (same "Unavailable" label,
+   * same disabled button), so the pet can't be scheduled into two
+   * overlapping services within one checkout. While locked (lockToNow), the
+   * "now" slot instead starts at the latest of these windows' end when
+   * that's later than the actual current time - see nowSlot. Purely a
    * same-cart, same-pet UI guard - it never touches real capacity, so other
    * customers (and this pet's OTHER checkouts) can still book the same
    * slot. Only meaningful when there's more than one booking for this pet
@@ -211,13 +214,25 @@ export function SlotPicker({
   // (seconds/ms zeroed for a clean scheduled_start) and run for the
   // service's own duration. Computed once per lock so it stays stable while
   // the receptionist works through the rest of the wizard.
+  //
+  // Same-pet-in-cart guard: if this pet already occupies a window elsewhere
+  // in the current checkout (another walk-in just added for it), "now"
+  // would overlap that window while it's still in progress - two services
+  // for the same pet can't run concurrently. Start at the latest such
+  // window's end instead, whenever that is later than the actual current
+  // time.
   const nowSlot = useMemo(() => {
     if (!lockToNow) return null;
-    const start = new Date();
-    start.setSeconds(0, 0);
+    const now = new Date();
+    now.setSeconds(0, 0);
+    const latestExistingEnd = (excludedWindows ?? []).reduce(
+      (latest, window) => Math.max(latest, new Date(window.end).getTime()),
+      0
+    );
+    const start = new Date(Math.max(now.getTime(), latestExistingEnd));
     const end = new Date(start.getTime() + slotDurationMinutes * 60_000);
     return { start: start.toISOString(), end: end.toISOString() };
-  }, [lockToNow, slotDurationMinutes]);
+  }, [lockToNow, slotDurationMinutes, excludedWindows]);
 
   // Auto-select it with no click - the receptionist never picks a time for a
   // walk-in. Guarded so it settles after one call instead of looping.
