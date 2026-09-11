@@ -1105,17 +1105,17 @@ export function CustomerBookingFlowPage() {
 
   // Multi-booking checkout: the windows this same pet already occupies via
   // another booking already committed in the cart (see bookingsList) -
-  // passed to SlotPicker as `excludedWindows` so it can't be scheduled into
-  // two overlapping services within one checkout. Deliberately scoped to
-  // Online only (mirrors this codebase's existing walk-in-gets-fewer-
-  // restrictions pattern - no lead time, no downpayment, etc.) - a
-  // receptionist physically walking a pet through two services back-to-back
-  // knows what they're doing and needs no client-side guardrail here. Never
-  // touches real capacity, so it's purely a same-cart, same-pet UI guard -
-  // other customers (and this same pet's other, unrelated checkouts) can
-  // still book the exact same slot.
+  // passed to SlotPicker as `excludedWindows`. For an interactively-browsed
+  // (non-walk-in) slot, a candidate can't be scheduled into one of these
+  // windows - the receptionist picks a different time instead. For a
+  // walk-in (lockToNow), there's nothing to pick: SlotPicker instead starts
+  // the pet's next walk-in right when the latest of these windows ends,
+  // rather than "now", so a second walk-in for the same pet never overlaps
+  // its first. Never touches real capacity, so it's purely a same-cart,
+  // same-pet UI guard - other customers (and this same pet's other,
+  // unrelated checkouts) can still book the exact same slot.
   const samePetBundleWindows = useMemo(() => {
-    if (bookingSource === 'Walk-in' || !selectedPetId) return undefined;
+    if (!selectedPetId) return undefined;
 
     const windows = bookingsList
       .filter((entry) => entry.petId === selectedPetId && entry.selectedSlot)
@@ -1125,7 +1125,7 @@ export function CustomerBookingFlowPage() {
       }));
 
     return windows.length > 0 ? windows : undefined;
-  }, [bookingsList, selectedPetId, bookingSource]);
+  }, [bookingsList, selectedPetId]);
 
   // Client interview finding: a pet with no recorded weight_class/coat_type
   // has never been staff-assessed onsite, and can only book a service
