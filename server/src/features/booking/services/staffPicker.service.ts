@@ -51,6 +51,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   booking_group_email_mode: 'combined',
   care_log_task_email_enabled: false,
   care_log_daily_report_enabled: true,
+  // Manual-cancellation-credit-review custom change: unchanged behaviour
+  // (today's automatic conversion) until a branch opts into Manual.
+  credit_review_mode: 'Automatic',
 };
 
 export interface ServiceTypeStaffConfig {
@@ -591,6 +594,7 @@ export async function updatePolicyConfiguration({
     booking_group_email_mode: resolved.booking_group_email_mode,
     care_log_task_email_enabled: resolved.care_log_task_email_enabled,
     care_log_daily_report_enabled: resolved.care_log_daily_report_enabled,
+    credit_review_mode: resolved.credit_review_mode,
   };
 
   const { data, error } = await supabase

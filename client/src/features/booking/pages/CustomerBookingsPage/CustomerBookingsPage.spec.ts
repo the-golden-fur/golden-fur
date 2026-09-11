@@ -193,6 +193,7 @@ describe('CustomerBookingsPage', () => {
         notice_period_met: true,
         policy_violation: false,
         credit_issued: false,
+        credit_review_pending: false,
       },
       error: null,
     });
@@ -220,6 +221,7 @@ describe('CustomerBookingsPage', () => {
         notice_period_met: false,
         policy_violation: true,
         credit_issued: false,
+        credit_review_pending: false,
       },
       error: null,
     });
@@ -255,6 +257,7 @@ describe('CustomerBookingsPage', () => {
         notice_period_met: true,
         policy_violation: false,
         credit_issued: true,
+        credit_review_pending: false,
       },
       error: null,
     });

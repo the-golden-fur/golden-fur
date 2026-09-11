@@ -201,6 +201,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               "Look up a customer's branch credit balance, history, and expiry.",
             to: '/staff/credits',
           },
+          {
+            title: 'Credit Review Queue',
+            description:
+              'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
+            to: '/staff/bookings/credit-review-queue',
+          },
         ],
       },
       {
@@ -328,6 +334,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/transaction-history',
           },
           {
+            title: 'Credit Review Queue',
+            description:
+              'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
+            to: '/staff/bookings/credit-review-queue',
+          },
+          {
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
@@ -356,6 +368,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Bookings Queue',
             description: "Today's confirmed bookings for the front desk.",
             to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Credit Review Queue',
+            description:
+              'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
+            to: '/staff/bookings/credit-review-queue',
           },
           {
             title: 'Assessment Queue',
@@ -480,6 +498,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               "Look up a customer's branch credit balance, history, and expiry.",
             to: '/staff/credits',
           },
+          {
+            title: 'Credit Review Queue',
+            description:
+              'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
+            to: '/staff/bookings/credit-review-queue',
+          },
         ],
       },
     ],
@@ -557,6 +581,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Checkout & Billing': Wallet,
   Transactions: Receipt,
   'Credit Management': Coins,
+  'Credit Review Queue': ClipboardCheck,
   'Boarding Checklist': Heart,
   'Activity Log': History,
   'Branch Reports': BarChart3,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
+import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   availabilityController,
   cagePickerOptionsController,
@@ -12,11 +13,13 @@ import {
   createBookingController,
   createBookingGroupController,
   addBalancePaymentController,
+  decideCreditReviewController,
   downpaymentStatusController,
   extendHotelStayController,
   getBookingController,
   getBookingDetailsController,
   listBookingsController,
+  listPendingCreditReviewsController,
   listPolicyConfigurationsController,
   onlinePaymentsStatusController,
   overrideBookingStatusController,
@@ -80,6 +83,16 @@ const extendStay = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...BOOKING_MARK_PAID_ROLES]),
+];
+
+// Manual-cancellation-credit-review custom change: same money-handling role
+// set as extendStay above, plus requireBranch so the controller can scope
+// the queue to the requester's own branch (Superadmin sees every branch).
+const creditReview = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_MARK_PAID_ROLES]),
+  requireBranch,
 ];
 
 // Booking creation + capacity enforcement (#51)
@@ -169,6 +182,22 @@ router.patch(
   '/bookings/policy',
   adminWrite,
   updatePolicyConfigurationController
+);
+
+// Manual-cancellation-credit-review custom change: the Credit Review Queue -
+// a Manual-mode branch's cancellation_logs rows still awaiting a staff
+// decision, and the approve/deny action on one of them. Not nested under
+// /bookings/:id (a cancellation_logs row, not a booking, is the resource
+// being acted on).
+router.get(
+  '/cancellation-logs/pending-credit-review',
+  creditReview,
+  listPendingCreditReviewsController
+);
+router.post(
+  '/cancellation-logs/:id/credit-review',
+  creditReview,
+  decideCreditReviewController
 );
 
 router.get('/bookings/:id', jwtMiddleware, getBookingController);

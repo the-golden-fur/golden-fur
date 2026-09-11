@@ -4,11 +4,13 @@ import type {
   BookingStatus,
   CagePickerOptionsResult,
   CancelBookingPayload,
+  CancellationLog,
   CancellationResult,
   ConflictedBooking,
   CreateBookingGroupPayload,
   CreateBookingGroupResult,
   CreateBookingPayload,
+  CreditReviewQueueItem,
   DownpaymentType,
   ExtendHotelStayPayload,
   ExtendHotelStayResult,
@@ -414,6 +416,47 @@ export async function extendHotelStay(
   }
 
   return parseBody<ExtendHotelStayResult>(response);
+}
+
+/** Manual-cancellation-credit-review custom change: the Credit Review Queue -
+ * a Manual-mode branch's cancellation_logs rows still awaiting a staff
+ * decision. */
+export async function listPendingCreditReviews(
+  accessToken: string
+): Promise<BookingApiResult<CreditReviewQueueItem[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/cancellation-logs/pending-credit-review`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ items: CreditReviewQueueItem[] }>(response);
+  return { data: result.data?.items ?? null, error: result.error };
+}
+
+export async function decideCreditReview(
+  cancellationLogId: string,
+  accessToken: string,
+  decision: 'approved' | 'denied'
+): Promise<BookingApiResult<CancellationLog>> {
+  const response = await fetch(
+    `${API_BASE_URL}/cancellation-logs/${cancellationLogId}/credit-review`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ decision }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ log: CancellationLog }>(response);
+  return { data: result.data?.log ?? null, error: result.error };
 }
 
 export async function cancelBooking(
