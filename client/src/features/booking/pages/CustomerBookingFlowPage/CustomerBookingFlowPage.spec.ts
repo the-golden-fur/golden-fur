@@ -1818,4 +1818,118 @@ describe('CustomerBookingFlowPage', () => {
       );
     });
   });
+
+  describe('branch-locked staff (custom change)', () => {
+    function staffSelf(role: string, branchId = 'branch-1') {
+      return {
+        id: 'staff-1',
+        branch_id: branchId,
+        role,
+        username: 'staff1',
+        registered_email: 'staff1@goldenfur.com',
+        display_name: 'Staff One',
+        profile_photo_url: null,
+        phone_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      };
+    }
+
+    it('a Receptionist never sees the Branch step - Customer is first, and their own branch is used on submit', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.createBooking).mockResolvedValue({
+        data: {
+          id: 'booking-1',
+          status: 'Confirmed',
+          scheduled_start: '2026-08-03T01:00:00.000Z',
+        } as never,
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+
+      // Customer is the first step now, not Branch.
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Makati')).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      await user.click(screen.getByText('Max'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Grooming')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Grooming'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+      await user.click(screen.getByText('Bath'));
+      await user.click(screen.getByText('Next'));
+
+      // Booking Type (receptionist-only step) - accept the Online default.
+      await waitFor(() =>
+        expect(screen.getByText('Online Booking')).toBeInTheDocument()
+      );
+      await advanceThroughAvailability(user, { staff: true });
+
+      await waitFor(() =>
+        expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Confirm booking'));
+
+      // Never picked a branch, yet the booking still submits with the
+      // receptionist's own one.
+      await waitFor(() =>
+        expect(bookingApi.createBooking).toHaveBeenCalledWith(
+          'token',
+          expect.objectContaining({ branch_id: 'branch-1' })
+        )
+      );
+    });
+
+    it('an Admin also never sees the Branch step', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Admin')],
+        error: null,
+      });
+
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Makati')).not.toBeInTheDocument();
+    });
+
+    it('a Superadmin is not branch-locked - still picks a Branch, same as today', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Superadmin')],
+        error: null,
+      });
+
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Makati')).toBeInTheDocument()
+      );
+    });
+  });
 });
