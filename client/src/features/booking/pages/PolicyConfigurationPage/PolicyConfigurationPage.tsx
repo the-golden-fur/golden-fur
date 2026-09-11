@@ -753,10 +753,8 @@ export function PolicyConfigurationPage() {
               />
             </label>
             <p className={styles.copy}>
-              An online booking that still owes its downpayment does not hold
-              its slot - other customers can still book that time. If the
-              downpayment isn&apos;t paid within this many hours, the booking is
-              automatically cancelled. Default 24.
+              If no payment is made within this many hours, the booking is
+              automatically cancelled.
             </p>
           </section>
 
