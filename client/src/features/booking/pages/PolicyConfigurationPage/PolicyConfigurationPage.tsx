@@ -789,11 +789,9 @@ export function PolicyConfigurationPage() {
               />
             </label>
             <p className={styles.copy}>
-              When a booking is cancelled with enough notice, this much of what
-              the customer already paid becomes account credit for a future
-              visit. 100% gives the full amount back; lower it (e.g. 50%) to
-              keep part of the payment as a cancellation charge. Cancellations
-              that miss the notice period still forfeit everything.
+              Share of a paid cancellation returned as credit, if the notice
+              period was met - 100% is a full refund, lower keeps part as a
+              charge. Missed notice forfeits the payment entirely.
             </p>
           </section>
 
