@@ -22,6 +22,7 @@ import {
 } from './services/staffPicker.service.ts';
 import { getCagePickerOptions } from './services/cagePicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
+import { extendHotelStay } from './services/extendStay.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
   getDaySlots,
@@ -42,6 +43,7 @@ import {
   createBookingGroupValidator,
   createBookingValidator,
   downpaymentStatusQueryValidator,
+  extendHotelStayValidator,
   listBookingsQueryValidator,
   onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
@@ -453,6 +455,39 @@ export async function rescheduleBookingController(
       requesterId,
       bookingId: paramId(req, 'id'),
       input: parsed.data,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Staff-only "extend stay" action - role-gated at the route level
+ * (BOOKING_MARK_PAID_ROLES), so no additional role check here. */
+export async function extendHotelStayController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = extendHotelStayValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await extendHotelStay({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+      additionalNights: parsed.data.additional_nights,
     });
 
     return res.status(200).json(result);

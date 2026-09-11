@@ -724,6 +724,12 @@ export interface CancelBookingPayload {
   cancellation_reason?: string;
 }
 
+/** Extend-hotel-stay custom change: staff-only, adds whole nights to a
+ * Hotel booking's current stay. */
+export interface ExtendHotelStayPayload {
+  additional_nights: number;
+}
+
 export interface RescheduleResult {
   booking: Booking;
   policy_violation: boolean;
@@ -738,6 +744,13 @@ export interface CancellationResult {
    * account-credit increment for this cancellation (notice met AND a
    * positive downpayment_amount existed). */
   credit_issued: boolean;
+}
+
+export interface ExtendHotelStayResult {
+  booking: Booking;
+  /** The charge just added for the extra nights - shown to staff as
+   * confirmation before they close the panel. */
+  added_amount: number;
 }
 
 /** Customer self-service Pay button (CustomerBookingsPage). */
