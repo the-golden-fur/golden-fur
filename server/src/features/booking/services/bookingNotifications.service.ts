@@ -300,6 +300,11 @@ export interface SendBookingCancelledNotificationParams {
   /** The issued credit amount, or null when no credit was issued for this
    * cancellation (unmet notice, nothing was paid, or a 0% conversion rate). */
   creditAmount: number | null;
+  /** Manual-cancellation-credit-review custom change: true when the branch's
+   * credit_review_mode is 'Manual' and a staff member still needs to decide -
+   * distinct from "no credit" (creditAmount null) so the customer isn't told
+   * (by omission) that nothing will come back. */
+  creditReviewPending?: boolean;
 }
 
 /**
@@ -313,6 +318,7 @@ export async function sendBookingCancelledNotification({
   noticePeriodMet,
   policyViolation,
   creditAmount,
+  creditReviewPending = false,
 }: SendBookingCancelledNotificationParams): Promise<void> {
   try {
     const { data: customer } = await supabase
@@ -324,8 +330,9 @@ export async function sendBookingCancelledNotification({
     const scheduledDate = formatDate(booking.scheduled_start);
     const scheduledTime = formatTime(booking.scheduled_start);
 
-    const creditLine =
-      creditAmount !== null
+    const creditLine = creditReviewPending
+      ? ' A staff member will review this cancellation to decide whether your payment is returned as account credit.'
+      : creditAmount !== null
         ? ` A credit of ₱${creditAmount.toFixed(2)} has been issued to your account.`
         : '';
 

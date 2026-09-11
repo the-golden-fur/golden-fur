@@ -10,6 +10,7 @@ import {
 } from './reschedule.service.ts';
 import {
   markCreditIssuedOnLog,
+  markCreditReviewPendingOnLog,
   writeCancellationLog,
 } from './cancellationLog.service.ts';
 import { issueCredit } from '../../credits/services/creditIssuance.service.ts';
@@ -32,7 +33,7 @@ function round2(value: number): number {
  * credit amount can never be inflated by a rollup lag. A booking with no
  * settled transaction returns 0 -> no credit.
  */
-async function confirmedAmountPaid(bookingId: string): Promise<number> {
+export async function confirmedAmountPaid(bookingId: string): Promise<number> {
   const { data, error } = await supabase
     .from('transactions')
     .select('total_amount')
@@ -63,8 +64,14 @@ export interface CancellationResult {
   policy_violation: boolean;
   /** #91/#93: whether a share of what the customer paid was actually
    * converted to a credit_balances increment for this event (notice met,
-   * something was paid, and issue_credit succeeded). */
+   * something was paid, and issue_credit succeeded). Always false when
+   * credit_review_pending is true - nothing is issued yet. */
   credit_issued: boolean;
+  /** Manual-cancellation-credit-review custom change: true when the branch's
+   * credit_review_mode is 'Manual' and something was paid - a staff member
+   * still needs to decide via the Credit Review Queue (see
+   * creditReview.service.ts). */
+  credit_review_pending: boolean;
 }
 
 interface CancelParams {
@@ -135,17 +142,34 @@ export async function cancelBooking({
     policyViolation,
   });
 
+  // Manual-cancellation-credit-review custom change: Manual mode ignores the
+  // notice-period outcome entirely - the whole point is a human reading the
+  // cancellation reason to judge validity, not another date/time rule - so
+  // it reads confirmedAmountPaid regardless of notice.met. Automatic mode is
+  // unchanged: the transaction read is skipped entirely when notice wasn't
+  // met (the payment is forfeited regardless).
+  const reviewMode = notice.policy.credit_review_mode ?? 'Automatic';
+  const amountPaid =
+    reviewMode === 'Manual' || notice.met
+      ? await confirmedAmountPaid(booking.id)
+      : 0;
+
+  const creditReviewPending = reviewMode === 'Manual' && amountPaid > 0;
+
+  if (creditReviewPending && log) {
+    await markCreditReviewPendingOnLog(log.id);
+  }
+
   // #91/#93 + advisor addendum #10: convert a share of what the customer
   // has actually paid - only confirmed booking_payment transactions count,
   // so an unpaid (or "Paid"-but-uncollected) booking mints no credit, and a
   // paid-in-full booking gets its whole settled amount back - at the
   // branch's configured cancellation_credit_conversion_rate (default 100%).
-  // The transaction read is skipped entirely when notice wasn't met (the
-  // payment is forfeited regardless).
+  // Skipped entirely in Manual mode - creditReview.service.ts resolves the
+  // rate itself, fresh, once a staff member actually decides.
   const rate = notice.policy.cancellation_credit_conversion_rate; // 0-100
-  const amountPaid = notice.met ? await confirmedAmountPaid(booking.id) : 0;
   const creditAmount = round2(amountPaid * (rate / 100));
-  const qualifies = notice.met && creditAmount > 0;
+  const qualifies = reviewMode !== 'Manual' && notice.met && creditAmount > 0;
 
   let creditIssued = false;
 
@@ -195,6 +219,7 @@ export async function cancelBooking({
     noticePeriodMet: notice.met,
     policyViolation,
     creditAmount: creditIssued ? creditAmount : null,
+    creditReviewPending,
   });
 
   return {
@@ -202,5 +227,6 @@ export async function cancelBooking({
     notice_period_met: notice.met,
     policy_violation: policyViolation,
     credit_issued: creditIssued,
+    credit_review_pending: creditReviewPending,
   };
 }

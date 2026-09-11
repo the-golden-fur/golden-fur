@@ -18,6 +18,8 @@ const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
+const CREDIT_REVIEW_MODES = ['Automatic', 'Manual'] as const;
+const CREDIT_REVIEW_DECISIONS = ['approved', 'denied'] as const;
 /** Which notice-period floor the availability endpoints apply. */
 const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
@@ -362,6 +364,14 @@ export const extendHotelStayValidator = z
   })
   .strict();
 
+/** Manual-cancellation-credit-review custom change: a staff member's
+ * approve/deny decision on a pending cancellation_logs row. */
+export const decideCreditReviewValidator = z
+  .object({
+    decision: z.enum(CREDIT_REVIEW_DECISIONS),
+  })
+  .strict();
+
 /** Customer self-service Pay button (CustomerBookingsPage). */
 export const payBookingValidator = z
   .object({
@@ -447,6 +457,8 @@ export const updatePolicyValidator = z
     booking_group_email_mode: z.enum(['combined', 'per_booking']).optional(),
     care_log_task_email_enabled: z.boolean().optional(),
     care_log_daily_report_enabled: z.boolean().optional(),
+    // Manual-cancellation-credit-review custom change.
+    credit_review_mode: z.enum(CREDIT_REVIEW_MODES).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -648,6 +660,9 @@ export type CreateBookingGroupInput = z.infer<
 >;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
 export type ExtendHotelStayInput = z.infer<typeof extendHotelStayValidator>;
+export type DecideCreditReviewInput = z.infer<
+  typeof decideCreditReviewValidator
+>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type PayBookingInput = z.infer<typeof payBookingValidator>;

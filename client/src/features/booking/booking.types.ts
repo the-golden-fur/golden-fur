@@ -219,6 +219,48 @@ export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
 
 export type EnforcementMode = 'Strict' | 'Soft';
 
+/** Mirrors the server's credit_review_mode (manual-cancellation-credit-
+ * review custom change). */
+export type CreditReviewMode = 'Automatic' | 'Manual';
+
+/** 'not_applicable': Automatic mode, or nothing was paid. 'pending': Manual
+ * mode, awaiting a staff decision (see the Credit Review Queue). 'approved'/
+ * 'denied': the outcome, once decided. */
+export type CreditReviewStatus =
+  | 'not_applicable'
+  | 'pending'
+  | 'approved'
+  | 'denied';
+
+export interface CancellationLog {
+  id: string;
+  booking_id: string;
+  customer_id: string;
+  branch_id: string;
+  event_type: 'cancellation' | 'reschedule';
+  notice_period_met: boolean;
+  enforcement_mode_applied: EnforcementMode;
+  policy_violation: boolean;
+  credit_issued: boolean;
+  credit_amount: number | null;
+  reschedule_fee_charged: number | null;
+  credit_review_status: CreditReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** One row in the Credit Review Queue - a pending cancellation_logs event
+ * plus the booking it came from and a computed preview of what approving it
+ * right now would credit. */
+export interface CreditReviewQueueItem {
+  log: CancellationLog;
+  booking: Booking;
+  amount_paid: number;
+  potential_credit_amount: number;
+}
+
 /** The one genuinely new enum this epic introduces (#88) - enforcement_mode
  * already existed and is reused as-is. */
 export type RescheduleFeeType = 'Flat' | 'Percentage';
@@ -581,6 +623,13 @@ export interface PolicyConfiguration {
   care_log_task_email_enabled: boolean;
   /** Send one nightly summary email per active hotel stay (default true). */
   care_log_daily_report_enabled: boolean;
+  /** Custom change (manual-cancellation-credit-review): 'Automatic' (default)
+   * - a qualifying cancellation (notice met, something paid) converts to
+   * credit immediately, same as always. 'Manual' - every cancellation with a
+   * confirmed payment is instead queued on the Credit Review Queue for a
+   * staff member to approve/deny after reading the cancellation reason; the
+   * notice-period outcome is not consulted in this mode. */
+  credit_review_mode: CreditReviewMode;
   created_at: string;
   updated_at: string;
 }
@@ -611,6 +660,7 @@ export type EffectivePolicy = Pick<
   | 'booking_group_email_mode'
   | 'care_log_task_email_enabled'
   | 'care_log_daily_report_enabled'
+  | 'credit_review_mode'
 >;
 
 export interface UpdatePolicyPayload {
@@ -639,6 +689,7 @@ export interface UpdatePolicyPayload {
   booking_group_email_mode?: 'combined' | 'per_booking';
   care_log_task_email_enabled?: boolean;
   care_log_daily_report_enabled?: boolean;
+  credit_review_mode?: CreditReviewMode;
 }
 
 export interface StaffPreferenceInput {
@@ -742,8 +793,13 @@ export interface CancellationResult {
   policy_violation: boolean;
   /** #91/#93: whether a qualifying downpayment was actually converted to an
    * account-credit increment for this cancellation (notice met AND a
-   * positive downpayment_amount existed). */
+   * positive downpayment_amount existed). Always false when
+   * credit_review_pending is true. */
   credit_issued: boolean;
+  /** Manual-cancellation-credit-review custom change: true when the branch's
+   * credit_review_mode is 'Manual' and something was paid - a staff member
+   * still needs to decide via the Credit Review Queue. */
+  credit_review_pending: boolean;
 }
 
 export interface ExtendHotelStayResult {

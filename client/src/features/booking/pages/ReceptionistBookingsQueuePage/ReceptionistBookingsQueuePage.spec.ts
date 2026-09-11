@@ -569,6 +569,7 @@ describe('ReceptionistBookingsQueuePage', () => {
         notice_period_met: true,
         policy_violation: false,
         credit_issued: false,
+        credit_review_pending: false,
       },
       error: null,
     });

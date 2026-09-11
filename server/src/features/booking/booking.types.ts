@@ -504,6 +504,13 @@ export interface PolicyConfiguration {
    * stay listing that day's completed / missed / still-open care tasks
    * (20260908181, care_log_daily_reports ledger). */
   care_log_daily_report_enabled: boolean;
+  /** Custom change (manual-cancellation-credit-review): 'Automatic' (default)
+   * - a qualifying cancellation (notice met, something paid) converts to
+   * credit immediately, same as always. 'Manual' - every cancellation with a
+   * confirmed payment is instead queued for a staff member to approve/deny
+   * after reading the cancellation reason; the notice-period outcome is not
+   * consulted in this mode (see cancellation.service.ts). */
+  credit_review_mode: CreditReviewMode;
   created_at: string;
   updated_at: string;
 }
@@ -538,12 +545,26 @@ export type EffectivePolicy = Pick<
   | 'booking_group_email_mode'
   | 'care_log_task_email_enabled'
   | 'care_log_daily_report_enabled'
+  | 'credit_review_mode'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'
  * line_item_type convention (#89). Documented values: 'cancellation',
  * 'reschedule'. */
 export type CancellationLogEventType = 'cancellation' | 'reschedule';
+
+/** Mirrors policy_configurations.credit_review_mode (manual-cancellation-
+ * credit-review custom change). */
+export type CreditReviewMode = 'Automatic' | 'Manual';
+
+/** 'not_applicable': Automatic mode, or nothing was paid. 'pending': Manual
+ * mode, awaiting a staff decision (see the Credit Review Queue). 'approved'/
+ * 'denied': the outcome, once decided. */
+export type CreditReviewStatus =
+  | 'not_applicable'
+  | 'pending'
+  | 'approved'
+  | 'denied';
 
 export interface CancellationLog {
   id: string;
@@ -557,6 +578,9 @@ export interface CancellationLog {
   credit_issued: boolean;
   credit_amount: number | null;
   reschedule_fee_charged: number | null;
+  credit_review_status: CreditReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   notes: string | null;
   created_at: string;
 }

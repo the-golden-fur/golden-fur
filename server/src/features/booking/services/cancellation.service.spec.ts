@@ -614,6 +614,85 @@ describe('cancellation.service (#54/#91)', () => {
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
+  describe('credit_review_mode "Manual" (manual-cancellation-credit-review custom change)', () => {
+    it('queues a review instead of auto-issuing credit, even when notice IS met', async () => {
+      queueFromResults(
+        { data: HOTEL_BOOKING, error: null },
+        { data: [policyRow({ credit_review_mode: 'Manual' })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null }, // cancellation_logs insert
+        PAID_TXNS, // confirmedAmountPaid
+        { data: null, error: null } // markCreditReviewPendingOnLog update
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.credit_issued).toBe(false);
+      expect(result.credit_review_pending).toBe(true);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+
+      const logPatch = recordedWrites.find(
+        (write) =>
+          write.table === 'cancellation_logs' && write.method === 'update'
+      );
+      expect(logPatch?.payload).toEqual({ credit_review_status: 'pending' });
+    });
+
+    it('ignores the notice-period outcome entirely - notice UNMET still queues a review when something was paid', async () => {
+      queueFromResults(
+        {
+          data: { ...HOTEL_BOOKING, scheduled_start: daysFromNow(1) },
+          error: null,
+        },
+        { data: [policyRow({ credit_review_mode: 'Manual' })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null },
+        PAID_TXNS,
+        { data: null, error: null }
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.notice_period_met).toBe(false);
+      expect(result.credit_review_pending).toBe(true);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('nothing paid -> no review queued (not_applicable), same as Automatic', async () => {
+      queueFromResults(
+        { data: HOTEL_BOOKING, error: null },
+        { data: [policyRow({ credit_review_mode: 'Manual' })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null },
+        NO_TXNS
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.credit_review_pending).toBe(false);
+      expect(result.credit_issued).toBe(false);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+
+      const logPatch = recordedWrites.find(
+        (write) =>
+          write.table === 'cancellation_logs' && write.method === 'update'
+      );
+      expect(logPatch).toBeUndefined();
+    });
+  });
+
   it('refuses to cancel an already-Cancelled or Completed booking', async () => {
     for (const status of ['Cancelled', 'Completed']) {
       queueFromResults({

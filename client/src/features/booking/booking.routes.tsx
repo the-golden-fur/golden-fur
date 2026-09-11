@@ -8,6 +8,7 @@ import { CustomerBookingFlowPage } from './pages/CustomerBookingFlowPage/Custome
 import { CustomerBookingsPage } from './pages/CustomerBookingsPage/CustomerBookingsPage';
 import { ReceptionistBookingsQueuePage } from './pages/ReceptionistBookingsQueuePage/ReceptionistBookingsQueuePage';
 import { PolicyConfigurationPage } from './pages/PolicyConfigurationPage/PolicyConfigurationPage';
+import { CreditReviewQueuePage } from './pages/CreditReviewQueuePage/CreditReviewQueuePage';
 
 /**
  * M03 Booking routes (#55-#60). CustomerBookingFlowPage is mounted at both
@@ -35,6 +36,10 @@ export const bookingRoutes = (
         element={<ReceptionistBookingsQueuePage />}
       />
       <Route path="/staff/assessment/queue" element={<AssessmentQueuePage />} />
+      <Route
+        path="/staff/bookings/credit-review-queue"
+        element={<CreditReviewQueuePage />}
+      />
       <Route
         path="/staff/bookings/:bookingId"
         element={<BookingDetailsPage />}

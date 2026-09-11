@@ -23,6 +23,10 @@ import {
 import { getCagePickerOptions } from './services/cagePicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
 import { extendHotelStay } from './services/extendStay.service.ts';
+import {
+  decideCreditReview,
+  listPendingCreditReviews,
+} from './services/creditReview.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
   getDaySlots,
@@ -42,6 +46,7 @@ import {
   catalogQueryValidator,
   createBookingGroupValidator,
   createBookingValidator,
+  decideCreditReviewValidator,
   downpaymentStatusQueryValidator,
   extendHotelStayValidator,
   listBookingsQueryValidator,
@@ -755,6 +760,60 @@ export async function overrideBookingStatusController(
       status: parsed.data.status,
     });
     return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Manual-cancellation-credit-review custom change: the pending queue -
+ * Superadmin sees every branch, everyone else is locked to their own (same
+ * convention as activityLogController). */
+export async function listPendingCreditReviewsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const role = req.user?.role;
+  const branchId = req.user?.branch_id;
+
+  if (!role || !branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const items = await listPendingCreditReviews(
+      role === 'Superadmin' ? undefined : branchId
+    );
+    return res.status(200).json({ items });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function decideCreditReviewController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = decideCreditReviewValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const log = await decideCreditReview({
+      requesterId,
+      cancellationLogId: paramId(req, 'id'),
+      decision: parsed.data.decision,
+    });
+    return res.status(200).json({ log });
   } catch (error) {
     return sendServiceError(res, error);
   }

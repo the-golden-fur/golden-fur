@@ -11,6 +11,7 @@ import {
 } from '../../api/policy.api';
 import type {
   CreditExpiryMode,
+  CreditReviewMode,
   DownpaymentType,
   EnforcementMode,
   PolicyConfiguration,
@@ -47,6 +48,7 @@ interface FormState {
   /** "YYYY-MM-DD"; '' when not in fixed_date mode. */
   credit_expiry_fixed_date: string;
   cancellation_credit_conversion_rate: number;
+  credit_review_mode: CreditReviewMode;
   online_payments_enabled: boolean;
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType;
@@ -78,6 +80,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     credit_expiry_fixed_date: policy.credit_expiry_fixed_date ?? '',
     cancellation_credit_conversion_rate:
       policy.cancellation_credit_conversion_rate,
+    credit_review_mode: policy.credit_review_mode,
     online_payments_enabled: policy.online_payments_enabled,
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type ?? 'Flat',
@@ -107,6 +110,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   credit_expiry_days: 30,
   credit_expiry_fixed_date: '',
   cancellation_credit_conversion_rate: 100,
+  credit_review_mode: 'Automatic',
   online_payments_enabled: true,
   downpayment_enabled: false,
   downpayment_type: 'Flat',
@@ -279,6 +283,7 @@ export function PolicyConfigurationPage() {
           : null,
       cancellation_credit_conversion_rate:
         form.cancellation_credit_conversion_rate,
+      credit_review_mode: form.credit_review_mode,
       online_payments_enabled: form.online_payments_enabled,
       downpayment_enabled: form.downpayment_enabled,
       downpayment_type: form.downpayment_enabled ? form.downpayment_type : null,
@@ -790,6 +795,33 @@ export function PolicyConfigurationPage() {
               Share of a paid cancellation returned as credit, if the notice
               period was met - 100% is a full refund, lower keeps part as a
               charge. Missed notice forfeits the payment entirely.
+            </p>
+
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Who decides the credit</span>
+              <select
+                className={styles.input}
+                value={form.credit_review_mode}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    credit_review_mode: event.target.value as CreditReviewMode,
+                  }))
+                }
+              >
+                <option value="Automatic">
+                  Automatic - decided by the notice period, above
+                </option>
+                <option value="Manual">
+                  Manual - a staff member reviews each cancellation reason
+                </option>
+              </select>
+            </label>
+            <p className={styles.copy}>
+              Manual ignores the notice period above entirely - every
+              cancellation with a payment goes to the Credit Review Queue for a
+              staff member to approve or deny after reading why the customer
+              cancelled.
             </p>
           </section>
 
