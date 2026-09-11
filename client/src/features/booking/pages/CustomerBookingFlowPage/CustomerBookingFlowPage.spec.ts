@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -1345,6 +1351,48 @@ describe('CustomerBookingFlowPage', () => {
     const payload = vi.mocked(bookingApi.createBooking).mock.calls[0][1];
     expect(payload.scheduled_start).toBe('2026-08-03T01:00:00.000Z');
     expect(payload.scheduled_end).toBeTruthy();
+  });
+
+  it("shows each service's duration and an estimated-duration total on the Services step", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    // Bath's own duration (60min), shown as a meta line on its option card.
+    const bathCard = (await screen.findByText('Bath')).closest('button')!;
+    expect(within(bathCard).getByText('1h')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Bath'));
+
+    const durationRow = screen.getByText('Estimated duration').closest('div');
+    expect(durationRow).toHaveTextContent('1h');
+  });
+
+  it('shows a persistent "services selected" recap on the step right after Services, without needing to go back', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    // Not shown yet on the Services step itself - only on later steps.
+    expect(screen.queryByText(/service selected/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('Bath'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText(/1 service selected/i)).toBeInTheDocument()
+    );
+    const summaryTitle = screen.getByText(/1 service selected/i);
+    expect(summaryTitle).toHaveTextContent('PHP 300.00');
+
+    // The recap's own line item for the selected service.
+    const recap = summaryTitle.closest('details')!;
+    expect(within(recap).getByText('Bath')).toBeInTheDocument();
   });
 
   it('going Back from Date & Time and changing the service set drops the already-picked slot (its window is now a different length)', async () => {
