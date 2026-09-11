@@ -32,6 +32,7 @@ vi.mock('../../api/booking.api', () => ({
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
   startBooking: vi.fn(),
+  extendHotelStay: vi.fn(),
 }));
 
 // Reschedule button gating (#24) reads policy_configurations - only the
@@ -601,6 +602,124 @@ describe('ReceptionistBookingsQueuePage', () => {
     await waitFor(() => expect(screen.getByText(/Buddy/)).toBeInTheDocument());
     expect(screen.queryByText('Reschedule')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
+  });
+
+  describe('Extend Stay (extend-hotel-stay custom change)', () => {
+    it('a money-handling staff member can extend a Hotel booking still In Progress', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ service_category: 'Hotel', status: 'In Progress' }),
+        ],
+        error: null,
+      });
+      vi.mocked(bookingApi.extendHotelStay).mockResolvedValue({
+        data: {
+          booking: buildBooking({
+            service_category: 'Hotel',
+            status: 'In Progress',
+            total_price: 1500,
+            payment_status: 'Partially Paid',
+          }),
+          added_amount: 1000,
+        },
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Extend Stay'));
+
+      const input = screen.getByLabelText('Additional nights');
+      await user.clear(input);
+      await user.type(input, '2');
+      await user.click(screen.getByText('Confirm extension'));
+
+      await waitFor(() =>
+        expect(bookingApi.extendHotelStay).toHaveBeenCalledWith(
+          'booking-1',
+          'token',
+          { additional_nights: 2 }
+        )
+      );
+    });
+
+    it('is hidden for a non-Hotel booking, and for a role that cannot handle money (e.g. Groomer)', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ service_category: 'Grooming', status: 'Pending' }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Extend Stay')).not.toBeInTheDocument();
+    });
+
+    it('is hidden from a Groomer even for a Hotel booking', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Groomer')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ service_category: 'Hotel', status: 'In Progress' }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      expect(screen.queryByText('Extend Stay')).not.toBeInTheDocument();
+    });
+
+    it('shows a server error inline instead of closing the panel', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ service_category: 'Hotel', status: 'In Progress' }),
+        ],
+        error: null,
+      });
+      vi.mocked(bookingApi.extendHotelStay).mockResolvedValue({
+        data: null,
+        error: 'No cage capacity for the extended stay',
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+
+      await waitFor(() =>
+        expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Extend Stay'));
+      await user.click(screen.getByText('Confirm extension'));
+
+      expect(
+        await screen.findByText('No cage capacity for the extended stay')
+      ).toBeInTheDocument();
+    });
   });
 
   it('search filters the already-loaded bookings by pet or owner name', async () => {

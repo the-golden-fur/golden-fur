@@ -74,7 +74,8 @@ export type LineItemType =
   | 'discount'
   | 'promo'
   | 'reschedule_fee'
-  | 'misc_sale_item';
+  | 'misc_sale_item'
+  | 'stay_extension';
 
 export interface Transaction {
   id: string;

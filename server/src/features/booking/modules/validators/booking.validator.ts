@@ -352,6 +352,16 @@ export const cancelBookingValidator = z
   })
   .strict();
 
+/** Staff-only "extend stay" action (extend-hotel-stay custom change) - a
+ * whole-nights add-on to a Hotel booking's current scheduled_end. The upper
+ * bound is just a sanity ceiling against a fat-fingered input, not a real
+ * product limit on stay length. */
+export const extendHotelStayValidator = z
+  .object({
+    additional_nights: z.number().int().min(1).max(90),
+  })
+  .strict();
+
 /** Customer self-service Pay button (CustomerBookingsPage). */
 export const payBookingValidator = z
   .object({
@@ -637,6 +647,7 @@ export type CreateBookingGroupInput = z.infer<
   typeof createBookingGroupValidator
 >;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
+export type ExtendHotelStayInput = z.infer<typeof extendHotelStayValidator>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type PayBookingInput = z.infer<typeof payBookingValidator>;

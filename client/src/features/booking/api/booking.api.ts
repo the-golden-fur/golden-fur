@@ -10,6 +10,8 @@ import type {
   CreateBookingGroupResult,
   CreateBookingPayload,
   DownpaymentType,
+  ExtendHotelStayPayload,
+  ExtendHotelStayResult,
   ListBookingsFilters,
   OperatingWindow,
   PayForBookingPayload,
@@ -387,6 +389,31 @@ export async function rescheduleBooking(
   }
 
   return parseBody<RescheduleResult>(response);
+}
+
+/** Staff-only "extend stay" action (extend-hotel-stay custom change) - adds
+ * whole nights to a Hotel booking's current stay; the server recomputes
+ * price and reconciles it onto the booking's remaining-balance transaction
+ * (or creates a new one if the booking is already Fully Paid). */
+export async function extendHotelStay(
+  bookingId: string,
+  accessToken: string,
+  payload: ExtendHotelStayPayload
+): Promise<BookingApiResult<ExtendHotelStayResult>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/extend-stay`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<ExtendHotelStayResult>(response);
 }
 
 export async function cancelBooking(

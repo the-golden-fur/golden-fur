@@ -13,6 +13,7 @@ import {
   createBookingGroupController,
   addBalancePaymentController,
   downpaymentStatusController,
+  extendHotelStayController,
   getBookingController,
   getBookingDetailsController,
   listBookingsController,
@@ -28,6 +29,7 @@ import {
   updatePolicyConfigurationController,
 } from './booking.controller.ts';
 import {
+  BOOKING_MARK_PAID_ROLES,
   BOOKING_POLICY_READ_ROLES,
   BOOKING_POLICY_WRITE_ROLES,
   BOOKING_STATUS_ADVANCE_ROLES,
@@ -70,6 +72,14 @@ const statusOverride = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...BOOKING_STATUS_OVERRIDE_ROLES]),
+];
+
+// Extend-hotel-stay custom change: a money-affecting action, same
+// money-handling role set the Transactions page's mark-as-paid action uses.
+const extendStay = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_MARK_PAID_ROLES]),
 ];
 
 // Booking creation + capacity enforcement (#51)
@@ -176,6 +186,11 @@ router.post(
   rescheduleBookingController
 );
 router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
+
+// Extend-hotel-stay custom change: staff-only, adds N nights to a Hotel
+// booking's stay and reconciles the price onto its remaining-balance
+// transaction (or a new one if already Fully Paid).
+router.post('/bookings/:id/extend-stay', extendStay, extendHotelStayController);
 
 // Customer self-service Pay button (CustomerBookingsPage) - ownership
 // checked in payForBooking, same pattern as reschedule/cancel above.
