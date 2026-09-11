@@ -266,6 +266,41 @@ describe('rescheduleBookingValidator', () => {
       }).success
     ).toBe(false);
   });
+
+  // Slot-conflict notification (20260911188): previously only
+  // createBookingValidator accepted cage_preference - a Hotel booking
+  // flagged for a cage-size conflict needs a way to change it during a
+  // reschedule too, not just date/time/staff.
+  it('accepts an optional cage_preference (specific or no_preference)', () => {
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: {
+          type: 'specific',
+          cage_id: '123e4567-e89b-12d3-a456-426614174000',
+        },
+      }).success
+    ).toBe(true);
+
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: { type: 'no_preference' },
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a "specific" cage_preference with no cage_id', () => {
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: { type: 'specific' },
+      }).success
+    ).toBe(false);
+  });
 });
 
 describe('cancelBookingValidator', () => {

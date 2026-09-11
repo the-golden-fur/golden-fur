@@ -8,6 +8,7 @@ import {
   cancelBookingController,
   catalogController,
   completeBookingController,
+  conflictedBookingsController,
   createBookingController,
   createBookingGroupController,
   addBalancePaymentController,
@@ -140,6 +141,16 @@ router.get(
   '/bookings/pet-conflicts',
   jwtMiddleware,
   petBookingConflictsController
+);
+
+// Slot-conflict notification (20260911188): the logged-in customer's own
+// still-Pending bookings that just lost their slot to another customer's
+// payment - read by the CustomerPortalPage dashboard popup and the
+// notifications bell/list's link-through for booking_slot_conflict rows.
+router.get(
+  '/bookings/conflicts/mine',
+  jwtMiddleware,
+  conflictedBookingsController
 );
 
 // policy_configurations stub (#52)

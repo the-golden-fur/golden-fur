@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkCapacity,
   confirmCapacityAfterInsert,
+  listOverlappingPencilBookings,
 } from './capacity.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { Booking } from '../booking.types.ts';
@@ -16,18 +17,25 @@ interface QueryResult {
 }
 
 const orCalls: string[] = [];
+const eqCalls: Array<[string, unknown]> = [];
 
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
   orCalls.length = 0;
+  eqCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'neq', 'in', 'lt', 'gt', 'order']) {
+    for (const method of ['select', 'neq', 'in', 'lt', 'gt', 'order']) {
       builder[method] = vi.fn(() => builder);
     }
+
+    builder.eq = vi.fn((field: string, value: unknown) => {
+      eqCalls.push([field, value]);
+      return builder;
+    });
 
     builder.or = vi.fn((filter: string) => {
       orCalls.push(filter);
@@ -313,6 +321,47 @@ describe('capacity.service (#51)', () => {
       expect(orCalls).toContain(
         'downpayment_required.eq.false,payment_status.neq.Pending'
       );
+    });
+  });
+
+  describe('listOverlappingPencilBookings (20260911188 slot-conflict notification)', () => {
+    it('queries the mirror-image filter - still-Pending, unpaid, down-payment-required rows', async () => {
+      const row = {
+        id: 'pencil-1',
+        customer_id: 'customer-2',
+        pet_id: 'pet-2',
+        assigned_staff_id: 'groomer-1',
+        scheduled_start: WINDOW.scheduledStart,
+        scheduled_end: WINDOW.scheduledEnd,
+        branch_id: WINDOW.branchId,
+        service_category: 'Grooming',
+      };
+      queueFromResults({ data: [row], error: null });
+
+      const result = await listOverlappingPencilBookings({
+        ...WINDOW,
+        serviceCategory: 'Grooming',
+        excludeBookingId: 'winner-1',
+      });
+
+      expect(result).toEqual([row]);
+      expect(eqCalls).toContainEqual(['status', 'Pending']);
+      expect(eqCalls).toContainEqual(['payment_status', 'Pending']);
+      expect(eqCalls).toContainEqual(['downpayment_required', true]);
+      // Deliberately does NOT use SLOT_HOLD_PAID_OR_FILTER's .or() - that
+      // filter finds who HOLDS a slot; this finds the opposite (who doesn't).
+      expect(orCalls).toHaveLength(0);
+    });
+
+    it('returns an empty array when nothing else is pencil-booked for the window', async () => {
+      queueFromResults({ data: [], error: null });
+
+      const result = await listOverlappingPencilBookings({
+        ...WINDOW,
+        serviceCategory: 'Hotel',
+      });
+
+      expect(result).toEqual([]);
     });
   });
 });

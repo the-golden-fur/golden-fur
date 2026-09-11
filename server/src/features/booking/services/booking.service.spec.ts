@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  applyFirstBookingPaymentSideEffects,
   completeBooking,
   createBooking,
   listBookings,
+  listConflictedBookingsForCustomer,
   listPetBookingConflicts,
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
@@ -49,6 +51,7 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
+  sendSlotConflictNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -104,6 +107,7 @@ function queueFromResults(...results: QueryResult[]) {
       'in',
       'or',
       'is',
+      'not',
       'lt',
       'gt',
       'gte',
@@ -1364,6 +1368,167 @@ describe('booking.service (#51)', () => {
           (write) => write.table === 'bookings' && write.method === 'update'
         )
       ).toBeUndefined();
+    });
+  });
+
+  describe('flagSlotConflictsForOthers (20260911188 slot-conflict notification)', () => {
+    const ORIGINAL_DAYCARE_CAPACITY = process.env.DAYCARE_SESSION_CAPACITY;
+
+    const WINNER = {
+      id: 'winner-1',
+      customer_id: 'cust-1',
+      pet_id: 'pet-1',
+      branch_id: 'branch-1',
+      service_category: 'Daycare',
+      booking_source: 'Online',
+      scheduled_start: '2026-09-15T00:00:00.000Z',
+      scheduled_end: '2026-09-15T08:00:00.000Z',
+      assigned_staff_id: null,
+      status: 'Pending',
+      payment_status: 'Fully Paid',
+      downpayment_required: true,
+      staff_picker_preferences: [],
+    };
+
+    const PENCIL_CANDIDATE = {
+      id: 'pencil-1',
+      customer_id: 'cust-2',
+      pet_id: 'pet-2',
+      assigned_staff_id: null,
+      scheduled_start: '2026-09-15T02:00:00.000Z',
+      scheduled_end: '2026-09-15T06:00:00.000Z',
+      branch_id: 'branch-1',
+      service_category: 'Daycare',
+    };
+
+    beforeEach(() => {
+      // A capacity of 1 makes "one other booking already there" enough to
+      // push the pencil candidate's own checkCapacity() call to false,
+      // without needing 15 fixture rows for the real Daycare stub default.
+      process.env.DAYCARE_SESSION_CAPACITY = '1';
+    });
+
+    afterEach(() => {
+      if (ORIGINAL_DAYCARE_CAPACITY === undefined) {
+        delete process.env.DAYCARE_SESSION_CAPACITY;
+      } else {
+        process.env.DAYCARE_SESSION_CAPACITY = ORIGINAL_DAYCARE_CAPACITY;
+      }
+    });
+
+    it('flags and notifies another still-Pending pencil booking that just lost the same slot', async () => {
+      queueFromResults(
+        { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert: winner still holds its slot
+        { data: [PENCIL_CANDIDATE], error: null }, // listOverlappingPencilBookings
+        { data: [{ id: 'some-other-daycare-booking' }], error: null }, // checkCapacity(candidate): capacity 1, already full -> unavailable
+        {
+          data: {
+            ...PENCIL_CANDIDATE,
+            slot_conflict_at: '2026-09-11T00:00:00.000Z',
+          },
+          error: null,
+        } // updateBookingRow(candidate)
+      );
+
+      await applyFirstBookingPaymentSideEffects({
+        bookingId: WINNER.id,
+        paymentStatusBeforePayment: 'Pending',
+        revertOnCapacityConflict: true,
+      });
+
+      const conflictUpdate = recordedWrites.find(
+        (write) =>
+          write.table === 'bookings' &&
+          write.method === 'update' &&
+          (write.payload as { slot_conflict_at?: unknown })
+            ?.slot_conflict_at !== undefined
+      );
+
+      expect(conflictUpdate).toBeDefined();
+      expect(conflictUpdate?.payload).toMatchObject({
+        conflict_notice: expect.stringContaining('Daycare'),
+      });
+
+      const { sendSlotConflictNotification } =
+        await import('./bookingNotifications.service.ts');
+      expect(sendSlotConflictNotification).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(sendSlotConflictNotification).mock.calls[0][0]
+      ).toMatchObject({ id: PENCIL_CANDIDATE.id });
+    });
+
+    it('flags nothing when no other pencil booking overlaps the winner', async () => {
+      queueFromResults(
+        { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert
+        { data: [], error: null } // listOverlappingPencilBookings: nobody else
+      );
+
+      await applyFirstBookingPaymentSideEffects({
+        bookingId: WINNER.id,
+        paymentStatusBeforePayment: 'Pending',
+        revertOnCapacityConflict: true,
+      });
+
+      expect(
+        recordedWrites.some(
+          (write) =>
+            write.table === 'bookings' &&
+            write.method === 'update' &&
+            (write.payload as { slot_conflict_at?: unknown })
+              ?.slot_conflict_at !== undefined
+        )
+      ).toBe(false);
+    });
+  });
+
+  describe('listConflictedBookingsForCustomer (20260911188 slot-conflict notification)', () => {
+    it("returns the customer's own flagged bookings with pet/branch names resolved", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              service_category: 'Grooming',
+              pet_id: 'pet-1',
+              scheduled_start: '2026-09-15T08:00:00.000Z',
+              scheduled_end: '2026-09-15T09:00:00.000Z',
+              branch_id: 'branch-1',
+              conflict_notice: 'Your Grooming booking is no longer available.',
+              slot_conflict_at: '2026-09-11T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }, // bookings query
+        { data: [{ id: 'pet-1', name: 'Max' }], error: null }, // pets lookup
+        { data: [{ id: 'branch-1', name: 'Makati' }], error: null } // branches lookup
+      );
+
+      const result = await listConflictedBookingsForCustomer('cust-1');
+
+      expect(result).toEqual([
+        {
+          id: 'booking-1',
+          service_category: 'Grooming',
+          pet_id: 'pet-1',
+          pet_name: 'Max',
+          scheduled_start: '2026-09-15T08:00:00.000Z',
+          scheduled_end: '2026-09-15T09:00:00.000Z',
+          branch_id: 'branch-1',
+          branch_name: 'Makati',
+          conflict_notice: 'Your Grooming booking is no longer available.',
+          slot_conflict_at: '2026-09-11T00:00:00.000Z',
+        },
+      ]);
+    });
+
+    it('returns an empty array without querying pets/branches when nothing is flagged', async () => {
+      queueFromResults({ data: [], error: null });
+
+      const result = await listConflictedBookingsForCustomer('cust-1');
+
+      expect(result).toEqual([]);
     });
   });
 

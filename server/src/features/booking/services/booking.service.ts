@@ -3,6 +3,7 @@ import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts
 import {
   sendBookingConfirmedNotification,
   sendCombinedBookingGroupConfirmedEmail,
+  sendSlotConflictNotification,
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
@@ -31,6 +32,10 @@ import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.servi
 import {
   checkCapacity,
   confirmCapacityAfterInsert,
+  filterSameSizeRows,
+  listOverlappingPencilBookings,
+  type PencilBookingRow,
+  type WeightClass,
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
@@ -1256,6 +1261,91 @@ export async function listPetBookingConflicts({
   return [...conflictByPetId.values()];
 }
 
+export interface ConflictedBooking {
+  id: string;
+  service_category: Booking['service_category'];
+  pet_id: string;
+  pet_name: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+  branch_id: string;
+  branch_name: string | null;
+  conflict_notice: string | null;
+  slot_conflict_at: string;
+}
+
+/**
+ * Slot-conflict notification (20260911188): every one of this customer's
+ * still-Pending bookings currently flagged with slot_conflict_at (set by
+ * flagSlotConflictsForOthers, above) - the dashboard popup's data source
+ * (CustomerPortalPage) and the same list the notification bell's
+ * booking_slot_conflict rows link back into. Scoped to `customerId` only -
+ * a staff caller's own id never matches any bookings.customer_id, so this
+ * naturally returns empty for them rather than needing a separate guard.
+ */
+export async function listConflictedBookingsForCustomer(
+  customerId: string
+): Promise<ConflictedBooking[]> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(
+      'id, service_category, pet_id, scheduled_start, scheduled_end, branch_id, conflict_notice, slot_conflict_at'
+    )
+    .eq('customer_id', customerId)
+    .eq('status', 'Pending')
+    .not('slot_conflict_at', 'is', null)
+    .order('slot_conflict_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Array<{
+    id: string;
+    service_category: Booking['service_category'];
+    pet_id: string;
+    scheduled_start: string;
+    scheduled_end: string;
+    branch_id: string;
+    conflict_notice: string | null;
+    slot_conflict_at: string | null;
+  }>;
+
+  if (rows.length === 0) return [];
+
+  const petIds = [...new Set(rows.map((row) => row.pet_id))];
+  const branchIds = [...new Set(rows.map((row) => row.branch_id))];
+
+  const [{ data: petRows }, { data: branchRows }] = await Promise.all([
+    supabase.from('pets').select('id, name').in('id', petIds),
+    supabase.from('branches').select('id, name').in('id', branchIds),
+  ]);
+
+  const petNameById = new Map(
+    ((petRows ?? []) as Array<{ id: string; name: string }>).map((row) => [
+      row.id,
+      row.name,
+    ])
+  );
+  const branchNameById = new Map(
+    ((branchRows ?? []) as Array<{ id: string; name: string }>).map((row) => [
+      row.id,
+      row.name,
+    ])
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    service_category: row.service_category,
+    pet_id: row.pet_id,
+    pet_name: petNameById.get(row.pet_id) ?? null,
+    scheduled_start: row.scheduled_start,
+    scheduled_end: row.scheduled_end,
+    branch_id: row.branch_id,
+    branch_name: branchNameById.get(row.branch_id) ?? null,
+    conflict_notice: row.conflict_notice,
+    slot_conflict_at: row.slot_conflict_at as string,
+  }));
+}
+
 interface GetBookingParams {
   requesterId: string;
   bookingId: string;
@@ -2014,6 +2104,140 @@ export async function recomputeBookingGroupPaymentStatus(
   return updatedGroup as BookingGroup;
 }
 
+function formatConflictDate(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
+
+function formatConflictTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Slot-conflict notification (20260911188): after `winner` (a booking whose
+ * payment just settled) is re-confirmed to genuinely hold its date/time/
+ * staff/cage slot, find every OTHER still-Pending/unpaid/down-payment-
+ * required pencil booking that was sharing that same slot and would now
+ * fail checkCapacity() if it tried to pay - i.e. who just lost the race -
+ * and flag + notify each one. Deliberately reuses checkCapacity (the exact
+ * function booking creation/reschedule already use to decide "is this slot
+ * free") rather than inventing new capacity math, so the "did this candidate
+ * actually lose?" answer is always consistent with every other capacity
+ * decision in the app. Best-effort throughout: a failure here must never
+ * fail the winning payment that triggered it.
+ *
+ * Narrowing before the per-candidate checkCapacity call is only an
+ * optimization (skip candidates that can't possibly be affected), never the
+ * source of truth for who lost - that's always checkCapacity's own answer:
+ * - Grooming/Veterinary: only a candidate that requested the SAME specific
+ *   staff member as `winner` competes for that staff's time.
+ * - Hotel: only a candidate whose pet is the SAME weight-class (cage-size)
+ *   category as `winner`'s pet competes for that size's cage count.
+ * - Daycare: no narrowing - every overlapping candidate shares the one
+ *   per-branch session capacity.
+ *
+ * Known limitation: if a branch's max_concurrent_bookings_per_staff (or
+ * Hotel/Daycare capacity) is raised above 1 and TWO candidates are both
+ * competing only against each other for the one remaining spot, both may
+ * independently pass checkCapacity here (each check excludes only itself,
+ * not other still-unpaid candidates) and neither gets flagged. This mirrors
+ * confirmCapacityAfterInsert's own documented tie-break scope - it isn't
+ * fixed here since neither candidate has actually paid yet (nothing is
+ * silently overbooked); whichever pays first will still win cleanly via the
+ * normal post-payment confirmCapacityAfterInsert re-check.
+ */
+async function flagSlotConflictsForOthers(winner: Booking): Promise<void> {
+  try {
+    if (winner.service_category === 'Assessment') return;
+
+    const candidates = await listOverlappingPencilBookings({
+      branchId: winner.branch_id,
+      serviceCategory: winner.service_category,
+      scheduledStart: winner.scheduled_start,
+      scheduledEnd: winner.scheduled_end,
+      excludeBookingId: winner.id,
+    });
+
+    if (candidates.length === 0) return;
+
+    let narrowed: PencilBookingRow[] = candidates;
+
+    if (
+      winner.service_category === 'Grooming' ||
+      winner.service_category === 'Veterinary'
+    ) {
+      narrowed = candidates.filter(
+        (candidate) => candidate.assigned_staff_id === winner.assigned_staff_id
+      );
+    } else if (winner.service_category === 'Hotel') {
+      const { data: winnerPet } = await supabase
+        .from('pets')
+        .select('weight_class')
+        .eq('id', winner.pet_id)
+        .maybeSingle();
+
+      if (!winnerPet) return;
+
+      const sameSize = await filterSameSizeRows(
+        candidates.map((candidate) => ({
+          id: candidate.id,
+          pet_id: candidate.pet_id,
+          created_at: '',
+        })),
+        winnerPet.weight_class as WeightClass
+      );
+      const sameSizeIds = new Set(sameSize.map((row) => row.id));
+      narrowed = candidates.filter((candidate) =>
+        sameSizeIds.has(candidate.id)
+      );
+    }
+    // Daycare falls through with no extra narrowing.
+
+    for (const candidate of narrowed) {
+      let petWeightClass: WeightClass | undefined;
+
+      if (candidate.service_category === 'Hotel') {
+        const { data: pet } = await supabase
+          .from('pets')
+          .select('weight_class')
+          .eq('id', candidate.pet_id)
+          .maybeSingle();
+        petWeightClass = pet?.weight_class as WeightClass | undefined;
+      }
+
+      const result = await checkCapacity({
+        branchId: candidate.branch_id,
+        serviceCategory: candidate.service_category,
+        scheduledStart: candidate.scheduled_start,
+        scheduledEnd: candidate.scheduled_end,
+        staffId: candidate.assigned_staff_id ?? undefined,
+        petWeightClass,
+        excludeBookingId: candidate.id,
+      });
+
+      if (result.available) continue;
+
+      const notice =
+        `Your ${candidate.service_category} booking on ${formatConflictDate(candidate.scheduled_start)} ` +
+        `at ${formatConflictTime(candidate.scheduled_start)} is no longer available - another ` +
+        "customer's payment claimed that slot first. Please update your booking's date, time, staff, or cage.";
+
+      const updatedCandidate = await updateBookingRow(candidate.id, {
+        slot_conflict_at: new Date().toISOString(),
+        conflict_notice: notice,
+        updated_at: new Date().toISOString(),
+      });
+
+      await sendSlotConflictNotification(updatedCandidate, notice);
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('flagSlotConflictsForOthers failed:', error);
+  }
+}
+
 /**
  * First-payment side-effects for a booking that just left payment_status
  * 'Pending' (a down payment or a full payment landed). Shared by the PayMongo
@@ -2058,21 +2282,29 @@ export async function applyFirstBookingPaymentSideEffects({
 
   if (
     updated.downpayment_required &&
-    (updated.status === 'Pending' || updated.status === 'In Progress') &&
-    !(await confirmCapacityAfterInsert(updated))
+    (updated.status === 'Pending' || updated.status === 'In Progress')
   ) {
-    if (revertOnCapacityConflict) {
-      await updateBookingRow(bookingId, {
-        payment_status: 'Pending',
-        updated_at: new Date().toISOString(),
-      });
-      throwWithStatus(
-        409,
-        'That time slot filled up before this payment - please reschedule the booking to an open slot'
-      );
+    const stillHoldsSlot = await confirmCapacityAfterInsert(updated);
+
+    if (!stillHoldsSlot) {
+      if (revertOnCapacityConflict) {
+        await updateBookingRow(bookingId, {
+          payment_status: 'Pending',
+          updated_at: new Date().toISOString(),
+        });
+        throwWithStatus(
+          409,
+          'That time slot filled up before this payment - please reschedule the booking to an open slot'
+        );
+      }
+      // Counter path: keep the payment; the slot is overbooked until staff
+      // reschedule the booking. The confirmation alert below still fires.
+    } else {
+      // This booking now genuinely holds its slot - any other still-Pending
+      // pencil booking that was sharing it just lost the race (slot-conflict
+      // notification, 20260911188).
+      await flagSlotConflictsForOthers(updated);
     }
-    // Counter path: keep the payment; the slot is overbooked until staff
-    // reschedule the booking. The confirmation alert below still fires.
   }
 
   // Best-effort: the first payment "confirms" a still-Pending Online booking

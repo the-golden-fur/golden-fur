@@ -9,6 +9,7 @@ import type { CreditBalanceContextValue } from '../../../credits/providers/Credi
 import type { CreditBalance } from '../../../credits/credits.types';
 import { getCustomerProfile, listCustomerPets } from '../../api/customer.api';
 import { listNotifications } from '../../../notifications/api/notifications.api';
+import { listMyConflictedBookings } from '../../../booking/api/booking.api';
 import { CustomerPortalPage } from './CustomerPortalPage';
 
 vi.mock('../../api/customer.api', () => ({
@@ -18,6 +19,10 @@ vi.mock('../../api/customer.api', () => ({
 
 vi.mock('../../../notifications/api/notifications.api', () => ({
   listNotifications: vi.fn(),
+}));
+
+vi.mock('../../../booking/api/booking.api', () => ({
+  listMyConflictedBookings: vi.fn(),
 }));
 
 function balance(overrides: Partial<CreditBalance> = {}): CreditBalance {
@@ -78,6 +83,10 @@ describe('CustomerPortalPage', () => {
     });
     vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
     vi.mocked(listNotifications).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listMyConflictedBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
   });
 
   it('greets the customer by name once their profile loads', async () => {
@@ -169,5 +178,49 @@ describe('CustomerPortalPage', () => {
 
     const row = await screen.findByRole('link', { name: /booking confirmed/i });
     expect(row).toHaveAttribute('href', '/portal/notifications?open=n-1');
+  });
+
+  it('pops up the slot-conflict modal listing every affected booking, linked to it', async () => {
+    vi.mocked(listMyConflictedBookings).mockResolvedValue({
+      data: [
+        {
+          id: 'booking-1',
+          service_category: 'Grooming',
+          pet_id: 'pet-1',
+          pet_name: 'Max',
+          scheduled_start: '2026-09-15T08:00:00.000Z',
+          scheduled_end: '2026-09-15T09:00:00.000Z',
+          branch_id: 'branch-1',
+          branch_name: 'Makati',
+          conflict_notice:
+            'Your Grooming booking on Sep 15, 2026 is no longer available.',
+          slot_conflict_at: '2026-09-11T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'A booking slot is no longer available',
+      })
+    ).toBeInTheDocument();
+
+    const link = screen.getByRole('link', { name: /grooming - max/i });
+    expect(link).toHaveAttribute('href', '/portal/bookings?open=booking-1');
+  });
+
+  it('does not show the slot-conflict popup when nothing is flagged', async () => {
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Welcome back!' });
+
+    expect(
+      screen.queryByRole('heading', {
+        name: /booking slot.*no longer available/i,
+      })
+    ).not.toBeInTheDocument();
   });
 });

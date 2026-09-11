@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
@@ -53,6 +54,7 @@ export function CustomerBookingsPage() {
   const { user, accessToken } = useAuth();
   const { refresh: refreshCreditBalance } = useCreditBalance();
   const nowMs = useNowMs();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -105,6 +107,24 @@ export function CustomerBookingsPage() {
       isMounted = false;
     };
   }, [accessToken, user?.id]);
+
+  // Slot-conflict notification: a `?open=<bookingId>` deep link (from the
+  // dashboard popup or a booking_slot_conflict notification) auto-opens that
+  // booking's details on arrival - same query-param convention as
+  // NotificationsPage's own `?open=`. Derived at render time (not synced
+  // into state via an effect - react-hooks/set-state-in-effect) so the
+  // "View details" menu's own setDetailsBookingId click-state and this URL
+  // param both just feed the same modal.
+  const detailsTargetId = detailsBookingId ?? searchParams.get('open');
+
+  function closeDetails() {
+    setDetailsBookingId(null);
+    if (searchParams.has('open')) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('open');
+      setSearchParams(params);
+    }
+  }
 
   const petNameById = useMemo(
     () => new Map(pets.map((pet) => [pet.id, pet.name])),
@@ -395,10 +415,7 @@ export function CustomerBookingsPage() {
         </ul>
       )}
 
-      <BookingDetailsModal
-        bookingId={detailsBookingId}
-        onClose={() => setDetailsBookingId(null)}
-      />
+      <BookingDetailsModal bookingId={detailsTargetId} onClose={closeDetails} />
 
       <ConfirmDialog
         isOpen={cancelTarget !== undefined}
