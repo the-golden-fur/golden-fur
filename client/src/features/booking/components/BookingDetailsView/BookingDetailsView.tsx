@@ -179,7 +179,11 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
           <CarePreferenceBlock
             label="Feeding"
             lines={rowsForNight(preferences.feeding, activeNightDate).map(
-              (row) => `${row.meal_time} — ${row.food_type} (${row.quantity})`
+              // quantity_unit is required going forward, but a booking made
+              // before this field existed won't actually have one - fall
+              // back to the bare quantity rather than showing "undefined".
+              (row) =>
+                `${row.meal_time} — ${row.food_type} (${row.quantity}${row.quantity_unit ? ` ${row.quantity_unit}` : ''})`
             )}
           />
           <CarePreferenceBlock
@@ -198,7 +202,9 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
             label="Medications"
             lines={rowsForNight(preferences.medications, activeNightDate).map(
               (row) =>
-                `${row.medication_name} — ${row.dose}` +
+                // dose_unit is required going forward, but a booking made
+                // before this field existed won't actually have one.
+                `${row.medication_name} — ${row.dose}${row.dose_unit ? ` ${row.dose_unit}` : ''}` +
                 (row.scheduled_times.length > 0
                   ? ` (${row.scheduled_times.join(', ')})`
                   : '')

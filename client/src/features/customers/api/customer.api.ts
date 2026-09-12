@@ -444,6 +444,34 @@ export async function uploadPetPhoto(
   return parseBody<{ photo_url: string }>(response);
 }
 
+/** Custom change (care instruction units + photos): lets a customer attach
+ * a photo to a single feeding/medication item while filling out the Care
+ * Instructions booking step. Unlike uploadPetPhoto, this never touches
+ * pets.photo_url and many uploads can coexist per pet (one per care item). */
+export async function uploadPetCareItemPhoto(
+  petId: string,
+  accessToken: string,
+  file: File
+): Promise<CustomerApiResult<{ photo_url: string }>> {
+  const formData = new FormData();
+  formData.append('photo', file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/care-item-photo`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ photo_url: string }>(response);
+}
+
 export async function getPetHealthConditions(
   petId: string,
   accessToken: string

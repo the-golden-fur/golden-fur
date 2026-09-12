@@ -17,7 +17,9 @@ import { formatTimeValue } from '../../components/TimeInput/formatTimeValue';
 import type {
   Cage,
   FeedingInstructionPayload,
+  FoodQuantityUnit,
   MealTime,
+  MedicationDoseUnit,
   MedicationInstructionPayload,
   PartOfDay,
   PlayingInstructionPayload,
@@ -62,6 +64,12 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
       text: item.food_type,
     },
     quantity: item.quantity,
+    // Custom change (care instruction units + photos): no unit-picker/photo
+    // upload UI on this panel - carried through unedited from the booking's
+    // own preferences so check-in doesn't silently drop what the customer
+    // already specified.
+    quantityUnit: item.quantity_unit,
+    photoUrl: item.photo_url,
     specialInstructions: item.special_instructions ?? '',
   }));
 }
@@ -93,6 +101,10 @@ function initialMedications(booking: Booking): MedicationUiState[] {
       text: item.medication_name,
     },
     dose: item.dose,
+    // Custom change (care instruction units + photos): pass-through only,
+    // see initialFeeding's dev note above.
+    doseUnit: item.dose_unit,
+    photoUrl: item.photo_url,
     scheduledTimes: item.scheduled_times,
     administrationNotes: item.administration_notes ?? '',
   }));
@@ -116,6 +128,8 @@ interface FeedingUiState {
   mealTime: MealTime;
   foodType: CatalogComboBoxValue;
   quantity: string;
+  quantityUnit?: FoodQuantityUnit;
+  photoUrl?: string;
   specialInstructions: string;
 }
 
@@ -132,6 +146,8 @@ interface WalkBlockUi {
 interface MedicationUiState {
   name: CatalogComboBoxValue;
   dose: string;
+  doseUnit?: MedicationDoseUnit;
+  photoUrl?: string;
   scheduledTimes: string[]; // "HH:MM", 24h, one per chip
   administrationNotes: string;
 }
@@ -513,6 +529,8 @@ export function HotelCheckInPanel({
         meal_time: state.mealTime,
         food_type: state.foodType.text,
         quantity: state.quantity,
+        quantity_unit: state.quantityUnit,
+        photo_url: state.photoUrl,
         special_instructions: state.specialInstructions || undefined,
         food_catalog_id: state.foodType.catalogId ?? undefined,
       })
@@ -544,6 +562,8 @@ export function HotelCheckInPanel({
       (medication) => ({
         medication_name: medication.name.text,
         dose: medication.dose,
+        dose_unit: medication.doseUnit,
+        photo_url: medication.photoUrl,
         scheduled_times: medication.scheduledTimes.map(formatTimeValue),
         administration_notes: medication.administrationNotes || undefined,
         medication_catalog_id: medication.name.catalogId ?? undefined,

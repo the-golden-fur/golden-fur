@@ -1556,7 +1556,7 @@ describe('CustomerBookingFlowPage', () => {
   // Browser-close-safe draft autosave/restore - keyed off the signed-in
   // customer's own id (renderPage's user.id is 'cust-1'), matching
   // bookingDraftStorageKey's customer-mode branch.
-  const CUSTOMER_DRAFT_KEY = 'booking-draft:customer:v2:cust-1';
+  const CUSTOMER_DRAFT_KEY = 'booking-draft:customer:v3:cust-1';
 
   function seedDraft(overrides: Record<string, unknown> = {}) {
     localStorage.setItem(

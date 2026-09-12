@@ -35,6 +35,34 @@ export type CageStatus =
 export type MealTime = 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
 export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 export type CareType = 'Feeding' | 'Walking' | 'Medication' | 'Playing';
+
+// Care instruction units (diet-app style specificity): lets "1 quantity" or
+// "2 dose" say what unit it's actually in, instead of relying on freetext to
+// smuggle a unit into quantity/dose (e.g. "1 cup", "250mg"). Mirrors the
+// booking feature's own copy of this vocabulary (booking.validator.ts) -
+// same duplication precedent as MealTime/PartOfDay above.
+export const FOOD_QUANTITY_UNITS = [
+  'cup',
+  'gram',
+  'ounce',
+  'can',
+  'scoop',
+  'tablespoon',
+  'teaspoon',
+  'milliliter',
+  'piece',
+] as const;
+export type FoodQuantityUnit = (typeof FOOD_QUANTITY_UNITS)[number];
+
+export const MEDICATION_DOSE_UNITS = [
+  'mg',
+  'ml',
+  'tablet',
+  'capsule',
+  'drop',
+  'application',
+] as const;
+export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
 /** Custom change (Boarding Checklist Kanban redesign): Missed is a lazy,
  * read-time transition (mirrors bookings.status='No-show') - a Pending/In
  * Progress entry whose scheduled_date has passed flips to Missed the next
@@ -120,6 +148,12 @@ export interface CareFeedingInstruction {
   meal_time: MealTime;
   food_type: string;
   quantity: string;
+  /** Null for rows created before this field existed, or a walk-in row
+   * added directly at check-in with no unit picker of its own. */
+  quantity_unit: FoodQuantityUnit | null;
+  /** Optional photo of the food item/bag, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url: string | null;
   special_instructions: string | null;
   food_catalog_id: string | null;
   /** Null = applies to every night of the stay; a date scopes this row to
@@ -150,6 +184,12 @@ export interface CareMedicationInstruction {
   stay_id: string;
   medication_name: string;
   dose: string;
+  /** Null for rows created before this field existed, or a walk-in row
+   * added directly at check-in with no unit picker of its own. */
+  dose_unit: MedicationDoseUnit | null;
+  /** Optional photo of the medication/label, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url: string | null;
   scheduled_times: string[];
   administration_notes: string | null;
   source_prescription_note: string | null;

@@ -12,7 +12,10 @@ import {
 } from 'lucide-react';
 import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listCustomerPets } from '../../../customers/api/customer.api';
+import {
+  listCustomerPets,
+  uploadPetCareItemPhoto,
+} from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
@@ -41,6 +44,8 @@ import {
 } from '../../api/booking.api';
 import {
   BOOKING_MARK_PAID_ROLES,
+  FOOD_QUANTITY_UNITS,
+  MEDICATION_DOSE_UNITS,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingGroup,
@@ -48,11 +53,13 @@ import {
   type CagePreferenceInput,
   type CreateBookingGroupPayload,
   type CreateBookingPayload,
+  type FoodQuantityUnit,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
   type HotelBookingPreferences,
+  type MedicationDoseUnit,
   type PaymentScheme,
   type PetBookingConflict,
   type ServiceCategory,
@@ -255,6 +262,12 @@ interface HotelFeedingRowState {
   meal_time: HotelBookingPreferenceFeeding['meal_time'];
   food_type: string;
   quantity: string;
+  quantity_unit: FoodQuantityUnit;
+  /** Set once a photo finishes uploading (see uploadHotelFeedingPhoto) -
+   * null until then, whether nothing was picked or an upload is in flight. */
+  photo_url: string | null;
+  photo_uploading: boolean;
+  photo_error: string | null;
   special_instructions: string;
   /** Set only when food_type matched a catalog item. */
   food_catalog_id: string | null;
@@ -267,6 +280,10 @@ const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
   meal_time: 'Morning',
   food_type: '',
   quantity: '1',
+  quantity_unit: 'cup',
+  photo_url: null,
+  photo_uploading: false,
+  photo_error: null,
   special_instructions: '',
   food_catalog_id: null,
   stay_date: null,
@@ -289,6 +306,12 @@ const EMPTY_HOTEL_PLAYING_ROW = {
 const EMPTY_HOTEL_MEDICATION_ROW = {
   medication_name: '',
   dose: '',
+  dose_unit: 'mg' as MedicationDoseUnit,
+  // Set once a photo finishes uploading (see uploadHotelMedicationPhoto) -
+  // null until then, whether nothing was picked or an upload is in flight.
+  photo_url: null as string | null,
+  photo_uploading: false,
+  photo_error: null as string | null,
   scheduled_time: '08:00',
   administration_notes: '',
   medication_catalog_id: null as string | null,
@@ -389,9 +412,12 @@ function bookingDraftStorageKey(
   // v2: the step order changed (Branch-first, Services before Date & Time) -
   // a draft saved under the old order would rehydrate onto a mismatched
   // stepper, so bump the key to let stale drafts lapse instead.
+  // v3: care instruction units + photos added quantity_unit/dose_unit as
+  // required feeding/medication row fields - a pre-v3 draft's rows would
+  // rehydrate missing them, same lapse-instead-of-migrate precedent as v2.
   return isReceptionistMode
-    ? `booking-draft:staff:v2:${userId}`
-    : `booking-draft:customer:v2:${userId}`;
+    ? `booking-draft:staff:v3:${userId}`
+    : `booking-draft:customer:v3:${userId}`;
 }
 
 function readBookingDraft(key: string): PersistedBookingDraft | null {
@@ -2058,6 +2084,34 @@ export function CustomerBookingFlowPage() {
     setHotelFeeding((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /** Uploads a photo of the feeding item (e.g. the food bag/label), same
+   * idea as a diet-tracking app letting you snap a picture of what you're
+   * logging. Uploaded immediately (not deferred to booking submission) so
+   * the row can show a preview/remove control right away. */
+  async function uploadHotelFeedingPhoto(index: number, file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    updateHotelFeeding(index, { photo_uploading: true, photo_error: null });
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      updateHotelFeeding(index, {
+        photo_url: result.data.photo_url,
+        photo_uploading: false,
+      });
+    } else {
+      updateHotelFeeding(index, {
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      });
+    }
+  }
+
   function addHotelWalkBlock() {
     setHotelWalking((prev) => [
       ...prev,
@@ -2127,6 +2181,35 @@ export function CustomerBookingFlowPage() {
     setHotelMedications((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /** Uploads a photo of the medication item/label - see
+   * uploadHotelFeedingPhoto's dev note above. */
+  async function uploadHotelMedicationPhoto(index: number, file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    updateHotelMedication(index, {
+      photo_uploading: true,
+      photo_error: null,
+    });
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      updateHotelMedication(index, {
+        photo_url: result.data.photo_url,
+        photo_uploading: false,
+      });
+    } else {
+      updateHotelMedication(index, {
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      });
+    }
+  }
+
   /** Undefined (never sent) unless the customer/receptionist actually
    * entered something - an empty-everything payload adds nothing the
    * check-in form's own blank state doesn't already give. Sent under the
@@ -2148,6 +2231,8 @@ export function CustomerBookingFlowPage() {
         meal_time: row.meal_time,
         food_type: row.food_type,
         quantity: row.quantity,
+        quantity_unit: row.quantity_unit,
+        ...(row.photo_url ? { photo_url: row.photo_url } : {}),
         ...(row.special_instructions.trim()
           ? { special_instructions: row.special_instructions.trim() }
           : {}),
@@ -2180,6 +2265,8 @@ export function CustomerBookingFlowPage() {
       .map((row) => ({
         medication_name: row.medication_name,
         dose: row.dose,
+        dose_unit: row.dose_unit,
+        ...(row.photo_url ? { photo_url: row.photo_url } : {}),
         scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
         ...(row.administration_notes.trim()
           ? { administration_notes: row.administration_notes.trim() }
@@ -3315,6 +3402,23 @@ export function CustomerBookingFlowPage() {
                           })
                         }
                       />
+                      <select
+                        className={styles.input}
+                        aria-label="Quantity unit"
+                        value={row.quantity_unit}
+                        onChange={(event) =>
+                          updateHotelFeeding(index, {
+                            quantity_unit: event.target
+                              .value as FoodQuantityUnit,
+                          })
+                        }
+                      >
+                        {FOOD_QUANTITY_UNITS.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         className={styles.input}
                         placeholder="Special instructions (optional)"
@@ -3332,6 +3436,45 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
+                    </div>
+                    <div className={styles.inlineFields}>
+                      {row.photo_url ? (
+                        <>
+                          <img
+                            className={styles.carePhotoThumbnail}
+                            src={row.photo_url}
+                            alt="Food item"
+                          />
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              updateHotelFeeding(index, { photo_url: null })
+                            }
+                          >
+                            Remove photo
+                          </button>
+                        </>
+                      ) : (
+                        <label className={styles.copy}>
+                          {row.photo_uploading
+                            ? 'Uploading photo...'
+                            : 'Attach a photo (optional)'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            disabled={row.photo_uploading}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) uploadHotelFeedingPhoto(index, file);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                      {row.photo_error ? (
+                        <p className={styles.errorText}>{row.photo_error}</p>
+                      ) : null}
                     </div>
                     {notOnDayOne || notOnLastDay ? (
                       <p className={styles.copy}>
@@ -3568,6 +3711,22 @@ export function CustomerBookingFlowPage() {
                           })
                         }
                       />
+                      <select
+                        className={styles.input}
+                        aria-label="Dose unit"
+                        value={row.dose_unit}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            dose_unit: event.target.value as MedicationDoseUnit,
+                          })
+                        }
+                      >
+                        {MEDICATION_DOSE_UNITS.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
                       <TimeInput
                         aria-label="Medication time"
                         value={row.scheduled_time}
@@ -3594,6 +3753,45 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
+                    </div>
+                    <div className={styles.inlineFields}>
+                      {row.photo_url ? (
+                        <>
+                          <img
+                            className={styles.carePhotoThumbnail}
+                            src={row.photo_url}
+                            alt="Medication"
+                          />
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              updateHotelMedication(index, { photo_url: null })
+                            }
+                          >
+                            Remove photo
+                          </button>
+                        </>
+                      ) : (
+                        <label className={styles.copy}>
+                          {row.photo_uploading
+                            ? 'Uploading photo...'
+                            : 'Attach a photo (optional)'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            disabled={row.photo_uploading}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) uploadHotelMedicationPhoto(index, file);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                      {row.photo_error ? (
+                        <p className={styles.errorText}>{row.photo_error}</p>
+                      ) : null}
                     </div>
                     <p className={styles.copy}>
                       Applies daily - won&apos;t happen before check-in on
