@@ -9,6 +9,11 @@ import styles from './CagePickerList.module.css';
 interface CagePickerListProps {
   accessToken: string;
   branchId: string;
+  /** Custom change (cage pet-type support): the options list is now
+   * hard-filtered server-side to cages supporting this pet's own pet_type -
+   * unlike cage size below, there's no override for a pet-type mismatch,
+   * so a wrong-type cage is simply absent from the list, never disabled. */
+  petId: string;
   selected: CagePreferenceInput | null;
   onSelect: (preference: CagePreferenceInput) => void;
   /** Same contract as StaffPickerList's onUnavailable - called once, the
@@ -52,10 +57,19 @@ function isSelected(
  * decides whether this step exists in the stepper at all. Branch-scoped
  * only (no time window - cage availability is a live status snapshot, not
  * a per-slot check); "No preference" is always present and pinned first.
+ *
+ * Custom change (cage pet-type support): this component now only ever
+ * mounts for receptionist/staff bookings (customers get the readonly
+ * CageAssignmentStatus instead) - staff still get free choice of any cage
+ * size, but the option list itself is already hard-scoped to this pet's own
+ * pet_type upstream (getCagePickerOptions), so there's no disabled/"Staff
+ * only" tile for a pet-type mismatch the way there is for size below - a
+ * wrong-type cage simply never appears as an option, for anyone.
  */
 export function CagePickerList({
   accessToken,
   branchId,
+  petId,
   selected,
   onSelect,
   onUnavailable,
@@ -86,7 +100,7 @@ export function CagePickerList({
   useEffect(() => {
     let isMounted = true;
 
-    void getCagePickerOptions(accessToken, branchId).then((result) => {
+    void getCagePickerOptions(accessToken, branchId, petId).then((result) => {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -114,7 +128,7 @@ export function CagePickerList({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, branchId]);
+  }, [accessToken, branchId, petId]);
 
   if (isUnavailable) {
     return null;

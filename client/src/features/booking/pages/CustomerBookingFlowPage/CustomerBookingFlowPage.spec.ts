@@ -192,6 +192,17 @@ vi.mock('../../components/StaffPickerList/StaffPickerList', () => ({
         : null
     ),
 }));
+// Custom change (cage pet-type support / readonly cage assignment): mocked
+// the same way as CagePickerList below, so existing customer-mode Hotel
+// tests never hit the real GET /bookings/cage-assignment-status call.
+vi.mock('../../components/CageAssignmentStatus/CageAssignmentStatus', () => ({
+  CageAssignmentStatus: () =>
+    createElement(
+      'div',
+      { 'data-testid': 'cage-assignment-status' },
+      'Cage assignment status'
+    ),
+}));
 // Custom change: Cage Picker addendum - mocked the same way as
 // StaffPickerList above, so existing tests never hit the real
 // GET /bookings/cage-picker call.

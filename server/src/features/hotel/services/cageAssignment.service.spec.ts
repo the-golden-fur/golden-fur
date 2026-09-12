@@ -39,11 +39,18 @@ describe('cageAssignment.service (#75)', () => {
   });
 
   describe('suggestCage', () => {
-    it('AC-2: returns the pet weight-class-matching size and its Available cages', async () => {
+    it("AC-2: returns the pet weight-class-matching size and its Available cages of the pet's own pet_type", async () => {
       queueFromResults(
-        { data: { weight_class: 'M' }, error: null },
+        { data: { weight_class: 'M', pet_type: 'Dog' }, error: null },
         {
-          data: [{ id: 'cage-1', size: 'M', status: 'Available' }],
+          data: [
+            {
+              id: 'cage-1',
+              size: 'M',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
           error: null,
         }
       );
@@ -52,6 +59,7 @@ describe('cageAssignment.service (#75)', () => {
 
       expect(result.suggestedSize).toBe('M');
       expect(result.availableCages).toHaveLength(1);
+      expect(result.availableCages[0].pet_types).toEqual(['Dog']);
     });
 
     it('404s when the pet does not exist', async () => {
@@ -60,6 +68,17 @@ describe('cageAssignment.service (#75)', () => {
       await expect(suggestCage('pet-x', 'branch-1')).rejects.toMatchObject({
         statusCode: 404,
       });
+    });
+
+    it('Custom change (cage pet-type support): returns no cages when a correctly-sized cage exists but of the wrong pet type', async () => {
+      queueFromResults(
+        { data: { weight_class: 'M', pet_type: 'Cat' }, error: null },
+        { data: [], error: null }
+      );
+
+      const result = await suggestCage('pet-1', 'branch-1');
+
+      expect(result.availableCages).toHaveLength(0);
     });
   });
 

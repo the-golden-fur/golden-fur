@@ -230,7 +230,7 @@ export async function rescheduleBooking({
   } else {
     const { data: pet, error: petError } = await supabase
       .from('pets')
-      .select('weight_class')
+      .select('weight_class, pet_type')
       .eq('id', booking.pet_id)
       .maybeSingle();
 
@@ -265,6 +265,7 @@ export async function rescheduleBooking({
           ? await verifyCagePreference(
               input.cage_preference.cage_id!,
               targetBranchId,
+              pet.pet_type as string,
               isStaff ? undefined : ((pet.weight_class as string) ?? undefined)
             )
           : null;

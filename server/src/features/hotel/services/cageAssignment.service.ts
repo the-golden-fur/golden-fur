@@ -18,6 +18,11 @@ export interface CageSuggestion {
  * at the branch. The receptionist's manual override is still validated
  * server-side against real availability in assignCage(), never accepted
  * blindly from the client.
+ *
+ * Custom change (cage pet-type support): also hard-filters to cages whose
+ * cage_pet_types include the pet's own pet_type - unlike size, there is no
+ * staff override for a pet-type mismatch (a cat cannot be checked into a
+ * dog-only cage), so this exclusion applies unconditionally here too.
  */
 export async function suggestCage(
   petId: string,
@@ -25,7 +30,7 @@ export async function suggestCage(
 ): Promise<CageSuggestion> {
   const { data: pet, error: petError } = await supabase
     .from('pets')
-    .select('weight_class')
+    .select('weight_class, pet_type')
     .eq('id', petId)
     .maybeSingle();
 
@@ -36,14 +41,25 @@ export async function suggestCage(
 
   const { data: cages, error: cagesError } = await supabase
     .from('cages')
-    .select('*')
+    .select('*, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
     .eq('size', suggestedSize)
-    .eq('status', 'Available');
+    .eq('status', 'Available')
+    .eq('cage_pet_types.pet_type', pet.pet_type as string);
 
   if (cagesError) throwWithStatus(400, cagesError.message);
 
-  return { suggestedSize, availableCages: (cages ?? []) as Cage[] };
+  const availableCages = (cages ?? []).map((row) => {
+    const { cage_pet_types, ...rest } = row as Record<string, unknown> & {
+      cage_pet_types: { pet_type: string }[];
+    };
+    return {
+      ...(rest as Omit<Cage, 'pet_types'>),
+      pet_types: cage_pet_types.map((entry) => entry.pet_type),
+    };
+  });
+
+  return { suggestedSize, availableCages };
 }
 
 /**

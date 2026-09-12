@@ -119,36 +119,59 @@ describe('cageStatus.service (#78)', () => {
   });
 
   describe('createCage (Cage CRUD, custom change)', () => {
-    it('creates a cage at the given branch', async () => {
-      queueFromResults({
-        data: { id: 'c1', cage_label: 'Makati-S-03', size: 'S' },
-        error: null,
-      });
+    it('creates a cage at the given branch with its pet types', async () => {
+      queueFromResults(
+        {
+          data: { id: 'c1', cage_label: 'Makati-S-03', size: 'S' },
+          error: null,
+        }, // cages insert
+        { data: null, error: null } // cage_pet_types insert
+      );
 
       const cage = await createCage({
         branchId: 'branch-1',
         cageLabel: 'Makati-S-03',
         size: 'S',
+        petTypes: ['Dog', 'Cat'],
       });
 
       expect(cage.cage_label).toBe('Makati-S-03');
+      expect(cage.pet_types).toEqual(['Dog', 'Cat']);
     });
 
     it('surfaces a Supabase error as a 400', async () => {
       queueFromResults({ data: null, error: { message: 'boom' } });
 
       await expect(
-        createCage({ branchId: 'branch-1', cageLabel: 'X', size: 'S' })
+        createCage({
+          branchId: 'branch-1',
+          cageLabel: 'X',
+          size: 'S',
+          petTypes: ['Dog'],
+        })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('Custom change (cage pet-type support): rejects an empty pet_types list before querying', async () => {
+      await expect(
+        createCage({
+          branchId: 'branch-1',
+          cageLabel: 'X',
+          size: 'S',
+          petTypes: [],
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
     });
   });
 
   describe('updateCage (Cage CRUD, custom change)', () => {
-    it('updates the label and/or size, scoped to the branch', async () => {
-      queueFromResults({
-        data: { id: 'c1', cage_label: 'Renamed', size: 'M' },
-        error: null,
-      });
+    it('updates the label and/or size, scoped to the branch, keeping existing pet types when petTypes is omitted', async () => {
+      queueFromResults(
+        { data: { id: 'c1', cage_label: 'Renamed', size: 'M' }, error: null }, // cages update
+        { data: [{ pet_type: 'Dog' }], error: null } // cage_pet_types select
+      );
 
       const cage = await updateCage({
         cageId: 'c1',
@@ -159,6 +182,31 @@ describe('cageStatus.service (#78)', () => {
 
       expect(cage.cage_label).toBe('Renamed');
       expect(cage.size).toBe('M');
+      expect(cage.pet_types).toEqual(['Dog']);
+    });
+
+    it('Custom change (cage pet-type support): replaces pet_types membership wholesale when given', async () => {
+      queueFromResults(
+        { data: { id: 'c1', cage_label: 'Renamed', size: 'M' }, error: null }, // cages update
+        { data: null, error: null }, // cage_pet_types delete
+        { data: null, error: null } // cage_pet_types insert
+      );
+
+      const cage = await updateCage({
+        cageId: 'c1',
+        branchId: 'branch-1',
+        petTypes: ['Cat'],
+      });
+
+      expect(cage.pet_types).toEqual(['Cat']);
+    });
+
+    it('Custom change (cage pet-type support): rejects an empty pet_types list before querying', async () => {
+      await expect(
+        updateCage({ cageId: 'c1', branchId: 'branch-1', petTypes: [] })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
     });
 
     it('404s when the cage does not exist at this branch', async () => {

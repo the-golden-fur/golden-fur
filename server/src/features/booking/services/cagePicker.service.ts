@@ -14,6 +14,11 @@ interface CageRow {
   status: string;
 }
 
+function throwIfPetNotFound<T>(pet: T | null): T {
+  if (!pet) throwWithStatus(404, 'Pet not found');
+  return pet;
+}
+
 /**
  * Custom change: Cage Picker addendum, mirroring staffPicker.service.ts's
  * isStaffPickerEnabled - single resolution point for whether the Cage
@@ -53,10 +58,17 @@ export interface CagePickerOptionsResult {
  * snapshot ('Available' cages at the branch right now), not a time-window
  * query - the actual claim still only happens at check-in via
  * cageAssignment.service.ts's suggestCage/assignCage.
+ *
+ * Custom change (cage pet-type support): petId is now required so the
+ * options list can be hard-filtered to cages whose cage_pet_types include
+ * this pet's own pet_type - unlike cage size (soft, staff-overridable), a
+ * wrong-pet-type cage is excluded from the list entirely, for every caller
+ * (customer and staff alike).
  */
 export async function getCagePickerOptions(
   branchId: string,
-  serviceCategory: ServiceCategory
+  serviceCategory: ServiceCategory,
+  petId: string
 ): Promise<CagePickerOptionsResult> {
   const enabled = await isCagePickerEnabled(serviceCategory);
 
@@ -64,11 +76,21 @@ export async function getCagePickerOptions(
     return { cage_picker_enabled: false, options: [] };
   }
 
+  const { data: pet, error: petError } = await supabase
+    .from('pets')
+    .select('pet_type')
+    .eq('id', petId)
+    .maybeSingle();
+
+  if (petError) throwWithStatus(400, petError.message);
+  const petType = throwIfPetNotFound(pet).pet_type as string;
+
   const { data, error } = await supabase
     .from('cages')
-    .select('id, cage_label, size, status')
+    .select('id, cage_label, size, status, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
     .eq('status', 'Available')
+    .eq('cage_pet_types.pet_type', petType)
     .order('size')
     .order('cage_label');
 
@@ -96,6 +118,10 @@ export async function getCagePickerOptions(
  * preference") rather than rejecting the whole booking, since a cage
  * preference is advisory-only and check-in re-validates/re-picks anyway.
  *
+ * petType (Custom change: cage pet-type support) - always applied,
+ * unconditionally, for every caller (customer and staff): a pet-type
+ * mismatch is a hard filter, unlike requiredSize below.
+ *
  * requiredSize (Custom change: cage size booking restriction) - when given
  * (a customer's own booking, never a staff-created one), the cage must also
  * match the pet's own weight_class or this degrades to null exactly like an
@@ -105,14 +131,16 @@ export async function getCagePickerOptions(
 export async function verifyCagePreference(
   cageId: string,
   branchId: string,
+  petType: string,
   requiredSize?: string
 ): Promise<string | null> {
   let query = supabase
     .from('cages')
-    .select('id')
+    .select('id, cage_pet_types!inner(pet_type)')
     .eq('id', cageId)
     .eq('branch_id', branchId)
-    .eq('status', 'Available');
+    .eq('status', 'Available')
+    .eq('cage_pet_types.pet_type', petType);
 
   if (requiredSize) {
     query = query.eq('size', requiredSize);
@@ -123,4 +151,49 @@ export async function verifyCagePreference(
   if (error) throwWithStatus(400, error.message);
 
   return data ? cageId : null;
+}
+
+/**
+ * Custom change (cage pet-type support / customer readonly cage view):
+ * answers the customer-facing "is there a cage for my pet" question -
+ * matches the pet's weight_class + pet_type against Available cages at the
+ * branch, mirroring cageAssignment.service.ts's suggestCage matching logic,
+ * but returns only a boolean + minimal cage identity (never the full list -
+ * the customer only needs to know whether one exists, optionally its
+ * label). Deliberately not gated on a selected date/time slot, since cage
+ * availability is a live status snapshot, not a per-slot check - callers
+ * can (and should) show this as soon as the pet is known.
+ */
+export async function getCageAssignmentStatus(
+  petId: string,
+  branchId: string
+): Promise<{
+  matched: boolean;
+  cage: { id: string; cage_label: string } | null;
+}> {
+  const { data: pet, error: petError } = await supabase
+    .from('pets')
+    .select('weight_class, pet_type')
+    .eq('id', petId)
+    .maybeSingle();
+
+  if (petError) throwWithStatus(400, petError.message);
+  const { weight_class, pet_type } = throwIfPetNotFound(pet);
+
+  const { data, error } = await supabase
+    .from('cages')
+    .select('id, cage_label, cage_pet_types!inner(pet_type)')
+    .eq('branch_id', branchId)
+    .eq('size', weight_class as string)
+    .eq('status', 'Available')
+    .eq('cage_pet_types.pet_type', pet_type as string)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  return {
+    matched: !!data,
+    cage: data ? { id: data.id, cage_label: data.cage_label } : null,
+  };
 }

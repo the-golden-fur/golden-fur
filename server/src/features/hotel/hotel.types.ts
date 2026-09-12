@@ -59,6 +59,11 @@ export interface Cage {
   cage_label: string;
   size: CageSize;
   status: CageStatus;
+  /** Custom change (cage pet-type support, 20260912193): pet_types.key
+   * values this cage supports (e.g. ['Dog', 'Cat']) - many-to-many via the
+   * cage_pet_types junction table, since one physical cage can house either
+   * a dog or a cat, unlike size which is fixed per cage. Always non-empty. */
+  pet_types: string[];
   created_at: string;
   updated_at: string;
 }
