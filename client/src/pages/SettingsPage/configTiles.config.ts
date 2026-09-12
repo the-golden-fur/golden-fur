@@ -5,6 +5,7 @@ import {
   DoorOpen,
   Dog,
   Package,
+  PawPrint,
   Percent,
   Receipt,
   Scale,
@@ -18,6 +19,7 @@ import { PricingConfigurationPage } from '../../features/maintenance/pages/Prici
 import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
+import { AdminPetTypesPage } from '../../features/maintenance/pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
@@ -81,6 +83,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/maintenance/breeds',
     icon: Dog,
     Component: AdminBreedsPage,
+  },
+  {
+    title: 'Pet Types',
+    description:
+      'CRUD for pet types, plus a per-branch fixed price that overrides service/package pricing (e.g. Cat = 800 for everything).',
+    to: '/staff/admin/maintenance/pet-types',
+    icon: PawPrint,
+    Component: AdminPetTypesPage,
   },
   {
     title: 'Product Catalog',

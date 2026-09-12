@@ -337,6 +337,7 @@ export async function catalogController(
     const catalog = await getBookingCatalog({
       branchId: parsed.data.branch_id,
       category: parsed.data.category,
+      petType: parsed.data.pet_type,
     });
 
     return res.status(200).json(catalog);

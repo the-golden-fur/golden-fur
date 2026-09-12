@@ -23,6 +23,7 @@ vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   createPet: vi.fn(),
   listBreeds: vi.fn(() => Promise.resolve({ data: [], error: null })),
+  listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),
   uploadPetPhoto: vi.fn(),
 }));
 

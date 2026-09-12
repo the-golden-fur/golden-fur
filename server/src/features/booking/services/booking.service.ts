@@ -11,6 +11,7 @@ import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
 import {
   createNotification,
@@ -91,14 +92,23 @@ interface CreateBookingParams {
  * opt-in per service (`use_pricing_matrix`), not automatic for every
  * Grooming row - the board shows individual add-on services (Nail Trim,
  * Ear Cleaning, etc.) at one flat price regardless of size/coat, and only
- * Bath/Blow-dry/Brushing actually varying by size. Cats are always flat
- * regardless of the service's own flag - "Cat has no weight class or coat
- * type" (the board shows one flat Cat price, never a size/coat cell) - so a
- * Cat pet skips the tier lookup even for a matrix-enabled service.
+ * Bath/Blow-dry/Brushing actually varying by size.
+ *
+ * Custom change (Pet Types admin CRUD + fixed-price override, 20260912191/
+ * 20260912192): the old hardcoded "a Cat is always flat regardless of the
+ * service's own flag" rule is gone - Cat's flat pricing is now purely a
+ * consequence of the seeded pet_type_price_overrides row (800 PHP,
+ * system-wide default), not a species check in this function. `fixedPriceOverride`
+ * is resolved once per booking by resolveBookingItems (via
+ * petTypePriceOverrides.service.ts's getFixedPrice) and threaded down here -
+ * when set, it wins outright and the matrix/base_price logic below never
+ * runs. A pet type with no override (including a brand-new admin-created
+ * one) falls through to the same matrix-or-base_price logic every other pet
+ * type already used.
  *
  * Grooming price is tiered by the pet's size/coat when a matching
  * service_pricing_tiers cell exists; base_price otherwise (and always for
- * the other categories, a non-matrix service, or a Cat).
+ * the other categories or a non-matrix service).
  */
 interface PriceableService {
   category: ServiceCategory;
@@ -113,13 +123,12 @@ interface PriceableService {
 
 export function resolveServicePrice(
   service: PriceableService,
-  pet: PetRow
+  pet: PetRow,
+  fixedPriceOverride: number | null = null
 ): number {
-  if (
-    service.category === 'Grooming' &&
-    service.use_pricing_matrix &&
-    pet.pet_type !== 'Cat'
-  ) {
+  if (fixedPriceOverride !== null) return fixedPriceOverride;
+
+  if (service.category === 'Grooming' && service.use_pricing_matrix) {
     const tier = (service.service_pricing_tiers ?? []).find(
       (row) =>
         row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
@@ -178,7 +187,8 @@ async function resolveBookingItem(
   serviceCategory: ServiceCategory,
   branchId: string,
   scheduledStart: string,
-  scheduledEnd: string
+  scheduledEnd: string,
+  fixedPriceOverride: number | null
 ): Promise<ResolvedBookingItem> {
   if ('service_id' in itemInput) {
     const service = await getServiceById(itemInput.service_id);
@@ -212,7 +222,9 @@ async function resolveBookingItem(
     return {
       service_id: service.id,
       package_id: null,
-      price_at_booking: round2(resolveServicePrice(service, pet) * quantity),
+      price_at_booking: round2(
+        resolveServicePrice(service, pet, fixedPriceOverride) * quantity
+      ),
       duration_minutes_at_booking: durationMinutes,
     };
   }
@@ -283,7 +295,7 @@ async function resolveBookingItem(
     packageDurationMinutes
   );
 
-  const packagePrice = await resolvePackagePrice(pkg, pet);
+  const packagePrice = await resolvePackagePrice(pkg, pet, fixedPriceOverride);
 
   return {
     service_id: null,
@@ -306,18 +318,24 @@ async function resolveBookingItem(
  * confusing in the admin package builder (a plain member "diluted" the
  * total, and toggling the package flag alone did nothing without a matrix
  * member already selected). Falls back to the flat `bundled_price` whenever
- * the package isn't matrix-enabled, and for a Cat pet regardless (mirrors
- * resolveServicePrice's own Cat exemption - the S/M/L/XL matrix is a dog
- * weight-class scale).
+ * the package isn't matrix-enabled.
+ *
+ * Custom change (Pet Types admin CRUD + fixed-price override, 20260912191/
+ * 20260912192): the old hardcoded Cat exemption is gone - see
+ * resolveServicePrice's own doc comment for why. `fixedPriceOverride` wins
+ * outright when set, same as there.
  */
 export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
     'bundled_price' | 'use_pricing_matrix'
   >,
-  pet: PetRow
+  pet: PetRow,
+  fixedPriceOverride: number | null = null
 ): Promise<number> {
-  if (!pkg.use_pricing_matrix || pet.pet_type === 'Cat') {
+  if (fixedPriceOverride !== null) return fixedPriceOverride;
+
+  if (!pkg.use_pricing_matrix) {
     return Number(pkg.bundled_price);
   }
 
@@ -344,6 +362,11 @@ export async function resolveBookingItems(
 ): Promise<ResolvedBookingItem[]> {
   const resolved: ResolvedBookingItem[] = [];
 
+  // Fetched once - the pet and branch are constant across every item in this
+  // booking, so there's no reason to re-query per item. Threaded down into
+  // resolveServicePrice/resolvePackagePrice via resolveBookingItem below.
+  const fixedPriceOverride = await getFixedPrice(pet.pet_type, branchId);
+
   // Sequential, not Promise.all: each item may 400/403 with a message naming
   // that specific service/package, which reads clearer than an
   // out-of-order Promise.all rejection would.
@@ -356,7 +379,8 @@ export async function resolveBookingItems(
         serviceCategory,
         branchId,
         scheduledStart,
-        scheduledEnd
+        scheduledEnd,
+        fixedPriceOverride
       )
     );
   }

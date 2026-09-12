@@ -306,6 +306,13 @@ const UNASSESSED_PET = {
   coat_type: null,
 };
 
+const CAT_PET = {
+  ...PET,
+  id: 'pet-cat-1',
+  name: 'Luna',
+  pet_type: 'Cat' as const,
+};
+
 const CUSTOMER = {
   id: 'cust-1',
   full_name: 'Jamie Cruz',
@@ -1231,6 +1238,48 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.getByText('Bath').closest('button')?.className).not.toMatch(
       /selected/
     );
+  });
+
+  it("Pet Types admin CRUD + fixed-price override: a Cat pet's fixed price (from the catalog response) replaces the service's own base_price on both the option card and the running total", async () => {
+    vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+      data: [CAT_PET],
+      error: null,
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [],
+        fixedPrice: 800,
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Luna')).toBeInTheDocument());
+    await user.click(screen.getByText('Luna'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Grooming')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+
+    // Bath's own base_price is 300 - both the option card and the running
+    // total must show the fixed 800 instead, matching what
+    // booking.service.ts actually charges at confirmation.
+    expect(screen.getAllByText('PHP 800.00')).toHaveLength(2);
+    expect(screen.queryByText('PHP 300.00')).not.toBeInTheDocument();
   });
 
   it('Hotel: the running total scales with the number of nights', async () => {

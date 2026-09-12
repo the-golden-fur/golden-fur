@@ -8,6 +8,7 @@ import type {
   PetHealthCondition,
   PetMedicalNote,
   PetType,
+  PetTypeRow,
   PetUpdatePayloadStaff,
   PetVaccinationRecord,
 } from '../customer.types';
@@ -394,6 +395,32 @@ export async function listBreeds(
   }
 
   return { data: (data ?? []) as Breed[], error: null };
+}
+
+/**
+ * Custom change: Pet Types admin CRUD (20260912191). Open RLS read, same
+ * shape as listBreeds above - the pet intake/edit dropdown (PetForm,
+ * PetDetailPanel) reads directly via Supabase rather than the staff-only
+ * maintenance.api.ts admin CRUD surface. Only active pet types are offered.
+ */
+export async function listPetTypes(): Promise<CustomerApiResult<PetTypeRow[]>> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return { data: null, error: 'Supabase client is not configured.' };
+  }
+
+  const { data, error } = await supabase
+    .from('pet_types')
+    .select('id, key, name, is_active, created_at, updated_at')
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as PetTypeRow[], error: null };
 }
 
 export async function uploadPetPhoto(

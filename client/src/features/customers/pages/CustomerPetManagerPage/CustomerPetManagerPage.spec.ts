@@ -11,6 +11,9 @@ import { CustomerPetManagerPage } from './CustomerPetManagerPage';
 
 vi.mock('../../api/customer.api', () => ({
   listCustomerPets: vi.fn(),
+  createPet: vi.fn(),
+  uploadPetPhoto: vi.fn(),
+  listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),
 }));
 
 function buildPet(overrides: Partial<Pet> = {}): Pet {

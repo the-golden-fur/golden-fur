@@ -149,7 +149,7 @@ begin
       values (
         v_customer.id,
         v_pet ->> 'name',
-        (v_pet ->> 'pet_type')::public.pet_type,
+        v_pet ->> 'pet_type',
         (v_pet ->> 'weight_class')::public.pet_weight_class,
         (v_pet ->> 'weight_kg')::numeric,
         (v_pet ->> 'coat_type')::public.pet_coat_type,

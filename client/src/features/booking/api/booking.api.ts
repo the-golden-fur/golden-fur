@@ -257,11 +257,18 @@ export interface BookingCatalog {
   services: Service[];
   packages: Package[];
   promos: Promo[];
+  /** Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+   * the pet type's resolved fixed price for this branch, or null if none
+   * applies - only present when `CatalogQuery.petType` was given. When set,
+   * it replaces every service/package's own price in the booking preview,
+   * matching what booking.service.ts actually charges at confirmation. */
+  fixedPrice: number | null;
 }
 
 export interface CatalogQuery {
   branchId: string;
   category?: string;
+  petType?: string;
 }
 
 /**
@@ -279,6 +286,10 @@ export async function getBookingCatalog(
 
   if (query.category) {
     params.set('category', query.category);
+  }
+
+  if (query.petType) {
+    params.set('pet_type', query.petType);
   }
 
   const response = await fetch(

@@ -625,6 +625,12 @@ export const partsOfDayQueryValidator = z
 export const catalogQueryValidator = z.object({
   branch_id: z.uuid(),
   category: z.enum(CATEGORIES).optional(),
+  // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+  // when given, the catalog also resolves this pet type's fixed-price
+  // override for branch_id, so the customer-facing price preview can show
+  // the real charged price instead of every item's own base_price/
+  // bundled_price.
+  pet_type: z.string().trim().min(1).optional(),
 });
 
 export const listBookingsQueryValidator = z.object({

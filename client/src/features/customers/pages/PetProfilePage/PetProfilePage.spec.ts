@@ -38,6 +38,21 @@ vi.mock('../../api/customer.api', () => ({
       error: null,
     })
   ),
+  listPetTypes: vi.fn(() =>
+    Promise.resolve({
+      data: [
+        {
+          id: 'pet-type-dog',
+          key: 'Dog',
+          name: 'Dog',
+          is_active: true,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    })
+  ),
 }));
 
 function renderAtPetRoute(petId: string) {

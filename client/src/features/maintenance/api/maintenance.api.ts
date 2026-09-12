@@ -5,6 +5,7 @@ import type {
   Breed,
   CreateBreedPayload,
   CreatePackagePayload,
+  CreatePetTypePayload,
   CreatePromoPayload,
   CreateServicePayload,
   CreateServiceTypePayload,
@@ -12,6 +13,8 @@ import type {
   PackageBranchAvailability,
   PackagePricingConfiguration,
   PetType,
+  PetTypePriceOverride,
+  PetTypeRow,
   PetWeightClassConfiguration,
   PricingConfiguration,
   Promo,
@@ -24,11 +27,13 @@ import type {
   UpdateBreedPayload,
   UpdatePackagePayload,
   UpdatePackagePricingConfigurationPayload,
+  UpdatePetTypePayload,
   UpdatePetWeightClassConfigurationPayload,
   UpdatePricingConfigurationPayload,
   UpdatePromoPayload,
   UpdateServicePayload,
   UpdateServiceTypePayload,
+  UpsertPetTypePriceOverridePayload,
   UpsertPromoCapConfigurationPayload,
 } from '../maintenance.types';
 
@@ -856,4 +861,150 @@ export async function setServiceTypeBranchAvailability(
     availability: ServiceTypeBranchAvailability;
   }>(response);
   return { data: result.data?.availability ?? null, error: result.error };
+}
+
+// ---------------------------------------------------------------------------
+// Pet Types (Architectural-Change-History: admin CRUD + fixed-price override)
+// ---------------------------------------------------------------------------
+
+export async function listPetTypes(
+  accessToken: string
+): Promise<MaintenanceApiResult<PetTypeRow[]>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/pet-types`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ pet_types: PetTypeRow[] }>(response);
+  return { data: result.data?.pet_types ?? null, error: result.error };
+}
+
+export async function createPetType(
+  accessToken: string,
+  payload: CreatePetTypePayload
+): Promise<MaintenanceApiResult<PetTypeRow>> {
+  const response = await fetch(`${API_BASE_URL}/maintenance/pet-types`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ pet_type: PetTypeRow }>(response);
+  return { data: result.data?.pet_type ?? null, error: result.error };
+}
+
+export async function updatePetType(
+  petTypeId: string,
+  accessToken: string,
+  payload: UpdatePetTypePayload
+): Promise<MaintenanceApiResult<PetTypeRow>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-types/${petTypeId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ pet_type: PetTypeRow }>(response);
+  return { data: result.data?.pet_type ?? null, error: result.error };
+}
+
+export async function deletePetType(
+  petTypeId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-types/${petTypeId}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listPetTypePriceOverrides(
+  accessToken: string,
+  branchId?: string
+): Promise<MaintenanceApiResult<PetTypePriceOverride[]>> {
+  const query = branchId ? `?branch_id=${branchId}` : '';
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-type-price-overrides${query}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    pet_type_price_overrides: PetTypePriceOverride[];
+  }>(response);
+  return {
+    data: result.data?.pet_type_price_overrides ?? null,
+    error: result.error,
+  };
+}
+
+export async function upsertPetTypePriceOverride(
+  accessToken: string,
+  payload: UpsertPetTypePriceOverridePayload
+): Promise<MaintenanceApiResult<PetTypePriceOverride>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-type-price-overrides`,
+    {
+      method: 'PUT',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    pet_type_price_override: PetTypePriceOverride;
+  }>(response);
+  return {
+    data: result.data?.pet_type_price_override ?? null,
+    error: result.error,
+  };
+}
+
+export async function deletePetTypePriceOverride(
+  overrideId: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-type-price-overrides/${overrideId}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
 }

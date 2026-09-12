@@ -18,6 +18,7 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -41,6 +42,18 @@ vi.mock('../../maintenance/services/promos.service.ts', () => ({
 
 vi.mock('../../discounts/services/discounts.service.ts', () => ({
   getDiscountById: vi.fn(),
+}));
+
+// Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+// mocked wholesale, same rationale as getServiceById/getPackageById above -
+// resolveBookingItems now calls this once per createBooking regardless of
+// path, and defaulting it to "no override" in the outer beforeEach means
+// none of the many pre-existing sequential mock queues below need to change
+// to account for it. Tests that specifically exercise a fixed-price
+// override use resolveServicePrice/resolvePackagePrice directly instead
+// (see the "pricing matrix" describe block).
+vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
+  getFixedPrice: vi.fn(),
 }));
 
 // Issue #98: booking_confirmed dispatch is covered by its own unit tests
@@ -291,6 +304,7 @@ describe('booking.service (#51)', () => {
       data: [GROOMER],
       error: null,
     } as never);
+    vi.mocked(getFixedPrice).mockResolvedValue(null);
   });
 
   it('AC-1/AC-4: creates a Pending Grooming booking (tiered price, auto-assigned staff, capacity re-verified post-insert)', async () => {
@@ -2371,7 +2385,29 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(100);
     });
 
-    it('resolveServicePrice: a Cat pet always gets the flat base_price, even for a matrix-enabled service', () => {
+    // Custom change (Pet Types admin CRUD + fixed-price override,
+    // 20260912191/20260912192): the old hardcoded "Cat is always flat" rule
+    // is gone - a Cat's flat pricing is now purely a consequence of a
+    // pet_type_price_overrides row (the seeded 800 PHP default), passed in
+    // as fixedPriceOverride, not a species check inside this function.
+    it('resolveServicePrice: fixedPriceOverride wins outright regardless of matrix config, for any pet type', () => {
+      const price = resolveServicePrice(
+        {
+          category: 'Grooming',
+          base_price: 300,
+          use_pricing_matrix: true,
+          service_pricing_tiers: [
+            { weight_class: 'S', coat_type: 'SC', price: 350 },
+          ],
+        },
+        CAT_PET as never,
+        800
+      );
+
+      expect(price).toBe(800);
+    });
+
+    it('resolveServicePrice: a Cat pet with NO override falls through to the matrix exactly like a Dog would', () => {
       const price = resolveServicePrice(
         {
           category: 'Grooming',
@@ -2384,7 +2420,7 @@ describe('booking.service (#51)', () => {
         CAT_PET as never
       );
 
-      expect(price).toBe(300);
+      expect(price).toBe(350);
     });
 
     it('resolvePackagePrice: a non-matrix package uses the flat bundled_price', async () => {
@@ -2408,12 +2444,25 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(375);
     });
 
-    it('resolvePackagePrice: a Cat pet always gets the flat bundled_price even when matrix-enabled', async () => {
+    it('resolvePackagePrice: fixedPriceOverride wins outright regardless of matrix config, for any pet type', async () => {
       const price = await resolvePackagePrice(
         { bundled_price: 300, use_pricing_matrix: true },
-        CAT_PET as never
+        CAT_PET as never,
+        800
       );
 
+      expect(price).toBe(800);
+    });
+
+    it('resolvePackagePrice: a Cat pet with NO override falls through to the matrix exactly like a Dog would', async () => {
+      queueFromResults({ data: PRICING_CONFIG, error: null }); // getPricingConfiguration
+
+      const price = await resolvePackagePrice(
+        { bundled_price: 300, use_pricing_matrix: true },
+        CAT_PET as never // S multiplier 1.0
+      );
+
+      // 300 * 1.0 = 300 (S tier), reached via the matrix, not a species check
       expect(price).toBe(300);
     });
   });

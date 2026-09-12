@@ -23,6 +23,24 @@ import {
   restorePet,
 } from './services/petArchive.service.ts';
 
+/** Postgres foreign_key_violation. pets.pet_type became a FK against the
+ * admin-managed pet_types table (20260912191) instead of an enum-checked
+ * column, so a bad/deactivated key now surfaces here instead of at the old
+ * schema-level enum check - map it to the same friendly shape breeds.service.ts
+ * uses for its own FK violations, rather than letting Postgres's raw message
+ * through. */
+const FOREIGN_KEY_VIOLATION = '23503';
+
+function sendPetWriteError(
+  res: Response,
+  error: { code?: string; message: string }
+) {
+  if (error.code === FOREIGN_KEY_VIOLATION) {
+    return res.status(400).json({ error: 'Invalid pet type' });
+  }
+  return res.status(400).json({ error: error.message });
+}
+
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
     error instanceof Error && 'statusCode' in error
@@ -228,7 +246,7 @@ export async function createPetController(
       .maybeSingle();
 
     if (error) {
-      return res.status(400).json({ error: error.message });
+      return sendPetWriteError(res, error);
     }
 
     return res.status(201).json({ pet: data });
@@ -366,7 +384,7 @@ export async function updatePetController(
       .maybeSingle();
 
     if (error) {
-      return res.status(400).json({ error: error.message });
+      return sendPetWriteError(res, error);
     }
 
     return res.status(200).json({ pet: data });

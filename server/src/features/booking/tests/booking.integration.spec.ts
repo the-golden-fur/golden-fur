@@ -167,6 +167,7 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         },
         error: null,
       }, // pet ownership
+      { data: [], error: null }, // getFixedPrice (pet_type_price_overrides) - no override
       { data: DAYCARE_SERVICE, error: null }, // getServiceById
       {
         data: {

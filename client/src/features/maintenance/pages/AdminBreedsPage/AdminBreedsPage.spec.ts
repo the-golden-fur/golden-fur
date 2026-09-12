@@ -1,12 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
   createBreedAdmin,
   deleteBreedAdmin,
   listBreedsAdmin,
+  listPetTypes,
   updateBreedAdmin,
 } from '../../api/maintenance.api';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -25,7 +26,27 @@ vi.mock('../../api/maintenance.api', () => ({
   createBreedAdmin: vi.fn(),
   updateBreedAdmin: vi.fn(),
   deleteBreedAdmin: vi.fn(),
+  listPetTypes: vi.fn(),
 }));
+
+const PET_TYPES = [
+  {
+    id: 'pet-type-dog',
+    key: 'Dog',
+    name: 'Dog',
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'pet-type-cat',
+    key: 'Cat',
+    name: 'Cat',
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+];
 
 const BREEDS = [
   {
@@ -64,6 +85,10 @@ function renderPage() {
 }
 
 describe('AdminBreedsPage', () => {
+  beforeEach(() => {
+    vi.mocked(listPetTypes).mockResolvedValue({ data: PET_TYPES, error: null });
+  });
+
   it('redirects a non-Admin/Superadmin viewer', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },

@@ -1,5 +1,9 @@
-import { useContext, useState } from 'react';
-import { updatePet, uploadPetPhoto } from '../../../api/customer.api';
+import { useContext, useEffect, useState } from 'react';
+import {
+  listPetTypes,
+  updatePet,
+  uploadPetPhoto,
+} from '../../../api/customer.api';
 import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import { formatWeight } from '../../../../../shared/utils/petWeight';
 import { ThemeContext } from '../../../../../shared/providers/ThemeProvider/themeContext';
@@ -13,11 +17,11 @@ import type {
   PetCoatType,
   PetGender,
   PetType,
+  PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
 import styles from './PetDetailPanel.module.css';
 
-const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
@@ -55,6 +59,7 @@ export function PetDetailPanel({
 }: PetDetailPanelProps) {
   const { weightUnit } = useContext(ThemeContext);
   const [isEditing, setIsEditing] = useState(false);
+  const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
   const [name, setName] = useState(pet.name);
   const [petType, setPetType] = useState<PetType>(pet.pet_type);
   const [breedId, setBreedId] = useState<string | null>(pet.breed_id);
@@ -72,6 +77,22 @@ export function PetDetailPanel({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Pet Types admin CRUD (20260912191): the edit dropdown reads the
+  // admin-managed list instead of a hardcoded ['Dog', 'Cat'] array.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPetTypes().then((result) => {
+      if (isMounted) {
+        setPetTypeOptions(result.data ?? []);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function startEditing() {
     setName(pet.name);
@@ -167,9 +188,9 @@ export function PetDetailPanel({
                   setBreedId(null);
                 }}
               >
-                {PET_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                {petTypeOptions.map((option) => (
+                  <option key={option.id} value={option.key}>
+                    {option.name}
                   </option>
                 ))}
               </select>

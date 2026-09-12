@@ -475,20 +475,52 @@ export const updatePromoValidator = z
 // Per-branch availability toggle reuses the shared branchAvailabilityValidator
 // above (same shape already used by Services/Packages/Service Types).
 
-const PET_TYPES = ['Dog', 'Cat'] as const;
-
-/** Epic A follow-up: breeds CRUD (previously seed-only, migration 20260725045). */
+/** Epic A follow-up: breeds CRUD (previously seed-only, migration 20260725045).
+ * pet_type is no longer a fixed 2-value enum (Pet Types admin CRUD,
+ * 20260912191) - it's a foreign key against the admin-managed pet_types
+ * table, so the real validation is the DB constraint, not this schema. */
 export const createBreedValidator = z
   .object({
-    pet_type: z.enum(PET_TYPES),
+    pet_type: z.string().trim().min(1, 'Pet type is required'),
     name: z.string().trim().min(1, 'Name is required'),
   })
   .strict();
 
 export const updateBreedValidator = z
   .object({
-    pet_type: z.enum(PET_TYPES).optional(),
+    pet_type: z.string().trim().min(1).optional(),
     name: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+/** Custom change: Pet Types admin CRUD. `key` is free-text and immutable
+ * once created (like service_types.key) - a brand-new row won't have
+ * matching category-specific pricing behavior until an admin also
+ * configures a fixed-price override for it (Pet Type Pricing section of the
+ * same admin page); the plain weight/coat matrix pricing applies otherwise,
+ * same fallback Dog already uses today. */
+export const createPetTypeValidator = z
+  .object({
+    key: z.string().trim().min(1, 'Key is required'),
+    name: z.string().trim().min(1, 'Name is required'),
+  })
+  .strict();
+
+export const updatePetTypeValidator = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
+/** Custom change: per-branch fixed-price override by pet type
+ * (pet_type_price_overrides, 20260912192). branch_id: null upserts the
+ * system-wide default row; a uuid upserts that branch's own row. */
+export const upsertPetTypePriceOverrideValidator = z
+  .object({
+    pet_type: z.string().trim().min(1, 'Pet type is required'),
+    branch_id: z.uuid().nullable(),
+    fixed_price: z.number().nonnegative(),
   })
   .strict();
 
@@ -541,4 +573,9 @@ export type UpdatePetWeightClassConfigurationInput = z.infer<
 >;
 export type UpsertPromoCapConfigurationInput = z.infer<
   typeof upsertPromoCapConfigurationValidator
+>;
+export type CreatePetTypeInput = z.infer<typeof createPetTypeValidator>;
+export type UpdatePetTypeInput = z.infer<typeof updatePetTypeValidator>;
+export type UpsertPetTypePriceOverrideInput = z.infer<
+  typeof upsertPetTypePriceOverrideValidator
 >;

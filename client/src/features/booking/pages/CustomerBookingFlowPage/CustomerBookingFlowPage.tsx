@@ -575,6 +575,15 @@ export function CustomerBookingFlowPage() {
   );
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+  // the selected pet's resolved fixed price for the selected branch, or
+  // null if none applies - re-fetched whenever the branch or pet changes
+  // (see the catalog-loading effect below). When set, it replaces every
+  // selected service/package's own price in the running total, matching
+  // what booking.service.ts actually charges at confirmation.
+  const [catalogFixedPrice, setCatalogFixedPrice] = useState<number | null>(
+    null
+  );
   const [downpaymentStatus, setDownpaymentStatus] =
     useState<DownpaymentStatus | null>(null);
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
@@ -950,20 +959,23 @@ export function CustomerBookingFlowPage() {
     if (!accessToken || !selectedBranchId) return;
 
     let isMounted = true;
+    const petType = pets.find((pet) => pet.id === selectedPetId)?.pet_type;
 
-    void getBookingCatalog(accessToken, { branchId: selectedBranchId }).then(
-      (result) => {
-        if (!isMounted || !result.data) return;
-        setAllServices(result.data.services);
-        setPackages(result.data.packages);
-        setPromos(result.data.promos);
-      }
-    );
+    void getBookingCatalog(accessToken, {
+      branchId: selectedBranchId,
+      petType,
+    }).then((result) => {
+      if (!isMounted || !result.data) return;
+      setAllServices(result.data.services);
+      setPackages(result.data.packages);
+      setPromos(result.data.promos);
+      setCatalogFixedPrice(result.data.fixedPrice);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [accessToken, selectedBranchId]);
+  }, [accessToken, selectedBranchId, selectedPetId, pets]);
 
   // Custom change: per-transaction downpayment config for the selected
   // branch (see resolveDownpaymentPolicy server-side) - drives the
@@ -1336,15 +1348,15 @@ export function CustomerBookingFlowPage() {
       ...selectedServices.map((service) => ({
         id: service.id,
         name: service.name,
-        price: service.base_price,
+        price: catalogFixedPrice ?? service.base_price,
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
         name: pkg.name,
-        price: pkg.bundled_price,
+        price: catalogFixedPrice ?? pkg.bundled_price,
       })),
     ],
-    [selectedServices, selectedPackages]
+    [selectedServices, selectedPackages, catalogFixedPrice]
   );
 
   const serviceNameById = useMemo(
@@ -1461,9 +1473,20 @@ export function CustomerBookingFlowPage() {
   // (mirrors the server's own resolveQuantity in booking.service.ts).
   const hotelNightsMultiplier = category === 'Hotel' ? hotelNights : 1;
 
+  // Pet Types admin CRUD + fixed-price override: when the selected pet has
+  // one (catalogFixedPrice), it replaces each item's own base_price/
+  // bundled_price entirely, same as booking.service.ts's resolveServicePrice/
+  // resolvePackagePrice at actual booking creation - so this preview shows
+  // the real charged price instead of a stale service-list price.
   const itemsTotal =
-    (selectedServices.reduce((sum, service) => sum + service.base_price, 0) +
-      selectedPackages.reduce((sum, pkg) => sum + pkg.bundled_price, 0)) *
+    (selectedServices.reduce(
+      (sum, service) => sum + (catalogFixedPrice ?? service.base_price),
+      0
+    ) +
+      selectedPackages.reduce(
+        (sum, pkg) => sum + (catalogFixedPrice ?? pkg.bundled_price),
+        0
+      )) *
     hotelNightsMultiplier;
 
   // ---- Multi-booking checkout: group-level pricing (Review step) ----
@@ -3011,12 +3034,19 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${service.base_price.toFixed(2)}/night`
+                          ? `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
-                            ? `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${service.base_price.toFixed(2)}`}
+                            ? // Daycare's actual checkout charge is computed
+                              // independently from these fee columns
+                              // (daycareBilling.service.ts), not from
+                              // price_at_booking, so a fixed-price override
+                              // isn't reflected here yet - showing a flat
+                              // price would be misleading about what's
+                              // actually billed at pickup.
+                              `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
+                            : `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}`}
                       </span>
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
@@ -3059,8 +3089,8 @@ export function CustomerBookingFlowPage() {
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${pkg.bundled_price.toFixed(2)}/night`
-                          : `PHP ${pkg.bundled_price.toFixed(2)}`}
+                          ? `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}/night`
+                          : `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}`}
                       </span>
                       {category !== 'Hotel' ? (
                         <span className={styles.optionMeta}>
