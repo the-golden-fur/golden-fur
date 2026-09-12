@@ -69,7 +69,9 @@ function throwWithStatus(statusCode: number, message: string): never {
 export interface PetRow {
   id: string;
   customer_id: string;
-  pet_type: 'Dog' | 'Cat';
+  /** Widened from the old 'Dog' | 'Cat' union - pet_type is now a free-text
+   * FK against the admin-managed pet_types table (20260912191). */
+  pet_type: string;
   weight_class: 'S' | 'M' | 'L' | 'XL' | null;
   coat_type: 'SC' | 'LC' | null;
 }
@@ -995,6 +997,10 @@ export async function createBooking({
   // than rejecting the booking; check-in's own suggestCage/assignCage flow
   // re-validates and lets the receptionist re-pick regardless.
   //
+  // Custom change (cage pet-type support): the pet's own pet_type is always
+  // enforced, for every caller (customer and staff) - a pet-type mismatch is
+  // a hard filter, unlike cage size below.
+  //
   // Custom change (cage size booking restriction): a customer (no
   // staffRole) can only ever have a preference honored when it matches
   // their own pet's weight_class - mirrors CagePickerList's disabled tiles
@@ -1007,6 +1013,7 @@ export async function createBooking({
       ? await verifyCagePreference(
           input.cage_preference.cage_id!,
           input.branch_id,
+          (pet as PetRow).pet_type,
           staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined)
         )
       : null;

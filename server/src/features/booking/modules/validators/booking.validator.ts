@@ -572,9 +572,19 @@ export const staffPickerQueryValidator = z.object({
 /** Custom change: Cage Picker addendum - branch-only, unlike the staff
  * picker's time-window query, since cage availability is a live status
  * snapshot (Available/Occupied/Reserved/Under Maintenance) rather than a
- * time-window overlap check - see cagePicker.service.ts. */
+ * time-window overlap check - see cagePicker.service.ts.
+ *
+ * pet_id (Custom change, cage pet-type support): required so the options
+ * list can be hard-filtered to the pet's own pet_type. */
 export const cagePickerQueryValidator = z.object({
   branch_id: z.uuid(),
+  pet_id: z.uuid(),
+});
+
+/** Custom change (cage pet-type support / customer readonly cage view). */
+export const cageAssignmentStatusQueryValidator = z.object({
+  branch_id: z.uuid(),
+  pet_id: z.uuid(),
 });
 
 /**

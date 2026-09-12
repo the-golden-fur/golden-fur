@@ -1,5 +1,6 @@
 -- M05 Pet Hotel - Sprint 4 Epic A branch-dependent seed data (Issue #71
--- AC-4): a handful of cages per size category, per branch. Also seeds the
+-- AC-4): a handful of cages per size category, per branch, plus (custom
+-- change, 20260912193) which pet type(s) each cage supports. Also seeds the
 -- #79-revision food/medication reference lists (not branch-scoped, unlike
 -- cages) so CatalogComboBox has real options to show out of the box instead
 -- of an empty dropdown - Sprint 5 unification (#82) moved these into the
@@ -41,6 +42,55 @@ where not exists (
   select 1 from public.cages as existing
   where existing.branch_id = b.id
     and existing.cage_label = b.name || '-' || cage.size::text || '-' || lpad(cage.seq::text, 2, '0')
+);
+
+-- Custom change (cage pet-type support, 20260912193): most cages serve both
+-- Dog and Cat; one S and one M cage each carve out a single-type exception
+-- in opposite directions, and the one XL cage is Dog-only - matches
+-- m05-hotel.seed.ts's CAGE_PLAN exactly. Reconciled every run (not just on
+-- first cage creation), both ways: this DELETE first removes any pet type
+-- not in a planned cage's list - necessary because 20260912193's own
+-- backfill gives every pre-existing cage both Dog and Cat, which would
+-- otherwise permanently stick to a cage meant to be narrower (e.g. S-02) -
+-- then the INSERT below adds anything still missing, via NOT EXISTS, same
+-- idempotency style as the cages insert above.
+delete from public.cage_pet_types as cpt
+using public.cages as c
+join public.branches as b on b.id = c.branch_id
+join (
+  values
+    ('S'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('S'::public.cage_size, 2, array['Cat']::text[]),
+    ('M'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('M'::public.cage_size, 2, array['Dog']::text[]),
+    ('L'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('L'::public.cage_size, 2, array['Dog', 'Cat']::text[]),
+    ('XL'::public.cage_size, 1, array['Dog']::text[])
+) as cage(size, seq, pet_types) on true
+where cpt.cage_id = c.id
+  and c.cage_label = b.name || '-' || cage.size::text || '-' || lpad(cage.seq::text, 2, '0')
+  and not (cpt.pet_type = any (cage.pet_types));
+
+insert into public.cage_pet_types (cage_id, pet_type)
+select c.id, x.pet_type
+from public.branches as b
+join (
+  values
+    ('S'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('S'::public.cage_size, 2, array['Cat']::text[]),
+    ('M'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('M'::public.cage_size, 2, array['Dog']::text[]),
+    ('L'::public.cage_size, 1, array['Dog', 'Cat']::text[]),
+    ('L'::public.cage_size, 2, array['Dog', 'Cat']::text[]),
+    ('XL'::public.cage_size, 1, array['Dog']::text[])
+) as cage(size, seq, pet_types) on true
+join public.cages as c
+  on c.branch_id = b.id
+  and c.cage_label = b.name || '-' || cage.size::text || '-' || lpad(cage.seq::text, 2, '0')
+cross join lateral unnest(cage.pet_types) as x(pet_type)
+where not exists (
+  select 1 from public.cage_pet_types as existing
+  where existing.cage_id = c.id and existing.pet_type = x.pet_type
 );
 
 insert into public.product_catalog (name, category, service_scope, price, owner_customer_id)

@@ -119,9 +119,16 @@ describe('daycareCheckIn.service (#65)', () => {
           error: null,
         },
         { data: MAKATI_BRANCH, error: null },
-        { data: { weight_class: 'S' }, error: null },
+        { data: { weight_class: 'S', pet_type: 'Dog' }, error: null },
         {
-          data: [{ id: 'cage-1', size: 'S', status: 'Available' }],
+          data: [
+            {
+              id: 'cage-1',
+              size: 'S',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
           error: null,
         },
         { data: { id: 'cage-1', size: 'S', status: 'Occupied' }, error: null },
@@ -202,9 +209,16 @@ describe('daycareCheckIn.service (#65)', () => {
           error: null,
         },
         { data: MAKATI_BRANCH, error: null },
-        { data: { weight_class: 'S' }, error: null },
+        { data: { weight_class: 'S', pet_type: 'Dog' }, error: null },
         {
-          data: [{ id: 'cage-1', size: 'S', status: 'Available' }],
+          data: [
+            {
+              id: 'cage-1',
+              size: 'S',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
           error: null,
         },
         { data: { id: 'cage-1', size: 'S', status: 'Occupied' }, error: null },
@@ -240,9 +254,16 @@ describe('daycareCheckIn.service (#65)', () => {
 
       queueFromResults(
         { data: MAKATI_BRANCH, error: null },
-        { data: { weight_class: 'M' }, error: null },
+        { data: { weight_class: 'M', pet_type: 'Dog' }, error: null },
         {
-          data: [{ id: 'cage-2', size: 'M', status: 'Available' }],
+          data: [
+            {
+              id: 'cage-2',
+              size: 'M',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
           error: null,
         },
         { data: { id: 'cage-2', size: 'M', status: 'Occupied' }, error: null },
@@ -308,9 +329,16 @@ describe('daycareCheckIn.service (#65)', () => {
 
       queueFromResults(
         { data: SOUTHWOODS_BRANCH, error: null },
-        { data: { weight_class: 'L' }, error: null },
+        { data: { weight_class: 'L', pet_type: 'Dog' }, error: null },
         {
-          data: [{ id: 'cage-3', size: 'L', status: 'Available' }],
+          data: [
+            {
+              id: 'cage-3',
+              size: 'L',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
           error: null,
         },
         { data: { id: 'cage-3', size: 'L', status: 'Occupied' }, error: null },

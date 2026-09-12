@@ -341,6 +341,7 @@ export async function createCageController(
       branchId,
       cageLabel: parsed.data.cage_label,
       size: parsed.data.size,
+      petTypes: parsed.data.pet_types,
     });
 
     return res.status(201).json({ cage });
@@ -373,6 +374,7 @@ export async function updateCageController(
       branchId,
       cageLabel: parsed.data.cage_label,
       size: parsed.data.size,
+      petTypes: parsed.data.pet_types,
     });
 
     return res.status(200).json({ cage });

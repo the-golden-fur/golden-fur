@@ -5,6 +5,7 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   availabilityController,
+  cageAssignmentStatusController,
   cagePickerOptionsController,
   cancelBookingController,
   catalogController,
@@ -139,6 +140,14 @@ router.get(
 
 // Cage Picker resolution (Custom change - mirrors Staff Picker)
 router.get('/bookings/cage-picker', jwtMiddleware, cagePickerOptionsController);
+
+// Custom change (cage pet-type support / customer readonly cage view): open
+// to customer and staff alike, same as the Cage Picker above.
+router.get(
+  '/bookings/cage-assignment-status',
+  jwtMiddleware,
+  cageAssignmentStatusController
+);
 
 // Custom change: whether the customer-facing Pay button should be enabled
 // for a branch - read by both the customer Bookings page and the Admin

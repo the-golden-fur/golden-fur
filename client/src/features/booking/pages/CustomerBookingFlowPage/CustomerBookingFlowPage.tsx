@@ -28,6 +28,7 @@ import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { BookingCountBadge } from '../../components/BookingCountBadge/BookingCountBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
+import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
 import {
   createBooking,
@@ -2816,6 +2817,21 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {/* Custom change (cage pet-type support / readonly cage
+              assignment): customers get an immediate, readonly yes/no
+              answer instead of an interactive cage picker - deliberately
+              not gated on selectedSlot, since cage availability doesn't
+              depend on the date. Staff keep the interactive CagePickerList
+              below instead. */}
+            {category === 'Hotel' && !isReceptionistMode && selectedPet ? (
+              <CageAssignmentStatus
+                accessToken={accessToken!}
+                branchId={selectedBranchId}
+                petId={selectedPet.id}
+                petName={selectedPet.name}
+              />
+            ) : null}
+
             {category === 'Hotel' ? (
               <div className={styles.nightsField}>
                 <label>
@@ -2924,31 +2940,39 @@ export function CustomerBookingFlowPage() {
               />
             ) : null}
 
-            {/* Custom change: Cage Picker addendum - lets the customer/
-              receptionist name a specific cage preference. Only renders
-              once the Hotel service type's cage_picker_enabled toggle
-              (Admin Settings > Service Types) resolves true;
-              CagePickerList's own onUnavailable degrades this to "no
-              preference" otherwise, same contract as StaffPickerList. (The
-              older, purely-informational CagePicker size-capacity grid
-              that used to render above this was removed as dead/superseded
-              UI - it had no onSelect and nothing it showed ever flowed
-              into the booking; recommendedSize below folds its one useful
-              signal, the pet's own weight-class "Recommended" hint, into
-              this picker instead of losing it.) Custom change (cage size
-              booking restriction): restrictToPetSize is on for a customer
-              booking their own pet (mismatched-size cages are shown but
-              disabled) and off in receptionist mode, so only staff can
-              knowingly book a walk-in into a differently-sized cage. */}
-            {selectedSlot && category === 'Hotel' && !cagePickerUnavailable ? (
+            {/* Custom change: Cage Picker addendum - lets the receptionist
+              name a specific cage preference. Only renders once the Hotel
+              service type's cage_picker_enabled toggle (Admin Settings >
+              Service Types) resolves true; CagePickerList's own
+              onUnavailable degrades this to "no preference" otherwise, same
+              contract as StaffPickerList. (The older, purely-informational
+              CagePicker size-capacity grid that used to render above this
+              was removed as dead/superseded UI - it had no onSelect and
+              nothing it showed ever flowed into the booking; recommendedSize
+              below folds its one useful signal, the pet's own weight-class
+              "Recommended" hint, into this picker instead of losing it.)
+              Custom change (cage pet-type support / readonly cage
+              assignment): this interactive picker is now receptionist-only -
+              a customer booking their own pet sees CageAssignmentStatus
+              above instead and never gets to click a specific cage.
+              restrictToPetSize stays false here (receptionist mode always),
+              so staff keep free choice of any size-matching cage; pet-type
+              mismatches are already excluded from the option list itself
+              (getCagePickerOptions), not merely disabled. */}
+            {selectedSlot &&
+            category === 'Hotel' &&
+            isReceptionistMode &&
+            !cagePickerUnavailable &&
+            selectedPet ? (
               <CagePickerList
                 accessToken={accessToken!}
                 branchId={selectedBranchId}
+                petId={selectedPet.id}
                 selected={cagePreference}
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
                 recommendedSize={selectedPet?.weight_class ?? null}
-                restrictToPetSize={!isReceptionistMode}
+                restrictToPetSize={false}
               />
             ) : null}
           </div>

@@ -693,6 +693,7 @@ async function resolveSubBooking({
       ? await verifyCagePreference(
           subInput.cage_preference.cage_id!,
           branchId,
+          pet.pet_type,
           staffRole ? undefined : (pet.weight_class ?? undefined)
         )
       : null;

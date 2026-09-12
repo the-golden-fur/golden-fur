@@ -15,6 +15,10 @@ export interface Cage {
   cage_label: string;
   size: CageSize;
   status: CageStatus;
+  /** Custom change (cage pet-type support, 20260912193): pet_types.key
+   * values this cage supports (e.g. ['Dog', 'Cat']) - a cage can support
+   * more than one, unlike size. Always non-empty. */
+  pet_types: string[];
   created_at: string;
   updated_at: string;
 }

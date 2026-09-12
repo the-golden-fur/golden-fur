@@ -367,9 +367,10 @@ export async function listServiceTypes(): Promise<
 /** Custom change: Cage Picker addendum - mirrors getStaffPickerOptions. */
 export async function getCagePickerOptions(
   accessToken: string,
-  branchId: string
+  branchId: string,
+  petId: string
 ): Promise<BookingApiResult<CagePickerOptionsResult>> {
-  const params = new URLSearchParams({ branch_id: branchId });
+  const params = new URLSearchParams({ branch_id: branchId, pet_id: petId });
 
   const response = await fetch(
     `${API_BASE_URL}/bookings/cage-picker?${params.toString()}`,
@@ -381,6 +382,31 @@ export async function getCagePickerOptions(
   }
 
   return parseBody<CagePickerOptionsResult>(response);
+}
+
+export interface CageAssignmentStatusResult {
+  matched: boolean;
+  cage: { id: string; cage_label: string } | null;
+}
+
+/** Custom change (cage pet-type support / customer readonly cage view). */
+export async function getCageAssignmentStatus(
+  accessToken: string,
+  branchId: string,
+  petId: string
+): Promise<BookingApiResult<CageAssignmentStatusResult>> {
+  const params = new URLSearchParams({ branch_id: branchId, pet_id: petId });
+
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/cage-assignment-status?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<CageAssignmentStatusResult>(response);
 }
 
 export async function rescheduleBooking(

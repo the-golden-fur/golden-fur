@@ -30,14 +30,20 @@ loadEnv({ path: path.resolve(process.cwd(), 'server/.env') });
 
 type CageSize = 'S' | 'M' | 'L' | 'XL';
 
-const CAGE_PLAN: Array<{ size: CageSize; seq: number }> = [
-  { size: 'S', seq: 1 },
-  { size: 'S', seq: 2 },
-  { size: 'M', seq: 1 },
-  { size: 'M', seq: 2 },
-  { size: 'L', seq: 1 },
-  { size: 'L', seq: 2 },
-  { size: 'XL', seq: 1 },
+/** Custom change (cage pet-type support, 20260912193): most cages serve
+ * both Dog and Cat (the realistic default), but one S and one M cage each
+ * carve out a single-type exception in opposite directions, and the one XL
+ * cage is Dog-only - giving the booking flow real coverage of "a customer
+ * with one pet type sees fewer options than the other" at two different
+ * sizes, plus a guaranteed "no cage available" case (a cat needing XL). */
+const CAGE_PLAN: Array<{ size: CageSize; seq: number; petTypes: string[] }> = [
+  { size: 'S', seq: 1, petTypes: ['Dog', 'Cat'] },
+  { size: 'S', seq: 2, petTypes: ['Cat'] },
+  { size: 'M', seq: 1, petTypes: ['Dog', 'Cat'] },
+  { size: 'M', seq: 2, petTypes: ['Dog'] },
+  { size: 'L', seq: 1, petTypes: ['Dog', 'Cat'] },
+  { size: 'L', seq: 2, petTypes: ['Dog', 'Cat'] },
+  { size: 'XL', seq: 1, petTypes: ['Dog'] },
 ];
 
 const FOOD_CATALOG_PLAN: Array<{ name: string; price: number }> = [
@@ -117,8 +123,74 @@ async function resolveCatalogOwnerId(
   return data.id as string;
 }
 
+/** Reconciles `cageId`'s cage_pet_types membership to exactly match
+ * `petTypes` - inserts what's missing AND removes anything not in the plan
+ * (Custom change: cage pet-type support). A plain insert-if-missing isn't
+ * enough here: the cage_pet_types migration (20260912193) backfills every
+ * pre-existing cage to every pet type (Dog + Cat) so nothing already
+ * seeded/booked breaks, which means a seed-managed cage meant to be
+ * narrower (e.g. Cat-only) would otherwise be stuck with the backfilled
+ * extra type forever, since re-running the seed would never remove it. */
+async function ensureCagePetTypes(
+  supabase: ReturnType<typeof createClient>,
+  cageId: string,
+  petTypes: string[]
+): Promise<void> {
+  const { data: existingRows, error: selectError } = await supabase
+    .from('cage_pet_types')
+    .select('pet_type')
+    .eq('cage_id', cageId);
+
+  if (selectError) {
+    console.error(
+      `cage_pet_types read failed (cage ${cageId}): ${selectError.message}`
+    );
+    return;
+  }
+
+  const existingPetTypes = new Set(
+    (existingRows ?? []).map((row) => row.pet_type as string)
+  );
+  const plannedPetTypes = new Set(petTypes);
+
+  const toInsert = petTypes.filter((pt) => !existingPetTypes.has(pt));
+  const toRemove = [...existingPetTypes].filter(
+    (pt) => !plannedPetTypes.has(pt)
+  );
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase
+      .from('cage_pet_types')
+      .insert(toInsert.map((pet_type) => ({ cage_id: cageId, pet_type })));
+
+    if (error) {
+      console.error(
+        `cage_pet_types insert failed (cage ${cageId}): ${error.message}`
+      );
+    }
+  }
+
+  for (const pet_type of toRemove) {
+    const { error } = await supabase
+      .from('cage_pet_types')
+      .delete()
+      .eq('cage_id', cageId)
+      .eq('pet_type', pet_type);
+
+    if (error) {
+      console.error(
+        `cage_pet_types delete failed (cage ${cageId}, ${pet_type}): ${error.message}`
+      );
+    }
+  }
+}
+
 /** 7 cages per branch (2xS, 2xM, 2xL, 1xXL), labeled `<Branch>-<Size>-<seq>`,
- * e.g. 'Makati-S-01' - matching m05-hotel.seed.sql's plan exactly. */
+ * e.g. 'Makati-S-01' - matching m05-hotel.seed.sql's plan exactly. Each
+ * cage's cage_pet_types membership is reconciled every run (Custom change:
+ * cage pet-type support), not just on first creation, so re-running this
+ * seed after a CAGE_PLAN change still updates an already-seeded
+ * environment (including the linked remote project). */
 export async function seedCages(supabase: ReturnType<typeof createClient>) {
   const branches = await getBranches(supabase);
   if (branches.length === 0) return;
@@ -136,23 +208,32 @@ export async function seedCages(supabase: ReturnType<typeof createClient>) {
         .eq('cage_label', cageLabel)
         .maybeSingle();
 
-      if (existing) continue;
+      let cageId = existing?.id as string | undefined;
 
-      const { error } = await supabase.from('cages').insert({
-        branch_id: branch.id,
-        cage_label: cageLabel,
-        size: cage.size,
-        status: 'Available',
-      });
+      if (!cageId) {
+        const { data: inserted, error } = await supabase
+          .from('cages')
+          .insert({
+            branch_id: branch.id,
+            cage_label: cageLabel,
+            size: cage.size,
+            status: 'Available',
+          })
+          .select('id')
+          .maybeSingle();
 
-      if (error) {
-        console.error(
-          `cage insert failed (${cageLabel} at ${branch.name}): ${error.message}`
-        );
-        continue;
+        if (error || !inserted) {
+          console.error(
+            `cage insert failed (${cageLabel} at ${branch.name}): ${error?.message}`
+          );
+          continue;
+        }
+
+        cageId = inserted.id as string;
+        created += 1;
       }
 
-      created += 1;
+      await ensureCagePetTypes(supabase, cageId, cage.petTypes);
     }
   }
 

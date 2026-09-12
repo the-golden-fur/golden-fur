@@ -23,14 +23,25 @@ function createMockSupabase() {
     ],
     cages: new Map<
       string,
-      { branch_id: string; cage_label: string; size: string; status: string }
+      {
+        id: string;
+        branch_id: string;
+        cage_label: string;
+        size: string;
+        status: string;
+      }
     >(),
+    // Custom change (cage pet-type support, 20260912193), keyed by
+    // `${cage_id}:${pet_type}` to mirror the real table's composite PK.
+    cagePetTypes: new Map<string, { cage_id: string; pet_type: string }>(),
     // Sprint 5 unification (#82): both catalogs now write into the same
     // product_catalog table, keyed here by `${owner}:${category}:${name}` to
     // mirror the table's real (owner_customer_id, name, category) partial
     // uniqueness (20260803085).
     productCatalog: new Map<string, ProductCatalogRow>(),
   };
+
+  let nextCageId = 1;
 
   const supabase = {
     from: vi.fn((table: string) => {
@@ -59,9 +70,51 @@ function createMockSupabase() {
             size: string;
             status: string;
           }) => {
-            state.cages.set(`${row.branch_id}:${row.cage_label}`, row);
+            const id = `cage-${nextCageId++}`;
+            const stored = { id, ...row };
+            state.cages.set(`${row.branch_id}:${row.cage_label}`, stored);
+            return {
+              select: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: { id }, error: null }),
+              }),
+            };
+          },
+        };
+      }
+
+      if (table === 'cage_pet_types') {
+        return {
+          select: () => ({
+            eq: (_c1: string, cageId: string) => ({
+              then: (
+                resolve: (_result: {
+                  data: { pet_type: string }[];
+                  error: null;
+                }) => void
+              ) =>
+                resolve({
+                  data: Array.from(state.cagePetTypes.values())
+                    .filter((row) => row.cage_id === cageId)
+                    .map((row) => ({ pet_type: row.pet_type })),
+                  error: null,
+                }),
+            }),
+          }),
+          insert: (rows: { cage_id: string; pet_type: string }[]) => {
+            for (const row of rows) {
+              state.cagePetTypes.set(`${row.cage_id}:${row.pet_type}`, row);
+            }
             return Promise.resolve({ error: null });
           },
+          delete: () => ({
+            eq: (_c1: string, cageId: string) => ({
+              eq: (_c2: string, petType: string) => {
+                state.cagePetTypes.delete(`${cageId}:${petType}`);
+                return Promise.resolve({ error: null });
+              },
+            }),
+          }),
         };
       }
 
@@ -136,6 +189,34 @@ describe('m05-hotel seed', () => {
       await seedCages(supabase as never);
 
       expect(supabase.state.cages.size).toBe(14);
+    });
+
+    it('Custom change (cage pet-type support): assigns the planned pet types per cage, e.g. S-02 is Cat-only and XL-01 is Dog-only', async () => {
+      await seedCages(supabase as never);
+
+      function petTypesFor(branchId: string, cageLabel: string): string[] {
+        const cage = supabase.state.cages.get(`${branchId}:${cageLabel}`)!;
+        return Array.from(supabase.state.cagePetTypes.values())
+          .filter((row) => row.cage_id === cage.id)
+          .map((row) => row.pet_type)
+          .sort();
+      }
+
+      expect(petTypesFor('branch-makati', 'Makati-S-01')).toEqual([
+        'Cat',
+        'Dog',
+      ]);
+      expect(petTypesFor('branch-makati', 'Makati-S-02')).toEqual(['Cat']);
+      expect(petTypesFor('branch-makati', 'Makati-M-02')).toEqual(['Dog']);
+      expect(petTypesFor('branch-makati', 'Makati-XL-01')).toEqual(['Dog']);
+    });
+
+    it('Custom change (cage pet-type support): re-running does not duplicate cage_pet_types rows', async () => {
+      await seedCages(supabase as never);
+      const firstCount = supabase.state.cagePetTypes.size;
+      await seedCages(supabase as never);
+
+      expect(supabase.state.cagePetTypes.size).toBe(firstCount);
     });
   });
 
