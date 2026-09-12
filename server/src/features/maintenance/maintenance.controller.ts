@@ -73,8 +73,21 @@ import {
   updateServiceTypeValidator,
   updateServiceValidator,
   upsertPromoCapConfigurationValidator,
+  createPetTypeValidator,
+  updatePetTypeValidator,
+  upsertPetTypePriceOverrideValidator,
 } from './modules/validators/maintenance.validator.ts';
-import type { PetType } from './maintenance.types.ts';
+import {
+  createPetType,
+  deletePetType,
+  listPetTypes,
+  updatePetType,
+} from './services/petTypes.service.ts';
+import {
+  deletePetTypePriceOverride,
+  listPetTypePriceOverrides,
+  upsertPetTypePriceOverride,
+} from './services/petTypePriceOverrides.service.ts';
 
 /**
  * Role gating (all-staff read, Admin/Superadmin write) happens at the route
@@ -754,11 +767,10 @@ export async function listBreedsController(
   res: Response
 ) {
   try {
-    const petTypeParam = queryString(req.query.pet_type);
-    const petType =
-      petTypeParam === 'Dog' || petTypeParam === 'Cat'
-        ? (petTypeParam as PetType)
-        : undefined;
+    // pet_type is a free-text FK against the admin-managed pet_types table
+    // (20260912191), not a fixed 'Dog'/'Cat' union - any non-empty query
+    // value is passed straight through.
+    const petType = queryString(req.query.pet_type);
 
     const breeds = await listBreeds({ petType });
     return res.status(200).json({ breeds });
@@ -917,6 +929,120 @@ export async function setServiceTypeBranchAvailabilityController(
     });
 
     return res.status(200).json({ availability });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pet Types (Architectural-Change-History: admin CRUD + fixed-price override)
+// ---------------------------------------------------------------------------
+
+export async function listPetTypesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const petTypes = await listPetTypes();
+    return res.status(200).json({ pet_types: petTypes });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createPetTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = createPetTypeValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const petType = await createPetType(parsed.data);
+    return res.status(201).json({ pet_type: petType });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePetTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = updatePetTypeValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const petType = await updatePetType(paramId(req, 'id'), parsed.data);
+    return res.status(200).json({ pet_type: petType });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deletePetTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await deletePetType(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listPetTypePriceOverridesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const overrides = await listPetTypePriceOverrides({
+      branchId: queryString(req.query.branch_id),
+    });
+    return res.status(200).json({ pet_type_price_overrides: overrides });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function upsertPetTypePriceOverrideController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const parsed = upsertPetTypePriceOverrideValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const override = await upsertPetTypePriceOverride(parsed.data);
+    return res.status(200).json({ pet_type_price_override: override });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deletePetTypePriceOverrideController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await deletePetTypePriceOverride(paramId(req, 'id'));
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

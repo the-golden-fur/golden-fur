@@ -37,10 +37,19 @@ describe('createPetValidator (customer-facing)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an invalid pet_type value', () => {
+  it('accepts any non-empty pet_type string - pet_type is a foreign key against the admin-managed pet_types table (20260912191), not a fixed enum, so an invalid/deactivated key is rejected by the DB constraint, not this validator', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Bird',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty pet_type value', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: '',
     });
 
     expect(result.success).toBe(false);

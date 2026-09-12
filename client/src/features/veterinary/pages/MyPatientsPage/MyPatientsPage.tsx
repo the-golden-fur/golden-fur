@@ -5,11 +5,13 @@ import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
   getCustomerProfile,
   getPet,
+  listPetTypes,
 } from '../../../customers/api/customer.api';
 import type {
   CustomerProfile,
   Pet,
   PetType,
+  PetTypeRow,
 } from '../../../customers/customer.types';
 import {
   SearchSortBar,
@@ -37,7 +39,6 @@ const SORT_OPTIONS: SortOption<SortKey>[] = [
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
 ];
 
-const PET_TYPES: PetType[] = ['Dog', 'Cat'];
 type PetTypeFilter = PetType | 'All';
 
 function formatDate(iso: string): string {
@@ -59,6 +60,7 @@ export function MyPatientsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [petTypeFilter, setPetTypeFilter] = useState<PetTypeFilter>('All');
+  const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
 
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
   const [petHistory, setPetHistory] = useState<Consultation[]>([]);
@@ -90,6 +92,22 @@ export function MyPatientsPage() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedPetId]);
+
+  // Pet Types admin CRUD (20260912191): the filter dropdown reads the
+  // admin-managed list instead of a hardcoded ['Dog', 'Cat'] array.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPetTypes().then((result) => {
+      if (isMounted) {
+        setPetTypeOptions(result.data ?? []);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -286,9 +304,9 @@ export function MyPatientsPage() {
                   }
                 >
                   <option value="All">All types</option>
-                  {PET_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
+                  {petTypeOptions.map((type) => (
+                    <option key={type.id} value={type.key}>
+                      {type.name}
                     </option>
                   ))}
                 </select>

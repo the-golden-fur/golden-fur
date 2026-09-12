@@ -5,6 +5,7 @@ import {
   getPetHealthConditions,
   listBreeds,
   listMedicalNotes,
+  listPetTypes,
   listVaccinationRecords,
   updatePet,
   uploadPetPhoto,
@@ -19,6 +20,7 @@ vi.mock('../../../api/customer.api', () => ({
   listVaccinationRecords: vi.fn(),
   listMedicalNotes: vi.fn(),
   listBreeds: vi.fn(),
+  listPetTypes: vi.fn(),
 }));
 
 function buildPet(overrides: Partial<Pet> = {}): Pet {
@@ -66,6 +68,19 @@ describe('PetDetailPanel', () => {
     });
     vi.mocked(listMedicalNotes).mockResolvedValue({ data: [], error: null });
     vi.mocked(listBreeds).mockResolvedValue({ data: BREEDS, error: null });
+    vi.mocked(listPetTypes).mockResolvedValue({
+      data: [
+        {
+          id: 'pet-type-dog',
+          key: 'Dog',
+          name: 'Dog',
+          is_active: true,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
   });
 
   it('renders read-only attributes and shows Service History', async () => {

@@ -24,7 +24,12 @@ export interface CustomerProfileUpdatePayload {
   preferred_communication_channel?: CommunicationChannel;
 }
 
-export type PetType = 'Dog' | 'Cat';
+/**
+ * No longer a fixed 2-value union - pet_type is a foreign key against the
+ * admin-managed pet_types table (Pet Types admin CRUD, 20260912191), so the
+ * seeded 'Dog'/'Cat' values keep working unchanged but an admin can add more.
+ */
+export type PetType = string;
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
 export type PetCoatType = 'SC' | 'LC';
@@ -34,6 +39,19 @@ export interface Breed {
   pet_type: PetType;
   name: string;
   created_at: string;
+}
+
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
+ * immutable once created - pets.pet_type and breeds.pet_type both reference
+ * it. Read here via open RLS (same shape as Breed above) for the pet
+ * intake/edit dropdowns; admin CRUD goes through maintenance.api.ts. */
+export interface PetTypeRow {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Pet {

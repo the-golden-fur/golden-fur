@@ -1,6 +1,7 @@
 import { listServices } from '../../maintenance/services/services.service.ts';
 import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import type {
   Package,
   Promo,
@@ -11,12 +12,20 @@ import type { ServiceCategory } from '../booking.types.ts';
 export interface CatalogParams {
   branchId: string;
   category?: ServiceCategory;
+  /** Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+   * when given, resolves that pet type's fixed-price override for
+   * branchId into `fixedPrice` below, same as booking.service.ts's own
+   * getFixedPrice call at actual booking-creation time - this lets the
+   * customer-facing price preview show the real charged price instead of
+   * every item's own base_price/bundled_price. */
+  petType?: string;
 }
 
 export interface BookingCatalog {
   services: Service[];
   packages: Package[];
   promos: Promo[];
+  fixedPrice: number | null;
 }
 
 /**
@@ -36,12 +45,14 @@ export interface BookingCatalog {
 export async function getBookingCatalog({
   branchId,
   category,
+  petType,
 }: CatalogParams): Promise<BookingCatalog> {
-  const [services, packages, promos] = await Promise.all([
+  const [services, packages, promos, fixedPrice] = await Promise.all([
     listServices({ branchId, category }),
     listPackages({ branchId }),
     listPromos({}),
+    petType ? getFixedPrice(petType, branchId) : Promise.resolve(null),
   ]);
 
-  return { services, packages, promos };
+  return { services, packages, promos, fixedPrice };
 }

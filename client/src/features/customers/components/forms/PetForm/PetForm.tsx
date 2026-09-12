@@ -1,18 +1,22 @@
-import { useState, type FormEvent } from 'react';
-import { createPet, uploadPetPhoto } from '../../../api/customer.api';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  createPet,
+  listPetTypes,
+  uploadPetPhoto,
+} from '../../../api/customer.api';
 import type {
   Pet,
   PetCoatType,
   PetCreatePayloadStaff,
   PetGender,
   PetType,
+  PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
 
-const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
@@ -44,6 +48,7 @@ export function PetForm({
   isStaff = false,
 }: PetFormProps) {
   const [name, setName] = useState('');
+  const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
   const [petType, setPetType] = useState<PetType | ''>('');
   const [breedId, setBreedId] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -58,6 +63,23 @@ export function PetForm({
   const [weightFieldsKey, setWeightFieldsKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Pet Types admin CRUD (20260912191): the dropdown reads the admin-managed
+  // list instead of a hardcoded ['Dog', 'Cat'] array, so a newly-added pet
+  // type shows up here immediately.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPetTypes().then((result) => {
+      if (isMounted) {
+        setPetTypeOptions(result.data ?? []);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -153,9 +175,9 @@ export function PetForm({
           }}
         >
           <option value="">Select a pet type</option>
-          {PET_TYPE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
+          {petTypeOptions.map((option) => (
+            <option key={option.id} value={option.key}>
+              {option.name}
             </option>
           ))}
         </select>

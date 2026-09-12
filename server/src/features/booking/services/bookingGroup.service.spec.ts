@@ -5,6 +5,7 @@ import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import {
   sendBookingConfirmedNotification,
   sendCombinedBookingGroupConfirmedEmail,
@@ -32,6 +33,15 @@ vi.mock('../../maintenance/services/promos.service.ts', () => ({
 
 vi.mock('../../discounts/services/discounts.service.ts', () => ({
   getDiscountById: vi.fn(),
+}));
+
+// Pet Types admin CRUD + fixed-price override (20260912191/20260912192) -
+// mirrors booking.service.spec.ts's own rationale: resolveBookingItems now
+// calls this once per sub-booking regardless of path, defaulted to "no
+// override" in the outer beforeEach so none of the sequential mock queues
+// below need to change to account for it.
+vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
+  getFixedPrice: vi.fn(),
 }));
 
 // Mirrors booking.service.spec.ts's own rationale - the free-package-award
@@ -254,6 +264,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       data: [GROOMER],
       error: null,
     } as never);
+    vi.mocked(getFixedPrice).mockResolvedValue(null);
   });
 
   it('(a) a 2-booking group with different pets/categories computes combined discount/promo/downpayment against the combined total', async () => {

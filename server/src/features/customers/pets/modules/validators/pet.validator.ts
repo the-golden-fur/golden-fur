@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-const PET_TYPES = ['Dog', 'Cat'] as const;
 const GENDERS = ['Male', 'Female'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 const COAT_TYPES = ['SC', 'LC'] as const;
@@ -28,11 +27,17 @@ const COAT_TYPES = ['SC', 'LC'] as const;
  * When weight_kg is supplied, pet.controller.ts derives weight_class from it
  * via the Admin-configured cut-offs; an explicit weight_class in the same
  * payload is treated as a deliberate staff override and wins.
+ *
+ * pet_type is no longer a fixed 2-value enum (Pet Types admin CRUD,
+ * 20260912191) - it's a foreign key against the admin-managed pet_types
+ * table, so the real validation is the DB constraint, not this schema (same
+ * pattern already used for breed_id). A bad/deactivated key surfaces as a
+ * friendly 400 from pet.controller.ts's foreign_key_violation handling.
  */
 export const createPetValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
-    pet_type: z.enum(PET_TYPES),
+    pet_type: z.string().trim().min(1, 'Pet type is required'),
     breed_id: z.uuid().optional(),
     photo_url: z.string().trim().min(1).optional(),
     gender: z.enum(GENDERS).optional(),
@@ -49,7 +54,7 @@ export const createPetValidatorStaff = createPetValidator.extend({
 export const updatePetValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
-    pet_type: z.enum(PET_TYPES).optional(),
+    pet_type: z.string().trim().min(1).optional(),
     breed_id: z.uuid().nullable().optional(),
     photo_url: z.string().trim().min(1).nullable().optional(),
     gender: z.enum(GENDERS).optional(),

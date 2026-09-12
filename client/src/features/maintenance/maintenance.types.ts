@@ -433,8 +433,13 @@ export interface UpdatePromoPayload {
   is_active?: boolean;
 }
 
-/** Same vocabulary as M02 pets.pet_type. */
-export type PetType = 'Dog' | 'Cat';
+/**
+ * Same vocabulary as M02 pets.pet_type. No longer a fixed 2-value union -
+ * pet_type is now a foreign key against the admin-managed pet_types table
+ * (Pet Types admin CRUD, 20260912191), so the seeded 'Dog'/'Cat' values keep
+ * working unchanged but an admin can add more.
+ */
+export type PetType = string;
 
 export interface Breed {
   id: string;
@@ -502,4 +507,44 @@ export interface UpdateServiceTypePayload {
 export interface UpdateBreedPayload {
   pet_type?: PetType;
   name?: string;
+}
+
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
+ * immutable once created (same shape as ServiceType.key) - pets.pet_type and
+ * breeds.pet_type both reference it. */
+export interface PetTypeRow {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePetTypePayload {
+  key: string;
+  name: string;
+}
+
+export interface UpdatePetTypePayload {
+  name?: string;
+  is_active?: boolean;
+}
+
+/** Custom change: per-branch fixed-price override by pet type
+ * (pet_type_price_overrides, 20260912192). branch_id null = the
+ * system-wide default row; a branch-specific row overrides it. */
+export interface PetTypePriceOverride {
+  id: string;
+  pet_type: string;
+  branch_id: string | null;
+  fixed_price: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertPetTypePriceOverridePayload {
+  pet_type: string;
+  branch_id: string | null;
+  fixed_price: number;
 }

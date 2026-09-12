@@ -6,6 +6,7 @@ import { PricingConfigurationPage } from './pages/PricingConfigurationPage/Prici
 import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
+import { AdminPetTypesPage } from './pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
 
 /**
@@ -36,6 +37,10 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/breeds"
         element={<AdminBreedsPage />}
+      />
+      <Route
+        path="/staff/admin/maintenance/pet-types"
+        element={<AdminPetTypesPage />}
       />
       <Route
         path="/staff/admin/maintenance/system-configuration"
