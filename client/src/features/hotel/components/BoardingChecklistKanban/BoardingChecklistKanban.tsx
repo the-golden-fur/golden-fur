@@ -28,6 +28,12 @@ import styles from './BoardingChecklistKanban.module.css';
 
 interface BoardingChecklistKanbanProps {
   accessToken: string;
+  /** Daycare Queue redesign: scopes the whole board to one pet's tasks -
+   * set when this page is reached from a checked-in Daycare Queue row
+   * (?petId=...). Forces the Hotel/Daycare tab to Daycare and hides the
+   * switcher entirely (there's nothing to switch between when every task
+   * shown already belongs to this one pet). */
+  petId?: string;
 }
 
 type StayTypeTab = 'Hotel' | 'Daycare';
@@ -254,13 +260,16 @@ function isReadOnlyStatus(status: CareLogEntryStatus): boolean {
  */
 export function BoardingChecklistKanban({
   accessToken,
+  petId,
 }: BoardingChecklistKanbanProps) {
   const [entries, setEntries] = useState<CareLogEntry[]>([]);
   const [petNames, setPetNames] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [stayTypeTab, setStayTypeTab] = useState<StayTypeTab>('Hotel');
+  const [stayTypeTab, setStayTypeTab] = useState<StayTypeTab>(
+    petId ? 'Daycare' : 'Hotel'
+  );
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -370,12 +379,13 @@ export function BoardingChecklistKanban({
     () =>
       entries.filter((entry) => {
         if (entry.stays?.stay_type !== stayTypeTab) return false;
+        if (petId && entry.stays?.pet_id !== petId) return false;
         if (categoryFilter !== 'All' && entry.care_type !== categoryFilter) {
           return false;
         }
         return true;
       }),
-    [entries, stayTypeTab, categoryFilter]
+    [entries, stayTypeTab, petId, categoryFilter]
   );
 
   const rows = useMemo<Row[]>(
@@ -501,26 +511,30 @@ export function BoardingChecklistKanban({
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.tabs} role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={stayTypeTab === 'Hotel'}
-          className={stayTypeTab === 'Hotel' ? styles.tabActive : styles.tab}
-          onClick={() => setStayTypeTab('Hotel')}
-        >
-          Hotel
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={stayTypeTab === 'Daycare'}
-          className={stayTypeTab === 'Daycare' ? styles.tabActive : styles.tab}
-          onClick={() => setStayTypeTab('Daycare')}
-        >
-          Daycare
-        </button>
-      </div>
+      {!petId ? (
+        <div className={styles.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={stayTypeTab === 'Hotel'}
+            className={stayTypeTab === 'Hotel' ? styles.tabActive : styles.tab}
+            onClick={() => setStayTypeTab('Hotel')}
+          >
+            Hotel
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={stayTypeTab === 'Daycare'}
+            className={
+              stayTypeTab === 'Daycare' ? styles.tabActive : styles.tab
+            }
+            onClick={() => setStayTypeTab('Daycare')}
+          >
+            Daycare
+          </button>
+        </div>
+      ) : null}
 
       <QueueFilterBar
         dateRangePreset={dateRangePreset}

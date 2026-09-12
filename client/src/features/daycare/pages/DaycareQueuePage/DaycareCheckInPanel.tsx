@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Booking } from '../../../booking/booking.types';
-import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
 import { checkInDaycareSession } from '../../api/daycare.api';
 import { getCageSuggestion } from '../../../hotel/api/hotel.api';
 import { CageStatusGrid } from '../../../hotel/components/CageStatusGrid/CageStatusGrid';
@@ -23,9 +22,13 @@ const PARTS_OF_DAY: PartOfDay[] = ['Morning', 'Afternoon', 'Evening'];
 interface DaycareCheckInPanelProps {
   accessToken: string;
   role: string;
-  branchId: string;
-  /** Fires once a pet has been checked in, so the parent DaycareQueuePage
-   * can switch to the Check Out tab with this session preselected. */
+  /** Daycare Queue redesign: the booking picker now lives on the queue list
+   * itself (a real row-click navigation to DaycareCheckInFormPage), so this
+   * panel always has an already-selected booking to work with rather than
+   * owning its own picker/selection state - mirrors HotelCheckInPanel. */
+  booking: Booking;
+  /** Fires once the pet has been checked in - DaycareCheckInFormPage
+   * navigates back to the queue on this. */
   onCheckedIn: (sessionId: string) => void;
 }
 
@@ -49,9 +52,42 @@ interface MedicationUiState {
   administrationNotes: string;
 }
 
+/** Pre-fills from whatever was entered at booking time
+ * (CustomerBookingFlowPage's Care Instructions step) - still just a starting
+ * point, freely editable below before it becomes the authoritative record.
+ * Mirrors HotelCheckInPanel's own initialFeeding/initialWalking/etc, minus
+ * the CatalogComboBox/prescription-prefill parts this simpler panel never
+ * had (see the file-level comment below). */
+function initialFeeding(booking: Booking): FeedingUiState[] {
+  return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
+    mealTime: item.meal_time,
+    foodType: item.food_type,
+    quantity: item.quantity,
+    specialInstructions: item.special_instructions ?? '',
+  }));
+}
+
+function initialCareBlocks(
+  items: { time_block: PartOfDay; duration_minutes: number; notes?: string }[]
+): CareBlockUiState[] {
+  return items.map((item) => ({
+    timeBlock: item.time_block,
+    durationMinutes: item.duration_minutes,
+    notes: item.notes ?? '',
+  }));
+}
+
+function initialMedications(booking: Booking): MedicationUiState[] {
+  return (booking.hotel_preferences?.medications ?? []).map((item) => ({
+    name: item.medication_name,
+    dose: item.dose,
+    scheduledTimes: item.scheduled_times,
+    administrationNotes: item.administration_notes ?? '',
+  }));
+}
+
 /**
- * Issue #69: check-in against an existing confirmed Daycare booking looked
- * up for today.
+ * Issue #69: check-in against an existing confirmed Daycare booking.
  *
  * Custom change (Daycare/Hotel parity): "make daycare the same as hotel...
  * it will also have cage config, as well as the feeding, medication, walk
@@ -67,127 +103,55 @@ interface MedicationUiState {
  * duration toggle for walk/play blocks (just a part-of-day select + a
  * minutes field) - the captured data shape is identical either way.
  *
- * Parity follow-up: pre-fills these fields from `booking.hotel_preferences`
- * (CustomerBookingFlowPage's Care Instructions step, extended to Daycare)
- * exactly like HotelCheckInPanel does - see handleSelectBooking.
- *
- * Custom change (walk-in mode removed): this panel previously also offered
- * a "Walk-in" mode - creating a brand-new Daycare session directly against a
- * pet profile, with no booking at all (customer search + pet pick/register
- * inline). Removed: Groomer/Pet Assistant (this page's own viewer roles,
- * narrower than Receptionist's) are meant to physically check in a pet that
- * already has a booking, mirroring Hotel Queue's Check-In tab exactly (which
- * has no walk-in mode either). A genuine walk-in customer is still fully
- * served today - Receptionist creates a same-day booking on their behalf
- * through the normal booking flow (staff can book for a walk-in client),
- * which then simply shows up here to be checked in like any other booking.
- * The server's walk-in check-in path (checkInDaycareSession's pet_id +
- * branch_id branch, no booking_id) is left intact, unused by this UI - see
- * the request that removed this mode if that capability needs a home again.
+ * Daycare Queue redesign: this used to own a DaycareBookingPicker and let
+ * staff pick which booking to check in inline; it's now a routed page
+ * (DaycareCheckInFormPage, /staff/daycare/queue/check-in/:bookingId) reached
+ * by clicking a Pending row on the queue, mirroring HotelCheckInPanel's own
+ * identical change - so this panel always receives its one `booking` as a
+ * prop instead of resolving it itself.
  */
 export function DaycareCheckInPanel({
   accessToken,
   role,
-  branchId,
+  booking,
   onCheckedIn,
 }: DaycareCheckInPanelProps) {
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-
   const [suggestedCages, setSuggestedCages] = useState<Cage[]>([]);
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
   const [selectedCageId, setSelectedCageId] = useState<string | null>(null);
 
-  const [feeding, setFeeding] = useState<FeedingUiState[]>([]);
-  const [walking, setWalking] = useState<CareBlockUiState[]>([]);
-  const [playing, setPlaying] = useState<CareBlockUiState[]>([]);
-  const [medications, setMedications] = useState<MedicationUiState[]>([]);
+  const [feeding, setFeeding] = useState<FeedingUiState[]>(() =>
+    initialFeeding(booking)
+  );
+  const [walking, setWalking] = useState<CareBlockUiState[]>(() =>
+    initialCareBlocks(booking.hotel_preferences?.walking ?? [])
+  );
+  const [playing, setPlaying] = useState<CareBlockUiState[]>(() =>
+    initialCareBlocks(booking.hotel_preferences?.playing ?? [])
+  );
+  const [medications, setMedications] = useState<MedicationUiState[]>(() =>
+    initialMedications(booking)
+  );
   const [notifyOptIn, setNotifyOptIn] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [checkedInSessionId, setCheckedInSessionId] = useState<string | null>(
-    null
-  );
 
-  const petId = selectedBooking?.pet_id;
-
-  function resetCareFields() {
-    setSuggestedCages([]);
-    setSuggestedSize(null);
-    setSelectedCageId(null);
-    setFeeding([]);
-    setWalking([]);
-    setPlaying([]);
-    setMedications([]);
-    setNotifyOptIn(false);
-  }
-
-  function loadCageSuggestion(forPetId: string) {
-    void getCageSuggestion(forPetId, accessToken).then((result) => {
+  // Runs once for this page's one booking - the parent DaycareCheckInFormPage
+  // keys this panel by booking.id, so a different booking is a fresh mount,
+  // not a re-render of this one (mirrors HotelCheckInPanel's identical
+  // cage-suggestion effect).
+  useEffect(() => {
+    void getCageSuggestion(booking.pet_id, accessToken).then((result) => {
       if (result.data) {
         setSuggestedSize(result.data.suggestedSize);
         setSuggestedCages(result.data.availableCages);
         setSelectedCageId(result.data.availableCages[0]?.id ?? null);
       }
     });
-  }
-
-  function handleSelectBooking(booking: Booking) {
-    setSelectedBooking(booking);
-    resetCareFields();
-    loadCageSuggestion(booking.pet_id);
-
-    // Pre-fills from whatever was entered at booking time
-    // (CustomerBookingFlowPage's "Care Instructions" step, now shown for
-    // Daycare too - Custom change: Daycare/Hotel parity follow-up), mirroring
-    // HotelCheckInPanel's identical pre-fill. Still just a starting point,
-    // freely editable below before it becomes the authoritative record.
-    const preferences = booking.hotel_preferences;
-    if (!preferences) return;
-
-    if (preferences.feeding.length > 0) {
-      setFeeding(
-        preferences.feeding.map((item) => ({
-          mealTime: item.meal_time,
-          foodType: item.food_type,
-          quantity: item.quantity,
-          specialInstructions: item.special_instructions ?? '',
-        }))
-      );
-    }
-
-    if (preferences.walking.length > 0) {
-      setWalking(
-        preferences.walking.map((item) => ({
-          timeBlock: item.time_block,
-          durationMinutes: item.duration_minutes,
-          notes: item.notes ?? '',
-        }))
-      );
-    }
-
-    if (preferences.playing.length > 0) {
-      setPlaying(
-        preferences.playing.map((item) => ({
-          timeBlock: item.time_block,
-          durationMinutes: item.duration_minutes,
-          notes: item.notes ?? '',
-        }))
-      );
-    }
-
-    if (preferences.medications.length > 0) {
-      setMedications(
-        preferences.medications.map((item) => ({
-          name: item.medication_name,
-          dose: item.dose,
-          scheduledTimes: item.scheduled_times,
-          administrationNotes: item.administration_notes ?? '',
-        }))
-      );
-    }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking.id]);
 
   function addFeeding() {
     setFeeding((prev) => [
@@ -369,7 +333,7 @@ export function DaycareCheckInPanel({
     );
 
     const result = await checkInDaycareSession(accessToken, {
-      booking_id: selectedBooking!.id,
+      booking_id: booking.id,
       cage_id: selectedCageId ?? undefined,
       feeding: feedingPayload,
       walking: walkingPayload,
@@ -382,8 +346,7 @@ export function DaycareCheckInPanel({
 
     if (result.error || !result.data) {
       const message = result.error ?? 'Could not check in this pet.';
-      // AC-3: a terminal state for the screen, not a retry loop - the
-      // message stays until the user picks a different booking.
+      // AC-3: a terminal state for the screen, not a retry loop.
       if (message.toLowerCase().includes('unavailable after')) {
         setBlockedMessage(message);
       } else {
@@ -392,40 +355,10 @@ export function DaycareCheckInPanel({
       return;
     }
 
-    setCheckedInSessionId(result.data.id);
+    onCheckedIn(result.data.id);
   }
 
-  if (checkedInSessionId) {
-    return (
-      <>
-        <p className={styles.successBanner} role="status">
-          Pet checked in successfully.
-        </p>
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => onCheckedIn(checkedInSessionId)}
-          >
-            Go to checkout
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => {
-              setCheckedInSessionId(null);
-              setSelectedBooking(null);
-              resetCareFields();
-            }}
-          >
-            Check in another pet
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  const canSubmit = Boolean(selectedBooking) && Boolean(selectedCageId);
+  const canSubmit = Boolean(selectedCageId);
 
   return (
     <>
@@ -440,325 +373,312 @@ export function DaycareCheckInPanel({
         </p>
       ) : null}
 
-      <div className={styles.section}>
-        <DaycareBookingPicker
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Cage assignment</h2>
+        <p className={styles.copy}>
+          Suggested size: {suggestedSize ?? '...'} - the recommended cage is
+          highlighted below, or pick any other Available cage.
+        </p>
+        <CageStatusGrid
           accessToken={accessToken}
-          branchId={branchId}
-          onSelect={handleSelectBooking}
-          selectedBookingId={selectedBooking?.id ?? null}
+          viewerRole={role}
+          onSelectCage={(cage) => setSelectedCageId(cage.id)}
+          selectedCageId={selectedCageId}
+          suggestedCageIds={suggestedCages.map((cage) => cage.id)}
         />
-      </div>
+      </section>
 
-      {petId ? (
-        <>
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Cage assignment</h2>
-            <p className={styles.copy}>
-              Suggested size: {suggestedSize ?? '...'} - the recommended cage is
-              highlighted below, or pick any other Available cage.
-            </p>
-            <CageStatusGrid
-              accessToken={accessToken}
-              viewerRole={role}
-              onSelectCage={(cage) => setSelectedCageId(cage.id)}
-              selectedCageId={selectedCageId}
-              suggestedCageIds={suggestedCages.map((cage) => cage.id)}
-            />
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Feeding instructions</h2>
-            {feeding.map((state, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <select
-                    className={styles.input}
-                    aria-label="Meal time"
-                    value={state.mealTime}
-                    onChange={(event) =>
-                      updateFeeding(index, {
-                        mealTime: event.target.value as MealTime,
-                      })
-                    }
-                  >
-                    {MEAL_TIMES.map((mealTime) => (
-                      <option key={mealTime} value={mealTime}>
-                        {mealTime}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.input}
-                    placeholder="Food type"
-                    value={state.foodType}
-                    onChange={(event) =>
-                      updateFeeding(index, { foodType: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Quantity"
-                    value={state.quantity}
-                    onChange={(event) =>
-                      updateFeeding(index, { quantity: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Special instructions (optional)"
-                    value={state.specialInstructions}
-                    onChange={(event) =>
-                      updateFeeding(index, {
-                        specialInstructions: event.target.value,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeFeeding(index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-            {feeding.length === 0 ? (
-              <p className={styles.copy}>No feeding times added.</p>
-            ) : null}
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={addFeeding}
-            >
-              Add feeding time
-            </button>
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Walking instructions</h2>
-            {walking.map((block, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <select
-                    className={styles.input}
-                    aria-label="Walk time block"
-                    value={block.timeBlock}
-                    onChange={(event) =>
-                      updateCareBlock(setWalking, index, {
-                        timeBlock: event.target.value as PartOfDay,
-                      })
-                    }
-                  >
-                    {PARTS_OF_DAY.map((part) => (
-                      <option key={part} value={part}>
-                        {part}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={1}
-                    aria-label="Walk duration (min)"
-                    value={block.durationMinutes}
-                    onChange={(event) =>
-                      updateCareBlock(setWalking, index, {
-                        durationMinutes: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Notes (optional)"
-                    value={block.notes}
-                    onChange={(event) =>
-                      updateCareBlock(setWalking, index, {
-                        notes: event.target.value,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeCareBlock(setWalking, index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-            {walking.length === 0 ? (
-              <p className={styles.copy}>No walk times added.</p>
-            ) : null}
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => addCareBlock(setWalking)}
-            >
-              Add walk time
-            </button>
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Playtime</h2>
-            {playing.map((block, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <select
-                    className={styles.input}
-                    aria-label="Playtime block"
-                    value={block.timeBlock}
-                    onChange={(event) =>
-                      updateCareBlock(setPlaying, index, {
-                        timeBlock: event.target.value as PartOfDay,
-                      })
-                    }
-                  >
-                    {PARTS_OF_DAY.map((part) => (
-                      <option key={part} value={part}>
-                        {part}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={1}
-                    aria-label="Playtime duration (min)"
-                    value={block.durationMinutes}
-                    onChange={(event) =>
-                      updateCareBlock(setPlaying, index, {
-                        durationMinutes: Number(event.target.value),
-                      })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Notes (optional)"
-                    value={block.notes}
-                    onChange={(event) =>
-                      updateCareBlock(setPlaying, index, {
-                        notes: event.target.value,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeCareBlock(setPlaying, index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-            {playing.length === 0 ? (
-              <p className={styles.copy}>No playtimes added.</p>
-            ) : null}
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => addCareBlock(setPlaying)}
-            >
-              Add playtime
-            </button>
-          </section>
-
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Medications</h2>
-            {medications.map((medication, index) => (
-              <div key={index} className={styles.instructionBlock}>
-                <div className={styles.inlineFields}>
-                  <input
-                    className={styles.input}
-                    placeholder="Medication name"
-                    value={medication.name}
-                    onChange={(event) =>
-                      updateMedication(index, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Dose"
-                    value={medication.dose}
-                    onChange={(event) =>
-                      updateMedication(index, { dose: event.target.value })
-                    }
-                  />
-                  <input
-                    className={styles.input}
-                    placeholder="Notes (optional)"
-                    value={medication.administrationNotes}
-                    onChange={(event) =>
-                      updateMedication(index, {
-                        administrationNotes: event.target.value,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeMedication(index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                <div className={styles.inlineFields}>
-                  <span className={styles.copy}>Scheduled times:</span>
-                  {medication.scheduledTimes.map((time, timeIndex) => (
-                    <div key={timeIndex} className={styles.timeChip}>
-                      <TimeInput
-                        aria-label={`Medication time ${timeIndex + 1}`}
-                        value={time}
-                        onChange={(value) =>
-                          updateMedicationTime(index, timeIndex, value)
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeMedicationTime(index, timeIndex)}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => addMedicationTime(index)}
-                  >
-                    Add time
-                  </button>
-                </div>
-              </div>
-            ))}
-            {medications.length === 0 ? (
-              <p className={styles.copy}>No medications added.</p>
-            ) : null}
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={addMedication}
-            >
-              Add medication
-            </button>
-          </section>
-
-          <section className={styles.section}>
-            <label className={styles.checkboxRow}>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Feeding instructions</h2>
+        {feeding.map((state, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <select
+                className={styles.input}
+                aria-label="Meal time"
+                value={state.mealTime}
+                onChange={(event) =>
+                  updateFeeding(index, {
+                    mealTime: event.target.value as MealTime,
+                  })
+                }
+              >
+                {MEAL_TIMES.map((mealTime) => (
+                  <option key={mealTime} value={mealTime}>
+                    {mealTime}
+                  </option>
+                ))}
+              </select>
               <input
-                type="checkbox"
-                checked={notifyOptIn}
-                onChange={(event) => setNotifyOptIn(event.target.checked)}
+                className={styles.input}
+                placeholder="Food type"
+                value={state.foodType}
+                onChange={(event) =>
+                  updateFeeding(index, { foodType: event.target.value })
+                }
               />
-              Owner opted in to pet status notifications for this session
-            </label>
-          </section>
-        </>
-      ) : null}
+              <input
+                className={styles.input}
+                placeholder="Quantity"
+                value={state.quantity}
+                onChange={(event) =>
+                  updateFeeding(index, { quantity: event.target.value })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Special instructions (optional)"
+                value={state.specialInstructions}
+                onChange={(event) =>
+                  updateFeeding(index, {
+                    specialInstructions: event.target.value,
+                  })
+                }
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeFeeding(index)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {feeding.length === 0 ? (
+          <p className={styles.copy}>No feeding times added.</p>
+        ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={addFeeding}
+        >
+          Add feeding time
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Walking instructions</h2>
+        {walking.map((block, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <select
+                className={styles.input}
+                aria-label="Walk time block"
+                value={block.timeBlock}
+                onChange={(event) =>
+                  updateCareBlock(setWalking, index, {
+                    timeBlock: event.target.value as PartOfDay,
+                  })
+                }
+              >
+                {PARTS_OF_DAY.map((part) => (
+                  <option key={part} value={part}>
+                    {part}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                aria-label="Walk duration (min)"
+                value={block.durationMinutes}
+                onChange={(event) =>
+                  updateCareBlock(setWalking, index, {
+                    durationMinutes: Number(event.target.value),
+                  })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Notes (optional)"
+                value={block.notes}
+                onChange={(event) =>
+                  updateCareBlock(setWalking, index, {
+                    notes: event.target.value,
+                  })
+                }
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeCareBlock(setWalking, index)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {walking.length === 0 ? (
+          <p className={styles.copy}>No walk times added.</p>
+        ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={() => addCareBlock(setWalking)}
+        >
+          Add walk time
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Playtime</h2>
+        {playing.map((block, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <select
+                className={styles.input}
+                aria-label="Playtime block"
+                value={block.timeBlock}
+                onChange={(event) =>
+                  updateCareBlock(setPlaying, index, {
+                    timeBlock: event.target.value as PartOfDay,
+                  })
+                }
+              >
+                {PARTS_OF_DAY.map((part) => (
+                  <option key={part} value={part}>
+                    {part}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                aria-label="Playtime duration (min)"
+                value={block.durationMinutes}
+                onChange={(event) =>
+                  updateCareBlock(setPlaying, index, {
+                    durationMinutes: Number(event.target.value),
+                  })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Notes (optional)"
+                value={block.notes}
+                onChange={(event) =>
+                  updateCareBlock(setPlaying, index, {
+                    notes: event.target.value,
+                  })
+                }
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeCareBlock(setPlaying, index)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {playing.length === 0 ? (
+          <p className={styles.copy}>No playtimes added.</p>
+        ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={() => addCareBlock(setPlaying)}
+        >
+          Add playtime
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Medications</h2>
+        {medications.map((medication, index) => (
+          <div key={index} className={styles.instructionBlock}>
+            <div className={styles.inlineFields}>
+              <input
+                className={styles.input}
+                placeholder="Medication name"
+                value={medication.name}
+                onChange={(event) =>
+                  updateMedication(index, { name: event.target.value })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Dose"
+                value={medication.dose}
+                onChange={(event) =>
+                  updateMedication(index, { dose: event.target.value })
+                }
+              />
+              <input
+                className={styles.input}
+                placeholder="Notes (optional)"
+                value={medication.administrationNotes}
+                onChange={(event) =>
+                  updateMedication(index, {
+                    administrationNotes: event.target.value,
+                  })
+                }
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeMedication(index)}
+              >
+                Remove
+              </button>
+            </div>
+
+            <div className={styles.inlineFields}>
+              <span className={styles.copy}>Scheduled times:</span>
+              {medication.scheduledTimes.map((time, timeIndex) => (
+                <div key={timeIndex} className={styles.timeChip}>
+                  <TimeInput
+                    aria-label={`Medication time ${timeIndex + 1}`}
+                    value={time}
+                    onChange={(value) =>
+                      updateMedicationTime(index, timeIndex, value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => removeMedicationTime(index, timeIndex)}
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => addMedicationTime(index)}
+              >
+                Add time
+              </button>
+            </div>
+          </div>
+        ))}
+        {medications.length === 0 ? (
+          <p className={styles.copy}>No medications added.</p>
+        ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={addMedication}
+        >
+          Add medication
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={notifyOptIn}
+            onChange={(event) => setNotifyOptIn(event.target.checked)}
+          />
+          Owner opted in to pet status notifications for this session
+        </label>
+      </section>
 
       <button
         type="button"
