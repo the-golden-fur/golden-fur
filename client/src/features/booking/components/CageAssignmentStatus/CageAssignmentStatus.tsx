@@ -31,7 +31,6 @@ export function CageAssignmentStatus({
 
   useEffect(() => {
     let isMounted = true;
-    setIsLoading(true);
 
     void getCageAssignmentStatus(accessToken, branchId, petId).then(
       (result) => {

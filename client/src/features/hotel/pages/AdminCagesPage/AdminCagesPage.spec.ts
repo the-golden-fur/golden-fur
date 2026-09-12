@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
-import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as hotelApi from '../../api/hotel.api';
 import { AdminCagesPage } from './AdminCagesPage';
