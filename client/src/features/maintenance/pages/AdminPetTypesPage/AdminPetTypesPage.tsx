@@ -287,6 +287,8 @@ export function AdminPetTypesPage() {
       return;
     }
 
+    const savedOverride = result.data;
+
     setOverrides((prev) => [
       ...prev.filter(
         (row) =>
@@ -295,7 +297,7 @@ export function AdminPetTypesPage() {
             row.branch_id === (selectedBranchId || null)
           )
       ),
-      result.data,
+      savedOverride,
     ]);
     setPriceInputs((prev) => {
       const next = { ...prev };
