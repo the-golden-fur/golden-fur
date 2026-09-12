@@ -226,6 +226,19 @@ The `session-documenter` agent (in the vault) runs at implementation-finish
 and updates the same `sessions/NN-<slug>/` on later requests; the PR flow
 does not touch it.
 
+**`plan-file-guard`** (`PreToolUse`, matcher `ExitPlanMode`) — gates the
+Claude Code host's own built-in Plan Mode toggle (Explore/Plan
+agents → a plan approved via the `ExitPlanMode` tool), which is a separate
+mechanism from the `session-router`-routed `/plan` skill above. Blocks
+`ExitPlanMode` unless a `sessions/NN-<slug>/plan.md` in the vault is
+currently new/modified-but-uncommitted, or was committed within the last
+hour — i.e., the plan must be written to the vault (near-beginner style, per
+`session-documentation.md`'s template) **before** plan mode can be exited
+into implementation, not only recorded in the host's own ephemeral
+`~/.claude/plans/*.md` file. Fails open (allows) if the vault repo isn't
+present at the expected sibling path. Host-specific like `session-router`;
+other tools have no equivalent gate.
+
 ### Why two PR skills instead of one
 
 `pr-to-dev` and `pr-dev-to-main` intentionally use different merge
