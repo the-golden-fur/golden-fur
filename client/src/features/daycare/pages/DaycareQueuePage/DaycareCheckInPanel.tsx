@@ -9,7 +9,9 @@ import { formatTimeValue } from '../../../hotel/components/TimeInput/formatTimeV
 import type {
   Cage,
   FeedingInstructionPayload,
+  FoodQuantityUnit,
   MealTime,
+  MedicationDoseUnit,
   MedicationInstructionPayload,
   PartOfDay,
   PlayingInstructionPayload,
@@ -33,6 +35,8 @@ interface FeedingUiState {
   mealTime: MealTime;
   foodType: string;
   quantity: string;
+  quantityUnit?: FoodQuantityUnit;
+  photoUrl?: string;
   specialInstructions: string;
 }
 
@@ -45,6 +49,8 @@ interface CareBlockUiState {
 interface MedicationUiState {
   name: string;
   dose: string;
+  doseUnit?: MedicationDoseUnit;
+  photoUrl?: string;
   scheduledTimes: string[];
   administrationNotes: string;
 }
@@ -152,6 +158,11 @@ export function DaycareCheckInPanel({
           mealTime: item.meal_time,
           foodType: item.food_type,
           quantity: item.quantity,
+          // Custom change (care instruction units + photos): no unit-
+          // picker/photo upload UI on this panel - carried through unedited
+          // so check-in doesn't silently drop what the customer specified.
+          quantityUnit: item.quantity_unit,
+          photoUrl: item.photo_url,
           specialInstructions: item.special_instructions ?? '',
         }))
       );
@@ -182,6 +193,10 @@ export function DaycareCheckInPanel({
         preferences.medications.map((item) => ({
           name: item.medication_name,
           dose: item.dose,
+          // Custom change (care instruction units + photos): pass-through
+          // only, see the feeding pre-fill's dev note above.
+          doseUnit: item.dose_unit,
+          photoUrl: item.photo_url,
           scheduledTimes: item.scheduled_times,
           administrationNotes: item.administration_notes ?? '',
         }))
@@ -339,6 +354,8 @@ export function DaycareCheckInPanel({
         meal_time: state.mealTime,
         food_type: state.foodType,
         quantity: state.quantity,
+        quantity_unit: state.quantityUnit,
+        photo_url: state.photoUrl,
         special_instructions: state.specialInstructions || undefined,
       })
     );
@@ -363,6 +380,8 @@ export function DaycareCheckInPanel({
       (medication) => ({
         medication_name: medication.name,
         dose: medication.dose,
+        dose_unit: medication.doseUnit,
+        photo_url: medication.photoUrl,
         scheduled_times: medication.scheduledTimes.map(formatTimeValue),
         administration_notes: medication.administrationNotes || undefined,
       })

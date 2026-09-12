@@ -252,10 +252,42 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
 /** null/undefined stay_date = applies to every night of the stay (the "same
  * instructions every night" default); a specific date scopes the row to
  * that single night only (#22 per-night care instructions). */
+// Care instruction units + photo attachment (diet-app style specificity):
+// required at booking time - the customer picks a unit and may attach a
+// photo of the food/medication item when adding it. Duplicates hotel
+// feature's own FOOD_QUANTITY_UNITS/MEDICATION_DOSE_UNITS (same precedent as
+// the meal_time/time_block literal unions above).
+export const FOOD_QUANTITY_UNITS = [
+  'cup',
+  'gram',
+  'ounce',
+  'can',
+  'scoop',
+  'tablespoon',
+  'teaspoon',
+  'milliliter',
+  'piece',
+] as const;
+export type FoodQuantityUnit = (typeof FOOD_QUANTITY_UNITS)[number];
+
+export const MEDICATION_DOSE_UNITS = [
+  'mg',
+  'ml',
+  'tablet',
+  'capsule',
+  'drop',
+  'application',
+] as const;
+export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
+
 export interface HotelBookingPreferenceFeeding {
   meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
+  quantity_unit: FoodQuantityUnit;
+  /** Optional photo of the food item/bag, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url?: string;
   special_instructions?: string;
   food_catalog_id?: string;
   stay_date?: string;
@@ -278,6 +310,10 @@ export interface HotelBookingPreferencePlaying {
 export interface HotelBookingPreferenceMedication {
   medication_name: string;
   dose: string;
+  dose_unit: MedicationDoseUnit;
+  /** Optional photo of the medication/label, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url?: string;
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;

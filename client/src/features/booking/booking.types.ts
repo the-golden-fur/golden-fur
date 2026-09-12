@@ -287,10 +287,43 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
 /** stay_date omitted = applies to every night of the stay (the "same
  * instructions every night" default); a specific date scopes the row to
  * that single night only (#22 per-night care instructions). */
+// Care instruction units + photo attachment (diet-app style specificity):
+// required at booking time - the customer picks a unit and may attach a
+// photo of the food/medication item when adding it, instead of relying on
+// freetext to smuggle a unit into quantity/dose (e.g. "1 cup", "250mg").
+// Duplicates hotel.types.ts's own copy of this vocabulary (same precedent as
+// the meal_time/time_block literal unions below).
+export const FOOD_QUANTITY_UNITS = [
+  'cup',
+  'gram',
+  'ounce',
+  'can',
+  'scoop',
+  'tablespoon',
+  'teaspoon',
+  'milliliter',
+  'piece',
+] as const;
+export type FoodQuantityUnit = (typeof FOOD_QUANTITY_UNITS)[number];
+
+export const MEDICATION_DOSE_UNITS = [
+  'mg',
+  'ml',
+  'tablet',
+  'capsule',
+  'drop',
+  'application',
+] as const;
+export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
+
 export interface HotelBookingPreferenceFeeding {
   meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
+  quantity_unit: FoodQuantityUnit;
+  /** Optional photo of the food item/bag, uploaded via
+   * uploadPetCareItemPhoto (POST /pets/:id/care-item-photo). */
+  photo_url?: string;
   special_instructions?: string;
   /** Set only when food_type matched a food/medication catalog item - mirrors
    * hotel.types.ts's FeedingInstructionPayload naming so HotelCheckInPage's
@@ -316,6 +349,10 @@ export interface HotelBookingPreferencePlaying {
 export interface HotelBookingPreferenceMedication {
   medication_name: string;
   dose: string;
+  dose_unit: MedicationDoseUnit;
+  /** Optional photo of the medication/label, uploaded via
+   * uploadPetCareItemPhoto (POST /pets/:id/care-item-photo). */
+  photo_url?: string;
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;
