@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { SpinWheelReward } from '../../rewards.types';
 import styles from './SpinWheel.module.css';
 
@@ -79,28 +79,35 @@ export function SpinWheel({
 }: SpinWheelProps) {
   const segments = buildSegments(rewards);
   const [rotation, setRotation] = useState(0);
-  const spinningRef = useRef(false);
+  // "Adjusting state when a prop changes" (react.dev), not an effect -
+  // tracks the last resultRewardId prop value this component has already
+  // reacted to (including null, so a second consecutive spin landing on
+  // the SAME reward is still detected as a fresh change once the parent
+  // resets resultRewardId to null in between spins). No ref is needed here
+  // (accessing ref.current during render is itself disallowed) - the
+  // parent only ever sets a new resultRewardId once the previous spin's
+  // animation has already completed, so re-entrancy isn't a real concern.
+  const [handledResultId, setHandledResultId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!resultRewardId || spinningRef.current) return;
+  if (resultRewardId !== handledResultId) {
+    setHandledResultId(resultRewardId);
 
-    const segment = segments.find((s) => s.reward.id === resultRewardId);
-    if (!segment) return;
+    if (resultRewardId) {
+      const segment = segments.find((s) => s.reward.id === resultRewardId);
 
-    const segmentMidAngle = (segment.startAngle + segment.endAngle) / 2;
-    // The pointer is fixed at the top (0deg) - rotate the wheel so the
-    // winning segment's middle lands there, plus extra full spins for a
-    // convincing animation.
-    const targetRotation = BASE_SPINS * 360 + (360 - segmentMidAngle);
+      if (segment) {
+        const segmentMidAngle = (segment.startAngle + segment.endAngle) / 2;
+        // The pointer is fixed at the top (0deg) - rotate the wheel so the
+        // winning segment's middle lands there, plus extra full spins for
+        // a convincing animation.
+        const targetRotation = BASE_SPINS * 360 + (360 - segmentMidAngle);
 
-    spinningRef.current = true;
-    setRotation((previous) => previous + targetRotation);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultRewardId]);
+        setRotation((previous) => previous + targetRotation);
+      }
+    }
+  }
 
   const handleTransitionEnd = () => {
-    if (!spinningRef.current) return;
-    spinningRef.current = false;
     onAnimationComplete?.();
   };
 
