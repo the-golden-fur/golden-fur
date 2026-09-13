@@ -59,6 +59,19 @@ const listBranchScheduleQueryValidator = z.object({
   to: z.iso.datetime({ offset: true }),
 });
 
+/** Custom change (My Schedule): both optional and required together - a
+ * staff member's own calendar view passes them to see a specific month
+ * (past or future); the self-service Days Off badge omits both and keeps
+ * the original not-yet-ended-blocks behavior. */
+const listUnavailabilityBlocksQueryValidator = z
+  .object({
+    from: z.iso.datetime({ offset: true }).optional(),
+    to: z.iso.datetime({ offset: true }).optional(),
+  })
+  .refine((input) => Boolean(input.from) === Boolean(input.to), {
+    message: 'from and to must be provided together',
+  });
+
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
     error instanceof Error && 'statusCode' in error
@@ -640,11 +653,21 @@ export async function listUnavailabilityBlocksController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const parsed = listUnavailabilityBlocksQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
   try {
     const blocks = await listUnavailabilityBlocks({
       requesterId,
       requesterRole,
       targetStaffId: targetId as string,
+      rangeStart: parsed.data.from,
+      rangeEnd: parsed.data.to,
     });
 
     return res.status(200).json({ blocks });

@@ -6,6 +6,7 @@ import { CustomerManagementPage } from './pages/CustomerManagementPage/CustomerM
 import { StaffManagementPage } from './pages/StaffManagementPage/StaffManagementPage';
 import { StaffPetProfilePage } from './pages/StaffPetProfilePage/StaffPetProfilePage';
 import { DaysOffPage } from './pages/DaysOffPage/DaysOffPage';
+import { MySchedulePage } from './pages/MySchedulePage/MySchedulePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
 import { MonthlySchedulePage } from './pages/MonthlySchedulePage/MonthlySchedulePage';
 import { AdminArchivePage } from './pages/AdminArchivePage/AdminArchivePage';
@@ -27,6 +28,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/days-off',
       element: createElement(DaysOffPage),
+    }),
+    createElement(Route, {
+      path: '/staff/my-schedule',
+      element: createElement(MySchedulePage),
     }),
     createElement(Route, {
       path: '/staff/admin/staff',

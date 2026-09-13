@@ -725,6 +725,36 @@ describe('unavailabilityBlock.service', () => {
 
       expect(result).toHaveLength(1);
     });
+
+    it('Custom change (My Schedule): given a range, returns full-day blocks overlapping it regardless of whether they are past or future', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'block-past',
+            staff_id: 'staff-1',
+            start_time: '2026-06-05T00:00:00.000Z',
+            end_time: '2026-06-06T00:00:00.000Z',
+            leave_type: 'Rest Day',
+            is_full_day: true,
+            reason: null,
+            created_by: 'admin-1',
+            created_at: '2026-06-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listUnavailabilityBlocks({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        rangeStart: '2026-06-01T00:00:00.000Z',
+        rangeEnd: '2026-07-01T00:00:00.000Z',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: 'block-past' });
+    });
   });
 
   describe('reviewUnavailabilityBlock', () => {

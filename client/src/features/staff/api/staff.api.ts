@@ -125,10 +125,16 @@ export async function uploadAvatar(
 
 export async function listUnavailabilityBlocks(
   staffId: string,
-  accessToken: string
+  accessToken: string,
+  /** My Schedule: when given, returns every full-day entry (past or
+   * future) overlapping the range instead of only not-yet-ended blocks. */
+  range?: { from: string; to: string }
 ): Promise<StaffApiResult<UnavailabilityBlock[]>> {
+  const query = range
+    ? `?${new URLSearchParams({ from: range.from, to: range.to }).toString()}`
+    : '';
   const response = await fetch(
-    `${API_BASE_URL}/staff/${staffId}/unavailability`,
+    `${API_BASE_URL}/staff/${staffId}/unavailability${query}`,
     { headers: authHeaders(accessToken) }
   );
 
