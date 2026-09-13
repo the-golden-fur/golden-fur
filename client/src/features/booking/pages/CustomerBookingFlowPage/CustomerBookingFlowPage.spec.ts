@@ -1701,6 +1701,74 @@ describe('CustomerBookingFlowPage', () => {
     expect(localStorage.getItem(CUSTOMER_DRAFT_KEY)).toBeNull();
   });
 
+  it('stops autosaving the instant Confirm booking is clicked, even if the request never resolves', async () => {
+    // Simulates a lost/stalled response after clicking Confirm - the point
+    // where a naive "only stop saving once the server confirms success"
+    // guard leaves a window open: the debounced autosave can still fire
+    // for state that changed right before the click, saving "progress"
+    // for a submission that may already be going through server-side.
+    vi.mocked(bookingApi.createBooking).mockImplementation(
+      () => new Promise(() => {}) as never
+    );
+    // Payment scheme radios (the field this test edits right before
+    // confirming) only render when the branch's downpayment policy is on.
+    vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+      data: {
+        downpayment_enabled: true,
+        downpayment_type: 'Flat',
+        downpayment_amount: 100,
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath'));
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+
+    // Wait for the review step's own arrival to settle its debounced write
+    // (paymentChoice still 'downpayment' at this point) before editing.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const priorDraft = localStorage.getItem(CUSTOMER_DRAFT_KEY);
+    expect(priorDraft).not.toBeNull();
+    expect(JSON.parse(priorDraft!).paymentChoice).toBe('downpayment');
+
+    // Edit the payment scheme, then click Confirm immediately after - well
+    // inside the 500ms debounce window for this edit.
+    await user.click(screen.getByText(/Full payment/));
+    await user.click(screen.getByText('Confirm booking'));
+
+    // The debounce window for the 'full' edit would have elapsed by now,
+    // but the request never resolves - nothing should have been saved
+    // since the click.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    const draftAfterClick = localStorage.getItem(CUSTOMER_DRAFT_KEY);
+    expect(draftAfterClick).not.toBeNull();
+    expect(JSON.parse(draftAfterClick!).paymentChoice).toBe('downpayment');
+  });
+
   it('Review shows the downpayment / remaining-balance split for an online booking when the branch policy is enabled and the downpayment scheme is selected', async () => {
     vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
       data: {
