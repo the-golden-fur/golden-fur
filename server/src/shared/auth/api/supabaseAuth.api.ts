@@ -182,13 +182,16 @@ async function unenrollTotpFactorsByStatus(
  * factor. If that happens, clean up again and retry once against whichever
  * factor the race left behind.
  *
- * If the conflict *still* persists after that, it's no longer a race - it's
- * a stray factor left over from earlier testing/usage, and it's most likely
- * *verified* (an unverified one would already have been swept up above). One
- * last best-effort pass tries to remove verified factors too; this only
- * succeeds if the caller's session is already aal2 (Supabase's own rule for
- * removing a verified factor), so it silently does nothing otherwise and the
- * final enroll attempt's error is returned as-is for the caller to surface.
+ * If the conflict *still* persists after that, it's no longer a race - the
+ * caller already has a *verified* factor (an unverified one would already
+ * have been swept up above). A verified factor must never be deleted as a
+ * side effect of enrolling - that's a live, working MFA credential, and
+ * silently replacing it here orphans whatever the user's authenticator app
+ * already has, with no guarantee they ever see or scan the replacement QR.
+ * Removing a verified factor is only ever appropriate as an explicit,
+ * user-initiated action (see unenrollAllTotpFactors / the unenroll
+ * endpoint). So just return this conflict as-is; callers are expected to
+ * check getTotpEnrollmentStatus before calling this function at all.
  */
 export async function enrollTotpFactor(userClient: SupabaseClient) {
   const isConflict = (message?: string) =>
@@ -202,14 +205,6 @@ export async function enrollTotpFactor(userClient: SupabaseClient) {
 
   if (isConflict(result.error?.message)) {
     await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-    result = await userClient.auth.mfa.enroll({
-      factorType: 'totp',
-      issuer: 'Golden Fur',
-    });
-  }
-
-  if (isConflict(result.error?.message)) {
-    await unenrollTotpFactorsByStatus(userClient, ['verified', 'unverified']);
     result = await userClient.auth.mfa.enroll({
       factorType: 'totp',
       issuer: 'Golden Fur',

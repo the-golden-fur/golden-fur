@@ -337,7 +337,7 @@ describe('supabaseAuth.api', () => {
       expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
     });
 
-    it('escalates to removing a stale verified factor when the conflict survives the first retry', async () => {
+    it('never deletes a verified factor when the conflict survives the first retry, and reports the conflict as-is', async () => {
       const userClient = mockUserClient();
       userClient.auth.mfa.listFactors.mockResolvedValue({
         data: {
@@ -355,44 +355,14 @@ describe('supabaseAuth.api', () => {
         .mockResolvedValueOnce({
           data: null,
           error: new Error('A factor with the friendly name "" already exists'),
-        })
-        .mockResolvedValueOnce({
-          data: { id: 'fresh-factor', type: 'totp' },
-          error: null,
         });
 
       const { data, error } = await enrollTotpFactor(userClient);
 
-      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalledWith({
         factorId: 'stale-verified',
       });
-      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
-      expect(error).toBeNull();
-      expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
-    });
-
-    it('gives up after the escalated attempt still conflicts (e.g. verified factor needs aal2 to remove)', async () => {
-      const userClient = mockUserClient();
-      userClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [
-            { id: 'stuck-verified', factor_type: 'totp', status: 'verified' },
-          ],
-        },
-        error: null,
-      });
-      userClient.auth.mfa.unenroll.mockResolvedValue({
-        data: null,
-        error: new Error('AAL2 required'),
-      });
-      userClient.auth.mfa.enroll.mockResolvedValue({
-        data: null,
-        error: new Error('A factor with the friendly name "" already exists'),
-      });
-
-      const { data, error } = await enrollTotpFactor(userClient);
-
-      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(2);
       expect(data).toBeNull();
       expect(error?.message).toContain('already exists');
     });

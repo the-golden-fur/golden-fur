@@ -16,12 +16,21 @@ interface TotpEnrollPanelProps {
   role: ThemeRole;
   accessToken: string;
   onEnrolled: () => void;
+  /** Called instead of showing the enroll form when the server reports the
+   * account is already enrolled (HTTP 409) - defaults to onEnrolled, since
+   * that outcome should route the caller wherever a completed check-in
+   * would. This is a second layer of defense: the pages that render this
+   * panel are expected to check status themselves first, but a factor
+   * created between that check and this call would otherwise still hit
+   * `startEnroll` unconditionally. */
+  onAlreadyEnrolled?: () => void;
 }
 
 export function TotpEnrollPanel({
   role,
   accessToken,
   onEnrolled,
+  onAlreadyEnrolled,
 }: TotpEnrollPanelProps) {
   const { applySession } = useAuth();
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -30,6 +39,7 @@ export function TotpEnrollPanel({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [alreadyEnrolled, setAlreadyEnrolled] = useState(false);
   // Enrolling creates a real factor server-side, so it must only ever run
   // once per mount - React 18 StrictMode's dev-mode double-invoke of this
   // effect would otherwise race two enroll() calls against each other and
@@ -40,6 +50,16 @@ export function TotpEnrollPanel({
     setError(null);
     const result = await enrollMfa(role, accessToken);
 
+    if (result.status === 409) {
+      // The account already has a verified factor - never fall through to
+      // showing a broken/empty enroll form or a "Start over" action here,
+      // since that would unenroll-then-reenroll a working credential the
+      // user never asked to reset.
+      setAlreadyEnrolled(true);
+      (onAlreadyEnrolled ?? onEnrolled)();
+      return;
+    }
+
     if (result.error || !result.data) {
       setError(result.error ?? 'Unable to start MFA enrollment.');
       return;
@@ -47,7 +67,7 @@ export function TotpEnrollPanel({
 
     setQrCode(result.data.totp?.qr_code ?? result.data.qr_code ?? null);
     setSecret(result.data.totp?.secret ?? null);
-  }, [role, accessToken]);
+  }, [role, accessToken, onEnrolled, onAlreadyEnrolled]);
 
   useEffect(() => {
     if (hasStartedEnrollRef.current) {
@@ -84,6 +104,9 @@ export function TotpEnrollPanel({
     onEnrolled();
   };
 
+  // Only reachable from the generic-error branch below, which (now that a
+  // 409 short-circuits before this point) only happens when no verified
+  // factor exists yet - so this can only ever remove an unverified one.
   const handleReset = async () => {
     setIsResetting(true);
     await unenrollMfa(role, accessToken);
@@ -93,6 +116,14 @@ export function TotpEnrollPanel({
     setCode('');
     await startEnroll();
   };
+
+  if (alreadyEnrolled) {
+    return (
+      <div className={styles.panel}>
+        <p className={styles.copy}>MFA is already set up for this account.</p>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.panel}>

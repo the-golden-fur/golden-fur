@@ -5,7 +5,7 @@ import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeCon
 import type { MfaStatusResponse } from '../../../shared/auth/mfa.types';
 import styles from '../SettingsPage.module.css';
 
-const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin']);
+const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin', 'Supervisor']);
 
 interface SecurityTabProps {
   role: ThemeRole;

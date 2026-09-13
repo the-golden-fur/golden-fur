@@ -9,6 +9,7 @@ import type {
 interface MfaApiResult<T> {
   data: T | null;
   error: string | null;
+  status: number;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -44,10 +45,10 @@ async function parseResponse<T>(response: Response): Promise<MfaApiResult<T>> {
         ? body.error
         : 'Request failed. Please try again.';
 
-    return { data: null, error: errorMessage };
+    return { data: null, error: errorMessage, status: response.status };
   }
 
-  return { data: body as T, error: null };
+  return { data: body as T, error: null, status: response.status };
 }
 
 export async function getMfaStatus(

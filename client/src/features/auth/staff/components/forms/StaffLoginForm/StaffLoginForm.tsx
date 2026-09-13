@@ -12,7 +12,7 @@ import {
 import styles from './StaffLoginForm.module.css';
 
 function isMfaRole(role?: string | null) {
-  return role === 'Admin' || role === 'Superadmin';
+  return role === 'Admin' || role === 'Superadmin' || role === 'Supervisor';
 }
 
 export function StaffLoginForm() {
@@ -55,8 +55,20 @@ export function StaffLoginForm() {
     // The login response doesn't carry role/enrollment - ask the
     // authoritative status endpoint instead of guessing from the JWT.
     const statusResult = await getMfaStatus('staff', result.data.access_token);
-    const role = statusResult.data?.role ?? null;
-    const mfaEnrolled = statusResult.data?.mfa_enrolled ?? false;
+
+    // A failed/errored status check must never be treated as "not
+    // enrolled" - that would route an already-enrolled account into the
+    // enroll flow, which can look like the account's MFA got silently
+    // reset. Ask the user to retry instead of guessing.
+    if (statusResult.error || !statusResult.data) {
+      setError(
+        'Unable to confirm your account security status. Please try signing in again.'
+      );
+      return;
+    }
+
+    const role = statusResult.data.role ?? null;
+    const mfaEnrolled = statusResult.data.mfa_enrolled;
 
     // Mandatory roles always go through this (enrolled or not); anyone else
     // only goes through it if they've voluntarily enrolled via Settings -

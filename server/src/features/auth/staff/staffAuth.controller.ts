@@ -101,6 +101,18 @@ export async function mfaEnrollController(
 ) {
   try {
     const userClient = getUserClient(req);
+
+    const { data: statusData, error: statusError } =
+      await getTotpEnrollmentStatus(userClient);
+    if (statusError) {
+      return res.status(400).json({ error: 'Failed to list factors' });
+    }
+    if (statusData?.enrolled) {
+      return res
+        .status(409)
+        .json({ error: 'MFA is already enrolled for this account.' });
+    }
+
     const { data, error } = await enrollTotpFactor(userClient);
     if (error) {
       return res.status(400).json({ error: error.message });

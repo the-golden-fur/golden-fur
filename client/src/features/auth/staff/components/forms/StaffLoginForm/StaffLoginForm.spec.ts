@@ -143,4 +143,52 @@ describe('StaffLoginForm', () => {
     await waitFor(() => expect(getMfaStatusMock).toHaveBeenCalled());
     expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
   });
+
+  it('marks MFA pending after login for a Supervisor account', async () => {
+    const applySession = vi.fn().mockResolvedValue(undefined);
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+    getMfaStatusMock.mockResolvedValue({
+      data: { role: 'Supervisor', mfa_enrolled: false },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(
+      screen.getByLabelText(/username or email/i),
+      'supervisor'
+    );
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem('staffMfaPending')).toBe('true')
+    );
+  });
+
+  it('shows an error and does not navigate into enrollment when the status check fails', async () => {
+    const applySession = vi.fn().mockResolvedValue(undefined);
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+    getMfaStatusMock.mockResolvedValue({
+      data: null,
+      error: 'Failed to list factors',
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to confirm your account security status. Please try signing in again.'
+    );
+    expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
+  });
 });

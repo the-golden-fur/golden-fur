@@ -131,4 +131,22 @@ describe('TotpEnrollPanel', () => {
     await waitFor(() => expect(mfaApi.enrollMfa).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('FRESH-KEY')).toBeInTheDocument();
   });
+
+  it('shows an "already enrolled" message with no QR or "Start over" when the server returns 409', async () => {
+    vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
+      data: null,
+      error: 'MFA is already enrolled for this account.',
+      status: 409,
+    });
+    const onEnrolled = vi.fn();
+
+    renderPanel(onEnrolled);
+
+    expect(
+      await screen.findByText(/already set up for this account/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByAltText('MFA enrollment QR code')).toBeNull();
+    expect(screen.queryByRole('button', { name: /start over/i })).toBeNull();
+    expect(onEnrolled).toHaveBeenCalledTimes(1);
+  });
 });

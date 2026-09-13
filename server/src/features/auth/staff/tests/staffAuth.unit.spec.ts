@@ -372,6 +372,30 @@ describe('mfaEnrollController', () => {
       type: 'totp',
     });
   });
+
+  it('returns 409 without calling enroll when the caller already has a verified factor', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+    } as any;
+    const res = mockResponse();
+
+    mockUserClient.auth.mfa.listFactors.mockResolvedValue({
+      data: {
+        all: [
+          { id: 'already-verified', factor_type: 'totp', status: 'verified' },
+        ],
+      },
+      error: null,
+    });
+
+    await mfaEnrollController(req, res);
+
+    expect(mockUserClient.auth.mfa.enroll).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'MFA is already enrolled for this account.',
+    });
+  });
 });
 
 describe('mfaUnenrollController', () => {
