@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { DaycareSessionPicker } from '../../components/DaycareSessionPicker/DaycareSessionPicker';
 import { checkOutDaycareSession } from '../../api/daycare.api';
 import type { DaycareSession } from '../../daycare.types';
 import styles from './DaycareCheckoutPanel.module.css';
 
 interface DaycareCheckoutPanelProps {
   accessToken: string;
-  /** Preselects the confirm step, skipping the picker - set by
-   * DaycareQueuePage right after DaycareCheckInPanel checks a pet in, or by
-   * the legacy /staff/daycare/checkout/:sessionId redirect. Null shows the
-   * picker. */
-  initialSessionId: string | null;
+  /** Daycare Queue redesign: this panel used to also offer its own
+   * DaycareSessionPicker (a bare "choose which session to check out"
+   * screen) for whenever it was reached without a session already known.
+   * Its only remaining caller (BoardingChecklistPage's per-pet view) always
+   * already knows which session it means - the picker path had no other
+   * caller and no test coverage, so it's removed rather than kept dead. */
+  sessionId: string;
 }
 
 const FIRST_HOUR_CHARGE = 100;
@@ -33,28 +34,22 @@ function succeedingHoursFor(checkInAt: string, checkOutAt: string): number {
  * (base ₱100 first hour, plus each succeeding ₱50 hour itemized), not just a
  * single total.
  *
- * GET /daycare/sessions backs a search/filter/sort picker
- * (DaycareSessionPicker), mirroring HotelStayPicker's role on the Hotel
- * Checkout screen - selecting a card goes straight to a confirm step.
- *
- * Queue redesign: extracted from the former standalone DaycareCheckoutPage
- * so it can render as a tab panel inside DaycareQueuePage (alongside
- * DaycareCheckInPanel) instead of its own route - DaycareQueuePage renders
- * this with `key={initialSessionId ?? 'picker'}` so a fresh preselect (or a
- * return to the bare picker) resets this panel's internal state cleanly.
+ * Daycare Queue redesign: this used to render as a tab panel inside
+ * DaycareQueuePage, reachable either via its own session picker or a known
+ * session id. The queue no longer has a Check Out tab at all - checking a
+ * pet out now happens from the Boarding Checklist's per-pet view
+ * (BoardingChecklistPage, reached by clicking a checked-in row on the
+ * queue), which always already knows the session to check out.
  */
 export function DaycareCheckoutPanel({
   accessToken,
-  initialSessionId,
+  sessionId,
 }: DaycareCheckoutPanelProps) {
-  const [selectedSession, setSelectedSession] = useState<DaycareSession | null>(
-    null
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkedOut, setCheckedOut] = useState<DaycareSession | null>(null);
 
-  async function submitCheckout(sessionId: string) {
+  async function submitCheckout() {
     setIsSubmitting(true);
     setError(null);
 
@@ -108,73 +103,6 @@ export function DaycareCheckoutPanel({
     );
   }
 
-  // Arrived with a known session id (DaycareCheckInPanel's "Go to
-  // checkout", or the legacy /staff/daycare/checkout/:sessionId redirect) -
-  // skip the picker and go straight to confirm.
-  if (initialSessionId && !selectedSession) {
-    return (
-      <>
-        {error ? (
-          <p className={styles.errorBanner} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <p className={styles.copy}>Ready to check out this session?</p>
-
-        <button
-          type="button"
-          className={styles.primaryButton}
-          disabled={isSubmitting}
-          onClick={() => void submitCheckout(initialSessionId)}
-        >
-          {isSubmitting ? 'Checking out...' : 'Check out now'}
-        </button>
-      </>
-    );
-  }
-
-  if (selectedSession) {
-    return (
-      <>
-        <dl className={styles.breakdown}>
-          <div className={styles.breakdownRow}>
-            <dt>Checked in</dt>
-            <dd>
-              {selectedSession.check_in_at
-                ? new Date(selectedSession.check_in_at).toLocaleString()
-                : 'Unknown'}
-            </dd>
-          </div>
-        </dl>
-
-        {error ? (
-          <p className={styles.errorBanner} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={isSubmitting}
-            onClick={() => void submitCheckout(selectedSession.id)}
-          >
-            {isSubmitting ? 'Checking out...' : 'Check out now'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setSelectedSession(null)}
-          >
-            Choose a different session
-          </button>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       {error ? (
@@ -183,10 +111,16 @@ export function DaycareCheckoutPanel({
         </p>
       ) : null}
 
-      <DaycareSessionPicker
-        accessToken={accessToken}
-        onSelect={setSelectedSession}
-      />
+      <p className={styles.copy}>Ready to check out this session?</p>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        disabled={isSubmitting}
+        onClick={() => void submitCheckout()}
+      >
+        {isSubmitting ? 'Checking out...' : 'Check out now'}
+      </button>
     </>
   );
 }
