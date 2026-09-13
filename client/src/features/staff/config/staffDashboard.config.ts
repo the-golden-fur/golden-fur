@@ -2,6 +2,7 @@ import {
   Archive,
   BarChart3,
   CalendarCheck,
+  CalendarDays,
   CalendarOff,
   ClipboardCheck,
   ClipboardList,
@@ -98,6 +99,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Days Off',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
+          },
+          {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
           },
           {
             title: 'Staff Management',
@@ -283,6 +290,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
+          },
+          {
             title: 'Customer Management',
             description: 'Look up customers, pets, and walk-in records.',
             to: '/staff/admin/customers',
@@ -360,6 +373,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
+          },
+          {
             title: 'Customer Management',
             description: 'Look up customers, pets, and walk-in records.',
             to: '/staff/admin/customers',
@@ -400,6 +419,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Days Off',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
+          },
+          {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
           },
           {
             title: 'Grooming Queue',
@@ -445,6 +470,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
+          },
+          {
             title: 'Consultation Queue',
             description: "Today's consultations and pet medical history.",
             to: '/staff/veterinary/console',
@@ -483,6 +514,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/days-off',
           },
           {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
+          },
+          {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
           },
@@ -518,6 +555,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Days Off',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
+          },
+          {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
           },
           {
             title: 'Boarding Checklist',
@@ -566,6 +609,7 @@ const ADMIN_SECTION_ICONS: Record<string, LucideIcon> = {
  * repeating it on each tile definition above. */
 const TILE_ICONS: Record<string, LucideIcon> = {
   'Days Off': CalendarOff,
+  'My Schedule': CalendarDays,
   'Staff Management': UserCog,
   'Customer Management': UserSearch,
   'Days Off Approval Queue': ClipboardCheck,

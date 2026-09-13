@@ -53,6 +53,15 @@ interface ListUnavailabilityBlocksParams {
   requesterId: string;
   requesterRole: string;
   targetStaffId: string;
+  /** Custom change (My Schedule): when both are given, returns every
+   * full-day entry overlapping [rangeStart, rangeEnd) - past or future,
+   * mirroring listBranchSchedule's own window so a staff member sees the
+   * same rest days/leave on their own calendar that a manager sees on the
+   * branch-wide one. Omitted (the original behavior, still used by the
+   * self-service Days Off badge) instead returns every not-yet-ended block
+   * of any is_full_day value. */
+  rangeStart?: string;
+  rangeEnd?: string;
 }
 
 interface ReviewUnavailabilityBlockParams {
@@ -444,15 +453,27 @@ export async function listUnavailabilityBlocks({
   requesterId,
   requesterRole,
   targetStaffId,
+  rangeStart,
+  rangeEnd,
 }: ListUnavailabilityBlocksParams): Promise<UnavailabilityBlock[]> {
   assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('staff_unavailability_blocks')
     .select('*')
-    .eq('staff_id', targetStaffId)
-    .gt('end_time', new Date().toISOString())
-    .order('start_time', { ascending: true });
+    .eq('staff_id', targetStaffId);
+
+  query =
+    rangeStart && rangeEnd
+      ? query
+          .eq('is_full_day', true)
+          .lt('start_time', rangeEnd)
+          .gt('end_time', rangeStart)
+      : query.gt('end_time', new Date().toISOString());
+
+  const { data, error } = await query.order('start_time', {
+    ascending: true,
+  });
 
   if (error) throwWithStatus(400, error.message);
 
