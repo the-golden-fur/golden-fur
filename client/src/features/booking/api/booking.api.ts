@@ -263,6 +263,12 @@ export interface BookingCatalog {
    * it replaces every service/package's own price in the booking preview,
    * matching what booking.service.ts actually charges at confirmation. */
   fixedPrice: number | null;
+  /** Custom change (promos/coupons multiselect booking step, session 86):
+   * the effective promo_cap_configuration for this branch, read through
+   * here for the same reason promos are (the cap config's own endpoint is
+   * staff-only) - lets the new Promos & Coupons step show a correctly
+   * capped running total. */
+  promoCap: { cap_type: 'percentage' | 'flat' | 'count'; cap_value: number };
 }
 
 export interface CatalogQuery {

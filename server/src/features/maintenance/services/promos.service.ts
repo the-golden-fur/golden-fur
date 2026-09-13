@@ -3,6 +3,7 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
+import { isPromoCurrentlyEligible } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
 import type { Promo, PromoBranchAvailability } from '../maintenance.types.ts';
 import type {
   CreatePromoInput,
@@ -21,10 +22,6 @@ function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
-}
-
-function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 interface ListPromosParams {
@@ -53,7 +50,14 @@ interface SetPromoBranchAvailabilityParams {
  * The active list applies the defensive read-time expiry filter (#42 AC-5):
  * a promo whose end_date has passed is never returned as active, even if the
  * scheduled deactivation job hasn't run yet. includeInactive is the admin
- * management view (#47's list filter) and skips both filters.
+ * management view (#47's list filter) and skips this filter entirely.
+ *
+ * Custom change (promo variations): the old DB-level `.or(end_date...)`
+ * filter only ever understood date_range promos - now that a
+ * weekly_recurring promo can be "currently eligible" or not independent of
+ * end_date, the eligibility check is done post-fetch via the shared
+ * isPromoCurrentlyEligible predicate (also used by
+ * resolveDiscountAndPromos/evaluatePromos) instead.
  *
  * Custom change: branchId now filters on the joined availability rows
  * (post-fetch, same as services.service.ts's listServices) rather than a
@@ -63,22 +67,19 @@ export async function listPromos({
   branchId,
   includeInactive,
 }: ListPromosParams): Promise<Promo[]> {
-  let query = supabase
+  const { data, error } = await supabase
     .from('promos')
     .select(PROMO_SELECT)
-    .is('archived_at', null);
-
-  if (!includeInactive) {
-    query = query
-      .eq('is_active', true)
-      .or(`end_date.is.null,end_date.gte.${todayDateString()}`);
-  }
-
-  const { data, error } = await query.order('name');
+    .is('archived_at', null)
+    .order('name');
 
   if (error) throwWithStatus(400, error.message);
 
-  const promos = (data ?? []) as Promo[];
+  let promos = (data ?? []) as Promo[];
+
+  if (!includeInactive) {
+    promos = promos.filter((promo) => isPromoCurrentlyEligible(promo));
+  }
 
   if (!branchId) {
     return promos;
@@ -119,6 +120,7 @@ export async function createPromo({
       ...promoFields,
       start_date: promoFields.start_date ?? null,
       end_date: promoFields.end_date ?? null,
+      days_of_week: promoFields.days_of_week ?? null,
       condition_note: promoFields.condition_note ?? null,
       created_by: requesterId,
       updated_by: requesterId,
@@ -216,6 +218,13 @@ export async function updatePromo({
       promoFields.end_date !== undefined
         ? promoFields.end_date
         : existing.end_date,
+    // Immutable after creation - updatePromoValidator never accepts
+    // promo_type, so the effective value is always the stored one.
+    promo_type: existing.promo_type,
+    days_of_week:
+      promoFields.days_of_week !== undefined
+        ? promoFields.days_of_week
+        : existing.days_of_week,
     condition_note:
       promoFields.condition_note !== undefined
         ? promoFields.condition_note
@@ -239,6 +248,29 @@ export async function updatePromo({
     effective.end_date < effective.start_date
   ) {
     throwWithStatus(400, 'end_date must be on or after start_date');
+  }
+
+  // Custom change (promo variations): days_of_week only ever belongs to a
+  // weekly_recurring promo, and (since promo_type can't change after
+  // creation) that promo must always have at least one day set.
+  if (effective.promo_type === 'weekly_recurring') {
+    if (effective.condition_note) {
+      throwWithStatus(
+        400,
+        'A weekly recurring promo cannot have a condition_note'
+      );
+    }
+    if (!(effective.days_of_week ?? []).length) {
+      throwWithStatus(
+        400,
+        'A weekly recurring promo needs at least one day of the week'
+      );
+    }
+  } else if (promoFields.days_of_week !== undefined) {
+    throwWithStatus(
+      400,
+      "days_of_week can only be set on a 'weekly_recurring' promo"
+    );
   }
 
   if (effective.scope_type === 'all_services' && scope?.length) {

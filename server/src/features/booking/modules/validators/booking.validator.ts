@@ -242,9 +242,14 @@ export const createBookingValidator = z
     // booking.service.ts, where the requester's staff role is known - the
     // validator only shapes the field.
     discount_id: z.uuid().optional(),
-    // Open to customers too (no role gate) - a promo is a self-service
-    // discount, unlike a discount row which needs staff to verify an ID.
-    promo_id: z.uuid().optional(),
+    // Multiselect (session 86): open to customers too (no role gate) - a
+    // promo/coupon is self-service, unlike a discount which needs staff to
+    // verify an ID. Both arrays are re-validated (branch/scope/eligibility/
+    // ownership) and re-capped authoritatively in
+    // resolveDiscountAndPromos - the client's own running total is only a
+    // preview.
+    promo_ids: z.array(z.uuid()).optional(),
+    coupon_ids: z.array(z.uuid()).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -326,13 +331,14 @@ export const createBookingGroupValidator = z
     bookings: z
       .array(bookingGroupItemValidator)
       .min(1, 'At least one booking is required'),
-    // Shared, group-level: one discount/promo/payment scheme applies to the
-    // combined net total across every sub-booking, not per sub-booking - see
-    // resolveDiscountAndPromo's group-scoped call in
-    // bookingGroup.service.ts.
+    // Shared, group-level: one discount/set of promos+coupons/payment
+    // scheme applies to the combined net total across every sub-booking,
+    // not per sub-booking - see resolveDiscountAndPromos's group-scoped
+    // call in bookingGroup.service.ts.
     payment_scheme: z.enum(PAYMENT_SCHEMES).optional(),
     discount_id: z.uuid().optional(),
-    promo_id: z.uuid().optional(),
+    promo_ids: z.array(z.uuid()).optional(),
+    coupon_ids: z.array(z.uuid()).optional(),
   })
   .strict();
 

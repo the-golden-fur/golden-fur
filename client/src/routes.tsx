@@ -13,6 +13,7 @@ import { hotelRoutes } from './features/hotel/hotel.routes';
 import { catalogRoutes } from './features/catalog/catalog.routes';
 import { billingRoutes } from './features/billing/billing.routes';
 import { creditsRoutes } from './features/credits/credits.routes';
+import { rewardsRoutes } from './features/rewards/rewards.routes';
 import { reportsRoutes } from './features/reports/reports.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 import { BranchesPage } from './pages/BranchesPage/BranchesPage';
@@ -36,6 +37,7 @@ export function AppRoutes() {
       {catalogRoutes}
       {billingRoutes}
       {creditsRoutes}
+      {rewardsRoutes}
       {reportsRoutes}
       {customerAuthRoutes}
       {customerRoutes}

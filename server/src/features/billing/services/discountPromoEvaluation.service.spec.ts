@@ -63,8 +63,11 @@ function buildPromoRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'promo-1',
     name: 'Promo',
+    is_active: true,
+    promo_type: 'date_range',
     start_date: null,
     end_date: null,
+    days_of_week: null,
     discount_type: 'Percentage',
     value: 10,
     scope_type: 'all_services',

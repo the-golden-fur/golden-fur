@@ -10,7 +10,8 @@ export type NotificationEventType =
   | 'care_log_completed'
   | 'message_received'
   | 'staff_assigned'
-  | 'booking_slot_conflict';
+  | 'booking_slot_conflict'
+  | 'spin_wheel_earned';
 
 export interface Notification {
   id: string;

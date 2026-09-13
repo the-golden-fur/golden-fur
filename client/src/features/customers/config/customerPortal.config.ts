@@ -2,6 +2,7 @@ import {
   Bell,
   CalendarPlus,
   ClipboardList,
+  Gift,
   PawPrint,
   Receipt,
   Salad,
@@ -32,6 +33,7 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },
       { title: 'Transactions', to: '/portal/transactions', icon: Receipt },
       { title: 'Credits', to: '/portal/credits', icon: Wallet },
+      { title: 'My Rewards', to: '/portal/rewards', icon: Gift },
       { title: 'Pet Manager', to: '/portal/pets', icon: PawPrint },
       {
         title: 'Food & Medication',

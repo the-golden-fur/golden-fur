@@ -22,6 +22,8 @@ const STAFF_ROLES = [
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
+/** Custom change (promo variations, session 86). */
+const PROMO_TYPES = ['date_range', 'weekly_recurring'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
@@ -344,8 +346,10 @@ export const promoScopeItemValidator = z
 
 function validatePromoShape(
   input: {
+    promo_type?: (typeof PROMO_TYPES)[number];
     start_date?: string | null;
     end_date?: string | null;
+    days_of_week?: number[];
     condition_note?: string | null;
     discount_type?: (typeof DISCOUNT_TYPES)[number];
     value?: number;
@@ -355,9 +359,11 @@ function validatePromoShape(
   ctx: z.RefinementCtx,
   { requireWindow }: { requireWindow: boolean }
 ) {
+  const promoType = input.promo_type ?? 'date_range';
   const hasStart = input.start_date != null;
   const hasEnd = input.end_date != null;
   const hasCondition = Boolean(input.condition_note?.trim());
+  const hasDays = Boolean(input.days_of_week?.length);
 
   if (hasCondition && (hasStart || hasEnd)) {
     ctx.addIssue({
@@ -368,13 +374,55 @@ function validatePromoShape(
     });
   }
 
-  if (requireWindow && !hasCondition && (!hasStart || !hasEnd)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['start_date'],
-      message:
-        'A date-bounded promo needs both start_date and end_date; a condition-based one needs condition_note',
-    });
+  // promo_type is only ever present on the CREATE payload (zod resolves its
+  // default there, so input.promo_type is always concrete by this point);
+  // updatePromoValidator's schema omits the field entirely (immutable after
+  // creation), so input.promo_type is always undefined on an update and
+  // this whole type-conditional block is skipped there - same deferred-to-
+  // the-service-layer pattern scope_type's own checks below already use for
+  // a partial payload (promos.service.ts's updatePromo re-checks the merged
+  // existing+updates state, including days_of_week vs. the stored
+  // promo_type).
+  if (input.promo_type !== undefined) {
+    // Custom change (promo variations): a weekly_recurring promo's
+    // "condition"/schedule IS days_of_week - start_date/end_date remain
+    // valid as an optional overall campaign window on top of it, but
+    // days_of_week and condition_note are mutually exclusive with each
+    // other, same as condition_note/dates above.
+    if (promoType === 'weekly_recurring') {
+      if (hasCondition) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['condition_note'],
+          message: 'A weekly recurring promo cannot also have a condition_note',
+        });
+      }
+      if (requireWindow && !hasDays) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['days_of_week'],
+          message:
+            'A weekly recurring promo needs at least one day of the week',
+        });
+      }
+    } else {
+      if (hasDays) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['days_of_week'],
+          message:
+            "days_of_week is only valid when promo_type is 'weekly_recurring'",
+        });
+      }
+      if (requireWindow && !hasCondition && (!hasStart || !hasEnd)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['start_date'],
+          message:
+            'A date-bounded promo needs both start_date and end_date; a condition-based one needs condition_note',
+        });
+      }
+    }
   }
 
   if (
@@ -431,8 +479,12 @@ function validatePromoShape(
 export const createPromoValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
+    // Immutable after creation (updatePromoValidator omits it) - see the
+    // Promo type's own doc comment.
+    promo_type: z.enum(PROMO_TYPES).optional().default('date_range'),
     start_date: dateString.optional(),
     end_date: dateString.optional(),
+    days_of_week: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     condition_note: z.string().trim().min(1).optional(),
     discount_type: z.enum(DISCOUNT_TYPES),
     value: z.number().nonnegative(),
@@ -458,8 +510,14 @@ export const createPromoValidator = z
 export const updatePromoValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
+    // promo_type itself is deliberately absent - immutable after creation.
     start_date: dateString.nullable().optional(),
     end_date: dateString.nullable().optional(),
+    // Full replacement of the day set when provided - only meaningful (and
+    // only validated against promo_type) for an existing weekly_recurring
+    // promo; the service layer merges this against the stored promo_type,
+    // same as every other cross-field check in validatePromoShape.
+    days_of_week: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     condition_note: z.string().trim().min(1).nullable().optional(),
     discount_type: z.enum(DISCOUNT_TYPES).optional(),
     value: z.number().nonnegative().optional(),

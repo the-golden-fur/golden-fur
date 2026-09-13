@@ -1793,6 +1793,7 @@ describe('booking.service (#51)', () => {
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // booking_promo_selections insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
@@ -1803,17 +1804,32 @@ describe('booking.service (#51)', () => {
           ...BASE_INPUT,
           service_category: 'Daycare',
           items: [{ service_id: 'service-daycare' }],
-          promo_id: 'promo-1',
+          promo_ids: ['promo-1'],
         },
       });
 
       const insert = recordedWrites.find(
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
+      // Multiselect (session 86): selected_promo_id is no longer written by
+      // a new booking - the authoritative record is now one row in
+      // booking_promo_selections (asserted below).
       expect(insert?.payload).toMatchObject({
-        selected_promo_id: 'promo-1',
+        selected_promo_id: null,
         promo_amount: 10, // 10% of the 100 daycare service price
       });
+
+      const promoSelectionInsert = recordedWrites.find(
+        (write) => write.table === 'booking_promo_selections'
+      );
+      expect(promoSelectionInsert?.payload).toEqual([
+        {
+          booking_id: 'booking-1',
+          promo_id: 'promo-1',
+          customer_coupon_id: null,
+          applied_amount: 10,
+        },
+      ]);
     });
 
     it('rejects a promo whose scope does not match the selected items', async () => {
@@ -1840,7 +1856,7 @@ describe('booking.service (#51)', () => {
             ...BASE_INPUT,
             service_category: 'Daycare',
             items: [{ service_id: 'service-daycare' }],
-            promo_id: 'promo-1',
+            promo_ids: ['promo-1'],
           },
         })
       ).rejects.toMatchObject({ statusCode: 400 });

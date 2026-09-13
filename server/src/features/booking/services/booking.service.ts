@@ -10,6 +10,15 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import {
+  getCouponsByIds,
+  markCouponsRedeemed,
+} from '../../rewards/services/customerCoupons.service.ts';
+import { isPromoCurrentlyEligible } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
+  applyPromoCap,
+  type PromoCapRow,
+} from '../../../shared/services/promoCap/promoCap.service.ts';
 import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
@@ -471,18 +480,16 @@ export async function resolveFreePackageAward(
   return { packageId: pkg.id, packageName: pkg.name, nights };
 }
 
-interface PromoCapRow {
-  cap_type: 'percentage' | 'flat';
-  cap_value: number;
-}
-
-/** Mirrors billing/discountPromoEvaluation.service.ts's identical helper -
- * duplicated rather than imported so the booking feature doesn't depend on
- * billing (billing already depends on booking, not the other way around). */
-async function getPromoCapAmount(
-  branchId: string,
-  subtotal: number
-): Promise<number> {
+/**
+ * Mirrors billing/discountPromoEvaluation.service.ts's identical
+ * getEffectivePromoCap helper - duplicated rather than imported so the
+ * booking feature doesn't depend on billing (billing already depends on
+ * booking, not the other way around). Returns the raw cap row rather than a
+ * pre-computed amount (custom change, promos/coupons multiselect: the
+ * actual capping math now lives in the shared applyPromoCap, which needs
+ * the cap_type too - a plain amount can't represent a 'count' cap).
+ */
+async function getPromoCapRow(branchId: string): Promise<PromoCapRow> {
   const { data: branchRow, error: branchError } = await supabase
     .from('promo_cap_configuration')
     .select('cap_type, cap_value')
@@ -504,36 +511,51 @@ async function getPromoCapAmount(
   if (!capRow)
     throwWithStatus(500, 'No default promo cap configuration row exists');
 
-  return capRow.cap_type === 'percentage'
-    ? (subtotal * Number(capRow.cap_value)) / 100
-    : Number(capRow.cap_value);
+  return capRow;
+}
+
+export interface PromoSelectionResolution {
+  promoId: string | null;
+  couponId: string | null;
+  appliedAmount: number;
 }
 
 export interface DiscountPromoResolution {
   selectedDiscountId: string | null;
   discountAmount: number;
-  selectedPromoId: string | null;
+  /** Custom change (promos/coupons multiselect booking step, session 86):
+   * replaces the old singular selectedPromoId/promoAmount pair - each entry
+   * is locked into its own booking_promo_selections row by createBooking/
+   * createBookingGroup, and promoAmount below is simply their sum. */
+  promoSelections: PromoSelectionResolution[];
   promoAmount: number;
 }
 
 /**
- * Applying a discount/promo at booking creation (rather than only at cashier
- * checkout) so the customer sees the real price upfront. A discount needs
- * staff physically present to verify a Senior Citizen/PWD ID, so it's
+ * Applying a discount/promo/coupon at booking creation (rather than only at
+ * cashier checkout) so the customer sees the real price upfront. A discount
+ * needs staff physically present to verify a Senior Citizen/PWD ID, so it's
  * restricted to money-handling roles (BOOKING_MARK_PAID_ROLES, same set that
  * can Mark as Paid) and, since ID verification implies in-person payment, to
- * Cash bookings only. A promo has neither restriction - it's self-service,
- * like a coupon code. Locked in here, checkout later renders these stored
- * amounts as-is instead of re-evaluating scope matches itself (see
- * buildCheckoutPreview in checkoutAggregation.service.ts) - two independent
- * evaluations of the same rules could disagree and would be confusing to
- * reconcile at the register.
+ * Cash bookings only. A promo/coupon has neither restriction - both are
+ * self-service, like a coupon code (a "coupon" here is a per-customer,
+ * single-use spin-wheel reward - see rewards.types.ts - not to be confused
+ * with the everyday sense of the word "promo"). Locked in here, checkout
+ * later renders these stored amounts as-is instead of re-evaluating scope
+ * matches itself (see buildCheckoutPreview in
+ * checkoutAggregation.service.ts) - two independent evaluations of the same
+ * rules could disagree and would be confusing to reconcile at the register.
+ *
+ * customerId is needed (unlike the old single-promo version) to verify
+ * ownership of any selected coupon_ids - a receptionist booking on behalf of
+ * a walk-in must only ever be able to spend THAT customer's own coupons.
  */
-export async function resolveDiscountAndPromo(
+export async function resolveDiscountAndPromos(
   input: CreateBookingInput,
   staffRole: string | null,
   resolvedItems: ResolvedBookingItem[],
-  totalPrice: number
+  totalPrice: number,
+  customerId: string
 ): Promise<DiscountPromoResolution> {
   let selectedDiscountId: string | null = null;
   let discountAmount = 0;
@@ -595,22 +617,31 @@ export async function resolveDiscountAndPromo(
     selectedDiscountId = discount.id;
   }
 
-  let selectedPromoId: string | null = null;
-  let promoAmount = 0;
+  const promoIds = input.promo_ids ?? [];
+  const couponIds = input.coupon_ids ?? [];
 
-  if (input.promo_id) {
-    const promo = await getPromoById(input.promo_id);
+  if (promoIds.length === 0 && couponIds.length === 0) {
+    return {
+      selectedDiscountId,
+      discountAmount,
+      promoSelections: [],
+      promoAmount: 0,
+    };
+  }
 
-    if (!promo.is_active) {
-      throwWithStatus(400, `Promo "${promo.name}" is inactive`);
-    }
+  interface PromoCapCandidate {
+    promoId: string | null;
+    couponId: string | null;
+    amount: number;
+  }
 
-    const today = new Date().toISOString().slice(0, 10);
-    if (promo.start_date && promo.start_date > today) {
-      throwWithStatus(400, `Promo "${promo.name}" has not started yet`);
-    }
-    if (promo.end_date && promo.end_date < today) {
-      throwWithStatus(400, `Promo "${promo.name}" has ended`);
+  const candidates: PromoCapCandidate[] = [];
+
+  for (const promoId of promoIds) {
+    const promo = await getPromoById(promoId);
+
+    if (!isPromoCurrentlyEligible(promo)) {
+      throwWithStatus(400, `Promo "${promo.name}" is not currently active`);
     }
 
     const isAvailableAtBranch = (promo.promo_branch_availability ?? []).some(
@@ -641,18 +672,52 @@ export async function resolveDiscountAndPromo(
       );
     }
 
-    const rawAmount = round2(
+    const amount = round2(
       promo.discount_type === 'Percentage'
         ? (totalPrice * Number(promo.value)) / 100
         : Math.min(Number(promo.value), totalPrice)
     );
-    const capAmount = await getPromoCapAmount(input.branch_id, totalPrice);
 
-    promoAmount = Math.min(rawAmount, round2(capAmount));
-    selectedPromoId = promo.id;
+    candidates.push({ promoId: promo.id, couponId: null, amount });
   }
 
-  return { selectedDiscountId, discountAmount, selectedPromoId, promoAmount };
+  // getCouponsByIds already verifies ownership (customerId), unredeemed and
+  // unexpired - throwing per-coupon on any failure, same style as the promo
+  // checks above.
+  const coupons = await getCouponsByIds(customerId, couponIds);
+  for (const coupon of coupons) {
+    const amount = round2(
+      coupon.discount_type === 'Percentage'
+        ? (totalPrice * Number(coupon.value)) / 100
+        : Math.min(Number(coupon.value), totalPrice)
+    );
+
+    candidates.push({ promoId: null, couponId: coupon.id, amount });
+  }
+
+  const capRow = await getPromoCapRow(input.branch_id);
+  const capped = applyPromoCap(
+    candidates.map((candidate) => ({
+      key: candidate,
+      amount: candidate.amount,
+    })),
+    capRow,
+    totalPrice
+  );
+
+  const promoSelections: PromoSelectionResolution[] = capped.map(
+    ({ key, amount }) => ({
+      promoId: key.promoId,
+      couponId: key.couponId,
+      appliedAmount: amount,
+    })
+  );
+
+  const promoAmount = round2(
+    promoSelections.reduce((sum, selection) => sum + selection.appliedAmount, 0)
+  );
+
+  return { selectedDiscountId, discountAmount, promoSelections, promoAmount };
 }
 
 export interface StaffResolution {
@@ -869,13 +934,19 @@ export async function createBooking({
     0
   );
 
-  // Discounts and promos are resolved BEFORE the down payment is computed
-  // (advisor addendum: "Discounts and promos apply before downpayment is
-  // calculated"). resolveDiscountAndPromo doesn't depend on the down
-  // payment, so it runs first and the down payment is taken against the
-  // discounted net total, not the gross sum of items.
-  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
-    await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
+  // Discounts and promos/coupons are resolved BEFORE the down payment is
+  // computed (advisor addendum: "Discounts and promos apply before
+  // downpayment is calculated"). resolveDiscountAndPromos doesn't depend on
+  // the down payment, so it runs first and the down payment is taken
+  // against the discounted net total, not the gross sum of items.
+  const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
+    await resolveDiscountAndPromos(
+      input,
+      staffRole,
+      resolvedItems,
+      totalPrice,
+      customerId
+    );
 
   const netTotal = round2(totalPrice - discountAmount - promoAmount);
 
@@ -1074,7 +1145,12 @@ export async function createBooking({
       payment_method: null,
       payment_confirmed: false,
       selected_discount_id: selectedDiscountId,
-      selected_promo_id: selectedPromoId,
+      // Multiselect (session 86): no longer written by new bookings - the
+      // authoritative record is now one row per selection in
+      // booking_promo_selections (written below, after this insert
+      // succeeds). Left null rather than removed so a pre-migration
+      // booking's own already-stored value keeps displaying as-is.
+      selected_promo_id: null,
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
@@ -1103,6 +1179,32 @@ export async function createBooking({
   if (itemsError) {
     await supabase.from('bookings').delete().eq('id', booking.id);
     throwWithStatus(400, itemsError.message);
+  }
+
+  if (promoSelections.length > 0) {
+    const { error: promoSelectionsError } = await supabase
+      .from('booking_promo_selections')
+      .insert(
+        promoSelections.map((selection) => ({
+          booking_id: booking.id,
+          promo_id: selection.promoId,
+          customer_coupon_id: selection.couponId,
+          applied_amount: selection.appliedAmount,
+        }))
+      );
+
+    if (promoSelectionsError) {
+      await supabase.from('bookings').delete().eq('id', booking.id);
+      throwWithStatus(400, promoSelectionsError.message);
+    }
+
+    const redeemedCouponIds = promoSelections
+      .map((selection) => selection.couponId)
+      .filter((id): id is string => id !== null);
+
+    if (redeemedCouponIds.length > 0) {
+      await markCouponsRedeemed(redeemedCouponIds, { bookingId: booking.id });
+    }
   }
 
   if (staffResolution.preferenceType) {

@@ -44,6 +44,19 @@ export interface BookingForBilling {
   selected_promo_id: string | null;
   selected_promo_name: string | null;
   promo_amount: number;
+  /** Custom change (promos/coupons multiselect booking step, session 86):
+   * one row per promo/coupon locked in at booking time via
+   * resolveDiscountAndPromos - replaces selected_promo_id/
+   * selected_promo_name as the source of truth for a booking created after
+   * this change (a pre-migration booking has an empty array here and falls
+   * back to its own selected_promo_id/selected_promo_name, or to
+   * evaluatePromos, exactly as before). */
+  promo_selections: Array<{
+    promo_id: string | null;
+    customer_coupon_id: string | null;
+    applied_amount: number;
+    description: string;
+  }>;
 }
 
 /**
@@ -125,6 +138,10 @@ export async function getBookingForBilling(
     ? raw.promos[0]?.name
     : raw.promos?.name;
 
+  const promoSelections = await getBookingPromoSelections({
+    bookingId,
+  });
+
   return {
     id: data.id,
     customer_id: data.customer_id,
@@ -144,7 +161,75 @@ export async function getBookingForBilling(
     selected_promo_id: raw.selected_promo_id,
     selected_promo_name: promoName ?? null,
     promo_amount: Number(raw.promo_amount ?? 0),
+    promo_selections: promoSelections,
   };
+}
+
+/**
+ * Custom change (promos/coupons multiselect booking step, session 86):
+ * reads back every promo/coupon locked in at booking time for either a
+ * single booking or a whole booking_group (exactly one of the two params is
+ * given, mirroring booking_promo_selections' own CHECK constraint). A
+ * separate query (rather than folded into the main .select() above) since
+ * it needs its own two-way join (promos / customer_coupons+spin_wheel_rewards)
+ * that doesn't cleanly nest inside the existing booking select.
+ */
+export async function getBookingPromoSelections({
+  bookingId,
+  bookingGroupId,
+}: {
+  bookingId?: string;
+  bookingGroupId?: string;
+}): Promise<BookingForBilling['promo_selections']> {
+  let query = supabase
+    .from('booking_promo_selections')
+    .select(
+      'promo_id, customer_coupon_id, applied_amount, promos(name), customer_coupons(spin_wheel_rewards(label))'
+    );
+
+  query = bookingId
+    ? query.eq('booking_id', bookingId)
+    : query.eq('booking_group_id', bookingGroupId as string);
+
+  const { data, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (
+    (data ?? []) as unknown as Array<{
+      promo_id: string | null;
+      customer_coupon_id: string | null;
+      applied_amount: number;
+      promos: { name: string } | { name: string }[] | null;
+      customer_coupons:
+        | {
+            spin_wheel_rewards: { label: string } | { label: string }[] | null;
+          }
+        | Array<{
+            spin_wheel_rewards: { label: string } | { label: string }[] | null;
+          }>
+        | null;
+    }>
+  ).map((row) => {
+    const promoName = Array.isArray(row.promos)
+      ? row.promos[0]?.name
+      : row.promos?.name;
+
+    const couponRow = Array.isArray(row.customer_coupons)
+      ? row.customer_coupons[0]
+      : row.customer_coupons;
+    const rewardLabel = Array.isArray(couponRow?.spin_wheel_rewards)
+      ? couponRow?.spin_wheel_rewards[0]?.label
+      : couponRow?.spin_wheel_rewards?.label;
+
+    return {
+      promo_id: row.promo_id,
+      customer_coupon_id: row.customer_coupon_id,
+      applied_amount: Number(row.applied_amount),
+      description:
+        promoName ?? (rewardLabel ? `Coupon: ${rewardLabel}` : 'Coupon'),
+    };
+  });
 }
 
 /**

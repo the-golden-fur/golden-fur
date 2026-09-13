@@ -69,12 +69,13 @@ describe('createBookingValidator', () => {
     ).toBe(false);
   });
 
-  it('accepts an optional discount_id and promo_id', () => {
+  it('accepts an optional discount_id, promo_ids, and coupon_ids', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
         discount_id: '66666666-6666-4666-a666-666666666666',
-        promo_id: '77777777-7777-4777-a777-777777777777',
+        promo_ids: ['77777777-7777-4777-a777-777777777777'],
+        coupon_ids: ['88888888-8888-4888-a888-888888888888'],
       }).success
     ).toBe(true);
   });

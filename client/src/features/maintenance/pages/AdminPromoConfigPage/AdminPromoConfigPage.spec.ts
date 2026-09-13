@@ -100,8 +100,10 @@ function buildPromo(overrides: Partial<Promo> = {}): Promo {
   return {
     id: 'promo-1',
     name: 'Summer Sale',
+    promo_type: 'date_range',
     start_date: '2026-08-01',
     end_date: '2026-08-31',
+    days_of_week: null,
     condition_note: null,
     discount_type: 'Percentage',
     value: 15,
@@ -388,6 +390,9 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'New promo' }));
+    // Wizard step 1: "Date range" is the default selection, so Next lands
+    // straight on step 2's fields.
+    await user.click(screen.getByRole('button', { name: 'Next' }));
 
     expect(screen.getByLabelText('Start date')).toBeInTheDocument();
     expect(screen.getByLabelText('End date')).toBeInTheDocument();
@@ -407,6 +412,7 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'New promo' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
     await user.type(screen.getByLabelText('Name'), 'Fall Deal');
     await user.type(screen.getByLabelText(/Discount value/), '10');
     await user.type(screen.getByLabelText('Start date'), '2026-09-01');
@@ -418,6 +424,7 @@ describe('AdminPromoConfigPage', () => {
     await waitFor(() => {
       expect(maintenanceApi.createPromo).toHaveBeenCalledWith('token', {
         name: 'Fall Deal',
+        promo_type: 'date_range',
         start_date: '2026-09-01',
         end_date: '2026-09-30',
         discount_type: 'Percentage',
@@ -435,6 +442,7 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'New promo' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
 
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     expect(screen.queryByText('Golden Package')).not.toBeInTheDocument();

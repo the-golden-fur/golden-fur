@@ -70,6 +70,11 @@ import { listStaff } from '../../../staff/api/staff.api';
 import { listMyPatients } from '../../../veterinary/api/veterinary.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
 import type { Discount } from '../../../discounts/discounts.types';
+import { getMyCoupons } from '../../../rewards/api/rewards.api';
+import type { CustomerCoupon } from '../../../rewards/rewards.types';
+import { isPromoCurrentlyEligible } from '../../../../shared/utils/promoEligibility';
+import { applyPromoCap } from '../../utils/applyPromoCap';
+import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/PromoCouponMultiSelect';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
   getDayOneMinTime,
@@ -158,6 +163,10 @@ interface StepDef {
     // scheme stay shared across the whole list - see the "OR to make things
     // easier" decision this feature is built from.
     | 'bookingsList'
+    // Promos & Coupons multiselect step (session 86): shown right before
+    // Review, once per checkout (single booking or the whole
+    // bookingsList) - see PromoCouponMultiSelect below.
+    | 'promos'
     | 'payment';
   label: string;
 }
@@ -379,7 +388,9 @@ interface PersistedBookingDraft {
   bookingSource: BookingSource;
   selectedSlot: { start: string; end: string } | null;
   hotelNights: number;
-  selectedPromoId: string;
+  // Multiselect (session 86): replaces the old singular selectedPromoId.
+  selectedPromoIds: string[];
+  selectedCouponIds: string[];
   selectedDiscountId: string;
   paymentChoice: PaymentScheme;
   specialInstructions: string;
@@ -694,7 +705,14 @@ export function CustomerBookingFlowPage() {
   const [cagePickerUnavailable, setCagePickerUnavailable] = useState(false);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [selectedPromoId, setSelectedPromoId] = useState('');
+  const [myCoupons, setMyCoupons] = useState<CustomerCoupon[]>([]);
+  const [promoCap, setPromoCap] = useState<{
+    cap_type: 'percentage' | 'flat' | 'count';
+    cap_value: number;
+  }>({ cap_type: 'percentage', cap_value: 20 });
+  // Multiselect (session 86): replaces the old singular selectedPromoId.
+  const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
+  const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [selectedDiscountId, setSelectedDiscountId] = useState('');
   // Staff attestation that they physically checked the customer's Senior
   // Citizen/PWD ID before selecting a mandated discount - mirrors
@@ -885,7 +903,8 @@ export function CustomerBookingFlowPage() {
     // leaving it set. Date/time and staff still reset, since those depend
     // on which category you're actually committing to.
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -997,6 +1016,7 @@ export function CustomerBookingFlowPage() {
       setPackages(result.data.packages);
       setPromos(result.data.promos);
       setCatalogFixedPrice(result.data.fixedPrice);
+      if (result.data.promoCap) setPromoCap(result.data.promoCap);
     });
 
     return () => {
@@ -1048,6 +1068,25 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId, canApplyDiscounts]);
 
+  // Promos & Coupons step (session 86): the acting customer's own unused,
+  // unexpired coupons - for isReceptionistMode this is the customer being
+  // booked FOR (effectiveCustomerId), not the logged-in staff member, same
+  // resolution every other customer-scoped fetch on this page already uses.
+  useEffect(() => {
+    if (!accessToken || !effectiveCustomerId) return;
+
+    let isMounted = true;
+
+    void getMyCoupons(accessToken, effectiveCustomerId).then((result) => {
+      if (!isMounted || !result.data) return;
+      setMyCoupons(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, effectiveCustomerId]);
+
   // ---- Draft autosave/restore ----
 
   const draftStorageKey = user?.id
@@ -1082,7 +1121,8 @@ export function CustomerBookingFlowPage() {
       }
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
-      setSelectedPromoId(draft.selectedPromoId);
+      setSelectedPromoIds(draft.selectedPromoIds ?? []);
+      setSelectedCouponIds(draft.selectedCouponIds ?? []);
       setSelectedDiscountId(draft.selectedDiscountId);
       setPaymentChoice(draft.paymentChoice);
       setSpecialInstructions(draft.specialInstructions);
@@ -1119,7 +1159,8 @@ export function CustomerBookingFlowPage() {
         bookingSource,
         selectedSlot,
         hotelNights,
-        selectedPromoId,
+        selectedPromoIds,
+        selectedCouponIds,
         selectedDiscountId,
         paymentChoice,
         specialInstructions,
@@ -1146,7 +1187,8 @@ export function CustomerBookingFlowPage() {
     bookingSource,
     selectedSlot,
     hotelNights,
-    selectedPromoId,
+    selectedPromoIds,
+    selectedCouponIds,
     selectedDiscountId,
     paymentChoice,
     specialInstructions,
@@ -1179,7 +1221,8 @@ export function CustomerBookingFlowPage() {
     setHotelNights(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setSelectedDiscountId('');
     setDiscountIdVerified(false);
     setPaymentChoice('downpayment');
@@ -1555,16 +1598,12 @@ export function CustomerBookingFlowPage() {
   const applicablePromos = useMemo(() => {
     if (!selectedBranch) return [];
 
-    const now = new Date();
-
     return promos.filter((promo) => {
-      if (!promo.is_active) return false;
       const availableAtBranch = (promo.promo_branch_availability ?? []).some(
         (row) => row.branch_id === selectedBranch.id && row.is_available
       );
       if (!availableAtBranch) return false;
-      if (promo.start_date && new Date(promo.start_date) > now) return false;
-      if (promo.end_date && new Date(promo.end_date) < now) return false;
+      if (!isPromoCurrentlyEligible(promo)) return false;
       if (promo.scope_type === 'all_services') return true;
 
       return (promo.promo_scope ?? []).some(
@@ -1575,17 +1614,62 @@ export function CustomerBookingFlowPage() {
     });
   }, [promos, selectedBranch, groupServiceIds, groupPackageIds]);
 
-  const selectedPromo = useMemo(
-    () =>
-      applicablePromos.find((promo) => promo.id === selectedPromoId) ?? null,
-    [applicablePromos, selectedPromoId]
+  // Coupons (session 86): a customer's own unredeemed, unexpired spin-wheel
+  // rewards - unscoped (apply like scope_type='all_services'), shown
+  // alongside applicablePromos in the new Promos & Coupons multiselect step.
+  const applicableCoupons = useMemo(() => {
+    const now = new Date();
+    return myCoupons.filter(
+      (coupon) =>
+        !coupon.is_redeemed &&
+        (!coupon.expires_at || new Date(coupon.expires_at) > now)
+    );
+  }, [myCoupons]);
+
+  // Multiselect (session 86): every SELECTED promo/coupon's raw amount, run
+  // through the same cap-application math the server applies authoritatively
+  // at submit (resolveDiscountAndPromos) - this is a preview only.
+  const promoCouponCandidates = useMemo(() => {
+    const promoCandidates = selectedPromoIds
+      .map((id) => applicablePromos.find((promo) => promo.id === id))
+      .filter((promo): promo is Promo => Boolean(promo))
+      .map((promo) => ({
+        key: { kind: 'promo' as const, id: promo.id },
+        amount:
+          promo.discount_type === 'Percentage'
+            ? groupSubtotal * (promo.value / 100)
+            : Math.min(promo.value, groupSubtotal),
+      }));
+
+    const couponCandidates = selectedCouponIds
+      .map((id) => applicableCoupons.find((coupon) => coupon.id === id))
+      .filter((coupon): coupon is CustomerCoupon => Boolean(coupon))
+      .map((coupon) => ({
+        key: { kind: 'coupon' as const, id: coupon.id },
+        amount:
+          coupon.discount_type === 'Percentage'
+            ? groupSubtotal * (coupon.value / 100)
+            : Math.min(coupon.value, groupSubtotal),
+      }));
+
+    return [...promoCandidates, ...couponCandidates];
+  }, [
+    selectedPromoIds,
+    selectedCouponIds,
+    applicablePromos,
+    applicableCoupons,
+    groupSubtotal,
+  ]);
+
+  const cappedPromoSelections = useMemo(
+    () => applyPromoCap(promoCouponCandidates, promoCap, groupSubtotal),
+    [promoCouponCandidates, promoCap, groupSubtotal]
   );
 
-  const promoDiscount = selectedPromo
-    ? selectedPromo.discount_type === 'Percentage'
-      ? groupSubtotal * (selectedPromo.value / 100)
-      : Math.min(selectedPromo.value, groupSubtotal)
-    : 0;
+  const promoDiscount = cappedPromoSelections.reduce(
+    (sum, selection) => sum + selection.amount,
+    0
+  );
 
   // Discounts (Cash-only, staff-verified ID) - only shown/selectable once
   // Cash is chosen as the payment method (canApplyDiscounts already gates
@@ -1745,6 +1829,8 @@ export function CustomerBookingFlowPage() {
     // every booking committed so far and offers "Add another booking"
     // (jumps back to 'pet') before moving on to the shared Review step.
     list.push({ key: 'bookingsList', label: 'Your bookings' });
+
+    list.push({ key: 'promos', label: 'Promos & Coupons' });
 
     list.push({ key: 'payment', label: 'Review' });
 
@@ -1957,7 +2043,8 @@ export function CustomerBookingFlowPage() {
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -1972,7 +2059,8 @@ export function CustomerBookingFlowPage() {
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -2394,16 +2482,21 @@ export function CustomerBookingFlowPage() {
   }
 
   /** Maps one committed list entry to the shape a per-booking payload needs -
-   * everything CreateBookingPayload has EXCEPT the five fields that are
-   * shared across the whole checkout (customer_id/branch_id/discount_id/
-   * promo_id/payment_scheme), which the caller below attaches once, either
-   * directly on a lone CreateBookingPayload or on the group payload's
-   * top level. */
+   * everything CreateBookingPayload has EXCEPT the fields that are shared
+   * across the whole checkout (customer_id/branch_id/discount_id/
+   * promo_ids/coupon_ids/payment_scheme), which the caller below attaches
+   * once, either directly on a lone CreateBookingPayload or on the group
+   * payload's top level. */
   function subBookingDraftToPayload(
     entry: SubBookingDraft
   ): Omit<
     CreateBookingPayload,
-    'customer_id' | 'branch_id' | 'discount_id' | 'promo_id' | 'payment_scheme'
+    | 'customer_id'
+    | 'branch_id'
+    | 'discount_id'
+    | 'promo_ids'
+    | 'coupon_ids'
+    | 'payment_scheme'
   > {
     return {
       pet_id: entry.petId,
@@ -2458,7 +2551,14 @@ export function CustomerBookingFlowPage() {
           : {}),
         ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
-        ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
+        // Multiselect (session 86): the server re-validates and re-caps
+        // every id authoritatively (resolveDiscountAndPromos) - these
+        // arrays are just the customer/receptionist's selection, not a
+        // trusted amount.
+        ...(selectedPromoIds.length > 0 ? { promo_ids: selectedPromoIds } : {}),
+        ...(selectedCouponIds.length > 0
+          ? { coupon_ids: selectedCouponIds }
+          : {}),
       };
 
       // A list of exactly one booking (nobody clicked "Add another
@@ -3879,6 +3979,38 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
+      case 'promos':
+        return (
+          <div>
+            <p className={styles.copy}>
+              Select any promos or coupons to apply - the total below already
+              respects the combined-discount limit.
+            </p>
+            <PromoCouponMultiSelect
+              promos={applicablePromos}
+              coupons={applicableCoupons}
+              selectedPromoIds={selectedPromoIds}
+              selectedCouponIds={selectedCouponIds}
+              onTogglePromo={(promoId) =>
+                setSelectedPromoIds((prev) =>
+                  prev.includes(promoId)
+                    ? prev.filter((id) => id !== promoId)
+                    : [...prev, promoId]
+                )
+              }
+              onToggleCoupon={(couponId) =>
+                setSelectedCouponIds((prev) =>
+                  prev.includes(couponId)
+                    ? prev.filter((id) => id !== couponId)
+                    : [...prev, couponId]
+                )
+              }
+              cap={promoCap}
+              cappedTotal={promoDiscount}
+            />
+          </div>
+        );
+
       case 'payment':
         return (
           <div className={styles.paymentStep}>
@@ -3915,12 +4047,22 @@ export function CustomerBookingFlowPage() {
                   <span>-PHP {discountAmount.toFixed(2)}</span>
                 </div>
               ) : null}
-              {selectedPromo ? (
-                <div className={styles.pricingRow}>
-                  <span>{selectedPromo.name}</span>
-                  <span>-PHP {promoDiscount.toFixed(2)}</span>
-                </div>
-              ) : null}
+              {cappedPromoSelections.map((selection) => {
+                const label =
+                  selection.key.kind === 'promo'
+                    ? (applicablePromos.find((p) => p.id === selection.key.id)
+                        ?.name ?? 'Promo')
+                    : 'Coupon';
+                return (
+                  <div
+                    key={`${selection.key.kind}-${selection.key.id}`}
+                    className={styles.pricingRow}
+                  >
+                    <span>{label}</span>
+                    <span>-PHP {selection.amount.toFixed(2)}</span>
+                  </div>
+                );
+              })}
               <div className={styles.pricingRowTotal}>
                 <span>Estimated total</span>
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
@@ -4045,35 +4187,26 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            {applicablePromos.length > 0 ? (
-              <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>Promo</legend>
-                <label className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="promo"
-                    checked={selectedPromoId === ''}
-                    onChange={() => setSelectedPromoId('')}
-                  />
-                  None
-                </label>
-                {applicablePromos.map((promo) => (
-                  <label key={promo.id} className={styles.radioOption}>
-                    <input
-                      type="radio"
-                      name="promo"
-                      checked={selectedPromoId === promo.id}
-                      onChange={() => setSelectedPromoId(promo.id)}
-                    />
-                    {promo.name} (
-                    {promo.discount_type === 'Percentage'
-                      ? `${promo.value}%`
-                      : `PHP ${promo.value.toFixed(2)}`}
-                    )
-                  </label>
-                ))}
-              </fieldset>
-            ) : null}
+            {/* Multiselect (session 86): picking promos/coupons moved to its
+                own step ('promos', right before this one) - this is just a
+                summary + a way back to change the selection. */}
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Promos &amp; Coupons</span>
+              <p className={styles.copy}>
+                {selectedPromoIds.length + selectedCouponIds.length === 0
+                  ? 'None selected.'
+                  : `${selectedPromoIds.length + selectedCouponIds.length} selected, -PHP ${promoDiscount.toFixed(2)}.`}
+              </p>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() =>
+                  advanceTo(steps.findIndex((step) => step.key === 'promos'))
+                }
+              >
+                Change
+              </button>
+            </div>
 
             {submitError ? (
               <p className={styles.errorBanner} role="alert">

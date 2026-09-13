@@ -34,11 +34,12 @@ import {
   isCagePickerEnabled,
   verifyCagePreference,
 } from './cagePicker.service.ts';
+import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
 import {
   getBookingById,
   isPetAssessed,
   resolveBookingItems,
-  resolveDiscountAndPromo,
+  resolveDiscountAndPromos,
   resolveFreePackageAward,
   resolveStaffAssignment,
   round2,
@@ -269,17 +270,19 @@ export async function createBookingGroup({
   const uniformCategory =
     subBookingCategories.size === 1 ? [...subBookingCategories][0] : undefined;
 
-  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
-    await resolveDiscountAndPromo(
+  const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
+    await resolveDiscountAndPromos(
       {
         branch_id: input.branch_id,
         discount_id: input.discount_id,
-        promo_id: input.promo_id,
+        promo_ids: input.promo_ids,
+        coupon_ids: input.coupon_ids,
         service_category: uniformCategory,
-      } as unknown as Parameters<typeof resolveDiscountAndPromo>[0],
+      } as unknown as Parameters<typeof resolveDiscountAndPromos>[0],
       staffRole,
       allResolvedItems,
-      combinedTotalPrice
+      combinedTotalPrice,
+      customerId
     );
 
   const combinedNetTotal = round2(
@@ -336,7 +339,10 @@ export async function createBookingGroup({
       branch_id: input.branch_id,
       created_by_staff_id: createdByStaffId,
       selected_discount_id: selectedDiscountId,
-      selected_promo_id: selectedPromoId,
+      // Multiselect (session 86): see createBooking's identical note - the
+      // authoritative record is now booking_promo_selections, written below
+      // once this group row exists.
+      selected_promo_id: null,
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       net_total: combinedNetTotal,
@@ -357,6 +363,35 @@ export async function createBookingGroup({
   }
 
   const bookingGroup = insertedGroup as BookingGroup;
+
+  if (promoSelections.length > 0) {
+    const { error: promoSelectionsError } = await supabase
+      .from('booking_promo_selections')
+      .insert(
+        promoSelections.map((selection) => ({
+          booking_group_id: bookingGroup.id,
+          promo_id: selection.promoId,
+          customer_coupon_id: selection.couponId,
+          applied_amount: selection.appliedAmount,
+        }))
+      );
+
+    if (promoSelectionsError) {
+      await supabase.from('booking_groups').delete().eq('id', bookingGroup.id);
+      throwWithStatus(400, promoSelectionsError.message);
+    }
+
+    const redeemedCouponIds = promoSelections
+      .map((selection) => selection.couponId)
+      .filter((id): id is string => id !== null);
+
+    if (redeemedCouponIds.length > 0) {
+      await markCouponsRedeemed(redeemedCouponIds, {
+        bookingGroupId: bookingGroup.id,
+      });
+    }
+  }
+
   const insertedBookingIds: string[] = [];
   const insertedBookingRows: Booking[] = [];
 
