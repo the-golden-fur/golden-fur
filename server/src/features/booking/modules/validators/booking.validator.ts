@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   BOOKING_SOURCES,
   BOOKING_STATUSES,
+  FOOD_QUANTITY_UNITS,
+  MEDICATION_DOSE_UNITS,
   OVERRIDABLE_BOOKING_STATUSES,
   PAYMENT_SCHEMES,
   PAYMENT_STATUSES,
@@ -132,6 +134,8 @@ const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
 // does not - a separate enum, not a widened hotelPartOfDay, keeps those two
 // unaffected.
 const hotelMealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
+const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
+const medicationDoseUnit = z.enum(MEDICATION_DOSE_UNITS);
 
 /**
  * Booking-time preferences for a Hotel booking - a preview the check-in form
@@ -154,6 +158,8 @@ const hotelPreferencesValidator = z
             meal_time: hotelMealTime,
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
+            quantity_unit: foodQuantityUnit,
+            photo_url: z.url().optional(),
             special_instructions: z.string().trim().optional(),
             food_catalog_id: z.uuid().optional(),
             stay_date: z.iso.date().optional(),
@@ -191,6 +197,8 @@ const hotelPreferencesValidator = z
           .object({
             medication_name: z.string().trim().min(1),
             dose: z.string().trim().min(1),
+            dose_unit: medicationDoseUnit,
+            photo_url: z.url().optional(),
             scheduled_times: z.array(z.string().min(1)).default([]),
             administration_notes: z.string().trim().optional(),
             medication_catalog_id: z.uuid().optional(),

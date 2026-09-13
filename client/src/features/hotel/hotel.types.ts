@@ -9,6 +9,34 @@ export type PartOfDay = 'Morning' | 'Afternoon' | 'Evening';
 export type StayType = 'Hotel' | 'Daycare';
 export type StayStatus = 'Active' | 'Completed';
 
+// Care instruction units (diet-app style specificity): lets "1 quantity" or
+// "2 dose" say what unit it's actually in, instead of relying on freetext to
+// smuggle a unit into quantity/dose (e.g. "1 cup", "250mg"). Duplicates the
+// booking feature's own copy of this vocabulary (booking.types.ts) - same
+// precedent as MealTime/PartOfDay above.
+export const FOOD_QUANTITY_UNITS = [
+  'cup',
+  'gram',
+  'ounce',
+  'can',
+  'scoop',
+  'tablespoon',
+  'teaspoon',
+  'milliliter',
+  'piece',
+] as const;
+export type FoodQuantityUnit = (typeof FOOD_QUANTITY_UNITS)[number];
+
+export const MEDICATION_DOSE_UNITS = [
+  'mg',
+  'ml',
+  'tablet',
+  'capsule',
+  'drop',
+  'application',
+] as const;
+export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
+
 export interface Cage {
   id: string;
   branch_id: string;
@@ -78,6 +106,13 @@ export interface FeedingInstructionPayload {
   meal_time: MealTime;
   food_type: string;
   quantity: string;
+  // Optional here (unlike the booking feature's required booking-time copy)
+  // - a walk-in row added straight on a check-in panel has no unit-picker UI
+  // of its own, only pass-through from a booking's own preferences.
+  quantity_unit?: FoodQuantityUnit;
+  /** Optional photo of the food item/bag, uploaded via
+   * POST /pets/:id/care-item-photo at booking time. */
+  photo_url?: string;
   special_instructions?: string;
   food_catalog_id?: string;
   stay_date?: string;
@@ -100,6 +135,10 @@ export interface PlayingInstructionPayload {
 export interface MedicationInstructionPayload {
   medication_name: string;
   dose: string;
+  dose_unit?: MedicationDoseUnit;
+  /** Optional photo of the medication/label, uploaded via
+   * POST /pets/:id/care-item-photo at booking time. */
+  photo_url?: string;
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;

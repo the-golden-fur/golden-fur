@@ -129,7 +129,12 @@ describe('createBookingValidator', () => {
         service_category: 'Hotel',
         hotel_preferences: {
           feeding: [
-            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+            {
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
           ],
           walking: [{ time_block: 'Morning', duration_minutes: 15 }],
           playing: [{ time_block: 'Afternoon', duration_minutes: 10 }],
@@ -162,7 +167,12 @@ describe('createBookingValidator', () => {
         service_category: 'Daycare',
         hotel_preferences: {
           feeding: [
-            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+            {
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
           ],
           walking: [],
           playing: [],
@@ -185,6 +195,7 @@ describe('createBookingValidator', () => {
               meal_time: 'Morning',
               food_type: 'Kibble',
               quantity: '1',
+              quantity_unit: 'cup',
               food_catalog_id: '11111111-1111-4111-a111-111111111111',
             },
           ],
@@ -193,7 +204,8 @@ describe('createBookingValidator', () => {
           medications: [
             {
               medication_name: 'Amoxicillin',
-              dose: '250mg',
+              dose: '250',
+              dose_unit: 'mg',
               scheduled_times: ['08:00'],
               medication_catalog_id: '22222222-2222-4222-a222-222222222222',
             },

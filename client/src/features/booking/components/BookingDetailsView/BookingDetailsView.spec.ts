@@ -134,7 +134,8 @@ describe('BookingDetailsView', () => {
             {
               meal_time: 'Morning',
               food_type: 'Kibble',
-              quantity: '1 cup',
+              quantity: '1',
+              quantity_unit: 'cup',
             },
           ],
           walking: [],
