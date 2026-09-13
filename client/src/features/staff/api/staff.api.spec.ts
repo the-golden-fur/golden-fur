@@ -128,6 +128,23 @@ describe('staff.api', () => {
     expect(result.data).toEqual([{ id: 'block-1' }]);
   });
 
+  it('listUnavailabilityBlocks appends from/to when a range is given (My Schedule)', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ blocks: [{ id: 'block-1' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listUnavailabilityBlocks('staff-1', 'token', {
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-07-01T00:00:00.000Z',
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain('/staff/staff-1/unavailability?');
+    expect(url).toContain('from=2026-06-01T00%3A00%3A00.000Z');
+    expect(url).toContain('to=2026-07-01T00%3A00%3A00.000Z');
+  });
+
   it('createUnavailabilityBlock posts the payload and returns the created block', async () => {
     const fetchMock = vi
       .fn()
