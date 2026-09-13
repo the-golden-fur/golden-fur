@@ -1662,7 +1662,12 @@ export function CustomerBookingFlowPage() {
   ]);
 
   const cappedPromoSelections = useMemo(
-    () => applyPromoCap(promoCouponCandidates, promoCap, groupSubtotal),
+    () =>
+      applyPromoCap<{ kind: 'promo' | 'coupon'; id: string }>(
+        promoCouponCandidates,
+        promoCap,
+        groupSubtotal
+      ),
     [promoCouponCandidates, promoCap, groupSubtotal]
   );
 
