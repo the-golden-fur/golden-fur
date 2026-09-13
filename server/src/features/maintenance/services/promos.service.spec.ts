@@ -56,8 +56,13 @@ const BRANCH_SOUTHWOODS = 'branch-southwoods';
 const DATE_PROMO = {
   id: 'promo-1',
   name: 'Summer Grooming Deal',
-  start_date: '2026-08-01',
-  end_date: '2026-08-31',
+  promo_type: 'date_range',
+  // Wide-open window (rather than a fixed month) so isPromoCurrentlyEligible
+  // (real Date.now(), not mocked) always reports this fixture as active
+  // regardless of when the suite actually runs.
+  start_date: '2020-01-01',
+  end_date: '2099-12-31',
+  days_of_week: null,
   condition_note: null,
   discount_type: 'Percentage',
   value: 15,
@@ -154,26 +159,33 @@ describe('promos.service', () => {
   });
 
   describe('listPromos', () => {
-    it('AC-5: the active list applies the defensive read-time expiry filter', async () => {
-      queueFromResults({ data: [DATE_PROMO], error: null });
+    it('AC-5: the active list applies the defensive read-time expiry filter (post-fetch, via isPromoCurrentlyEligible)', async () => {
+      const expiredPromo = {
+        ...DATE_PROMO,
+        id: 'promo-expired',
+        end_date: '2020-01-31',
+      };
+      queueFromResults({ data: [DATE_PROMO, expiredPromo], error: null });
 
-      await listPromos({});
+      const result = await listPromos({});
 
-      const builder = builders[0];
-      expect(builder.eq).toHaveBeenCalledWith('is_active', true);
-      expect(builder.or).toHaveBeenCalledWith(
-        expect.stringContaining('end_date.is.null,end_date.gte.')
-      );
+      expect(result.map((promo) => promo.id)).toEqual(['promo-1']);
     });
 
-    it('skips both filters for the admin management view (include_inactive)', async () => {
-      queueFromResults({ data: [DATE_PROMO], error: null });
+    it('skips the eligibility filter for the admin management view (include_inactive)', async () => {
+      const expiredPromo = {
+        ...DATE_PROMO,
+        id: 'promo-expired',
+        end_date: '2020-01-31',
+      };
+      queueFromResults({ data: [DATE_PROMO, expiredPromo], error: null });
 
-      await listPromos({ includeInactive: true });
+      const result = await listPromos({ includeInactive: true });
 
-      const builder = builders[0];
-      expect(builder.eq).not.toHaveBeenCalled();
-      expect(builder.or).not.toHaveBeenCalled();
+      expect(result.map((promo) => promo.id)).toEqual([
+        'promo-1',
+        'promo-expired',
+      ]);
     });
 
     it('custom change: matches a promo available at the requested branch (post-fetch filter over promo_branch_availability)', async () => {

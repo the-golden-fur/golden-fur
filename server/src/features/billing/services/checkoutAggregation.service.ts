@@ -1,6 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   getBookingForBilling,
+  getBookingPromoSelections,
   getServiceLineItems,
   type BookingForBilling,
 } from './lineItemSources.service.ts';
@@ -111,21 +112,42 @@ export async function buildCheckoutPreview(
       ]
     : await evaluateDiscounts(booking, eligibility, subtotal);
 
-  const evaluatedPromos: EvaluatedPromo[] = booking.selected_promo_id
-    ? [
-        {
-          promoId: booking.selected_promo_id,
+  // Multiselect (session 86): booking.promo_selections (one row per promo/
+  // coupon locked in at booking time) is now the primary source; a booking
+  // created before this feature falls back to its own singular
+  // selected_promo_id, and one created before ANY booking-time selection
+  // existed falls back all the way to evaluatePromos, same three-tier
+  // fallback discountLines above already uses for discounts.
+  const evaluatedPromos: EvaluatedPromo[] =
+    booking.promo_selections.length > 0
+      ? booking.promo_selections.map((selection) => ({
+          promoId: selection.promo_id,
+          couponId: selection.customer_coupon_id,
           line: {
             line_item_type: 'promo',
-            reference_id: booking.selected_promo_id,
-            description: booking.selected_promo_name ?? 'Promo',
+            reference_id: selection.promo_id ?? selection.customer_coupon_id,
+            description: selection.description,
             quantity: 1,
-            unit_price: -booking.promo_amount,
-            line_total: -booking.promo_amount,
+            unit_price: -selection.applied_amount,
+            line_total: -selection.applied_amount,
           },
-        },
-      ]
-    : await evaluatePromos(booking, subtotal);
+        }))
+      : booking.selected_promo_id
+        ? [
+            {
+              promoId: booking.selected_promo_id,
+              couponId: null,
+              line: {
+                line_item_type: 'promo',
+                reference_id: booking.selected_promo_id,
+                description: booking.selected_promo_name ?? 'Promo',
+                quantity: 1,
+                unit_price: -booking.promo_amount,
+                line_total: -booking.promo_amount,
+              },
+            },
+          ]
+        : await evaluatePromos(booking, subtotal);
   const promoLines = evaluatedPromos.map((evaluated) => evaluated.line);
 
   const nonServiceDiscountLines = serviceLines.filter(
@@ -338,6 +360,7 @@ export async function checkoutBooking(
       evaluatedPromos.map((evaluated) => ({
         transaction_id: transaction.id,
         promo_id: evaluated.promoId,
+        customer_coupon_id: evaluated.couponId,
         is_activated: true,
         activated_at: now,
       }))
@@ -384,6 +407,7 @@ export interface GroupCheckoutPreview {
   serviceLines: DraftLineItem[];
   discountLines: DraftLineItem[];
   promoLines: DraftLineItem[];
+  evaluatedPromos: EvaluatedPromo[];
   subtotal: number;
   discountAmount: number;
   promoAmount: number;
@@ -477,18 +501,49 @@ export async function buildGroupCheckoutPreview(
       ]
     : [];
 
-  const promoLines: DraftLineItem[] = bookingGroup.selected_promo_id
-    ? [
-        {
-          line_item_type: 'promo',
-          reference_id: bookingGroup.selected_promo_id,
-          description: 'Promo',
-          quantity: 1,
-          unit_price: -bookingGroup.promo_amount,
-          line_total: -bookingGroup.promo_amount,
-        },
-      ]
-    : [];
+  // Multiselect (session 86): a group created after this feature always has
+  // its selections in booking_promo_selections (createBookingGroup ALWAYS
+  // calls resolveDiscountAndPromos - there is no "nothing pre-selected"
+  // fallback path for a group, per this function's own top-level dev note);
+  // a group created before it falls back to its own singular
+  // selected_promo_id.
+  const groupPromoSelections = await getBookingPromoSelections({
+    bookingGroupId,
+  });
+
+  const evaluatedPromos: EvaluatedPromo[] =
+    groupPromoSelections.length > 0
+      ? groupPromoSelections.map((selection) => ({
+          promoId: selection.promo_id,
+          couponId: selection.customer_coupon_id,
+          line: {
+            line_item_type: 'promo',
+            reference_id: selection.promo_id ?? selection.customer_coupon_id,
+            description: selection.description,
+            quantity: 1,
+            unit_price: -selection.applied_amount,
+            line_total: -selection.applied_amount,
+          },
+        }))
+      : bookingGroup.selected_promo_id
+        ? [
+            {
+              promoId: bookingGroup.selected_promo_id,
+              couponId: null,
+              line: {
+                line_item_type: 'promo',
+                reference_id: bookingGroup.selected_promo_id,
+                description: 'Promo',
+                quantity: 1,
+                unit_price: -bookingGroup.promo_amount,
+                line_total: -bookingGroup.promo_amount,
+              },
+            },
+          ]
+        : [];
+  const promoLines: DraftLineItem[] = evaluatedPromos.map(
+    (evaluated) => evaluated.line
+  );
 
   const nonServiceDiscountLines = serviceLines.filter(
     (line) => line.line_item_type === 'discount'
@@ -516,6 +571,7 @@ export async function buildGroupCheckoutPreview(
     serviceLines,
     discountLines,
     promoLines,
+    evaluatedPromos,
     subtotal,
     discountAmount,
     promoAmount,
@@ -575,6 +631,7 @@ export async function checkoutBookingGroup(
     serviceLines,
     discountLines,
     promoLines,
+    evaluatedPromos,
     subtotal,
     discountAmount,
     promoAmount,
@@ -679,14 +736,17 @@ export async function checkoutBookingGroup(
 
   if (lineItemsError) throwWithStatus(400, lineItemsError.message);
 
-  if (bookingGroup.selected_promo_id) {
+  if (evaluatedPromos.length > 0) {
     const now = new Date().toISOString();
-    await supabase.from('transaction_promo_selections').insert({
-      transaction_id: transaction.id,
-      promo_id: bookingGroup.selected_promo_id,
-      is_activated: true,
-      activated_at: now,
-    });
+    await supabase.from('transaction_promo_selections').insert(
+      evaluatedPromos.map((evaluated) => ({
+        transaction_id: transaction.id,
+        promo_id: evaluated.promoId,
+        customer_coupon_id: evaluated.couponId,
+        is_activated: true,
+        activated_at: now,
+      }))
+    );
   }
 
   if ((transaction as Transaction).payment_status === 'Fully Paid') {

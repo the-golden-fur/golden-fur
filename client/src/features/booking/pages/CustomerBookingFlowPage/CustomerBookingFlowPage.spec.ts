@@ -18,6 +18,7 @@ import * as bookingApi from '../../api/booking.api';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
+import * as rewardsApi from '../../../rewards/api/rewards.api';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
@@ -126,6 +127,10 @@ vi.mock('../../../discounts/api/discounts.api', () => ({
 
 vi.mock('../../../veterinary/api/veterinary.api', () => ({
   listMyPatients: vi.fn(),
+}));
+
+vi.mock('../../../rewards/api/rewards.api', () => ({
+  getMyCoupons: vi.fn(),
 }));
 
 vi.mock('../../components/SlotPicker/SlotPicker', () => ({
@@ -470,6 +475,10 @@ describe('CustomerBookingFlowPage', () => {
       error: null,
     });
     vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(rewardsApi.getMyCoupons).mockResolvedValue({
       data: [],
       error: null,
     });
@@ -847,6 +856,15 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
 
+    // New Promos & Coupons step (session 86), before Review - nothing
+    // required here, just advance past it.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1045,6 +1063,15 @@ describe('CustomerBookingFlowPage', () => {
     // Multi-booking checkout: lands on "Your bookings" before Review.
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    // New Promos & Coupons step (session 86), before Review - nothing
+    // required here, just advance past it.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1410,6 +1437,15 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
 
+    // New Promos & Coupons step (session 86), before Review - nothing
+    // required here, just advance past it.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1645,6 +1681,15 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
 
+    // New Promos & Coupons step (session 86), before Review - nothing
+    // required here, just advance past it.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1679,6 +1724,15 @@ describe('CustomerBookingFlowPage', () => {
     // Multi-booking checkout: lands on "Your bookings" before Review.
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    // New Promos & Coupons step (session 86), before Review - nothing
+    // required here, just advance past it.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1807,6 +1861,15 @@ describe('CustomerBookingFlowPage', () => {
       );
       await user.click(screen.getByText('Next'));
 
+      // New Promos & Coupons step (session 86), before Review - nothing
+      // required here, just advance past it.
+      await waitFor(() =>
+        expect(
+          screen.getByText(/Select any promos or coupons/)
+        ).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
       await waitFor(() =>
         expect(screen.getByText('Confirm booking')).toBeInTheDocument()
       );
@@ -1862,6 +1925,15 @@ describe('CustomerBookingFlowPage', () => {
       // Multi-booking checkout: lands on "Your bookings" before Review.
       await waitFor(() =>
         expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
+      // New Promos & Coupons step (session 86), before Review - nothing
+      // required here, just advance past it.
+      await waitFor(() =>
+        expect(
+          screen.getByText(/Select any promos or coupons/)
+        ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
 
@@ -1956,6 +2028,15 @@ describe('CustomerBookingFlowPage', () => {
 
       await waitFor(() =>
         expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
+      // New Promos & Coupons step (session 86), before Review - nothing
+      // required here, just advance past it.
+      await waitFor(() =>
+        expect(
+          screen.getByText(/Select any promos or coupons/)
+        ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
 

@@ -1,0 +1,84 @@
+.page {
+  padding: 1.5rem;
+}
+
+.content {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.copy {
+  color: var(--muted-text-color, #666);
+}
+
+.spinSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 12px;
+}
+
+.spinCount {
+  font-size: 0.95rem;
+}
+
+.spinButton {
+  padding: 0.6rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-color, #d9534f);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spinButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorBanner {
+  color: var(--error-color, #b3261e);
+}
+
+.successBanner {
+  color: var(--success-color, #2e7d32);
+}
+
+.couponList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.couponCard {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.couponUsed {
+  opacity: 0.6;
+  font-weight: 400;
+}

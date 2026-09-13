@@ -4,6 +4,7 @@ import {
   Calculator,
   DoorOpen,
   Dog,
+  Gift,
   Package,
   PawPrint,
   Percent,
@@ -26,6 +27,7 @@ import { AdminDiscountManagementPage } from '../../features/discounts/pages/Admi
 import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
+import { AdminSpinWheelConfigPage } from '../../features/rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -128,6 +130,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/hotel/cages',
     icon: DoorOpen,
     Component: AdminCagesPage,
+  },
+  {
+    title: 'Coupon Spin Wheel',
+    description:
+      'Configure spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
+    to: '/staff/admin/spin-wheel-config',
+    icon: Gift,
+    Component: AdminSpinWheelConfigPage,
   },
 ];
 

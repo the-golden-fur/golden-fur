@@ -1,4 +1,12 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  isPromoCurrentlyEligible,
+  type PromoType,
+} from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
+  applyPromoCap,
+  type PromoCapRow,
+} from '../../../shared/services/promoCap/promoCap.service.ts';
 import type { DraftLineItem } from '../billing.types.ts';
 import type { BookingForBilling } from './lineItemSources.service.ts';
 
@@ -121,8 +129,11 @@ export async function evaluateDiscounts(
 interface PromoRow {
   id: string;
   name: string;
+  is_active: boolean;
+  promo_type: PromoType;
   start_date: string | null;
   end_date: string | null;
+  days_of_week: number[] | null;
   discount_type: 'Percentage' | 'Flat';
   value: number;
   scope_type: 'all_services' | 'specific';
@@ -133,8 +144,16 @@ interface PromoRow {
   }>;
 }
 
+/** Custom change (promos/coupons multiselect booking step): widened so the
+ * same shape can represent either an auto-evaluated promo (this file) or a
+ * booking-time-locked-in promo/coupon selection read back from
+ * booking_promo_selections (checkoutAggregation.service.ts) - exactly one
+ * of promoId/couponId is ever set. evaluatePromos below only ever produces
+ * promo entries (couponId always null) - see its own doc comment on why
+ * coupons never reach this auto-evaluate path. */
 export interface EvaluatedPromo {
-  promoId: string;
+  promoId: string | null;
+  couponId: string | null;
   line: DraftLineItem;
 }
 
@@ -155,12 +174,20 @@ export interface EvaluatedPromo {
  * rest are dropped entirely (no partial-amount trimming, since a "count"
  * has no notion of a fractional promo).
  */
+/**
+ * Custom change (promo variations): coupons are deliberately NOT evaluated
+ * here. A coupon (a per-customer, single-use spin-wheel reward - see
+ * customer_coupons/rewards.types.ts) is only ever applied by explicit
+ * customer/receptionist choice at the new booking-time Promos & Coupons
+ * step (resolveDiscountAndPromos in booking.service.ts) - unlike a promo,
+ * it never gets auto-applied at checkout when nothing was pre-selected,
+ * since silently spending a customer's coupon without their say-so would be
+ * surprising.
+ */
 export async function evaluatePromos(
   booking: BookingForBilling,
   subtotal: number
 ): Promise<EvaluatedPromo[]> {
-  const today = new Date().toISOString().slice(0, 10);
-
   const { data: promos, error } = await supabase
     .from('promos')
     .select(
@@ -176,8 +203,7 @@ export async function evaluatePromos(
     );
     if (!availableAtBranch) return false;
 
-    if (promo.start_date && promo.start_date > today) return false;
-    if (promo.end_date && promo.end_date < today) return false;
+    if (!isPromoCurrentlyEligible(promo)) return false;
     if (promo.scope_type === 'all_services') return true;
 
     return promo.promo_scope.some((scopeRow) =>
@@ -193,59 +219,29 @@ export async function evaluatePromos(
 
   const capRow = await getEffectivePromoCap(booking.branch_id);
 
-  const withAmounts = matched
-    .map((promo) => ({
-      promo,
-      amount: round2(
-        promo.discount_type === 'Percentage'
-          ? (subtotal * Number(promo.value)) / 100
-          : Number(promo.value)
-      ),
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  const candidates = matched.map((promo) => ({
+    key: promo,
+    amount: round2(
+      promo.discount_type === 'Percentage'
+        ? (subtotal * Number(promo.value)) / 100
+        : Number(promo.value)
+    ),
+  }));
 
-  const toLine = (promo: PromoRow, appliedAmount: number): EvaluatedPromo => ({
-    promoId: promo.id,
-    line: {
-      line_item_type: 'promo',
-      reference_id: promo.id,
-      description: promo.name,
-      quantity: 1,
-      unit_price: -appliedAmount,
-      line_total: -appliedAmount,
-    },
-  });
-
-  if (capRow.cap_type === 'count') {
-    const maxCount = Math.max(0, Math.trunc(Number(capRow.cap_value)));
-    return withAmounts
-      .slice(0, maxCount)
-      .map(({ promo, amount }) => toLine(promo, amount));
-  }
-
-  const capAmount =
-    capRow.cap_type === 'percentage'
-      ? (subtotal * Number(capRow.cap_value)) / 100
-      : Number(capRow.cap_value);
-
-  const applied: EvaluatedPromo[] = [];
-  let remainingCap = capAmount;
-
-  for (const { promo, amount } of withAmounts) {
-    if (remainingCap <= 0) break;
-
-    const appliedAmount = Math.min(amount, remainingCap);
-    remainingCap = round2(remainingCap - appliedAmount);
-
-    applied.push(toLine(promo, appliedAmount));
-  }
-
-  return applied;
-}
-
-interface PromoCapRow {
-  cap_type: 'percentage' | 'flat' | 'count';
-  cap_value: number;
+  return applyPromoCap(candidates, capRow, subtotal).map(
+    ({ key: promo, amount }) => ({
+      promoId: promo.id,
+      couponId: null,
+      line: {
+        line_item_type: 'promo',
+        reference_id: promo.id,
+        description: promo.name,
+        quantity: 1,
+        unit_price: -amount,
+        line_total: -amount,
+      },
+    })
+  );
 }
 
 async function getEffectivePromoCap(branchId: string): Promise<PromoCapRow> {

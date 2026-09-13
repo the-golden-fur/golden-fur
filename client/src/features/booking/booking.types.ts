@@ -763,21 +763,25 @@ export interface CreateBookingPayload {
    * net total. */
   payment_scheme?: PaymentScheme;
   // Staff-only (money-handling roles) - see booking.service.ts's
-  // resolveDiscountAndPromo.
+  // resolveDiscountAndPromos.
   discount_id?: string;
-  // Open to customers too - no role or payment-method restriction.
-  promo_id?: string;
+  // Multiselect (session 86): open to customers too - no role or payment-
+  // method restriction. Re-validated and re-capped authoritatively server-
+  // side (resolveDiscountAndPromos).
+  promo_ids?: string[];
+  coupon_ids?: string[];
   special_instructions?: string;
   hotel_preferences?: HotelBookingPreferences;
 }
 
-/** Multi-booking checkout payload: one shared branch/discount/promo/payment
- * scheme, plus a list of otherwise-independent per-booking payloads (own
- * pet/category/items/date-time/staff-or-cage each). Every field a standalone
- * CreateBookingPayload has that becomes shared at the group level
- * (customer_id/branch_id/discount_id/promo_id/payment_scheme) is omitted
- * from each entry in `bookings` and lives once at the top level instead -
- * see the "OR to make things easier" pre-payment booking list decision. */
+/** Multi-booking checkout payload: one shared branch/discount/promos+
+ * coupons/payment scheme, plus a list of otherwise-independent per-booking
+ * payloads (own pet/category/items/date-time/staff-or-cage each). Every
+ * field a standalone CreateBookingPayload has that becomes shared at the
+ * group level (customer_id/branch_id/discount_id/promo_ids/coupon_ids/
+ * payment_scheme) is omitted from each entry in `bookings` and lives once
+ * at the top level instead - see the "OR to make things easier" pre-payment
+ * booking list decision. */
 export interface CreateBookingGroupPayload {
   customer_id?: string;
   branch_id: string;
@@ -787,12 +791,14 @@ export interface CreateBookingGroupPayload {
       | 'customer_id'
       | 'branch_id'
       | 'discount_id'
-      | 'promo_id'
+      | 'promo_ids'
+      | 'coupon_ids'
       | 'payment_scheme'
     >
   >;
   discount_id?: string;
-  promo_id?: string;
+  promo_ids?: string[];
+  coupon_ids?: string[];
   payment_scheme?: PaymentScheme;
 }
 

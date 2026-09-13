@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   getBookingForBilling,
+  getBookingPromoSelections,
   getServiceLineItems,
 } from './lineItemSources.service.ts';
 import {
@@ -25,6 +26,7 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 }));
 vi.mock('./lineItemSources.service.ts', () => ({
   getBookingForBilling: vi.fn(),
+  getBookingPromoSelections: vi.fn(),
   getServiceLineItems: vi.fn(),
 }));
 vi.mock('./discountPromoEvaluation.service.ts', () => ({
@@ -68,6 +70,7 @@ const BOOKING = {
   selected_promo_id: null,
   selected_promo_name: null,
   promo_amount: 0,
+  promo_selections: [],
 };
 
 const INPUT = {
@@ -278,6 +281,11 @@ describe('checkoutBookingGroup — multi-booking checkout (booking_groups)', () 
       paymentStatus: 'Fully Paid',
       changeAmount: 0,
     } as never);
+    // buildGroupCheckoutPreview reads booking_promo_selections directly
+    // (unlike the single-booking path, which reads it off the
+    // getBookingForBilling-mocked BOOKING fixture's own promo_selections) -
+    // no promo/coupon selected in these fixtures.
+    vi.mocked(getBookingPromoSelections).mockResolvedValue([]);
   });
 
   it('supersedes a still-Pending group estimate charge instead of 409ing', async () => {

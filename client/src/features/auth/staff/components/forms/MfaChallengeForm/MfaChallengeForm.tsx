@@ -29,7 +29,11 @@ export function MfaChallengeForm() {
     setIsSubmitting(false);
 
     if (result.error) {
-      setError('Invalid verification code.');
+      // Was previously hardcoded to "Invalid verification code." regardless
+      // of the actual response, which masked a 423 lockout (e.g. "Too many
+      // invalid MFA codes. Try again in N seconds.") behind the same wrong-
+      // code message - surface the server's real message instead.
+      setError(result.error);
       return;
     }
 

@@ -358,6 +358,11 @@ export type DiscountValueType = 'Percentage' | 'Flat';
 export type PromoScopeType = 'all_services' | 'specific';
 export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 
+/** Custom change (promo variations, session 86): a second promo "type"
+ * alongside the original date-bounded one - "every Monday, 10% off
+ * Grooming". Immutable after creation. */
+export type PromoType = 'date_range' | 'weekly_recurring';
+
 export interface PromoScopeItem {
   id: string;
   promo_id: string;
@@ -377,8 +382,11 @@ export interface PromoBranchAvailability {
 export interface Promo {
   id: string;
   name: string;
+  promo_type: PromoType;
   start_date: string | null;
   end_date: string | null;
+  /** Only set when promo_type = 'weekly_recurring' (0=Sunday..6=Saturday). */
+  days_of_week: number[] | null;
   condition_note: string | null;
   discount_type: DiscountValueType;
   value: number;
@@ -408,8 +416,10 @@ export interface PromoScopeInput {
 /** branch_ids (custom change) replaces the old branch_scope enum. */
 export interface CreatePromoPayload {
   name: string;
+  promo_type?: PromoType;
   start_date?: string;
   end_date?: string;
+  days_of_week?: number[];
   condition_note?: string;
   discount_type: DiscountValueType;
   value: number;
@@ -425,6 +435,7 @@ export interface UpdatePromoPayload {
   name?: string;
   start_date?: string | null;
   end_date?: string | null;
+  days_of_week?: number[];
   condition_note?: string | null;
   discount_type?: DiscountValueType;
   value?: number;

@@ -303,6 +303,11 @@ export interface ServiceType {
 
 export type PromoScopeType = 'all_services' | 'specific';
 
+/** Custom change (promo variations, session 86): a second promo "type"
+ * alongside the original date-bounded one - "every Monday, 10% off
+ * Grooming" (20260913195). */
+export type PromoType = 'date_range' | 'weekly_recurring';
+
 export interface PromoScopeItem {
   id: string;
   promo_id: string;
@@ -322,8 +327,17 @@ export interface PromoBranchAvailability {
 export interface Promo {
   id: string;
   name: string;
+  /** Custom change (promo variations, session 86): defaults to 'date_range'
+   * for every promo created before this - immutable after creation (a
+   * weekly_recurring promo's eligibility rule can't be rewritten into a
+   * date_range one after customers may already be relying on it). */
+  promo_type: PromoType;
   start_date: string | null;
   end_date: string | null;
+  /** Only set when promo_type = 'weekly_recurring' (0=Sunday..6=Saturday,
+   * Manila-local). start_date/end_date, if also set, bound an overall
+   * campaign window IN ADDITION to the day-of-week match. */
+  days_of_week: number[] | null;
   condition_note: string | null;
   discount_type: DiscountValueType;
   value: number;

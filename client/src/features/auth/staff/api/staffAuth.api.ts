@@ -23,15 +23,22 @@ async function parseResponse<T>(
   response: Response
 ): Promise<StaffApiResult<T>> {
   const body = (await response.json().catch(() => null)) as
-    | { error?: string }
+    | { error?: string; message?: string }
     | T
     | null;
 
   if (!response.ok) {
+    // The MFA lockout response (423) carries both a short `error` and a
+    // more specific `message` (e.g. "Too many invalid MFA codes. Try
+    // again in N seconds.") - prefer message when present so a lockout
+    // isn't shown to the user as a generic error. Every other error
+    // response here only ever sets `error`, so this never shadows those.
     const errorMessage =
-      body && typeof body === 'object' && 'error' in body && body.error
-        ? body.error
-        : 'Request failed. Please try again.';
+      body && typeof body === 'object' && 'message' in body && body.message
+        ? body.message
+        : body && typeof body === 'object' && 'error' in body && body.error
+          ? body.error
+          : 'Request failed. Please try again.';
 
     return {
       data: null,

@@ -322,6 +322,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       { data: PET_B, error: null }, // sub2 pet ownership
       { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo cap
       { data: groupRow({}), error: null }, // booking_groups insert
+      { data: null, error: null }, // booking_promo_selections insert
       {
         data: bookingRow({
           id: 'booking-a1',
@@ -352,7 +353,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
         customer_id: CUSTOMER_ID,
         branch_id: 'branch-1',
         discount_id: 'discount-1',
-        promo_id: 'promo-1',
+        promo_ids: ['promo-1'],
         bookings: [
           {
             pet_id: PET.id,
@@ -380,13 +381,27 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     // 450 combined - 50 flat discount - 45 (10% of 450) promo = 355 net.
     expect(groupInsert?.payload).toMatchObject({
       selected_discount_id: 'discount-1',
-      selected_promo_id: 'promo-1',
+      // Multiselect (session 86): no longer written - see
+      // booking_promo_selections assertion below.
+      selected_promo_id: null,
       discount_amount: 50,
       promo_amount: 45,
       net_total: 355,
       downpayment_required: true,
       downpayment_amount: 100, // flat 100, capped by (min against) the net total
     });
+
+    const promoSelectionInsert = recordedWrites.find(
+      (write) => write.table === 'booking_promo_selections'
+    );
+    expect(promoSelectionInsert?.payload).toEqual([
+      {
+        booking_group_id: 'group-1',
+        promo_id: 'promo-1',
+        customer_coupon_id: null,
+        applied_amount: 45,
+      },
+    ]);
 
     const bookingInserts = recordedWrites.filter(
       (write) => write.table === 'bookings' && write.method === 'insert'

@@ -32,6 +32,7 @@ export const API_ROUTE_PREFIXES = [
   '/pets',
   '/public',
   '/reports',
+  '/rewards',
   '/staff',
   '/veterinary',
 ] as const;
