@@ -159,3 +159,20 @@ export interface CreateStaffAccountResult {
   staff: StaffProfile;
   temporary_password: string;
 }
+
+/** Universal deleted-records archive (custom change) - one row per
+ * physically-deleted row from ANY table, captured by a database trigger
+ * (see the 20260913202 migration), not written by any client code.
+ * `deleted_by` is nullable and null for the overwhelming majority of
+ * deletes - the server issues them via its service-role client, which has
+ * no `auth.uid()` inside the trigger. */
+export interface DeletedRecordArchiveEntry {
+  id: string;
+  source_table: string;
+  record_id: string | null;
+  row_data: Record<string, unknown>;
+  deleted_by: string | null;
+  deleted_at: string;
+  restored_at: string | null;
+  restored_by: string | null;
+}

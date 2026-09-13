@@ -34,6 +34,7 @@ import {
 } from '../../api/staff.api';
 import { listStaff } from '../../api/staff.api';
 import { ArchiveList } from '../../components/ArchiveList/ArchiveList';
+import { DeletedRecordsArchiveList } from '../../components/DeletedRecordsArchiveList/DeletedRecordsArchiveList';
 import styles from './AdminArchivePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -44,7 +45,8 @@ type ArchiveTab =
   | 'customers'
   | 'discounts'
   | 'promos'
-  | 'packages';
+  | 'packages'
+  | 'deleted-records';
 
 const TABS: { key: ArchiveTab; label: string }[] = [
   { key: 'products', label: 'Products' },
@@ -53,6 +55,7 @@ const TABS: { key: ArchiveTab; label: string }[] = [
   { key: 'discounts', label: 'Discounts' },
   { key: 'promos', label: 'Promos' },
   { key: 'packages', label: 'Packages' },
+  { key: 'deleted-records', label: 'Deleted Records' },
 ];
 
 /**
@@ -110,7 +113,8 @@ export function AdminArchivePage() {
         <h1 className={styles.title}>Archive</h1>
         <p className={styles.copy}>
           Records archived from their own admin page end up here - restore them,
-          or permanently delete them once you're sure.
+          or permanently delete them once you're sure. Deleted Records covers
+          anything hard-deleted from any table, everywhere in the app.
         </p>
 
         <div className={styles.tabs} role="tablist">
@@ -212,6 +216,10 @@ export function AdminArchivePage() {
               `${item.name} (PHP ${item.bundled_price.toFixed(2)})`
             }
           />
+        ) : null}
+
+        {activeTab === 'deleted-records' ? (
+          <DeletedRecordsArchiveList accessToken={accessToken} />
         ) : null}
       </div>
     </main>
