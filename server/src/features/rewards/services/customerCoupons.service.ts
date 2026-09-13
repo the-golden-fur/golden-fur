@@ -77,19 +77,28 @@ export async function getCouponsByIds(
   });
 }
 
-/** Locks a set of coupons to the booking/booking_group that just applied
+/**
+ * Locks a set of coupons to the booking/booking_group that just applied
  * them - called from createBooking/createBookingGroup right after their own
  * insert succeeds, same "resolve, then lock in" order as
  * selected_discount_id/selected_promo_id today. Exactly one of
  * bookingId/bookingGroupId is expected, mirroring
- * booking_promo_selections' own CHECK constraint. */
+ * booking_promo_selections' own CHECK constraint.
+ *
+ * The `is_redeemed = false` guard (plus checking every id actually got
+ * updated) is defense-in-depth against a TOCTOU race: getCouponsByIds's own
+ * read happens moments earlier in the same request, so nothing should have
+ * changed in between, but without this guard two concurrent requests could
+ * both pass that earlier read and both mark the same coupon redeemed
+ * against two different bookings.
+ */
 export async function markCouponsRedeemed(
   couponIds: string[],
   redemption: { bookingId?: string; bookingGroupId?: string }
 ): Promise<void> {
   if (couponIds.length === 0) return;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('customer_coupons')
     .update({
       is_redeemed: true,
@@ -97,7 +106,16 @@ export async function markCouponsRedeemed(
       redeemed_by_booking_id: redemption.bookingId ?? null,
       redeemed_by_booking_group_id: redemption.bookingGroupId ?? null,
     })
-    .in('id', couponIds);
+    .in('id', couponIds)
+    .eq('is_redeemed', false)
+    .select('id');
 
   if (error) throwWithStatus(400, error.message);
+
+  if ((data ?? []).length !== couponIds.length) {
+    throwWithStatus(
+      409,
+      'One or more selected coupons were redeemed by another request - please try again'
+    );
+  }
 }

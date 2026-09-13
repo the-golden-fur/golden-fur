@@ -1203,7 +1203,14 @@ export async function createBooking({
       .filter((id): id is string => id !== null);
 
     if (redeemedCouponIds.length > 0) {
-      await markCouponsRedeemed(redeemedCouponIds, { bookingId: booking.id });
+      try {
+        await markCouponsRedeemed(redeemedCouponIds, {
+          bookingId: booking.id,
+        });
+      } catch (redeemError) {
+        await supabase.from('bookings').delete().eq('id', booking.id);
+        throw redeemError;
+      }
     }
   }
 

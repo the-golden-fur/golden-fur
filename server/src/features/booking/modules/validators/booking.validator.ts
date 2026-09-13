@@ -116,6 +116,41 @@ function requireNoDuplicateItems(
   }
 }
 
+/**
+ * Custom change (promos/coupons multiselect, session 86): the old single
+ * `promo_id` scalar made a repeated id structurally impossible; the array
+ * form doesn't, so this mirrors requireNoDuplicateItems's own dedup check
+ * above for the new promo_ids/coupon_ids fields - without it, sending the
+ * same promo id twice would apply it twice (two independent candidates
+ * into applyPromoCap, capped only by whatever promo_cap_configuration
+ * happens to allow).
+ */
+function requireNoDuplicatePromoOrCouponIds(
+  input: { promo_ids?: string[]; coupon_ids?: string[] },
+  ctx: z.RefinementCtx
+) {
+  if (
+    input.promo_ids &&
+    new Set(input.promo_ids).size !== input.promo_ids.length
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['promo_ids'],
+      message: 'Duplicate promo ids are not allowed',
+    });
+  }
+  if (
+    input.coupon_ids &&
+    new Set(input.coupon_ids).size !== input.coupon_ids.length
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['coupon_ids'],
+      message: 'Duplicate coupon ids are not allowed',
+    });
+  }
+}
+
 function requireEndAfterStart(
   input: { scheduled_start: string; scheduled_end: string },
   ctx: z.RefinementCtx
@@ -248,13 +283,17 @@ export const createBookingValidator = z
     // ownership) and re-capped authoritatively in
     // resolveDiscountAndPromos - the client's own running total is only a
     // preview.
-    promo_ids: z.array(z.uuid()).optional(),
-    coupon_ids: z.array(z.uuid()).optional(),
+    // Capped well above any realistic selection - just a ceiling against a
+    // request forcing an unbounded number of sequential per-id lookups in
+    // resolveDiscountAndPromos, not a real product limit.
+    promo_ids: z.array(z.uuid()).max(20).optional(),
+    coupon_ids: z.array(z.uuid()).max(20).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
     requireNoDuplicateItems(input, ctx);
     requireEndAfterStart(input, ctx);
+    requireNoDuplicatePromoOrCouponIds(input, ctx);
 
     // Custom change (Daycare/Hotel parity follow-up): Daycare's Care
     // Instructions booking-time step now sends the same
@@ -337,10 +376,13 @@ export const createBookingGroupValidator = z
     // call in bookingGroup.service.ts.
     payment_scheme: z.enum(PAYMENT_SCHEMES).optional(),
     discount_id: z.uuid().optional(),
-    promo_ids: z.array(z.uuid()).optional(),
-    coupon_ids: z.array(z.uuid()).optional(),
+    promo_ids: z.array(z.uuid()).max(20).optional(),
+    coupon_ids: z.array(z.uuid()).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    requireNoDuplicatePromoOrCouponIds(input, ctx);
+  });
 
 export const rescheduleBookingValidator = z
   .object({

@@ -386,9 +386,17 @@ export async function createBookingGroup({
       .filter((id): id is string => id !== null);
 
     if (redeemedCouponIds.length > 0) {
-      await markCouponsRedeemed(redeemedCouponIds, {
-        bookingGroupId: bookingGroup.id,
-      });
+      try {
+        await markCouponsRedeemed(redeemedCouponIds, {
+          bookingGroupId: bookingGroup.id,
+        });
+      } catch (redeemError) {
+        await supabase
+          .from('booking_groups')
+          .delete()
+          .eq('id', bookingGroup.id);
+        throw redeemError;
+      }
     }
   }
 

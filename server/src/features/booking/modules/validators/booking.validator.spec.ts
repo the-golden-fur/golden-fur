@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   availabilityQueryValidator,
   cancelBookingValidator,
+  createBookingGroupValidator,
   createBookingValidator,
   overrideBookingStatusValidator,
   rescheduleBookingValidator,
@@ -85,6 +86,26 @@ describe('createBookingValidator', () => {
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
         scheduled_end: BASE_BOOKING.scheduled_start,
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate promo_ids (the same promo selected twice)', () => {
+    const promoId = '77777777-7777-4777-a777-777777777777';
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        promo_ids: [promoId, promoId],
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate coupon_ids (the same coupon selected twice)', () => {
+    const couponId = '88888888-8888-4888-a888-888888888888';
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        coupon_ids: [couponId, couponId],
       }).success
     ).toBe(false);
   });
@@ -230,6 +251,51 @@ describe('createBookingValidator', () => {
           walking: [],
           medications: [],
         },
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('createBookingGroupValidator', () => {
+  const BASE_GROUP = {
+    branch_id: BASE_BOOKING.branch_id,
+    bookings: [
+      {
+        pet_id: BASE_BOOKING.pet_id,
+        service_category: BASE_BOOKING.service_category,
+        items: BASE_BOOKING.items,
+        scheduled_start: BASE_BOOKING.scheduled_start,
+        scheduled_end: BASE_BOOKING.scheduled_end,
+      },
+    ],
+  };
+
+  it('accepts distinct promo_ids/coupon_ids', () => {
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        promo_ids: ['77777777-7777-4777-a777-777777777777'],
+        coupon_ids: ['88888888-8888-4888-a888-888888888888'],
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects duplicate promo_ids at the group level', () => {
+    const promoId = '77777777-7777-4777-a777-777777777777';
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        promo_ids: [promoId, promoId],
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate coupon_ids at the group level', () => {
+    const couponId = '88888888-8888-4888-a888-888888888888';
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        coupon_ids: [couponId, couponId],
       }).success
     ).toBe(false);
   });
