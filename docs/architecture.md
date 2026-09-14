@@ -88,26 +88,27 @@ find on both sides:
 ## Module map
 
 The product is specified as 14 modules (M01–M14), each covering one area of
-the business. The modules with a feature folder already present under
-`client/src/features/` and `server/src/features/` are implemented; the rest
-are planned.
+the business. All 14 are implemented; each row cites the feature folder(s)
+under `client/src/features/` and `server/src/features/` that back it. (A
+few features beyond the original 14 - `messaging`, `rewards` - were added
+later and aren't part of this module numbering.)
 
 | Module | Area                                          | Status                        |
 | ------ | --------------------------------------------- | ----------------------------- |
 | M01    | Staff accounts, login, TOTP, availability     | Implemented (`auth`, `staff`) |
 | M02    | Customers & pet profiles                      | Implemented (`customers`)     |
 | M03    | Booking (slot/staff picker, reschedule, etc.) | Implemented (`booking`)       |
-| M04    | Grooming queue & execution                    | Planned                       |
-| M05    | Pet Hotel (cages, care log)                   | Planned                       |
-| M06    | Daycare check-in/out                          | Planned                       |
-| M07    | Veterinary consultations                      | Planned                       |
-| M08    | Sales & billing / checkout                    | Planned                       |
-| M09    | Policy configuration                          | Planned                       |
-| M10    | Customer credits                              | Planned                       |
-| M11    | Notifications                                 | Planned                       |
+| M04    | Grooming queue & execution                    | Implemented (`grooming`)      |
+| M05    | Pet Hotel (cages, care log)                   | Implemented (`hotel`)         |
+| M06    | Daycare check-in/out                          | Implemented (`daycare`)       |
+| M07    | Veterinary consultations                      | Implemented (`veterinary`)    |
+| M08    | Sales & billing / checkout                    | Implemented (`billing`)       |
+| M09    | Policy configuration                          | Implemented (`booking`)       |
+| M10    | Customer credits                              | Implemented (`credits`)       |
+| M11    | Notifications                                 | Implemented (`notifications`) |
 | M12    | Category-level discounts                      | Implemented (`discounts`)     |
 | M13    | Services, packages & pricing                  | Implemented (`maintenance`)   |
-| M14    | Daily sales reports / analytics               | Planned                       |
+| M14    | Daily sales reports / analytics               | Implemented (`reports`)       |
 
 ## CI
 
