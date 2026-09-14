@@ -1145,8 +1145,20 @@ export function CustomerBookingFlowPage() {
   // Debounced so browsing between steps or typing into a field doesn't hit
   // localStorage synchronously on every change - only the settled value
   // 500ms after the last change gets written.
+  //
+  // isSubmitting (not just confirmedBookings) gates this: confirmedBookings
+  // only flips true once the server responds, which leaves a window open
+  // between clicking "Confirm booking" and that response arriving where a
+  // debounce timer already pending from an edit made just before the click
+  // would still fire and save "progress" for a submission that may already
+  // be going through server-side - e.g. if the response is lost or the tab
+  // closes before it arrives, "Recover Progress" would offer to resubmit a
+  // booking that already went through. isSubmitting flips true synchronously
+  // at the top of handleSubmit, before the request even starts, so saving
+  // stops the instant the button is clicked, regardless of how long (or
+  // whether) the request ever resolves.
   useEffect(() => {
-    if (!draftStorageKey || confirmedBookings) return;
+    if (!draftStorageKey || confirmedBookings || isSubmitting) return;
 
     const timeoutId = window.setTimeout(() => {
       writeBookingDraft(draftStorageKey, {
@@ -1179,6 +1191,7 @@ export function CustomerBookingFlowPage() {
   }, [
     draftStorageKey,
     confirmedBookings,
+    isSubmitting,
     selectedPetId,
     selectedBranchId,
     category,
