@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
@@ -20,6 +21,7 @@ import {
   getPricingConfigurationController,
   getPromoController,
   getServiceController,
+  handleServiceImageUploadError,
   hardDeletePackageController,
   hardDeletePromoController,
   listArchivedPackagesController,
@@ -47,6 +49,7 @@ import {
   updatePromoController,
   updateServiceController,
   updateServiceTypeController,
+  uploadServiceImageController,
   upsertPetTypePriceOverrideController,
   upsertPromoCapConfigurationController,
 } from './maintenance.controller.ts';
@@ -74,6 +77,24 @@ const adminWrite = [
   sessionTimeoutMiddleware,
   requireRole([...MAINTENANCE_WRITE_ROLES]),
 ];
+
+const serviceImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+// Service/service type/package image upload (Architectural-Change-History):
+// uploads to the 'service-images' bucket and returns a URL, independent of
+// any particular record - the admin "Add new..." forms upload the image
+// first, then send the resulting image_url along with the rest of the
+// create payload (the record may not exist yet at upload time).
+router.post(
+  '/maintenance/images',
+  adminWrite,
+  serviceImageUpload.single('image'),
+  handleServiceImageUploadError,
+  uploadServiceImageController
+);
 
 // Services (#40)
 router.get('/maintenance/services', staffRead, listServicesController);

@@ -21,6 +21,10 @@ import {
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
+import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
+import { getServiceIcon } from '../../../../shared/components/IconPicker/serviceIcons';
+import { ImageUploader } from '../../../../shared/components/ImageUploader/ImageUploader';
+import { uploadServiceImage } from '../../api/maintenance.api';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,
@@ -64,6 +68,8 @@ interface ServiceFormState {
   succeedingHourFee: string;
   daycareOvernightFee: string;
   branchIds: string[];
+  icon: string | null;
+  imageUrl: string | null;
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -80,6 +86,8 @@ const EMPTY_FORM: ServiceFormState = {
   succeedingHourFee: '',
   daycareOvernightFee: '',
   branchIds: [],
+  icon: null,
+  imageUrl: null,
 };
 
 function formStateFromService(service: Service): ServiceFormState {
@@ -108,6 +116,8 @@ function formStateFromService(service: Service): ServiceFormState {
         ? ''
         : String(service.daycare_overnight_fee),
     branchIds: availableBranchIds(service),
+    icon: service.icon,
+    imageUrl: service.image_url,
   };
 }
 
@@ -457,6 +467,8 @@ export function AdminServicesPage() {
         requires_assessed_pet: form.requiresAssessedPet,
         captures_pet_assessment: form.capturesPetAssessment,
         use_pricing_matrix: form.usePricingMatrix,
+        icon: form.icon,
+        image_url: form.imageUrl,
         ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
         ...(durationMinutes !== undefined
           ? { duration_minutes: durationMinutes }
@@ -506,6 +518,8 @@ export function AdminServicesPage() {
       first_hour_fee: firstHourFee ?? null,
       succeeding_hour_fee: succeedingHourFee ?? null,
       daycare_overnight_fee: daycareOvernightFee ?? null,
+      icon: form.icon,
+      image_url: form.imageUrl,
       ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
     };
 
@@ -903,6 +917,28 @@ export function AdminServicesPage() {
                 }
               />
 
+              <IconPicker
+                label="Icon"
+                value={form.icon}
+                onChange={(icon) => setForm((prev) => ({ ...prev, icon }))}
+              />
+
+              <ImageUploader
+                currentImageUrl={form.imageUrl}
+                uploadFn={(file) =>
+                  accessToken
+                    ? uploadServiceImage(accessToken, file)
+                    : Promise.resolve({ data: null, error: 'Not signed in.' })
+                }
+                onUploaded={(imageUrl) =>
+                  setForm((prev) => ({ ...prev, imageUrl }))
+                }
+                onRemove={() =>
+                  setForm((prev) => ({ ...prev, imageUrl: null }))
+                }
+                alt="Service image"
+              />
+
               <BranchMultiSelect
                 label="Available at"
                 branches={branches}
@@ -942,69 +978,73 @@ export function AdminServicesPage() {
           <p className={styles.copy}>No services match the selected filters.</p>
         ) : (
           <ul className={styles.serviceList}>
-            {filteredServices.map((service) => (
-              <li key={service.id} className={styles.serviceRow}>
-                <div className={styles.serviceMain}>
-                  <span className={styles.serviceName}>{service.name}</span>
-                  <span className={styles.categoryBadge}>
-                    {service.category}
-                  </span>
-                  {service.category !== 'Daycare' ? (
-                    <span className={styles.servicePrice}>
-                      PHP {service.base_price.toFixed(2)}
-                    </span>
-                  ) : null}
-                  {!service.requires_assessed_pet ? (
+            {filteredServices.map((service) => {
+              const Icon = getServiceIcon(service.icon);
+              return (
+                <li key={service.id} className={styles.serviceRow}>
+                  <div className={styles.serviceMain}>
+                    {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+                    <span className={styles.serviceName}>{service.name}</span>
                     <span className={styles.categoryBadge}>
-                      No assessment required
+                      {service.category}
                     </span>
-                  ) : null}
-                  {service.category === 'Grooming' &&
-                  service.use_pricing_matrix ? (
-                    <span className={styles.categoryBadge}>
-                      Varies by weight/coat
-                    </span>
-                  ) : null}
-                  {service.min_nights_for_free_package &&
-                  service.free_package_name ? (
-                    <span className={styles.categoryBadge}>
-                      {service.min_nights_for_free_package}+ nights: free{' '}
-                      {service.free_package_name}
-                    </span>
-                  ) : null}
-                  {service.category === 'Daycare' &&
-                  service.first_hour_fee !== null &&
-                  service.succeeding_hour_fee !== null ? (
-                    <span className={styles.categoryBadge}>
-                      PHP {service.first_hour_fee.toFixed(2)} first hr, PHP{' '}
-                      {service.succeeding_hour_fee.toFixed(2)}/hr after
-                    </span>
-                  ) : null}
-                  {service.category === 'Daycare' ? (
-                    <span className={styles.categoryBadge}>
-                      PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}
-                      /night if not picked up
-                    </span>
-                  ) : null}
-                </div>
+                    {service.category !== 'Daycare' ? (
+                      <span className={styles.servicePrice}>
+                        PHP {service.base_price.toFixed(2)}
+                      </span>
+                    ) : null}
+                    {!service.requires_assessed_pet ? (
+                      <span className={styles.categoryBadge}>
+                        No assessment required
+                      </span>
+                    ) : null}
+                    {service.category === 'Grooming' &&
+                    service.use_pricing_matrix ? (
+                      <span className={styles.categoryBadge}>
+                        Varies by weight/coat
+                      </span>
+                    ) : null}
+                    {service.min_nights_for_free_package &&
+                    service.free_package_name ? (
+                      <span className={styles.categoryBadge}>
+                        {service.min_nights_for_free_package}+ nights: free{' '}
+                        {service.free_package_name}
+                      </span>
+                    ) : null}
+                    {service.category === 'Daycare' &&
+                    service.first_hour_fee !== null &&
+                    service.succeeding_hour_fee !== null ? (
+                      <span className={styles.categoryBadge}>
+                        PHP {service.first_hour_fee.toFixed(2)} first hr, PHP{' '}
+                        {service.succeeding_hour_fee.toFixed(2)}/hr after
+                      </span>
+                    ) : null}
+                    {service.category === 'Daycare' ? (
+                      <span className={styles.categoryBadge}>
+                        PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}
+                        /night if not picked up
+                      </span>
+                    ) : null}
+                  </div>
 
-                <div className={styles.serviceControls}>
-                  <MoreOptionsMenu
-                    label={`Actions for ${service.name}`}
-                    items={[
-                      {
-                        label: 'Configure',
-                        onSelect: () => openEditForm(service),
-                      },
-                      {
-                        label: 'Branch Availability',
-                        onSelect: () => setAvailabilityServiceId(service.id),
-                      },
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
+                  <div className={styles.serviceControls}>
+                    <MoreOptionsMenu
+                      label={`Actions for ${service.name}`}
+                      items={[
+                        {
+                          label: 'Configure',
+                          onSelect: () => openEditForm(service),
+                        },
+                        {
+                          label: 'Branch Availability',
+                          onSelect: () => setAvailabilityServiceId(service.id),
+                        },
+                      ]}
+                    />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -56,6 +56,8 @@ export async function createServiceType(
       staff_picker_enabled: input.staff_picker_enabled ?? false,
       cage_picker_enabled: input.cage_picker_enabled ?? false,
       eligible_staff_roles: input.eligible_staff_roles ?? [],
+      icon: input.icon ?? null,
+      image_url: input.image_url ?? null,
       created_by: requesterId,
       updated_by: requesterId,
     })

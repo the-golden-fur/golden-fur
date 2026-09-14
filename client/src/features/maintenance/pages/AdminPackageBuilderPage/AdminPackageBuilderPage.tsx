@@ -32,6 +32,10 @@ import {
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
+import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
+import { getServiceIcon } from '../../../../shared/components/IconPicker/serviceIcons';
+import { ImageUploader } from '../../../../shared/components/ImageUploader/ImageUploader';
+import { uploadServiceImage } from '../../api/maintenance.api';
 import {
   SERVICE_CATEGORIES,
   type BranchSummary,
@@ -113,6 +117,8 @@ export function AdminPackageBuilderPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  const [formIcon, setFormIcon] = useState<string | null>(null);
+  const [formImageUrl, setFormImageUrl] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -429,6 +435,8 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
+    setFormIcon(null);
+    setFormImageUrl(null);
   }
 
   const openCreateForm = () => {
@@ -454,6 +462,8 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormIcon(pkg.icon);
+    setFormImageUrl(pkg.image_url);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -615,6 +625,8 @@ export function AdminPackageBuilderPage() {
         service_ids: selectedServiceIds,
         branch_ids: selectedBranchIds,
         use_pricing_matrix: formUsePricingMatrix,
+        icon: formIcon,
+        image_url: formImageUrl,
       });
 
       setIsSubmitting(false);
@@ -637,6 +649,8 @@ export function AdminPackageBuilderPage() {
       name: formName.trim(),
       service_ids: selectedServiceIds,
       use_pricing_matrix: formUsePricingMatrix,
+      icon: formIcon,
+      image_url: formImageUrl,
     });
 
     if (result.error || !result.data) {
@@ -870,6 +884,26 @@ export function AdminPackageBuilderPage() {
               </div>
 
               <div className={styles.formSection}>
+                <h3 className={styles.formSectionTitle}>Icon &amp; image</h3>
+                <IconPicker
+                  label="Icon"
+                  value={formIcon}
+                  onChange={setFormIcon}
+                />
+                <ImageUploader
+                  currentImageUrl={formImageUrl}
+                  uploadFn={(file) =>
+                    accessToken
+                      ? uploadServiceImage(accessToken, file)
+                      : Promise.resolve({ data: null, error: 'Not signed in.' })
+                  }
+                  onUploaded={setFormImageUrl}
+                  onRemove={() => setFormImageUrl(null)}
+                  alt="Package image"
+                />
+              </div>
+
+              <div className={styles.formSection}>
                 <h3 className={styles.formSectionTitle}>Pricing</h3>
 
                 {packagePricingConfiguration ? (
@@ -934,51 +968,58 @@ export function AdminPackageBuilderPage() {
           <p className={styles.copy}>No packages match the selected filters.</p>
         ) : (
           <ul className={styles.packageList}>
-            {filteredPackages.map((pkg) => (
-              <li key={pkg.id} className={styles.packageRow}>
-                <div className={styles.packageMain}>
-                  <span className={styles.packageName}>{pkg.name}</span>
-                  {availableBranchIds(pkg).map((branchId) => (
-                    <span key={branchId} className={styles.branchBadge}>
-                      {branchNameById.get(branchId) ??
-                        `Branch ${branchId.slice(0, 8)}`}
+            {filteredPackages.map((pkg) => {
+              const Icon = getServiceIcon(pkg.icon);
+              return (
+                <li key={pkg.id} className={styles.packageRow}>
+                  <div className={styles.packageMain}>
+                    {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+                    <span className={styles.packageName}>{pkg.name}</span>
+                    {availableBranchIds(pkg).map((branchId) => (
+                      <span key={branchId} className={styles.branchBadge}>
+                        {branchNameById.get(branchId) ??
+                          `Branch ${branchId.slice(0, 8)}`}
+                      </span>
+                    ))}
+                    <span className={styles.packageMeta}>
+                      {(pkg.package_services ?? []).length} services
                     </span>
-                  ))}
-                  <span className={styles.packageMeta}>
-                    {(pkg.package_services ?? []).length} services
-                  </span>
-                  <span className={styles.packageMeta}>
-                    PHP {pkg.bundled_price.toFixed(2)}
-                  </span>
-                  {pkg.use_pricing_matrix ? (
-                    <span className={styles.branchBadge}>
-                      Varies by weight/coat
+                    <span className={styles.packageMeta}>
+                      PHP {pkg.bundled_price.toFixed(2)}
                     </span>
-                  ) : null}
-                </div>
+                    {pkg.use_pricing_matrix ? (
+                      <span className={styles.branchBadge}>
+                        Varies by weight/coat
+                      </span>
+                    ) : null}
+                  </div>
 
-                <div className={styles.packageControls}>
-                  <MoreOptionsMenu
-                    label={`Actions for ${pkg.name}`}
-                    items={[
-                      { label: 'Configure', onSelect: () => openEditForm(pkg) },
-                      {
-                        label: 'Branch Availability',
-                        onSelect: () => setAvailabilityPackageId(pkg.id),
-                      },
-                      ...(!pkg.is_active
-                        ? [
-                            {
-                              label: 'Archive',
-                              onSelect: () => void handleArchive(pkg),
-                            },
-                          ]
-                        : []),
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
+                  <div className={styles.packageControls}>
+                    <MoreOptionsMenu
+                      label={`Actions for ${pkg.name}`}
+                      items={[
+                        {
+                          label: 'Configure',
+                          onSelect: () => openEditForm(pkg),
+                        },
+                        {
+                          label: 'Branch Availability',
+                          onSelect: () => setAvailabilityPackageId(pkg.id),
+                        },
+                        ...(!pkg.is_active
+                          ? [
+                              {
+                                label: 'Archive',
+                                onSelect: () => void handleArchive(pkg),
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
