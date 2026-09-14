@@ -182,13 +182,27 @@ async function unenrollTotpFactorsByStatus(
  * factor. If that happens, clean up again and retry once against whichever
  * factor the race left behind.
  *
- * If the conflict *still* persists after that, it's no longer a race - it's
- * a stray factor left over from earlier testing/usage, and it's most likely
- * *verified* (an unverified one would already have been swept up above). One
- * last best-effort pass tries to remove verified factors too; this only
- * succeeds if the caller's session is already aal2 (Supabase's own rule for
- * removing a verified factor), so it silently does nothing otherwise and the
- * final enroll attempt's error is returned as-is for the caller to surface.
+ * Bug fix: a third tier used to exist here that, if the conflict *still*
+ * persisted, removed *verified* factors too and retried again. The intent
+ * was "clean up a stray leftover factor from earlier testing," but removing
+ * a verified factor only ever actually succeeds when the caller's session is
+ * already aal2 (Supabase's own rule) - which means the one case where that
+ * tier could ever do anything was exactly "this caller already has a real,
+ * working, verified TOTP factor and has already passed an MFA challenge this
+ * session." That is precisely the account whose factor must never be
+ * silently replaced: this endpoint has no confirmation step, so a session
+ * that revisits the enroll page after already verifying (a bookmark, the
+ * browser back button, a stale link - it's not behind any route guard) would
+ * have its real factor deleted and a new secret issued with no error and no
+ * indication anything changed. The user's authenticator app keeps showing
+ * the old, now-dead entry, so every future code fails, forever, with no
+ * obvious cause - see the MFA-lockout investigation this comment accompanies.
+ * A verified factor is now only ever removed via the explicit
+ * unenrollAllTotpFactors path (Settings' "Start over" / turn off MFA, or
+ * TotpEnrollPanel's own "Start over" button after a real enroll error) -
+ * both deliberate, in-context user actions, never an automatic side effect
+ * of loading this page. If a conflict persists after the unverified cleanup
+ * above, it's returned as-is for the caller to surface as an error.
  */
 export async function enrollTotpFactor(userClient: SupabaseClient) {
   const isConflict = (message?: string) =>
@@ -202,14 +216,6 @@ export async function enrollTotpFactor(userClient: SupabaseClient) {
 
   if (isConflict(result.error?.message)) {
     await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-    result = await userClient.auth.mfa.enroll({
-      factorType: 'totp',
-      issuer: 'Golden Fur',
-    });
-  }
-
-  if (isConflict(result.error?.message)) {
-    await unenrollTotpFactorsByStatus(userClient, ['verified', 'unverified']);
     result = await userClient.auth.mfa.enroll({
       factorType: 'totp',
       issuer: 'Golden Fur',
