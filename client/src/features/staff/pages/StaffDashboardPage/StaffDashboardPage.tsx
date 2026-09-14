@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useParams } from 'react-router';
+import { Link, Navigate, useParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../api/staff.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { BranchRevenueComparisonChart } from '../../../reports/components/BranchRevenueComparisonChart/BranchRevenueComparisonChart';
+import { GoalStatsBoard } from '../../../reports/components/GoalStatsBoard/GoalStatsBoard';
 import { CageAvailabilityWidget } from '../../../reports/components/CageAvailabilityWidget/CageAvailabilityWidget';
 import { RecentTransactionsWidget } from '../../../reports/components/RecentTransactionsWidget/RecentTransactionsWidget';
 import { GroomingQueueWidget } from '../../components/dashboard/GroomingQueueWidget/GroomingQueueWidget';
@@ -139,6 +140,12 @@ export function StaffDashboardPage() {
       </div>
 
       {isSuperadmin ? (
+        <div className={styles.goalSection}>
+          <GoalStatsBoard accessToken={accessToken} />
+        </div>
+      ) : null}
+
+      {isSuperadmin ? (
         <div className={styles.widgetsSection}>
           <div className={styles.widgetsRow}>
             <CageAvailabilityWidget
@@ -155,6 +162,10 @@ export function StaffDashboardPage() {
               accessToken={accessToken}
             />
           </div>
+
+          <Link to="/staff/bookings/queue" className={styles.queuesLink}>
+            View all queues
+          </Link>
 
           <div className={styles.widgetsRow}>
             <GroomingQueueWidget accessToken={accessToken} />

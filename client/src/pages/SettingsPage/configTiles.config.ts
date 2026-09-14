@@ -4,9 +4,12 @@ import {
   Calculator,
   DoorOpen,
   Dog,
+  Gift,
   Package,
+  PawPrint,
   Percent,
   Receipt,
+  Scale,
   ScrollText,
   Settings2,
   ShoppingBag,
@@ -14,14 +17,17 @@ import {
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
+import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
+import { AdminPetTypesPage } from '../../features/maintenance/pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
 import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
+import { AdminSpinWheelConfigPage } from '../../features/rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -59,6 +65,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: PricingConfigurationPage,
   },
   {
+    title: 'Weight Classes',
+    description:
+      'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
+    to: '/staff/admin/maintenance/weight-classes',
+    icon: Scale,
+    Component: WeightClassConfigurationPage,
+  },
+  {
     title: 'Promos',
     description: 'Configure time-limited promotions.',
     to: '/staff/admin/maintenance/promos',
@@ -71,6 +85,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/maintenance/breeds',
     icon: Dog,
     Component: AdminBreedsPage,
+  },
+  {
+    title: 'Pet Types',
+    description:
+      'CRUD for pet types, plus a per-branch fixed price that overrides service/package pricing (e.g. Cat = 800 for everything).',
+    to: '/staff/admin/maintenance/pet-types',
+    icon: PawPrint,
+    Component: AdminPetTypesPage,
   },
   {
     title: 'Product Catalog',
@@ -108,6 +130,14 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/hotel/cages',
     icon: DoorOpen,
     Component: AdminCagesPage,
+  },
+  {
+    title: 'Coupon Spin Wheel',
+    description:
+      'Configure spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
+    to: '/staff/admin/spin-wheel-config',
+    icon: Gift,
+    Component: AdminSpinWheelConfigPage,
   },
 ];
 

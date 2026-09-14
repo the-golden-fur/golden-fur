@@ -1,10 +1,16 @@
 import { z } from 'zod';
+import {
+  FOOD_QUANTITY_UNITS,
+  MEDICATION_DOSE_UNITS,
+} from '../../hotel.types.ts';
 
 const partOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
 // Feeding's meal_time gets a "Noon" option that walk/play's time_block does
 // not (only asked for on the food-type dropdown) - kept as its own enum
 // rather than widening partOfDay so walking/playing stay unaffected.
 const mealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
+const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
+const medicationDoseUnit = z.enum(MEDICATION_DOSE_UNITS);
 
 /**
  * stay_date (#22): omitted/undefined means the row applies to every night of
@@ -23,6 +29,11 @@ export const feedingInstructionSchema = z
     meal_time: mealTime,
     food_type: z.string().min(1),
     quantity: z.string().min(1),
+    // Optional here (unlike booking.validator.ts's required booking-time
+    // copy) - a walk-in row added straight on this check-in panel has no
+    // unit-picker UI, only pass-through from a booking's own preferences.
+    quantity_unit: foodQuantityUnit.optional(),
+    photo_url: z.url().optional(),
     special_instructions: z.string().optional(),
     food_catalog_id: z.uuid().optional(),
     stay_date: z.iso.date().optional(),
@@ -51,6 +62,8 @@ export const medicationInstructionSchema = z
   .object({
     medication_name: z.string().min(1),
     dose: z.string().min(1),
+    dose_unit: medicationDoseUnit.optional(),
+    photo_url: z.url().optional(),
     scheduled_times: z.array(z.string().min(1)).default([]),
     administration_notes: z.string().optional(),
     medication_catalog_id: z.uuid().optional(),
@@ -88,11 +101,16 @@ export const cageStatusUpdateValidator = z
 
 export type CageStatusUpdateInput = z.infer<typeof cageStatusUpdateValidator>;
 
-/** Custom change (Cage CRUD, Settings > Config). */
+/** Custom change (Cage CRUD, Settings > Config). pet_types is required and
+ * non-empty (cage pet-type support, 20260912193) - a cage must support at
+ * least one pet type. Not DB-validated against live pet_types.key values
+ * here (matches breeds/pet_types precedent of letting the FK constraint
+ * surface a 400 from the service layer instead of duplicating that check). */
 export const createCageValidator = z
   .object({
     cage_label: z.string().trim().min(1),
     size: z.enum(['S', 'M', 'L', 'XL']),
+    pet_types: z.array(z.string().min(1)).min(1),
   })
   .strict();
 
@@ -102,10 +120,14 @@ export const updateCageValidator = z
   .object({
     cage_label: z.string().trim().min(1).optional(),
     size: z.enum(['S', 'M', 'L', 'XL']).optional(),
+    pet_types: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict()
   .refine(
-    (input) => input.cage_label !== undefined || input.size !== undefined,
+    (input) =>
+      input.cage_label !== undefined ||
+      input.size !== undefined ||
+      input.pet_types !== undefined,
     { message: 'At least one field must be provided' }
   );
 

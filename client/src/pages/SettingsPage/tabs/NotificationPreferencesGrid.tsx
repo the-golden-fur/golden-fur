@@ -54,6 +54,10 @@ const EVENT_TYPES_BY_ROLE: Record<
     { type: 'booking_cancelled', label: 'Booking cancellation' },
     { type: 'payment_confirmed', label: 'Payment confirmed' },
     { type: 'care_log_completed', label: 'Pet care log completed' },
+    {
+      type: 'booking_slot_conflict',
+      label: 'Booking slot became unavailable',
+    },
   ],
 };
 

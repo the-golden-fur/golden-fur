@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  linkFollowUpBooking,
-  listConsultationQueue,
-  updateConsultation,
-} from './veterinary.api';
+import { listConsultationQueue, updateConsultation } from './veterinary.api';
 
 function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 400) {
   return {
@@ -96,26 +92,5 @@ describe('veterinary.api', () => {
     expect(result.data).toMatchObject({
       booking: { status: 'In Progress' },
     });
-  });
-
-  it('linkFollowUpBooking POSTs the booking_id', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        consultation: { id: 'c-1', follow_up_booking_id: 'booking-2' },
-        booking: { id: 'booking-2' },
-      })
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await linkFollowUpBooking('c-1', 'token', 'booking-2');
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/veterinary/consultations/c-1/follow-up'),
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ booking_id: 'booking-2' }),
-      })
-    );
-    expect(result.data?.booking.id).toBe('booking-2');
   });
 });

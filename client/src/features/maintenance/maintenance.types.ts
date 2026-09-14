@@ -96,6 +96,27 @@ export interface UpdatePackagePricingConfigurationPayload {
   bundle_discount_percentage: number;
 }
 
+/**
+ * Architectural-Change-History: the singleton kg cut-offs that derive a
+ * pet's S/M/L/XL weight_class from its recorded weight_kg (lower bound
+ * inclusive: S < m_min_kg <= M < l_min_kg <= L < xl_min_kg <= XL). Mirrors
+ * server PetWeightClassConfiguration.
+ */
+export interface PetWeightClassConfiguration {
+  id: string;
+  m_min_kg: number;
+  l_min_kg: number;
+  xl_min_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePetWeightClassConfigurationPayload {
+  m_min_kg?: number;
+  l_min_kg?: number;
+  xl_min_kg?: number;
+}
+
 /** 'count' caps how many promos may combine on one transaction (cap_value
  * is then a whole number of promos), instead of capping their combined
  * PHP/percentage amount. */
@@ -337,6 +358,11 @@ export type DiscountValueType = 'Percentage' | 'Flat';
 export type PromoScopeType = 'all_services' | 'specific';
 export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 
+/** Custom change (promo variations, session 86): a second promo "type"
+ * alongside the original date-bounded one - "every Monday, 10% off
+ * Grooming". Immutable after creation. */
+export type PromoType = 'date_range' | 'weekly_recurring';
+
 export interface PromoScopeItem {
   id: string;
   promo_id: string;
@@ -356,8 +382,11 @@ export interface PromoBranchAvailability {
 export interface Promo {
   id: string;
   name: string;
+  promo_type: PromoType;
   start_date: string | null;
   end_date: string | null;
+  /** Only set when promo_type = 'weekly_recurring' (0=Sunday..6=Saturday). */
+  days_of_week: number[] | null;
   condition_note: string | null;
   discount_type: DiscountValueType;
   value: number;
@@ -387,8 +416,10 @@ export interface PromoScopeInput {
 /** branch_ids (custom change) replaces the old branch_scope enum. */
 export interface CreatePromoPayload {
   name: string;
+  promo_type?: PromoType;
   start_date?: string;
   end_date?: string;
+  days_of_week?: number[];
   condition_note?: string;
   discount_type: DiscountValueType;
   value: number;
@@ -404,6 +435,7 @@ export interface UpdatePromoPayload {
   name?: string;
   start_date?: string | null;
   end_date?: string | null;
+  days_of_week?: number[];
   condition_note?: string | null;
   discount_type?: DiscountValueType;
   value?: number;
@@ -412,8 +444,13 @@ export interface UpdatePromoPayload {
   is_active?: boolean;
 }
 
-/** Same vocabulary as M02 pets.pet_type. */
-export type PetType = 'Dog' | 'Cat';
+/**
+ * Same vocabulary as M02 pets.pet_type. No longer a fixed 2-value union -
+ * pet_type is now a foreign key against the admin-managed pet_types table
+ * (Pet Types admin CRUD, 20260912191), so the seeded 'Dog'/'Cat' values keep
+ * working unchanged but an admin can add more.
+ */
+export type PetType = string;
 
 export interface Breed {
   id: string;
@@ -481,4 +518,44 @@ export interface UpdateServiceTypePayload {
 export interface UpdateBreedPayload {
   pet_type?: PetType;
   name?: string;
+}
+
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
+ * immutable once created (same shape as ServiceType.key) - pets.pet_type and
+ * breeds.pet_type both reference it. */
+export interface PetTypeRow {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePetTypePayload {
+  key: string;
+  name: string;
+}
+
+export interface UpdatePetTypePayload {
+  name?: string;
+  is_active?: boolean;
+}
+
+/** Custom change: per-branch fixed-price override by pet type
+ * (pet_type_price_overrides, 20260912192). branch_id null = the
+ * system-wide default row; a branch-specific row overrides it. */
+export interface PetTypePriceOverride {
+  id: string;
+  pet_type: string;
+  branch_id: string | null;
+  fixed_price: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertPetTypePriceOverridePayload {
+  pet_type: string;
+  branch_id: string | null;
+  fixed_price: number;
 }

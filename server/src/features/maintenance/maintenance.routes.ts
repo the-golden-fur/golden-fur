@@ -7,12 +7,16 @@ import {
   archivePromoController,
   createBreedController,
   createPackageController,
+  createPetTypeController,
   createPromoController,
   createServiceController,
   createServiceTypeController,
   deleteBreedController,
+  deletePetTypeController,
+  deletePetTypePriceOverrideController,
   getPackageController,
   getPackagePricingConfigurationController,
+  getPetWeightClassConfigurationController,
   getPricingConfigurationController,
   getPromoController,
   getServiceController,
@@ -22,6 +26,8 @@ import {
   listArchivedPromosController,
   listBreedsController,
   listPackagesController,
+  listPetTypePriceOverridesController,
+  listPetTypesController,
   listPromoCapConfigurationsController,
   listPromosController,
   listServiceTypesController,
@@ -35,10 +41,13 @@ import {
   updateBreedController,
   updatePackageController,
   updatePackagePricingConfigurationController,
+  updatePetTypeController,
+  updatePetWeightClassConfigurationController,
   updatePricingConfigurationController,
   updatePromoController,
   updateServiceController,
   updateServiceTypeController,
+  upsertPetTypePriceOverrideController,
   upsertPromoCapConfigurationController,
 } from './maintenance.controller.ts';
 import {
@@ -149,6 +158,18 @@ router.patch(
   updatePricingConfigurationController
 );
 
+// Pet weight class configuration (Architectural-Change-History: S/M/L/XL kg cut-offs)
+router.get(
+  '/maintenance/pet-weight-class-configuration',
+  staffRead,
+  getPetWeightClassConfigurationController
+);
+router.patch(
+  '/maintenance/pet-weight-class-configuration',
+  adminWrite,
+  updatePetWeightClassConfigurationController
+);
+
 // Package pricing configuration (Epic B #82/#83)
 router.get(
   '/maintenance/package-pricing-configuration',
@@ -178,6 +199,32 @@ router.get('/maintenance/breeds', staffRead, listBreedsController);
 router.post('/maintenance/breeds', adminWrite, createBreedController);
 router.patch('/maintenance/breeds/:id', adminWrite, updateBreedController);
 router.delete('/maintenance/breeds/:id', adminWrite, deleteBreedController);
+
+// Pet Types (Architectural-Change-History: admin CRUD + fixed-price override)
+router.get('/maintenance/pet-types', staffRead, listPetTypesController);
+router.post('/maintenance/pet-types', adminWrite, createPetTypeController);
+router.patch('/maintenance/pet-types/:id', adminWrite, updatePetTypeController);
+router.delete(
+  '/maintenance/pet-types/:id',
+  adminWrite,
+  deletePetTypeController
+);
+
+router.get(
+  '/maintenance/pet-type-price-overrides',
+  staffRead,
+  listPetTypePriceOverridesController
+);
+router.put(
+  '/maintenance/pet-type-price-overrides',
+  adminWrite,
+  upsertPetTypePriceOverrideController
+);
+router.delete(
+  '/maintenance/pet-type-price-overrides/:id',
+  adminWrite,
+  deletePetTypePriceOverrideController
+);
 
 // Service Types (Custom change)
 router.get('/maintenance/service-types', staffRead, listServiceTypesController);

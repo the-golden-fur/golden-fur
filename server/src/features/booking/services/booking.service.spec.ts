@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  applyFirstBookingPaymentSideEffects,
   completeBooking,
   createBooking,
   listBookings,
+  listConflictedBookingsForCustomer,
   listPetBookingConflicts,
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
@@ -16,6 +18,7 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -41,6 +44,18 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
   getDiscountById: vi.fn(),
 }));
 
+// Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+// mocked wholesale, same rationale as getServiceById/getPackageById above -
+// resolveBookingItems now calls this once per createBooking regardless of
+// path, and defaulting it to "no override" in the outer beforeEach means
+// none of the many pre-existing sequential mock queues below need to change
+// to account for it. Tests that specifically exercise a fixed-price
+// override use resolveServicePrice/resolvePackagePrice directly instead
+// (see the "pricing matrix" describe block).
+vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
+  getFixedPrice: vi.fn(),
+}));
+
 // Issue #98: booking_confirmed dispatch is covered by its own unit tests
 // (bookingNotifications.service.spec.ts) - mocked wholesale here so these
 // pre-existing booking-creation tests don't need to account for its extra
@@ -49,6 +64,7 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
+  sendSlotConflictNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -104,6 +120,7 @@ function queueFromResults(...results: QueryResult[]) {
       'in',
       'or',
       'is',
+      'not',
       'lt',
       'gt',
       'gte',
@@ -114,6 +131,7 @@ function queueFromResults(...results: QueryResult[]) {
         return builder;
       });
     }
+    builder.limit = vi.fn(() => Promise.resolve(result));
 
     for (const method of ['insert', 'update', 'upsert', 'delete']) {
       builder[method] = vi.fn((payload?: unknown) => {
@@ -286,6 +304,7 @@ describe('booking.service (#51)', () => {
       data: [GROOMER],
       error: null,
     } as never);
+    vi.mocked(getFixedPrice).mockResolvedValue(null);
   });
 
   it('AC-1/AC-4: creates a Pending Grooming booking (tiered price, auto-assigned staff, capacity re-verified post-insert)', async () => {
@@ -623,6 +642,21 @@ describe('booking.service (#51)', () => {
     await expect(
       createBooking({ requesterId: 'recept-1', input: BASE_INPUT })
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('vet-bookings-queue-access: rejects a Veterinarian booking a customer they have never treated', async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue('Veterinarian');
+    queueFromResults({ data: [], error: null }); // consultations lookup: no match
+
+    await expect(
+      createBooking({
+        requesterId: 'vet-1',
+        input: { ...BASE_INPUT, customer_id: CUSTOMER_ID },
+      })
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      message: expect.stringContaining('treated'),
+    });
   });
 
   it('books via a package with the bundled price and branch match', async () => {
@@ -1367,6 +1401,167 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  describe('flagSlotConflictsForOthers (20260911188 slot-conflict notification)', () => {
+    const ORIGINAL_DAYCARE_CAPACITY = process.env.DAYCARE_SESSION_CAPACITY;
+
+    const WINNER = {
+      id: 'winner-1',
+      customer_id: 'cust-1',
+      pet_id: 'pet-1',
+      branch_id: 'branch-1',
+      service_category: 'Daycare',
+      booking_source: 'Online',
+      scheduled_start: '2026-09-15T00:00:00.000Z',
+      scheduled_end: '2026-09-15T08:00:00.000Z',
+      assigned_staff_id: null,
+      status: 'Pending',
+      payment_status: 'Fully Paid',
+      downpayment_required: true,
+      staff_picker_preferences: [],
+    };
+
+    const PENCIL_CANDIDATE = {
+      id: 'pencil-1',
+      customer_id: 'cust-2',
+      pet_id: 'pet-2',
+      assigned_staff_id: null,
+      scheduled_start: '2026-09-15T02:00:00.000Z',
+      scheduled_end: '2026-09-15T06:00:00.000Z',
+      branch_id: 'branch-1',
+      service_category: 'Daycare',
+    };
+
+    beforeEach(() => {
+      // A capacity of 1 makes "one other booking already there" enough to
+      // push the pencil candidate's own checkCapacity() call to false,
+      // without needing 15 fixture rows for the real Daycare stub default.
+      process.env.DAYCARE_SESSION_CAPACITY = '1';
+    });
+
+    afterEach(() => {
+      if (ORIGINAL_DAYCARE_CAPACITY === undefined) {
+        delete process.env.DAYCARE_SESSION_CAPACITY;
+      } else {
+        process.env.DAYCARE_SESSION_CAPACITY = ORIGINAL_DAYCARE_CAPACITY;
+      }
+    });
+
+    it('flags and notifies another still-Pending pencil booking that just lost the same slot', async () => {
+      queueFromResults(
+        { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert: winner still holds its slot
+        { data: [PENCIL_CANDIDATE], error: null }, // listOverlappingPencilBookings
+        { data: [{ id: 'some-other-daycare-booking' }], error: null }, // checkCapacity(candidate): capacity 1, already full -> unavailable
+        {
+          data: {
+            ...PENCIL_CANDIDATE,
+            slot_conflict_at: '2026-09-11T00:00:00.000Z',
+          },
+          error: null,
+        } // updateBookingRow(candidate)
+      );
+
+      await applyFirstBookingPaymentSideEffects({
+        bookingId: WINNER.id,
+        paymentStatusBeforePayment: 'Pending',
+        revertOnCapacityConflict: true,
+      });
+
+      const conflictUpdate = recordedWrites.find(
+        (write) =>
+          write.table === 'bookings' &&
+          write.method === 'update' &&
+          (write.payload as { slot_conflict_at?: unknown })
+            ?.slot_conflict_at !== undefined
+      );
+
+      expect(conflictUpdate).toBeDefined();
+      expect(conflictUpdate?.payload).toMatchObject({
+        conflict_notice: expect.stringContaining('Daycare'),
+      });
+
+      const { sendSlotConflictNotification } =
+        await import('./bookingNotifications.service.ts');
+      expect(sendSlotConflictNotification).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(sendSlotConflictNotification).mock.calls[0][0]
+      ).toMatchObject({ id: PENCIL_CANDIDATE.id });
+    });
+
+    it('flags nothing when no other pencil booking overlaps the winner', async () => {
+      queueFromResults(
+        { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert
+        { data: [], error: null } // listOverlappingPencilBookings: nobody else
+      );
+
+      await applyFirstBookingPaymentSideEffects({
+        bookingId: WINNER.id,
+        paymentStatusBeforePayment: 'Pending',
+        revertOnCapacityConflict: true,
+      });
+
+      expect(
+        recordedWrites.some(
+          (write) =>
+            write.table === 'bookings' &&
+            write.method === 'update' &&
+            (write.payload as { slot_conflict_at?: unknown })
+              ?.slot_conflict_at !== undefined
+        )
+      ).toBe(false);
+    });
+  });
+
+  describe('listConflictedBookingsForCustomer (20260911188 slot-conflict notification)', () => {
+    it("returns the customer's own flagged bookings with pet/branch names resolved", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              service_category: 'Grooming',
+              pet_id: 'pet-1',
+              scheduled_start: '2026-09-15T08:00:00.000Z',
+              scheduled_end: '2026-09-15T09:00:00.000Z',
+              branch_id: 'branch-1',
+              conflict_notice: 'Your Grooming booking is no longer available.',
+              slot_conflict_at: '2026-09-11T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }, // bookings query
+        { data: [{ id: 'pet-1', name: 'Max' }], error: null }, // pets lookup
+        { data: [{ id: 'branch-1', name: 'Makati' }], error: null } // branches lookup
+      );
+
+      const result = await listConflictedBookingsForCustomer('cust-1');
+
+      expect(result).toEqual([
+        {
+          id: 'booking-1',
+          service_category: 'Grooming',
+          pet_id: 'pet-1',
+          pet_name: 'Max',
+          scheduled_start: '2026-09-15T08:00:00.000Z',
+          scheduled_end: '2026-09-15T09:00:00.000Z',
+          branch_id: 'branch-1',
+          branch_name: 'Makati',
+          conflict_notice: 'Your Grooming booking is no longer available.',
+          slot_conflict_at: '2026-09-11T00:00:00.000Z',
+        },
+      ]);
+    });
+
+    it('returns an empty array without querying pets/branches when nothing is flagged', async () => {
+      queueFromResults({ data: [], error: null });
+
+      const result = await listConflictedBookingsForCustomer('cust-1');
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('overrideBookingStatus (Admin/Superadmin revert-capable dropdown)', () => {
     it('reverts Completed -> In Progress and clears completed_at', async () => {
       queueFromResults(
@@ -1598,6 +1793,7 @@ describe('booking.service (#51)', () => {
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // booking_promo_selections insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
         { data: INSERTED_BOOKING, error: null } // final fetch
       );
@@ -1608,17 +1804,32 @@ describe('booking.service (#51)', () => {
           ...BASE_INPUT,
           service_category: 'Daycare',
           items: [{ service_id: 'service-daycare' }],
-          promo_id: 'promo-1',
+          promo_ids: ['promo-1'],
         },
       });
 
       const insert = recordedWrites.find(
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
+      // Multiselect (session 86): selected_promo_id is no longer written by
+      // a new booking - the authoritative record is now one row in
+      // booking_promo_selections (asserted below).
       expect(insert?.payload).toMatchObject({
-        selected_promo_id: 'promo-1',
+        selected_promo_id: null,
         promo_amount: 10, // 10% of the 100 daycare service price
       });
+
+      const promoSelectionInsert = recordedWrites.find(
+        (write) => write.table === 'booking_promo_selections'
+      );
+      expect(promoSelectionInsert?.payload).toEqual([
+        {
+          booking_id: 'booking-1',
+          promo_id: 'promo-1',
+          customer_coupon_id: null,
+          applied_amount: 10,
+        },
+      ]);
     });
 
     it('rejects a promo whose scope does not match the selected items', async () => {
@@ -1645,7 +1856,7 @@ describe('booking.service (#51)', () => {
             ...BASE_INPUT,
             service_category: 'Daycare',
             items: [{ service_id: 'service-daycare' }],
-            promo_id: 'promo-1',
+            promo_ids: ['promo-1'],
           },
         })
       ).rejects.toMatchObject({ statusCode: 400 });
@@ -2190,7 +2401,29 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(100);
     });
 
-    it('resolveServicePrice: a Cat pet always gets the flat base_price, even for a matrix-enabled service', () => {
+    // Custom change (Pet Types admin CRUD + fixed-price override,
+    // 20260912191/20260912192): the old hardcoded "Cat is always flat" rule
+    // is gone - a Cat's flat pricing is now purely a consequence of a
+    // pet_type_price_overrides row (the seeded 800 PHP default), passed in
+    // as fixedPriceOverride, not a species check inside this function.
+    it('resolveServicePrice: fixedPriceOverride wins outright regardless of matrix config, for any pet type', () => {
+      const price = resolveServicePrice(
+        {
+          category: 'Grooming',
+          base_price: 300,
+          use_pricing_matrix: true,
+          service_pricing_tiers: [
+            { weight_class: 'S', coat_type: 'SC', price: 350 },
+          ],
+        },
+        CAT_PET as never,
+        800
+      );
+
+      expect(price).toBe(800);
+    });
+
+    it('resolveServicePrice: a Cat pet with NO override falls through to the matrix exactly like a Dog would', () => {
       const price = resolveServicePrice(
         {
           category: 'Grooming',
@@ -2203,7 +2436,7 @@ describe('booking.service (#51)', () => {
         CAT_PET as never
       );
 
-      expect(price).toBe(300);
+      expect(price).toBe(350);
     });
 
     it('resolvePackagePrice: a non-matrix package uses the flat bundled_price', async () => {
@@ -2227,12 +2460,25 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(375);
     });
 
-    it('resolvePackagePrice: a Cat pet always gets the flat bundled_price even when matrix-enabled', async () => {
+    it('resolvePackagePrice: fixedPriceOverride wins outright regardless of matrix config, for any pet type', async () => {
       const price = await resolvePackagePrice(
         { bundled_price: 300, use_pricing_matrix: true },
-        CAT_PET as never
+        CAT_PET as never,
+        800
       );
 
+      expect(price).toBe(800);
+    });
+
+    it('resolvePackagePrice: a Cat pet with NO override falls through to the matrix exactly like a Dog would', async () => {
+      queueFromResults({ data: PRICING_CONFIG, error: null }); // getPricingConfiguration
+
+      const price = await resolvePackagePrice(
+        { bundled_price: 300, use_pricing_matrix: true },
+        CAT_PET as never // S multiplier 1.0
+      );
+
+      // 300 * 1.0 = 300 (S tier), reached via the matrix, not a species check
       expect(price).toBe(300);
     });
   });

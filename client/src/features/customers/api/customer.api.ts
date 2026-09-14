@@ -8,6 +8,7 @@ import type {
   PetHealthCondition,
   PetMedicalNote,
   PetType,
+  PetTypeRow,
   PetUpdatePayloadStaff,
   PetVaccinationRecord,
 } from '../customer.types';
@@ -396,6 +397,32 @@ export async function listBreeds(
   return { data: (data ?? []) as Breed[], error: null };
 }
 
+/**
+ * Custom change: Pet Types admin CRUD (20260912191). Open RLS read, same
+ * shape as listBreeds above - the pet intake/edit dropdown (PetForm,
+ * PetDetailPanel) reads directly via Supabase rather than the staff-only
+ * maintenance.api.ts admin CRUD surface. Only active pet types are offered.
+ */
+export async function listPetTypes(): Promise<CustomerApiResult<PetTypeRow[]>> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return { data: null, error: 'Supabase client is not configured.' };
+  }
+
+  const { data, error } = await supabase
+    .from('pet_types')
+    .select('id, key, name, is_active, created_at, updated_at')
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as PetTypeRow[], error: null };
+}
+
 export async function uploadPetPhoto(
   petId: string,
   accessToken: string,
@@ -409,6 +436,34 @@ export async function uploadPetPhoto(
     headers: authHeaders(accessToken),
     body: formData,
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ photo_url: string }>(response);
+}
+
+/** Custom change (care instruction units + photos): lets a customer attach
+ * a photo to a single feeding/medication item while filling out the Care
+ * Instructions booking step. Unlike uploadPetPhoto, this never touches
+ * pets.photo_url and many uploads can coexist per pet (one per care item). */
+export async function uploadPetCareItemPhoto(
+  petId: string,
+  accessToken: string,
+  file: File
+): Promise<CustomerApiResult<{ photo_url: string }>> {
+  const formData = new FormData();
+  formData.append('photo', file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/care-item-photo`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: formData,
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

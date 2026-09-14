@@ -23,6 +23,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^6.0.3",
     "@supabase/supabase-js": "^2.49.8",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
@@ -31,7 +32,6 @@
     "golden-fur": "file:..",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
-    "resend": "^4.8.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

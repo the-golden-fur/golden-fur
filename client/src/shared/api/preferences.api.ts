@@ -3,6 +3,7 @@ import type {
   ColorMode,
   FontSizePreference,
   ThemeRole,
+  WeightUnitPreference,
 } from '../providers/ThemeProvider/themeContext';
 import type { NotificationEventType } from '../../features/notifications/notifications.types';
 
@@ -130,6 +131,28 @@ export async function getFontSizePreference(
   return data.font_size_preference as FontSizePreference;
 }
 
+export async function getWeightUnitPreference(
+  role: ThemeRole,
+  userId: string
+): Promise<WeightUnitPreference | null> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from(PROFILE_TABLE_BY_ROLE[role])
+    .select('weight_unit_preference')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data?.weight_unit_preference) {
+    return null;
+  }
+
+  return data.weight_unit_preference as WeightUnitPreference;
+}
+
 // Guards use this to confirm the signed-in user actually belongs to the
 // portal they're navigating into - a customer and a staff member share the
 // same Supabase Auth session, so "is there a session" alone can't tell them
@@ -219,6 +242,46 @@ export async function updateFontSizePreference(
   return {
     data: {
       font_size_preference: body?.font_size_preference ?? fontSizePreference,
+    },
+    error: null,
+  };
+}
+
+export async function updateWeightUnitPreference(
+  role: ThemeRole,
+  accessToken: string,
+  weightUnitPreference: WeightUnitPreference
+): Promise<
+  PreferencesApiResult<{ weight_unit_preference: WeightUnitPreference }>
+> {
+  const response = await fetch(
+    `${API_BASE_URL}${AUTH_PREFIX}${PREFERENCES_PATH_BY_ROLE[role]}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ weight_unit_preference: weightUnitPreference }),
+    }
+  );
+
+  const body = (await response.json().catch(() => null)) as {
+    error?: string;
+    weight_unit_preference?: WeightUnitPreference;
+  } | null;
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: body?.error ?? 'Request failed. Please try again.',
+    };
+  }
+
+  return {
+    data: {
+      weight_unit_preference:
+        body?.weight_unit_preference ?? weightUnitPreference,
     },
     error: null,
   };

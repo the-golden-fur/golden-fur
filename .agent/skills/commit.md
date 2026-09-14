@@ -23,12 +23,12 @@ for the user to paste.
 4. Create the commit directly (pass multi-line messages via a heredoc so
    formatting survives), then run `git status` to confirm it succeeded.
 
-> **No verification gates run at commit or branch-publish time** —
-> `pre-commit-checks` (lint + format), `ci-verifier` (full CI parity), and
-> the `code-review` pass are all steps of `pr-to-dev` / `pr-dev-to-main` only, run
-> when a PR is actually being opened. Committing and pushing a branch has
-> no gate. Run `pre-commit-checks` by hand any time you want lint/format
-> fixed mid-work.
+> **No verification gates run at any point in this repo's git workflow.**
+> `commit`, branch pushes, and the `pr-to-dev` / `pr-dev-to-main` skills all
+> run no lint / format / test / build / CI / code-review step — `pr-to-dev`
+> / `pr-dev-to-main` just open a draft PR. Run CI yourself (the
+> `✅ CI: Verify All` VS Code task, or `npm run format` / `npm test` /
+> `npm run build`) whenever you want it.
 
 ## Message format
 

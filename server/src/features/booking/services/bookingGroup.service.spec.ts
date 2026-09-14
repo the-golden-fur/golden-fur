@@ -5,6 +5,11 @@ import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import {
+  sendBookingConfirmedNotification,
+  sendCombinedBookingGroupConfirmedEmail,
+} from './bookingNotifications.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -30,6 +35,15 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
   getDiscountById: vi.fn(),
 }));
 
+// Pet Types admin CRUD + fixed-price override (20260912191/20260912192) -
+// mirrors booking.service.spec.ts's own rationale: resolveBookingItems now
+// calls this once per sub-booking regardless of path, defaulted to "no
+// override" in the outer beforeEach so none of the sequential mock queues
+// below need to change to account for it.
+vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
+  getFixedPrice: vi.fn(),
+}));
+
 // Mirrors booking.service.spec.ts's own rationale - the free-package-award
 // and confirmation notifications aren't the point of these tests (none of
 // the scenarios below are Hotel bookings, and none hit
@@ -38,6 +52,7 @@ vi.mock('../../discounts/services/discounts.service.ts', () => ({
 // spec actually cares about.
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
+  sendCombinedBookingGroupConfirmedEmail: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -153,6 +168,9 @@ const DEFAULT_POLICY = {
   downpayment_hold_hours: 24,
   downpayment_type: null,
   downpayment_amount: null,
+  booking_group_email_mode: 'combined',
+  care_log_task_email_enabled: false,
+  care_log_daily_report_enabled: true,
 };
 
 const GROOMING_SERVICE = {
@@ -246,6 +264,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       data: [GROOMER],
       error: null,
     } as never);
+    vi.mocked(getFixedPrice).mockResolvedValue(null);
   });
 
   it('(a) a 2-booking group with different pets/categories computes combined discount/promo/downpayment against the combined total', async () => {
@@ -303,6 +322,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       { data: PET_B, error: null }, // sub2 pet ownership
       { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo cap
       { data: groupRow({}), error: null }, // booking_groups insert
+      { data: null, error: null }, // booking_promo_selections insert
       {
         data: bookingRow({
           id: 'booking-a1',
@@ -333,7 +353,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
         customer_id: CUSTOMER_ID,
         branch_id: 'branch-1',
         discount_id: 'discount-1',
-        promo_id: 'promo-1',
+        promo_ids: ['promo-1'],
         bookings: [
           {
             pet_id: PET.id,
@@ -361,13 +381,27 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     // 450 combined - 50 flat discount - 45 (10% of 450) promo = 355 net.
     expect(groupInsert?.payload).toMatchObject({
       selected_discount_id: 'discount-1',
-      selected_promo_id: 'promo-1',
+      // Multiselect (session 86): no longer written - see
+      // booking_promo_selections assertion below.
+      selected_promo_id: null,
       discount_amount: 50,
       promo_amount: 45,
       net_total: 355,
       downpayment_required: true,
       downpayment_amount: 100, // flat 100, capped by (min against) the net total
     });
+
+    const promoSelectionInsert = recordedWrites.find(
+      (write) => write.table === 'booking_promo_selections'
+    );
+    expect(promoSelectionInsert?.payload).toEqual([
+      {
+        booking_group_id: 'group-1',
+        promo_id: 'promo-1',
+        customer_coupon_id: null,
+        applied_amount: 45,
+      },
+    ]);
 
     const bookingInserts = recordedWrites.filter(
       (write) => write.table === 'bookings' && write.method === 'insert'
@@ -535,6 +569,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       // through the post-insert race re-check (Daycare: listOverlappingActiveBookings).
       { data: [{ id: 'booking-wa1' }], error: null }, // confirmCapacityAfterInsert sub1 - wins
       { data: [{ id: 'booking-wa2' }], error: null }, // confirmCapacityAfterInsert sub2 - wins
+      { data: [DEFAULT_POLICY], error: null }, // step 11 resolveEffectivePolicy (email mode - all-Walk-in group)
       { data: bookingRow({ id: 'booking-wa1' }), error: null }, // final fetch sub1
       { data: bookingRow({ id: 'booking-wa2' }), error: null } // final fetch sub2
     );
@@ -566,6 +601,75 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     });
 
     expect(result.bookings).toHaveLength(2);
+  });
+
+  it('(b4) two sub-bookings can share one staff member + window when max_concurrent_bookings_per_staff is raised to 2', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+
+    const CAPACITY_2_POLICY = {
+      ...DEFAULT_POLICY,
+      max_concurrent_bookings_per_staff: 2,
+    };
+
+    queueFromResults(
+      { data: [CAPACITY_2_POLICY], error: null }, // resolveEffectivePolicy
+      { data: PET, error: null }, // sub1 pet ownership
+      { data: PET_B, error: null }, // sub2 pet ownership
+      { data: groupRow({}), error: null }, // booking_groups insert
+      {
+        data: bookingRow({ id: 'booking-b1', assigned_staff_id: 'groomer-1' }),
+        error: null,
+      }, // sub1 insert
+      { data: null, error: null }, // sub1 items insert
+      { data: null, error: null }, // sub1 staff_picker_preferences insert
+      {
+        data: bookingRow({ id: 'booking-b2', assigned_staff_id: 'groomer-1' }),
+        error: null,
+      }, // sub2 insert
+      { data: null, error: null }, // sub2 items insert
+      { data: null, error: null }, // sub2 staff_picker_preferences insert
+      { data: [{ id: 'booking-b1' }], error: null }, // confirmCapacityAfterInsert sub1
+      {
+        data: [{ id: 'booking-b1' }, { id: 'booking-b2' }],
+        error: null,
+      }, // confirmCapacityAfterInsert sub2 - still within capacity 2
+      { data: bookingRow({ id: 'booking-b1' }), error: null }, // final fetch sub1
+      { data: bookingRow({ id: 'booking-b2' }), error: null } // final fetch sub2
+    );
+
+    const result = await createBookingGroup({
+      requesterId: CUSTOMER_ID,
+      input: {
+        branch_id: 'branch-1',
+        bookings: [
+          {
+            pet_id: PET.id,
+            service_category: 'Grooming',
+            items: [{ service_id: 'service-groom' }],
+            scheduled_start: isoAt(0),
+            scheduled_end: isoAt(hours(1)),
+            staff_preference: { type: 'specific', staff_id: 'groomer-1' },
+          },
+          {
+            pet_id: PET_B.id,
+            service_category: 'Grooming',
+            items: [{ service_id: 'service-groom' }],
+            scheduled_start: isoAt(0),
+            scheduled_end: isoAt(hours(1)),
+            staff_preference: { type: 'specific', staff_id: 'groomer-1' },
+          },
+        ],
+      } as never,
+    });
+
+    expect(result.bookings).toHaveLength(2);
+    const bookingInserts = recordedWrites.filter(
+      (write) => write.table === 'bookings' && write.method === 'insert'
+    );
+    expect(bookingInserts).toHaveLength(2);
+    for (const write of bookingInserts) {
+      expect(write.payload).toMatchObject({ assigned_staff_id: 'groomer-1' });
+    }
   });
 
   it('(c) one sub-booking losing the post-insert capacity race rolls back the entire group', async () => {
@@ -721,6 +825,119 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       'create_initial_booking_group_charge',
       expect.anything()
     );
+  });
+
+  // --- booking_group_email_mode (Brevo quota) -----------------------------
+  function queueVetGroupConfirmedAtCreation(policy: unknown) {
+    queueFromResults(
+      { data: [policy], error: null }, // resolveEffectivePolicy (shared, once)
+      { data: PET, error: null }, // sub1 pet ownership
+      {
+        data: { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
+        error: null,
+      }, // sub1 #53 guard
+      { data: PET_B, error: null }, // sub2 pet ownership
+      {
+        data: { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
+        error: null,
+      }, // sub2 #53 guard
+      { data: groupRow({}), error: null }, // booking_groups insert
+      {
+        data: bookingRow({
+          id: 'booking-g1',
+          service_category: 'Veterinary',
+          branch_id: 'branch-makati',
+        }),
+        error: null,
+      }, // sub1 insert
+      { data: null, error: null }, // sub1 items insert
+      { data: null, error: null }, // sub1 staff_picker_preferences insert
+      {
+        data: bookingRow({
+          id: 'booking-g2',
+          service_category: 'Veterinary',
+          branch_id: 'branch-makati',
+          scheduled_start: isoAt(hours(3)),
+          scheduled_end: isoAt(hours(4)),
+        }),
+        error: null,
+      }, // sub2 insert
+      { data: null, error: null }, // sub2 items insert
+      { data: null, error: null }, // sub2 staff_picker_preferences insert
+      { data: [{ id: 'booking-g1' }], error: null }, // confirmCapacityAfterInsert sub1
+      { data: [{ id: 'booking-g2' }], error: null }, // confirmCapacityAfterInsert sub2
+      {
+        data: bookingRow({ id: 'booking-g1', service_category: 'Veterinary' }),
+        error: null,
+      }, // final fetch sub1
+      {
+        data: bookingRow({ id: 'booking-g2', service_category: 'Veterinary' }),
+        error: null,
+      } // final fetch sub2
+    );
+  }
+
+  const vetGroupInput = {
+    branch_id: 'branch-makati',
+    bookings: [
+      {
+        pet_id: PET.id,
+        service_category: 'Veterinary',
+        items: [{ service_id: 'service-vet' }],
+        scheduled_start: isoAt(0),
+        scheduled_end: isoAt(hours(1)),
+      },
+      {
+        pet_id: PET_B.id,
+        service_category: 'Veterinary',
+        items: [{ service_id: 'service-vet' }],
+        scheduled_start: isoAt(hours(3)),
+        scheduled_end: isoAt(hours(4)),
+      },
+    ],
+  } as never;
+
+  it("(f) 'combined' mode (default): one combined confirmation email, per-booking in-app rows", async () => {
+    vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
+    queueVetGroupConfirmedAtCreation(DEFAULT_POLICY);
+
+    await createBookingGroup({
+      requesterId: CUSTOMER_ID,
+      input: vetGroupInput,
+    });
+
+    expect(sendBookingConfirmedNotification).toHaveBeenCalledTimes(2);
+    for (const call of vi.mocked(sendBookingConfirmedNotification).mock.calls) {
+      expect(call[1]).toEqual({ skipEmail: true });
+    }
+    expect(sendCombinedBookingGroupConfirmedEmail).toHaveBeenCalledTimes(1);
+    expect(sendCombinedBookingGroupConfirmedEmail).toHaveBeenCalledWith(
+      CUSTOMER_ID,
+      'branch-makati',
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'booking-g1' }),
+        expect.objectContaining({ id: 'booking-g2' }),
+      ])
+    );
+  });
+
+  it("(g) 'per_booking' mode: one email per booking, no combined email", async () => {
+    vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
+    queueVetGroupConfirmedAtCreation({
+      ...DEFAULT_POLICY,
+      booking_group_email_mode: 'per_booking',
+    });
+
+    await createBookingGroup({
+      requesterId: CUSTOMER_ID,
+      input: vetGroupInput,
+    });
+
+    expect(sendBookingConfirmedNotification).toHaveBeenCalledTimes(2);
+    for (const call of vi.mocked(sendBookingConfirmedNotification).mock.calls) {
+      expect(call[1]).toEqual({ skipEmail: false });
+    }
+    expect(sendCombinedBookingGroupConfirmedEmail).not.toHaveBeenCalled();
   });
 
   it('(e) a fully-discounted group is born Fully Paid on every sub-booking and the group row', async () => {

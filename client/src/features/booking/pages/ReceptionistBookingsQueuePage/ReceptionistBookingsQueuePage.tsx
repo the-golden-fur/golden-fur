@@ -29,6 +29,7 @@ import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
   cancelBooking,
+  extendHotelStay,
   listBookings,
   rescheduleBooking,
   startBooking,
@@ -39,6 +40,7 @@ import {
 } from '../../api/policy.api';
 import {
   BOOKING_CONFIRMATION_STATES,
+  BOOKING_MARK_PAID_ROLES,
   CANCELLABLE_BOOKING_STATUSES,
   PAYMENT_STATUSES,
   RESCHEDULABLE_BOOKING_STATUSES,
@@ -188,8 +190,16 @@ function addMonths(date: Date, amount: number): Date {
 
 type ActiveAction = {
   bookingId: string;
-  type: 'reschedule' | 'cancel';
+  type: 'reschedule' | 'cancel' | 'extend';
 };
+
+/** Extend-hotel-stay custom change: mirrors the server's own
+ * EXTENDABLE_BOOKING_STATUSES exactly (extendStay.service.ts) - a stay can
+ * still be extended before it's finished. */
+const EXTENDABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+];
 
 /**
  * Issue #60: branch-wide daily/filtered booking queue for Receptionist/
@@ -304,6 +314,9 @@ export function ReceptionistBookingsQueuePage() {
   // see StaffPickerList's onUnavailable contract.
   const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
+  // Extend-hotel-stay custom change: kept as a string (not a number) since
+  // it's a controlled text input - parsed to a number only at submit time.
+  const [extendNightsInput, setExtendNightsInput] = useState('1');
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   // Walk-in booking flow: Check In is a third sibling action alongside
@@ -645,6 +658,12 @@ export function ReceptionistBookingsQueuePage() {
     setActionError(null);
   }
 
+  function openExtend(booking: Booking) {
+    setActiveAction({ bookingId: booking.id, type: 'extend' });
+    setExtendNightsInput('1');
+    setActionError(null);
+  }
+
   function closeAction() {
     setActiveAction(null);
   }
@@ -690,6 +709,34 @@ export function ReceptionistBookingsQueuePage() {
 
     if (result.error || !result.data) {
       setActionError(result.error ?? 'Could not cancel this booking.');
+      return;
+    }
+
+    replaceBooking(result.data.booking);
+    setActiveAction(null);
+  }
+
+  async function confirmExtend(booking: Booking) {
+    if (!accessToken) return;
+
+    const additionalNights = Number(extendNightsInput);
+
+    if (!Number.isInteger(additionalNights) || additionalNights < 1) {
+      setActionError('Enter a whole number of nights (1 or more).');
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    setActionError(null);
+
+    const result = await extendHotelStay(booking.id, accessToken, {
+      additional_nights: additionalNights,
+    });
+
+    setIsSubmittingAction(false);
+
+    if (result.error || !result.data) {
+      setActionError(result.error ?? 'Could not extend this stay.');
       return;
     }
 
@@ -1049,6 +1096,14 @@ export function ReceptionistBookingsQueuePage() {
               const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(
                 booking.status
               );
+              // Extend-hotel-stay custom change: staff-only and Hotel-only -
+              // gated the same way the server route is (BOOKING_MARK_PAID_ROLES),
+              // so this button never promises something the server would
+              // then 403 on.
+              const canExtend =
+                booking.service_category === 'Hotel' &&
+                EXTENDABLE_BOOKING_STATUSES.includes(booking.status) &&
+                BOOKING_MARK_PAID_ROLES.includes(viewerRole ?? '');
               const confirmationState = deriveBookingConfirmationState(booking);
               const isRescheduling =
                 activeAction?.bookingId === booking.id &&
@@ -1056,6 +1111,9 @@ export function ReceptionistBookingsQueuePage() {
               const isCancelling =
                 activeAction?.bookingId === booking.id &&
                 activeAction.type === 'cancel';
+              const isExtending =
+                activeAction?.bookingId === booking.id &&
+                activeAction.type === 'extend';
 
               const durationMinutes = Math.round(
                 (new Date(booking.scheduled_end).getTime() -
@@ -1099,7 +1157,7 @@ export function ReceptionistBookingsQueuePage() {
                     </p>
                   ) : null}
 
-                  {!isRescheduling && !isCancelling ? (
+                  {!isRescheduling && !isCancelling && !isExtending ? (
                     <div className={styles.bookingControls}>
                       <button
                         type="button"
@@ -1152,6 +1210,15 @@ export function ReceptionistBookingsQueuePage() {
                           onClick={() => openCancel(booking)}
                         >
                           Cancel
+                        </button>
+                      ) : null}
+                      {canExtend ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => openExtend(booking)}
+                        >
+                          Extend Stay
                         </button>
                       ) : null}
                     </div>
@@ -1212,6 +1279,52 @@ export function ReceptionistBookingsQueuePage() {
                           onClick={closeAction}
                         >
                           Cancel reschedule
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isExtending ? (
+                    <div className={styles.actionPanel}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Additional nights
+                        </span>
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={extendNightsInput}
+                          onChange={(event) =>
+                            setExtendNightsInput(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      {actionError ? (
+                        <p className={styles.errorBanner} role="alert">
+                          {actionError}
+                        </p>
+                      ) : null}
+
+                      <div className={styles.bookingControls}>
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={isSubmittingAction}
+                          onClick={() => void confirmExtend(booking)}
+                        >
+                          {isSubmittingAction
+                            ? 'Extending...'
+                            : 'Confirm extension'}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={closeAction}
+                        >
+                          Cancel
                         </button>
                       </div>
                     </div>

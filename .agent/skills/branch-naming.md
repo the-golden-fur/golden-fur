@@ -23,12 +23,10 @@ then stop and let the user ask for the commit (see `commit.md`).
    git push -u origin <type>/<short-description>
    ```
 
-Pushing the freshly-created (empty) branch here needs no checks. The
-`ci-verifier` → `ci-fixer-agent` → `code-review` gates kick in later —
-**only when a PR is opened** (`pr-to-dev` / `pr-dev-to-main`), where this
-skill is step 1. Plain commits and branch pushes have no lint/format/review
-gate at all; run `pre-commit-checks` by hand if you want lint + format tidy
-mid-work.
+Pushing the freshly-created (empty) branch here needs no checks. There are
+no automated CI / lint / format / review gates in this repo's git workflow
+any more — the `pr-to-dev` / `pr-dev-to-main` skills just open a draft PR
+(this skill is their step 1), and the user runs CI manually afterwards.
 
 ## Types
 

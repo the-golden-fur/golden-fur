@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   BOOKING_SOURCES,
   BOOKING_STATUSES,
+  FOOD_QUANTITY_UNITS,
+  MEDICATION_DOSE_UNITS,
   OVERRIDABLE_BOOKING_STATUSES,
   PAYMENT_SCHEMES,
   PAYMENT_STATUSES,
@@ -18,6 +20,8 @@ const ENFORCEMENT_MODES = ['Strict', 'Soft'] as const;
 const RESCHEDULE_FEE_TYPES = ['Flat', 'Percentage'] as const;
 const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
+const CREDIT_REVIEW_MODES = ['Automatic', 'Manual'] as const;
+const CREDIT_REVIEW_DECISIONS = ['approved', 'denied'] as const;
 /** Which notice-period floor the availability endpoints apply. */
 const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
@@ -112,6 +116,41 @@ function requireNoDuplicateItems(
   }
 }
 
+/**
+ * Custom change (promos/coupons multiselect, session 86): the old single
+ * `promo_id` scalar made a repeated id structurally impossible; the array
+ * form doesn't, so this mirrors requireNoDuplicateItems's own dedup check
+ * above for the new promo_ids/coupon_ids fields - without it, sending the
+ * same promo id twice would apply it twice (two independent candidates
+ * into applyPromoCap, capped only by whatever promo_cap_configuration
+ * happens to allow).
+ */
+function requireNoDuplicatePromoOrCouponIds(
+  input: { promo_ids?: string[]; coupon_ids?: string[] },
+  ctx: z.RefinementCtx
+) {
+  if (
+    input.promo_ids &&
+    new Set(input.promo_ids).size !== input.promo_ids.length
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['promo_ids'],
+      message: 'Duplicate promo ids are not allowed',
+    });
+  }
+  if (
+    input.coupon_ids &&
+    new Set(input.coupon_ids).size !== input.coupon_ids.length
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['coupon_ids'],
+      message: 'Duplicate coupon ids are not allowed',
+    });
+  }
+}
+
 function requireEndAfterStart(
   input: { scheduled_start: string; scheduled_end: string },
   ctx: z.RefinementCtx
@@ -130,6 +169,8 @@ const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
 // does not - a separate enum, not a widened hotelPartOfDay, keeps those two
 // unaffected.
 const hotelMealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
+const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
+const medicationDoseUnit = z.enum(MEDICATION_DOSE_UNITS);
 
 /**
  * Booking-time preferences for a Hotel booking - a preview the check-in form
@@ -152,6 +193,8 @@ const hotelPreferencesValidator = z
             meal_time: hotelMealTime,
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
+            quantity_unit: foodQuantityUnit,
+            photo_url: z.url().optional(),
             special_instructions: z.string().trim().optional(),
             food_catalog_id: z.uuid().optional(),
             stay_date: z.iso.date().optional(),
@@ -189,6 +232,8 @@ const hotelPreferencesValidator = z
           .object({
             medication_name: z.string().trim().min(1),
             dose: z.string().trim().min(1),
+            dose_unit: medicationDoseUnit,
+            photo_url: z.url().optional(),
             scheduled_times: z.array(z.string().min(1)).default([]),
             administration_notes: z.string().trim().optional(),
             medication_catalog_id: z.uuid().optional(),
@@ -232,14 +277,23 @@ export const createBookingValidator = z
     // booking.service.ts, where the requester's staff role is known - the
     // validator only shapes the field.
     discount_id: z.uuid().optional(),
-    // Open to customers too (no role gate) - a promo is a self-service
-    // discount, unlike a discount row which needs staff to verify an ID.
-    promo_id: z.uuid().optional(),
+    // Multiselect (session 86): open to customers too (no role gate) - a
+    // promo/coupon is self-service, unlike a discount which needs staff to
+    // verify an ID. Both arrays are re-validated (branch/scope/eligibility/
+    // ownership) and re-capped authoritatively in
+    // resolveDiscountAndPromos - the client's own running total is only a
+    // preview.
+    // Capped well above any realistic selection - just a ceiling against a
+    // request forcing an unbounded number of sequential per-id lookups in
+    // resolveDiscountAndPromos, not a real product limit.
+    promo_ids: z.array(z.uuid()).max(20).optional(),
+    coupon_ids: z.array(z.uuid()).max(20).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
     requireNoDuplicateItems(input, ctx);
     requireEndAfterStart(input, ctx);
+    requireNoDuplicatePromoOrCouponIds(input, ctx);
 
     // Custom change (Daycare/Hotel parity follow-up): Daycare's Care
     // Instructions booking-time step now sends the same
@@ -316,15 +370,19 @@ export const createBookingGroupValidator = z
     bookings: z
       .array(bookingGroupItemValidator)
       .min(1, 'At least one booking is required'),
-    // Shared, group-level: one discount/promo/payment scheme applies to the
-    // combined net total across every sub-booking, not per sub-booking - see
-    // resolveDiscountAndPromo's group-scoped call in
-    // bookingGroup.service.ts.
+    // Shared, group-level: one discount/set of promos+coupons/payment
+    // scheme applies to the combined net total across every sub-booking,
+    // not per sub-booking - see resolveDiscountAndPromos's group-scoped
+    // call in bookingGroup.service.ts.
     payment_scheme: z.enum(PAYMENT_SCHEMES).optional(),
     discount_id: z.uuid().optional(),
-    promo_id: z.uuid().optional(),
+    promo_ids: z.array(z.uuid()).max(20).optional(),
+    coupon_ids: z.array(z.uuid()).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    requireNoDuplicatePromoOrCouponIds(input, ctx);
+  });
 
 export const rescheduleBookingValidator = z
   .object({
@@ -334,6 +392,14 @@ export const rescheduleBookingValidator = z
     // eligibility when it does.
     branch_id: z.uuid().optional(),
     staff_preference: staffPreferenceValidator.optional(),
+    // Slot-conflict notification (20260911188): a Hotel booking flagged with
+    // a cage-size conflict needs a way to change its cage preference too,
+    // not just date/time/staff - previously only createBookingValidator
+    // accepted this field. Omitted = keep the booking's current
+    // preferred_cage_id as-is (mirrors staff_preference's own
+    // omitted-means-unchanged-then-re-verified behavior in
+    // reschedule.service.ts).
+    cage_preference: cagePreferenceValidator.optional(),
   })
   .strict()
   .superRefine(requireEndAfterStart);
@@ -341,6 +407,24 @@ export const rescheduleBookingValidator = z
 export const cancelBookingValidator = z
   .object({
     cancellation_reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+/** Staff-only "extend stay" action (extend-hotel-stay custom change) - a
+ * whole-nights add-on to a Hotel booking's current scheduled_end. The upper
+ * bound is just a sanity ceiling against a fat-fingered input, not a real
+ * product limit on stay length. */
+export const extendHotelStayValidator = z
+  .object({
+    additional_nights: z.number().int().min(1).max(90),
+  })
+  .strict();
+
+/** Manual-cancellation-credit-review custom change: a staff member's
+ * approve/deny decision on a pending cancellation_logs row. */
+export const decideCreditReviewValidator = z
+  .object({
+    decision: z.enum(CREDIT_REVIEW_DECISIONS),
   })
   .strict();
 
@@ -421,6 +505,16 @@ export const updatePolicyValidator = z
     // unpaid down-payment-required Online booking auto-cancels. NOT NULL in
     // the DB (default 24), so no null here - just a positive integer.
     downpayment_hold_hours: z.number().int().positive().optional(),
+    // Staff concurrency (20260908178): overlapping bookings one staff member
+    // may hold. NOT NULL in the DB (default 1, CHECK >= 1).
+    max_concurrent_bookings_per_staff: z.number().int().min(1).optional(),
+    // Transactional-email behaviour (20260908181). All NOT NULL in the DB
+    // with documented defaults - just booleans + the two-value mode enum.
+    booking_group_email_mode: z.enum(['combined', 'per_booking']).optional(),
+    care_log_task_email_enabled: z.boolean().optional(),
+    care_log_daily_report_enabled: z.boolean().optional(),
+    // Manual-cancellation-credit-review custom change.
+    credit_review_mode: z.enum(CREDIT_REVIEW_MODES).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -534,9 +628,19 @@ export const staffPickerQueryValidator = z.object({
 /** Custom change: Cage Picker addendum - branch-only, unlike the staff
  * picker's time-window query, since cage availability is a live status
  * snapshot (Available/Occupied/Reserved/Under Maintenance) rather than a
- * time-window overlap check - see cagePicker.service.ts. */
+ * time-window overlap check - see cagePicker.service.ts.
+ *
+ * pet_id (Custom change, cage pet-type support): required so the options
+ * list can be hard-filtered to the pet's own pet_type. */
 export const cagePickerQueryValidator = z.object({
   branch_id: z.uuid(),
+  pet_id: z.uuid(),
+});
+
+/** Custom change (cage pet-type support / customer readonly cage view). */
+export const cageAssignmentStatusQueryValidator = z.object({
+  branch_id: z.uuid(),
+  pet_id: z.uuid(),
 });
 
 /**
@@ -584,35 +688,15 @@ export const partsOfDayQueryValidator = z
   })
   .strict();
 
-/**
- * #22: powers the "fully booked" warning shown right after the customer
- * picks a service, before they ever reach the Slot Picker - same shape as
- * availabilityQueryValidator, just `date` -> `from_date` (the search start,
- * not a single day to inspect) plus an optional lookahead window.
- */
-export const nextAvailableSlotQueryValidator = z
-  .object({
-    branch_id: z.uuid(),
-    service_category: z.enum(CATEGORIES),
-    from_date: z.iso.date(),
-    slot_duration_minutes: z.coerce.number().int().min(15).max(1440),
-    pet_weight_class: z.enum(WEIGHT_CLASSES).optional(),
-    lookahead_days: z.coerce.number().int().min(1).max(60).optional(),
-  })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['pet_weight_class'],
-        message: 'pet_weight_class is required for Hotel availability',
-      });
-    }
-  });
-
 export const catalogQueryValidator = z.object({
   branch_id: z.uuid(),
   category: z.enum(CATEGORIES).optional(),
+  // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+  // when given, the catalog also resolves this pet type's fixed-price
+  // override for branch_id, so the customer-facing price preview can show
+  // the real charged price instead of every item's own base_price/
+  // bundled_price.
+  pet_type: z.string().trim().min(1).optional(),
 });
 
 export const listBookingsQueryValidator = z.object({
@@ -647,6 +731,10 @@ export type CreateBookingGroupInput = z.infer<
   typeof createBookingGroupValidator
 >;
 export type RescheduleBookingInput = z.infer<typeof rescheduleBookingValidator>;
+export type ExtendHotelStayInput = z.infer<typeof extendHotelStayValidator>;
+export type DecideCreditReviewInput = z.infer<
+  typeof decideCreditReviewValidator
+>;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
 export type PayBookingInput = z.infer<typeof payBookingValidator>;

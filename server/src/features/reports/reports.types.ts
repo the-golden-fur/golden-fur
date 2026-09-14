@@ -1,3 +1,5 @@
+import type { Transaction } from '../billing/billing.types.ts';
+
 /** Admin/Supervisor see their own branch only; Superadmin gets the
  * toggle/combined option - enforced at the application layer in each
  * service, in addition to whatever get_daily_sales_report()/
@@ -71,6 +73,13 @@ export interface CageOccupancyRow {
   size: 'S' | 'M' | 'L' | 'XL';
   status: 'Available' | 'Occupied' | 'Reserved' | 'Under Maintenance';
   cage_count: number;
+}
+
+/** A transaction-history row plus the owner's display name, resolved by
+ * listTransactionHistory in one batched lookup. customer_name is null only
+ * when the referenced customer_profiles row is somehow missing. */
+export interface TransactionHistoryRecord extends Transaction {
+  customer_name: string | null;
 }
 
 export interface TransactionHistoryFilters {

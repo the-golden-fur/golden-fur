@@ -387,4 +387,117 @@ describe('reschedule.service (#54)', () => {
       message: expect.stringContaining('already passed'),
     });
   });
+
+  describe('slot-conflict notification (20260911188)', () => {
+    it('clears slot_conflict_at/conflict_notice once the customer successfully reschedules', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...DAYCARE_BOOKING,
+            slot_conflict_at: '2026-09-11T00:00:00.000Z',
+            conflict_notice: 'Your Daycare booking is no longer available.',
+          },
+          error: null,
+        }, // booking fetch
+        { data: [policyRow()], error: null }, // policy
+        { data: { weight_class: 'S' }, error: null }, // pet
+        { data: [], error: null }, // capacity overlap - empty
+        {
+          data: {
+            ...DAYCARE_BOOKING,
+            ...NEW_WINDOW,
+            reschedule_count: 1,
+            slot_conflict_at: null,
+            conflict_notice: null,
+          },
+          error: null,
+        } // update
+      );
+
+      await rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: NEW_WINDOW,
+      });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+
+      expect(update?.payload).toMatchObject({
+        slot_conflict_at: null,
+        conflict_notice: null,
+      });
+    });
+
+    it('Hotel: accepts a new specific cage preference alongside the new slot, re-verified the same way createBooking does', async () => {
+      vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":10,"M":8,"L":6,"XL":4}');
+
+      const HOTEL_BOOKING = {
+        ...DAYCARE_BOOKING,
+        service_category: 'Hotel',
+        preferred_cage_id: 'cage-1',
+      };
+
+      queueFromResults(
+        { data: HOTEL_BOOKING, error: null }, // booking fetch
+        { data: [policyRow()], error: null }, // policy
+        { data: { weight_class: 'M' }, error: null }, // pet
+        { data: [], error: null }, // capacity overlap - empty
+        { data: { cage_picker_enabled: true }, error: null }, // isCagePickerEnabled
+        { data: { id: 'cage-2' }, error: null }, // verifyCagePreference
+        {
+          data: {
+            ...HOTEL_BOOKING,
+            ...NEW_WINDOW,
+            preferred_cage_id: 'cage-2',
+            reschedule_count: 1,
+          },
+          error: null,
+        } // update
+      );
+
+      await rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {
+          ...NEW_WINDOW,
+          cage_preference: { type: 'specific', cage_id: 'cage-2' },
+        },
+      });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+
+      expect(update?.payload).toMatchObject({ preferred_cage_id: 'cage-2' });
+    });
+
+    it('Hotel: an omitted cage_preference leaves the current preferred_cage_id untouched', async () => {
+      vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":10,"M":8,"L":6,"XL":4}');
+
+      const HOTEL_BOOKING = {
+        ...DAYCARE_BOOKING,
+        service_category: 'Hotel',
+        preferred_cage_id: 'cage-1',
+      };
+
+      queueFromResults(
+        { data: HOTEL_BOOKING, error: null }, // booking fetch
+        { data: [policyRow()], error: null }, // policy
+        { data: { weight_class: 'M' }, error: null }, // pet
+        { data: [], error: null }, // capacity overlap - empty
+        {
+          data: { ...HOTEL_BOOKING, ...NEW_WINDOW, reschedule_count: 1 },
+          error: null,
+        } // update
+      );
+
+      await rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: NEW_WINDOW,
+      });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+
+      expect(update?.payload).toMatchObject({ preferred_cage_id: 'cage-1' });
+    });
+  });
 });

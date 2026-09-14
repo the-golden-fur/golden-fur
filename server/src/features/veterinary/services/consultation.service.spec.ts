@@ -3,6 +3,7 @@ import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
+  listVeterinarianPatients,
   updateConsultation,
 } from './consultation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -242,6 +243,44 @@ describe('consultation.service (#66)', () => {
       const result = await listPetConsultationHistory('pet-1');
 
       expect(result).toHaveLength(2);
+    });
+  });
+
+  describe('listVeterinarianPatients (vet-bookings-queue-access)', () => {
+    it('returns one row per pet with the owning customer_id and most recent finished-visit date', async () => {
+      queueFromResults({
+        data: [
+          {
+            pet_id: 'pet-1',
+            booking: {
+              customer_id: 'customer-1',
+              status: 'Completed',
+              completed_at: '2026-07-01T00:00:00.000Z',
+              scheduled_start: '2026-06-30T00:00:00.000Z',
+            },
+          },
+          {
+            pet_id: 'pet-1',
+            booking: {
+              customer_id: 'customer-1',
+              status: 'Completed',
+              completed_at: '2026-08-01T00:00:00.000Z',
+              scheduled_start: '2026-07-31T00:00:00.000Z',
+            },
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listVeterinarianPatients(VET_ID);
+
+      expect(result).toEqual([
+        {
+          pet_id: 'pet-1',
+          customer_id: 'customer-1',
+          last_visit_at: '2026-08-01T00:00:00.000Z',
+        },
+      ]);
     });
   });
 

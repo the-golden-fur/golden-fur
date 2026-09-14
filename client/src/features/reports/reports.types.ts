@@ -41,7 +41,16 @@ export interface CageOccupancyRow {
 export interface TransactionRecord {
   id: string;
   booking_id: string | null;
+  /** Set instead of booking_id for a multi-booking checkout transaction
+   * (exactly one of the two is ever non-null) - see
+   * checkoutAggregation.service.ts. */
+  booking_group_id: string | null;
   customer_id: string;
+  /** The owner's display name (customer_profiles.full_name), resolved
+   * server-side by listTransactionHistory. Null only if that profile row is
+   * missing. Both /reports/transaction-history and /my-transaction-history
+   * now send this. */
+  customer_name: string | null;
   branch_id: string;
   transaction_type: string;
   payment_method: string;

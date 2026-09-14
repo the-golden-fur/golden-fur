@@ -40,6 +40,7 @@ describe('CagePickerList', () => {
       createElement(CagePickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
+        petId: 'pet-1',
         selected: null,
         onSelect,
         recommendedSize: 'S',
@@ -67,6 +68,7 @@ describe('CagePickerList', () => {
       createElement(CagePickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
+        petId: 'pet-1',
         selected: null,
         onSelect,
         recommendedSize: 'S',
@@ -98,6 +100,7 @@ describe('CagePickerList', () => {
       createElement(CagePickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
+        petId: 'pet-1',
         selected: { type: 'specific', cage_id: 'cage-m' },
         onSelect,
         recommendedSize: 'S',

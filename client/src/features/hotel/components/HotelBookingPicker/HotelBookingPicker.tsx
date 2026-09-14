@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import {
   QueueFilterBar,
   type QueueStatusOption,
@@ -68,7 +68,16 @@ interface EnrichedBooking {
 interface HotelBookingPickerProps {
   accessToken: string;
   branchId: string;
-  onSelect: (booking: Booking) => void;
+  /** Row "Check in" button: one-click check-in, handled by the parent
+   * (no navigation to a form page). */
+  onCheckIn: (booking: Booking) => void;
+  /** Row "..." menu -> "View booking details": opens the booking's
+   * check-in detail page (cage assignment + care instructions, with an
+   * Edit toggle). */
+  onViewDetails: (booking: Booking) => void;
+  /** The booking currently being checked in, if any - its "Check in"
+   * button shows a pending label and is disabled. */
+  checkingInBookingId?: string | null;
   selectedBookingId?: string | null;
 }
 
@@ -100,10 +109,11 @@ function formatDateTime(iso: string): string {
 export function HotelBookingPicker({
   accessToken,
   branchId,
-  onSelect,
+  onCheckIn,
+  onViewDetails,
+  checkingInBookingId,
   selectedBookingId,
 }: HotelBookingPickerProps) {
-  const navigate = useNavigate();
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
@@ -399,8 +409,7 @@ export function HotelBookingPicker({
                         items={[
                           {
                             label: 'View booking details',
-                            onSelect: () =>
-                              navigate(`/staff/bookings/${item.booking.id}`),
+                            onSelect: () => onViewDetails(item.booking),
                           },
                         ]}
                       />
@@ -432,9 +441,12 @@ export function HotelBookingPicker({
                       <button
                         type="button"
                         className={styles.checkInButton}
-                        onClick={() => onSelect(item.booking)}
+                        disabled={checkingInBookingId === item.booking.id}
+                        onClick={() => onCheckIn(item.booking)}
                       >
-                        Check in
+                        {checkingInBookingId === item.booking.id
+                          ? 'Checking in...'
+                          : 'Check in'}
                       </button>
                     ) : null}
                     {isCheckedIn && item.existingStayId ? (

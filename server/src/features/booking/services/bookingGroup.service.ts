@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import {
   sendBookingConfirmedNotification,
+  sendCombinedBookingGroupConfirmedEmail,
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import {
@@ -17,7 +18,10 @@ import type {
   ServiceCategory,
 } from '../booking.types.ts';
 import type { CreateBookingGroupInput } from '../modules/validators/booking.validator.ts';
-import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
+import {
+  assertVeterinarianTreatedCustomer,
+  assertVeterinaryBranchEligibility,
+} from './veterinaryEligibility.service.ts';
 import {
   checkCapacity,
   confirmCapacityAfterInsert,
@@ -30,11 +34,12 @@ import {
   isCagePickerEnabled,
   verifyCagePreference,
 } from './cagePicker.service.ts';
+import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
 import {
   getBookingById,
   isPetAssessed,
   resolveBookingItems,
-  resolveDiscountAndPromo,
+  resolveDiscountAndPromos,
   resolveFreePackageAward,
   resolveStaffAssignment,
   round2,
@@ -91,14 +96,20 @@ function claimWindowOrThrow(
   key: string,
   start: number,
   end: number,
-  subjectLabel: 'staff' | 'cage' | 'pet'
+  subjectLabel: 'staff' | 'cage' | 'pet',
+  // How many overlapping claims this key may hold before the NEXT one is
+  // rejected. 1 for cage/pet (never shareable); for staff it's
+  // policy_configurations.max_concurrent_bookings_per_staff (20260908178),
+  // so an admin who allows one groomer to take N pets at once doesn't get a
+  // spurious in-request 409 that the DB-backed check would have let through.
+  capacity = 1
 ): void {
   const existing = claims.get(key) ?? [];
-  const conflict = existing.some(
+  const overlapping = existing.filter(
     (window) => start < window.end && window.start < end
   );
 
-  if (conflict) {
+  if (overlapping.length >= capacity) {
     const message =
       subjectLabel === 'pet'
         ? 'This pet already has another booking in this checkout at an overlapping time — please choose a different time for one of them'
@@ -168,6 +179,15 @@ export async function createBookingGroup({
 
     customerId = input.customer_id;
     createdByStaffId = requesterId;
+
+    // vet-bookings-queue-access: mirrors createBooking's own check - a
+    // Veterinarian may only book a customer they've actually treated.
+    if (staffRole === 'Veterinarian') {
+      await assertVeterinarianTreatedCustomer({
+        veterinarianId: requesterId,
+        customerId,
+      });
+    }
   } else {
     if (input.customer_id && input.customer_id !== requesterId) {
       throwWithStatus(403, 'Customers can only create their own bookings');
@@ -250,17 +270,19 @@ export async function createBookingGroup({
   const uniformCategory =
     subBookingCategories.size === 1 ? [...subBookingCategories][0] : undefined;
 
-  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
-    await resolveDiscountAndPromo(
+  const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
+    await resolveDiscountAndPromos(
       {
         branch_id: input.branch_id,
         discount_id: input.discount_id,
-        promo_id: input.promo_id,
+        promo_ids: input.promo_ids,
+        coupon_ids: input.coupon_ids,
         service_category: uniformCategory,
-      } as unknown as Parameters<typeof resolveDiscountAndPromo>[0],
+      } as unknown as Parameters<typeof resolveDiscountAndPromos>[0],
       staffRole,
       allResolvedItems,
-      combinedTotalPrice
+      combinedTotalPrice,
+      customerId
     );
 
   const combinedNetTotal = round2(
@@ -317,7 +339,10 @@ export async function createBookingGroup({
       branch_id: input.branch_id,
       created_by_staff_id: createdByStaffId,
       selected_discount_id: selectedDiscountId,
-      selected_promo_id: selectedPromoId,
+      // Multiselect (session 86): see createBooking's identical note - the
+      // authoritative record is now booking_promo_selections, written below
+      // once this group row exists.
+      selected_promo_id: null,
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       net_total: combinedNetTotal,
@@ -338,6 +363,43 @@ export async function createBookingGroup({
   }
 
   const bookingGroup = insertedGroup as BookingGroup;
+
+  if (promoSelections.length > 0) {
+    const { error: promoSelectionsError } = await supabase
+      .from('booking_promo_selections')
+      .insert(
+        promoSelections.map((selection) => ({
+          booking_group_id: bookingGroup.id,
+          promo_id: selection.promoId,
+          customer_coupon_id: selection.couponId,
+          applied_amount: selection.appliedAmount,
+        }))
+      );
+
+    if (promoSelectionsError) {
+      await supabase.from('booking_groups').delete().eq('id', bookingGroup.id);
+      throwWithStatus(400, promoSelectionsError.message);
+    }
+
+    const redeemedCouponIds = promoSelections
+      .map((selection) => selection.couponId)
+      .filter((id): id is string => id !== null);
+
+    if (redeemedCouponIds.length > 0) {
+      try {
+        await markCouponsRedeemed(redeemedCouponIds, {
+          bookingGroupId: bookingGroup.id,
+        });
+      } catch (redeemError) {
+        await supabase
+          .from('booking_groups')
+          .delete()
+          .eq('id', bookingGroup.id);
+        throw redeemError;
+      }
+    }
+  }
+
   const insertedBookingIds: string[] = [];
   const insertedBookingRows: Booking[] = [];
 
@@ -433,7 +495,10 @@ export async function createBookingGroup({
   // decision: either every online sub-booking holds its slot, or none do).
   if (holdsSlot) {
     for (const booking of insertedBookingRows) {
-      const won = await confirmCapacityAfterInsert(booking);
+      const won = await confirmCapacityAfterInsert(
+        booking,
+        policy?.max_concurrent_bookings_per_staff ?? 1
+      );
 
       if (!won) {
         await rollbackBookingGroup(bookingGroup.id, insertedBookingIds);
@@ -446,7 +511,18 @@ export async function createBookingGroup({
   }
 
   // Step 11: confirmation notifications, per sub-booking, same rule as
-  // createBooking (isConfirmedAtCreation).
+  // createBooking (isConfirmedAtCreation). Email is collapsed to ONE combined
+  // send for the whole cart unless the branch policy opts into per-booking
+  // (booking_group_email_mode) - the per-booking in-app rows are written
+  // either way. `policy` is null only for an all-Walk-in group, so resolve
+  // the mode directly in that case.
+  // `policy` is the full row whenever any sub-booking is Online; only an
+  // all-Walk-in group leaves it null and needs a dedicated resolve here.
+  const emailMode = (policy ?? (await resolveEffectivePolicy(input.branch_id)))
+    .booking_group_email_mode;
+  const combineGroupEmail = emailMode === 'combined';
+  const confirmedAtCreation: Booking[] = [];
+
   for (let i = 0; i < insertedBookingRows.length; i += 1) {
     const booking = insertedBookingRows[i];
     const sub = resolvedSubBookings[i];
@@ -455,12 +531,23 @@ export async function createBookingGroup({
       booking.service_category === 'Veterinary';
 
     if (isConfirmedAtCreation) {
-      await sendBookingConfirmedNotification(booking);
+      await sendBookingConfirmedNotification(booking, {
+        skipEmail: combineGroupEmail,
+      });
+      confirmedAtCreation.push(booking);
 
       if (sub.staffResolution.preferenceType === 'specific') {
         await sendStaffAssignedNotification(booking);
       }
     }
+  }
+
+  if (combineGroupEmail && confirmedAtCreation.length > 0) {
+    await sendCombinedBookingGroupConfirmedEmail(
+      customerId,
+      input.branch_id,
+      confirmedAtCreation
+    );
   }
 
   // Step 12: ONE initial charge for the whole group (best-effort - a
@@ -649,6 +736,7 @@ async function resolveSubBooking({
       ? await verifyCagePreference(
           subInput.cage_preference.cage_id!,
           branchId,
+          pet.pet_type,
           staffRole ? undefined : (pet.weight_class ?? undefined)
         )
       : null;
@@ -671,12 +759,17 @@ async function resolveSubBooking({
   }
 
   if (staffResolution.assignedStaffId) {
+    // `policy` is only null for an all-Walk-in group (see createBookingGroup) -
+    // those keep the strict capacity of 1; a receptionist bundling several
+    // walk-ins onto one staff member at the same instant is already an
+    // unusual case and the stricter guard is the safe default.
     claimWindowOrThrow(
       claimedStaffWindows,
       staffResolution.assignedStaffId,
       startMs,
       endMs,
-      'staff'
+      'staff',
+      policy?.max_concurrent_bookings_per_staff ?? 1
     );
   }
 

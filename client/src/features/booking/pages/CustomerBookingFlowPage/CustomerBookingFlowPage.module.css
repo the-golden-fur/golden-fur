@@ -54,6 +54,32 @@
   gap: var(--space-2);
 }
 
+/* Persistent "services selected so far" recap (SelectedItemsSummary),
+   shown above stepContent on every step after Services - a native
+   <details>, collapsed by default, kept small and separate so it never
+   competes visually with the current step's own content below it. */
+.selectedItemsSummary {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.selectedItemsSummaryTitle {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.selectedItemsSummaryList {
+  list-style: none;
+  display: grid;
+  gap: var(--space-0-5);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+}
+
 .navRow {
   display: flex;
   justify-content: space-between;
@@ -393,6 +419,20 @@
   padding: var(--space-2);
 }
 
+.errorText {
+  margin: 0;
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+}
+
+.carePhotoThumbnail {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
 .supplierChoice {
   display: flex;
   flex-wrap: wrap;
@@ -467,6 +507,23 @@
   gap: var(--space-3);
 }
 
+/* Derived end time + duration for the picked start - a plain caption below
+   the time picker (Architectural-Change-History: "At the bottom, not in
+   select; separate label"), never an editable control. */
+.slotSummary {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.slotSummary strong {
+  font-weight: var(--weight-medium);
+}
+
 .nightsField {
   display: flex;
   align-items: flex-end;
@@ -490,36 +547,6 @@
   font: inherit;
   padding: var(--space-1) var(--space-2);
   width: 6rem;
-}
-
-.modalOverlay {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgb(0 0 0 / 50%);
-  z-index: var(--z-modal, 1000);
-  padding: var(--space-3);
-}
-
-.modal {
-  display: grid;
-  gap: var(--space-3);
-  max-width: 28rem;
-  width: 100%;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-4);
-}
-
-.modalTitle {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-family: var(--font-heading);
-  font-size: var(--text-heading-sm);
-  font-weight: var(--weight-semibold);
 }
 
 .fieldLabel {

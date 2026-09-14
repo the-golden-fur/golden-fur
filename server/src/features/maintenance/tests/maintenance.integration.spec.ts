@@ -84,8 +84,14 @@ const PACKAGE_PRICING_CONFIGURATION = {
 const PROMO = {
   id: 'promo-1',
   name: 'Summer Grooming Deal',
-  start_date: '2026-08-01',
-  end_date: '2026-08-31',
+  promo_type: 'date_range',
+  // Wide-open window (rather than a fixed month) so isPromoCurrentlyEligible
+  // (real Date.now(), not mocked) always reports this fixture as active
+  // regardless of when the suite actually runs - same fix as
+  // promos.service.spec.ts's own DATE_PROMO fixture.
+  start_date: '2020-01-01',
+  end_date: '2099-12-31',
+  days_of_week: null,
   condition_note: null,
   discount_type: 'Percentage',
   value: 15,

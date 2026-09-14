@@ -38,6 +38,16 @@ function isFontSizePreference(value: unknown): value is FontSizePreference {
   );
 }
 
+const WEIGHT_UNIT_PREFERENCES = ['kg', 'lbs'] as const;
+type WeightUnitPreference = (typeof WEIGHT_UNIT_PREFERENCES)[number];
+
+function isWeightUnitPreference(value: unknown): value is WeightUnitPreference {
+  return (
+    typeof value === 'string' &&
+    (WEIGHT_UNIT_PREFERENCES as readonly string[]).includes(value)
+  );
+}
+
 function getUserClient(req: AuthenticatedRequest) {
   const authHeader = req.headers.authorization;
   return createClient(
@@ -59,9 +69,14 @@ export async function staffPreferencesController(
   const {
     theme_preference: themePreference,
     font_size_preference: fontSizePreference,
+    weight_unit_preference: weightUnitPreference,
   } = req.body ?? {};
 
-  if (themePreference === undefined && fontSizePreference === undefined) {
+  if (
+    themePreference === undefined &&
+    fontSizePreference === undefined &&
+    weightUnitPreference === undefined
+  ) {
     return res.status(400).json({ error: 'No preferences provided' });
   }
   if (themePreference !== undefined && !isThemePreference(themePreference)) {
@@ -73,18 +88,26 @@ export async function staffPreferencesController(
   ) {
     return res.status(400).json({ error: 'Invalid font size preference' });
   }
+  if (
+    weightUnitPreference !== undefined &&
+    !isWeightUnitPreference(weightUnitPreference)
+  ) {
+    return res.status(400).json({ error: 'Invalid weight unit preference' });
+  }
 
   const update: Record<string, string> = {};
   if (themePreference !== undefined) update.theme_preference = themePreference;
   if (fontSizePreference !== undefined)
     update.font_size_preference = fontSizePreference;
+  if (weightUnitPreference !== undefined)
+    update.weight_unit_preference = weightUnitPreference;
 
   try {
     const { data, error } = await getUserClient(req)
       .from('staff_profiles')
       .update(update)
       .eq('id', userId)
-      .select('theme_preference, font_size_preference')
+      .select('theme_preference, font_size_preference, weight_unit_preference')
       .single();
 
     if (error || !data) {
@@ -96,6 +119,7 @@ export async function staffPreferencesController(
     return res.status(200).json({
       theme_preference: data.theme_preference,
       font_size_preference: data.font_size_preference,
+      weight_unit_preference: data.weight_unit_preference,
     });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });

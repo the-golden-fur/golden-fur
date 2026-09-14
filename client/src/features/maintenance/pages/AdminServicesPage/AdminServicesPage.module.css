@@ -161,6 +161,12 @@
   text-transform: uppercase;
 }
 
+.fieldHint {
+  margin: calc(-1 * var(--space-1)) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+}
+
 .input {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

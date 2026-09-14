@@ -14,7 +14,10 @@ vi.mock('../../api/reports.api', () => ({ getMyTransactionHistory: vi.fn() }));
 vi.mock('../../../billing/api/billing.api', () => ({
   payTransactionWithCredit: vi.fn(),
 }));
-vi.mock('../../../booking/api/booking.api', () => ({ payForBooking: vi.fn() }));
+vi.mock('../../../booking/api/booking.api', () => ({
+  payForBooking: vi.fn(),
+  getBookingDetails: vi.fn(),
+}));
 
 function buildRecord(
   overrides: Partial<TransactionRecord> = {}
@@ -22,7 +25,9 @@ function buildRecord(
   return {
     id: 'txn-1',
     booking_id: 'booking-1',
+    booking_group_id: null,
     customer_id: 'cust-1',
+    customer_name: 'Ada Lovelace',
     branch_id: 'branch-1',
     transaction_type: 'booking_payment',
     payment_method: 'Cash',
@@ -93,9 +98,60 @@ describe('CustomerTransactionHistoryPage', () => {
     await waitFor(() =>
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
-        'token'
+        'token',
+        undefined
       )
     );
+  });
+
+  it('sends a partial "Amount paid" as the credit amount and previews the balance', async () => {
+    const user = userEvent.setup();
+    vi.mocked(billingApi.payTransactionWithCredit).mockResolvedValue({
+      data: { transaction: {} as never, booking: null },
+      error: null,
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+    const dialog = screen.getByRole('dialog');
+    const amountField = within(dialog).getByLabelText(/amount paid/i);
+    expect(amountField).toHaveValue(500);
+    await user.clear(amountField);
+    await user.type(amountField, '200');
+    expect(
+      within(dialog).getByText(/does not cover will be left as a balance/i)
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Pay with credit' })
+    );
+
+    await waitFor(() =>
+      expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
+        'txn-1',
+        'token',
+        200
+      )
+    );
+  });
+
+  it('locks the "Amount paid" field to the full amount for GCash / Maya', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+    const dialog = screen.getByRole('dialog');
+    const amountField = within(dialog).getByLabelText(/amount paid/i);
+    await user.clear(amountField);
+    await user.type(amountField, '200');
+    await user.click(within(dialog).getByLabelText('GCash'));
+
+    expect(amountField).toBeDisabled();
+    expect(amountField).toHaveValue(500);
+    expect(
+      within(dialog).getByText(/must pay the full amount/i)
+    ).toBeInTheDocument();
   });
 
   it('routes a GCash choice through payForBooking', async () => {
@@ -121,6 +177,65 @@ describe('CustomerTransactionHistoryPage', () => {
         { payment_method: 'GCash', pay_in_full: true }
       )
     );
+  });
+
+  it('opens the booking details popup when a booking-payment row is clicked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: null,
+      error: 'stub',
+    });
+
+    renderPage();
+
+    const row = (await screen.findByText('PHP 500.00')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(within(row).getByText('Grooming'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: 'Booking details' })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(bookingApi.getBookingDetails).toHaveBeenCalledWith(
+        'booking-1',
+        'token'
+      )
+    );
+  });
+
+  it('does not open the details popup when the row Pay button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Pay' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).queryByRole('heading', { name: 'Booking details' })
+    ).not.toBeInTheDocument();
+    expect(bookingApi.getBookingDetails).not.toHaveBeenCalled();
+  });
+
+  it('renders the Board view and opens booking details from a card', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: null,
+      error: 'stub',
+    });
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Board' }));
+
+    expect(screen.getByText('Due payment')).toBeInTheDocument();
+    await user.click(screen.getByText('Grooming'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: 'Booking details' })
+    ).toBeInTheDocument();
   });
 
   it('shows no Pay button on a settled transaction', async () => {

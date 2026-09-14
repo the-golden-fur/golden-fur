@@ -1,35 +1,24 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as daycareApi from '../../api/daycare.api';
 import { DaycareCheckoutPanel } from './DaycareCheckoutPanel';
 
 vi.mock('../../api/daycare.api', () => ({
   checkOutDaycareSession: vi.fn(),
-  listDaycareSessions: vi.fn(),
-}));
-vi.mock('../../../customers/api/customer.api', () => ({
-  getPet: vi.fn(),
 }));
 
-function renderPanel(initialSessionId: string | null = 'session-1') {
+function renderPanel(sessionId = 'session-1') {
   return render(
     createElement(DaycareCheckoutPanel, {
       accessToken: 'token',
-      initialSessionId,
+      sessionId,
     })
   );
 }
 
 describe('DaycareCheckoutPanel (#69)', () => {
-  beforeEach(() => {
-    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
-      data: [],
-      error: null,
-    });
-  });
-
   it('AC-2: shows the charge broken down by hours, matching the backend total exactly', async () => {
     vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
       data: {

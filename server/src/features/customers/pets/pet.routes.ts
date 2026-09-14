@@ -15,6 +15,7 @@ import {
   updatePetController,
 } from './pet.controller.ts';
 import { uploadPetPhoto } from './services/petPhotoUpload.service.ts';
+import { uploadPetCareItemPhoto } from './services/petCareItemPhotoUpload.service.ts';
 import {
   createMedicalNote,
   listMedicalNotes,
@@ -94,6 +95,40 @@ router.post(
 
     try {
       const result = await uploadPetPhoto({
+        requesterId,
+        petId: petId as string,
+        file,
+      });
+
+      return res.status(200).json({ photo_url: result.photoUrl });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
+
+router.post(
+  '/pets/:id/care-item-photo',
+  jwtMiddleware,
+  petPhotoUpload.single('photo'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const file = req.file as
+      | { buffer: Buffer; mimetype: string; originalname: string; size: number }
+      | undefined;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    try {
+      const result = await uploadPetCareItemPhoto({
         requesterId,
         petId: petId as string,
         file,

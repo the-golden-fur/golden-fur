@@ -79,6 +79,7 @@ const DEFAULT_POLICY = {
   credit_expiry_mode: 'rolling',
   credit_expiry_days: 30,
   credit_expiry_fixed_date: null,
+  max_concurrent_bookings_per_staff: 1,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
 };
@@ -316,16 +317,23 @@ describe('staffPicker.service (#52)', () => {
         serviceCategory: 'Grooming',
       });
 
-      expect(result).toEqual({ staff_picker_enabled: false, options: [] });
+      expect(result).toEqual({
+        staff_picker_enabled: false,
+        options: [],
+        max_concurrent_per_staff: 1,
+      });
       expect(supabase.rpc).not.toHaveBeenCalled();
     });
 
     it('AC-4: when enabled, "No preference" is always present and first', async () => {
       // isStaffPickerEnabled and listAvailableStaff each independently
-      // resolve the service_types row - two queued fetches.
+      // resolve the service_types row (two queued fetches), then
+      // resolveEffectivePolicy reads policy_configurations for
+      // max_concurrent_per_staff (third fetch).
       queueFromResults(
         serviceTypeStaffRow(['Groomer']),
-        serviceTypeStaffRow(['Groomer'])
+        serviceTypeStaffRow(['Groomer']),
+        { data: [DEFAULT_POLICY], error: null }
       );
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: GROOMERS,
@@ -340,6 +348,7 @@ describe('staffPicker.service (#52)', () => {
       expect(result.staff_picker_enabled).toBe(true);
       expect(result.options[0]).toEqual({ type: 'no_preference' });
       expect(result.options).toHaveLength(3);
+      expect(result.max_concurrent_per_staff).toBe(1);
     });
   });
 

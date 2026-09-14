@@ -125,10 +125,16 @@ export async function uploadAvatar(
 
 export async function listUnavailabilityBlocks(
   staffId: string,
-  accessToken: string
+  accessToken: string,
+  /** My Schedule: when given, returns every full-day entry (past or
+   * future) overlapping the range instead of only not-yet-ended blocks. */
+  range?: { from: string; to: string }
 ): Promise<StaffApiResult<UnavailabilityBlock[]>> {
+  const query = range
+    ? `?${new URLSearchParams({ from: range.from, to: range.to }).toString()}`
+    : '';
   const response = await fetch(
-    `${API_BASE_URL}/staff/${staffId}/unavailability`,
+    `${API_BASE_URL}/staff/${staffId}/unavailability${query}`,
     { headers: authHeaders(accessToken) }
   );
 
@@ -264,7 +270,7 @@ export async function listStaff(
 
 /**
  * Issue #74: re-sends the existing account_created credential email
- * (via Resend) as-is - does not regenerate the temporary password.
+ * (via Brevo) as-is - does not regenerate the temporary password.
  */
 export async function resendAccountEmail(
   staffId: string,

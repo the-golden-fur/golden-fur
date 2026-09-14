@@ -38,6 +38,11 @@ interface PetSeed {
    * been staff-assessed onsite - weight_class/coat_type/assessed_by/
    * assessed_at all stay NULL (see ...073_m02_pets_assessment_lock.sql). */
   weightClass?: 'S' | 'M' | 'L' | 'XL';
+  /** Canonical kilograms recorded during assessment - kept consistent with
+   * weightClass under the seeded cut-offs (M>=9.5, L>=22, XL>=41; see
+   * ...186_m13_create_pet_weight_class_configuration.sql). Omitted for
+   * never-assessed pets. */
+  weightKg?: number;
   coatType?: 'SC' | 'LC';
   /** How long ago this pet was assessed, for a varied (not all-identical)
    * "last assessed X ago" display. */
@@ -55,6 +60,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Max',
       petType: 'Dog',
       weightClass: 'M',
+      weightKg: 14.2,
       coatType: 'SC',
       assessedDaysAgo: 45,
     },
@@ -62,6 +68,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Luna',
       petType: 'Cat',
       weightClass: 'S',
+      weightKg: 4.1,
       coatType: 'LC',
       assessedDaysAgo: 10,
     },
@@ -72,6 +79,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Rex',
       petType: 'Dog',
       weightClass: 'L',
+      weightKg: 27.6,
       coatType: 'LC',
       assessedDaysAgo: 90,
     },
@@ -82,6 +90,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Bruno',
       petType: 'Dog',
       weightClass: 'XL',
+      weightKg: 48.3,
       coatType: 'SC',
       assessedDaysAgo: 200,
     },
@@ -89,6 +98,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Mimi',
       petType: 'Cat',
       weightClass: 'M',
+      weightKg: 10.4,
       coatType: 'LC',
       assessedDaysAgo: 5,
     },
@@ -99,6 +109,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Coco',
       petType: 'Cat',
       weightClass: 'L',
+      weightKg: 23.1,
       coatType: 'SC',
       assessedDaysAgo: 400,
     },
@@ -109,6 +120,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Bella',
       petType: 'Dog',
       weightClass: 'S',
+      weightKg: 6.7,
       coatType: 'LC',
       assessedDaysAgo: 20,
     },
@@ -116,6 +128,7 @@ export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
       name: 'Simba',
       petType: 'Cat',
       weightClass: 'XL',
+      weightKg: 42.5,
       coatType: 'SC',
       assessedDaysAgo: 60,
     },
@@ -236,6 +249,7 @@ export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
         name: pet.name,
         pet_type: pet.petType,
         weight_class: pet.weightClass ?? null,
+        weight_kg: pet.weightKg ?? null,
         coat_type: pet.coatType ?? null,
         assessed_by: pet.assessedDaysAgo !== undefined ? assessorId : null,
         assessed_at:

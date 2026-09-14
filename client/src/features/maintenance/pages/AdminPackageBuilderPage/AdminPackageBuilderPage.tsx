@@ -21,6 +21,7 @@ import {
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
 import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
+import { formatDuration } from '../../../../shared/utils/formatDuration';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
@@ -346,6 +347,35 @@ export function AdminPackageBuilderPage() {
       idsInCategory.has(option.id)
     );
   }, [searchedServiceOptions, serviceTypeFilter, services]);
+
+  // Derived package length, shown read-only under the service list. Mirrors
+  // the server's derivePackageDuration (plain sum of member durations, a
+  // null member counted as 0) - packages have no stored duration; a booking
+  // that picks this package runs for this long (see Package.
+  // total_duration_minutes / booking.service.ts).
+  const selectedServiceRows = useMemo(
+    () =>
+      selectedServiceIds
+        .map((serviceId) =>
+          services.find((service) => service.id === serviceId)
+        )
+        .filter((service): service is Service => service !== undefined),
+    [selectedServiceIds, services]
+  );
+  const derivedDurationMinutes = useMemo(
+    () =>
+      selectedServiceRows.reduce(
+        (sum, service) => sum + (service.duration_minutes ?? 0),
+        0
+      ),
+    [selectedServiceRows]
+  );
+  const servicesMissingDuration = useMemo(
+    () =>
+      selectedServiceRows.filter((service) => service.duration_minutes === null)
+        .length,
+    [selectedServiceRows]
+  );
 
   // Same live-preview total PackagePricingPreview shows, computed here too
   // so it can feed the matrix breakdown below (PricingMatrixPreview takes a
@@ -822,6 +852,19 @@ export function AdminPackageBuilderPage() {
                       selectedIds={selectedServiceIds}
                       onChange={setSelectedServiceIds}
                     />
+
+                    {selectedServiceIds.length > 0 ? (
+                      <p className={styles.copy}>
+                        Estimated total time:{' '}
+                        {formatDuration(derivedDurationMinutes)} (sum of the
+                        included services&apos; average times)
+                        {servicesMissingDuration > 0
+                          ? ` - ${servicesMissingDuration} service${
+                              servicesMissingDuration === 1 ? ' has' : 's have'
+                            } no time set and count as 0; set it on the Services tab`
+                          : ''}
+                      </p>
+                    ) : null}
                   </>
                 )}
               </div>

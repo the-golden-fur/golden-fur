@@ -7,6 +7,21 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
+/** Custom change (cage pet-type support): flattens the cage_pet_types embed
+ * (`[{pet_type: 'Dog'}, {pet_type: 'Cat'}]`) into the plain `pet_types:
+ * string[]` shape callers/clients expect. */
+function withFlattenedPetTypes(
+  row: Record<string, unknown> & { cage_pet_types?: { pet_type: string }[] }
+): Cage {
+  const { cage_pet_types, ...rest } = row;
+  return {
+    ...(rest as Omit<Cage, 'pet_types'>),
+    pet_types: (cage_pet_types ?? []).map((row) => row.pet_type),
+  };
+}
+
+const CAGE_SELECT_WITH_PET_TYPES = '*, cage_pet_types(pet_type)';
+
 /** #78 AC-1: cage grid grouped by size category, for the Cage Status Grid
  * UI (#79) - one query, grouped client-side/here rather than four separate
  * round trips. */
@@ -15,7 +30,7 @@ export async function getCageGrid(
 ): Promise<Record<CageSize, Cage[]>> {
   const { data, error } = await supabase
     .from('cages')
-    .select('*')
+    .select(CAGE_SELECT_WITH_PET_TYPES)
     .eq('branch_id', branchId)
     .order('cage_label', { ascending: true });
 
@@ -23,7 +38,8 @@ export async function getCageGrid(
 
   const grid: Record<CageSize, Cage[]> = { S: [], M: [], L: [], XL: [] };
 
-  for (const cage of (data ?? []) as Cage[]) {
+  for (const row of data ?? []) {
+    const cage = withFlattenedPetTypes(row);
     grid[cage.size].push(cage);
   }
 
@@ -75,7 +91,7 @@ export async function setCageMaintenanceStatus(
     .eq('id', cageId)
     .eq('branch_id', branchId)
     .eq('status', requiredCurrentStatus)
-    .select('*')
+    .select(CAGE_SELECT_WITH_PET_TYPES)
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
@@ -86,23 +102,36 @@ export async function setCageMaintenanceStatus(
     );
   }
 
-  return updated as Cage;
+  return withFlattenedPetTypes(updated);
 }
 
 interface CreateCageParams {
   branchId: string;
   cageLabel: string;
   size: CageSize;
+  petTypes: string[];
 }
 
 /** Custom change (Cage CRUD, Settings > Config): Admin/Superadmin can add a
  * cage to their branch's inventory - authorization enforced at the route
- * layer (requireRole), matching setCageMaintenanceStatus's convention. */
+ * layer (requireRole), matching setCageMaintenanceStatus's convention.
+ *
+ * Custom change (cage pet-type support): petTypes must be non-empty (also
+ * enforced at the validator layer, belt-and-suspenders) - a cage that
+ * supports no pet type at all could never be matched to any booking. The
+ * cage_pet_types rows are inserted right after the cage itself; if that
+ * insert fails, the just-created cage row is deleted so a cage never sits
+ * with zero pet types. */
 export async function createCage({
   branchId,
   cageLabel,
   size,
+  petTypes,
 }: CreateCageParams): Promise<Cage> {
+  if (petTypes.length === 0) {
+    throwWithStatus(400, 'At least one pet type is required');
+  }
+
   const { data, error } = await supabase
     .from('cages')
     .insert({ branch_id: branchId, cage_label: cageLabel, size })
@@ -113,7 +142,16 @@ export async function createCage({
     throwWithStatus(400, error?.message ?? 'Failed to create cage');
   }
 
-  return data as Cage;
+  const { error: petTypesError } = await supabase
+    .from('cage_pet_types')
+    .insert(petTypes.map((pet_type) => ({ cage_id: data.id, pet_type })));
+
+  if (petTypesError) {
+    await supabase.from('cages').delete().eq('id', data.id);
+    throwWithStatus(400, petTypesError.message);
+  }
+
+  return { ...(data as Omit<Cage, 'pet_types'>), pet_types: petTypes };
 }
 
 interface UpdateCageParams {
@@ -121,17 +159,28 @@ interface UpdateCageParams {
   branchId: string;
   cageLabel?: string;
   size?: CageSize;
+  petTypes?: string[];
 }
 
 /** Custom change (Cage CRUD): edits a cage's label/size - status changes
  * stay on setCageMaintenanceStatus's own conditional-update path above,
- * kept separate rather than folded in here. */
+ * kept separate rather than folded in here.
+ *
+ * Custom change (cage pet-type support): when petTypes is given (must be
+ * non-empty), replaces the cage's cage_pet_types membership wholesale
+ * (delete + reinsert) rather than diffing - this table is tiny per cage, so
+ * a diff isn't worth the extra complexity. */
 export async function updateCage({
   cageId,
   branchId,
   cageLabel,
   size,
+  petTypes,
 }: UpdateCageParams): Promise<Cage> {
+  if (petTypes !== undefined && petTypes.length === 0) {
+    throwWithStatus(400, 'At least one pet type is required');
+  }
+
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -149,7 +198,34 @@ export async function updateCage({
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Cage not found');
 
-  return data as Cage;
+  if (petTypes === undefined) {
+    const { data: existing, error: existingError } = await supabase
+      .from('cage_pet_types')
+      .select('pet_type')
+      .eq('cage_id', cageId);
+
+    if (existingError) throwWithStatus(400, existingError.message);
+
+    return {
+      ...(data as Omit<Cage, 'pet_types'>),
+      pet_types: (existing ?? []).map((row) => row.pet_type),
+    };
+  }
+
+  const { error: deleteError } = await supabase
+    .from('cage_pet_types')
+    .delete()
+    .eq('cage_id', cageId);
+
+  if (deleteError) throwWithStatus(400, deleteError.message);
+
+  const { error: insertError } = await supabase
+    .from('cage_pet_types')
+    .insert(petTypes.map((pet_type) => ({ cage_id: cageId, pet_type })));
+
+  if (insertError) throwWithStatus(400, insertError.message);
+
+  return { ...(data as Omit<Cage, 'pet_types'>), pet_types: petTypes };
 }
 
 interface DeleteCageParams {

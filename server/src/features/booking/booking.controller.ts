@@ -5,6 +5,7 @@ import {
   createBooking,
   getBookingById,
   listBookings,
+  listConflictedBookingsForCustomer,
   listPetBookingConflicts,
   overrideBookingStatus,
   startBooking,
@@ -19,30 +20,40 @@ import {
   resolveNoticeLeadDays,
   updatePolicyConfiguration,
 } from './services/staffPicker.service.ts';
-import { getCagePickerOptions } from './services/cagePicker.service.ts';
+import {
+  getCageAssignmentStatus,
+  getCagePickerOptions,
+} from './services/cagePicker.service.ts';
 import { rescheduleBooking } from './services/reschedule.service.ts';
+import { extendHotelStay } from './services/extendStay.service.ts';
+import {
+  decideCreditReview,
+  listPendingCreditReviews,
+} from './services/creditReview.service.ts';
 import { cancelBooking } from './services/cancellation.service.ts';
 import {
-  findNextAvailableSlot,
   getDaySlots,
   partsOfDayWithinOperatingHours,
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
+import { getBookingDetails } from './services/bookingDetails.service.ts';
 import {
   addCustomerBalancePayment,
   payForBooking,
 } from '../billing/services/customerBookingPayment.service.ts';
 import {
   availabilityQueryValidator,
+  cageAssignmentStatusQueryValidator,
   cagePickerQueryValidator,
   cancelBookingValidator,
   catalogQueryValidator,
   createBookingGroupValidator,
   createBookingValidator,
+  decideCreditReviewValidator,
   downpaymentStatusQueryValidator,
+  extendHotelStayValidator,
   listBookingsQueryValidator,
-  nextAvailableSlotQueryValidator,
   onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
   partsOfDayQueryValidator,
@@ -160,6 +171,34 @@ export async function getBookingController(
   }
 }
 
+/**
+ * Fully-hydrated single booking for the read-only "View details" views
+ * (customer My Bookings modal + staff Booking Details page). Same
+ * jwtMiddleware-only gate as GET /bookings/:id - ownership (or staff role)
+ * is enforced inside getBookingById, which getBookingDetails delegates to.
+ */
+export async function getBookingDetailsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const details = await getBookingDetails({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+    });
+
+    return res.status(200).json({ details });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function listBookingsController(
   req: AuthenticatedRequest,
   res: Response
@@ -250,40 +289,6 @@ export async function availabilityController(
   }
 }
 
-export async function nextAvailableSlotController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const requesterId = req.user?.sub;
-
-  if (!requesterId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = nextAvailableSlotQueryValidator.safeParse(req.query);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid query', details: parsed.error.issues });
-  }
-
-  try {
-    const next = await findNextAvailableSlot({
-      branchId: parsed.data.branch_id,
-      serviceCategory: parsed.data.service_category,
-      fromDate: parsed.data.from_date,
-      slotDurationMinutes: parsed.data.slot_duration_minutes,
-      petWeightClass: parsed.data.pet_weight_class,
-      lookaheadDays: parsed.data.lookahead_days,
-    });
-
-    return res.status(200).json({ next });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
 export async function partsOfDayController(
   req: AuthenticatedRequest,
   res: Response
@@ -336,6 +341,7 @@ export async function catalogController(
     const catalog = await getBookingCatalog({
       branchId: parsed.data.branch_id,
       category: parsed.data.category,
+      petType: parsed.data.pet_type,
     });
 
     return res.status(200).json(catalog);
@@ -396,7 +402,45 @@ export async function cagePickerOptionsController(
   }
 
   try {
-    const result = await getCagePickerOptions(parsed.data.branch_id, 'Hotel');
+    const result = await getCagePickerOptions(
+      parsed.data.branch_id,
+      'Hotel',
+      parsed.data.pet_id
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change (cage pet-type support / customer readonly cage view):
+ * open to customer and staff alike (jwtMiddleware-gated only, no
+ * requireRole), matching this file's convention for booking-adjacent reads
+ * both roles need. */
+export async function cageAssignmentStatusController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = cageAssignmentStatusQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await getCageAssignmentStatus(
+      parsed.data.pet_id,
+      parsed.data.branch_id
+    );
 
     return res.status(200).json(result);
   } catch (error) {
@@ -459,6 +503,39 @@ export async function rescheduleBookingController(
       requesterId,
       bookingId: paramId(req, 'id'),
       input: parsed.data,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Staff-only "extend stay" action - role-gated at the route level
+ * (BOOKING_MARK_PAID_ROLES), so no additional role check here. */
+export async function extendHotelStayController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = extendHotelStayValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await extendHotelStay({
+      requesterId,
+      bookingId: paramId(req, 'id'),
+      additionalNights: parsed.data.additional_nights,
     });
 
     return res.status(200).json(result);
@@ -622,6 +699,31 @@ export async function petBookingConflictsController(
   }
 }
 
+/** Slot-conflict notification (20260911188): the logged-in customer's own
+ * still-Pending bookings that just lost their date/time/staff/cage slot to
+ * another customer's payment - the CustomerPortalPage dashboard popup's data
+ * source. Always scoped to the caller's own id (no customer_id query param,
+ * unlike petBookingConflictsController above) - this is a "what needs MY
+ * attention right now" surface, never a staff-assisted lookup. */
+export async function conflictedBookingsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const conflicts = await listConflictedBookingsForCustomer(requesterId);
+
+    return res.status(200).json({ conflicts });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function cancelBookingController(
   req: AuthenticatedRequest,
   res: Response
@@ -701,6 +803,60 @@ export async function overrideBookingStatusController(
       status: parsed.data.status,
     });
     return res.status(200).json({ booking });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Manual-cancellation-credit-review custom change: the pending queue -
+ * Superadmin sees every branch, everyone else is locked to their own (same
+ * convention as activityLogController). */
+export async function listPendingCreditReviewsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const role = req.user?.role;
+  const branchId = req.user?.branch_id;
+
+  if (!role || !branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const items = await listPendingCreditReviews(
+      role === 'Superadmin' ? undefined : branchId
+    );
+    return res.status(200).json({ items });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function decideCreditReviewController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = decideCreditReviewValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const log = await decideCreditReview({
+      requesterId,
+      cancellationLogId: paramId(req, 'id'),
+      decision: parsed.data.decision,
+    });
+    return res.status(200).json({ log });
   } catch (error) {
     return sendServiceError(res, error);
   }

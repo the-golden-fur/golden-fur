@@ -7,19 +7,28 @@ import {
   DaycareCheckoutRedirect,
   DaycareCheckoutSessionRedirect,
 } from './pages/DaycareQueuePage/DaycareLegacyRedirects';
+import { DaycareCheckInFormPage } from './pages/DaycareCheckInFormPage/DaycareCheckInFormPage';
 
 /**
- * Queue redesign: the former separate Daycare Check-in and Daycare Checkout
- * pages/routes are replaced by one Daycare Queue page with Check In/Check
- * Out tabs (role enforcement happens once inside DaycareQueuePage, instead
- * of once per page - and now also includes Groomer/Pet Assistant, mirrors
- * hotel.routes.tsx). The three old paths redirect into it rather than
- * disappearing outright, so old bookmarks/links keep working.
+ * Daycare Queue redesign: the Check In/Check Out tabs are gone - the queue is
+ * now a single status-driven list (see DaycareQueuePage's own header
+ * comment). A Pending row now routes to its own page
+ * (/staff/daycare/queue/check-in/:bookingId) instead of a tab panel;
+ * checking in and out both moved off this route entirely (check-in has its
+ * own route below, check-out now lives on the shared Boarding Checklist,
+ * /staff/hotel/care-log?petId=...). The three old check-in/checkout paths
+ * still redirect here rather than disappearing outright, so old bookmarks
+ * keep working - they can no longer restore the exact tab/session they used
+ * to (that concept doesn't exist anymore), so they just land on the queue.
  */
 export const daycareRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
       <Route path="/staff/daycare/queue" element={<DaycareQueuePage />} />
+      <Route
+        path="/staff/daycare/queue/check-in/:bookingId"
+        element={<DaycareCheckInFormPage />}
+      />
       <Route
         path="/staff/daycare/check-in"
         element={<DaycareCheckInRedirect />}

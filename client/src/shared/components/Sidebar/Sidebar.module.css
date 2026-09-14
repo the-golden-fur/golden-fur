@@ -333,6 +333,11 @@
 }
 
 .categorySortRow {
+  /* Own stacking context above every category section that follows it, so
+     the "Sort categories" dropdown is never painted under a later category's
+     links. */
+  position: relative;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: space-between;

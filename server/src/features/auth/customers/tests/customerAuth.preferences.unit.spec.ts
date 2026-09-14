@@ -100,9 +100,30 @@ describe('customerPreferencesController', () => {
     expect(mockUserClient.from).not.toHaveBeenCalled();
   });
 
-  it('updates theme_preference only and returns both current values', async () => {
+  it('returns 400 for an invalid weight_unit_preference value', async () => {
+    const req = {
+      body: { weight_unit_preference: 'stones' },
+      headers: { authorization: 'Bearer customer-token' },
+      user: { sub: 'customer-id' },
+    } as unknown as AuthenticatedRequest;
+    const res = mockResponse();
+
+    await customerPreferencesController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Invalid weight unit preference',
+    });
+    expect(mockUserClient.from).not.toHaveBeenCalled();
+  });
+
+  it('updates theme_preference only and returns all current values', async () => {
     const { update, eq } = mockUpdateChain({
-      data: { theme_preference: 'light', font_size_preference: 'medium' },
+      data: {
+        theme_preference: 'light',
+        font_size_preference: 'medium',
+        weight_unit_preference: 'kg',
+      },
       error: null,
     });
 
@@ -122,7 +143,31 @@ describe('customerPreferencesController', () => {
     expect(res.json).toHaveBeenCalledWith({
       theme_preference: 'light',
       font_size_preference: 'medium',
+      weight_unit_preference: 'kg',
     });
+  });
+
+  it('updates weight_unit_preference only', async () => {
+    const { update } = mockUpdateChain({
+      data: {
+        theme_preference: 'system',
+        font_size_preference: 'medium',
+        weight_unit_preference: 'lbs',
+      },
+      error: null,
+    });
+
+    const req = {
+      body: { weight_unit_preference: 'lbs' },
+      headers: { authorization: 'Bearer customer-token' },
+      user: { sub: 'customer-id' },
+    } as unknown as AuthenticatedRequest;
+    const res = mockResponse();
+
+    await customerPreferencesController(req, res);
+
+    expect(update).toHaveBeenCalledWith({ weight_unit_preference: 'lbs' });
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it('updates font_size_preference only', async () => {

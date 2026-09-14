@@ -13,6 +13,19 @@ vi.mock('../../../staff/api/staff.api', () => ({
   listStaff: vi.fn(),
 }));
 
+// Custom change (cage pet-type support): default resolved value so every
+// existing test sees the two seeded pet types without its own setup,
+// mirroring how CustomerBookingFlowPage.spec.ts defaults listServiceTypes.
+vi.mock('../../../maintenance/api/maintenance.api', () => ({
+  listPetTypes: vi.fn().mockResolvedValue({
+    data: [
+      { id: 'pt-dog', key: 'Dog', name: 'Dog', is_active: true },
+      { id: 'pt-cat', key: 'Cat', name: 'Cat', is_active: true },
+    ],
+    error: null,
+  }),
+}));
+
 vi.mock('../../api/hotel.api', () => ({
   getCageGrid: vi.fn(),
   createCage: vi.fn(),
@@ -27,6 +40,7 @@ const AVAILABLE_CAGE = {
   cage_label: 'Makati-S-01',
   size: 'S',
   status: 'Available',
+  pet_types: ['Dog', 'Cat'],
   created_at: '',
   updated_at: '',
 };
@@ -136,16 +150,48 @@ describe('AdminCagesPage', () => {
       screen.getByPlaceholderText('e.g. Makati-S-03'),
       'Makati-S-01'
     );
+    await user.click(screen.getByRole('checkbox', { name: 'Dog' }));
     await user.click(screen.getByRole('button', { name: 'Add cage' }));
 
     await waitFor(() =>
       expect(hotelApi.createCage).toHaveBeenCalledWith(
         'Makati-S-01',
         'S',
+        ['Dog'],
         'token'
       )
     );
     expect(await screen.findByText('Cage added.')).toBeInTheDocument();
+  });
+
+  it('Custom change (cage pet-type support): blocks submitting the create form with no pet type selected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: emptyGrid(),
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByPlaceholderText('e.g. Makati-S-03')
+      ).toBeInTheDocument()
+    );
+    await user.type(
+      screen.getByPlaceholderText('e.g. Makati-S-03'),
+      'Makati-S-01'
+    );
+    await user.click(screen.getByRole('button', { name: 'Add cage' }));
+
+    expect(
+      await screen.findByText('Select at least one pet type.')
+    ).toBeInTheDocument();
+    expect(hotelApi.createCage).not.toHaveBeenCalled();
   });
 
   it('deletes an Available cage but disables delete for an Occupied one', async () => {
@@ -250,7 +296,7 @@ describe('AdminCagesPage', () => {
     await waitFor(() =>
       expect(hotelApi.updateCage).toHaveBeenCalledWith(
         'cage-1',
-        { cage_label: 'Makati-S-99', size: 'S' },
+        { cage_label: 'Makati-S-99', size: 'S', pet_types: ['Dog', 'Cat'] },
         'token'
       )
     );

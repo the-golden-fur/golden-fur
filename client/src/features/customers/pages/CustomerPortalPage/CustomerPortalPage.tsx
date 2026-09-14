@@ -1,22 +1,28 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { formatCurrency } from '../../../../shared/utils/formatCurrency';
-import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
+import { CustomerPortalWidgets } from '../../components/CustomerPortalWidgets/CustomerPortalWidgets';
+import { SlotConflictModal } from '../../components/SlotConflictModal/SlotConflictModal';
 import { getCustomerProfile } from '../../api/customer.api';
+import { listMyConflictedBookings } from '../../../booking/api/booking.api';
+import type { ConflictedBooking } from '../../../booking/booking.types';
 import styles from './CustomerPortalPage.module.css';
 
 /**
  * The customer portal home (`/portal`, the Navbar brand link's destination).
- * Beyond the welcome message it shows a one-line account-credit summary that
- * links to the dedicated credits page (/portal/credits, CustomerCreditsPage)
- * - the per-branch cards + expiry schedule live there now, not here, so
- * there's a single home for that information.
+ * Under the welcome message it shows the portal dashboard: a notification
+ * board plus a 2x2 grid of My Pets / Book a Service / View Transactions /
+ * Account Credit tiles, each linking out to its dedicated page.
  */
 export function CustomerPortalPage() {
   const { user, accessToken } = useAuth();
-  const { total, balances, isLoading } = useCreditBalance();
   const [fullName, setFullName] = useState<string | null>(null);
+  // Slot-conflict notification: fetched once on landing here (the dashboard)
+  // so the popup fires immediately, per the request - "prompted immediately
+  // when I open into my dashboard." Empty array = nothing to show;
+  // SlotConflictModal itself no-ops when its list is empty.
+  const [conflictedBookings, setConflictedBookings] = useState<
+    ConflictedBooking[]
+  >([]);
 
   useEffect(() => {
     if (!user?.id || !accessToken) {
@@ -31,14 +37,16 @@ export function CustomerPortalPage() {
       }
     });
 
+    void listMyConflictedBookings(accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setConflictedBookings(result.data);
+      }
+    });
+
     return () => {
       isMounted = false;
     };
   }, [user?.id, accessToken]);
-
-  const fundedBranches = balances.filter(
-    (balance) => balance.balance > 0
-  ).length;
 
   return (
     <main className={styles.page}>
@@ -46,15 +54,18 @@ export function CustomerPortalPage() {
         Welcome back{fullName ? `, ${fullName}` : ''}!
       </h1>
 
-      <p className={styles.copy}>Find everything you need in the sidebar.</p>
+      <p className={styles.copy}>
+        Here&apos;s a quick look at your account. More is in the sidebar.
+      </p>
 
-      {!isLoading && total > 0 ? (
-        <Link to="/portal/credits" className={styles.creditSummary}>
-          You have <strong>{formatCurrency(total)}</strong> in account credit
-          across {fundedBranches} {fundedBranches === 1 ? 'branch' : 'branches'}{' '}
-          — view credit details
-        </Link>
+      {user?.id && accessToken ? (
+        <CustomerPortalWidgets customerId={user.id} accessToken={accessToken} />
       ) : null}
+
+      <SlotConflictModal
+        bookings={conflictedBookings}
+        onClose={() => setConflictedBookings([])}
+      />
     </main>
   );
 }

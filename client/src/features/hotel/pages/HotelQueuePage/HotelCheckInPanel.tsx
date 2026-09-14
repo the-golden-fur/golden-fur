@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
 import type { Booking } from '../../../booking/booking.types';
 import {
   checkInHotelStay,
@@ -18,7 +17,9 @@ import { formatTimeValue } from '../../components/TimeInput/formatTimeValue';
 import type {
   Cage,
   FeedingInstructionPayload,
+  FoodQuantityUnit,
   MealTime,
+  MedicationDoseUnit,
   MedicationInstructionPayload,
   PartOfDay,
   PlayingInstructionPayload,
@@ -63,6 +64,12 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
       text: item.food_type,
     },
     quantity: item.quantity,
+    // Custom change (care instruction units + photos): no unit-picker/photo
+    // upload UI on this panel - carried through unedited from the booking's
+    // own preferences so check-in doesn't silently drop what the customer
+    // already specified.
+    quantityUnit: item.quantity_unit,
+    photoUrl: item.photo_url,
     specialInstructions: item.special_instructions ?? '',
   }));
 }
@@ -94,6 +101,10 @@ function initialMedications(booking: Booking): MedicationUiState[] {
       text: item.medication_name,
     },
     dose: item.dose,
+    // Custom change (care instruction units + photos): pass-through only,
+    // see initialFeeding's dev note above.
+    doseUnit: item.dose_unit,
+    photoUrl: item.photo_url,
     scheduledTimes: item.scheduled_times,
     administrationNotes: item.administration_notes ?? '',
   }));
@@ -107,8 +118,9 @@ interface HotelCheckInPanelProps {
    * this panel always has an already-selected booking to work with rather
    * than owning its own picker/selection state. */
   booking: Booking;
-  /** Fires once a pet has been checked in, so the parent HotelQueuePage can
-   * switch to the Check Out tab with this stay preselected. */
+  /** Fires once a pet has been checked in, so the parent can leave this
+   * form - HotelCheckInFormPage redirects back to the Hotel Queue, which
+   * shows the success modal. */
   onCheckedIn: (stayId: string) => void;
 }
 
@@ -116,6 +128,8 @@ interface FeedingUiState {
   mealTime: MealTime;
   foodType: CatalogComboBoxValue;
   quantity: string;
+  quantityUnit?: FoodQuantityUnit;
+  photoUrl?: string;
   specialInstructions: string;
 }
 
@@ -132,6 +146,8 @@ interface WalkBlockUi {
 interface MedicationUiState {
   name: CatalogComboBoxValue;
   dose: string;
+  doseUnit?: MedicationDoseUnit;
+  photoUrl?: string;
   scheduledTimes: string[]; // "HH:MM", 24h, one per chip
   administrationNotes: string;
 }
@@ -175,9 +191,12 @@ function minutesBetween(start: string, end: string): number {
  * Check In tab) once a booking was picked from HotelBookingPicker - it's
  * now a real routed page (HotelCheckInFormPage, /staff/hotel/queue/check-
  * in/:bookingId) so editing a check-in has its own URL/back button instead
- * of scrolling to a form appended below the picker. The picker itself still
- * lives on HotelQueuePage's Check In tab; selecting a booking there
- * navigates here instead of setting local state.
+ * of scrolling to a form appended below the picker. It's reached from a
+ * queue row's "..." menu -> "View booking details" (the row's own "Check
+ * in" button checks the pet in on the spot without coming here). On a
+ * successful check-in it hands back to the parent, which returns to the
+ * queue and shows a success modal - there's no in-panel "go to checkout"
+ * step anymore.
  */
 export function HotelCheckInPanel({
   accessToken,
@@ -209,7 +228,6 @@ export function HotelCheckInPanel({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [checkedInStayId, setCheckedInStayId] = useState<string | null>(null);
 
   // Cage assignment and Care Instructions load read-only (the auto-suggested
   // cage plus whatever the booking already captured) - a single "Edit"
@@ -511,6 +529,8 @@ export function HotelCheckInPanel({
         meal_time: state.mealTime,
         food_type: state.foodType.text,
         quantity: state.quantity,
+        quantity_unit: state.quantityUnit,
+        photo_url: state.photoUrl,
         special_instructions: state.specialInstructions || undefined,
         food_catalog_id: state.foodType.catalogId ?? undefined,
       })
@@ -542,6 +562,8 @@ export function HotelCheckInPanel({
       (medication) => ({
         medication_name: medication.name.text,
         dose: medication.dose,
+        dose_unit: medication.doseUnit,
+        photo_url: medication.photoUrl,
         scheduled_times: medication.scheduledTimes.map(formatTimeValue),
         administration_notes: medication.administrationNotes || undefined,
         medication_catalog_id: medication.name.catalogId ?? undefined,
@@ -568,29 +590,7 @@ export function HotelCheckInPanel({
       return;
     }
 
-    setCheckedInStayId(result.data.stay.id);
-  }
-
-  if (checkedInStayId) {
-    return (
-      <>
-        <p className={styles.successBanner} role="status">
-          Pet checked in successfully.
-        </p>
-        <div className={styles.controls}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => onCheckedIn(checkedInStayId)}
-          >
-            Go to checkout
-          </button>
-          <Link className={styles.secondaryButton} to="/staff/hotel/queue">
-            Check in another pet
-          </Link>
-        </div>
-      </>
-    );
+    onCheckedIn(result.data.stay.id);
   }
 
   return (

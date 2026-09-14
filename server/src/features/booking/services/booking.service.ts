@@ -2,13 +2,25 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import {
   sendBookingConfirmedNotification,
+  sendCombinedBookingGroupConfirmedEmail,
+  sendSlotConflictNotification,
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
+import {
+  getCouponsByIds,
+  markCouponsRedeemed,
+} from '../../rewards/services/customerCoupons.service.ts';
+import { isPromoCurrentlyEligible } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
+  applyPromoCap,
+  type PromoCapRow,
+} from '../../../shared/services/promoCap/promoCap.service.ts';
 import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
+import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
 import {
   createNotification,
@@ -26,10 +38,17 @@ import {
   type ServiceCategory,
 } from '../booking.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
-import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
+import {
+  assertVeterinarianTreatedCustomer,
+  assertVeterinaryBranchEligibility,
+} from './veterinaryEligibility.service.ts';
 import {
   checkCapacity,
   confirmCapacityAfterInsert,
+  filterSameSizeRows,
+  listOverlappingPencilBookings,
+  type PencilBookingRow,
+  type WeightClass,
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
@@ -59,7 +78,9 @@ function throwWithStatus(statusCode: number, message: string): never {
 export interface PetRow {
   id: string;
   customer_id: string;
-  pet_type: 'Dog' | 'Cat';
+  /** Widened from the old 'Dog' | 'Cat' union - pet_type is now a free-text
+   * FK against the admin-managed pet_types table (20260912191). */
+  pet_type: string;
   weight_class: 'S' | 'M' | 'L' | 'XL' | null;
   coat_type: 'SC' | 'LC' | null;
 }
@@ -82,14 +103,23 @@ interface CreateBookingParams {
  * opt-in per service (`use_pricing_matrix`), not automatic for every
  * Grooming row - the board shows individual add-on services (Nail Trim,
  * Ear Cleaning, etc.) at one flat price regardless of size/coat, and only
- * Bath/Blow-dry/Brushing actually varying by size. Cats are always flat
- * regardless of the service's own flag - "Cat has no weight class or coat
- * type" (the board shows one flat Cat price, never a size/coat cell) - so a
- * Cat pet skips the tier lookup even for a matrix-enabled service.
+ * Bath/Blow-dry/Brushing actually varying by size.
+ *
+ * Custom change (Pet Types admin CRUD + fixed-price override, 20260912191/
+ * 20260912192): the old hardcoded "a Cat is always flat regardless of the
+ * service's own flag" rule is gone - Cat's flat pricing is now purely a
+ * consequence of the seeded pet_type_price_overrides row (800 PHP,
+ * system-wide default), not a species check in this function. `fixedPriceOverride`
+ * is resolved once per booking by resolveBookingItems (via
+ * petTypePriceOverrides.service.ts's getFixedPrice) and threaded down here -
+ * when set, it wins outright and the matrix/base_price logic below never
+ * runs. A pet type with no override (including a brand-new admin-created
+ * one) falls through to the same matrix-or-base_price logic every other pet
+ * type already used.
  *
  * Grooming price is tiered by the pet's size/coat when a matching
  * service_pricing_tiers cell exists; base_price otherwise (and always for
- * the other categories, a non-matrix service, or a Cat).
+ * the other categories or a non-matrix service).
  */
 interface PriceableService {
   category: ServiceCategory;
@@ -104,13 +134,12 @@ interface PriceableService {
 
 export function resolveServicePrice(
   service: PriceableService,
-  pet: PetRow
+  pet: PetRow,
+  fixedPriceOverride: number | null = null
 ): number {
-  if (
-    service.category === 'Grooming' &&
-    service.use_pricing_matrix &&
-    pet.pet_type !== 'Cat'
-  ) {
+  if (fixedPriceOverride !== null) return fixedPriceOverride;
+
+  if (service.category === 'Grooming' && service.use_pricing_matrix) {
     const tier = (service.service_pricing_tiers ?? []).find(
       (row) =>
         row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
@@ -169,7 +198,8 @@ async function resolveBookingItem(
   serviceCategory: ServiceCategory,
   branchId: string,
   scheduledStart: string,
-  scheduledEnd: string
+  scheduledEnd: string,
+  fixedPriceOverride: number | null
 ): Promise<ResolvedBookingItem> {
   if ('service_id' in itemInput) {
     const service = await getServiceById(itemInput.service_id);
@@ -203,7 +233,9 @@ async function resolveBookingItem(
     return {
       service_id: service.id,
       package_id: null,
-      price_at_booking: round2(resolveServicePrice(service, pet) * quantity),
+      price_at_booking: round2(
+        resolveServicePrice(service, pet, fixedPriceOverride) * quantity
+      ),
       duration_minutes_at_booking: durationMinutes,
     };
   }
@@ -274,7 +306,7 @@ async function resolveBookingItem(
     packageDurationMinutes
   );
 
-  const packagePrice = await resolvePackagePrice(pkg, pet);
+  const packagePrice = await resolvePackagePrice(pkg, pet, fixedPriceOverride);
 
   return {
     service_id: null,
@@ -297,18 +329,24 @@ async function resolveBookingItem(
  * confusing in the admin package builder (a plain member "diluted" the
  * total, and toggling the package flag alone did nothing without a matrix
  * member already selected). Falls back to the flat `bundled_price` whenever
- * the package isn't matrix-enabled, and for a Cat pet regardless (mirrors
- * resolveServicePrice's own Cat exemption - the S/M/L/XL matrix is a dog
- * weight-class scale).
+ * the package isn't matrix-enabled.
+ *
+ * Custom change (Pet Types admin CRUD + fixed-price override, 20260912191/
+ * 20260912192): the old hardcoded Cat exemption is gone - see
+ * resolveServicePrice's own doc comment for why. `fixedPriceOverride` wins
+ * outright when set, same as there.
  */
 export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
     'bundled_price' | 'use_pricing_matrix'
   >,
-  pet: PetRow
+  pet: PetRow,
+  fixedPriceOverride: number | null = null
 ): Promise<number> {
-  if (!pkg.use_pricing_matrix || pet.pet_type === 'Cat') {
+  if (fixedPriceOverride !== null) return fixedPriceOverride;
+
+  if (!pkg.use_pricing_matrix) {
     return Number(pkg.bundled_price);
   }
 
@@ -335,6 +373,11 @@ export async function resolveBookingItems(
 ): Promise<ResolvedBookingItem[]> {
   const resolved: ResolvedBookingItem[] = [];
 
+  // Fetched once - the pet and branch are constant across every item in this
+  // booking, so there's no reason to re-query per item. Threaded down into
+  // resolveServicePrice/resolvePackagePrice via resolveBookingItem below.
+  const fixedPriceOverride = await getFixedPrice(pet.pet_type, branchId);
+
   // Sequential, not Promise.all: each item may 400/403 with a message naming
   // that specific service/package, which reads clearer than an
   // out-of-order Promise.all rejection would.
@@ -347,7 +390,8 @@ export async function resolveBookingItems(
         serviceCategory,
         branchId,
         scheduledStart,
-        scheduledEnd
+        scheduledEnd,
+        fixedPriceOverride
       )
     );
   }
@@ -436,18 +480,16 @@ export async function resolveFreePackageAward(
   return { packageId: pkg.id, packageName: pkg.name, nights };
 }
 
-interface PromoCapRow {
-  cap_type: 'percentage' | 'flat';
-  cap_value: number;
-}
-
-/** Mirrors billing/discountPromoEvaluation.service.ts's identical helper -
- * duplicated rather than imported so the booking feature doesn't depend on
- * billing (billing already depends on booking, not the other way around). */
-async function getPromoCapAmount(
-  branchId: string,
-  subtotal: number
-): Promise<number> {
+/**
+ * Mirrors billing/discountPromoEvaluation.service.ts's identical
+ * getEffectivePromoCap helper - duplicated rather than imported so the
+ * booking feature doesn't depend on billing (billing already depends on
+ * booking, not the other way around). Returns the raw cap row rather than a
+ * pre-computed amount (custom change, promos/coupons multiselect: the
+ * actual capping math now lives in the shared applyPromoCap, which needs
+ * the cap_type too - a plain amount can't represent a 'count' cap).
+ */
+async function getPromoCapRow(branchId: string): Promise<PromoCapRow> {
   const { data: branchRow, error: branchError } = await supabase
     .from('promo_cap_configuration')
     .select('cap_type, cap_value')
@@ -469,36 +511,51 @@ async function getPromoCapAmount(
   if (!capRow)
     throwWithStatus(500, 'No default promo cap configuration row exists');
 
-  return capRow.cap_type === 'percentage'
-    ? (subtotal * Number(capRow.cap_value)) / 100
-    : Number(capRow.cap_value);
+  return capRow;
+}
+
+export interface PromoSelectionResolution {
+  promoId: string | null;
+  couponId: string | null;
+  appliedAmount: number;
 }
 
 export interface DiscountPromoResolution {
   selectedDiscountId: string | null;
   discountAmount: number;
-  selectedPromoId: string | null;
+  /** Custom change (promos/coupons multiselect booking step, session 86):
+   * replaces the old singular selectedPromoId/promoAmount pair - each entry
+   * is locked into its own booking_promo_selections row by createBooking/
+   * createBookingGroup, and promoAmount below is simply their sum. */
+  promoSelections: PromoSelectionResolution[];
   promoAmount: number;
 }
 
 /**
- * Applying a discount/promo at booking creation (rather than only at cashier
- * checkout) so the customer sees the real price upfront. A discount needs
- * staff physically present to verify a Senior Citizen/PWD ID, so it's
+ * Applying a discount/promo/coupon at booking creation (rather than only at
+ * cashier checkout) so the customer sees the real price upfront. A discount
+ * needs staff physically present to verify a Senior Citizen/PWD ID, so it's
  * restricted to money-handling roles (BOOKING_MARK_PAID_ROLES, same set that
  * can Mark as Paid) and, since ID verification implies in-person payment, to
- * Cash bookings only. A promo has neither restriction - it's self-service,
- * like a coupon code. Locked in here, checkout later renders these stored
- * amounts as-is instead of re-evaluating scope matches itself (see
- * buildCheckoutPreview in checkoutAggregation.service.ts) - two independent
- * evaluations of the same rules could disagree and would be confusing to
- * reconcile at the register.
+ * Cash bookings only. A promo/coupon has neither restriction - both are
+ * self-service, like a coupon code (a "coupon" here is a per-customer,
+ * single-use spin-wheel reward - see rewards.types.ts - not to be confused
+ * with the everyday sense of the word "promo"). Locked in here, checkout
+ * later renders these stored amounts as-is instead of re-evaluating scope
+ * matches itself (see buildCheckoutPreview in
+ * checkoutAggregation.service.ts) - two independent evaluations of the same
+ * rules could disagree and would be confusing to reconcile at the register.
+ *
+ * customerId is needed (unlike the old single-promo version) to verify
+ * ownership of any selected coupon_ids - a receptionist booking on behalf of
+ * a walk-in must only ever be able to spend THAT customer's own coupons.
  */
-export async function resolveDiscountAndPromo(
+export async function resolveDiscountAndPromos(
   input: CreateBookingInput,
   staffRole: string | null,
   resolvedItems: ResolvedBookingItem[],
-  totalPrice: number
+  totalPrice: number,
+  customerId: string
 ): Promise<DiscountPromoResolution> {
   let selectedDiscountId: string | null = null;
   let discountAmount = 0;
@@ -560,22 +617,31 @@ export async function resolveDiscountAndPromo(
     selectedDiscountId = discount.id;
   }
 
-  let selectedPromoId: string | null = null;
-  let promoAmount = 0;
+  const promoIds = input.promo_ids ?? [];
+  const couponIds = input.coupon_ids ?? [];
 
-  if (input.promo_id) {
-    const promo = await getPromoById(input.promo_id);
+  if (promoIds.length === 0 && couponIds.length === 0) {
+    return {
+      selectedDiscountId,
+      discountAmount,
+      promoSelections: [],
+      promoAmount: 0,
+    };
+  }
 
-    if (!promo.is_active) {
-      throwWithStatus(400, `Promo "${promo.name}" is inactive`);
-    }
+  interface PromoCapCandidate {
+    promoId: string | null;
+    couponId: string | null;
+    amount: number;
+  }
 
-    const today = new Date().toISOString().slice(0, 10);
-    if (promo.start_date && promo.start_date > today) {
-      throwWithStatus(400, `Promo "${promo.name}" has not started yet`);
-    }
-    if (promo.end_date && promo.end_date < today) {
-      throwWithStatus(400, `Promo "${promo.name}" has ended`);
+  const candidates: PromoCapCandidate[] = [];
+
+  for (const promoId of promoIds) {
+    const promo = await getPromoById(promoId);
+
+    if (!isPromoCurrentlyEligible(promo)) {
+      throwWithStatus(400, `Promo "${promo.name}" is not currently active`);
     }
 
     const isAvailableAtBranch = (promo.promo_branch_availability ?? []).some(
@@ -606,18 +672,52 @@ export async function resolveDiscountAndPromo(
       );
     }
 
-    const rawAmount = round2(
+    const amount = round2(
       promo.discount_type === 'Percentage'
         ? (totalPrice * Number(promo.value)) / 100
         : Math.min(Number(promo.value), totalPrice)
     );
-    const capAmount = await getPromoCapAmount(input.branch_id, totalPrice);
 
-    promoAmount = Math.min(rawAmount, round2(capAmount));
-    selectedPromoId = promo.id;
+    candidates.push({ promoId: promo.id, couponId: null, amount });
   }
 
-  return { selectedDiscountId, discountAmount, selectedPromoId, promoAmount };
+  // getCouponsByIds already verifies ownership (customerId), unredeemed and
+  // unexpired - throwing per-coupon on any failure, same style as the promo
+  // checks above.
+  const coupons = await getCouponsByIds(customerId, couponIds);
+  for (const coupon of coupons) {
+    const amount = round2(
+      coupon.discount_type === 'Percentage'
+        ? (totalPrice * Number(coupon.value)) / 100
+        : Math.min(Number(coupon.value), totalPrice)
+    );
+
+    candidates.push({ promoId: null, couponId: coupon.id, amount });
+  }
+
+  const capRow = await getPromoCapRow(input.branch_id);
+  const capped = applyPromoCap(
+    candidates.map((candidate) => ({
+      key: candidate,
+      amount: candidate.amount,
+    })),
+    capRow,
+    totalPrice
+  );
+
+  const promoSelections: PromoSelectionResolution[] = capped.map(
+    ({ key, amount }) => ({
+      promoId: key.promoId,
+      couponId: key.couponId,
+      appliedAmount: amount,
+    })
+  );
+
+  const promoAmount = round2(
+    promoSelections.reduce((sum, selection) => sum + selection.appliedAmount, 0)
+  );
+
+  return { selectedDiscountId, discountAmount, promoSelections, promoAmount };
 }
 
 export interface StaffResolution {
@@ -651,6 +751,18 @@ export async function resolveStaffAssignment(
   const pickerEnabled = await isStaffPickerEnabled(category);
 
   if (!pickerEnabled) {
+    // A `specific` preference can only get here if the client showed a Staff
+    // Picker this category's service_types row says shouldn't exist (a stale
+    // staff_picker_enabled flag on the client, diverging from the server).
+    // Silently dropping it used to strand the booking with no staff and no
+    // signal - reject loudly instead so the mismatch surfaces.
+    if (input.staff_preference?.type === 'specific') {
+      throwWithStatus(
+        409,
+        'Staff selection is not available for this service — please go back and continue without choosing a staff member'
+      );
+    }
+
     return {
       assignedStaffId: null,
       preferenceType: null,
@@ -746,6 +858,15 @@ export async function createBooking({
 
     customerId = input.customer_id;
     createdByStaffId = requesterId;
+
+    // vet-bookings-queue-access: a Veterinarian may only book a customer
+    // they've actually treated - see assertVeterinarianTreatedCustomer.
+    if (staffRole === 'Veterinarian') {
+      await assertVeterinarianTreatedCustomer({
+        veterinarianId: requesterId,
+        customerId,
+      });
+    }
   } else {
     if (input.customer_id && input.customer_id !== requesterId) {
       throwWithStatus(403, 'Customers can only create their own bookings');
@@ -813,13 +934,19 @@ export async function createBooking({
     0
   );
 
-  // Discounts and promos are resolved BEFORE the down payment is computed
-  // (advisor addendum: "Discounts and promos apply before downpayment is
-  // calculated"). resolveDiscountAndPromo doesn't depend on the down
-  // payment, so it runs first and the down payment is taken against the
-  // discounted net total, not the gross sum of items.
-  const { selectedDiscountId, discountAmount, selectedPromoId, promoAmount } =
-    await resolveDiscountAndPromo(input, staffRole, resolvedItems, totalPrice);
+  // Discounts and promos/coupons are resolved BEFORE the down payment is
+  // computed (advisor addendum: "Discounts and promos apply before
+  // downpayment is calculated"). resolveDiscountAndPromos doesn't depend on
+  // the down payment, so it runs first and the down payment is taken
+  // against the discounted net total, not the gross sum of items.
+  const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
+    await resolveDiscountAndPromos(
+      input,
+      staffRole,
+      resolvedItems,
+      totalPrice,
+      customerId
+    );
 
   const netTotal = round2(totalPrice - discountAmount - promoAmount);
 
@@ -841,6 +968,11 @@ export async function createBooking({
   let downpaymentRequired = false;
   let downpaymentAmount: number | null = null;
   let downpaymentHoldHours = 24;
+  // policy_configurations.max_concurrent_bookings_per_staff (20260908178) -
+  // passed to the post-insert race check below. Resolved from the effective
+  // policy on the Online path; Walk-ins keep the default of 1 (see
+  // confirmCapacityAfterInsert's own note on why that's fine).
+  let staffConcurrency = 1;
 
   if (bookingSource === 'Online') {
     // A slot that has already started is never a valid Online booking. The
@@ -882,6 +1014,7 @@ export async function createBooking({
             : Math.min(policy.downpayment_amount ?? 0, netTotal)
         )
       : null;
+    staffConcurrency = policy.max_concurrent_bookings_per_staff;
   }
 
   const status: Booking['status'] =
@@ -935,6 +1068,10 @@ export async function createBooking({
   // than rejecting the booking; check-in's own suggestCage/assignCage flow
   // re-validates and lets the receptionist re-pick regardless.
   //
+  // Custom change (cage pet-type support): the pet's own pet_type is always
+  // enforced, for every caller (customer and staff) - a pet-type mismatch is
+  // a hard filter, unlike cage size below.
+  //
   // Custom change (cage size booking restriction): a customer (no
   // staffRole) can only ever have a preference honored when it matches
   // their own pet's weight_class - mirrors CagePickerList's disabled tiles
@@ -947,6 +1084,7 @@ export async function createBooking({
       ? await verifyCagePreference(
           input.cage_preference.cage_id!,
           input.branch_id,
+          (pet as PetRow).pet_type,
           staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined)
         )
       : null;
@@ -1007,7 +1145,12 @@ export async function createBooking({
       payment_method: null,
       payment_confirmed: false,
       selected_discount_id: selectedDiscountId,
-      selected_promo_id: selectedPromoId,
+      // Multiselect (session 86): no longer written by new bookings - the
+      // authoritative record is now one row per selection in
+      // booking_promo_selections (written below, after this insert
+      // succeeds). Left null rather than removed so a pre-migration
+      // booking's own already-stored value keeps displaying as-is.
+      selected_promo_id: null,
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
@@ -1038,6 +1181,39 @@ export async function createBooking({
     throwWithStatus(400, itemsError.message);
   }
 
+  if (promoSelections.length > 0) {
+    const { error: promoSelectionsError } = await supabase
+      .from('booking_promo_selections')
+      .insert(
+        promoSelections.map((selection) => ({
+          booking_id: booking.id,
+          promo_id: selection.promoId,
+          customer_coupon_id: selection.couponId,
+          applied_amount: selection.appliedAmount,
+        }))
+      );
+
+    if (promoSelectionsError) {
+      await supabase.from('bookings').delete().eq('id', booking.id);
+      throwWithStatus(400, promoSelectionsError.message);
+    }
+
+    const redeemedCouponIds = promoSelections
+      .map((selection) => selection.couponId)
+      .filter((id): id is string => id !== null);
+
+    if (redeemedCouponIds.length > 0) {
+      try {
+        await markCouponsRedeemed(redeemedCouponIds, {
+          bookingId: booking.id,
+        });
+      } catch (redeemError) {
+        await supabase.from('bookings').delete().eq('id', booking.id);
+        throw redeemError;
+      }
+    }
+  }
+
   if (staffResolution.preferenceType) {
     const { error: preferenceError } = await supabase
       .from('staff_picker_preferences')
@@ -1064,7 +1240,7 @@ export async function createBooking({
   // (SLOT_HOLD_PAID_OR_FILTER). Its capacity is re-verified when it pays
   // (recomputeBookingPaymentStatus after the first settled transaction).
   if (holdsSlot) {
-    const won = await confirmCapacityAfterInsert(booking);
+    const won = await confirmCapacityAfterInsert(booking, staffConcurrency);
 
     if (!won) {
       await supabase.from('bookings').delete().eq('id', booking.id);
@@ -1235,6 +1411,91 @@ export async function listPetBookingConflicts({
   }
 
   return [...conflictByPetId.values()];
+}
+
+export interface ConflictedBooking {
+  id: string;
+  service_category: Booking['service_category'];
+  pet_id: string;
+  pet_name: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+  branch_id: string;
+  branch_name: string | null;
+  conflict_notice: string | null;
+  slot_conflict_at: string;
+}
+
+/**
+ * Slot-conflict notification (20260911188): every one of this customer's
+ * still-Pending bookings currently flagged with slot_conflict_at (set by
+ * flagSlotConflictsForOthers, above) - the dashboard popup's data source
+ * (CustomerPortalPage) and the same list the notification bell's
+ * booking_slot_conflict rows link back into. Scoped to `customerId` only -
+ * a staff caller's own id never matches any bookings.customer_id, so this
+ * naturally returns empty for them rather than needing a separate guard.
+ */
+export async function listConflictedBookingsForCustomer(
+  customerId: string
+): Promise<ConflictedBooking[]> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(
+      'id, service_category, pet_id, scheduled_start, scheduled_end, branch_id, conflict_notice, slot_conflict_at'
+    )
+    .eq('customer_id', customerId)
+    .eq('status', 'Pending')
+    .not('slot_conflict_at', 'is', null)
+    .order('slot_conflict_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as Array<{
+    id: string;
+    service_category: Booking['service_category'];
+    pet_id: string;
+    scheduled_start: string;
+    scheduled_end: string;
+    branch_id: string;
+    conflict_notice: string | null;
+    slot_conflict_at: string | null;
+  }>;
+
+  if (rows.length === 0) return [];
+
+  const petIds = [...new Set(rows.map((row) => row.pet_id))];
+  const branchIds = [...new Set(rows.map((row) => row.branch_id))];
+
+  const [{ data: petRows }, { data: branchRows }] = await Promise.all([
+    supabase.from('pets').select('id, name').in('id', petIds),
+    supabase.from('branches').select('id, name').in('id', branchIds),
+  ]);
+
+  const petNameById = new Map(
+    ((petRows ?? []) as Array<{ id: string; name: string }>).map((row) => [
+      row.id,
+      row.name,
+    ])
+  );
+  const branchNameById = new Map(
+    ((branchRows ?? []) as Array<{ id: string; name: string }>).map((row) => [
+      row.id,
+      row.name,
+    ])
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    service_category: row.service_category,
+    pet_id: row.pet_id,
+    pet_name: petNameById.get(row.pet_id) ?? null,
+    scheduled_start: row.scheduled_start,
+    scheduled_end: row.scheduled_end,
+    branch_id: row.branch_id,
+    branch_name: branchNameById.get(row.branch_id) ?? null,
+    conflict_notice: row.conflict_notice,
+    slot_conflict_at: row.slot_conflict_at as string,
+  }));
 }
 
 interface GetBookingParams {
@@ -1941,18 +2202,48 @@ export async function recomputeBookingGroupPaymentStatus(
   );
   const failures: BookingGroupSideEffectFailure[] = [];
 
+  // Collapse the per-member confirmation email into one combined send for the
+  // cart unless the branch policy opts into per-booking emails
+  // (booking_group_email_mode). In-app rows are one per member regardless.
+  const emailMode = (await resolveEffectivePolicy(bookingGroup.branch_id))
+    .booking_group_email_mode;
+  const combineGroupEmail = emailMode === 'combined';
+  const newlyConfirmed: Booking[] = [];
+
   for (const row of previouslyPending) {
     try {
       // Deliberately sequential (not Promise.all): each booking's own
       // capacity re-check must not race the next one.
-      await applyFirstBookingPaymentSideEffects({
+      const updated = await applyFirstBookingPaymentSideEffects({
         bookingId: row.id,
         paymentStatusBeforePayment: 'Pending',
         revertOnCapacityConflict: true,
+        suppressConfirmationEmail: combineGroupEmail,
       });
+      // Mirror applyFirstBookingPaymentSideEffects's own send guard exactly:
+      // it only fires the confirmation when the payment actually left
+      // 'Pending' (updated.payment_status !== 'Pending'). Without that check a
+      // payment reversal - which drops every member back to 'Pending' and
+      // sends nothing - would still push already-confirmed Online bookings
+      // here and re-email the customer a stale "bookings confirmed".
+      if (
+        updated.payment_status !== 'Pending' &&
+        updated.status === 'Pending' &&
+        updated.booking_source === 'Online'
+      ) {
+        newlyConfirmed.push(updated);
+      }
     } catch (error) {
       failures.push({ bookingId: row.id, error });
     }
+  }
+
+  if (combineGroupEmail && newlyConfirmed.length > 0) {
+    await sendCombinedBookingGroupConfirmedEmail(
+      bookingGroup.customer_id,
+      bookingGroup.branch_id,
+      newlyConfirmed
+    );
   }
 
   if (failures.length > 0) {
@@ -1963,6 +2254,140 @@ export async function recomputeBookingGroupPaymentStatus(
   }
 
   return updatedGroup as BookingGroup;
+}
+
+function formatConflictDate(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
+
+function formatConflictTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Slot-conflict notification (20260911188): after `winner` (a booking whose
+ * payment just settled) is re-confirmed to genuinely hold its date/time/
+ * staff/cage slot, find every OTHER still-Pending/unpaid/down-payment-
+ * required pencil booking that was sharing that same slot and would now
+ * fail checkCapacity() if it tried to pay - i.e. who just lost the race -
+ * and flag + notify each one. Deliberately reuses checkCapacity (the exact
+ * function booking creation/reschedule already use to decide "is this slot
+ * free") rather than inventing new capacity math, so the "did this candidate
+ * actually lose?" answer is always consistent with every other capacity
+ * decision in the app. Best-effort throughout: a failure here must never
+ * fail the winning payment that triggered it.
+ *
+ * Narrowing before the per-candidate checkCapacity call is only an
+ * optimization (skip candidates that can't possibly be affected), never the
+ * source of truth for who lost - that's always checkCapacity's own answer:
+ * - Grooming/Veterinary: only a candidate that requested the SAME specific
+ *   staff member as `winner` competes for that staff's time.
+ * - Hotel: only a candidate whose pet is the SAME weight-class (cage-size)
+ *   category as `winner`'s pet competes for that size's cage count.
+ * - Daycare: no narrowing - every overlapping candidate shares the one
+ *   per-branch session capacity.
+ *
+ * Known limitation: if a branch's max_concurrent_bookings_per_staff (or
+ * Hotel/Daycare capacity) is raised above 1 and TWO candidates are both
+ * competing only against each other for the one remaining spot, both may
+ * independently pass checkCapacity here (each check excludes only itself,
+ * not other still-unpaid candidates) and neither gets flagged. This mirrors
+ * confirmCapacityAfterInsert's own documented tie-break scope - it isn't
+ * fixed here since neither candidate has actually paid yet (nothing is
+ * silently overbooked); whichever pays first will still win cleanly via the
+ * normal post-payment confirmCapacityAfterInsert re-check.
+ */
+async function flagSlotConflictsForOthers(winner: Booking): Promise<void> {
+  try {
+    if (winner.service_category === 'Assessment') return;
+
+    const candidates = await listOverlappingPencilBookings({
+      branchId: winner.branch_id,
+      serviceCategory: winner.service_category,
+      scheduledStart: winner.scheduled_start,
+      scheduledEnd: winner.scheduled_end,
+      excludeBookingId: winner.id,
+    });
+
+    if (candidates.length === 0) return;
+
+    let narrowed: PencilBookingRow[] = candidates;
+
+    if (
+      winner.service_category === 'Grooming' ||
+      winner.service_category === 'Veterinary'
+    ) {
+      narrowed = candidates.filter(
+        (candidate) => candidate.assigned_staff_id === winner.assigned_staff_id
+      );
+    } else if (winner.service_category === 'Hotel') {
+      const { data: winnerPet } = await supabase
+        .from('pets')
+        .select('weight_class')
+        .eq('id', winner.pet_id)
+        .maybeSingle();
+
+      if (!winnerPet) return;
+
+      const sameSize = await filterSameSizeRows(
+        candidates.map((candidate) => ({
+          id: candidate.id,
+          pet_id: candidate.pet_id,
+          created_at: '',
+        })),
+        winnerPet.weight_class as WeightClass
+      );
+      const sameSizeIds = new Set(sameSize.map((row) => row.id));
+      narrowed = candidates.filter((candidate) =>
+        sameSizeIds.has(candidate.id)
+      );
+    }
+    // Daycare falls through with no extra narrowing.
+
+    for (const candidate of narrowed) {
+      let petWeightClass: WeightClass | undefined;
+
+      if (candidate.service_category === 'Hotel') {
+        const { data: pet } = await supabase
+          .from('pets')
+          .select('weight_class')
+          .eq('id', candidate.pet_id)
+          .maybeSingle();
+        petWeightClass = pet?.weight_class as WeightClass | undefined;
+      }
+
+      const result = await checkCapacity({
+        branchId: candidate.branch_id,
+        serviceCategory: candidate.service_category,
+        scheduledStart: candidate.scheduled_start,
+        scheduledEnd: candidate.scheduled_end,
+        staffId: candidate.assigned_staff_id ?? undefined,
+        petWeightClass,
+        excludeBookingId: candidate.id,
+      });
+
+      if (result.available) continue;
+
+      const notice =
+        `Your ${candidate.service_category} booking on ${formatConflictDate(candidate.scheduled_start)} ` +
+        `at ${formatConflictTime(candidate.scheduled_start)} is no longer available - another ` +
+        "customer's payment claimed that slot first. Please update your booking's date, time, staff, or cage.";
+
+      const updatedCandidate = await updateBookingRow(candidate.id, {
+        slot_conflict_at: new Date().toISOString(),
+        conflict_notice: notice,
+        updated_at: new Date().toISOString(),
+      });
+
+      await sendSlotConflictNotification(updatedCandidate, notice);
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('flagSlotConflictsForOthers failed:', error);
+  }
 }
 
 /**
@@ -1987,10 +2412,16 @@ export async function applyFirstBookingPaymentSideEffects({
   bookingId,
   paymentStatusBeforePayment,
   revertOnCapacityConflict,
+  suppressConfirmationEmail = false,
 }: {
   bookingId: string;
   paymentStatusBeforePayment: PaymentStatus;
   revertOnCapacityConflict: boolean;
+  /** Multi-booking checkout in 'combined' email mode: the in-app
+   * booking_confirmed row still fires per member, but the confirmation email
+   * is sent once for the whole cart by the caller instead of once per
+   * member. Has no effect on the staff_assigned alert. */
+  suppressConfirmationEmail?: boolean;
 }): Promise<Booking> {
   const updated = await getRawBookingById(bookingId);
 
@@ -2003,28 +2434,38 @@ export async function applyFirstBookingPaymentSideEffects({
 
   if (
     updated.downpayment_required &&
-    (updated.status === 'Pending' || updated.status === 'In Progress') &&
-    !(await confirmCapacityAfterInsert(updated))
+    (updated.status === 'Pending' || updated.status === 'In Progress')
   ) {
-    if (revertOnCapacityConflict) {
-      await updateBookingRow(bookingId, {
-        payment_status: 'Pending',
-        updated_at: new Date().toISOString(),
-      });
-      throwWithStatus(
-        409,
-        'That time slot filled up before this payment - please reschedule the booking to an open slot'
-      );
+    const stillHoldsSlot = await confirmCapacityAfterInsert(updated);
+
+    if (!stillHoldsSlot) {
+      if (revertOnCapacityConflict) {
+        await updateBookingRow(bookingId, {
+          payment_status: 'Pending',
+          updated_at: new Date().toISOString(),
+        });
+        throwWithStatus(
+          409,
+          'That time slot filled up before this payment - please reschedule the booking to an open slot'
+        );
+      }
+      // Counter path: keep the payment; the slot is overbooked until staff
+      // reschedule the booking. The confirmation alert below still fires.
+    } else {
+      // This booking now genuinely holds its slot - any other still-Pending
+      // pencil booking that was sharing it just lost the race (slot-conflict
+      // notification, 20260911188).
+      await flagSlotConflictsForOthers(updated);
     }
-    // Counter path: keep the payment; the slot is overbooked until staff
-    // reschedule the booking. The confirmation alert below still fires.
   }
 
   // Best-effort: the first payment "confirms" a still-Pending Online booking
   // - fire the alerts createBooking held back while it was Unconfirmed.
   if (updated.status === 'Pending' && updated.booking_source === 'Online') {
     try {
-      await sendBookingConfirmedNotification(updated);
+      await sendBookingConfirmedNotification(updated, {
+        skipEmail: suppressConfirmationEmail,
+      });
 
       const preferences = Array.isArray(updated.staff_picker_preferences)
         ? updated.staff_picker_preferences

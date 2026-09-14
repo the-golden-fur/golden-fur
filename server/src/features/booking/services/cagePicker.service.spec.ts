@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getCageAssignmentStatus,
   getCagePickerOptions,
   isCagePickerEnabled,
   verifyCagePreference,
@@ -24,6 +25,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
+    builder.limit = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
@@ -65,14 +67,15 @@ describe('cagePicker.service', () => {
     it('returns cage_picker_enabled: false and no options when disabled', async () => {
       queueFromResults({ data: { cage_picker_enabled: false }, error: null });
 
-      const result = await getCagePickerOptions('branch-1', 'Hotel');
+      const result = await getCagePickerOptions('branch-1', 'Hotel', 'pet-1');
 
       expect(result).toEqual({ cage_picker_enabled: false, options: [] });
     });
 
-    it('lists "No preference" first, then every Available cage', async () => {
+    it('lists "No preference" first, then every Available cage matching the pet\'s pet_type (Custom change: cage pet-type support)', async () => {
       queueFromResults(
         { data: { cage_picker_enabled: true }, error: null },
+        { data: { pet_type: 'Dog' }, error: null },
         {
           data: [
             { id: 'cage-1', cage_label: 'A1', size: 'S', status: 'Available' },
@@ -82,19 +85,31 @@ describe('cagePicker.service', () => {
         }
       );
 
-      const result = await getCagePickerOptions('branch-1', 'Hotel');
+      const result = await getCagePickerOptions('branch-1', 'Hotel', 'pet-1');
 
       expect(result.cage_picker_enabled).toBe(true);
       expect(result.options[0]).toEqual({ type: 'no_preference' });
       expect(result.options).toHaveLength(3);
     });
+
+    it("excludes every cage when none match the pet's pet_type (Custom change: cage pet-type support is a hard filter)", async () => {
+      queueFromResults(
+        { data: { cage_picker_enabled: true }, error: null },
+        { data: { pet_type: 'Cat' }, error: null },
+        { data: [], error: null }
+      );
+
+      const result = await getCagePickerOptions('branch-1', 'Hotel', 'pet-1');
+
+      expect(result.options).toEqual([{ type: 'no_preference' }]);
+    });
   });
 
   describe('verifyCagePreference', () => {
-    it('returns the cage id when it is still Available at the branch', async () => {
+    it('returns the cage id when it is still Available, at the branch, and matches petType', async () => {
       queueFromResults({ data: { id: 'cage-1' }, error: null });
 
-      const result = await verifyCagePreference('cage-1', 'branch-1');
+      const result = await verifyCagePreference('cage-1', 'branch-1', 'Dog');
 
       expect(result).toBe('cage-1');
     });
@@ -102,7 +117,7 @@ describe('cagePicker.service', () => {
     it('returns null when the cage is no longer Available', async () => {
       queueFromResults({ data: null, error: null });
 
-      const result = await verifyCagePreference('cage-1', 'branch-1');
+      const result = await verifyCagePreference('cage-1', 'branch-1', 'Dog');
 
       expect(result).toBeNull();
     });
@@ -110,7 +125,12 @@ describe('cagePicker.service', () => {
     it('returns the cage id when a requiredSize is given and the cage matches it (Custom change: cage size booking restriction)', async () => {
       queueFromResults({ data: { id: 'cage-1' }, error: null });
 
-      const result = await verifyCagePreference('cage-1', 'branch-1', 'S');
+      const result = await verifyCagePreference(
+        'cage-1',
+        'branch-1',
+        'Dog',
+        'S'
+      );
 
       expect(result).toBe('cage-1');
     });
@@ -118,9 +138,61 @@ describe('cagePicker.service', () => {
     it('degrades to null (same as an unavailable cage) when the cage does not match requiredSize', async () => {
       queueFromResults({ data: null, error: null });
 
-      const result = await verifyCagePreference('cage-1', 'branch-1', 'M');
+      const result = await verifyCagePreference(
+        'cage-1',
+        'branch-1',
+        'Dog',
+        'M'
+      );
 
       expect(result).toBeNull();
+    });
+
+    it("degrades to null when the cage does not support the pet's pet_type, even with no requiredSize (Custom change: hard filter applies to every caller, customer and staff alike)", async () => {
+      queueFromResults({ data: null, error: null });
+
+      const result = await verifyCagePreference('cage-1', 'branch-1', 'Cat');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getCageAssignmentStatus (Custom change: cage pet-type support / customer readonly cage view)', () => {
+    it('reports matched: true with the cage identity when a same-size, same-pet-type Available cage exists', async () => {
+      queueFromResults(
+        { data: { weight_class: 'S', pet_type: 'Dog' }, error: null },
+        { data: { id: 'cage-1', cage_label: 'A1' }, error: null }
+      );
+
+      const result = await getCageAssignmentStatus('pet-1', 'branch-1');
+
+      expect(result).toEqual({
+        matched: true,
+        cage: { id: 'cage-1', cage_label: 'A1' },
+      });
+    });
+
+    it('reports matched: false and no cage when nothing matches (wrong size, wrong pet_type, or none Available)', async () => {
+      queueFromResults(
+        { data: { weight_class: 'XL', pet_type: 'Cat' }, error: null },
+        { data: null, error: null }
+      );
+
+      const result = await getCageAssignmentStatus('pet-1', 'branch-1');
+
+      expect(result).toEqual({ matched: false, cage: null });
+    });
+
+    it('never returns more than one cage, even if several match', async () => {
+      queueFromResults(
+        { data: { weight_class: 'S', pet_type: 'Dog' }, error: null },
+        { data: { id: 'cage-1', cage_label: 'A1' }, error: null }
+      );
+
+      const result = await getCageAssignmentStatus('pet-1', 'branch-1');
+
+      expect(result.cage).not.toBeNull();
+      expect(Array.isArray(result.cage)).toBe(false);
     });
   });
 });

@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
+import {
+  toCanonicalKg,
+  toDisplayValue,
+  weightUnitLabel,
+} from '../../../../shared/utils/petWeight';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
@@ -63,11 +69,20 @@ export function ConsultationDetailPanel({
   // renders this component with key={consultation.id} (VeterinaryConsolePage),
   // so React remounts - and re-seeds all of this state fresh - whenever a
   // different consultation is selected, with no synchronizing effect needed.
+  // consultation.weight is stored canonically in kilograms; it is shown and
+  // entered in the viewer's kg/lbs preference (Architectural-Change-History).
+  // Captured once at mount (with the consultation.id key remount) so the
+  // field's value, its label, and the save-time conversion always name the
+  // same unit even if the preference resolves a moment later.
+  const { weightUnit: liveWeightUnit } = useContext(ThemeContext);
+  const [weightUnit] = useState(liveWeightUnit);
   const [temperature, setTemperature] = useState(
     () => consultation.temperature?.toString() ?? ''
   );
-  const [weight, setWeight] = useState(
-    () => consultation.weight?.toString() ?? ''
+  const [weight, setWeight] = useState(() =>
+    consultation.weight != null
+      ? String(toDisplayValue(consultation.weight, weightUnit))
+      : ''
   );
   const [heartRate, setHeartRate] = useState(
     () => consultation.heart_rate?.toString() ?? ''
@@ -175,7 +190,7 @@ export function ConsultationDetailPanel({
   function handleComplete() {
     onComplete({
       temperature: temperature ? Number(temperature) : undefined,
-      weight: weight ? Number(weight) : undefined,
+      weight: weight ? toCanonicalKg(Number(weight), weightUnit) : undefined,
       heart_rate: heartRate ? Number(heartRate) : undefined,
       respiratory_rate: respiratoryRate ? Number(respiratoryRate) : undefined,
       diagnosis: diagnosis || undefined,
@@ -239,7 +254,9 @@ export function ConsultationDetailPanel({
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>Weight</span>
+                <span className={styles.fieldLabel}>
+                  Weight ({weightUnitLabel(weightUnit)})
+                </span>
                 <input
                   className={styles.input}
                   type="number"

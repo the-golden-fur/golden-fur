@@ -723,26 +723,35 @@ export function AdminServicesPage() {
                 </label>
               ) : null}
 
-              {form.category === 'Hotel' || form.category === 'Daycare' ? (
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
-                    Duration (minutes per block/night)
-                  </span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min="1"
-                    step="1"
-                    inputMode="numeric"
-                    value={form.durationMinutes}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        durationMinutes: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  {form.category === 'Hotel'
+                    ? 'Duration per night (minutes)'
+                    : form.category === 'Daycare'
+                      ? 'Duration per block (minutes)'
+                      : 'Average service time (minutes)'}
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  value={form.durationMinutes}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      durationMinutes: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              {form.category !== 'Hotel' && form.category !== 'Daycare' ? (
+                <p className={styles.fieldHint}>
+                  How long a booking for this service runs. Multiple services
+                  add up, and packages sum their services. Leave blank for the
+                  60-minute default.
+                </p>
               ) : null}
 
               {form.category === 'Grooming' ? (

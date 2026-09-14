@@ -4,22 +4,19 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as daycareApi from '../../api/daycare.api';
 import { getCageSuggestion } from '../../../hotel/api/hotel.api';
-import { DaycareBookingPicker } from '../../components/DaycareBookingPicker/DaycareBookingPicker';
+import type { Booking } from '../../../booking/booking.types';
 import { DaycareCheckInPanel } from './DaycareCheckInPanel';
 
-vi.mock('../../components/DaycareBookingPicker/DaycareBookingPicker', () => ({
-  DaycareBookingPicker: vi.fn(() => null),
-}));
 vi.mock('../../api/daycare.api', () => ({
   checkInDaycareSession: vi.fn(),
 }));
 vi.mock('../../../hotel/api/hotel.api', () => ({
   getCageSuggestion: vi.fn(),
 }));
-// Custom change (Daycare/Hotel parity): DaycareCheckInPanel now assigns a
-// cage the same way HotelCheckInPanel does - CageStatusGrid's own fetch
-// behavior is already covered by its own tests, mirrors
-// HotelCheckInPanel.spec.ts's identical stub.
+// Custom change (Daycare/Hotel parity): DaycareCheckInPanel assigns a cage
+// the same way HotelCheckInPanel does - CageStatusGrid's own fetch behavior
+// is already covered by its own tests, mirrors HotelCheckInPanel.spec.ts's
+// identical stub.
 vi.mock('../../../hotel/components/CageStatusGrid/CageStatusGrid', () => ({
   CageStatusGrid: () => null,
 }));
@@ -34,18 +31,7 @@ function setupCageSuggestion() {
   } as never);
 }
 
-function renderPanel() {
-  return render(
-    createElement(DaycareCheckInPanel, {
-      accessToken: 'token',
-      role: 'Receptionist',
-      branchId: 'branch-makati',
-      onCheckedIn: vi.fn(),
-    })
-  );
-}
-
-const BOOKING = {
+const BOOKING: Booking = {
   id: 'booking-1',
   customer_id: 'customer-1',
   pet_id: 'pet-1',
@@ -63,28 +49,30 @@ const BOOKING = {
   payment_method: null,
   payment_confirmed: true,
   special_instructions: null,
+  hotel_preferences: null,
   cancelled_at: null,
   cancellation_reason: null,
   reschedule_count: 0,
   created_at: '2026-07-18T00:00:00.000Z',
   updated_at: '2026-07-18T00:00:00.000Z',
-};
+} as unknown as Booking;
 
-function mockBookingPicker() {
-  vi.mocked(DaycareBookingPicker).mockImplementation(({ onSelect }) =>
-    createElement(
-      'button',
-      { type: 'button', onClick: () => onSelect(BOOKING as never) },
-      'Pick booking'
-    )
+function renderPanel(booking: Booking = BOOKING) {
+  return render(
+    createElement(DaycareCheckInPanel, {
+      accessToken: 'token',
+      role: 'Receptionist',
+      booking,
+      onCheckedIn: vi.fn(),
+    })
   );
 }
 
 describe('DaycareCheckInPanel (#69)', () => {
-  it('AC-1: checks in via an existing Pending booking', async () => {
+  it('AC-1: checks in the booking it is given, without a picker', async () => {
     setupCageSuggestion();
-    mockBookingPicker();
 
+    const onCheckedIn = vi.fn();
     vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
       data: {
         id: 'session-1',
@@ -108,9 +96,15 @@ describe('DaycareCheckInPanel (#69)', () => {
       error: null,
     });
 
-    renderPanel();
+    render(
+      createElement(DaycareCheckInPanel, {
+        accessToken: 'token',
+        role: 'Receptionist',
+        booking: BOOKING,
+        onCheckedIn,
+      })
+    );
 
-    await userEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: M/);
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
@@ -121,14 +115,11 @@ describe('DaycareCheckInPanel (#69)', () => {
         cage_id: 'cage-1',
       })
     );
-    expect(
-      await screen.findByText(/checked in successfully/i)
-    ).toBeInTheDocument();
+    expect(onCheckedIn).toHaveBeenCalledWith('session-1');
   });
 
   it('AC-3: a cutoff-blocked check-in shows a clear terminal message and does not clear on its own', async () => {
     setupCageSuggestion();
-    mockBookingPicker();
 
     vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
       data: null,
@@ -137,7 +128,6 @@ describe('DaycareCheckInPanel (#69)', () => {
 
     renderPanel();
 
-    await userEvent.click(await screen.findByText('Pick booking'));
     await screen.findByText(/Suggested size: M/);
     await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
 
@@ -146,18 +136,27 @@ describe('DaycareCheckInPanel (#69)', () => {
     ).toBeInTheDocument();
   });
 
-  it('Custom change (walk-in mode removed): there is no Walk-in tab/mode - only the booking picker is offered', async () => {
+  it("pre-fills feeding/walking/playing/medications from the booking's own hotel_preferences", async () => {
     setupCageSuggestion();
-    mockBookingPicker();
 
-    renderPanel();
+    renderPanel({
+      ...BOOKING,
+      hotel_preferences: {
+        uniform_instructions: true,
+        feeding: [
+          {
+            meal_time: 'Morning',
+            food_type: 'Kibble',
+            quantity: '1 cup',
+          },
+        ],
+        walking: [],
+        playing: [],
+        medications: [],
+      },
+    } as unknown as Booking);
 
-    await screen.findByText('Pick booking');
-    expect(
-      screen.queryByRole('button', { name: /walk-in/i })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /existing booking/i })
-    ).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Kibble')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('1 cup')).toBeInTheDocument();
   });
 });

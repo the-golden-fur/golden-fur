@@ -1,6 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { Transaction } from '../../billing/billing.types.ts';
-import type { TransactionHistoryFilters } from '../reports.types.ts';
+import type {
+  TransactionHistoryFilters,
+  TransactionHistoryRecord,
+} from '../reports.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -21,7 +24,7 @@ function throwWithStatus(statusCode: number, message: string): never {
  */
 export async function listTransactionHistory(
   filters: TransactionHistoryFilters
-): Promise<Transaction[]> {
+): Promise<TransactionHistoryRecord[]> {
   // payment_status + the pricing snapshot let the transaction-history pages
   // work out a booking's outstanding balance (for the customer/staff
   // "add a balance payment" action) without a second round trip.
@@ -77,5 +80,30 @@ export async function listTransactionHistory(
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as Transaction[];
+  const rows = (data ?? []) as Transaction[];
+
+  // The cashier/customer transaction pages show a "Customer" column, but the
+  // transactions row only carries customer_id. Resolve display names in one
+  // batched round trip (never a PostgREST FK embed - the repo-wide pattern,
+  // see messaging.service.ts / bookingDetails.service.ts). The service-role
+  // client isn't limited by customer_profiles RLS, so archived customers
+  // still resolve.
+  const customerIds = [...new Set(rows.map((row) => row.customer_id))];
+  const nameById = new Map<string, string>();
+
+  if (customerIds.length > 0) {
+    const { data: customers } = await supabase
+      .from('customer_profiles')
+      .select('id, full_name')
+      .in('id', customerIds);
+
+    for (const customer of customers ?? []) {
+      nameById.set(customer.id, customer.full_name);
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    customer_name: nameById.get(row.customer_id) ?? null,
+  }));
 }

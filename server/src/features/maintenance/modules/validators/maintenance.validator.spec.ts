@@ -456,9 +456,18 @@ describe('createBreedValidator', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects an invalid pet_type', () => {
+  it('accepts any non-empty pet_type string - pet_type is a foreign key against the admin-managed pet_types table (20260912191), not a fixed enum', () => {
     const result = createBreedValidator.safeParse({
       pet_type: 'Bird',
+      name: 'Beagle',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty pet_type', () => {
+    const result = createBreedValidator.safeParse({
+      pet_type: '',
       name: 'Beagle',
     });
 

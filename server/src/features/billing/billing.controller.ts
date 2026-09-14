@@ -28,6 +28,7 @@ import {
   checkoutGroupValidator,
   checkoutValidator,
   createMiscSaleValidator,
+  payTransactionWithCreditValidator,
   recordTransactionPaymentValidator,
   updateMiscSaleValidator,
 } from './modules/validators/billing.validator.ts';
@@ -301,7 +302,6 @@ export async function recordTransactionPaymentController(
       paymentMethod: parsed.data.payment_method,
       bankName: parsed.data.bank_name ?? null,
       paymentReference: parsed.data.payment_reference ?? null,
-      cashTendered: parsed.data.cash_tendered ?? null,
       amountApplied: parsed.data.amount_applied ?? null,
     });
     return res.status(200).json(result);
@@ -355,6 +355,14 @@ export async function payTransactionWithCreditController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const parsed = payTransactionWithCreditValidator.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
   try {
     const staffRole = await getStaffRoleOrNull(requesterId);
     const isStaff =
@@ -364,6 +372,7 @@ export async function payTransactionWithCreditController(
       requesterId,
       transactionId: paramId(req, 'id'),
       isStaff,
+      amountApplied: parsed.data.amount_applied ?? null,
     });
     return res.status(200).json(result);
   } catch (error) {

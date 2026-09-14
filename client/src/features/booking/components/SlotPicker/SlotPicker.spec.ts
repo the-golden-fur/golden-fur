@@ -485,6 +485,74 @@ describe('SlotPicker', () => {
       vi.useRealTimers();
     });
 
+    it('a second walk-in for the same pet starts when the first one ends, not at "now" (repro: two walk-ins for one pet were scheduled concurrently)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-30T07:51:23.456Z'));
+      const onSelect = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect,
+          lockToNow: true,
+          // The pet's first walk-in in this cart, already ending later than
+          // "now" (still mid-service).
+          excludedWindows: [
+            {
+              start: '2026-08-30T07:45:00.000Z',
+              end: '2026-08-30T08:30:00.000Z',
+            },
+          ],
+        })
+      );
+
+      // Starts at the first booking's end (08:30), not the current minute
+      // (07:51) - the two services for this pet never overlap.
+      expect(onSelect).toHaveBeenCalledWith({
+        start: '2026-08-30T08:30:00.000Z',
+        end: '2026-08-30T09:30:00.000Z',
+      });
+
+      vi.useRealTimers();
+    });
+
+    it('starts at "now" when the same pet\'s existing window already ended', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-30T09:00:00.000Z'));
+      const onSelect = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect,
+          lockToNow: true,
+          excludedWindows: [
+            {
+              start: '2026-08-30T07:45:00.000Z',
+              end: '2026-08-30T08:30:00.000Z',
+            },
+          ],
+        })
+      );
+
+      expect(onSelect).toHaveBeenCalledWith({
+        start: '2026-08-30T09:00:00.000Z',
+        end: '2026-08-30T10:00:00.000Z',
+      });
+
+      vi.useRealTimers();
+    });
+
     it('never fetches day availability while locked (the slot is "now", not browsed)', async () => {
       const onSelect = vi.fn();
 
@@ -503,95 +571,6 @@ describe('SlotPicker', () => {
 
       await waitFor(() => expect(onSelect).toHaveBeenCalled());
       expect(bookingApi.getDayAvailability).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('onAvailabilityChange', () => {
-    it('#22 follow-up: reports hasAnySlots=false for an empty day (branch closed, or today already past hours)', async () => {
-      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-        data: { slots: [], window: null },
-        error: null,
-      });
-      const onAvailabilityChange = vi.fn();
-
-      render(
-        createElement(SlotPicker, {
-          accessToken: 'token',
-          branchId: 'branch-1',
-          serviceCategory: 'Grooming',
-          slotDurationMinutes: 60,
-          viewerMode: 'customer',
-          selectedSlot: null,
-          onSelect: vi.fn(),
-          onAvailabilityChange,
-        })
-      );
-
-      await waitFor(() =>
-        expect(onAvailabilityChange).toHaveBeenCalledWith(
-          expect.objectContaining({
-            hasAnySlots: false,
-            hasAnyAvailable: false,
-          })
-        )
-      );
-    });
-
-    it('#22 follow-up: reports hasAnySlots=true, hasAnyAvailable=false when real candidates exist but are all taken', async () => {
-      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-        data: {
-          slots: SLOTS.map((slot) => ({ ...slot, available: false })),
-          window: WINDOW,
-        },
-        error: null,
-      });
-      const onAvailabilityChange = vi.fn();
-
-      render(
-        createElement(SlotPicker, {
-          accessToken: 'token',
-          branchId: 'branch-1',
-          serviceCategory: 'Grooming',
-          slotDurationMinutes: 60,
-          viewerMode: 'customer',
-          selectedSlot: null,
-          onSelect: vi.fn(),
-          onAvailabilityChange,
-        })
-      );
-
-      await waitFor(() =>
-        expect(onAvailabilityChange).toHaveBeenCalledWith(
-          expect.objectContaining({ hasAnySlots: true, hasAnyAvailable: false })
-        )
-      );
-    });
-
-    it('#22 follow-up: reports hasAnyAvailable=true when at least one candidate is open', async () => {
-      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
-        data: { slots: SLOTS, window: WINDOW },
-        error: null,
-      });
-      const onAvailabilityChange = vi.fn();
-
-      render(
-        createElement(SlotPicker, {
-          accessToken: 'token',
-          branchId: 'branch-1',
-          serviceCategory: 'Grooming',
-          slotDurationMinutes: 60,
-          viewerMode: 'customer',
-          selectedSlot: null,
-          onSelect: vi.fn(),
-          onAvailabilityChange,
-        })
-      );
-
-      await waitFor(() =>
-        expect(onAvailabilityChange).toHaveBeenCalledWith(
-          expect.objectContaining({ hasAnySlots: true, hasAnyAvailable: true })
-        )
-      );
     });
   });
 });

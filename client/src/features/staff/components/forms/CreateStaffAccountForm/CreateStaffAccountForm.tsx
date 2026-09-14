@@ -30,7 +30,7 @@ interface CreateStaffAccountFormProps {
 
 /**
  * Implements M01 Process 1 (Admin Creates a Staff Account). The server now
- * emails the account_created credentials via Resend (Issue #74) and still
+ * emails the account_created credentials via Brevo (Issue #74) and still
  * returns the temporary password directly in the response as a fallback the
  * admin can relay by hand - this form surfaces both, plus a resend action in
  * case the email didn't arrive.

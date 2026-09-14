@@ -34,10 +34,26 @@ vi.mock('../../api/hotel.api', () => ({
   listHotelStays: vi.fn(),
 }));
 
-function renderPicker(props: Parameters<typeof HotelBookingPicker>[0]) {
-  return render(
-    createElement(MemoryRouter, null, createElement(HotelBookingPicker, props))
-  );
+function renderPicker(
+  props: Partial<Parameters<typeof HotelBookingPicker>[0]> = {}
+) {
+  const merged: Parameters<typeof HotelBookingPicker>[0] = {
+    accessToken: 'token',
+    branchId: 'branch-1',
+    onCheckIn: vi.fn(),
+    onViewDetails: vi.fn(),
+    ...props,
+  };
+  return {
+    ...render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(HotelBookingPicker, merged)
+      )
+    ),
+    props: merged,
+  };
 }
 
 function booking(overrides: Partial<Booking> = {}): Booking {
@@ -131,11 +147,7 @@ describe('HotelBookingPicker', () => {
   it('renders a detailed card for a matching Pending booking (pet, weight class, owner, service, dates)', async () => {
     setupMocks([booking()]);
 
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     expect(await screen.findByText('Mochi')).toBeInTheDocument();
     expect(screen.getByText('S')).toBeInTheDocument();
@@ -143,28 +155,51 @@ describe('HotelBookingPicker', () => {
     expect(screen.getByText('Hotel Stay - Small Cage')).toBeInTheDocument();
   });
 
-  it('clicking the Check in button calls onSelect with that booking', async () => {
+  it('clicking the Check in button calls onCheckIn with that booking', async () => {
     setupMocks([booking()]);
-    const onSelect = vi.fn();
 
-    renderPicker({ accessToken: 'token', branchId: 'branch-1', onSelect });
+    const { props } = renderPicker();
 
     await screen.findByText('Mochi');
     fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
 
-    expect(onSelect).toHaveBeenCalledWith(
+    expect(props.onCheckIn).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'booking-1' })
     );
+  });
+
+  it('the "..." menu\'s "View booking details" calls onViewDetails with that booking', async () => {
+    setupMocks([booking()]);
+
+    const { props } = renderPicker();
+
+    await screen.findByText('Mochi');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More options for Mochi' })
+    );
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'View booking details' })
+    );
+
+    expect(props.onViewDetails).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'booking-1' })
+    );
+  });
+
+  it('the booking being checked in shows a pending label and a disabled button', async () => {
+    setupMocks([booking()]);
+
+    renderPicker({ checkingInBookingId: 'booking-1' });
+
+    await screen.findByText('Mochi');
+    const button = screen.getByRole('button', { name: 'Checking in...' });
+    expect(button).toBeDisabled();
   });
 
   it('a non-Pending booking renders its status badge and offers no Check in button', async () => {
     setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
 
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
@@ -197,11 +232,7 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     expect(await screen.findByText('Already checked in')).toBeInTheDocument();
     expect(screen.getByText(/Go to checkout/)).toHaveAttribute(
@@ -237,11 +268,7 @@ describe('HotelBookingPicker', () => {
       ],
       error: null,
     });
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
@@ -273,11 +300,7 @@ describe('HotelBookingPicker', () => {
       })
     );
 
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     await screen.findByText('Mochi');
     expect(screen.getByText('Bantay')).toBeInTheDocument();
@@ -294,11 +317,7 @@ describe('HotelBookingPicker', () => {
   it('shows a widen-your-filters empty state instead of a hard "no bookings today" dead end', async () => {
     setupMocks([]);
 
-    renderPicker({
-      accessToken: 'token',
-      branchId: 'branch-1',
-      onSelect: vi.fn(),
-    });
+    renderPicker();
 
     expect(
       await screen.findByText(/No Hotel bookings match these filters/)

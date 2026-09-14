@@ -23,6 +23,12 @@ export interface Pet {
    * ...073_m02_pets_assessment_lock.sql. Only staff (Receptionist/Admin/
    * Supervisor/Superadmin) may set these; customers cannot. */
   weight_class: PetWeightClass | null;
+  /** Canonical weight in kilograms, recorded on-site during assessment (the
+   * client converts from lbs if that's how staff entered it). NULL = no
+   * numeric weight yet. weight_class is derived from this on write unless
+   * staff send an explicit override. Staff-only writable, same as
+   * weight_class. See ...185_m02_pets_add_weight_kg.sql. */
+  weight_kg: number | null;
   coat_type: PetCoatType | null;
   assessed_by: string | null;
   assessed_at: string | null;

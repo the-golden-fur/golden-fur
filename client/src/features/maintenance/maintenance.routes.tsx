@@ -3,8 +3,10 @@ import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { AdminServicesAndPackagesPage } from './pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from './pages/PricingConfigurationPage/PricingConfigurationPage';
+import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
+import { AdminPetTypesPage } from './pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
 
 /**
@@ -25,12 +27,20 @@ export const maintenanceRoutes = (
         element={<PricingConfigurationPage />}
       />
       <Route
+        path="/staff/admin/maintenance/weight-classes"
+        element={<WeightClassConfigurationPage />}
+      />
+      <Route
         path="/staff/admin/maintenance/promos"
         element={<AdminPromoConfigPage />}
       />
       <Route
         path="/staff/admin/maintenance/breeds"
         element={<AdminBreedsPage />}
+      />
+      <Route
+        path="/staff/admin/maintenance/pet-types"
+        element={<AdminPetTypesPage />}
       />
       <Route
         path="/staff/admin/maintenance/system-configuration"

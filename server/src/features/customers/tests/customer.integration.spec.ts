@@ -128,6 +128,21 @@ describe('customer profile CRUD (Issue #31)', () => {
       expect(res.status).toBe(200);
       expect(res.body.customer).toMatchObject({ id: 'customer-2' });
     });
+
+    it('allows a Cashier to view a different customer (needed to resolve owner names when viewing bookings / taking payment)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Cashier' }, error: null },
+        { data: { id: 'customer-2', full_name: 'Walk-in' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/customers/customer-2')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.customer).toMatchObject({ id: 'customer-2' });
+    });
   });
 
   describe('GET /customers', () => {

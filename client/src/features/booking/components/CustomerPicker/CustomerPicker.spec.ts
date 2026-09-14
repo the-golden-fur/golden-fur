@@ -148,4 +148,48 @@ describe('CustomerPicker', () => {
       await screen.findByText('No customers match your search.')
     ).toBeInTheDocument();
   });
+
+  describe('restrictToCustomerIds (vet-bookings-queue-access)', () => {
+    it('only shows customers in the restriction set, and hides the "create a new customer" link', async () => {
+      vi.mocked(listCustomers).mockResolvedValue({
+        data: CUSTOMERS,
+        error: null,
+      });
+
+      render(
+        createElement(CustomerPicker, {
+          accessToken: 'token',
+          onSelect: vi.fn(),
+          restrictToCustomerIds: new Set(['cust-2']),
+        })
+      );
+
+      expect(await screen.findByText('Ben Reyes')).toBeInTheDocument();
+      expect(screen.queryByText('Ana Cruz')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/create a new customer/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows a restriction-specific empty state when the set excludes every customer', async () => {
+      vi.mocked(listCustomers).mockResolvedValue({
+        data: CUSTOMERS,
+        error: null,
+      });
+
+      render(
+        createElement(CustomerPicker, {
+          accessToken: 'token',
+          onSelect: vi.fn(),
+          restrictToCustomerIds: new Set(),
+        })
+      );
+
+      expect(
+        await screen.findByText(
+          'No customers match your search. You can only book customers you have treated.'
+        )
+      ).toBeInTheDocument();
+    });
+  });
 });

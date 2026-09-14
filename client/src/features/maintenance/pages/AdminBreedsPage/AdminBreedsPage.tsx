@@ -6,16 +6,15 @@ import {
   createBreedAdmin,
   deleteBreedAdmin,
   listBreedsAdmin,
+  listPetTypes,
   updateBreedAdmin,
 } from '../../api/maintenance.api';
-import type { Breed, PetType } from '../../maintenance.types';
+import type { Breed, PetType, PetTypeRow } from '../../maintenance.types';
 import styles from './AdminBreedsPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
-
-const PET_TYPES: PetType[] = ['Dog', 'Cat'];
 
 /**
  * Epic A follow-up: breeds previously had no CRUD anywhere - only the
@@ -32,8 +31,9 @@ export function AdminBreedsPage() {
   const [breeds, setBreeds] = useState<Breed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [petTypes, setPetTypes] = useState<PetTypeRow[]>([]);
 
-  const [newPetType, setNewPetType] = useState<PetType>('Dog');
+  const [newPetType, setNewPetType] = useState<PetType>('');
   const [newName, setNewName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,13 +96,38 @@ export function AdminBreedsPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
+  // Pet Types admin CRUD (20260912191): the type filter/grouping and the
+  // add-breed dropdown read the admin-managed list instead of a hardcoded
+  // ['Dog', 'Cat'] array - breeds are keyed by pet type too, so a
+  // newly-added pet type needs its own breeds section here immediately.
+  useEffect(() => {
+    if (!accessToken || !isAllowedViewer) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void listPetTypes(accessToken).then((result) => {
+      if (!isMounted || !result.data) {
+        return;
+      }
+
+      setPetTypes(result.data);
+      setNewPetType((current) => current || (result.data?.[0]?.key ?? ''));
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isAllowedViewer]);
+
   const breedsByType = useMemo(() => {
-    const grouped = new Map<PetType, Breed[]>(PET_TYPES.map((t) => [t, []]));
+    const grouped = new Map<PetType, Breed[]>(petTypes.map((t) => [t.key, []]));
     for (const breed of breeds) {
       grouped.get(breed.pet_type)?.push(breed);
     }
     return grouped;
-  }, [breeds]);
+  }, [breeds, petTypes]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,9 +245,9 @@ export function AdminBreedsPage() {
                   setNewPetType(event.target.value as PetType)
                 }
               >
-                {PET_TYPES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                {petTypes.map((option) => (
+                  <option key={option.id} value={option.key}>
+                    {option.name}
                   </option>
                 ))}
               </select>
@@ -257,12 +282,12 @@ export function AdminBreedsPage() {
             {loadError}
           </p>
         ) : (
-          PET_TYPES.map((petType) => (
+          petTypes.map(({ key: petType, name: petTypeName }) => (
             <section key={petType} className={styles.group}>
-              <h2 className={styles.groupTitle}>{petType} breeds</h2>
+              <h2 className={styles.groupTitle}>{petTypeName} breeds</h2>
               {(breedsByType.get(petType) ?? []).length === 0 ? (
                 <p className={styles.copy}>
-                  No {petType.toLowerCase()} breeds yet.
+                  No {petTypeName.toLowerCase()} breeds yet.
                 </p>
               ) : (
                 <ul className={styles.list}>

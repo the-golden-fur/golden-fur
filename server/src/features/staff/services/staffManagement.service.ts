@@ -22,7 +22,7 @@ function throwWithStatus(statusCode: number, message: string): never {
 /**
  * Generates a temporary password for a newly created staff account. Still
  * returned directly in the create-account response (as a fallback the admin
- * can relay by hand), but as of Issue #74 it's also emailed via Resend
+ * can relay by hand), but as of Issue #74 it's also emailed via Brevo
  * (accountCreatedEmail.ts) and stored encrypted at rest (see
  * tempCredential.ts) so a later resend can re-deliver this exact password
  * instead of generating a new one.

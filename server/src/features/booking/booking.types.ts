@@ -252,10 +252,42 @@ export type StaffPreferenceType = 'no_preference' | 'specific';
 /** null/undefined stay_date = applies to every night of the stay (the "same
  * instructions every night" default); a specific date scopes the row to
  * that single night only (#22 per-night care instructions). */
+// Care instruction units + photo attachment (diet-app style specificity):
+// required at booking time - the customer picks a unit and may attach a
+// photo of the food/medication item when adding it. Duplicates hotel
+// feature's own FOOD_QUANTITY_UNITS/MEDICATION_DOSE_UNITS (same precedent as
+// the meal_time/time_block literal unions above).
+export const FOOD_QUANTITY_UNITS = [
+  'cup',
+  'gram',
+  'ounce',
+  'can',
+  'scoop',
+  'tablespoon',
+  'teaspoon',
+  'milliliter',
+  'piece',
+] as const;
+export type FoodQuantityUnit = (typeof FOOD_QUANTITY_UNITS)[number];
+
+export const MEDICATION_DOSE_UNITS = [
+  'mg',
+  'ml',
+  'tablet',
+  'capsule',
+  'drop',
+  'application',
+] as const;
+export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
+
 export interface HotelBookingPreferenceFeeding {
   meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
   food_type: string;
   quantity: string;
+  quantity_unit: FoodQuantityUnit;
+  /** Optional photo of the food item/bag, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url?: string;
   special_instructions?: string;
   food_catalog_id?: string;
   stay_date?: string;
@@ -278,6 +310,10 @@ export interface HotelBookingPreferencePlaying {
 export interface HotelBookingPreferenceMedication {
   medication_name: string;
   dose: string;
+  dose_unit: MedicationDoseUnit;
+  /** Optional photo of the medication/label, uploaded via
+   * POST /pets/:id/care-item-photo. */
+  photo_url?: string;
   scheduled_times: string[];
   administration_notes?: string;
   medication_catalog_id?: string;
@@ -355,6 +391,16 @@ export interface Booking {
    * posted as a transaction_line_items row (that read side is Epic A
    * follow-up work, not built by this epic). */
   pending_reschedule_fee_amount: number | null;
+  /** Slot-conflict notification (20260911188): set when another customer's
+   * downpayment claimed this still-unpaid pencil booking's date/time/staff/
+   * cage slot first. NULL unless the customer currently needs to pick a new
+   * slot. See conflict_notice for the customer-facing explanation. Set by
+   * applyFirstBookingPaymentSideEffects (booking.service.ts), cleared by a
+   * successful reschedule (reschedule.service.ts). */
+  slot_conflict_at: string | null;
+  /** Short, customer-facing explanation shown alongside slot_conflict_at.
+   * NULL unless slot_conflict_at is set. */
+  conflict_notice: string | null;
   created_at: string;
   updated_at: string;
   booking_items?: BookingItem[];
@@ -477,6 +523,30 @@ export interface PolicyConfiguration {
    * unpaid down-payment-required Online booking auto-cancels. NOT NULL,
    * default 24. Snapshotted onto bookings.downpayment_due_at at creation. */
   downpayment_hold_hours: number;
+  /** How many overlapping Grooming/Veterinary bookings one staff member may be
+   * assigned at once (20260908178). 1 = one pet at a time (default). Read by
+   * the get_staff_availability RPC (Check 2) and confirmCapacityAfterInsert;
+   * also gates the multi-booking checkout's in-request claimWindowOrThrow. */
+  max_concurrent_bookings_per_staff: number;
+  /** Multi-booking checkout confirmation email (20260908181): 'combined' =
+   * one email listing every booking in the cart (default); 'per_booking' =
+   * one email per booking. In-app rows are always one per booking. */
+  booking_group_email_mode: 'combined' | 'per_booking';
+  /** When true, email the customer as each hotel care-log task is completed.
+   * Default false - the in-app notification still fires; the nightly summary
+   * (below) is what reaches the customer's inbox instead (20260908181). */
+  care_log_task_email_enabled: boolean;
+  /** When true (default), send one nightly summary email per active hotel
+   * stay listing that day's completed / missed / still-open care tasks
+   * (20260908181, care_log_daily_reports ledger). */
+  care_log_daily_report_enabled: boolean;
+  /** Custom change (manual-cancellation-credit-review): 'Automatic' (default)
+   * - a qualifying cancellation (notice met, something paid) converts to
+   * credit immediately, same as always. 'Manual' - every cancellation with a
+   * confirmed payment is instead queued for a staff member to approve/deny
+   * after reading the cancellation reason; the notice-period outcome is not
+   * consulted in this mode (see cancellation.service.ts). */
+  credit_review_mode: CreditReviewMode;
   created_at: string;
   updated_at: string;
 }
@@ -507,12 +577,30 @@ export type EffectivePolicy = Pick<
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'max_concurrent_bookings_per_staff'
+  | 'booking_group_email_mode'
+  | 'care_log_task_email_enabled'
+  | 'care_log_daily_report_enabled'
+  | 'credit_review_mode'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'
  * line_item_type convention (#89). Documented values: 'cancellation',
  * 'reschedule'. */
 export type CancellationLogEventType = 'cancellation' | 'reschedule';
+
+/** Mirrors policy_configurations.credit_review_mode (manual-cancellation-
+ * credit-review custom change). */
+export type CreditReviewMode = 'Automatic' | 'Manual';
+
+/** 'not_applicable': Automatic mode, or nothing was paid. 'pending': Manual
+ * mode, awaiting a staff decision (see the Credit Review Queue). 'approved'/
+ * 'denied': the outcome, once decided. */
+export type CreditReviewStatus =
+  | 'not_applicable'
+  | 'pending'
+  | 'approved'
+  | 'denied';
 
 export interface CancellationLog {
   id: string;
@@ -526,6 +614,9 @@ export interface CancellationLog {
   credit_issued: boolean;
   credit_amount: number | null;
   reschedule_fee_charged: number | null;
+  credit_review_status: CreditReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   notes: string | null;
   created_at: string;
 }
@@ -550,3 +641,98 @@ export type CagePickerOption =
       cage_label: string;
       size: string;
     };
+
+/**
+ * Fully-hydrated single booking for the read-only "View details" surface -
+ * the customer's My Bookings modal (BookingDetailsModal) and the staff
+ * Booking Details page (BookingDetailsPage), which both only ever had bare
+ * ids to work with otherwise. Assembled server-side by
+ * bookingDetails.service.ts on the service-role client (the customer session
+ * can't read services/packages/staff_profiles/cages/transactions directly -
+ * same read-through rationale as catalog.service.ts).
+ */
+export interface HydratedBookingItem extends BookingItem {
+  /** Resolved service or package name; falls back to a generic label if the
+   * catalog row is somehow missing. */
+  name: string;
+}
+
+export interface BookingDetailsBranch {
+  id: string;
+  name: string;
+  address: string | null;
+  contact_number: string | null;
+}
+
+export interface BookingDetailsPet {
+  id: string;
+  name: string;
+  weight_class: string | null;
+  coat_type: string | null;
+}
+
+export interface BookingDetailsOwner {
+  id: string;
+  full_name: string;
+}
+
+export interface BookingDetailsStaff {
+  id: string;
+  display_name: string;
+}
+
+export interface BookingDetailsCage {
+  id: string;
+  cage_label: string;
+  size: string;
+}
+
+export interface BookingDetailsTransaction {
+  id: string;
+  total_amount: number;
+  /** 'full' | 'downpayment' | 'balance' | null (older rows). */
+  payment_choice: string | null;
+  payment_status: PaymentStatus;
+  payment_method: string | null;
+  bank_name: string | null;
+  credit_applied_amount: number;
+  payment_reference: string | null;
+  created_at: string;
+  webhook_confirmed_at: string | null;
+}
+
+/** Effective pricing for the booking - the group's shared values when the
+ * booking is part of a multi-booking checkout, otherwise the booking's own. */
+export interface BookingDetailsPricing {
+  items_subtotal: number;
+  discount_amount: number;
+  promo_amount: number;
+  total: number;
+  downpayment_amount: number | null;
+  downpayment_required: boolean;
+  /** Sum of settled (Fully/Partially Paid) transaction amounts. */
+  amount_paid: number;
+  /** total - amount_paid, floored at 0. */
+  balance_due: number;
+}
+
+export interface BookingDetails {
+  booking: Booking;
+  branch: BookingDetailsBranch | null;
+  pet: BookingDetailsPet | null;
+  owner: BookingDetailsOwner | null;
+  items: HydratedBookingItem[];
+  assigned_staff: BookingDetailsStaff | null;
+  cage: BookingDetailsCage | null;
+  discount_name: string | null;
+  promo_name: string | null;
+  /** Present only when the booking belongs to a multi-booking checkout. */
+  group: BookingGroup | null;
+  /** False for a staff caller outside BILLING_STAFF_ROLES - the payment list
+   * and the paid/balance rollup are withheld and `transactions` is empty. */
+  payments_visible: boolean;
+  pricing: BookingDetailsPricing;
+  /** This booking's payments, or the whole group's when grouped, oldest first.
+   * Empty when `payments_visible` is false. */
+  transactions: BookingDetailsTransaction[];
+}

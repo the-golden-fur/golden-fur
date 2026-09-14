@@ -22,6 +22,8 @@ const STAFF_ROLES = [
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
+/** Custom change (promo variations, session 86). */
+const PROMO_TYPES = ['date_range', 'weekly_recurring'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
@@ -206,6 +208,58 @@ export const updatePricingConfigurationValidator = z
     );
   });
 
+/**
+ * Architectural-Change-History: the S/M/L/XL kg cut-offs. Every field
+ * optional (PATCH semantics for the singleton). Ordering among the fields
+ * present in this request is checked here; the full m < l < xl invariant
+ * against the merge of supplied + stored values is enforced in
+ * petWeightClassConfiguration.service.ts (which has the stored row) and, as a
+ * final backstop, by the pet_weight_class_configuration_ordered_check DB
+ * constraint.
+ */
+export const updatePetWeightClassConfigurationValidator = z
+  .object({
+    m_min_kg: z.number().positive().max(499).optional(),
+    l_min_kg: z.number().positive().max(499).optional(),
+    xl_min_kg: z.number().positive().max(499).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (
+      input.m_min_kg !== undefined &&
+      input.l_min_kg !== undefined &&
+      input.m_min_kg >= input.l_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['l_min_kg'],
+        message: 'L cut-off must be greater than the M cut-off',
+      });
+    }
+    if (
+      input.l_min_kg !== undefined &&
+      input.xl_min_kg !== undefined &&
+      input.l_min_kg >= input.xl_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['xl_min_kg'],
+        message: 'XL cut-off must be greater than the L cut-off',
+      });
+    }
+    if (
+      input.m_min_kg !== undefined &&
+      input.xl_min_kg !== undefined &&
+      input.m_min_kg >= input.xl_min_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['xl_min_kg'],
+        message: 'XL cut-off must be greater than the M cut-off',
+      });
+    }
+  });
+
 /** Epic B (#82): fraction of the included services' base_price sum. */
 export const updatePackagePricingConfigurationValidator = z
   .object({
@@ -292,8 +346,10 @@ export const promoScopeItemValidator = z
 
 function validatePromoShape(
   input: {
+    promo_type?: (typeof PROMO_TYPES)[number];
     start_date?: string | null;
     end_date?: string | null;
+    days_of_week?: number[];
     condition_note?: string | null;
     discount_type?: (typeof DISCOUNT_TYPES)[number];
     value?: number;
@@ -303,9 +359,11 @@ function validatePromoShape(
   ctx: z.RefinementCtx,
   { requireWindow }: { requireWindow: boolean }
 ) {
+  const promoType = input.promo_type ?? 'date_range';
   const hasStart = input.start_date != null;
   const hasEnd = input.end_date != null;
   const hasCondition = Boolean(input.condition_note?.trim());
+  const hasDays = Boolean(input.days_of_week?.length);
 
   if (hasCondition && (hasStart || hasEnd)) {
     ctx.addIssue({
@@ -316,13 +374,55 @@ function validatePromoShape(
     });
   }
 
-  if (requireWindow && !hasCondition && (!hasStart || !hasEnd)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['start_date'],
-      message:
-        'A date-bounded promo needs both start_date and end_date; a condition-based one needs condition_note',
-    });
+  // promo_type is only ever present on the CREATE payload (zod resolves its
+  // default there, so input.promo_type is always concrete by this point);
+  // updatePromoValidator's schema omits the field entirely (immutable after
+  // creation), so input.promo_type is always undefined on an update and
+  // this whole type-conditional block is skipped there - same deferred-to-
+  // the-service-layer pattern scope_type's own checks below already use for
+  // a partial payload (promos.service.ts's updatePromo re-checks the merged
+  // existing+updates state, including days_of_week vs. the stored
+  // promo_type).
+  if (input.promo_type !== undefined) {
+    // Custom change (promo variations): a weekly_recurring promo's
+    // "condition"/schedule IS days_of_week - start_date/end_date remain
+    // valid as an optional overall campaign window on top of it, but
+    // days_of_week and condition_note are mutually exclusive with each
+    // other, same as condition_note/dates above.
+    if (promoType === 'weekly_recurring') {
+      if (hasCondition) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['condition_note'],
+          message: 'A weekly recurring promo cannot also have a condition_note',
+        });
+      }
+      if (requireWindow && !hasDays) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['days_of_week'],
+          message:
+            'A weekly recurring promo needs at least one day of the week',
+        });
+      }
+    } else {
+      if (hasDays) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['days_of_week'],
+          message:
+            "days_of_week is only valid when promo_type is 'weekly_recurring'",
+        });
+      }
+      if (requireWindow && !hasCondition && (!hasStart || !hasEnd)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['start_date'],
+          message:
+            'A date-bounded promo needs both start_date and end_date; a condition-based one needs condition_note',
+        });
+      }
+    }
   }
 
   if (
@@ -379,8 +479,12 @@ function validatePromoShape(
 export const createPromoValidator = z
   .object({
     name: z.string().trim().min(1, 'Name is required'),
+    // Immutable after creation (updatePromoValidator omits it) - see the
+    // Promo type's own doc comment.
+    promo_type: z.enum(PROMO_TYPES).optional().default('date_range'),
     start_date: dateString.optional(),
     end_date: dateString.optional(),
+    days_of_week: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     condition_note: z.string().trim().min(1).optional(),
     discount_type: z.enum(DISCOUNT_TYPES),
     value: z.number().nonnegative(),
@@ -406,8 +510,14 @@ export const createPromoValidator = z
 export const updatePromoValidator = z
   .object({
     name: z.string().trim().min(1).optional(),
+    // promo_type itself is deliberately absent - immutable after creation.
     start_date: dateString.nullable().optional(),
     end_date: dateString.nullable().optional(),
+    // Full replacement of the day set when provided - only meaningful (and
+    // only validated against promo_type) for an existing weekly_recurring
+    // promo; the service layer merges this against the stored promo_type,
+    // same as every other cross-field check in validatePromoShape.
+    days_of_week: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     condition_note: z.string().trim().min(1).nullable().optional(),
     discount_type: z.enum(DISCOUNT_TYPES).optional(),
     value: z.number().nonnegative().optional(),
@@ -423,20 +533,52 @@ export const updatePromoValidator = z
 // Per-branch availability toggle reuses the shared branchAvailabilityValidator
 // above (same shape already used by Services/Packages/Service Types).
 
-const PET_TYPES = ['Dog', 'Cat'] as const;
-
-/** Epic A follow-up: breeds CRUD (previously seed-only, migration 20260725045). */
+/** Epic A follow-up: breeds CRUD (previously seed-only, migration 20260725045).
+ * pet_type is no longer a fixed 2-value enum (Pet Types admin CRUD,
+ * 20260912191) - it's a foreign key against the admin-managed pet_types
+ * table, so the real validation is the DB constraint, not this schema. */
 export const createBreedValidator = z
   .object({
-    pet_type: z.enum(PET_TYPES),
+    pet_type: z.string().trim().min(1, 'Pet type is required'),
     name: z.string().trim().min(1, 'Name is required'),
   })
   .strict();
 
 export const updateBreedValidator = z
   .object({
-    pet_type: z.enum(PET_TYPES).optional(),
+    pet_type: z.string().trim().min(1).optional(),
     name: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+/** Custom change: Pet Types admin CRUD. `key` is free-text and immutable
+ * once created (like service_types.key) - a brand-new row won't have
+ * matching category-specific pricing behavior until an admin also
+ * configures a fixed-price override for it (Pet Type Pricing section of the
+ * same admin page); the plain weight/coat matrix pricing applies otherwise,
+ * same fallback Dog already uses today. */
+export const createPetTypeValidator = z
+  .object({
+    key: z.string().trim().min(1, 'Key is required'),
+    name: z.string().trim().min(1, 'Name is required'),
+  })
+  .strict();
+
+export const updatePetTypeValidator = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
+/** Custom change: per-branch fixed-price override by pet type
+ * (pet_type_price_overrides, 20260912192). branch_id: null upserts the
+ * system-wide default row; a uuid upserts that branch's own row. */
+export const upsertPetTypePriceOverrideValidator = z
+  .object({
+    pet_type: z.string().trim().min(1, 'Pet type is required'),
+    branch_id: z.uuid().nullable(),
+    fixed_price: z.number().nonnegative(),
   })
   .strict();
 
@@ -484,6 +626,14 @@ export type UpdatePricingConfigurationInput = z.infer<
 export type UpdatePackagePricingConfigurationInput = z.infer<
   typeof updatePackagePricingConfigurationValidator
 >;
+export type UpdatePetWeightClassConfigurationInput = z.infer<
+  typeof updatePetWeightClassConfigurationValidator
+>;
 export type UpsertPromoCapConfigurationInput = z.infer<
   typeof upsertPromoCapConfigurationValidator
+>;
+export type CreatePetTypeInput = z.infer<typeof createPetTypeValidator>;
+export type UpdatePetTypeInput = z.infer<typeof updatePetTypeValidator>;
+export type UpsertPetTypePriceOverrideInput = z.infer<
+  typeof upsertPetTypePriceOverrideValidator
 >;

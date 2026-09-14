@@ -263,7 +263,7 @@ export async function forgotPasswordController(req: Request, res: Response) {
       return res.status(400).json({ error: error.message });
     }
 
-    // Issue #97: password_reset has no Resend template (Supabase Auth just
+    // Issue #97: password_reset has no Brevo template (Supabase Auth just
     // sent the email itself, above) - only the in-app row is written here,
     // so the staff member sees "Password reset requested" in their inbox
     // even though the actual email came from Supabase, not us. Best-effort

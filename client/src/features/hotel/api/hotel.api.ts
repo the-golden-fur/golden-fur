@@ -150,16 +150,23 @@ export async function setCageMaintenanceStatus(
   return { data: result.data?.cage ?? null, error: result.error };
 }
 
-/** Custom change (Cage CRUD, Settings > Config). */
+/** Custom change (Cage CRUD, Settings > Config). petTypes (cage pet-type
+ * support, 20260912193) must be non-empty - a cage must support at least
+ * one pet type. */
 export async function createCage(
   cageLabel: string,
   size: CageSize,
+  petTypes: string[],
   accessToken: string
 ): Promise<HotelApiResult<Cage>> {
   const response = await fetch(`${API_BASE_URL}/hotel/cages`, {
     method: 'POST',
     headers: jsonHeaders(accessToken),
-    body: JSON.stringify({ cage_label: cageLabel, size }),
+    body: JSON.stringify({
+      cage_label: cageLabel,
+      size,
+      pet_types: petTypes,
+    }),
   });
 
   if (!response.ok) {
@@ -172,7 +179,7 @@ export async function createCage(
 
 export async function updateCage(
   cageId: string,
-  updates: { cage_label?: string; size?: CageSize },
+  updates: { cage_label?: string; size?: CageSize; pet_types?: string[] },
   accessToken: string
 ): Promise<HotelApiResult<Cage>> {
   const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}`, {

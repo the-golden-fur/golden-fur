@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type {
   CancellationLog,
   CancellationLogEventType,
+  CreditReviewStatus,
   EnforcementMode,
 } from '../booking.types.ts';
 
@@ -14,6 +15,11 @@ export interface WriteCancellationLogParams {
   enforcementModeApplied: EnforcementMode;
   policyViolation: boolean;
   rescheduleFeeCharged?: number | null;
+  /** Manual-cancellation-credit-review custom change: 'pending' when the
+   * branch's credit_review_mode is 'Manual' and something was paid -
+   * defaults to 'not_applicable' (Automatic mode, a reschedule event, or
+   * nothing was paid). */
+  creditReviewStatus?: CreditReviewStatus;
 }
 
 /**
@@ -49,6 +55,7 @@ export async function writeCancellationLog(
       credit_issued: false,
       credit_amount: null,
       reschedule_fee_charged: params.rescheduleFeeCharged ?? null,
+      credit_review_status: params.creditReviewStatus ?? 'not_applicable',
     })
     .select('*')
     .maybeSingle();
@@ -86,6 +93,31 @@ export async function markCreditIssuedOnLog(
     console.error(
       // eslint-disable-line no-console
       'markCreditIssuedOnLog failed:',
+      error.message
+    );
+  }
+}
+
+/**
+ * Manual-cancellation-credit-review custom change: patches a just-written
+ * log row to 'pending' once cancellation.service.ts has confirmed the
+ * branch is in Manual mode AND something was actually paid - mirrors
+ * markCreditIssuedOnLog's own best-effort shape (a patch failure here would
+ * only understate this row's own status; the booking itself is already
+ * cancelled and nothing financial has happened yet for a pending row).
+ */
+export async function markCreditReviewPendingOnLog(
+  logId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('cancellation_logs')
+    .update({ credit_review_status: 'pending' })
+    .eq('id', logId);
+
+  if (error) {
+    console.error(
+      // eslint-disable-line no-console
+      'markCreditReviewPendingOnLog failed:',
       error.message
     );
   }

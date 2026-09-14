@@ -1,6 +1,6 @@
 ---
 name: supabase-migration-push
-description: The closing step that applies new supabase/migrations/ files to the linked Supabase project (supabase db push). Run once, only after the whole task is done and ci-verifier is green and seeds are reconciled. Confirms the linked ref is not production before pushing.
+description: The closing step that applies new supabase/migrations/ files to the linked Supabase project (supabase db push). Run once, only after the whole task is done, the test/build suites pass locally, and seeds are reconciled. Confirms the linked ref is not production before pushing.
 ---
 
 # Supabase migration push

@@ -83,6 +83,22 @@ export interface PackagePricingConfiguration {
   updated_at: string;
 }
 
+/**
+ * Architectural-Change-History: the singleton kg cut-offs that derive a
+ * pet's S/M/L/XL weight_class from its recorded weight_kg (lower bound
+ * inclusive: S < m_min_kg <= M < l_min_kg <= L < xl_min_kg <= XL). Same
+ * singleton/two-tier-RLS shape as PricingConfiguration; consumed by
+ * deriveWeightClass on every pet weight write.
+ */
+export interface PetWeightClassConfiguration {
+  id: string;
+  m_min_kg: number;
+  l_min_kg: number;
+  xl_min_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
 export type CapType = 'percentage' | 'flat';
 
 /** Epic B (#84): per-branch (NULL = both branches) promo cap. */
@@ -212,14 +228,43 @@ export interface Package {
   package_branch_availability?: PackageBranchAvailability[];
 }
 
-/** Same vocabulary as M02 pets.pet_type. */
-export type PetType = 'Dog' | 'Cat';
+/**
+ * Same vocabulary as M02 pets.pet_type. No longer a fixed 2-value union -
+ * pet_type is now a foreign key against the admin-managed pet_types table
+ * (Pet Types admin CRUD, 20260912191), so the seeded 'Dog'/'Cat' values keep
+ * working unchanged but an admin can add more.
+ */
+export type PetType = string;
 
 export interface Breed {
   id: string;
   pet_type: PetType;
   name: string;
   created_at: string;
+}
+
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
+ * immutable once created (same shape as ServiceType.key) - pets.pet_type and
+ * breeds.pet_type both reference it. */
+export interface PetTypeRow {
+  id: string;
+  key: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Custom change: per-branch fixed-price override by pet type
+ * (pet_type_price_overrides, 20260912192). branch_id null = the
+ * system-wide default row; a branch-specific row overrides it. */
+export interface PetTypePriceOverride {
+  id: string;
+  pet_type: string;
+  branch_id: string | null;
+  fixed_price: number;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
@@ -258,6 +303,11 @@ export interface ServiceType {
 
 export type PromoScopeType = 'all_services' | 'specific';
 
+/** Custom change (promo variations, session 86): a second promo "type"
+ * alongside the original date-bounded one - "every Monday, 10% off
+ * Grooming" (20260913195). */
+export type PromoType = 'date_range' | 'weekly_recurring';
+
 export interface PromoScopeItem {
   id: string;
   promo_id: string;
@@ -277,8 +327,17 @@ export interface PromoBranchAvailability {
 export interface Promo {
   id: string;
   name: string;
+  /** Custom change (promo variations, session 86): defaults to 'date_range'
+   * for every promo created before this - immutable after creation (a
+   * weekly_recurring promo's eligibility rule can't be rewritten into a
+   * date_range one after customers may already be relying on it). */
+  promo_type: PromoType;
   start_date: string | null;
   end_date: string | null;
+  /** Only set when promo_type = 'weekly_recurring' (0=Sunday..6=Saturday,
+   * Manila-local). start_date/end_date, if also set, bound an overall
+   * campaign window IN ADDITION to the day-of-week match. */
+  days_of_week: number[] | null;
   condition_note: string | null;
   discount_type: DiscountValueType;
   value: number;

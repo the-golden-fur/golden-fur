@@ -15,7 +15,7 @@ interface ResendAccountEmailParams {
 /**
  * Issue #74: re-sends the existing account_created credential email as-is -
  * does NOT generate a new temporary password (AC-2/AC-4). Reuses the same
- * Resend-backed template as the original send (staffManagement.service.ts),
+ * Brevo-backed template as the original send (staffManagement.service.ts),
  * decrypting the password stored at creation time rather than calling
  * Supabase Auth to issue a new one.
  *

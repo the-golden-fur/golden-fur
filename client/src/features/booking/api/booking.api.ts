@@ -1,13 +1,19 @@
 import type {
   Booking,
+  BookingDetails,
   BookingStatus,
   CagePickerOptionsResult,
   CancelBookingPayload,
+  CancellationLog,
   CancellationResult,
+  ConflictedBooking,
   CreateBookingGroupPayload,
   CreateBookingGroupResult,
   CreateBookingPayload,
+  CreditReviewQueueItem,
   DownpaymentType,
+  ExtendHotelStayPayload,
+  ExtendHotelStayResult,
   ListBookingsFilters,
   OperatingWindow,
   PayForBookingPayload,
@@ -119,6 +125,30 @@ export async function getBooking(
   return { data: result.data?.booking ?? null, error: result.error };
 }
 
+/**
+ * Fully-hydrated single booking for the read-only "View details" surfaces
+ * (BookingDetailsModal, BookingDetailsPage) - GET /bookings/:id/details
+ * resolves branch/pet/staff/cage/item-names/discount-promo/payments
+ * server-side, so a customer session gets them without hitting the
+ * staff-only maintenance/billing endpoints.
+ */
+export async function getBookingDetails(
+  bookingId: string,
+  accessToken: string
+): Promise<BookingApiResult<BookingDetails>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/details`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ details: BookingDetails }>(response);
+  return { data: result.data?.details ?? null, error: result.error };
+}
+
 export async function listBookings(
   accessToken: string,
   filters: ListBookingsFilters = {}
@@ -223,65 +253,28 @@ export async function getDayAvailability(
   };
 }
 
-export interface NextAvailableSlotQuery {
-  branchId: string;
-  serviceCategory: string;
-  /** YYYY-MM-DD - search starts here (inclusive). */
-  fromDate: string;
-  slotDurationMinutes: number;
-  petWeightClass?: string;
-  lookaheadDays?: number;
-}
-
-export interface NextAvailableSlot {
-  date: string;
-  earliestSlot: { start: string; end: string };
-}
-
-/** #22: "fully booked" warning support - the earliest available day/slot
- * looking forward from fromDate, so the booking flow can warn right after
- * service selection instead of only once the customer reaches the Slot
- * Picker. null = nothing available within the lookahead window. */
-export async function getNextAvailableSlot(
-  accessToken: string,
-  query: NextAvailableSlotQuery
-): Promise<BookingApiResult<NextAvailableSlot | null>> {
-  const params = new URLSearchParams({
-    branch_id: query.branchId,
-    service_category: query.serviceCategory,
-    from_date: query.fromDate,
-    slot_duration_minutes: String(query.slotDurationMinutes),
-  });
-
-  if (query.petWeightClass) {
-    params.set('pet_weight_class', query.petWeightClass);
-  }
-  if (query.lookaheadDays) {
-    params.set('lookahead_days', String(query.lookaheadDays));
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/bookings/availability/next-slot?${params.toString()}`,
-    { headers: authHeaders(accessToken) }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ next: NextAvailableSlot | null }>(response);
-  return { data: result.data ? result.data.next : null, error: result.error };
-}
-
 export interface BookingCatalog {
   services: Service[];
   packages: Package[];
   promos: Promo[];
+  /** Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+   * the pet type's resolved fixed price for this branch, or null if none
+   * applies - only present when `CatalogQuery.petType` was given. When set,
+   * it replaces every service/package's own price in the booking preview,
+   * matching what booking.service.ts actually charges at confirmation. */
+  fixedPrice: number | null;
+  /** Custom change (promos/coupons multiselect booking step, session 86):
+   * the effective promo_cap_configuration for this branch, read through
+   * here for the same reason promos are (the cap config's own endpoint is
+   * staff-only) - lets the new Promos & Coupons step show a correctly
+   * capped running total. */
+  promoCap: { cap_type: 'percentage' | 'flat' | 'count'; cap_value: number };
 }
 
 export interface CatalogQuery {
   branchId: string;
   category?: string;
+  petType?: string;
 }
 
 /**
@@ -299,6 +292,10 @@ export async function getBookingCatalog(
 
   if (query.category) {
     params.set('category', query.category);
+  }
+
+  if (query.petType) {
+    params.set('pet_type', query.petType);
   }
 
   const response = await fetch(
@@ -376,9 +373,10 @@ export async function listServiceTypes(): Promise<
 /** Custom change: Cage Picker addendum - mirrors getStaffPickerOptions. */
 export async function getCagePickerOptions(
   accessToken: string,
-  branchId: string
+  branchId: string,
+  petId: string
 ): Promise<BookingApiResult<CagePickerOptionsResult>> {
-  const params = new URLSearchParams({ branch_id: branchId });
+  const params = new URLSearchParams({ branch_id: branchId, pet_id: petId });
 
   const response = await fetch(
     `${API_BASE_URL}/bookings/cage-picker?${params.toString()}`,
@@ -390,6 +388,31 @@ export async function getCagePickerOptions(
   }
 
   return parseBody<CagePickerOptionsResult>(response);
+}
+
+export interface CageAssignmentStatusResult {
+  matched: boolean;
+  cage: { id: string; cage_label: string } | null;
+}
+
+/** Custom change (cage pet-type support / customer readonly cage view). */
+export async function getCageAssignmentStatus(
+  accessToken: string,
+  branchId: string,
+  petId: string
+): Promise<BookingApiResult<CageAssignmentStatusResult>> {
+  const params = new URLSearchParams({ branch_id: branchId, pet_id: petId });
+
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/cage-assignment-status?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<CageAssignmentStatusResult>(response);
 }
 
 export async function rescheduleBooking(
@@ -411,6 +434,72 @@ export async function rescheduleBooking(
   }
 
   return parseBody<RescheduleResult>(response);
+}
+
+/** Staff-only "extend stay" action (extend-hotel-stay custom change) - adds
+ * whole nights to a Hotel booking's current stay; the server recomputes
+ * price and reconciles it onto the booking's remaining-balance transaction
+ * (or creates a new one if the booking is already Fully Paid). */
+export async function extendHotelStay(
+  bookingId: string,
+  accessToken: string,
+  payload: ExtendHotelStayPayload
+): Promise<BookingApiResult<ExtendHotelStayResult>> {
+  const response = await fetch(
+    `${API_BASE_URL}/bookings/${bookingId}/extend-stay`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<ExtendHotelStayResult>(response);
+}
+
+/** Manual-cancellation-credit-review custom change: the Credit Review Queue -
+ * a Manual-mode branch's cancellation_logs rows still awaiting a staff
+ * decision. */
+export async function listPendingCreditReviews(
+  accessToken: string
+): Promise<BookingApiResult<CreditReviewQueueItem[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/cancellation-logs/pending-credit-review`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ items: CreditReviewQueueItem[] }>(response);
+  return { data: result.data?.items ?? null, error: result.error };
+}
+
+export async function decideCreditReview(
+  cancellationLogId: string,
+  accessToken: string,
+  decision: 'approved' | 'denied'
+): Promise<BookingApiResult<CancellationLog>> {
+  const response = await fetch(
+    `${API_BASE_URL}/cancellation-logs/${cancellationLogId}/credit-review`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ decision }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ log: CancellationLog }>(response);
+  return { data: result.data?.log ?? null, error: result.error };
 }
 
 export async function cancelBooking(
@@ -493,6 +582,25 @@ export async function getPetBookingConflicts(
   }
 
   const result = await parseBody<{ conflicts: PetBookingConflict[] }>(response);
+  return { data: result.data?.conflicts ?? null, error: result.error };
+}
+
+/** Slot-conflict notification: the logged-in customer's own still-Pending
+ * bookings that just lost their date/time/staff/cage slot to another
+ * customer's payment - powers the CustomerPortalPage dashboard popup and the
+ * notification bell's link-through for booking_slot_conflict rows. */
+export async function listMyConflictedBookings(
+  accessToken: string
+): Promise<BookingApiResult<ConflictedBooking[]>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/conflicts/mine`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ conflicts: ConflictedBooking[] }>(response);
   return { data: result.data?.conflicts ?? null, error: result.error };
 }
 

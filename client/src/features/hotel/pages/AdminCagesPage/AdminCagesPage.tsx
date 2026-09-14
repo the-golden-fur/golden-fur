@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { listPetTypes } from '../../../maintenance/api/maintenance.api';
+import type { PetTypeRow } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createCage,
@@ -25,9 +27,21 @@ const CAGE_SIZE_LABELS: Record<CageSize, string> = {
 interface CreateFormState {
   cageLabel: string;
   size: CageSize;
+  /** Custom change (cage pet-type support): must be non-empty on submit. */
+  petTypes: string[];
 }
 
-const EMPTY_CREATE_FORM: CreateFormState = { cageLabel: '', size: 'S' };
+const EMPTY_CREATE_FORM: CreateFormState = {
+  cageLabel: '',
+  size: 'S',
+  petTypes: [],
+};
+
+function togglePetType(current: string[], key: string): string[] {
+  return current.includes(key)
+    ? current.filter((existing) => existing !== key)
+    : [...current, key];
+}
 
 /**
  * Custom change: Cage CRUD (Settings > Config). Admin/Superadmin can add,
@@ -57,9 +71,12 @@ export function AdminCagesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [editingSize, setEditingSize] = useState<CageSize>('S');
+  const [editingPetTypes, setEditingPetTypes] = useState<string[]>([]);
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
+
+  const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -78,6 +95,21 @@ export function AdminCagesPage() {
       isMounted = false;
     };
   }, [accessToken, user?.id]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let isMounted = true;
+
+    void listPetTypes(accessToken).then((result) => {
+      if (!isMounted || !result.data) return;
+      setPetTypeOptions(result.data.filter((petType) => petType.is_active));
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
@@ -118,12 +150,18 @@ export function AdminCagesPage() {
       return;
     }
 
+    if (createForm.petTypes.length === 0) {
+      setFormError('Select at least one pet type.');
+      return;
+    }
+
     setFormError(null);
     setIsSubmitting(true);
 
     const result = await createCage(
       createForm.cageLabel.trim(),
       createForm.size,
+      createForm.petTypes,
       accessToken
     );
 
@@ -143,6 +181,7 @@ export function AdminCagesPage() {
     setEditingId(cage.id);
     setEditingLabel(cage.cage_label);
     setEditingSize(cage.size);
+    setEditingPetTypes(cage.pet_types);
     setRowError(null);
   }
 
@@ -152,11 +191,20 @@ export function AdminCagesPage() {
       return;
     }
 
+    if (editingPetTypes.length === 0) {
+      setRowError('Select at least one pet type.');
+      return;
+    }
+
     setRowError(null);
 
     const result = await updateCage(
       cageId,
-      { cage_label: editingLabel.trim(), size: editingSize },
+      {
+        cage_label: editingLabel.trim(),
+        size: editingSize,
+        pet_types: editingPetTypes,
+      },
       accessToken
     );
 
@@ -278,6 +326,30 @@ export function AdminCagesPage() {
               </select>
             </label>
 
+            <div className={styles.field}>
+              <span className={styles.label}>Pet types</span>
+              <div className={styles.petTypeCheckboxes}>
+                {petTypeOptions.map((petType) => (
+                  <label
+                    key={petType.id}
+                    className={styles.petTypeCheckboxLabel}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createForm.petTypes.includes(petType.key)}
+                      onChange={() =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          petTypes: togglePetType(prev.petTypes, petType.key),
+                        }))
+                      }
+                    />
+                    {petType.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {formError ? (
               <p className={styles.errorBanner} role="alert">
                 {formError}
@@ -327,6 +399,25 @@ export function AdminCagesPage() {
                           </option>
                         ))}
                       </select>
+                      <div className={styles.petTypeCheckboxes}>
+                        {petTypeOptions.map((petType) => (
+                          <label
+                            key={petType.id}
+                            className={styles.petTypeCheckboxLabel}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={editingPetTypes.includes(petType.key)}
+                              onChange={() =>
+                                setEditingPetTypes((prev) =>
+                                  togglePetType(prev, petType.key)
+                                )
+                              }
+                            />
+                            {petType.name}
+                          </label>
+                        ))}
+                      </div>
                       <button
                         type="button"
                         className={styles.smallButton}
@@ -349,6 +440,9 @@ export function AdminCagesPage() {
                       </span>
                       <span className={styles.cageSize}>
                         {CAGE_SIZE_LABELS[cage.size]}
+                      </span>
+                      <span className={styles.petTypesBadge}>
+                        {cage.pet_types.join(', ')}
                       </span>
                       <span
                         className={`${styles.statusBadge} ${

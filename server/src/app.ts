@@ -6,6 +6,7 @@ import { corsOptions } from './shared/config/cors/cors.config.ts';
 import { errorHandler } from './shared/errors/errorHandler.middleware.ts';
 import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpiry.job.ts';
 import { startAppointmentReminderScheduler } from './features/notifications/services/appointmentReminder.job.ts';
+import { startCareLogDailyReportScheduler } from './features/notifications/services/careLogDailyReport.job.ts';
 
 const app = express();
 
@@ -52,9 +53,13 @@ if (process.env.NODE_ENV !== 'test') {
   // extension is available; this covers projects where it isn't.
   startPromoExpiryScheduler();
 
-  // Issue #99: daily 8:00 AM appointment_reminder CRON - no scheduler
-  // infrastructure existed anywhere in the app before this issue.
+  // Issue #99: appointment_reminder poller (15-min interval, per-customer
+  // reminder offset).
   startAppointmentReminderScheduler();
+
+  // Per-hotel-stay care summary - hourly poll from 21:00 server time, one
+  // email per stay per day instead of one-per-completed-task (Brevo quota).
+  startCareLogDailyReportScheduler();
 }
 
 export default app;

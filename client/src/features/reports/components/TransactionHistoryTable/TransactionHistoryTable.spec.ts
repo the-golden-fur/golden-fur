@@ -50,7 +50,9 @@ function buildTransaction(
   return {
     id: 'txn-1',
     booking_id: 'booking-1',
+    booking_group_id: null,
     customer_id: 'cust-1',
+    customer_name: 'Ada Lovelace',
     branch_id: 'branch-makati',
     transaction_type: 'booking_payment',
     payment_method: 'GCash',
@@ -122,7 +124,6 @@ describe('TransactionHistoryTable', () => {
       data: {
         transaction: null,
         booking: null,
-        changeAmount: 0,
         leftover: null,
       },
       error: null,
@@ -149,11 +150,13 @@ describe('TransactionHistoryTable', () => {
     await screen.findByRole('dialog');
   }
 
-  it('the Pay modal prefills cash tendered, offers Credit, and settles via one "Mark as paid" button', async () => {
+  it('the Pay modal prefills a single "Amount paid" field, offers Credit, and settles via one "Mark as paid" button', async () => {
     await openPayModal();
 
-    // Cash tendered is prefilled to the transaction total.
-    expect(screen.getByLabelText(/cash tendered/i)).toHaveValue(693);
+    // One money field, prefilled to the transaction total. No cash-tendered.
+    expect(screen.getByLabelText(/amount paid/i)).toHaveValue(693);
+    expect(screen.queryByLabelText(/cash tendered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Change:/i)).not.toBeInTheDocument();
     // Credit is an available method here (routed to the credit endpoint).
     expect(screen.getByRole('option', { name: 'Credit' })).toBeInTheDocument();
 
@@ -173,10 +176,10 @@ describe('TransactionHistoryTable', () => {
     ).toBeUndefined();
   });
 
-  it('a partial "Amount to collect" is sent as amount_applied and previews the balance charge', async () => {
+  it('a partial "Amount paid" is sent as amount_applied and previews the balance charge', async () => {
     await openPayModal();
 
-    const amountField = screen.getByLabelText(/amount to collect/i);
+    const amountField = screen.getByLabelText(/amount paid/i);
     await userEvent.clear(amountField);
     await userEvent.type(amountField, '200');
 
@@ -204,34 +207,126 @@ describe('TransactionHistoryTable', () => {
     await waitFor(() =>
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
-        'token'
+        'token',
+        undefined
       )
     );
     expect(billingApi.recordTransactionPayment).not.toHaveBeenCalled();
   });
 
-  it('passes the transaction-type and payment-choice filters to the API', async () => {
+  it('a partial amount with Credit routes to pay-with-credit with the amount', async () => {
+    await openPayModal();
+
+    await userEvent.selectOptions(screen.getByLabelText('Method'), 'Credit');
+    const amountField = screen.getByLabelText(/amount paid/i);
+    await userEvent.clear(amountField);
+    await userEvent.type(amountField, '200');
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
+        'txn-1',
+        'token',
+        200
+      )
+    );
+  });
+
+  it('still offers Pay on a multi-booking-checkout transaction (booking_id null, booking_group_id set)', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          payment_status: 'Pending',
+          booking_id: null,
+          booking_group_id: 'group-1',
+          total_amount: 4840,
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+
+    await screen.findByText('PHP 4840.00');
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    expect(screen.getByText('Pay')).toBeInTheDocument();
+    // No single booking to view for a group transaction.
+    expect(screen.queryByText('View booking')).not.toBeInTheDocument();
+  });
+
+  it('adds a Transaction type filter tile and passes it to the API', async () => {
     renderTable();
     await screen.findByText('PHP 500.00');
 
-    await userEvent.selectOptions(
-      screen.getByLabelText('Transaction type'),
-      'booking_payment'
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Transaction type' })
     );
-    await userEvent.selectOptions(
-      screen.getByLabelText('Payment'),
-      'downpayment'
-    );
+
+    expect(
+      screen.getByRole('button', { name: /Transaction type: Booking payment/ })
+    ).toBeInTheDocument();
 
     await waitFor(() =>
       expect(reportsApi.getTransactionHistory).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          transactionType: 'booking_payment',
-          paymentChoice: 'downpayment',
-        }),
+        expect.objectContaining({ transactionType: 'booking_payment' }),
         'token'
       )
     );
+  });
+
+  it('shows the customer name in its column, with an em dash when unknown', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({ id: 'a', customer_name: 'Grace Hopper' }),
+        buildTransaction({ id: 'b', customer_name: null }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Grace Hopper')).toBeInTheDocument();
+    const dashRow = screen
+      .getAllByText('—')
+      .map((el) => el.closest('tr'))
+      .find(Boolean);
+    expect(dashRow).toBeTruthy();
+  });
+
+  it('a Status tile narrows the rows client-side and clears on remove', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          payment_status: 'Pending',
+          total_amount: 1,
+        }),
+        buildTransaction({
+          id: 'b',
+          payment_status: 'Fully Paid',
+          total_amount: 2,
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+    await screen.findByText('PHP 2.00');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Status' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('PHP 2.00')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('PHP 1.00')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Status filter' })
+    );
+    expect(await screen.findByText('PHP 2.00')).toBeInTheDocument();
   });
 
   it('offers "View booking" in the row menu for a booking payment, and no menu for a misc sale', async () => {
@@ -264,7 +359,7 @@ describe('TransactionHistoryTable', () => {
     expect(await screen.findByText('Booking details')).toBeInTheDocument();
   });
 
-  it('sorts rows by amount', async () => {
+  it('sorts rows by amount from the Sort menu', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [
         buildTransaction({ id: 'a', total_amount: 100 }),
@@ -276,12 +371,40 @@ describe('TransactionHistoryTable', () => {
     renderTable();
     await screen.findByText('PHP 100.00');
 
-    await userEvent.selectOptions(
-      screen.getByDisplayValue('Sort: Date (newest)'),
-      'amount-high'
+    await userEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Amount · High to low' })
     );
 
     const amounts = screen.getAllByText(/^PHP \d/).map((el) => el.textContent);
     expect(amounts[0]).toBe('PHP 900.00');
+  });
+
+  it('switches to the Board view, grouped by payment status', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          payment_status: 'Pending',
+          customer_name: 'Ada Lovelace',
+          booking_id: 'booking-9',
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+    await screen.findByRole('button', { name: 'Board' });
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    expect(screen.getByText('Due payment')).toBeInTheDocument();
+    expect(screen.getByText('Fully Paid')).toBeInTheDocument();
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    await userEvent.click(await screen.findByText('View booking'));
+    expect(await screen.findByText('Booking details')).toBeInTheDocument();
   });
 });

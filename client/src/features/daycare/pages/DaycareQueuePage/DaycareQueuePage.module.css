@@ -6,12 +6,9 @@
 
 .content {
   display: grid;
-  /* Pack rows at the top - .page stretches .content to min-height: 100vh, and
-     without this the grid spreads that extra height between the rows, opening
-     a large gap under the header when the queue is short/empty. */
   align-content: start;
   gap: var(--space-3);
-  max-width: 48rem;
+  max-width: 72rem;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
@@ -39,30 +36,114 @@
   padding: var(--space-2);
 }
 
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
+.successBanner {
+  margin: 0;
+  background: var(--color-booking-completed-bg);
+  color: var(--color-booking-completed-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
 }
 
-.tab,
-.tabActive {
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
+.bookingList {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bookingRow {
+  display: grid;
+  gap: var(--space-0-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.bookingRow:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.rowSummary,
+.rowSummaryButton {
+  display: grid;
+  gap: var(--space-0-5);
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.rowSummaryButton {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.rowSummaryButton:hover .actionHint {
+  color: var(--color-accent-gold-primary);
+}
+
+.actionHint {
   color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.bookingHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.bookingBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+.bookingTitle {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.bookingMeta {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   cursor: pointer;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   padding: var(--space-1) var(--space-2);
-  transition: color 0.15s ease;
+  width: fit-content;
+  margin-top: var(--space-0-5);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.tab:hover {
-  color: var(--color-text-primary);
-}
-
-.tabActive {
-  border-bottom-color: var(--color-accent-gold-primary);
-  color: var(--color-text-primary);
+.secondaryButton:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-accent-gold-primary);
 }

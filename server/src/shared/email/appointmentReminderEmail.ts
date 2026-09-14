@@ -1,4 +1,4 @@
-import { sendEmail } from './resend.client.ts';
+import { sendEmail } from './brevo.client.ts';
 
 export interface AppointmentReminderEmailParams {
   to: string;

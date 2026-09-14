@@ -1,0 +1,93 @@
+.tile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-accent-gold-card-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.body {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-pill);
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 1px;
+}
+
+.label {
+  color: var(--color-text-secondary);
+}
+
+.value {
+  font-weight: var(--weight-semibold);
+}
+
+/* Hover-reveal, but stays in the DOM / a11y tree / tab order at all times
+   (opacity, not display), and is revealed for keyboard users on focus and
+   for touch devices always. */
+.remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 0 var(--space-0-5) 0 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tile:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.remove:hover {
+  color: var(--color-text-primary);
+}
+
+@media (hover: none) {
+  .remove {
+    opacity: 1;
+  }
+}
+
+.popover {
+  composes: animate-fade-in from global;
+  position: absolute;
+  top: calc(100% + var(--space-0-5));
+  left: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  gap: var(--space-1);
+  min-width: 13rem;
+  max-width: 18rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remove {
+    transition: none;
+  }
+}

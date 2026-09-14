@@ -1,19 +1,23 @@
-import { useState, type FormEvent } from 'react';
-import { createPet, uploadPetPhoto } from '../../../api/customer.api';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  createPet,
+  listPetTypes,
+  uploadPetPhoto,
+} from '../../../api/customer.api';
 import type {
   Pet,
   PetCoatType,
   PetCreatePayloadStaff,
   PetGender,
   PetType,
+  PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
+import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
 
-const PET_TYPE_OPTIONS: PetType[] = ['Dog', 'Cat'];
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
 
 interface PetFormProps {
@@ -44,15 +48,38 @@ export function PetForm({
   isStaff = false,
 }: PetFormProps) {
   const [name, setName] = useState('');
+  const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
   const [petType, setPetType] = useState<PetType | ''>('');
   const [breedId, setBreedId] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [gender, setGender] = useState<PetGender | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>('');
+  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [weightClassOverridden, setWeightClassOverridden] = useState(false);
   const [coatType, setCoatType] = useState<PetCoatType | ''>('');
+  // Bumped after each successful create so PetWeightAssessmentFields (which
+  // owns its raw input/unit state) remounts clean for the next pet.
+  const [weightFieldsKey, setWeightFieldsKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Pet Types admin CRUD (20260912191): the dropdown reads the admin-managed
+  // list instead of a hardcoded ['Dog', 'Cat'] array, so a newly-added pet
+  // type shows up here immediately.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPetTypes().then((result) => {
+      if (isMounted) {
+        setPetTypeOptions(result.data ?? []);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,7 +107,12 @@ export function PetForm({
       breed_id: breedId,
       ...(gender ? { gender } : {}),
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
-      ...(isStaff && weightClass ? { weight_class: weightClass } : {}),
+      ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
+      // Send an explicit class only when the server can't derive it (no
+      // weight entered) or staff deliberately overrode the derived value.
+      ...(isStaff && weightClass && (weightKg == null || weightClassOverridden)
+        ? { weight_class: weightClass }
+        : {}),
       ...(isStaff && coatType ? { coat_type: coatType } : {}),
     };
 
@@ -112,6 +144,9 @@ export function PetForm({
     setGender('');
     setDateOfBirth('');
     setWeightClass('');
+    setWeightKg(null);
+    setWeightClassOverridden(false);
+    setWeightFieldsKey((key) => key + 1);
     setCoatType('');
     onCreated(pet);
   };
@@ -140,9 +175,9 @@ export function PetForm({
           }}
         >
           <option value="">Select a pet type</option>
-          {PET_TYPE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
+          {petTypeOptions.map((option) => (
+            <option key={option.id} value={option.key}>
+              {option.name}
             </option>
           ))}
         </select>
@@ -198,25 +233,19 @@ export function PetForm({
       </label>
       {isStaff ? (
         <>
-          <label className={styles.field}>
-            <span className={styles.label}>
-              Weight class (optional - leave blank if not yet weighed)
-            </span>
-            <select
-              className={styles.input}
-              value={weightClass}
-              onChange={(event) =>
-                setWeightClass(event.target.value as PetWeightClass)
-              }
-            >
-              <option value="">Not yet assessed</option>
-              {WEIGHT_CLASS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PetWeightAssessmentFields
+            key={weightFieldsKey}
+            accessToken={accessToken}
+            initialKg={weightKg}
+            onCanonicalKgChange={setWeightKg}
+            weightClass={weightClass}
+            onWeightClassChange={setWeightClass}
+            overridden={weightClassOverridden}
+            onOverriddenChange={setWeightClassOverridden}
+            fieldClassName={styles.field}
+            labelClassName={styles.label}
+            inputClassName={styles.input}
+          />
           <label className={styles.field}>
             <span className={styles.label}>
               Coat type (optional - leave blank if not yet assessed)

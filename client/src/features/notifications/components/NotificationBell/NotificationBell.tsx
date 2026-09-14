@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { Bell } from 'lucide-react';
 import {
   listNotifications,
@@ -26,10 +27,15 @@ export function NotificationBell({
   accessToken,
   notificationsHref,
 }: NotificationBellProps) {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  // notificationsHref already tells us which role this bell is rendered for
+  // (StaffAuthGuard passes "/staff/notifications", CustomerAuthGuard passes
+  // "/portal/notifications") - reused here rather than a second role prop.
+  const isStaff = notificationsHref.startsWith('/staff');
 
   useEffect(() => {
     let isMounted = true;
@@ -58,19 +64,30 @@ export function NotificationBell({
 
   // AC-3: clicking a notification marks it read and updates the unread
   // count immediately via local state, without waiting for a full inbox
-  // refetch.
+  // refetch. Slot-conflict notification addition: a notification carrying
+  // related_booking_id (every booking-related event type sets this, not
+  // just booking_slot_conflict) now also navigates straight to that
+  // booking - the field existed on every notification already but nothing
+  // read it client-side until this change.
   async function handleSelect(notification: Notification) {
-    if (notification.is_read) {
-      return;
+    if (!notification.is_read) {
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )
+      );
+
+      await markNotificationRead(notification.id, accessToken);
     }
 
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === notification.id ? { ...item, is_read: true } : item
-      )
-    );
-
-    await markNotificationRead(notification.id, accessToken);
+    if (notification.related_booking_id) {
+      setIsOpen(false);
+      navigate(
+        isStaff
+          ? `/staff/bookings/${notification.related_booking_id}`
+          : `/portal/bookings?open=${notification.related_booking_id}`
+      );
+    }
   }
 
   // AC-4: mark-all-as-read clears the badge to zero and marks every row in

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createPet,
   listBreeds,
+  listPetTypes,
   uploadPetPhoto,
 } from '../../../api/customer.api';
 import { PetForm } from './PetForm';
@@ -11,7 +12,22 @@ import { PetForm } from './PetForm';
 vi.mock('../../../api/customer.api', () => ({
   createPet: vi.fn(),
   listBreeds: vi.fn(),
+  listPetTypes: vi.fn(),
   uploadPetPhoto: vi.fn(),
+}));
+
+vi.mock('../../../../maintenance/api/maintenance.api', () => ({
+  getPetWeightClassConfiguration: vi.fn().mockResolvedValue({
+    data: {
+      id: 'weight-class-config',
+      m_min_kg: 9.5,
+      l_min_kg: 22,
+      xl_min_kg: 41,
+      updated_by_staff_id: null,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    },
+    error: null,
+  }),
 }));
 
 const BREEDS = [
@@ -23,9 +39,29 @@ const BREEDS = [
   },
 ];
 
+const PET_TYPES = [
+  {
+    id: 'pet-type-dog',
+    key: 'Dog',
+    name: 'Dog',
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'pet-type-cat',
+    key: 'Cat',
+    name: 'Cat',
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+];
+
 describe('PetForm', () => {
   beforeEach(() => {
     vi.mocked(listBreeds).mockResolvedValue({ data: BREEDS, error: null });
+    vi.mocked(listPetTypes).mockResolvedValue({ data: PET_TYPES, error: null });
   });
 
   it('AC-4: blocks submission and does not call the API when required fields are missing', async () => {
@@ -57,6 +93,7 @@ describe('PetForm', () => {
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Buddy' },
     });
+    await screen.findByRole('option', { name: 'Dog' });
     fireEvent.change(screen.getByLabelText('Pet Type'), {
       target: { value: 'Dog' },
     });
@@ -113,6 +150,7 @@ describe('PetForm', () => {
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Buddy' },
     });
+    await screen.findByRole('option', { name: 'Dog' });
     fireEvent.change(screen.getByLabelText('Pet Type'), {
       target: { value: 'Dog' },
     });
@@ -166,6 +204,7 @@ describe('PetForm', () => {
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Buddy' },
     });
+    await screen.findByRole('option', { name: 'Dog' });
     fireEvent.change(screen.getByLabelText('Pet Type'), {
       target: { value: 'Dog' },
     });

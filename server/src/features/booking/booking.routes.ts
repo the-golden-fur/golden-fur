@@ -2,20 +2,26 @@ import { Router } from 'express';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
+import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   availabilityController,
+  cageAssignmentStatusController,
   cagePickerOptionsController,
   cancelBookingController,
   catalogController,
   completeBookingController,
+  conflictedBookingsController,
   createBookingController,
   createBookingGroupController,
   addBalancePaymentController,
+  decideCreditReviewController,
   downpaymentStatusController,
+  extendHotelStayController,
   getBookingController,
+  getBookingDetailsController,
   listBookingsController,
+  listPendingCreditReviewsController,
   listPolicyConfigurationsController,
-  nextAvailableSlotController,
   onlinePaymentsStatusController,
   overrideBookingStatusController,
   partsOfDayController,
@@ -27,6 +33,7 @@ import {
   updatePolicyConfigurationController,
 } from './booking.controller.ts';
 import {
+  BOOKING_MARK_PAID_ROLES,
   BOOKING_POLICY_READ_ROLES,
   BOOKING_POLICY_WRITE_ROLES,
   BOOKING_STATUS_ADVANCE_ROLES,
@@ -71,6 +78,24 @@ const statusOverride = [
   requireRole([...BOOKING_STATUS_OVERRIDE_ROLES]),
 ];
 
+// Extend-hotel-stay custom change: a money-affecting action, same
+// money-handling role set the Transactions page's mark-as-paid action uses.
+const extendStay = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_MARK_PAID_ROLES]),
+];
+
+// Manual-cancellation-credit-review custom change: same money-handling role
+// set as extendStay above, plus requireBranch so the controller can scope
+// the queue to the requester's own branch (Superadmin sees every branch).
+const creditReview = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BOOKING_MARK_PAID_ROLES]),
+  requireBranch,
+];
+
 // Booking creation + capacity enforcement (#51)
 router.post('/bookings', jwtMiddleware, createBookingController);
 
@@ -89,16 +114,6 @@ router.get('/bookings', jwtMiddleware, listBookingsController);
 // wrapping the same checkCapacity()/get_staff_availability() logic #51/#49
 // already run at submission time, read-only and ahead of it.
 router.get('/bookings/availability', jwtMiddleware, availabilityController);
-
-// #22: "fully booked" warning support - the earliest available day/slot
-// looking forward from a given date, so the booking flow can warn right
-// after service selection instead of only once the customer reaches the
-// Slot Picker.
-router.get(
-  '/bookings/availability/next-slot',
-  jwtMiddleware,
-  nextAvailableSlotController
-);
 
 // #22: which Morning/Afternoon/Evening walk/play blocks a branch's
 // operating hours actually permit for a given date - the hotel Care
@@ -126,6 +141,14 @@ router.get(
 // Cage Picker resolution (Custom change - mirrors Staff Picker)
 router.get('/bookings/cage-picker', jwtMiddleware, cagePickerOptionsController);
 
+// Custom change (cage pet-type support / customer readonly cage view): open
+// to customer and staff alike, same as the Cage Picker above.
+router.get(
+  '/bookings/cage-assignment-status',
+  jwtMiddleware,
+  cageAssignmentStatusController
+);
+
 // Custom change: whether the customer-facing Pay button should be enabled
 // for a branch - read by both the customer Bookings page and the Admin
 // online-payments toggle's own preview.
@@ -152,6 +175,16 @@ router.get(
   petBookingConflictsController
 );
 
+// Slot-conflict notification (20260911188): the logged-in customer's own
+// still-Pending bookings that just lost their slot to another customer's
+// payment - read by the CustomerPortalPage dashboard popup and the
+// notifications bell/list's link-through for booking_slot_conflict rows.
+router.get(
+  '/bookings/conflicts/mine',
+  jwtMiddleware,
+  conflictedBookingsController
+);
+
 // policy_configurations stub (#52)
 router.get('/bookings/policy', staffRead, listPolicyConfigurationsController);
 router.patch(
@@ -160,7 +193,29 @@ router.patch(
   updatePolicyConfigurationController
 );
 
+// Manual-cancellation-credit-review custom change: the Credit Review Queue -
+// a Manual-mode branch's cancellation_logs rows still awaiting a staff
+// decision, and the approve/deny action on one of them. Not nested under
+// /bookings/:id (a cancellation_logs row, not a booking, is the resource
+// being acted on).
+router.get(
+  '/cancellation-logs/pending-credit-review',
+  creditReview,
+  listPendingCreditReviewsController
+);
+router.post(
+  '/cancellation-logs/:id/credit-review',
+  creditReview,
+  decideCreditReviewController
+);
+
 router.get('/bookings/:id', jwtMiddleware, getBookingController);
+
+// Fully-hydrated single booking (branch/pet/staff/cage/items/payments
+// resolved server-side) for the read-only "View details" surfaces - the
+// customer My Bookings modal and the staff Booking Details page. Ownership
+// enforced in getBookingById, same as GET /bookings/:id above.
+router.get('/bookings/:id/details', jwtMiddleware, getBookingDetailsController);
 
 // Reschedule / cancellation (#54)
 router.post(
@@ -169,6 +224,11 @@ router.post(
   rescheduleBookingController
 );
 router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
+
+// Extend-hotel-stay custom change: staff-only, adds N nights to a Hotel
+// booking's stay and reconciles the price onto its remaining-balance
+// transaction (or a new one if already Fully Paid).
+router.post('/bookings/:id/extend-stay', extendStay, extendHotelStayController);
 
 // Customer self-service Pay button (CustomerBookingsPage) - ownership
 // checked in payForBooking, same pattern as reschedule/cancel above.

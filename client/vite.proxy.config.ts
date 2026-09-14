@@ -18,6 +18,7 @@ export const API_ROUTE_PREFIXES = [
   '/billing',
   '/bookings',
   '/branches',
+  '/cancellation-logs',
   '/catalog',
   '/credits',
   '/customers',
@@ -31,6 +32,7 @@ export const API_ROUTE_PREFIXES = [
   '/pets',
   '/public',
   '/reports',
+  '/rewards',
   '/staff',
   '/veterinary',
 ] as const;

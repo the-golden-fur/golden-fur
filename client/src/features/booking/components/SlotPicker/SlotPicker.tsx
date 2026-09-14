@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getDayAvailability } from '../../api/booking.api';
 import type {
   OperatingWindow,
@@ -39,27 +39,15 @@ interface SlotPickerProps {
    * staff are actually free right now is the StaffPickerList's job (it stays
    * interactive alongside this component). */
   lockToNow?: boolean;
-  /** #22 follow-up: fired every time this date's availability resolves, so a
-   * caller can react to "the day currently being viewed has zero open
-   * slots" (e.g. show a fully-booked warning) without duplicating this
-   * component's own fetch/availableCount logic. hasAnySlots is false both
-   * when the branch has no operating_hours entry for that day AND when
-   * every candidate for today has already passed (current time is past
-   * closing) - getDaySlots returns an empty list either way, and neither
-   * case is a real "fully booked" (capacity/staff/cage all taken)
-   * situation, so callers should treat hasAnySlots === false as "nothing
-   * to warn about here", not as a warning of its own. */
-  onAvailabilityChange?: (info: {
-    date: string;
-    hasAnyAvailable: boolean;
-    hasAnySlots: boolean;
-  }) => void;
   /** Multi-booking checkout: windows this same pet already occupies via
    * another booking already committed in the current cart (see
-   * bookingsList in CustomerBookingFlowPage) - a candidate slot overlapping
-   * one of these is shown/disabled exactly like a genuinely unavailable one
-   * (same "Unavailable" label, same disabled button), so the pet can't be
-   * scheduled into two overlapping services within one checkout. Purely a
+   * bookingsList in CustomerBookingFlowPage). In the interactive grid (not
+   * locked), a candidate slot overlapping one of these is shown/disabled
+   * exactly like a genuinely unavailable one (same "Unavailable" label,
+   * same disabled button), so the pet can't be scheduled into two
+   * overlapping services within one checkout. While locked (lockToNow), the
+   * "now" slot instead starts at the latest of these windows' end when
+   * that's later than the actual current time - see nowSlot. Purely a
    * same-cart, same-pet UI guard - it never touches real capacity, so other
    * customers (and this pet's OTHER checkouts) can still book the same
    * slot. Only meaningful when there's more than one booking for this pet
@@ -103,7 +91,6 @@ export function SlotPicker({
   onSelect,
   intent = 'new_booking',
   lockToNow = false,
-  onAvailabilityChange,
   excludedWindows,
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
@@ -115,13 +102,6 @@ export function SlotPicker({
   // Minimum-notice lead time, reported by the availability endpoint. Until
   // the first fetch resolves it stays 0 (no floor), matching prior behavior.
   const [minNoticeDays, setMinNoticeDays] = useState(0);
-
-  // Identity read via ref so a fresh arrow function on every parent render
-  // never forces a re-fetch - only the actual query params below should.
-  const onAvailabilityChangeRef = useRef(onAvailabilityChange);
-  useEffect(() => {
-    onAvailabilityChangeRef.current = onAvailabilityChange;
-  }, [onAvailabilityChange]);
 
   useEffect(() => {
     // Walk-in: nothing to fetch - the slot is "now", not something browsed
@@ -174,12 +154,6 @@ export function SlotPicker({
       if (date < earliest) {
         setDate(earliest);
       }
-
-      onAvailabilityChangeRef.current?.({
-        date,
-        hasAnyAvailable: result.data.slots.some((slot) => slot.available),
-        hasAnySlots: result.data.slots.length > 0,
-      });
     });
 
     return () => {
@@ -240,13 +214,25 @@ export function SlotPicker({
   // (seconds/ms zeroed for a clean scheduled_start) and run for the
   // service's own duration. Computed once per lock so it stays stable while
   // the receptionist works through the rest of the wizard.
+  //
+  // Same-pet-in-cart guard: if this pet already occupies a window elsewhere
+  // in the current checkout (another walk-in just added for it), "now"
+  // would overlap that window while it's still in progress - two services
+  // for the same pet can't run concurrently. Start at the latest such
+  // window's end instead, whenever that is later than the actual current
+  // time.
   const nowSlot = useMemo(() => {
     if (!lockToNow) return null;
-    const start = new Date();
-    start.setSeconds(0, 0);
+    const now = new Date();
+    now.setSeconds(0, 0);
+    const latestExistingEnd = (excludedWindows ?? []).reduce(
+      (latest, window) => Math.max(latest, new Date(window.end).getTime()),
+      0
+    );
+    const start = new Date(Math.max(now.getTime(), latestExistingEnd));
     const end = new Date(start.getTime() + slotDurationMinutes * 60_000);
     return { start: start.toISOString(), end: end.toISOString() };
-  }, [lockToNow, slotDurationMinutes]);
+  }, [lockToNow, slotDurationMinutes, excludedWindows]);
 
   // Auto-select it with no click - the receptionist never picks a time for a
   // walk-in. Guarded so it settles after one call instead of looping.

@@ -12,7 +12,10 @@ import {
 } from 'lucide-react';
 import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listCustomerPets } from '../../../customers/api/customer.api';
+import {
+  listCustomerPets,
+  uploadPetCareItemPhoto,
+} from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
@@ -28,20 +31,21 @@ import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { BookingCountBadge } from '../../components/BookingCountBadge/BookingCountBadge';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
+import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
 import {
   createBooking,
   createBookingGroup,
   getBookingCatalog,
   getDownpaymentStatus,
-  getNextAvailableSlot,
   getPetBookingConflicts,
   listServiceTypes,
   type DownpaymentStatus,
-  type NextAvailableSlot,
 } from '../../api/booking.api';
 import {
   BOOKING_MARK_PAID_ROLES,
+  FOOD_QUANTITY_UNITS,
+  MEDICATION_DOSE_UNITS,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingGroup,
@@ -49,11 +53,13 @@ import {
   type CagePreferenceInput,
   type CreateBookingGroupPayload,
   type CreateBookingPayload,
+  type FoodQuantityUnit,
   type HotelBookingPreferenceFeeding,
   type HotelBookingPreferenceMedication,
   type HotelBookingPreferencePlaying,
   type HotelBookingPreferenceWalking,
   type HotelBookingPreferences,
+  type MedicationDoseUnit,
   type PaymentScheme,
   type PetBookingConflict,
   type ServiceCategory,
@@ -61,8 +67,14 @@ import {
 } from '../../booking.types';
 import { friendlyBookingError } from '../../bookingErrors';
 import { listStaff } from '../../../staff/api/staff.api';
+import { listMyPatients } from '../../../veterinary/api/veterinary.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
 import type { Discount } from '../../../discounts/discounts.types';
+import { getMyCoupons } from '../../../rewards/api/rewards.api';
+import type { CustomerCoupon } from '../../../rewards/rewards.types';
+import { isPromoCurrentlyEligible } from '../../../../shared/utils/promoEligibility';
+import { applyPromoCap } from '../../utils/applyPromoCap';
+import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/PromoCouponMultiSelect';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
   getDayOneMinTime,
@@ -77,7 +89,8 @@ import {
 } from '../../../catalog/api/catalog.api';
 import type { ProductCatalogItem } from '../../../catalog/catalog.types';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
-import { getHotelNightDates } from '../../utils/hotelNights';
+import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
+import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
@@ -150,6 +163,10 @@ interface StepDef {
     // scheme stay shared across the whole list - see the "OR to make things
     // easier" decision this feature is built from.
     | 'bookingsList'
+    // Promos & Coupons multiselect step (session 86): shown right before
+    // Review, once per checkout (single booking or the whole
+    // bookingsList) - see PromoCouponMultiSelect below.
+    | 'promos'
     | 'payment';
   label: string;
 }
@@ -204,19 +221,6 @@ interface SubBookingDraft {
   itemsSubtotal: number;
 }
 
-/** #22 follow-up: fixed stand-in duration for the availability step's
- * capacity/staff check, run before any specific service/package is chosen
- * (so the real item-derived duration isn't known yet). Hotel's 1440 isn't
- * an approximation - it's always a full night regardless of item, matching
- * availability.service.ts's existing day-level Hotel convention. */
-const DEFAULT_DURATION_MINUTES: Record<ServiceCategory, number> = {
-  Grooming: 60,
-  Veterinary: 60,
-  Daycare: 60,
-  Hotel: 1440,
-  Assessment: 60,
-};
-
 const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
   Grooming: Scissors,
   Hotel: BedDouble,
@@ -267,6 +271,12 @@ interface HotelFeedingRowState {
   meal_time: HotelBookingPreferenceFeeding['meal_time'];
   food_type: string;
   quantity: string;
+  quantity_unit: FoodQuantityUnit;
+  /** Set once a photo finishes uploading (see uploadHotelFeedingPhoto) -
+   * null until then, whether nothing was picked or an upload is in flight. */
+  photo_url: string | null;
+  photo_uploading: boolean;
+  photo_error: string | null;
   special_instructions: string;
   /** Set only when food_type matched a catalog item. */
   food_catalog_id: string | null;
@@ -279,6 +289,10 @@ const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
   meal_time: 'Morning',
   food_type: '',
   quantity: '1',
+  quantity_unit: 'cup',
+  photo_url: null,
+  photo_uploading: false,
+  photo_error: null,
   special_instructions: '',
   food_catalog_id: null,
   stay_date: null,
@@ -301,11 +315,58 @@ const EMPTY_HOTEL_PLAYING_ROW = {
 const EMPTY_HOTEL_MEDICATION_ROW = {
   medication_name: '',
   dose: '',
+  dose_unit: 'mg' as MedicationDoseUnit,
+  // Set once a photo finishes uploading (see uploadHotelMedicationPhoto) -
+  // null until then, whether nothing was picked or an upload is in flight.
+  photo_url: null as string | null,
+  photo_uploading: false,
+  photo_error: null as string | null,
   scheduled_time: '08:00',
   administration_notes: '',
   medication_catalog_id: null as string | null,
   stay_date: null as string | null,
 };
+
+/** A care-instruction row's fill state. 'empty' = nothing the user meant to
+ * keep (safe to drop silently); 'partial' = some required fields filled but
+ * not all (would 400 server-side - block Next and point at it); 'complete' =
+ * send it. Mirrors the server Zod rules in booking.validator.ts's
+ * hotelPreferencesValidator (food_type/quantity, medication_name/dose,
+ * duration_minutes > 0). */
+type HotelCareRowStatus = 'empty' | 'partial' | 'complete';
+
+function classifyPair(a: boolean, b: boolean): HotelCareRowStatus {
+  if (!a && !b) return 'empty';
+  return a && b ? 'complete' : 'partial';
+}
+
+/** food_type is the field that means "the user actually wants a feeding entry"
+ * (quantity is pre-filled to 1), so a row with no food_type is just an
+ * unfinished add - dropped silently, never a blocker. */
+function hotelFeedingRowStatus(row: HotelFeedingRowState): HotelCareRowStatus {
+  if (row.food_type.trim() === '') return 'empty';
+  return row.quantity.trim() !== '' ? 'complete' : 'partial';
+}
+
+function hotelMedicationRowStatus(
+  row: typeof EMPTY_HOTEL_MEDICATION_ROW
+): HotelCareRowStatus {
+  return classifyPair(
+    row.medication_name.trim() !== '',
+    row.dose.trim() !== ''
+  );
+}
+
+/** Walking/Playing rows have valid enum + numeric defaults, so a freshly
+ * added one is already 'complete' - it only turns 'partial' if the user
+ * clears the duration to 0/NaN. */
+function hotelWalkPlayRowStatus(row: {
+  duration_minutes: number;
+}): HotelCareRowStatus {
+  return Number.isInteger(row.duration_minutes) && row.duration_minutes > 0
+    ? 'complete'
+    : 'partial';
+}
 
 // Browser-close-safe wizard progress (localStorage, not sessionStorage - a
 // closed tab must not lose the draft). Only the wizard's own form state is
@@ -327,7 +388,9 @@ interface PersistedBookingDraft {
   bookingSource: BookingSource;
   selectedSlot: { start: string; end: string } | null;
   hotelNights: number;
-  selectedPromoId: string;
+  // Multiselect (session 86): replaces the old singular selectedPromoId.
+  selectedPromoIds: string[];
+  selectedCouponIds: string[];
   selectedDiscountId: string;
   paymentChoice: PaymentScheme;
   specialInstructions: string;
@@ -357,9 +420,15 @@ function bookingDraftStorageKey(
   isReceptionistMode: boolean,
   userId: string
 ): string {
+  // v2: the step order changed (Branch-first, Services before Date & Time) -
+  // a draft saved under the old order would rehydrate onto a mismatched
+  // stepper, so bump the key to let stale drafts lapse instead.
+  // v3: care instruction units + photos added quantity_unit/dose_unit as
+  // required feeding/medication row fields - a pre-v3 draft's rows would
+  // rehydrate missing them, same lapse-instead-of-migrate precedent as v2.
   return isReceptionistMode
-    ? `booking-draft:staff:${userId}`
-    : `booking-draft:customer:${userId}`;
+    ? `booking-draft:staff:v3:${userId}`
+    : `booking-draft:customer:v3:${userId}`;
 }
 
 function readBookingDraft(key: string): PersistedBookingDraft | null {
@@ -432,8 +501,11 @@ export function CustomerBookingFlowPage() {
   // this (same recipe ReceptionistBookingsQueuePage uses: the JWT's role is
   // just Postgres "authenticated", the app role only lives in
   // staff_profiles). Promos have no role gate, so the customer portal never
-  // needs this lookup.
+  // needs this lookup. viewerBranchId piggybacks on the same lookup - a
+  // Receptionist/Admin is tied to one branch (see isBranchLockedStaff
+  // below), unlike a Superadmin.
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isReceptionistMode || !accessToken || !user?.id) return;
@@ -444,6 +516,7 @@ export function CustomerBookingFlowPage() {
       if (!isMounted) return;
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -455,6 +528,45 @@ export function CustomerBookingFlowPage() {
     isReceptionistMode &&
     viewerRole !== null &&
     BOOKING_MARK_PAID_ROLES.includes(viewerRole);
+
+  // Receptionist/Admin/Veterinarian accounts are tied to a single branch
+  // (their own staff_profiles.branch_id), so the Branch step is redundant for
+  // them - Superadmin isn't branch-locked and a customer picks from any
+  // branch, so both keep the step.
+  const isBranchLockedStaff =
+    isReceptionistMode &&
+    (viewerRole === 'Receptionist' ||
+      viewerRole === 'Admin' ||
+      viewerRole === 'Veterinarian');
+
+  // vet-bookings-queue-access: replaces the old ScheduleFollowUpModal (which
+  // could only ever target the one pet/customer of the consultation it was
+  // opened from) - a Veterinarian booking through this general flow may
+  // still only book a customer they've actually treated. null means "not
+  // yet known" (still loading, or not a Veterinarian) - the Customer step
+  // renders nothing until it resolves, rather than briefly flashing every
+  // customer.
+  const isVeterinarianStaff =
+    isReceptionistMode && viewerRole === 'Veterinarian';
+  const [treatedCustomerIds, setTreatedCustomerIds] =
+    useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!isVeterinarianStaff || !accessToken) return;
+
+    let isMounted = true;
+
+    void listMyPatients(accessToken).then((result) => {
+      if (!isMounted || !result.data) return;
+      setTreatedCustomerIds(
+        new Set(result.data.map((patient) => patient.customer_id))
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isVeterinarianStaff, accessToken]);
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [isPetsLoading, setIsPetsLoading] = useState(true);
@@ -480,7 +592,20 @@ export function CustomerBookingFlowPage() {
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   // Custom change: Service Types addendum (Admin Settings > Service Types).
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState('');
+  // Raw state behind the interactive Branch-picker step only - a branch-
+  // locked Receptionist/Admin never sets this (that step doesn't render for
+  // them at all), so read `selectedBranchId` below instead, never this
+  // directly.
+  const [pickedBranchId, setPickedBranchId] = useState('');
+
+  // The branch actually in effect for this booking: a branch-locked
+  // Receptionist/Admin's own branch (see isBranchLockedStaff), or whatever
+  // was picked on the Branch step otherwise. A derived value rather than
+  // synced-via-effect state, so it can never drift out of sync with
+  // viewerBranchId resolving asynchronously after mount.
+  const selectedBranchId = isBranchLockedStaff
+    ? (viewerBranchId ?? '')
+    : pickedBranchId;
 
   const [category, setCategory] = useState<ServiceCategory | ''>('');
   const [selectionMode, setSelectionMode] = useState<'service' | 'package'>(
@@ -488,6 +613,15 @@ export function CustomerBookingFlowPage() {
   );
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
+  // the selected pet's resolved fixed price for the selected branch, or
+  // null if none applies - re-fetched whenever the branch or pet changes
+  // (see the catalog-loading effect below). When set, it replaces every
+  // selected service/package's own price in the running total, matching
+  // what booking.service.ts actually charges at confirmation.
+  const [catalogFixedPrice, setCatalogFixedPrice] = useState<number | null>(
+    null
+  );
   const [downpaymentStatus, setDownpaymentStatus] =
     useState<DownpaymentStatus | null>(null);
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
@@ -571,7 +705,14 @@ export function CustomerBookingFlowPage() {
   const [cagePickerUnavailable, setCagePickerUnavailable] = useState(false);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [selectedPromoId, setSelectedPromoId] = useState('');
+  const [myCoupons, setMyCoupons] = useState<CustomerCoupon[]>([]);
+  const [promoCap, setPromoCap] = useState<{
+    cap_type: 'percentage' | 'flat' | 'count';
+    cap_value: number;
+  }>({ cap_type: 'percentage', cap_value: 20 });
+  // Multiselect (session 86): replaces the old singular selectedPromoId.
+  const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
+  const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [selectedDiscountId, setSelectedDiscountId] = useState('');
   // Staff attestation that they physically checked the customer's Senior
   // Citizen/PWD ID before selecting a mandated discount - mirrors
@@ -609,6 +750,41 @@ export function CustomerBookingFlowPage() {
   const [hotelUniformInstructions, setHotelUniformInstructions] =
     useState(true);
   const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
+
+  // Care-instruction rows the user started but didn't finish (e.g. a Feeding
+  // row with a food type but no quantity, or a row half-added on a per-night
+  // tab that's now hidden). These would 400 server-side, so isStepValid
+  // ('hotelDetails') blocks Next while any exist and the step shows a banner
+  // that jumps to the offending night. Complete rows submit; fully-empty rows
+  // are dropped silently (see hotelPreferencesPayload).
+  const hotelCareIncompleteRows = useMemo(() => {
+    if (category !== 'Hotel' && category !== 'Daycare') {
+      return [] as Array<{ section: string; stayDate: string | null }>;
+    }
+
+    const issues: Array<{ section: string; stayDate: string | null }> = [];
+    for (const row of hotelFeeding) {
+      if (hotelFeedingRowStatus(row) === 'partial') {
+        issues.push({ section: 'Feeding', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelWalking) {
+      if (hotelWalkPlayRowStatus(row) === 'partial') {
+        issues.push({ section: 'Walking', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelPlaying) {
+      if (hotelWalkPlayRowStatus(row) === 'partial') {
+        issues.push({ section: 'Playtime', stayDate: row.stay_date });
+      }
+    }
+    for (const row of hotelMedications) {
+      if (hotelMedicationRowStatus(row) === 'partial') {
+        issues.push({ section: 'Medications', stayDate: row.stay_date });
+      }
+    }
+    return issues;
+  }, [category, hotelFeeding, hotelWalking, hotelPlaying, hotelMedications]);
 
   // A customer's own saved food/medication types (#22), fetched only when
   // Hotel or Daycare is the selected category (the two categories with a
@@ -664,11 +840,10 @@ export function CustomerBookingFlowPage() {
   // resolve to whatever step slid into that same slot instead of the step
   // the user actually meant to be on (previously caused Date & Time to
   // jump straight to Review instead of Staff whenever this happened).
-  const [currentStepKey, setCurrentStepKey] = useState<StepDef['key']>(() =>
-    isReceptionistMode ? 'customer' : 'pet'
-  );
+  const [currentStepKey, setCurrentStepKey] =
+    useState<StepDef['key']>('branch');
   const [reachedStepKeys, setReachedStepKeys] = useState<Set<StepDef['key']>>(
-    () => new Set([isReceptionistMode ? 'customer' : 'pet'])
+    () => new Set<StepDef['key']>(['branch'])
   );
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -695,18 +870,6 @@ export function CustomerBookingFlowPage() {
   // the plain single-booking createBooking API, unchanged - see
   // handleSubmit.
   const [bookingsList, setBookingsList] = useState<SubBookingDraft[]>([]);
-
-  // #22: "fully booked" warning, checked live as the customer browses dates
-  // inside the availability step - only for a day that actually has real
-  // candidate slots (time/staff/cage) that are ALL taken, never for a day
-  // with no candidates at all (branch closed that weekday, or today's
-  // hours have already passed) - see handleSlotAvailabilityChange. undefined
-  // = not showing, null = nothing available in the lookahead window,
-  // otherwise the earliest open day/slot found.
-  const [fullyBookedNotice, setFullyBookedNotice] = useState<
-    NextAvailableSlot | null | undefined
-  >(undefined);
-  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   // resetHotelPreferences/handleCategorySelect are declared ahead of the
   // auto-select-assessment effect below (rather than alongside the other
@@ -740,7 +903,8 @@ export function CustomerBookingFlowPage() {
     // leaving it set. Date/time and staff still reset, since those depend
     // on which category you're actually committing to.
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -748,6 +912,21 @@ export function CustomerBookingFlowPage() {
     setCagePreference(null);
     setCagePickerUnavailable(false);
     resetHotelPreferences();
+  }
+
+  /** Drop a slot/staff/cage pick made on the Date & Time step - called
+   * whenever the item set changes, since that changes the booking's length
+   * (slotDurationMinutes) and a slot picked against the old, shorter window
+   * may no longer fit. No-op until a slot has actually been picked, so
+   * building the item list on the way IN to the Date & Time step costs
+   * nothing. */
+  function resetSlotForItemChange() {
+    if (!selectedSlot) return;
+    setSelectedSlot(null);
+    setStaffPreference(null);
+    setStaffPickerUnavailable(false);
+    setCagePreference(null);
+    setCagePickerUnavailable(false);
   }
 
   // ---- Data loads ----
@@ -826,20 +1005,24 @@ export function CustomerBookingFlowPage() {
     if (!accessToken || !selectedBranchId) return;
 
     let isMounted = true;
+    const petType = pets.find((pet) => pet.id === selectedPetId)?.pet_type;
 
-    void getBookingCatalog(accessToken, { branchId: selectedBranchId }).then(
-      (result) => {
-        if (!isMounted || !result.data) return;
-        setAllServices(result.data.services);
-        setPackages(result.data.packages);
-        setPromos(result.data.promos);
-      }
-    );
+    void getBookingCatalog(accessToken, {
+      branchId: selectedBranchId,
+      petType,
+    }).then((result) => {
+      if (!isMounted || !result.data) return;
+      setAllServices(result.data.services);
+      setPackages(result.data.packages);
+      setPromos(result.data.promos);
+      setCatalogFixedPrice(result.data.fixedPrice);
+      if (result.data.promoCap) setPromoCap(result.data.promoCap);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [accessToken, selectedBranchId]);
+  }, [accessToken, selectedBranchId, selectedPetId, pets]);
 
   // Custom change: per-transaction downpayment config for the selected
   // branch (see resolveDownpaymentPolicy server-side) - drives the
@@ -885,6 +1068,25 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId, canApplyDiscounts]);
 
+  // Promos & Coupons step (session 86): the acting customer's own unused,
+  // unexpired coupons - for isReceptionistMode this is the customer being
+  // booked FOR (effectiveCustomerId), not the logged-in staff member, same
+  // resolution every other customer-scoped fetch on this page already uses.
+  useEffect(() => {
+    if (!accessToken || !effectiveCustomerId) return;
+
+    let isMounted = true;
+
+    void getMyCoupons(accessToken, effectiveCustomerId).then((result) => {
+      if (!isMounted || !result.data) return;
+      setMyCoupons(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, effectiveCustomerId]);
+
   // ---- Draft autosave/restore ----
 
   const draftStorageKey = user?.id
@@ -910,7 +1112,7 @@ export function CustomerBookingFlowPage() {
     // body itself.
     void Promise.resolve().then(() => {
       setSelectedPetId(draft.selectedPetId);
-      setSelectedBranchId(draft.selectedBranchId);
+      setPickedBranchId(draft.selectedBranchId);
       setCategory(draft.category);
       setSelectionMode(draft.selectionMode);
       setSelectionsByCategory(draft.selectionsByCategory);
@@ -919,7 +1121,8 @@ export function CustomerBookingFlowPage() {
       }
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
-      setSelectedPromoId(draft.selectedPromoId);
+      setSelectedPromoIds(draft.selectedPromoIds ?? []);
+      setSelectedCouponIds(draft.selectedCouponIds ?? []);
       setSelectedDiscountId(draft.selectedDiscountId);
       setPaymentChoice(draft.paymentChoice);
       setSpecialInstructions(draft.specialInstructions);
@@ -942,8 +1145,20 @@ export function CustomerBookingFlowPage() {
   // Debounced so browsing between steps or typing into a field doesn't hit
   // localStorage synchronously on every change - only the settled value
   // 500ms after the last change gets written.
+  //
+  // isSubmitting (not just confirmedBookings) gates this: confirmedBookings
+  // only flips true once the server responds, which leaves a window open
+  // between clicking "Confirm booking" and that response arriving where a
+  // debounce timer already pending from an edit made just before the click
+  // would still fire and save "progress" for a submission that may already
+  // be going through server-side - e.g. if the response is lost or the tab
+  // closes before it arrives, "Recover Progress" would offer to resubmit a
+  // booking that already went through. isSubmitting flips true synchronously
+  // at the top of handleSubmit, before the request even starts, so saving
+  // stops the instant the button is clicked, regardless of how long (or
+  // whether) the request ever resolves.
   useEffect(() => {
-    if (!draftStorageKey || confirmedBookings) return;
+    if (!draftStorageKey || confirmedBookings || isSubmitting) return;
 
     const timeoutId = window.setTimeout(() => {
       writeBookingDraft(draftStorageKey, {
@@ -956,7 +1171,8 @@ export function CustomerBookingFlowPage() {
         bookingSource,
         selectedSlot,
         hotelNights,
-        selectedPromoId,
+        selectedPromoIds,
+        selectedCouponIds,
         selectedDiscountId,
         paymentChoice,
         specialInstructions,
@@ -975,6 +1191,7 @@ export function CustomerBookingFlowPage() {
   }, [
     draftStorageKey,
     confirmedBookings,
+    isSubmitting,
     selectedPetId,
     selectedBranchId,
     category,
@@ -983,7 +1200,8 @@ export function CustomerBookingFlowPage() {
     bookingSource,
     selectedSlot,
     hotelNights,
-    selectedPromoId,
+    selectedPromoIds,
+    selectedCouponIds,
     selectedDiscountId,
     paymentChoice,
     specialInstructions,
@@ -1007,7 +1225,7 @@ export function CustomerBookingFlowPage() {
     setShowRestoredBanner(false);
 
     setSelectedPetId('');
-    setSelectedBranchId('');
+    setPickedBranchId('');
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});
@@ -1016,7 +1234,8 @@ export function CustomerBookingFlowPage() {
     setHotelNights(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setSelectedDiscountId('');
     setDiscountIdVerified(false);
     setPaymentChoice('downpayment');
@@ -1025,9 +1244,8 @@ export function CustomerBookingFlowPage() {
     if (isReceptionistMode) setWalkInCustomer(null);
     setBookingsList([]);
 
-    const startKey = isReceptionistMode ? 'customer' : 'pet';
-    setCurrentStepKey(startKey);
-    setReachedStepKeys(new Set([startKey]));
+    setCurrentStepKey('branch');
+    setReachedStepKeys(new Set<StepDef['key']>(['branch']));
   }
 
   // ---- Derived data ----
@@ -1039,17 +1257,17 @@ export function CustomerBookingFlowPage() {
 
   // Multi-booking checkout: the windows this same pet already occupies via
   // another booking already committed in the cart (see bookingsList) -
-  // passed to SlotPicker as `excludedWindows` so it can't be scheduled into
-  // two overlapping services within one checkout. Deliberately scoped to
-  // Online only (mirrors this codebase's existing walk-in-gets-fewer-
-  // restrictions pattern - no lead time, no downpayment, etc.) - a
-  // receptionist physically walking a pet through two services back-to-back
-  // knows what they're doing and needs no client-side guardrail here. Never
-  // touches real capacity, so it's purely a same-cart, same-pet UI guard -
-  // other customers (and this same pet's other, unrelated checkouts) can
-  // still book the exact same slot.
+  // passed to SlotPicker as `excludedWindows`. For an interactively-browsed
+  // (non-walk-in) slot, a candidate can't be scheduled into one of these
+  // windows - the receptionist picks a different time instead. For a
+  // walk-in (lockToNow), there's nothing to pick: SlotPicker instead starts
+  // the pet's next walk-in right when the latest of these windows ends,
+  // rather than "now", so a second walk-in for the same pet never overlaps
+  // its first. Never touches real capacity, so it's purely a same-cart,
+  // same-pet UI guard - other customers (and this same pet's other,
+  // unrelated checkouts) can still book the exact same slot.
   const samePetBundleWindows = useMemo(() => {
-    if (bookingSource === 'Walk-in' || !selectedPetId) return undefined;
+    if (!selectedPetId) return undefined;
 
     const windows = bookingsList
       .filter((entry) => entry.petId === selectedPetId && entry.selectedSlot)
@@ -1059,7 +1277,7 @@ export function CustomerBookingFlowPage() {
       }));
 
     return windows.length > 0 ? windows : undefined;
-  }, [bookingsList, selectedPetId, bookingSource]);
+  }, [bookingsList, selectedPetId]);
 
   // Client interview finding: a pet with no recorded weight_class/coat_type
   // has never been staff-assessed onsite, and can only book a service
@@ -1203,6 +1421,27 @@ export function CustomerBookingFlowPage() {
     [packages, selectedPackageIds]
   );
 
+  /** Flattened services + packages for the in-progress booking, name +
+   * price only - feeds the persistent selection summary shown on every
+   * step after 'items' (see SelectedItemsSummary below) so a customer/
+   * receptionist doesn't have to jump back to the Services step just to
+   * recall what they picked. */
+  const selectedItemsSummary = useMemo(
+    () => [
+      ...selectedServices.map((service) => ({
+        id: service.id,
+        name: service.name,
+        price: catalogFixedPrice ?? service.base_price,
+      })),
+      ...selectedPackages.map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        price: catalogFixedPrice ?? pkg.bundled_price,
+      })),
+    ],
+    [selectedServices, selectedPackages, catalogFixedPrice]
+  );
+
   const serviceNameById = useMemo(
     () => new Map(allServices.map((service) => [service.id, service.name])),
     [allServices]
@@ -1256,19 +1495,54 @@ export function CustomerBookingFlowPage() {
         0
       ) || 60;
 
-  /** #22 follow-up: the real scheduled_end, computed from the item-derived
-   * slotDurationMinutes rather than SlotPicker's own selectedSlot.end -
-   * SlotPicker now runs at the 'availability' step, before any service/
-   * package is picked, so its own end time only reflects the fixed
-   * DEFAULT_DURATION_MINUTES stand-in and is never accurate enough to
-   * submit. Reused here (not just in handleSubmit) so the Hotel care-
-   * schedule bounds below judge against the stay actually being booked. */
+  /** The real scheduled_end, computed from the item-derived
+   * slotDurationMinutes (Services is picked before the 'availability' step,
+   * so this is known there) plus the Hotel nights multiplier. SlotPicker's
+   * own selectedSlot.end already carries the same value for a single-night/
+   * same-day booking, but not the Hotel multi-night case - so this is the
+   * one submitted (handleSubmit) and shown as the Date & Time step's
+   * end-time caption, and it also bounds the Hotel care schedule below. */
   const finalScheduledEnd = selectedSlot
     ? new Date(
         new Date(selectedSlot.start).getTime() +
           (category === 'Hotel' ? hotelNights : 1) * slotDurationMinutes * 60000
       ).toISOString()
     : null;
+
+  // Multi-booking checkout: how many bookings already committed in this cart
+  // have picked each specific staff member for a window that overlaps the
+  // booking currently being configured. Passed to StaffPickerList, which greys
+  // a staff member out once this reaches the branch's
+  // max_concurrent_bookings_per_staff - mirroring samePetBundleWindows above,
+  // and the server's claimedStaffWindows guard in bookingGroup.service.ts, so
+  // the customer can't build a cart that only fails on the final Confirm.
+  // Online only (same walk-in exemption as samePetBundleWindows) and never
+  // touches real capacity - purely a same-cart UI guard.
+  const cartStaffOverlapCounts = useMemo(() => {
+    if (bookingSource === 'Walk-in' || !selectedSlot) return undefined;
+
+    const draftStart = new Date(selectedSlot.start).getTime();
+    const draftEnd = new Date(finalScheduledEnd ?? selectedSlot.end).getTime();
+
+    const counts: Record<string, number> = {};
+    for (const entry of bookingsList) {
+      const staffId =
+        entry.staffPreference?.type === 'specific'
+          ? entry.staffPreference.staff_id
+          : undefined;
+      if (!staffId || !entry.selectedSlot) continue;
+
+      const entryStart = new Date(entry.selectedSlot.start).getTime();
+      const entryEnd = new Date(
+        entry.finalScheduledEnd ?? entry.selectedSlot.end
+      ).getTime();
+
+      if (draftStart < entryEnd && entryStart < draftEnd) {
+        counts[staffId] = (counts[staffId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [bookingsList, selectedSlot, finalScheduledEnd, bookingSource]);
 
   const hotelCheckInTime = selectedSlot
     ? getDayOneMinTime(selectedSlot.start)
@@ -1282,9 +1556,20 @@ export function CustomerBookingFlowPage() {
   // (mirrors the server's own resolveQuantity in booking.service.ts).
   const hotelNightsMultiplier = category === 'Hotel' ? hotelNights : 1;
 
+  // Pet Types admin CRUD + fixed-price override: when the selected pet has
+  // one (catalogFixedPrice), it replaces each item's own base_price/
+  // bundled_price entirely, same as booking.service.ts's resolveServicePrice/
+  // resolvePackagePrice at actual booking creation - so this preview shows
+  // the real charged price instead of a stale service-list price.
   const itemsTotal =
-    (selectedServices.reduce((sum, service) => sum + service.base_price, 0) +
-      selectedPackages.reduce((sum, pkg) => sum + pkg.bundled_price, 0)) *
+    (selectedServices.reduce(
+      (sum, service) => sum + (catalogFixedPrice ?? service.base_price),
+      0
+    ) +
+      selectedPackages.reduce(
+        (sum, pkg) => sum + (catalogFixedPrice ?? pkg.bundled_price),
+        0
+      )) *
     hotelNightsMultiplier;
 
   // ---- Multi-booking checkout: group-level pricing (Review step) ----
@@ -1326,16 +1611,12 @@ export function CustomerBookingFlowPage() {
   const applicablePromos = useMemo(() => {
     if (!selectedBranch) return [];
 
-    const now = new Date();
-
     return promos.filter((promo) => {
-      if (!promo.is_active) return false;
       const availableAtBranch = (promo.promo_branch_availability ?? []).some(
         (row) => row.branch_id === selectedBranch.id && row.is_available
       );
       if (!availableAtBranch) return false;
-      if (promo.start_date && new Date(promo.start_date) > now) return false;
-      if (promo.end_date && new Date(promo.end_date) < now) return false;
+      if (!isPromoCurrentlyEligible(promo)) return false;
       if (promo.scope_type === 'all_services') return true;
 
       return (promo.promo_scope ?? []).some(
@@ -1346,17 +1627,67 @@ export function CustomerBookingFlowPage() {
     });
   }, [promos, selectedBranch, groupServiceIds, groupPackageIds]);
 
-  const selectedPromo = useMemo(
+  // Coupons (session 86): a customer's own unredeemed, unexpired spin-wheel
+  // rewards - unscoped (apply like scope_type='all_services'), shown
+  // alongside applicablePromos in the new Promos & Coupons multiselect step.
+  const applicableCoupons = useMemo(() => {
+    const now = new Date();
+    return myCoupons.filter(
+      (coupon) =>
+        !coupon.is_redeemed &&
+        (!coupon.expires_at || new Date(coupon.expires_at) > now)
+    );
+  }, [myCoupons]);
+
+  // Multiselect (session 86): every SELECTED promo/coupon's raw amount, run
+  // through the same cap-application math the server applies authoritatively
+  // at submit (resolveDiscountAndPromos) - this is a preview only.
+  const promoCouponCandidates = useMemo(() => {
+    const promoCandidates = selectedPromoIds
+      .map((id) => applicablePromos.find((promo) => promo.id === id))
+      .filter((promo): promo is Promo => Boolean(promo))
+      .map((promo) => ({
+        key: { kind: 'promo' as const, id: promo.id },
+        amount:
+          promo.discount_type === 'Percentage'
+            ? groupSubtotal * (promo.value / 100)
+            : Math.min(promo.value, groupSubtotal),
+      }));
+
+    const couponCandidates = selectedCouponIds
+      .map((id) => applicableCoupons.find((coupon) => coupon.id === id))
+      .filter((coupon): coupon is CustomerCoupon => Boolean(coupon))
+      .map((coupon) => ({
+        key: { kind: 'coupon' as const, id: coupon.id },
+        amount:
+          coupon.discount_type === 'Percentage'
+            ? groupSubtotal * (coupon.value / 100)
+            : Math.min(coupon.value, groupSubtotal),
+      }));
+
+    return [...promoCandidates, ...couponCandidates];
+  }, [
+    selectedPromoIds,
+    selectedCouponIds,
+    applicablePromos,
+    applicableCoupons,
+    groupSubtotal,
+  ]);
+
+  const cappedPromoSelections = useMemo(
     () =>
-      applicablePromos.find((promo) => promo.id === selectedPromoId) ?? null,
-    [applicablePromos, selectedPromoId]
+      applyPromoCap<{ kind: 'promo' | 'coupon'; id: string }>(
+        promoCouponCandidates,
+        promoCap,
+        groupSubtotal
+      ),
+    [promoCouponCandidates, promoCap, groupSubtotal]
   );
 
-  const promoDiscount = selectedPromo
-    ? selectedPromo.discount_type === 'Percentage'
-      ? groupSubtotal * (selectedPromo.value / 100)
-      : Math.min(selectedPromo.value, groupSubtotal)
-    : 0;
+  const promoDiscount = cappedPromoSelections.reduce(
+    (sum, selection) => sum + selection.amount,
+    0
+  );
 
   // Discounts (Cash-only, staff-verified ID) - only shown/selectable once
   // Cash is chosen as the payment method (canApplyDiscounts already gates
@@ -1457,26 +1788,36 @@ export function CustomerBookingFlowPage() {
 
   // ---- Steps ----
 
-  // #22 follow-up: staff/cage availability is checked BEFORE specific
-  // services/packages are picked (category alone is enough to know whether
-  // Grooming/Veterinary needs a Staff Picker or Hotel needs a Cage Picker),
-  // so the customer learns early if nothing is available rather than after
-  // investing effort picking exact items. Grooming/Veterinary's staff
-  // choice and Hotel's cage-capacity display both live inside the single
-  // 'availability' step alongside Date & Time (merged, not a separate
-  // stepper entry) - Daycare gets Date & Time alone there, same as today.
+  // Order (Architectural-Change-History, "Rearrange booking steps"):
+  //   Branch > Customer > Pet > Service Type > Services/Packages >
+  //   Online/Walk-in > Date & Time (+ Staff/Cage) > Confirmation.
+  // Services now precede the availability step so the real, item-derived
+  // slot duration (slotDurationMinutes, accumulating across every selected
+  // service/package) is known when the slot is picked - the availability
+  // step feeds it straight to SlotPicker instead of a fixed stand-in, and
+  // shows the resulting end time + duration as a caption. Grooming/
+  // Veterinary's staff choice and Hotel's cage-capacity display both live
+  // inside the single 'availability' step alongside Date & Time (merged,
+  // not a separate stepper entry) - Daycare gets Date & Time alone there.
   const steps: StepDef[] = useMemo(() => {
     const list: StepDef[] = [];
+
+    // A branch-locked Receptionist/Admin has nothing to pick here - their
+    // own branch is filled in automatically (see the selectedBranchId
+    // effect above) - so the step itself would be redundant.
+    if (!isBranchLockedStaff) {
+      list.push({ key: 'branch', label: 'Branch' });
+    }
 
     if (isReceptionistMode) {
       list.push({ key: 'customer', label: 'Customer' });
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    list.push({ key: 'branch', label: 'Branch' });
     list.push({ key: 'category', label: 'Service Type' });
+    list.push({ key: 'items', label: 'Services' });
 
-    // Walk-in booking flow: receptionist-only, inserted right before Date &
+    // Walk-in booking flow: receptionist-only, sits right before Date &
     // Time - a remote customer booking from home never sees this step at
     // all (walk-in definitionally requires being on-site).
     if (isReceptionistMode) {
@@ -1490,8 +1831,6 @@ export function CustomerBookingFlowPage() {
           ? 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
-
-    list.push({ key: 'items', label: 'Services' });
 
     // "make daycare the same as hotel" (#27) - Daycare gets the same
     // optional Care Instructions preview step as Hotel; the "Same
@@ -1509,10 +1848,13 @@ export function CustomerBookingFlowPage() {
     // (jumps back to 'pet') before moving on to the shared Review step.
     list.push({ key: 'bookingsList', label: 'Your bookings' });
 
+    list.push({ key: 'promos', label: 'Promos & Coupons' });
+
     list.push({ key: 'payment', label: 'Review' });
 
     return list;
   }, [
+    isBranchLockedStaff,
     isReceptionistMode,
     category,
     staffPickerUnavailable,
@@ -1530,6 +1872,18 @@ export function CustomerBookingFlowPage() {
   );
 
   const currentStep = steps[currentStepIndex] ?? steps[0];
+
+  // Persistent selection summary (below): only past the Services step, and
+  // only while there's actually something selected for the booking in
+  // progress - once it's committed to bookingsList, selectedServiceIds/
+  // selectedPackageIds reset for the next booking and this naturally stops
+  // showing (the 'Your bookings' and 'Review' steps already show their own,
+  // fuller breakdown per committed booking).
+  const itemsStepIndex = steps.findIndex((step) => step.key === 'items');
+  const showSelectedItemsSummary =
+    itemsStepIndex >= 0 &&
+    currentStepIndex > itemsStepIndex &&
+    selectedItemsSummary.length > 0;
 
   // Repairs `currentStepKey` when the step it points at just disappeared
   // from `steps` (e.g. the Staff step, once Staff Picker turns out to be
@@ -1581,7 +1935,10 @@ export function CustomerBookingFlowPage() {
       case 'items':
         return selectedServiceIds.length + selectedPackageIds.length > 0;
       case 'hotelDetails':
-        return true;
+        // Optional step - but a row the user half-filled would fail the
+        // server's hotelPreferencesValidator, so block Next until it's
+        // completed or removed (the step's own banner points at it).
+        return hotelCareIncompleteRows.length === 0;
       case 'bookingsList':
         // Same pattern as 'items' above - at least one booking must be
         // committed before moving on to the shared Review step. In
@@ -1610,81 +1967,22 @@ export function CustomerBookingFlowPage() {
   function goNext() {
     if (!isCurrentStepValid) return;
 
-    // Multi-booking checkout: leaving this booking's LAST step ('items' for
-    // Grooming/Veterinary/Assessment, 'hotelDetails' for Hotel/Daycare)
-    // commits it into bookingsList right here, before advancing - checked
-    // via the step actually being landed on next, not the current step's
-    // own key, since 'items' is NOT last for Hotel/Daycare (hotelDetails
-    // still follows it). By the time the wizard lands on 'bookingsList',
-    // the booking just configured is already its newest entry -
-    // commitCurrentBookingDraft reads the working-draft state as it stands
-    // right now (still populated - resetForNextBooking runs after, not
-    // before).
+    // Multi-booking checkout: leaving this booking's LAST configured step
+    // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
+    // Hotel/Daycare) commits it into bookingsList right here, before
+    // advancing - checked via the step actually being landed on next, not
+    // the current step's own key, since 'availability' is NOT last for
+    // Hotel/Daycare (hotelDetails still follows it). By the time the wizard
+    // lands on 'bookingsList', the booking just configured is already its
+    // newest entry - commitCurrentBookingDraft reads the working-draft state
+    // as it stands right now (still populated - resetForNextBooking runs
+    // after, not before).
     if (steps[currentStepIndex + 1]?.key === 'bookingsList') {
       commitCurrentBookingDraft();
       resetForNextBooking();
     }
 
     advanceTo(currentStepIndex + 1);
-  }
-
-  /** #22 follow-up: fired by SlotPicker (inside the 'availability' step)
-   * every time the currently-viewed date's availability resolves. Only
-   * warns when that day actually had real candidate slots (time/staff/
-   * cage) and every one of them is taken - hasAnySlots is false both when
-   * the branch has no hours that weekday and when today's hours have
-   * already passed (getDaySlots drops any candidate whose start is already
-   * in the past), neither of which is a meaningful "fully booked" signal,
-   * so both are silently skipped rather than shown as a warning. */
-  function handleSlotAvailabilityChange({
-    date,
-    hasAnyAvailable,
-    hasAnySlots,
-  }: {
-    date: string;
-    hasAnyAvailable: boolean;
-    hasAnySlots: boolean;
-  }) {
-    if (
-      !hasAnySlots ||
-      hasAnyAvailable ||
-      !accessToken ||
-      !selectedBranchId ||
-      !category
-    ) {
-      return;
-    }
-
-    setIsCheckingAvailability(true);
-
-    // date itself is already confirmed full - start the lookahead the day
-    // after it instead of redundantly re-checking the same day.
-    const [year, month, day] = date.split('-').map(Number);
-    const searchFromDate = new Date(Date.UTC(year, month - 1, day + 1))
-      .toISOString()
-      .slice(0, 10);
-
-    void getNextAvailableSlot(accessToken, {
-      branchId: selectedBranchId,
-      serviceCategory: category as ServiceCategory,
-      fromDate: searchFromDate,
-      slotDurationMinutes:
-        DEFAULT_DURATION_MINUTES[category as ServiceCategory],
-      petWeightClass:
-        category === 'Hotel'
-          ? (selectedPet?.weight_class ?? undefined)
-          : undefined,
-    }).then((result) => {
-      setIsCheckingAvailability(false);
-      // Fails open: a lookup error never shows a false "fully booked" claim.
-      if (!result.error) {
-        setFullyBookedNotice(result.data);
-      }
-    });
-  }
-
-  function dismissFullyBookedNotice() {
-    setFullyBookedNotice(undefined);
   }
 
   function goBack() {
@@ -1700,7 +1998,7 @@ export function CustomerBookingFlowPage() {
         setCurrentStepKey(
           last.category === 'Hotel' || last.category === 'Daycare'
             ? 'hotelDetails'
-            : 'items'
+            : 'availability'
         );
         return prev.slice(0, -1);
       });
@@ -1763,7 +2061,8 @@ export function CustomerBookingFlowPage() {
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -1773,12 +2072,13 @@ export function CustomerBookingFlowPage() {
   }
 
   function handleBranchSelect(branchId: string) {
-    setSelectedBranchId(branchId);
+    setPickedBranchId(branchId);
     setCategory('');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
-    setSelectedPromoId('');
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
     setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
@@ -1815,14 +2115,12 @@ export function CustomerBookingFlowPage() {
     // guards against it directly too).
     if (servicesCoveredByPackages.has(serviceId)) return;
 
-    // #22 follow-up: no longer resets selectedSlot/staffPreference here -
-    // that made sense when items were picked BEFORE availability (the real
-    // item-derived duration used to drive the slot/staff check directly),
-    // but items are now picked AFTER availability, which already ran
-    // against a fixed placeholder duration independent of which items get
-    // chosen. Resetting here silently wiped out an already-confirmed slot,
-    // which then made handleSubmit's `!selectedSlot` guard fail silently -
-    // Confirm booking looked like it did nothing at all.
+    // Services precede the Date & Time step again, so changing the item set
+    // changes the slot's real length (slotDurationMinutes / finalScheduledEnd)
+    // - drop any already-picked slot and staff preference so the user re-picks
+    // against the correct window instead of the server rejecting a now-too-long
+    // booking at the final Confirm.
+    resetSlotForItemChange();
     if (selectedServiceIds.includes(serviceId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -1846,8 +2144,8 @@ export function CustomerBookingFlowPage() {
   function togglePackageSelect(packageId: string) {
     if (!category) return;
 
-    // #22 follow-up: see toggleServiceSelect's comment above - the
-    // selectedSlot/staffPreference reset was removed for the same reason.
+    // See toggleServiceSelect - a package changes the slot length too.
+    resetSlotForItemChange();
     if (selectedPackageIds.includes(packageId)) {
       updateCategorySelection(category, (current) => ({
         ...current,
@@ -1890,6 +2188,34 @@ export function CustomerBookingFlowPage() {
 
   function removeHotelFeeding(index: number) {
     setHotelFeeding((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /** Uploads a photo of the feeding item (e.g. the food bag/label), same
+   * idea as a diet-tracking app letting you snap a picture of what you're
+   * logging. Uploaded immediately (not deferred to booking submission) so
+   * the row can show a preview/remove control right away. */
+  async function uploadHotelFeedingPhoto(index: number, file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    updateHotelFeeding(index, { photo_uploading: true, photo_error: null });
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      updateHotelFeeding(index, {
+        photo_url: result.data.photo_url,
+        photo_uploading: false,
+      });
+    } else {
+      updateHotelFeeding(index, {
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      });
+    }
   }
 
   function addHotelWalkBlock() {
@@ -1961,6 +2287,35 @@ export function CustomerBookingFlowPage() {
     setHotelMedications((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /** Uploads a photo of the medication item/label - see
+   * uploadHotelFeedingPhoto's dev note above. */
+  async function uploadHotelMedicationPhoto(index: number, file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    updateHotelMedication(index, {
+      photo_uploading: true,
+      photo_error: null,
+    });
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      updateHotelMedication(index, {
+        photo_url: result.data.photo_url,
+        photo_uploading: false,
+      });
+    } else {
+      updateHotelMedication(index, {
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      });
+    }
+  }
+
   /** Undefined (never sent) unless the customer/receptionist actually
    * entered something - an empty-everything payload adds nothing the
    * check-in form's own blank state doesn't already give. Sent under the
@@ -1971,11 +2326,19 @@ export function CustomerBookingFlowPage() {
   const hotelPreferencesPayload = useMemo(() => {
     if (category !== 'Hotel' && category !== 'Daycare') return undefined;
 
-    const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding.map(
-      (row) => ({
+    // Only fully-filled rows are sent - a half-added row (common when
+    // per-night tabs hide a row on another night's tab) would fail the
+    // server's hotelPreferencesValidator with an opaque "Invalid payload".
+    // isStepValid('hotelDetails') separately blocks Next while any row is
+    // still 'partial', so nothing the user cares about is silently dropped.
+    const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding
+      .filter((row) => hotelFeedingRowStatus(row) === 'complete')
+      .map((row) => ({
         meal_time: row.meal_time,
         food_type: row.food_type,
         quantity: row.quantity,
+        quantity_unit: row.quantity_unit,
+        ...(row.photo_url ? { photo_url: row.photo_url } : {}),
         ...(row.special_instructions.trim()
           ? { special_instructions: row.special_instructions.trim() }
           : {}),
@@ -1983,31 +2346,33 @@ export function CustomerBookingFlowPage() {
           ? { food_catalog_id: row.food_catalog_id }
           : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const walking: HotelBookingPreferenceWalking[] = hotelWalking.map(
-      (row) => ({
+    const walking: HotelBookingPreferenceWalking[] = hotelWalking
+      .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
+      .map((row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const playing: HotelBookingPreferencePlaying[] = hotelPlaying.map(
-      (row) => ({
+    const playing: HotelBookingPreferencePlaying[] = hotelPlaying
+      .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
+      .map((row) => ({
         time_block: row.time_block,
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
-      })
-    );
+      }));
 
-    const medications: HotelBookingPreferenceMedication[] =
-      hotelMedications.map((row) => ({
+    const medications: HotelBookingPreferenceMedication[] = hotelMedications
+      .filter((row) => hotelMedicationRowStatus(row) === 'complete')
+      .map((row) => ({
         medication_name: row.medication_name,
         dose: row.dose,
+        dose_unit: row.dose_unit,
+        ...(row.photo_url ? { photo_url: row.photo_url } : {}),
         scheduled_times: row.scheduled_time ? [row.scheduled_time] : [],
         ...(row.administration_notes.trim()
           ? { administration_notes: row.administration_notes.trim() }
@@ -2045,10 +2410,11 @@ export function CustomerBookingFlowPage() {
 
   /** Commits the working draft (the booking currently being configured) as
    * one entry in bookingsList - called from goNext() the moment the
-   * customer/receptionist leaves that booking's last step ('items' or
-   * 'hotelDetails'). See SubBookingDraft's own doc comment for what is and
-   * isn't captured. Declared after hotelPreferencesPayload (rather than up
-   * with the other selection handlers) so it can read that memo directly. */
+   * customer/receptionist leaves that booking's last configured step
+   * ('availability' or 'hotelDetails'). See SubBookingDraft's own doc
+   * comment for what is and isn't captured. Declared after
+   * hotelPreferencesPayload (rather than up with the other selection
+   * handlers) so it can read that memo directly. */
   function commitCurrentBookingDraft() {
     if (!category) return;
 
@@ -2134,16 +2500,21 @@ export function CustomerBookingFlowPage() {
   }
 
   /** Maps one committed list entry to the shape a per-booking payload needs -
-   * everything CreateBookingPayload has EXCEPT the five fields that are
-   * shared across the whole checkout (customer_id/branch_id/discount_id/
-   * promo_id/payment_scheme), which the caller below attaches once, either
-   * directly on a lone CreateBookingPayload or on the group payload's
-   * top level. */
+   * everything CreateBookingPayload has EXCEPT the fields that are shared
+   * across the whole checkout (customer_id/branch_id/discount_id/
+   * promo_ids/coupon_ids/payment_scheme), which the caller below attaches
+   * once, either directly on a lone CreateBookingPayload or on the group
+   * payload's top level. */
   function subBookingDraftToPayload(
     entry: SubBookingDraft
   ): Omit<
     CreateBookingPayload,
-    'customer_id' | 'branch_id' | 'discount_id' | 'promo_id' | 'payment_scheme'
+    | 'customer_id'
+    | 'branch_id'
+    | 'discount_id'
+    | 'promo_ids'
+    | 'coupon_ids'
+    | 'payment_scheme'
   > {
     return {
       pet_id: entry.petId,
@@ -2198,7 +2569,14 @@ export function CustomerBookingFlowPage() {
           : {}),
         ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
-        ...(selectedPromo ? { promo_id: selectedPromo.id } : {}),
+        // Multiselect (session 86): the server re-validates and re-caps
+        // every id authoritatively (resolveDiscountAndPromos) - these
+        // arrays are just the customer/receptionist's selection, not a
+        // trusted amount.
+        ...(selectedPromoIds.length > 0 ? { promo_ids: selectedPromoIds } : {}),
+        ...(selectedCouponIds.length > 0
+          ? { coupon_ids: selectedCouponIds }
+          : {}),
       };
 
       // A list of exactly one booking (nobody clicked "Add another
@@ -2355,11 +2733,21 @@ export function CustomerBookingFlowPage() {
   function renderStepContent() {
     switch (currentStep.key) {
       case 'customer':
+        // A Veterinarian's restriction set has to actually resolve before
+        // CustomerPicker renders - passing `null` (still loading) as its
+        // restrictToCustomerIds would read as "no restriction" and briefly
+        // flash every customer.
+        if (isVeterinarianStaff && treatedCustomerIds === null) {
+          return <p className={styles.copy}>Loading your patients...</p>;
+        }
         return (
           <CustomerPicker
             accessToken={accessToken!}
             onSelect={handleCustomerSelect}
             selectedCustomerId={walkInCustomer?.id ?? null}
+            restrictToCustomerIds={
+              isVeterinarianStaff ? treatedCustomerIds : undefined
+            }
           />
         );
 
@@ -2634,6 +3022,21 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {/* Custom change (cage pet-type support / readonly cage
+              assignment): customers get an immediate, readonly yes/no
+              answer instead of an interactive cage picker - deliberately
+              not gated on selectedSlot, since cage availability doesn't
+              depend on the date. Staff keep the interactive CagePickerList
+              below instead. */}
+            {category === 'Hotel' && !isReceptionistMode && selectedPet ? (
+              <CageAssignmentStatus
+                accessToken={accessToken!}
+                branchId={selectedBranchId}
+                petId={selectedPet.id}
+                petName={selectedPet.name}
+              />
+            ) : null}
+
             {category === 'Hotel' ? (
               <div className={styles.nightsField}>
                 <label>
@@ -2667,9 +3070,19 @@ export function CustomerBookingFlowPage() {
               accessToken={accessToken!}
               branchId={selectedBranchId}
               serviceCategory={category as ServiceCategory}
-              slotDurationMinutes={
-                DEFAULT_DURATION_MINUTES[category as ServiceCategory]
-              }
+              // Clamped to the availability endpoint's own accepted range
+              // (availabilityQueryValidator: slot_duration_minutes 15-1440) -
+              // an accumulated service/package pile below 15 or above 1440
+              // would otherwise 400 the whole Date & Time step. The submitted
+              // window (finalScheduledEnd) still uses the true sum; a pile
+              // over 1440 min (>24h of same-day services) is checked against a
+              // shorter window than it occupies, but that is not a real
+              // grooming/vet scenario - Hotel's length rides the nights
+              // multiplier, not this sum.
+              slotDurationMinutes={Math.min(
+                1440,
+                Math.max(15, slotDurationMinutes)
+              )}
               petWeightClass={
                 category === 'Hotel'
                   ? (selectedPet?.weight_class ?? undefined)
@@ -2679,9 +3092,42 @@ export function CustomerBookingFlowPage() {
               selectedSlot={selectedSlot}
               onSelect={(slot) => setSelectedSlot(slot)}
               lockToNow={isReceptionistMode && bookingSource === 'Walk-in'}
-              onAvailabilityChange={handleSlotAvailabilityChange}
               excludedWindows={samePetBundleWindows}
             />
+
+            {/* Derived end of the booking for the picked start - the task
+                asks for this as a plain caption "at the bottom, not in the
+                select". Length comes from the selected services'/packages'
+                configured durations (slotDurationMinutes), so it accumulates
+                as more items are added; Hotel shows the checkout date and
+                night count instead. */}
+            {selectedSlot && finalScheduledEnd ? (
+              <p className={styles.slotSummary}>
+                {category === 'Hotel' ? (
+                  <>
+                    Check-out{' '}
+                    <strong>
+                      {new Date(finalScheduledEnd).toLocaleDateString(
+                        undefined,
+                        { month: 'short', day: 'numeric' }
+                      )}
+                    </strong>{' '}
+                    · {hotelNights} night{hotelNights === 1 ? '' : 's'}
+                  </>
+                ) : (
+                  <>
+                    Ends{' '}
+                    <strong>
+                      {new Date(finalScheduledEnd).toLocaleTimeString(
+                        undefined,
+                        { hour: 'numeric', minute: '2-digit' }
+                      )}
+                    </strong>{' '}
+                    · {formatDuration(slotDurationMinutes)}
+                  </>
+                )}
+              </p>
+            ) : null}
 
             {selectedSlot &&
             staffPickerAppliesToCategory &&
@@ -2691,38 +3137,47 @@ export function CustomerBookingFlowPage() {
                 branchId={selectedBranchId}
                 serviceCategory={category as ServiceCategory}
                 scheduledStart={selectedSlot.start}
-                scheduledEnd={selectedSlot.end}
+                scheduledEnd={finalScheduledEnd ?? selectedSlot.end}
                 selected={staffPreference}
                 onSelect={setStaffPreference}
                 onUnavailable={() => setStaffPickerUnavailable(true)}
+                cartStaffOverlapCounts={cartStaffOverlapCounts}
               />
             ) : null}
 
-            {/* Custom change: Cage Picker addendum - lets the customer/
-              receptionist name a specific cage preference. Only renders
-              once the Hotel service type's cage_picker_enabled toggle
-              (Admin Settings > Service Types) resolves true;
-              CagePickerList's own onUnavailable degrades this to "no
-              preference" otherwise, same contract as StaffPickerList. (The
-              older, purely-informational CagePicker size-capacity grid
-              that used to render above this was removed as dead/superseded
-              UI - it had no onSelect and nothing it showed ever flowed
-              into the booking; recommendedSize below folds its one useful
-              signal, the pet's own weight-class "Recommended" hint, into
-              this picker instead of losing it.) Custom change (cage size
-              booking restriction): restrictToPetSize is on for a customer
-              booking their own pet (mismatched-size cages are shown but
-              disabled) and off in receptionist mode, so only staff can
-              knowingly book a walk-in into a differently-sized cage. */}
-            {selectedSlot && category === 'Hotel' && !cagePickerUnavailable ? (
+            {/* Custom change: Cage Picker addendum - lets the receptionist
+              name a specific cage preference. Only renders once the Hotel
+              service type's cage_picker_enabled toggle (Admin Settings >
+              Service Types) resolves true; CagePickerList's own
+              onUnavailable degrades this to "no preference" otherwise, same
+              contract as StaffPickerList. (The older, purely-informational
+              CagePicker size-capacity grid that used to render above this
+              was removed as dead/superseded UI - it had no onSelect and
+              nothing it showed ever flowed into the booking; recommendedSize
+              below folds its one useful signal, the pet's own weight-class
+              "Recommended" hint, into this picker instead of losing it.)
+              Custom change (cage pet-type support / readonly cage
+              assignment): this interactive picker is now receptionist-only -
+              a customer booking their own pet sees CageAssignmentStatus
+              above instead and never gets to click a specific cage.
+              restrictToPetSize stays false here (receptionist mode always),
+              so staff keep free choice of any size-matching cage; pet-type
+              mismatches are already excluded from the option list itself
+              (getCagePickerOptions), not merely disabled. */}
+            {selectedSlot &&
+            category === 'Hotel' &&
+            isReceptionistMode &&
+            !cagePickerUnavailable &&
+            selectedPet ? (
               <CagePickerList
                 accessToken={accessToken!}
                 branchId={selectedBranchId}
+                petId={selectedPet.id}
                 selected={cagePreference}
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
                 recommendedSize={selectedPet?.weight_class ?? null}
-                restrictToPetSize={!isReceptionistMode}
+                restrictToPetSize={false}
               />
             ) : null}
           </div>
@@ -2808,18 +3263,30 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${service.base_price.toFixed(2)}/night`
+                          ? `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
-                            ? `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${service.base_price.toFixed(2)}`}
+                            ? // Daycare's actual checkout charge is computed
+                              // independently from these fee columns
+                              // (daycareBilling.service.ts), not from
+                              // price_at_booking, so a fixed-price override
+                              // isn't reflected here yet - showing a flat
+                              // price would be misleading about what's
+                              // actually billed at pickup.
+                              `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
+                            : `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}`}
                       </span>
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
                           PHP{' '}
                           {(service.daycare_overnight_fee ?? 850).toFixed(2)}
                           /night if not picked up before closing
+                        </span>
+                      ) : null}
+                      {category !== 'Hotel' ? (
+                        <span className={styles.optionMeta}>
+                          {formatDuration(service.duration_minutes ?? 60)}
                         </span>
                       ) : null}
                       {coveredByPackageName !== undefined ? (
@@ -2851,9 +3318,17 @@ export function CustomerBookingFlowPage() {
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${pkg.bundled_price.toFixed(2)}/night`
-                          : `PHP ${pkg.bundled_price.toFixed(2)}`}
+                          ? `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}/night`
+                          : `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}`}
                       </span>
+                      {category !== 'Hotel' ? (
+                        <span className={styles.optionMeta}>
+                          {formatDuration(
+                            pkg.total_duration_minutes ??
+                              (pkg.package_services?.length ?? 1) * 60
+                          )}
+                        </span>
+                      ) : null}
                       <ul className={styles.readOnlyList}>
                         {(pkg.package_services ?? []).map((entry) => (
                           <li key={entry.service_id}>
@@ -2876,6 +3351,17 @@ export function CustomerBookingFlowPage() {
                     : ''}
                 </span>
                 <span>PHP {itemsTotal.toFixed(2)}</span>
+              </div>
+            ) : null}
+
+            {/* Total estimated duration, right below the price total - Hotel
+                is priced/scheduled by nights, not a duration, so it's
+                omitted there (mirrors the Date & Time step's own end-time
+                caption, which shows check-out date + nights instead). */}
+            {category && category !== 'Hotel' ? (
+              <div className={`${styles.pricingRow} ${styles.pricingRowMuted}`}>
+                <span>Estimated duration</span>
+                <span>{formatDuration(slotDurationMinutes)}</span>
               </div>
             ) : null}
 
@@ -2918,12 +3404,57 @@ export function CustomerBookingFlowPage() {
             {category === 'Hotel' &&
             !hotelUniformInstructions &&
             selectedSlot ? (
-              <NightTabs
-                nights={getHotelNightDates(selectedSlot.start, hotelNights)}
-                activeDate={activeNightDate}
-                onSelect={setActiveNightDate}
-              />
+              <>
+                <NightTabs
+                  nights={getHotelNightDates(selectedSlot.start, hotelNights)}
+                  activeDate={activeNightDate}
+                  onSelect={setActiveNightDate}
+                  allNightsLabel="Default (all nights)"
+                />
+                <p className={styles.copy}>
+                  Entries on <strong>Default (all nights)</strong> apply to
+                  every night. Pick a night to add instructions that override
+                  the default for just that night.
+                </p>
+              </>
             ) : null}
+
+            {hotelCareIncompleteRows.length > 0
+              ? (() => {
+                  const first = hotelCareIncompleteRows[0];
+                  const where = first.stayDate
+                    ? `the ${first.section} entry for ${formatNightLabel(
+                        first.stayDate
+                      )}`
+                    : `a ${first.section} entry`;
+                  // In per-night mode the row is hidden whenever its scope
+                  // (a date, or null for "Default (all nights)") isn't the
+                  // active tab - offer a jump to wherever it lives.
+                  const rowHidden =
+                    !hotelUniformInstructions &&
+                    first.stayDate !== activeNightDate;
+
+                  return (
+                    <div className={styles.errorBanner} role="alert">
+                      Finish or remove {where} before continuing.
+                      {rowHidden ? (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => setActiveNightDate(first.stayDate)}
+                          >
+                            {first.stayDate
+                              ? 'Go to that night'
+                              : 'Go to Default (all nights)'}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })()
+              : null}
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Feeding</span>
@@ -2989,6 +3520,23 @@ export function CustomerBookingFlowPage() {
                           })
                         }
                       />
+                      <select
+                        className={styles.input}
+                        aria-label="Quantity unit"
+                        value={row.quantity_unit}
+                        onChange={(event) =>
+                          updateHotelFeeding(index, {
+                            quantity_unit: event.target
+                              .value as FoodQuantityUnit,
+                          })
+                        }
+                      >
+                        {FOOD_QUANTITY_UNITS.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         className={styles.input}
                         placeholder="Special instructions (optional)"
@@ -3006,6 +3554,45 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
+                    </div>
+                    <div className={styles.inlineFields}>
+                      {row.photo_url ? (
+                        <>
+                          <img
+                            className={styles.carePhotoThumbnail}
+                            src={row.photo_url}
+                            alt="Food item"
+                          />
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              updateHotelFeeding(index, { photo_url: null })
+                            }
+                          >
+                            Remove photo
+                          </button>
+                        </>
+                      ) : (
+                        <label className={styles.copy}>
+                          {row.photo_uploading
+                            ? 'Uploading photo...'
+                            : 'Attach a photo (optional)'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            disabled={row.photo_uploading}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) uploadHotelFeedingPhoto(index, file);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                      {row.photo_error ? (
+                        <p className={styles.errorText}>{row.photo_error}</p>
+                      ) : null}
                     </div>
                     {notOnDayOne || notOnLastDay ? (
                       <p className={styles.copy}>
@@ -3242,6 +3829,22 @@ export function CustomerBookingFlowPage() {
                           })
                         }
                       />
+                      <select
+                        className={styles.input}
+                        aria-label="Dose unit"
+                        value={row.dose_unit}
+                        onChange={(event) =>
+                          updateHotelMedication(index, {
+                            dose_unit: event.target.value as MedicationDoseUnit,
+                          })
+                        }
+                      >
+                        {MEDICATION_DOSE_UNITS.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
                       <TimeInput
                         aria-label="Medication time"
                         value={row.scheduled_time}
@@ -3268,6 +3871,45 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
+                    </div>
+                    <div className={styles.inlineFields}>
+                      {row.photo_url ? (
+                        <>
+                          <img
+                            className={styles.carePhotoThumbnail}
+                            src={row.photo_url}
+                            alt="Medication"
+                          />
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              updateHotelMedication(index, { photo_url: null })
+                            }
+                          >
+                            Remove photo
+                          </button>
+                        </>
+                      ) : (
+                        <label className={styles.copy}>
+                          {row.photo_uploading
+                            ? 'Uploading photo...'
+                            : 'Attach a photo (optional)'}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            disabled={row.photo_uploading}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) uploadHotelMedicationPhoto(index, file);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
+                      {row.photo_error ? (
+                        <p className={styles.errorText}>{row.photo_error}</p>
+                      ) : null}
                     </div>
                     <p className={styles.copy}>
                       Applies daily - won&apos;t happen before check-in on
@@ -3355,6 +3997,38 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
+      case 'promos':
+        return (
+          <div>
+            <p className={styles.copy}>
+              Select any promos or coupons to apply - the total below already
+              respects the combined-discount limit.
+            </p>
+            <PromoCouponMultiSelect
+              promos={applicablePromos}
+              coupons={applicableCoupons}
+              selectedPromoIds={selectedPromoIds}
+              selectedCouponIds={selectedCouponIds}
+              onTogglePromo={(promoId) =>
+                setSelectedPromoIds((prev) =>
+                  prev.includes(promoId)
+                    ? prev.filter((id) => id !== promoId)
+                    : [...prev, promoId]
+                )
+              }
+              onToggleCoupon={(couponId) =>
+                setSelectedCouponIds((prev) =>
+                  prev.includes(couponId)
+                    ? prev.filter((id) => id !== couponId)
+                    : [...prev, couponId]
+                )
+              }
+              cap={promoCap}
+              cappedTotal={promoDiscount}
+            />
+          </div>
+        );
+
       case 'payment':
         return (
           <div className={styles.paymentStep}>
@@ -3391,12 +4065,22 @@ export function CustomerBookingFlowPage() {
                   <span>-PHP {discountAmount.toFixed(2)}</span>
                 </div>
               ) : null}
-              {selectedPromo ? (
-                <div className={styles.pricingRow}>
-                  <span>{selectedPromo.name}</span>
-                  <span>-PHP {promoDiscount.toFixed(2)}</span>
-                </div>
-              ) : null}
+              {cappedPromoSelections.map((selection) => {
+                const label =
+                  selection.key.kind === 'promo'
+                    ? (applicablePromos.find((p) => p.id === selection.key.id)
+                        ?.name ?? 'Promo')
+                    : 'Coupon';
+                return (
+                  <div
+                    key={`${selection.key.kind}-${selection.key.id}`}
+                    className={styles.pricingRow}
+                  >
+                    <span>{label}</span>
+                    <span>-PHP {selection.amount.toFixed(2)}</span>
+                  </div>
+                );
+              })}
               <div className={styles.pricingRowTotal}>
                 <span>Estimated total</span>
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
@@ -3521,35 +4205,26 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            {applicablePromos.length > 0 ? (
-              <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>Promo</legend>
-                <label className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="promo"
-                    checked={selectedPromoId === ''}
-                    onChange={() => setSelectedPromoId('')}
-                  />
-                  None
-                </label>
-                {applicablePromos.map((promo) => (
-                  <label key={promo.id} className={styles.radioOption}>
-                    <input
-                      type="radio"
-                      name="promo"
-                      checked={selectedPromoId === promo.id}
-                      onChange={() => setSelectedPromoId(promo.id)}
-                    />
-                    {promo.name} (
-                    {promo.discount_type === 'Percentage'
-                      ? `${promo.value}%`
-                      : `PHP ${promo.value.toFixed(2)}`}
-                    )
-                  </label>
-                ))}
-              </fieldset>
-            ) : null}
+            {/* Multiselect (session 86): picking promos/coupons moved to its
+                own step ('promos', right before this one) - this is just a
+                summary + a way back to change the selection. */}
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Promos &amp; Coupons</span>
+              <p className={styles.copy}>
+                {selectedPromoIds.length + selectedCouponIds.length === 0
+                  ? 'None selected.'
+                  : `${selectedPromoIds.length + selectedCouponIds.length} selected, -PHP ${promoDiscount.toFixed(2)}.`}
+              </p>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() =>
+                  advanceTo(steps.findIndex((step) => step.key === 'promos'))
+                }
+              >
+                Change
+              </button>
+            </div>
 
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
@@ -3609,6 +4284,10 @@ export function CustomerBookingFlowPage() {
       />
       <BookingCountBadge count={bookingsList.length} />
 
+      {showSelectedItemsSummary ? (
+        <SelectedItemsSummary items={selectedItemsSummary} total={itemsTotal} />
+      ) : null}
+
       <div className={styles.stepContent}>{renderStepContent()}</div>
 
       {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
@@ -3624,12 +4303,10 @@ export function CustomerBookingFlowPage() {
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={
-              !isCurrentStepValid || isLastStep || isCheckingAvailability
-            }
+            disabled={!isCurrentStepValid || isLastStep}
             onClick={goNext}
           >
-            {isCheckingAvailability ? 'Checking availability...' : 'Next'}
+            Next
           </button>
         </div>
       ) : (
@@ -3644,64 +4321,42 @@ export function CustomerBookingFlowPage() {
           </button>
         </div>
       )}
-
-      {fullyBookedNotice !== undefined ? (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modal}>
-            {fullyBookedNotice === null ? (
-              <>
-                <h2 className={styles.modalTitle}>No availability found</h2>
-                <p className={styles.copy}>
-                  This branch has no open slots for this service in the next
-                  couple of weeks. Try a different branch or service.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className={styles.modalTitle}>This looks fully booked</h2>
-                <p className={styles.copy}>
-                  The earliest opening we found is{' '}
-                  {new Date(fullyBookedNotice.date).toLocaleDateString()}, from{' '}
-                  {new Date(
-                    fullyBookedNotice.earliestSlot.start
-                  ).toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}{' '}
-                  to{' '}
-                  {new Date(
-                    fullyBookedNotice.earliestSlot.end
-                  ).toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                  .
-                </p>
-              </>
-            )}
-            <div className={styles.navRow}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => {
-                  dismissFullyBookedNotice();
-                  setCurrentStepKey('category');
-                  setReachedStepKeys((prev) => new Set(prev).add('category'));
-                }}
-              >
-                Change branch/service
-              </button>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={dismissFullyBookedNotice}
-              >
-                Keep browsing
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
+  );
+}
+
+/**
+ * Persistent "what have I picked so far" recap, shown on every step after
+ * Services for the booking currently being configured (see
+ * showSelectedItemsSummary above) - so a customer/receptionist doesn't have
+ * to jump back to the Services step just to recall the services/packages
+ * and running total already chosen. Deliberately minimal (a native
+ * <details>, collapsed by default) so it never crowds out the current
+ * step's own content, and deliberately a separate small component (rather
+ * than inlined where it's used) so it stays easy to extend later without
+ * touching the wizard's step-switch logic.
+ */
+function SelectedItemsSummary({
+  items,
+  total,
+}: {
+  items: { id: string; name: string; price: number }[];
+  total: number;
+}) {
+  return (
+    <details className={styles.selectedItemsSummary}>
+      <summary className={styles.selectedItemsSummaryTitle}>
+        {items.length} service{items.length === 1 ? '' : 's'} selected · PHP{' '}
+        {total.toFixed(2)}
+      </summary>
+      <ul className={styles.selectedItemsSummaryList}>
+        {items.map((item) => (
+          <li key={item.id} className={styles.pricingRow}>
+            <span>{item.name}</span>
+            <span>PHP {item.price.toFixed(2)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

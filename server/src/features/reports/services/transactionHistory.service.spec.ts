@@ -13,25 +13,34 @@ interface QueryResult {
 
 /** Records the select string + every .eq(column, value) so a test can
  * assert which filters were applied, and resolves .order() with `result`. */
-function stubQuery(result: QueryResult) {
+function stubQuery(result: QueryResult, customerRows: unknown = { data: [] }) {
   const selectArgs: string[] = [];
   const eqCalls: Array<[string, unknown]> = [];
-  const builder: Record<string, unknown> = {};
 
-  builder.select = vi.fn((arg: string) => {
+  // The transactions query builder: select/eq/gte/lt chain, resolves on order().
+  const txnBuilder: Record<string, unknown> = {};
+  txnBuilder.select = vi.fn((arg: string) => {
     selectArgs.push(arg);
-    return builder;
+    return txnBuilder;
   });
-  builder.eq = vi.fn((column: string, value: unknown) => {
+  txnBuilder.eq = vi.fn((column: string, value: unknown) => {
     eqCalls.push([column, value]);
-    return builder;
+    return txnBuilder;
   });
   for (const method of ['gte', 'lt']) {
-    builder[method] = vi.fn(() => builder);
+    txnBuilder[method] = vi.fn(() => txnBuilder);
   }
-  builder.order = vi.fn(() => Promise.resolve(result));
+  txnBuilder.order = vi.fn(() => Promise.resolve(result));
 
-  vi.mocked(supabase.from).mockReturnValue(builder as never);
+  // The customer_profiles name-hydration query: select(...).in(...) resolves.
+  const customerBuilder: Record<string, unknown> = {};
+  customerBuilder.select = vi.fn(() => customerBuilder);
+  customerBuilder.in = vi.fn(() => Promise.resolve(customerRows));
+
+  vi.mocked(supabase.from).mockImplementation(
+    (table: string) =>
+      (table === 'customer_profiles' ? customerBuilder : txnBuilder) as never
+  );
 
   return { selectArgs, eqCalls };
 }
@@ -76,5 +85,43 @@ describe('listTransactionHistory', () => {
     await expect(listTransactionHistory({})).rejects.toMatchObject({
       statusCode: 400,
     });
+  });
+
+  it("merges each row's owner display name from a batched customer_profiles lookup", async () => {
+    stubQuery(
+      {
+        data: [
+          { id: 'txn-1', customer_id: 'cust-1' },
+          { id: 'txn-2', customer_id: 'cust-2' },
+          { id: 'txn-3', customer_id: 'cust-1' },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          { id: 'cust-1', full_name: 'Ada Lovelace' },
+          { id: 'cust-2', full_name: 'Grace Hopper' },
+        ],
+      }
+    );
+
+    const rows = await listTransactionHistory({});
+
+    expect(rows.map((row) => row.customer_name)).toEqual([
+      'Ada Lovelace',
+      'Grace Hopper',
+      'Ada Lovelace',
+    ]);
+  });
+
+  it('falls back to a null customer_name when the profile is missing', async () => {
+    stubQuery(
+      { data: [{ id: 'txn-1', customer_id: 'ghost' }], error: null },
+      { data: [] }
+    );
+
+    const [row] = await listTransactionHistory({});
+
+    expect(row.customer_name).toBeNull();
   });
 });

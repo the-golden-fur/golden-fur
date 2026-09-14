@@ -37,10 +37,19 @@ describe('createPetValidator (customer-facing)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an invalid pet_type value', () => {
+  it('accepts any non-empty pet_type string - pet_type is a foreign key against the admin-managed pet_types table (20260912191), not a fixed enum, so an invalid/deactivated key is rejected by the DB constraint, not this validator', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Bird',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty pet_type value', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: '',
     });
 
     expect(result.success).toBe(false);
@@ -97,6 +106,41 @@ describe('createPetValidatorStaff', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('accepts a numeric weight_kg', () => {
+    const result = createPetValidatorStaff.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+      weight_kg: 14.2,
+      coat_type: 'SC',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a zero, negative or absurd weight_kg', () => {
+    for (const weight_kg of [0, -3, 500, 9999]) {
+      expect(
+        createPetValidatorStaff.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          weight_kg,
+        }).success
+      ).toBe(false);
+    }
+  });
+});
+
+describe('createPetValidator (customer-facing) - weight_kg', () => {
+  it('rejects weight_kg - staff-only, manipulable pricing/cage field', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+      weight_kg: 4,
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   availabilityQueryValidator,
   cancelBookingValidator,
+  createBookingGroupValidator,
   createBookingValidator,
   overrideBookingStatusValidator,
   rescheduleBookingValidator,
@@ -69,12 +70,13 @@ describe('createBookingValidator', () => {
     ).toBe(false);
   });
 
-  it('accepts an optional discount_id and promo_id', () => {
+  it('accepts an optional discount_id, promo_ids, and coupon_ids', () => {
     expect(
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
         discount_id: '66666666-6666-4666-a666-666666666666',
-        promo_id: '77777777-7777-4777-a777-777777777777',
+        promo_ids: ['77777777-7777-4777-a777-777777777777'],
+        coupon_ids: ['88888888-8888-4888-a888-888888888888'],
       }).success
     ).toBe(true);
   });
@@ -84,6 +86,26 @@ describe('createBookingValidator', () => {
       createBookingValidator.safeParse({
         ...BASE_BOOKING,
         scheduled_end: BASE_BOOKING.scheduled_start,
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate promo_ids (the same promo selected twice)', () => {
+    const promoId = '77777777-7777-4777-a777-777777777777';
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        promo_ids: [promoId, promoId],
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate coupon_ids (the same coupon selected twice)', () => {
+    const couponId = '88888888-8888-4888-a888-888888888888';
+    expect(
+      createBookingValidator.safeParse({
+        ...BASE_BOOKING,
+        coupon_ids: [couponId, couponId],
       }).success
     ).toBe(false);
   });
@@ -129,7 +151,12 @@ describe('createBookingValidator', () => {
         service_category: 'Hotel',
         hotel_preferences: {
           feeding: [
-            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+            {
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
           ],
           walking: [{ time_block: 'Morning', duration_minutes: 15 }],
           playing: [{ time_block: 'Afternoon', duration_minutes: 10 }],
@@ -162,7 +189,12 @@ describe('createBookingValidator', () => {
         service_category: 'Daycare',
         hotel_preferences: {
           feeding: [
-            { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+            {
+              meal_time: 'Morning',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
           ],
           walking: [],
           playing: [],
@@ -185,6 +217,7 @@ describe('createBookingValidator', () => {
               meal_time: 'Morning',
               food_type: 'Kibble',
               quantity: '1',
+              quantity_unit: 'cup',
               food_catalog_id: '11111111-1111-4111-a111-111111111111',
             },
           ],
@@ -193,7 +226,8 @@ describe('createBookingValidator', () => {
           medications: [
             {
               medication_name: 'Amoxicillin',
-              dose: '250mg',
+              dose: '250',
+              dose_unit: 'mg',
               scheduled_times: ['08:00'],
               medication_catalog_id: '22222222-2222-4222-a222-222222222222',
             },
@@ -217,6 +251,51 @@ describe('createBookingValidator', () => {
           walking: [],
           medications: [],
         },
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('createBookingGroupValidator', () => {
+  const BASE_GROUP = {
+    branch_id: BASE_BOOKING.branch_id,
+    bookings: [
+      {
+        pet_id: BASE_BOOKING.pet_id,
+        service_category: BASE_BOOKING.service_category,
+        items: BASE_BOOKING.items,
+        scheduled_start: BASE_BOOKING.scheduled_start,
+        scheduled_end: BASE_BOOKING.scheduled_end,
+      },
+    ],
+  };
+
+  it('accepts distinct promo_ids/coupon_ids', () => {
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        promo_ids: ['77777777-7777-4777-a777-777777777777'],
+        coupon_ids: ['88888888-8888-4888-a888-888888888888'],
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects duplicate promo_ids at the group level', () => {
+    const promoId = '77777777-7777-4777-a777-777777777777';
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        promo_ids: [promoId, promoId],
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects duplicate coupon_ids at the group level', () => {
+    const couponId = '88888888-8888-4888-a888-888888888888';
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        coupon_ids: [couponId, couponId],
       }).success
     ).toBe(false);
   });
@@ -263,6 +342,41 @@ describe('rescheduleBookingValidator', () => {
       rescheduleBookingValidator.safeParse({
         scheduled_start: '2026-08-10T02:00:00+00:00',
         scheduled_end: '2026-08-10T01:00:00+00:00',
+      }).success
+    ).toBe(false);
+  });
+
+  // Slot-conflict notification (20260911188): previously only
+  // createBookingValidator accepted cage_preference - a Hotel booking
+  // flagged for a cage-size conflict needs a way to change it during a
+  // reschedule too, not just date/time/staff.
+  it('accepts an optional cage_preference (specific or no_preference)', () => {
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: {
+          type: 'specific',
+          cage_id: '123e4567-e89b-12d3-a456-426614174000',
+        },
+      }).success
+    ).toBe(true);
+
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: { type: 'no_preference' },
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a "specific" cage_preference with no cage_id', () => {
+    expect(
+      rescheduleBookingValidator.safeParse({
+        scheduled_start: '2026-08-10T01:00:00+00:00',
+        scheduled_end: '2026-08-10T02:00:00+00:00',
+        cage_preference: { type: 'specific' },
       }).success
     ).toBe(false);
   });
@@ -319,6 +433,17 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
     expect(
       updatePolicyValidator.safeParse({ booking_notice_period_days: -1 })
+        .success
+    ).toBe(false);
+  });
+
+  it('accepts max_concurrent_bookings_per_staff >= 1 and rejects 0', () => {
+    expect(
+      updatePolicyValidator.safeParse({ max_concurrent_bookings_per_staff: 2 })
+        .success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ max_concurrent_bookings_per_staff: 0 })
         .success
     ).toBe(false);
   });

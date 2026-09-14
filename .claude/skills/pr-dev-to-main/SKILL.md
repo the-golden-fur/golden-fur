@@ -1,6 +1,6 @@
 ---
 name: pr-dev-to-main
-description: Open a release/promotion PR that merges dev into main. Rebase merge preferred, plain merge as fallback, never squash. Use when opening a PR targeting main from dev.
+description: Open a DRAFT release/promotion PR that merges dev into main, with title, body, labels, and assignee all set, then stop — no CI/test/review step. Rebase merge preferred, plain merge as fallback, never squash. Use when opening a PR targeting main from dev.
 ---
 
 # PR: dev → main

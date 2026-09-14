@@ -220,6 +220,8 @@ export async function insertFeedingInstructions(
     meal_time: row.meal_time,
     food_type: row.food_type,
     quantity: row.quantity,
+    quantity_unit: row.quantity_unit ?? null,
+    photo_url: row.photo_url ?? null,
     special_instructions: row.special_instructions,
     food_catalog_id: row.food_catalog_id ?? null,
     stay_date: row.stay_date ?? null,
@@ -280,6 +282,8 @@ export async function insertMedicationInstructions(
   let rows: Array<{
     medication_name: string;
     dose: string;
+    dose_unit?: string;
+    photo_url?: string;
     scheduled_times: string[];
     administration_notes?: string;
     source_prescription_note?: string;
@@ -305,6 +309,8 @@ export async function insertMedicationInstructions(
   const preparedRows = rows.map((row) => ({
     medication_name: row.medication_name,
     dose: row.dose,
+    dose_unit: row.dose_unit ?? null,
+    photo_url: row.photo_url ?? null,
     scheduled_times: row.scheduled_times,
     administration_notes: row.administration_notes,
     source_prescription_note: row.source_prescription_note,
@@ -373,7 +379,7 @@ export async function generateCareLogEntries(
         stay_id: stayId,
         care_type: 'Feeding',
         scheduled_date: date,
-        description: `${meal.meal_time} meal — ${meal.quantity} ${meal.food_type}`,
+        description: `${meal.meal_time} meal — ${meal.quantity}${meal.quantity_unit ? ` ${meal.quantity_unit}` : ''} ${meal.food_type}`,
         time_block: meal.meal_time,
       });
     }
@@ -409,7 +415,7 @@ export async function generateCareLogEntries(
           stay_id: stayId,
           care_type: 'Medication',
           scheduled_date: date,
-          description: `${medication.medication_name} ${medication.dose} — ${time}`,
+          description: `${medication.medication_name} ${medication.dose}${medication.dose_unit ? ` ${medication.dose_unit}` : ''} — ${time}`,
           time_block: bucketMedicationTime(time),
         });
       }

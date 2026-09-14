@@ -21,6 +21,17 @@ export const NOTIFICATION_EVENT_TYPES = [
    * groomer/vet for a booking - see bookingNotifications.service.ts's
    * sendStaffAssignedNotification. */
   'staff_assigned',
+  /** Custom change (slot-conflict notification, migration 20260911189):
+   * fires when another customer's downpayment claims a still-unpaid pencil
+   * booking's date/time/staff/cage slot first - see
+   * bookingNotifications.service.ts's sendSlotConflictNotification. */
+  'booking_slot_conflict',
+  /** Custom change (coupon spin wheel, session 86): fires when a customer
+   * earns a new spin credit (a booking-count milestone or a large-enough
+   * single transaction) - see the customer_spin_credits triggers
+   * (20260913199) and the application code that reacts to a newly-inserted
+   * row to send this notification. */
+  'spin_wheel_earned',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -90,7 +101,7 @@ export interface CreateNotificationParams {
    * the 8 event types needs different template params, so notification.
    * service.ts stays decoupled from all six templates' specific shapes)
    * and hands it here as a thunk. Omitted entirely for password_reset (no
-   * Resend template exists for that event - see Sprint6-EpicA-Guide's Spec
+   * Brevo template exists for that event - see Sprint6-EpicA-Guide's Spec
    * Tensions). Never blocks or rolls back the notification row - a
    * rejection is caught and logged, not rethrown.
    */

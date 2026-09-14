@@ -7,11 +7,22 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import { CreditBalanceContext } from '../../../credits/providers/CreditBalanceContext';
 import type { CreditBalanceContextValue } from '../../../credits/providers/CreditBalanceContext';
 import type { CreditBalance } from '../../../credits/credits.types';
-import { getCustomerProfile } from '../../api/customer.api';
+import { getCustomerProfile, listCustomerPets } from '../../api/customer.api';
+import { listNotifications } from '../../../notifications/api/notifications.api';
+import { listMyConflictedBookings } from '../../../booking/api/booking.api';
 import { CustomerPortalPage } from './CustomerPortalPage';
 
 vi.mock('../../api/customer.api', () => ({
   getCustomerProfile: vi.fn(),
+  listCustomerPets: vi.fn(),
+}));
+
+vi.mock('../../../notifications/api/notifications.api', () => ({
+  listNotifications: vi.fn(),
+}));
+
+vi.mock('../../../booking/api/booking.api', () => ({
+  listMyConflictedBookings: vi.fn(),
 }));
 
 function balance(overrides: Partial<CreditBalance> = {}): CreditBalance {
@@ -70,9 +81,15 @@ describe('CustomerPortalPage', () => {
       data: null,
       error: 'pending',
     });
+    vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listNotifications).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listMyConflictedBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
   });
 
-  it('greets the customer by name once their profile loads, instead of a navigation tile grid', async () => {
+  it('greets the customer by name once their profile loads', async () => {
     vi.mocked(getCustomerProfile).mockResolvedValue({
       data: {
         id: 'customer-1',
@@ -97,9 +114,6 @@ describe('CustomerPortalPage', () => {
         name: 'Welcome back, Jane Dela Cruz!',
       })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /book a service/i })
-    ).not.toBeInTheDocument();
   });
 
   it('shows a generic welcome before the profile has loaded', () => {
@@ -110,7 +124,28 @@ describe('CustomerPortalPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links to the dedicated credits page when the customer has credit', () => {
+  it('renders the dashboard widgets with links to their pages', () => {
+    renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'Notification Board' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /book a service/i })
+    ).toHaveAttribute('href', '/portal/book');
+    expect(
+      screen.getByRole('link', { name: /view transactions/i })
+    ).toHaveAttribute('href', '/portal/transactions');
+    expect(
+      screen.getByRole('heading', { name: 'My Pets' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute(
+      'href',
+      '/portal/pets'
+    );
+  });
+
+  it('shows the account credit total in the credits widget', () => {
     renderPage({ total: 500, balances: [balance({ balance: 500 })] });
 
     const link = screen.getByRole('link', { name: /account credit/i });
@@ -118,10 +153,74 @@ describe('CustomerPortalPage', () => {
     expect(link).toHaveTextContent('₱500.00');
   });
 
-  it('shows no credit summary when the customer has no credit anywhere', () => {
+  it('lists the customer notifications on the board', async () => {
+    vi.mocked(listNotifications).mockResolvedValue({
+      data: [
+        {
+          id: 'n-1',
+          recipient_staff_id: null,
+          recipient_customer_id: 'customer-1',
+          event_type: 'booking_confirmed',
+          title: 'Booking confirmed',
+          message: 'Your grooming appointment is set.',
+          related_booking_id: 'b-1',
+          related_thread_id: null,
+          is_read: false,
+          is_starred: false,
+          is_deleted: false,
+          created_at: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
     renderPage();
 
-    expect(screen.queryByText(/account credit/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/₱/)).not.toBeInTheDocument();
+    const row = await screen.findByRole('link', { name: /booking confirmed/i });
+    expect(row).toHaveAttribute('href', '/portal/notifications?open=n-1');
+  });
+
+  it('pops up the slot-conflict modal listing every affected booking, linked to it', async () => {
+    vi.mocked(listMyConflictedBookings).mockResolvedValue({
+      data: [
+        {
+          id: 'booking-1',
+          service_category: 'Grooming',
+          pet_id: 'pet-1',
+          pet_name: 'Max',
+          scheduled_start: '2026-09-15T08:00:00.000Z',
+          scheduled_end: '2026-09-15T09:00:00.000Z',
+          branch_id: 'branch-1',
+          branch_name: 'Makati',
+          conflict_notice:
+            'Your Grooming booking on Sep 15, 2026 is no longer available.',
+          slot_conflict_at: '2026-09-11T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'A booking slot is no longer available',
+      })
+    ).toBeInTheDocument();
+
+    const link = screen.getByRole('link', { name: /grooming - max/i });
+    expect(link).toHaveAttribute('href', '/portal/bookings?open=booking-1');
+  });
+
+  it('does not show the slot-conflict popup when nothing is flagged', async () => {
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Welcome back!' });
+
+    expect(
+      screen.queryByRole('heading', {
+        name: /booking slot.*no longer available/i,
+      })
+    ).not.toBeInTheDocument();
   });
 });

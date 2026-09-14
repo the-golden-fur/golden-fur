@@ -12,6 +12,9 @@ import {
   updatePetValidator,
   updatePetValidatorStaff,
 } from './modules/validators/pet.validator.ts';
+import type { PetWeightClass } from './pet.types.ts';
+import { getPetWeightClassConfiguration } from '../../maintenance/services/petWeightClassConfiguration.service.ts';
+import { deriveWeightClass } from '../../maintenance/utils/deriveWeightClass.ts';
 import {
   archivePet,
   deactivatePet,
@@ -19,6 +22,24 @@ import {
   listArchivedPets,
   restorePet,
 } from './services/petArchive.service.ts';
+
+/** Postgres foreign_key_violation. pets.pet_type became a FK against the
+ * admin-managed pet_types table (20260912191) instead of an enum-checked
+ * column, so a bad/deactivated key now surfaces here instead of at the old
+ * schema-level enum check - map it to the same friendly shape breeds.service.ts
+ * uses for its own FK violations, rather than letting Postgres's raw message
+ * through. */
+const FOREIGN_KEY_VIOLATION = '23503';
+
+function sendPetWriteError(
+  res: Response,
+  error: { code?: string; message: string }
+) {
+  if (error.code === FOREIGN_KEY_VIOLATION) {
+    return res.status(400).json({ error: 'Invalid pet type' });
+  }
+  return res.status(400).json({ error: error.message });
+}
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -52,14 +73,17 @@ async function isAuthorizedForPetArchive(
  * Broader than CUSTOMER_MANAGER_ROLES, for single-record lookup only (GET
  * /pets/:id) - mirrors customer.controller.ts's own
  * isAuthorizedForProfileLookup: a Groomer/Veterinarian needs to see whose
- * pet they're servicing in their own queue, but that's not the same as the
- * broader CUSTOMER_MANAGER_ROLES-gated ability to list/create/update/delete
- * any customer's pets.
+ * pet they're servicing in their own queue, and a Cashier needs to see
+ * whose pet a booking is for when taking payment (Bookings Queue / Booking
+ * Details / Payments Queue), but that's not the same as the broader
+ * CUSTOMER_MANAGER_ROLES-gated ability to list/create/update/delete any
+ * customer's pets.
  */
 const PET_LOOKUP_ROLES: readonly string[] = [
   ...CUSTOMER_MANAGER_ROLES,
   'Groomer',
   'Veterinarian',
+  'Cashier',
 ];
 
 async function isAuthorizedForPetLookup(requesterId: string): Promise<boolean> {
@@ -96,6 +120,31 @@ function resolveAssessmentStamp(
   }
 
   return { assessed_by: requesterId, assessed_at: new Date().toISOString() };
+}
+
+/**
+ * The weight_class to persist for a create/update. An explicit weight_class
+ * in the payload is a deliberate staff override and always wins; otherwise,
+ * when the numeric weight_kg is supplied *and differs from what's stored*,
+ * weight_class is (re-)derived from it via the Admin-configured cut-offs
+ * (pet_weight_class_configuration). Returns undefined when neither applies -
+ * the caller then leaves the column untouched, so a previously stored manual
+ * override survives an unrelated edit that merely re-sends the same weight.
+ * Only reachable on the staff validator path (the customer variants reject
+ * both keys).
+ */
+async function resolveFinalWeightClass(
+  submitted: { weight_class?: string; weight_kg?: number | null },
+  storedWeightKg?: number | null
+): Promise<PetWeightClass | undefined> {
+  if (submitted.weight_class !== undefined) {
+    return submitted.weight_class as PetWeightClass;
+  }
+  if (submitted.weight_kg != null && submitted.weight_kg !== storedWeightKg) {
+    const cutoffs = await getPetWeightClassConfiguration();
+    return deriveWeightClass(submitted.weight_kg, cutoffs);
+  }
+  return undefined;
 }
 
 export async function listCustomerPetsController(
@@ -172,23 +221,32 @@ export async function createPetController(
   try {
     const submitted = parsed.data as {
       weight_class?: string;
+      weight_kg?: number;
       coat_type?: string;
     };
+    const finalWeightClass = await resolveFinalWeightClass(submitted);
     const stamp = resolveAssessmentStamp(
       isStaff,
       requesterId,
-      submitted.weight_class,
+      finalWeightClass,
       submitted.coat_type
     );
 
     const { data, error } = await supabase
       .from('pets')
-      .insert({ ...parsed.data, customer_id: customerId, ...stamp })
+      .insert({
+        ...parsed.data,
+        customer_id: customerId,
+        ...(finalWeightClass !== undefined
+          ? { weight_class: finalWeightClass }
+          : {}),
+        ...stamp,
+      })
       .select('*')
       .maybeSingle();
 
     if (error) {
-      return res.status(400).json({ error: error.message });
+      return sendPetWriteError(res, error);
     }
 
     return res.status(201).json({ pet: data });
@@ -280,36 +338,53 @@ export async function updatePetController(
 
     const submitted = parsed.data as {
       weight_class?: string;
+      weight_kg?: number | null;
       coat_type?: string;
     };
 
+    // weight_class is derived from a submitted weight_kg (or taken from an
+    // explicit override) - see resolveFinalWeightClass. undefined means the
+    // payload carried neither a new weight nor an override, so the stored
+    // class stands (an existing manual override is not clobbered).
+    const finalWeightClass = await resolveFinalWeightClass(
+      submitted,
+      pet.weight_kg
+    );
+    const effectiveWeightClass =
+      finalWeightClass !== undefined ? finalWeightClass : pet.weight_class;
+
     // Only re-stamp when weight_class/coat_type actually change value - the
-    // staff edit form re-sends both fields on every save regardless of
+    // staff edit form re-sends these fields on every save regardless of
     // whether the staff member touched them, so "the key is present" alone
     // isn't "assessed just now" (that would make an unrelated name/photo
-    // edit look like a fresh assessment).
-    const weightClassChanged =
-      'weight_class' in submitted &&
-      submitted.weight_class !== pet.weight_class;
+    // edit look like a fresh assessment). A weigh-in that moves the derived
+    // class does count as a fresh assessment.
+    const weightClassChanged = effectiveWeightClass !== pet.weight_class;
     const coatTypeChanged =
       'coat_type' in submitted && submitted.coat_type !== pet.coat_type;
 
     const stamp = resolveAssessmentStamp(
       isStaff && (weightClassChanged || coatTypeChanged),
       requesterId,
-      'weight_class' in submitted ? submitted.weight_class : pet.weight_class,
+      effectiveWeightClass,
       'coat_type' in submitted ? submitted.coat_type : pet.coat_type
     );
 
     const { data, error } = await supabase
       .from('pets')
-      .update({ ...parsed.data, ...stamp })
+      .update({
+        ...parsed.data,
+        ...(finalWeightClass !== undefined
+          ? { weight_class: finalWeightClass }
+          : {}),
+        ...stamp,
+      })
       .eq('id', petId)
       .select('*')
       .maybeSingle();
 
     if (error) {
-      return res.status(400).json({ error: error.message });
+      return sendPetWriteError(res, error);
     }
 
     return res.status(200).json({ pet: data });

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
+import {
+  assertVeterinarianTreatedCustomer,
+  assertVeterinaryBranchEligibility,
+} from './veterinaryEligibility.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
@@ -19,6 +22,8 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.in = vi.fn(() => builder);
+    builder.limit = vi.fn(() => Promise.resolve(result));
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
@@ -85,5 +90,36 @@ describe('veterinaryEligibility.service (#53)', () => {
         serviceCategory: 'Veterinary',
       })
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('assertVeterinarianTreatedCustomer (vet-bookings-queue-access)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('passes when the veterinarian has a finished consultation for that customer', async () => {
+    queueFromResults({ data: [{ id: 'consultation-1' }], error: null });
+
+    await expect(
+      assertVeterinarianTreatedCustomer({
+        veterinarianId: 'vet-1',
+        customerId: 'customer-1',
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects with 403 when the veterinarian has never treated that customer', async () => {
+    queueFromResults({ data: [], error: null });
+
+    await expect(
+      assertVeterinarianTreatedCustomer({
+        veterinarianId: 'vet-1',
+        customerId: 'customer-2',
+      })
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      message: expect.stringContaining('treated'),
+    });
   });
 });
