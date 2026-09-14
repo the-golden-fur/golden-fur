@@ -320,6 +320,8 @@ describe('AdminServicesPage', () => {
         requires_assessed_pet: true,
         captures_pet_assessment: false,
         use_pricing_matrix: true,
+        icon: null,
+        image_url: null,
       });
     });
 
@@ -359,6 +361,8 @@ describe('AdminServicesPage', () => {
         requires_assessed_pet: true,
         captures_pet_assessment: false,
         use_pricing_matrix: false,
+        icon: null,
+        image_url: null,
       });
     });
   });

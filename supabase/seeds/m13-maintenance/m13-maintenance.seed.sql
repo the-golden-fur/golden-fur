@@ -18,7 +18,9 @@
 --      migration 20260818134_custom_package_branch_availability.sql). No
 --      bundled_price here - Epic B (#82/#83) dropped that column; the price
 --      is derived on read from the included services' base_price and the
---      shared package_pricing_configuration discount percentage.
+--      shared package_pricing_configuration discount percentage. Seeded
+--      with a curated 'Package' icon (migration 20260914203); image_url
+--      stays null - no real image to seed.
 --   3. promos / promo_branch_availability - two always-on, all-services,
 --      condition-based promos (no start/end date, so promoExpiry never
 --      deactivates them), available at every branch.
@@ -48,8 +50,8 @@ on conflict (service_id, branch_id) do nothing;
 -- the same three Grooming services
 -- ============================================================
 
-insert into public.packages (name, use_pricing_matrix)
-select 'Golden Package', true
+insert into public.packages (name, use_pricing_matrix, icon)
+select 'Golden Package', true, 'Package'
 where not exists (
   select 1 from public.packages where name = 'Golden Package'
 );

@@ -184,6 +184,12 @@ export interface Service {
    * picked up before closing, on top of the hourly charge. NULL falls
    * back to ₱850. */
   daycare_overnight_fee: number | null;
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see shared/components/IconPicker/serviceIcons.ts), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image, or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -215,6 +221,12 @@ export interface Package {
    * the flat bundled_price above. Ignored for a Cat pet regardless. */
   use_pricing_matrix: boolean;
   is_active: boolean;
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see shared/components/IconPicker/serviceIcons.ts), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image, or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -306,6 +318,8 @@ export interface CreateServicePayload {
   first_hour_fee?: number;
   succeeding_hour_fee?: number;
   daycare_overnight_fee?: number;
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 /** is_active is deliberately absent - derived from branch availability, not
@@ -323,6 +337,8 @@ export interface UpdateServicePayload {
   first_hour_fee?: number | null;
   succeeding_hour_fee?: number | null;
   daycare_overnight_fee?: number | null;
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 export interface BranchAvailabilityPayload {
@@ -338,6 +354,8 @@ export interface CreatePackagePayload {
   name: string;
   service_ids: string[];
   use_pricing_matrix?: boolean;
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 /** is_active is deliberately absent - derived from branch availability, not
@@ -347,6 +365,8 @@ export interface UpdatePackagePayload {
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
   use_pricing_matrix?: boolean;
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 /**
@@ -490,6 +510,12 @@ export interface ServiceType {
   /** Which staff roles may be offered by the Staff Picker for this type -
    * e.g. Grooming -> ['Groomer'], Veterinary -> ['Veterinarian']. */
   eligible_staff_roles: string[];
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see shared/components/IconPicker/serviceIcons.ts), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image, or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -504,6 +530,8 @@ export interface CreateServiceTypePayload {
   staff_picker_enabled?: boolean;
   cage_picker_enabled?: boolean;
   eligible_staff_roles?: string[];
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 /** is_active is deliberately absent - derived from branch availability, not
@@ -513,6 +541,8 @@ export interface UpdateServiceTypePayload {
   staff_picker_enabled?: boolean;
   cage_picker_enabled?: boolean;
   eligible_staff_roles?: string[];
+  icon?: string | null;
+  image_url?: string | null;
 }
 
 export interface UpdateBreedPayload {

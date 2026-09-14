@@ -20,6 +20,10 @@ import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useS
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { StaffRoleMultiSelect } from '../../components/StaffRoleMultiSelect/StaffRoleMultiSelect';
+import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
+import { getServiceIcon } from '../../../../shared/components/IconPicker/serviceIcons';
+import { ImageUploader } from '../../../../shared/components/ImageUploader/ImageUploader';
+import { uploadServiceImage } from '../../api/maintenance.api';
 import type { BranchSummary, ServiceType } from '../../maintenance.types';
 import styles from './AdminServiceTypesPage.module.css';
 
@@ -39,6 +43,8 @@ interface CreateFormState {
   cagePickerEnabled: boolean;
   eligibleStaffRoles: string[];
   branchIds: string[];
+  icon: string | null;
+  imageUrl: string | null;
 }
 
 const EMPTY_CREATE_FORM: CreateFormState = {
@@ -47,6 +53,8 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   cagePickerEnabled: false,
   eligibleStaffRoles: [],
   branchIds: [],
+  icon: null,
+  imageUrl: null,
 };
 
 interface EditFormState {
@@ -55,6 +63,8 @@ interface EditFormState {
   cagePickerEnabled: boolean;
   eligibleStaffRoles: string[];
   branchIds: string[];
+  icon: string | null;
+  imageUrl: string | null;
 }
 
 function availableBranchIds(serviceType: ServiceType): string[] {
@@ -104,6 +114,8 @@ export function AdminServiceTypesPage() {
     cagePickerEnabled: false,
     eligibleStaffRoles: [],
     branchIds: [],
+    icon: null,
+    imageUrl: null,
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -336,6 +348,8 @@ export function AdminServiceTypesPage() {
       staff_picker_enabled: createForm.staffPickerEnabled,
       cage_picker_enabled: createForm.cagePickerEnabled,
       eligible_staff_roles: createForm.eligibleStaffRoles,
+      icon: createForm.icon,
+      image_url: createForm.imageUrl,
     });
 
     if (result.error || !result.data) {
@@ -377,6 +391,8 @@ export function AdminServiceTypesPage() {
       cagePickerEnabled: serviceType.cage_picker_enabled,
       eligibleStaffRoles: serviceType.eligible_staff_roles,
       branchIds: availableBranchIds(serviceType),
+      icon: serviceType.icon,
+      imageUrl: serviceType.image_url,
     });
     setRowError(null);
   }
@@ -402,6 +418,8 @@ export function AdminServiceTypesPage() {
       staff_picker_enabled: editForm.staffPickerEnabled,
       cage_picker_enabled: editForm.cagePickerEnabled,
       eligible_staff_roles: editForm.eligibleStaffRoles,
+      icon: editForm.icon,
+      image_url: editForm.imageUrl,
     });
 
     if (result.error || !result.data) {
@@ -500,39 +518,43 @@ export function AdminServiceTypesPage() {
               </p>
             ) : (
               <ul className={styles.list}>
-                {filteredServiceTypes.map((serviceType) => (
-                  <li className={styles.listItem} key={serviceType.id}>
-                    <div className={styles.rowMain}>
-                      <span className={styles.typeName}>
-                        {serviceType.name}
-                      </span>
-                      {serviceType.staff_picker_enabled ? (
-                        <span className={styles.pickerBadge}>
-                          Staff picker enabled
+                {filteredServiceTypes.map((serviceType) => {
+                  const Icon = getServiceIcon(serviceType.icon);
+                  return (
+                    <li className={styles.listItem} key={serviceType.id}>
+                      <div className={styles.rowMain}>
+                        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+                        <span className={styles.typeName}>
+                          {serviceType.name}
                         </span>
-                      ) : null}
-                      {serviceType.cage_picker_enabled ? (
-                        <span className={styles.pickerBadge}>
-                          Cage picker enabled
-                        </span>
-                      ) : null}
-                      <MoreOptionsMenu
-                        label={`Actions for ${serviceType.name}`}
-                        items={[
-                          {
-                            label: 'Configure',
-                            onSelect: () => openEditModal(serviceType),
-                          },
-                          {
-                            label: 'Branch Availability',
-                            onSelect: () =>
-                              setAvailabilityServiceTypeId(serviceType.id),
-                          },
-                        ]}
-                      />
-                    </div>
-                  </li>
-                ))}
+                        {serviceType.staff_picker_enabled ? (
+                          <span className={styles.pickerBadge}>
+                            Staff picker enabled
+                          </span>
+                        ) : null}
+                        {serviceType.cage_picker_enabled ? (
+                          <span className={styles.pickerBadge}>
+                            Cage picker enabled
+                          </span>
+                        ) : null}
+                        <MoreOptionsMenu
+                          label={`Actions for ${serviceType.name}`}
+                          items={[
+                            {
+                              label: 'Configure',
+                              onSelect: () => openEditModal(serviceType),
+                            },
+                            {
+                              label: 'Branch Availability',
+                              onSelect: () =>
+                                setAvailabilityServiceTypeId(serviceType.id),
+                            },
+                          ]}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </>
@@ -596,6 +618,28 @@ export function AdminServiceTypesPage() {
             onChange={(eligibleStaffRoles) =>
               setCreateForm((prev) => ({ ...prev, eligibleStaffRoles }))
             }
+          />
+
+          <IconPicker
+            label="Icon"
+            value={createForm.icon}
+            onChange={(icon) => setCreateForm((prev) => ({ ...prev, icon }))}
+          />
+
+          <ImageUploader
+            currentImageUrl={createForm.imageUrl}
+            uploadFn={(file) =>
+              accessToken
+                ? uploadServiceImage(accessToken, file)
+                : Promise.resolve({ data: null, error: 'Not signed in.' })
+            }
+            onUploaded={(imageUrl) =>
+              setCreateForm((prev) => ({ ...prev, imageUrl }))
+            }
+            onRemove={() =>
+              setCreateForm((prev) => ({ ...prev, imageUrl: null }))
+            }
+            alt="Service type image"
           />
 
           <BranchMultiSelect
@@ -688,6 +732,28 @@ export function AdminServiceTypesPage() {
               onChange={(eligibleStaffRoles) =>
                 setEditForm((prev) => ({ ...prev, eligibleStaffRoles }))
               }
+            />
+
+            <IconPicker
+              label="Icon"
+              value={editForm.icon}
+              onChange={(icon) => setEditForm((prev) => ({ ...prev, icon }))}
+            />
+
+            <ImageUploader
+              currentImageUrl={editForm.imageUrl}
+              uploadFn={(file) =>
+                accessToken
+                  ? uploadServiceImage(accessToken, file)
+                  : Promise.resolve({ data: null, error: 'Not signed in.' })
+              }
+              onUploaded={(imageUrl) =>
+                setEditForm((prev) => ({ ...prev, imageUrl }))
+              }
+              onRemove={() =>
+                setEditForm((prev) => ({ ...prev, imageUrl: null }))
+              }
+              alt="Service type image"
             />
 
             <BranchMultiSelect

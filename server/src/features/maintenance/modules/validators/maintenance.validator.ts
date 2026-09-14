@@ -27,6 +27,51 @@ const PROMO_TYPES = ['date_range', 'weekly_recurring'] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
+/** Custom change (Architectural-Change-History): the curated Lucide icon
+ * names an admin may pick for a service type/service/package - mirrors the
+ * client's own allowlist (client/src/shared/components/IconPicker/
+ * serviceIcons.ts) so the two stay in lockstep; validated here (not just a
+ * free-text string) so a request can't stash an arbitrary icon name the
+ * client-side lookup wouldn't recognize. */
+const SERVICE_ICON_NAMES = [
+  'Scissors',
+  'Bath',
+  'PawPrint',
+  'Dog',
+  'Cat',
+  'Bone',
+  'Stethoscope',
+  'Syringe',
+  'HeartPulse',
+  'Bed',
+  'Home',
+  'Droplet',
+  'Sparkles',
+  'Package',
+  'Gift',
+  'Utensils',
+  'Footprints',
+  'ShieldCheck',
+  'Calendar',
+  'Clock',
+  'Star',
+  'Scale',
+  'Brush',
+  'Wind',
+  'ClipboardList',
+  'Users',
+  'MapPin',
+  'Building2',
+  'Warehouse',
+  'Thermometer',
+] as const;
+const iconField = z.enum(SERVICE_ICON_NAMES).nullable().optional();
+/** An uploaded image's public Storage URL (see server/src/shared/services/
+ * storage/storage.service.ts and the 'service-images' bucket) - the upload
+ * itself happens via its own endpoint first; this field just records the
+ * resulting URL against the create/update payload. */
+const imageUrlField = z.url().nullable().optional();
+
 /** YYYY-MM-DD, matching the promos.start_date/end_date date columns. */
 const dateString = z
   .string()
@@ -108,6 +153,8 @@ export const createServiceValidator = z
     // Custom change (Daycare fee configuration follow-up): optional even
     // for Daycare - falls back to the documented ₱850 default when omitted.
     daycare_overnight_fee: z.number().nonnegative().optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict()
   .superRefine(requireDaycareFeesOrBasePrice);
@@ -134,6 +181,8 @@ export const updateServiceValidator = z
     first_hour_fee: z.number().nonnegative().nullable().optional(),
     succeeding_hour_fee: z.number().nonnegative().nullable().optional(),
     daycare_overnight_fee: z.number().nonnegative().nullable().optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict();
 
@@ -318,6 +367,8 @@ export const createPackageValidator = z
     // pricing for this package (sum of included services' own per-pet
     // price, bundle-discounted) instead of the flat bundled_price.
     use_pricing_matrix: z.boolean().optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict();
 
@@ -330,6 +381,8 @@ export const updatePackageValidator = z
     /** Full replacement of the included-services set when provided. */
     service_ids: z.array(z.uuid()).min(2).optional(),
     use_pricing_matrix: z.boolean().optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict();
 
@@ -592,6 +645,8 @@ export const createServiceTypeValidator = z
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
     eligible_staff_roles: z.array(z.enum(STAFF_ROLES)).optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict();
 
@@ -604,6 +659,8 @@ export const updateServiceTypeValidator = z
     staff_picker_enabled: z.boolean().optional(),
     cage_picker_enabled: z.boolean().optional(),
     eligible_staff_roles: z.array(z.enum(STAFF_ROLES)).optional(),
+    icon: iconField,
+    image_url: imageUrlField,
   })
   .strict();
 

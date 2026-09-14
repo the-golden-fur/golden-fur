@@ -30,7 +30,10 @@ function createMockSupabase() {
       { id: 'branch-southwoods', name: 'Southwoods' },
     ],
     availability: new Map<string, { is_available: boolean }>(),
-    packages: new Map<string, { id: string; name: string }>(),
+    packages: new Map<
+      string,
+      { id: string; name: string; icon?: string }
+    >(),
     packageBranchAvailability: new Map<string, Set<string>>(),
     packageServices: new Map<string, Set<string>>(),
     promos: new Map<string, PromoRow>(),
@@ -100,7 +103,11 @@ function createMockSupabase() {
               },
             }),
           }),
-          insert: (row: { name: string; use_pricing_matrix: boolean }) => {
+          insert: (row: {
+            name: string;
+            use_pricing_matrix: boolean;
+            icon?: string;
+          }) => {
             packageCounter += 1;
             const created = { id: `package-${packageCounter}`, ...row };
             state.packages.set(created.id, created);
@@ -270,6 +277,8 @@ describe('m13-maintenance seed', () => {
       // shared package_pricing_configuration discount percentage.
       const [pkg] = [...supabase.state.packages.values()];
       expect(pkg.name).toBe('Golden Package');
+      // Curated Lucide icon (migration 20260914203) - image_url stays null.
+      expect(pkg.icon).toBe('Package');
       expect(supabase.state.packageServices.get(pkg.id)?.size).toBe(3);
       expect(supabase.state.packageBranchAvailability.get(pkg.id)?.size).toBe(
         supabase.state.branches.length

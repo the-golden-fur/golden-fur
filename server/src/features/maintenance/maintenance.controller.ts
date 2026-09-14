@@ -1,4 +1,5 @@
-import type { Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import multer from 'multer';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
   createService,
@@ -7,6 +8,7 @@ import {
   setServiceBranchAvailability,
   updateService,
 } from './services/services.service.ts';
+import { uploadServiceImage } from './services/maintenanceImageUpload.service.ts';
 import {
   archivePackage,
   createPackage,
@@ -114,6 +116,68 @@ function sendServiceError(res: Response, error: unknown) {
       : ((error as Error).message ?? 'Request failed');
 
   return res.status(statusCode).json({ error: message });
+}
+
+// ---------------------------------------------------------------------------
+// Service/service type/package image upload (Architectural-Change-History)
+// ---------------------------------------------------------------------------
+
+/** Mirrors staff.controller.ts's handleAvatarUploadError - translates a
+ * multer failure (e.g. the 5MB limit) into the same JSON error shape every
+ * other maintenance endpoint returns, instead of Express's default HTML
+ * error page. */
+export function handleServiceImageUploadError(
+  err: unknown,
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large' });
+    }
+
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (err) {
+    return res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : 'Upload failed' });
+  }
+
+  return next();
+}
+
+export async function uploadServiceImageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const file = req.file as
+    | {
+        buffer: Buffer;
+        mimetype: string;
+        originalname: string;
+        size: number;
+      }
+    | undefined;
+
+  if (!file) {
+    return res.status(400).json({ error: 'No file provided' });
+  }
+
+  try {
+    const imageUrl = await uploadServiceImage({ file });
+    return res.status(201).json({ image_url: imageUrl });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
 }
 
 // ---------------------------------------------------------------------------

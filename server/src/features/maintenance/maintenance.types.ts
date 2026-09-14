@@ -166,6 +166,12 @@ export interface Service {
    * configuration) - "each Daycare-type service can have its own overnight
    * fee." */
   daycare_overnight_fee: number | null;
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see maintenance.validator.ts's SERVICE_ICON_NAMES), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image (the 'service-images' bucket), or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -219,6 +225,12 @@ export interface Package {
    * admin list). */
   use_pricing_matrix: boolean;
   is_active: boolean;
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see maintenance.validator.ts's SERVICE_ICON_NAMES), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image (the 'service-images' bucket), or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -294,6 +306,12 @@ export interface ServiceType {
    * e.g. Grooming -> ['Groomer'], Veterinary -> ['Veterinarian']. Replaces
    * the old hardcoded CATEGORY_STAFF_ROLE map in staffPicker.service.ts. */
   eligible_staff_roles: string[];
+  /** Custom change (Architectural-Change-History): a curated Lucide icon
+   * name (see maintenance.validator.ts's SERVICE_ICON_NAMES), or null. */
+  icon: string | null;
+  /** Custom change (Architectural-Change-History): public Storage URL of an
+   * uploaded image (the 'service-images' bucket), or null. */
+  image_url: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
