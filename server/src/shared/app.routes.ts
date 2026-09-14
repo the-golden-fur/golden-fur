@@ -19,6 +19,7 @@ import notificationsRoutes from '../features/notifications/notifications.routes.
 import messagingRoutes from '../features/messaging/messaging.routes.ts';
 import reportsRoutes from '../features/reports/reports.routes.ts';
 import publicRoutes from '../features/public/public.routes.ts';
+import recordsArchiveRoutes from '../features/recordsArchive/recordsArchive.routes.ts';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use(notificationsRoutes);
 router.use(messagingRoutes);
 router.use(reportsRoutes);
 router.use(publicRoutes);
+router.use(recordsArchiveRoutes);
 
 export default router;

@@ -78,6 +78,12 @@ schemas, seeds, and edge functions.
   validation, cross-table business rules, or the service-role key.
 - Every table's Row-Level Security policy is defined alongside its creation
   migration in `supabase/migrations/`.
+- Every new table also needs the universal deleted-records-archive trigger
+  attached in its own creation migration (mirrors the RLS rule above), so a
+  hard-deleted row from that table is captured too. See
+  `20260913202_custom_universal_deleted_records_archive.sql` for the exact
+  `create trigger` statement to copy, the trigger function itself, and
+  every table that already has it.
 - Formatting: Prettier (single quotes, semicolons, 2-space indent, 80-col
   print width — see `.prettierrc`). Linting: ESLint (`client/` and `server/`
   each have their own config). CI (`.github/workflows/ci.yml`) runs both
