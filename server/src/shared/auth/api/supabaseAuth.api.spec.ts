@@ -337,53 +337,22 @@ describe('supabaseAuth.api', () => {
       expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
     });
 
-    it('escalates to removing a stale verified factor when the conflict survives the first retry', async () => {
+    it('bug fix: never removes a verified factor, even when the conflict survives the first retry', async () => {
+      // Regression test - a third tier used to exist here that unenrolled
+      // verified factors too and retried again. The only way that unenroll
+      // call could ever actually succeed (Supabase requires an aal2 session
+      // to remove a verified factor) was when the caller already had a
+      // real, working, verified factor and had already passed an MFA
+      // challenge - i.e. exactly the account whose factor must never be
+      // silently replaced. See enrollTotpFactor's doc comment.
       const userClient = mockUserClient();
       userClient.auth.mfa.listFactors.mockResolvedValue({
         data: {
           all: [
-            { id: 'stale-verified', factor_type: 'totp', status: 'verified' },
+            { id: 'real-verified', factor_type: 'totp', status: 'verified' },
           ],
         },
         error: null,
-      });
-      userClient.auth.mfa.enroll
-        .mockResolvedValueOnce({
-          data: null,
-          error: new Error('A factor with the friendly name "" already exists'),
-        })
-        .mockResolvedValueOnce({
-          data: null,
-          error: new Error('A factor with the friendly name "" already exists'),
-        })
-        .mockResolvedValueOnce({
-          data: { id: 'fresh-factor', type: 'totp' },
-          error: null,
-        });
-
-      const { data, error } = await enrollTotpFactor(userClient);
-
-      expect(userClient.auth.mfa.unenroll).toHaveBeenCalledWith({
-        factorId: 'stale-verified',
-      });
-      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
-      expect(error).toBeNull();
-      expect(data).toEqual({ id: 'fresh-factor', type: 'totp' });
-    });
-
-    it('gives up after the escalated attempt still conflicts (e.g. verified factor needs aal2 to remove)', async () => {
-      const userClient = mockUserClient();
-      userClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [
-            { id: 'stuck-verified', factor_type: 'totp', status: 'verified' },
-          ],
-        },
-        error: null,
-      });
-      userClient.auth.mfa.unenroll.mockResolvedValue({
-        data: null,
-        error: new Error('AAL2 required'),
       });
       userClient.auth.mfa.enroll.mockResolvedValue({
         data: null,
@@ -392,7 +361,8 @@ describe('supabaseAuth.api', () => {
 
       const { data, error } = await enrollTotpFactor(userClient);
 
-      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(3);
+      expect(userClient.auth.mfa.unenroll).not.toHaveBeenCalled();
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledTimes(2);
       expect(data).toBeNull();
       expect(error?.message).toContain('already exists');
     });
