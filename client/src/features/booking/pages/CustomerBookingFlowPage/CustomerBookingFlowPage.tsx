@@ -2052,6 +2052,11 @@ export function CustomerBookingFlowPage() {
       return;
     }
 
+    // Re-clicking the pet that's already selected (e.g. reviewing this step
+    // after going Back) must not wipe everything chosen after it - only an
+    // actual change of pet invalidates downstream selections.
+    if (petId === selectedPetId) return;
+
     setSelectedPetId(petId);
     // Clears every category's selections - important since an unassessed
     // pet can only book Assessment's Initial Assessment, so a selection
@@ -2072,6 +2077,11 @@ export function CustomerBookingFlowPage() {
   }
 
   function handleBranchSelect(branchId: string) {
+    // Same rule as handlePetSelect: re-confirming the already-picked branch
+    // (e.g. after going Back to review it) must not clear everything chosen
+    // after it.
+    if (branchId === selectedBranchId) return;
+
     setPickedBranchId(branchId);
     setCategory('');
     setSelectionMode('service');
@@ -4025,6 +4035,7 @@ export function CustomerBookingFlowPage() {
               }
               cap={promoCap}
               cappedTotal={promoDiscount}
+              groupSubtotal={groupSubtotal}
             />
           </div>
         );

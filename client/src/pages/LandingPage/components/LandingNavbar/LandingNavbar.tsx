@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router';
+import { LandingThemeToggle } from '../LandingThemeToggle/LandingThemeToggle';
 import '../../LandingPage.css';
 
 /**
@@ -83,6 +84,7 @@ export function LandingNavbar() {
           >
             Book Now
           </a>
+          <LandingThemeToggle />
         </div>
       </div>
     </nav>

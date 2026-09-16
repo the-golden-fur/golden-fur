@@ -178,6 +178,34 @@ export async function updateService(
   return { data: result.data?.service ?? null, error: result.error };
 }
 
+/**
+ * Custom change (Architectural-Change-History): uploads an image for a
+ * service type/service/package's "icon/image attachment" field, independent
+ * of any particular record - the "Add new..." forms have no record id yet,
+ * so this returns a URL to include in the create payload rather than
+ * updating a record directly (unlike staff.api.ts's uploadAvatar, which
+ * always targets an existing staffId).
+ */
+export async function uploadServiceImage(
+  accessToken: string,
+  file: File
+): Promise<MaintenanceApiResult<{ image_url: string }>> {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`${API_BASE_URL}/maintenance/images`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ image_url: string }>(response);
+}
+
 export async function setServiceBranchAvailability(
   serviceId: string,
   accessToken: string,

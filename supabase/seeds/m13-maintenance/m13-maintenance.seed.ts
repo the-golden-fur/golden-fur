@@ -178,6 +178,9 @@ export async function seedGoldenPackage(
       .insert({
         name: GOLDEN_PACKAGE_NAME,
         use_pricing_matrix: true,
+        // Curated Lucide icon (migration 20260914203) - obvious low-effort
+        // fit for a bundle; image_url stays null, no real image to seed.
+        icon: 'Package',
       })
       .select('id')
       .maybeSingle();

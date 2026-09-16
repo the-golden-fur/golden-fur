@@ -13,6 +13,23 @@ export interface ThemeMode {
   mode: ColorMode;
 }
 
+/** Moved here (not ThemeProvider.tsx) so it can be imported outside a
+ * component without tripping react-refresh's "only export components" rule
+ * for the file that defines ThemeProvider itself. */
+export function resolveColorScheme(mode: ColorMode): 'light' | 'dark' {
+  if (mode !== 'system') {
+    return mode;
+  }
+
+  if (typeof window === 'undefined' || !window.matchMedia) {
+    return 'light';
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+}
+
 export interface ThemeContextValue {
   theme: ThemeMode;
   setMode: (mode: ColorMode) => void;

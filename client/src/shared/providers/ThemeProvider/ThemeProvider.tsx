@@ -8,6 +8,7 @@ import {
   updateWeightUnitPreference,
 } from '../../api/preferences.api';
 import {
+  resolveColorScheme,
   ThemeContext,
   type ColorMode,
   type FontSizePreference,
@@ -41,20 +42,6 @@ const FONT_SCALE_BY_SIZE: Record<FontSizePreference, number> = {
   large: 1.125,
   'x-large': 1.25,
 };
-
-function resolveColorScheme(mode: ColorMode): 'light' | 'dark' {
-  if (mode !== 'system') {
-    return mode;
-  }
-
-  if (typeof window === 'undefined' || !window.matchMedia) {
-    return 'light';
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
-}
 
 export function ThemeProvider({
   theme,
