@@ -4035,6 +4035,7 @@ export function CustomerBookingFlowPage() {
               }
               cap={promoCap}
               cappedTotal={promoDiscount}
+              groupSubtotal={groupSubtotal}
             />
           </div>
         );
