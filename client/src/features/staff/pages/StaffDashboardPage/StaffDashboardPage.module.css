@@ -104,3 +104,33 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Receptionist dashboard layout: a big queue-tracker widget on the left
+   (sized by its own content, not stretched) beside a 2x2 grid of
+   quick-action/queue tiles on the right - matches .widgetsRow's flexible
+   masonry approach rather than a rigid grid, since the two sides have very
+   different natural widths. */
+.receptionistTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.receptionistTop > :first-child {
+  flex: 1 1 320px;
+}
+
+.receptionistQuickGrid {
+  flex: 2 1 480px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .receptionistQuickGrid {
+    grid-template-columns: 1fr;
+  }
+}
