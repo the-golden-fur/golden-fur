@@ -1,6 +1,11 @@
 .page {
   composes: animate-fade-in from global;
   display: grid;
+  /* min-height:100vh stretches .content to fill the viewport; without this,
+     the default align-content: stretch spreads its rows apart (title,
+     filter bar, list) to consume the leftover height instead of packing
+     them at the top - very visible whenever the queue is short. */
+  align-content: start;
   min-height: 100vh;
 }
 
