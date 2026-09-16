@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CalendarPlus, UserPlus } from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../api/staff.api';
@@ -15,6 +16,11 @@ import { VeterinaryConsultationQueueWidget } from '../../components/dashboard/Ve
 import { VeterinaryMyPatientsWidget } from '../../components/dashboard/VeterinaryMyPatientsWidget/VeterinaryMyPatientsWidget';
 import { VeterinaryCatalogWidget } from '../../components/dashboard/VeterinaryCatalogWidget/VeterinaryCatalogWidget';
 import { DaysOffWidget } from '../../components/dashboard/DaysOffWidget/DaysOffWidget';
+import { DashboardTile } from '../../components/dashboard/DashboardTile/DashboardTile';
+import { ReceptionistBookingsQueueWidget } from '../../components/dashboard/ReceptionistBookingsQueueWidget/ReceptionistBookingsQueueWidget';
+import { AssessmentQueueWidget } from '../../components/dashboard/AssessmentQueueWidget/AssessmentQueueWidget';
+import { CreditReviewQueueWidget } from '../../components/dashboard/CreditReviewQueueWidget/CreditReviewQueueWidget';
+import { CageOccupancyWidget } from '../../components/dashboard/CageOccupancyWidget/CageOccupancyWidget';
 import {
   ROLE_TO_DASHBOARD_SLUG,
   STAFF_DASHBOARD_CONFIG,
@@ -49,6 +55,7 @@ export function StaffDashboardPage() {
   );
   const [role, setRole] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ok' | 'denied'>('loading');
   const [branches, setBranches] = useState<BranchSummary[]>([]);
 
@@ -68,6 +75,7 @@ export function StaffDashboardPage() {
         setCanonicalSlug(ROLE_TO_DASHBOARD_SLUG[result.data.role]);
         setRole(result.data.role);
         setDisplayName(result.data.display_name);
+        setBranchId(result.data.branch_id);
         setStatus('ok');
       } else {
         setStatus('denied');
@@ -81,6 +89,7 @@ export function StaffDashboardPage() {
 
   const isSuperadmin = role === 'Superadmin';
   const isVeterinarian = role === 'Veterinarian';
+  const isReceptionist = role === 'Receptionist';
 
   useEffect(() => {
     if (!isSuperadmin) return;
@@ -182,6 +191,37 @@ export function StaffDashboardPage() {
             <VeterinaryCatalogWidget accessToken={accessToken} />
             <DaysOffWidget staffId={user.id} accessToken={accessToken} />
           </div>
+        </div>
+      ) : isReceptionist && branchId ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.receptionistTop}>
+            <ReceptionistBookingsQueueWidget
+              branchId={branchId}
+              accessToken={accessToken}
+            />
+
+            <div className={styles.receptionistQuickGrid}>
+              <DashboardTile
+                title="New Walk-in Customer"
+                description="Register a walk-in customer and their pet."
+                to="/staff/admin/customers"
+                icon={UserPlus}
+              />
+              <DashboardTile
+                title="New Booking"
+                description="Book a service for a walk-in or phone-in customer."
+                to="/staff/bookings/new"
+                icon={CalendarPlus}
+              />
+              <AssessmentQueueWidget
+                branchId={branchId}
+                accessToken={accessToken}
+              />
+              <CreditReviewQueueWidget accessToken={accessToken} />
+            </div>
+          </div>
+
+          <CageOccupancyWidget branchId={branchId} accessToken={accessToken} />
         </div>
       ) : null}
     </main>
