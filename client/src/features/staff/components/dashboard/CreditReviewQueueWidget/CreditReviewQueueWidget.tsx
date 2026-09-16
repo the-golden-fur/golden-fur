@@ -58,9 +58,7 @@ export function CreditReviewQueueWidget({
       countLabel="pending"
       emptyLabel="No credit reviews pending."
       latestLabel={
-        next
-          ? `Largest: PHP ${next.potential_credit_amount.toFixed(2)}`
-          : null
+        next ? `Largest: PHP ${next.potential_credit_amount.toFixed(2)}` : null
       }
     />
   );
