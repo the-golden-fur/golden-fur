@@ -281,10 +281,9 @@ function GoogleAccountForm() {
       <h2 className={styles.sectionTitle}>Google account</h2>
       {isOnlyIdentity ? (
         <p className={styles.copy}>
-          Google is your only way to sign in to this account. Setting a
-          password does not add a fallback here - link a Facebook account
-          with the same email address first, so you don't lose access when
-          you unlink Google.
+          Google is your only way to sign in to this account. Setting a password
+          does not add a fallback here - link a Facebook account with the same
+          email address first, so you don't lose access when you unlink Google.
         </p>
       ) : (
         <>

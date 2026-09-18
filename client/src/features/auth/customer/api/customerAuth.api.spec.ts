@@ -169,10 +169,7 @@ describe('customerAuth.api', () => {
     it('returns the provider list from the current identities', async () => {
       getUserIdentitiesMock.mockResolvedValue({
         data: {
-          identities: [
-            { provider: 'email' },
-            { provider: 'google' },
-          ],
+          identities: [{ provider: 'email' }, { provider: 'google' }],
         },
         error: null,
       });
