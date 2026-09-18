@@ -7,6 +7,7 @@ import {
   Maximize2,
   Shield,
   SlidersHorizontal,
+  TriangleAlert,
   UserCog,
   UserRound,
   Wrench,
@@ -28,6 +29,7 @@ import { PreferencesTab } from './tabs/PreferencesTab';
 import { AccountTab } from './tabs/AccountTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { ConfigTab } from './tabs/ConfigTab';
+import { DangerTab } from './tabs/DangerTab';
 import { CONFIG_TILES, SYSTEM_CONFIG_TILE } from './configTiles.config';
 import styles from './SettingsPage.module.css';
 
@@ -40,7 +42,8 @@ type SettingsTab =
   | 'preferences'
   | 'account'
   | 'security'
-  | 'config';
+  | 'config'
+  | 'danger';
 
 type SidebarSortMode = 'custom' | 'alphabetical' | 'recent';
 
@@ -50,6 +53,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   account: 'Account',
   security: 'Security',
   config: 'Config',
+  danger: 'Danger',
 };
 
 const TAB_ICONS: Record<SettingsTab, LucideIcon> = {
@@ -58,6 +62,7 @@ const TAB_ICONS: Record<SettingsTab, LucideIcon> = {
   account: UserCog,
   security: Shield,
   config: Wrench,
+  danger: TriangleAlert,
 };
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -276,13 +281,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
     [isSuperadmin]
   );
 
-  const tabs: SettingsTab[] = useMemo(
-    () =>
-      isAdmin
-        ? ['profile', 'preferences', 'account', 'security', 'config']
-        : ['profile', 'preferences', 'account', 'security'],
-    [isAdmin]
-  );
+  const tabs: SettingsTab[] = useMemo(() => {
+    if (role === 'customer') {
+      return ['profile', 'preferences', 'account', 'security', 'danger'];
+    }
+    return isAdmin
+      ? ['profile', 'preferences', 'account', 'security', 'config']
+      : ['profile', 'preferences', 'account', 'security'];
+  }, [role, isAdmin]);
 
   const activeConfigTile =
     activeTab === 'config' && configTarget
@@ -650,6 +656,9 @@ export function SettingsPage({ role }: SettingsPageProps) {
               status={status}
               onChanged={() => setRefreshKey((key) => key + 1)}
             />
+          ) : null}
+          {activeTab === 'danger' && role === 'customer' ? (
+            <DangerTab />
           ) : null}
           {activeTab === 'config' && isAdmin ? (
             activeConfigTile ? (

@@ -11,6 +11,10 @@ interface ConfirmDialogProps {
    * archived record - and renders the confirm button in the error color. */
   tone?: 'default' | 'danger';
   isConfirming?: boolean;
+  /** Disables just the confirm button (e.g. a "type to confirm" gate) -
+   * independent of isConfirming, which reflects an in-flight request.
+   * Cancel stays enabled either way. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -29,6 +33,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   tone = 'default',
   isConfirming = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -63,7 +68,7 @@ export function ConfirmDialog({
               tone === 'danger' ? styles.dangerButton : styles.confirmButton
             }
             onClick={onConfirm}
-            disabled={isConfirming}
+            disabled={isConfirming || confirmDisabled}
           >
             {isConfirming ? 'Working...' : confirmLabel}
           </button>

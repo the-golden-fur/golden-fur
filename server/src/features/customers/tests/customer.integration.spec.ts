@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../app.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { deleteAuthUser } from '../../../shared/auth/api/supabaseAuth.api.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
@@ -10,6 +11,17 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
     from: vi.fn(),
   },
 }));
+
+vi.mock(
+  '../../../shared/auth/api/supabaseAuth.api.ts',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../shared/auth/api/supabaseAuth.api.ts')
+      >();
+    return { ...actual, deleteAuthUser: vi.fn() };
+  }
+);
 
 interface QueryResult {
   data: unknown;
@@ -60,10 +72,15 @@ describe('customer profile CRUD (Issue #31)', () => {
   describe('GET /customers/:id', () => {
     it("AC-1: returns the caller's own profile for an authenticated customer", async () => {
       mockCaller('customer-1');
-      queueFromResults({
-        data: { id: 'customer-1', full_name: 'Jane Dela Cruz' },
-        error: null,
-      });
+      queueFromResults(
+        {
+          data: { id: 'customer-1', full_name: 'Jane Dela Cruz' },
+          error: null,
+        },
+        // isSelf also resolves the auto-delete policy day count (Danger
+        // tab / deactivated-notice page) - see getCustomerProfileController.
+        { data: { customer_deactivation_auto_delete_days: 30 }, error: null }
+      );
 
       const res = await request(app)
         .get('/customers/customer-1')
@@ -71,6 +88,7 @@ describe('customer profile CRUD (Issue #31)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.customer).toMatchObject({ id: 'customer-1' });
+      expect(res.body.auto_delete_policy_days).toBe(30);
     });
 
     it('AC-2: returns 403 for a different customer when the caller is not staff', async () => {
@@ -238,6 +256,103 @@ describe('customer profile CRUD (Issue #31)', () => {
         .patch('/customers/customer-2')
         .set('Authorization', 'Bearer token')
         .send({ full_name: 'Nope' });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /customers/:id/deactivate', () => {
+    it('allows a customer to deactivate their own account', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        { data: { id: 'customer-1', is_active: true, deactivated_at: null }, error: null },
+        { data: null, error: null }, // customer_profiles update
+        { data: null, error: null } // pets update
+      );
+
+      const res = await request(app)
+        .patch('/customers/customer-1/deactivate')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(204);
+    });
+
+    it("returns 403 for a different customer who isn't staff", async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF);
+
+      const res = await request(app)
+        .patch('/customers/customer-2/deactivate')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /customers/:id/activate', () => {
+    it('allows a customer to reactivate their own account', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        { data: { id: 'customer-1', is_active: false, anonymized_at: null }, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/customers/customer-1/activate')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(204);
+    });
+
+    it('returns 410 when the account has already been anonymized', async () => {
+      mockCaller('customer-1');
+      queueFromResults({
+        data: {
+          id: 'customer-1',
+          is_active: false,
+          anonymized_at: '2026-01-01T00:00:00.000Z',
+        },
+        error: null,
+      });
+
+      const res = await request(app)
+        .patch('/customers/customer-1/activate')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(410);
+    });
+  });
+
+  describe('DELETE /customers/:id/self', () => {
+    it('hard-deletes a self-service customer with no history', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        {
+          data: {
+            id: 'customer-1',
+            is_active: false,
+            archived_at: '2026-01-01T00:00:00.000Z',
+          },
+          error: null,
+        },
+        { data: null, error: null } // customer_profiles delete succeeds
+      );
+
+      const res = await request(app)
+        .delete('/customers/customer-1/self')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.outcome).toBe('deleted');
+      expect(deleteAuthUser).toHaveBeenCalledWith('customer-1');
+    });
+
+    it('returns 403 when a customer tries to self-delete a different account', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .delete('/customers/customer-2/self')
+        .set('Authorization', 'Bearer token');
 
       expect(res.status).toBe(403);
     });

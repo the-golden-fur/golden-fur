@@ -29,6 +29,8 @@ vi.mock('../../features/staff/api/staff.api', () => ({
 vi.mock('../../features/customers/api/customer.api', () => ({
   getCustomerProfile: vi.fn(),
   updateCustomerProfile: vi.fn(),
+  deactivateCustomer: vi.fn(),
+  deleteOwnAccount: vi.fn(),
 }));
 
 vi.mock('../../shared/auth/api/auth.api', () => ({
@@ -374,6 +376,47 @@ describe('SettingsPage', () => {
     expect(
       screen.queryByRole('tab', { name: 'Config' })
     ).not.toBeInTheDocument();
+  });
+
+  it('shows a Danger tab for a customer', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { mfa_enrolled: false },
+      error: null,
+    });
+
+    renderPage('customer');
+    expect(
+      await screen.findByRole('tab', { name: 'Danger' })
+    ).toBeInTheDocument();
+  });
+
+  it('never shows a Danger tab for staff', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+    renderPage('staff');
+
+    await screen.findByRole('tab', { name: 'Config' });
+    expect(screen.queryByRole('tab', { name: 'Danger' })).not.toBeInTheDocument();
+  });
+
+  it('selecting Danger renders the account deactivate/delete actions', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { mfa_enrolled: false },
+      error: null,
+    });
+
+    renderPage('customer');
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Danger' }));
+
+    expect(
+      screen.getByRole('heading', { name: 'Deactivate account' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Delete account' })
+    ).toBeInTheDocument();
   });
 
   it('shows an enabled confirmation when MFA is already set up', async () => {

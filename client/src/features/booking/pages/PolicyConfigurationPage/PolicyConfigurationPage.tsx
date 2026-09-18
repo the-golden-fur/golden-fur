@@ -58,6 +58,7 @@ interface FormState {
   booking_group_email_mode: 'combined' | 'per_booking';
   care_log_task_email_enabled: boolean;
   care_log_daily_report_enabled: boolean;
+  customer_deactivation_auto_delete_days: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -90,6 +91,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     booking_group_email_mode: policy.booking_group_email_mode,
     care_log_task_email_enabled: policy.care_log_task_email_enabled,
     care_log_daily_report_enabled: policy.care_log_daily_report_enabled,
+    customer_deactivation_auto_delete_days:
+      policy.customer_deactivation_auto_delete_days,
   };
 }
 
@@ -120,6 +123,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   booking_group_email_mode: 'combined',
   care_log_task_email_enabled: false,
   care_log_daily_report_enabled: true,
+  customer_deactivation_auto_delete_days: 30,
 };
 
 /**
@@ -295,6 +299,8 @@ export function PolicyConfigurationPage() {
       booking_group_email_mode: form.booking_group_email_mode,
       care_log_task_email_enabled: form.care_log_task_email_enabled,
       care_log_daily_report_enabled: form.care_log_daily_report_enabled,
+      customer_deactivation_auto_delete_days:
+        form.customer_deactivation_auto_delete_days,
     });
 
     setIsSubmitting(false);
@@ -978,6 +984,43 @@ export function PolicyConfigurationPage() {
               One email per active hotel stay each evening, listing that
               day&apos;s completed, missed, and still-scheduled care tasks.
             </p>
+          </section>
+
+          <section aria-labelledby="customer-deactivation-heading">
+            <h2
+              className={styles.sectionTitle}
+              id="customer-deactivation-heading"
+            >
+              Customer account deletion
+            </h2>
+            <p className={styles.copy}>
+              When a customer deactivates their own account (Settings &gt;
+              Danger), it&apos;s permanently deleted after this many days if
+              they don&apos;t log back in to reactivate it. Customers aren&apos;t
+              branch-scoped, so this only ever applies system-wide - editable
+              here only when configuring the system default, not a branch
+              override.
+            </p>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Delete after (days of inactivity)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                disabled={Boolean(selectedBranchId)}
+                value={form.customer_deactivation_auto_delete_days}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    customer_deactivation_auto_delete_days: Number(
+                      event.target.value
+                    ),
+                  }))
+                }
+              />
+            </label>
           </section>
 
           {formError ? (

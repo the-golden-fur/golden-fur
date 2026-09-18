@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
@@ -33,11 +33,26 @@ function renderForm(applySession = vi.fn()) {
   return render(
     createElement(
       MemoryRouter,
-      null,
+      { initialEntries: ['/login'] },
       createElement(
         AuthContext.Provider,
         { value: authValue },
-        createElement(CustomerLoginForm)
+        createElement(
+          Routes,
+          null,
+          createElement(Route, {
+            path: '/login',
+            element: createElement(CustomerLoginForm),
+          }),
+          createElement(Route, {
+            path: '/account-deactivated',
+            element: createElement('div', null, 'Deactivated notice'),
+          }),
+          createElement(Route, {
+            path: '/portal',
+            element: createElement('div', null, 'Customer portal'),
+          })
+        )
       )
     )
   );
@@ -126,5 +141,33 @@ describe('CustomerLoginForm', () => {
 
     await waitFor(() => expect(getMfaStatusMock).toHaveBeenCalled());
     expect(window.sessionStorage.getItem('customerMfaPending')).toBeNull();
+  });
+
+  it('routes a deactivated account to the notice page instead of the portal/MFA flow', async () => {
+    const applySession = vi.fn().mockResolvedValue(undefined);
+    loginMock.mockResolvedValue({
+      data: {
+        access_token: 'acc',
+        refresh_token: 'ref',
+        expires_in: 3600,
+        account_status: 'deactivated',
+      },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    await waitFor(() =>
+      expect(applySession).toHaveBeenCalledWith('acc', 'ref')
+    );
+    expect(await screen.findByText('Deactivated notice')).toBeInTheDocument();
+    expect(getMfaStatusMock).not.toHaveBeenCalled();
   });
 });

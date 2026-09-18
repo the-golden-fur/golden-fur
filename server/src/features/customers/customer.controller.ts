@@ -11,6 +11,8 @@ import {
   activateCustomer,
   archiveCustomer,
   deactivateCustomer,
+  deleteOrAnonymizeCustomer,
+  getCustomerAutoDeletePolicyDays,
   hardDeleteCustomer,
   listArchivedCustomers,
   restoreCustomer,
@@ -145,6 +147,17 @@ export async function getCustomerProfileController(
       return res.status(404).json({ error: 'Customer profile not found' });
     }
 
+    // Only fetched for the customer's own lookup - staff viewing another
+    // customer's profile have no use for this, and customers can't read
+    // policy_configurations directly (RLS is staff-only). The Danger tab
+    // and the deactivated-account notice page both need this number.
+    if (isSelf) {
+      const autoDeleteDays = await getCustomerAutoDeletePolicyDays();
+      return res
+        .status(200)
+        .json({ customer: data, auto_delete_policy_days: autoDeleteDays });
+    }
+
     return res.status(200).json({ customer: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
@@ -209,7 +222,9 @@ export async function deactivateCustomerController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedAdmin(requesterId))) {
+  const isSelf = requesterId === targetId;
+
+  if (!isSelf && !(await isAuthorizedAdmin(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -232,13 +247,46 @@ export async function activateCustomerController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedAdmin(requesterId))) {
+  const isSelf = requesterId === targetId;
+
+  if (!isSelf && !(await isAuthorizedAdmin(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
   try {
     await activateCustomer(targetId as string);
     return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Settings > Danger > "Delete account" (self-service only - staff keep
+ * using the existing archive-first DELETE /customers/:id below, which has
+ * different, stricter semantics). Runs deleteOrAnonymizeCustomer, which
+ * ends in either a real hard delete or an anonymized-in-place row
+ * depending on whether the customer has booking/transaction/credit
+ * history - see that function's doc comment.
+ */
+export async function deleteOwnAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (requesterId !== targetId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const outcome = await deleteOrAnonymizeCustomer(targetId as string);
+    return res.status(200).json({ outcome });
   } catch (error) {
     return sendServiceError(res, error);
   }

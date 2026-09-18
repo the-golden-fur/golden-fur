@@ -54,6 +54,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   // Manual-cancellation-credit-review custom change: unchanged behaviour
   // (today's automatic conversion) until a branch opts into Manual.
   credit_review_mode: 'Automatic',
+  // Mirrors the column default (20260915204). Not branch-scoped in
+  // practice - see getCustomerAutoDeletePolicyDays.
+  customer_deactivation_auto_delete_days: 30,
 };
 
 export interface ServiceTypeStaffConfig {
@@ -595,6 +598,8 @@ export async function updatePolicyConfiguration({
     care_log_task_email_enabled: resolved.care_log_task_email_enabled,
     care_log_daily_report_enabled: resolved.care_log_daily_report_enabled,
     credit_review_mode: resolved.credit_review_mode,
+    customer_deactivation_auto_delete_days:
+      resolved.customer_deactivation_auto_delete_days,
   };
 
   const { data, error } = await supabase

@@ -4,6 +4,7 @@ import {
   activateCustomerController,
   archiveCustomerController,
   deactivateCustomerController,
+  deleteOwnAccountController,
   getCustomerProfileController,
   hardDeleteCustomerController,
   listArchivedCustomersController,
@@ -35,6 +36,7 @@ router.patch(
 );
 router.post('/customers/:id/archive', jwtMiddleware, archiveCustomerController);
 router.post('/customers/:id/restore', jwtMiddleware, restoreCustomerController);
+router.delete('/customers/:id/self', jwtMiddleware, deleteOwnAccountController);
 router.delete('/customers/:id', jwtMiddleware, hardDeleteCustomerController);
 
 router.use(petRoutes);
