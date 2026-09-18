@@ -15,8 +15,9 @@ vi.mock('../services/customerArchive.service.ts', () => ({
 describe('customerAutoDelete.job', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(customerArchiveService.getCustomerAutoDeletePolicyDays)
-      .mockResolvedValue(30);
+    vi.mocked(
+      customerArchiveService.getCustomerAutoDeletePolicyDays
+    ).mockResolvedValue(30);
   });
 
   function mockDueCustomers(rows: Array<{ id: string }>) {
@@ -31,19 +32,19 @@ describe('customerAutoDelete.job', () => {
 
   it('runs deleteOrAnonymizeCustomer for every customer past the threshold', async () => {
     mockDueCustomers([{ id: 'customer-1' }, { id: 'customer-2' }]);
-    vi.mocked(customerArchiveService.deleteOrAnonymizeCustomer).mockResolvedValue(
-      'deleted'
-    );
+    vi.mocked(
+      customerArchiveService.deleteOrAnonymizeCustomer
+    ).mockResolvedValue('deleted');
 
     const processed = await runCustomerAutoDeleteJob();
 
     expect(processed).toBe(2);
-    expect(customerArchiveService.deleteOrAnonymizeCustomer).toHaveBeenCalledWith(
-      'customer-1'
-    );
-    expect(customerArchiveService.deleteOrAnonymizeCustomer).toHaveBeenCalledWith(
-      'customer-2'
-    );
+    expect(
+      customerArchiveService.deleteOrAnonymizeCustomer
+    ).toHaveBeenCalledWith('customer-1');
+    expect(
+      customerArchiveService.deleteOrAnonymizeCustomer
+    ).toHaveBeenCalledWith('customer-2');
   });
 
   it('isolates a per-row failure instead of aborting the whole batch', async () => {
@@ -64,6 +65,8 @@ describe('customerAutoDelete.job', () => {
     const processed = await runCustomerAutoDeleteJob();
 
     expect(processed).toBe(0);
-    expect(customerArchiveService.deleteOrAnonymizeCustomer).not.toHaveBeenCalled();
+    expect(
+      customerArchiveService.deleteOrAnonymizeCustomer
+    ).not.toHaveBeenCalled();
   });
 });

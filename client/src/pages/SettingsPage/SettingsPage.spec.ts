@@ -398,7 +398,9 @@ describe('SettingsPage', () => {
     renderPage('staff');
 
     await screen.findByRole('tab', { name: 'Config' });
-    expect(screen.queryByRole('tab', { name: 'Danger' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'Danger' })
+    ).not.toBeInTheDocument();
   });
 
   it('selecting Danger renders the account deactivate/delete actions', async () => {

@@ -657,9 +657,7 @@ export function SettingsPage({ role }: SettingsPageProps) {
               onChanged={() => setRefreshKey((key) => key + 1)}
             />
           ) : null}
-          {activeTab === 'danger' && role === 'customer' ? (
-            <DangerTab />
-          ) : null}
+          {activeTab === 'danger' && role === 'customer' ? <DangerTab /> : null}
           {activeTab === 'config' && isAdmin ? (
             activeConfigTile ? (
               <activeConfigTile.Component />

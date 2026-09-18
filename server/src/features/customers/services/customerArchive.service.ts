@@ -135,8 +135,10 @@ export async function getCustomerAutoDeletePolicyDays(): Promise<number> {
   // system-default row was somehow deleted out-of-band - mirrors
   // staffPicker.service.ts's DOCUMENTED_DEFAULTS precedent for the same
   // table.
-  return data?.customer_deactivation_auto_delete_days ??
-    DOCUMENTED_AUTO_DELETE_DAYS_DEFAULT;
+  return (
+    data?.customer_deactivation_auto_delete_days ??
+    DOCUMENTED_AUTO_DELETE_DAYS_DEFAULT
+  );
 }
 
 export async function listArchivedCustomers(): Promise<CustomerProfile[]> {

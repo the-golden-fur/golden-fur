@@ -73,7 +73,10 @@ export async function getOwnCustomerAccountStatus(
   customerId: string,
   accessToken: string
 ): Promise<
-  CustomerApiResult<{ customer: CustomerProfile; auto_delete_policy_days: number }>
+  CustomerApiResult<{
+    customer: CustomerProfile;
+    auto_delete_policy_days: number;
+  }>
 > {
   const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
     headers: authHeaders(accessToken),
@@ -100,10 +103,10 @@ export async function deleteOwnAccount(
   customerId: string,
   accessToken: string
 ): Promise<CustomerApiResult<{ outcome: 'deleted' | 'anonymized' }>> {
-  const response = await fetch(
-    `${API_BASE_URL}/customers/${customerId}/self`,
-    { method: 'DELETE', headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/customers/${customerId}/self`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

@@ -996,10 +996,10 @@ export function PolicyConfigurationPage() {
             <p className={styles.copy}>
               When a customer deactivates their own account (Settings &gt;
               Danger), it&apos;s permanently deleted after this many days if
-              they don&apos;t log back in to reactivate it. Customers aren&apos;t
-              branch-scoped, so this only ever applies system-wide - editable
-              here only when configuring the system default, not a branch
-              override.
+              they don&apos;t log back in to reactivate it. Customers
+              aren&apos;t branch-scoped, so this only ever applies system-wide -
+              editable here only when configuring the system default, not a
+              branch override.
             </p>
             <label className={styles.field}>
               <span className={styles.fieldLabel}>

@@ -121,9 +121,9 @@ export function DangerTab() {
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>Reset settings</h2>
         <p className={styles.copy}>
-          Clears this Settings page's own layout - section order, sort mode,
-          and sidebar width - back to their defaults. Doesn't change your
-          password, appearance, or notification preferences.
+          Clears this Settings page's own layout - section order, sort mode, and
+          sidebar width - back to their defaults. Doesn't change your password,
+          appearance, or notification preferences.
         </p>
         {resetDone ? (
           <p className={styles.successBanner}>Settings reset to default.</p>
@@ -143,8 +143,8 @@ export function DangerTab() {
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>Deactivate account</h2>
         <p className={styles.copy}>
-          Signs you out immediately. Log back in any time before your account
-          is automatically deleted to reactivate it instead.
+          Signs you out immediately. Log back in any time before your account is
+          automatically deleted to reactivate it instead.
         </p>
         <button
           className={styles.dangerButton}
@@ -189,8 +189,8 @@ export function DangerTab() {
         body={
           <>
             <p>
-              You'll be signed out right away. Log back in before the
-              automatic deletion window passes to reactivate.
+              You'll be signed out right away. Log back in before the automatic
+              deletion window passes to reactivate.
             </p>
             {error ? (
               <p className={styles.errorBanner} role="alert">

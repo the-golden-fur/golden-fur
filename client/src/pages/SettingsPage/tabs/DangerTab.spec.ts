@@ -63,7 +63,10 @@ describe('DangerTab', () => {
   });
 
   it('resets the sidebar layout localStorage keys without touching the account', async () => {
-    window.localStorage.setItem('settings-sidebar-sort-customer', 'alphabetical');
+    window.localStorage.setItem(
+      'settings-sidebar-sort-customer',
+      'alphabetical'
+    );
     window.localStorage.setItem('settings-sidebar-width-customer', '300');
 
     renderDangerTab(createAuthValue({}));
@@ -73,11 +76,17 @@ describe('DangerTab', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /^reset$/i }));
 
-    expect(window.localStorage.getItem('settings-sidebar-sort-customer')).toBeNull();
-    expect(window.localStorage.getItem('settings-sidebar-width-customer')).toBeNull();
+    expect(
+      window.localStorage.getItem('settings-sidebar-sort-customer')
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem('settings-sidebar-width-customer')
+    ).toBeNull();
     expect(customerApi.deactivateCustomer).not.toHaveBeenCalled();
     expect(customerApi.deleteOwnAccount).not.toHaveBeenCalled();
-    expect(await screen.findByText('Settings reset to default.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Settings reset to default.')
+    ).toBeInTheDocument();
   });
 
   it('deactivating signs the customer out and redirects to login', async () => {
@@ -217,7 +226,9 @@ describe('DangerTab', () => {
     await userEvent.click(
       screen.getByRole('button', { name: /^delete account$/i })
     );
-    await userEvent.click(screen.getByRole('button', { name: /keep my account/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /keep my account/i })
+    );
 
     expect(
       screen.queryByRole('button', { name: /yes, delete my account/i })

@@ -3,7 +3,9 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ConfirmDialog } from './ConfirmDialog';
 
-function renderDialog(overrides: Partial<Parameters<typeof ConfirmDialog>[0]> = {}) {
+function renderDialog(
+  overrides: Partial<Parameters<typeof ConfirmDialog>[0]> = {}
+) {
   return render(
     createElement(ConfirmDialog, {
       isOpen: true,

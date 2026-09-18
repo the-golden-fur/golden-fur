@@ -139,7 +139,9 @@ describe('customer.api', () => {
   it('deleteOwnAccount returns an error instead of throwing on a non-ok response', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ error: 'Forbidden' }, false, 403))
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'Forbidden' }, false, 403))
     );
 
     const result = await deleteOwnAccount('customer-2', 'token');

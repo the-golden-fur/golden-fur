@@ -265,7 +265,10 @@ describe('customer profile CRUD (Issue #31)', () => {
     it('allows a customer to deactivate their own account', async () => {
       mockCaller('customer-1');
       queueFromResults(
-        { data: { id: 'customer-1', is_active: true, deactivated_at: null }, error: null },
+        {
+          data: { id: 'customer-1', is_active: true, deactivated_at: null },
+          error: null,
+        },
         { data: null, error: null }, // customer_profiles update
         { data: null, error: null } // pets update
       );
@@ -293,7 +296,10 @@ describe('customer profile CRUD (Issue #31)', () => {
     it('allows a customer to reactivate their own account', async () => {
       mockCaller('customer-1');
       queueFromResults(
-        { data: { id: 'customer-1', is_active: false, anonymized_at: null }, error: null },
+        {
+          data: { id: 'customer-1', is_active: false, anonymized_at: null },
+          error: null,
+        },
         { data: null, error: null }
       );
 

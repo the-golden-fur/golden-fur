@@ -25,9 +25,7 @@ const RUN_MINUTE = 10;
 
 async function findDueCustomerIds(): Promise<string[]> {
   const thresholdDays = await getCustomerAutoDeletePolicyDays();
-  const cutoff = new Date(
-    Date.now() - thresholdDays * DAY_MS
-  ).toISOString();
+  const cutoff = new Date(Date.now() - thresholdDays * DAY_MS).toISOString();
 
   const { data, error } = await supabase
     .from('customer_profiles')
@@ -56,7 +54,8 @@ export async function runCustomerAutoDeleteJob(): Promise<number> {
       await deleteOrAnonymizeCustomer(customerId);
       processed += 1;
     } catch (error) {
-      console.error( // eslint-disable-line no-console
+      console.error(
+        // eslint-disable-line no-console
         `Customer auto-delete failed for ${customerId}:`,
         error
       );

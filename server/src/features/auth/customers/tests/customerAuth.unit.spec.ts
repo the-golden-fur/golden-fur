@@ -147,9 +147,7 @@ describe('customerAuth.controller', () => {
   });
 
   describe('customerLoginController', () => {
-    function mockCustomerProfileFound(
-      overrides: Record<string, unknown> = {}
-    ) {
+    function mockCustomerProfileFound(overrides: Record<string, unknown> = {}) {
       const maybeSingle = vi.fn().mockResolvedValue({
         data: {
           id: 'user-id',
