@@ -4,7 +4,11 @@ import {
   updateStaffUsername,
 } from '../../../features/staff/api/staff.api';
 import { updateStaffPassword } from '../../../features/auth/staff/api/staffAuth.api';
-import { updateCustomerPassword } from '../../../features/auth/customer/api/customerAuth.api';
+import {
+  getLinkedProviders,
+  unlinkGoogleIdentity,
+  updateCustomerPassword,
+} from '../../../features/auth/customer/api/customerAuth.api';
 import { passwordChangeSchema } from '../../../shared/auth/password.validator';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import styles from '../SettingsPage.module.css';
@@ -27,6 +31,7 @@ export function AccountTab({ role, userId, accessToken }: AccountTabProps) {
         <UsernameForm userId={userId} accessToken={accessToken} />
       ) : null}
       <PasswordForm role={role} />
+      {role === 'customer' ? <GoogleAccountForm /> : null}
     </>
   );
 }
@@ -208,6 +213,100 @@ function PasswordForm({ role }: { role: ThemeRole }) {
           {isSaving ? 'Updating...' : 'Update password'}
         </button>
       </form>
+    </section>
+  );
+}
+
+/**
+ * Settings > Account > "Google account": only rendered once we know the
+ * customer actually has a Google identity linked (getLinkedProviders), per
+ * the requirement that this option only appears for Google-linked accounts.
+ * Renders nothing while loading or once confirmed absent - there is no
+ * empty-state copy for "no Google account linked" here, unlike Password
+ * above which always applies.
+ */
+function GoogleAccountForm() {
+  const [providers, setProviders] = useState<string[] | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void getLinkedProviders().then((result) => {
+      if (isMounted) {
+        setProviders(result.data?.providers ?? []);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const hasGoogle = providers?.includes('google') ?? false;
+
+  if (!hasGoogle || success) {
+    return null;
+  }
+
+  // Supabase itself refuses to unlink a user's last remaining identity;
+  // this check just turns that into a clear message up front instead of a
+  // raw API error after the click. Note: setting a password via the
+  // PasswordForm above does NOT add an identity here - updateUser({
+  // password }) doesn't create an `email` row in auth.identities
+  // (open Supabase issue, supabase/auth#2085), so it can never clear this
+  // check. Only linking a second real OAuth provider (e.g. Facebook) does.
+  const isOnlyIdentity = providers?.length === 1;
+
+  const handleUnlink = async () => {
+    setIsUnlinking(true);
+    setError(null);
+
+    const result = await unlinkGoogleIdentity();
+
+    setIsUnlinking(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setSuccess(true);
+  };
+
+  return (
+    <section className={styles.panel}>
+      <h2 className={styles.sectionTitle}>Google account</h2>
+      {isOnlyIdentity ? (
+        <p className={styles.copy}>
+          Google is your only way to sign in to this account. Setting a
+          password does not add a fallback here - link a Facebook account
+          with the same email address first, so you don't lose access when
+          you unlink Google.
+        </p>
+      ) : (
+        <>
+          <p className={styles.copy}>
+            Your account is linked to Google. Unlinking stops "Continue with
+            Google" from signing in to this account.
+          </p>
+          {error ? (
+            <p className={styles.errorBanner} role="alert">
+              {error}
+            </p>
+          ) : null}
+          <button
+            className={styles.button}
+            type="button"
+            disabled={isUnlinking}
+            onClick={() => void handleUnlink()}
+          >
+            {isUnlinking ? 'Unlinking...' : 'Unlink Google'}
+          </button>
+        </>
+      )}
     </section>
   );
 }

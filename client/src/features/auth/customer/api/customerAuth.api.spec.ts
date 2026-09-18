@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
-import { handleOAuthCallback, signInWithGoogle } from './customerAuth.api';
+import {
+  getLinkedProviders,
+  handleOAuthCallback,
+  signInWithGoogle,
+  unlinkGoogleIdentity,
+} from './customerAuth.api';
 
 vi.mock('../../../../shared/auth/api/auth.api', () => ({
   getSupabaseClient: vi.fn(),
@@ -11,11 +16,15 @@ describe('customerAuth.api', () => {
   const fetchMock = vi.fn<typeof fetch>();
   const setSessionMock = vi.fn();
   const signInWithOAuthMock = vi.fn();
+  const getUserIdentitiesMock = vi.fn();
+  const unlinkIdentityMock = vi.fn();
 
   beforeEach(() => {
     fetchMock.mockReset();
     setSessionMock.mockReset();
     signInWithOAuthMock.mockReset();
+    getUserIdentitiesMock.mockReset();
+    unlinkIdentityMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
     window.sessionStorage.clear();
     window.location.hash = '';
@@ -24,6 +33,8 @@ describe('customerAuth.api', () => {
       auth: {
         setSession: setSessionMock,
         signInWithOAuth: signInWithOAuthMock,
+        getUserIdentities: getUserIdentitiesMock,
+        unlinkIdentity: unlinkIdentityMock,
       },
     } as never);
   });
@@ -152,5 +163,79 @@ describe('customerAuth.api', () => {
     expect(result.data).toBeNull();
     expect(result.error).toBe('Invalid token');
     expect(window.sessionStorage.getItem('oauthProvider')).toBeNull();
+  });
+
+  describe('getLinkedProviders', () => {
+    it('returns the provider list from the current identities', async () => {
+      getUserIdentitiesMock.mockResolvedValue({
+        data: {
+          identities: [
+            { provider: 'email' },
+            { provider: 'google' },
+          ],
+        },
+        error: null,
+      });
+
+      const result = await getLinkedProviders();
+
+      expect(result.error).toBeNull();
+      expect(result.data).toEqual({ providers: ['email', 'google'] });
+    });
+
+    it('surfaces an error when identities cannot be loaded', async () => {
+      getUserIdentitiesMock.mockResolvedValue({
+        data: null,
+        error: { message: 'Network error' },
+      });
+
+      const result = await getLinkedProviders();
+
+      expect(result.data).toBeNull();
+      expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('unlinkGoogleIdentity', () => {
+    it('unlinks the Google identity when one is linked', async () => {
+      const googleIdentity = { provider: 'google', identity_id: 'g-1' };
+      getUserIdentitiesMock.mockResolvedValue({
+        data: { identities: [{ provider: 'email' }, googleIdentity] },
+        error: null,
+      });
+      unlinkIdentityMock.mockResolvedValue({ error: null });
+
+      const result = await unlinkGoogleIdentity();
+
+      expect(unlinkIdentityMock).toHaveBeenCalledWith(googleIdentity);
+      expect(result.error).toBeNull();
+    });
+
+    it('returns a friendly error when no Google identity is linked', async () => {
+      getUserIdentitiesMock.mockResolvedValue({
+        data: { identities: [{ provider: 'email' }] },
+        error: null,
+      });
+
+      const result = await unlinkGoogleIdentity();
+
+      expect(unlinkIdentityMock).not.toHaveBeenCalled();
+      expect(result.error).toBe('No Google account is linked');
+    });
+
+    it('surfaces the error when Supabase refuses the unlink (e.g. last remaining identity)', async () => {
+      const googleIdentity = { provider: 'google', identity_id: 'g-1' };
+      getUserIdentitiesMock.mockResolvedValue({
+        data: { identities: [googleIdentity] },
+        error: null,
+      });
+      unlinkIdentityMock.mockResolvedValue({
+        error: { message: 'Identity is the only one for user' },
+      });
+
+      const result = await unlinkGoogleIdentity();
+
+      expect(result.error).toBe('Identity is the only one for user');
+    });
   });
 });
