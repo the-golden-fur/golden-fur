@@ -69,7 +69,7 @@ describe('customerArchive.service', () => {
       await deactivateCustomer('customer-1');
 
       const updateCall = vi.mocked(supabase.from).mock.results[1].value as {
-        update: (input: unknown) => unknown;
+        update: (_input: unknown) => unknown;
       };
       expect(updateCall.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -92,7 +92,7 @@ describe('customerArchive.service', () => {
       await deactivateCustomer('customer-1');
 
       const updateCall = vi.mocked(supabase.from).mock.results[1].value as {
-        update: (input: unknown) => unknown;
+        update: (_input: unknown) => unknown;
       };
       expect(updateCall.update).toHaveBeenCalledWith(
         expect.objectContaining({ deactivated_at: '2026-01-01T00:00:00.000Z' })
@@ -110,7 +110,7 @@ describe('customerArchive.service', () => {
       await activateCustomer('customer-1');
 
       const updateCall = vi.mocked(supabase.from).mock.results[1].value as {
-        update: (input: unknown) => unknown;
+        update: (_input: unknown) => unknown;
       };
       expect(updateCall.update).toHaveBeenCalledWith({
         is_active: true,
@@ -137,7 +137,7 @@ describe('customerArchive.service', () => {
       await anonymizeCustomer('customer-1');
 
       const updateCall = vi.mocked(supabase.from).mock.results[0].value as {
-        update: (input: unknown) => unknown;
+        update: (_input: unknown) => unknown;
       };
       expect(updateCall.update).toHaveBeenCalledWith(
         expect.objectContaining({
