@@ -269,3 +269,69 @@ export async function updateCustomerPassword(
 
   return { data: null, error: null };
 }
+
+/**
+ * Lists the auth providers linked to the caller's own account (Settings >
+ * Account's "Unlink Google" section uses this to decide whether to show
+ * that option at all, and whether Google is the customer's only way to log
+ * in). Self-service, direct-to-Supabase like updateCustomerPassword above.
+ */
+export async function getLinkedProviders(): Promise<
+  AuthApiResult<{ providers: string[] }>
+> {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const { data, error } = await client.auth.getUserIdentities();
+
+  if (error || !data) {
+    return { data: null, error: error?.message ?? 'Failed to load account' };
+  }
+
+  return {
+    data: { providers: data.identities.map((identity) => identity.provider) },
+    error: null,
+  };
+}
+
+/**
+ * Unlinks the caller's Google identity. Supabase itself refuses to unlink a
+ * user's last remaining identity (the UI additionally pre-checks this via
+ * getLinkedProviders so the customer sees a clear message instead of a raw
+ * API error - see GoogleAccountForm in AccountTab.tsx).
+ */
+export async function unlinkGoogleIdentity(): Promise<AuthApiResult<null>> {
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return { data: null, error: 'Supabase client is not configured' };
+  }
+
+  const { data, error: listError } = await client.auth.getUserIdentities();
+
+  if (listError || !data) {
+    return {
+      data: null,
+      error: listError?.message ?? 'Failed to load account',
+    };
+  }
+
+  const googleIdentity = data.identities.find(
+    (identity) => identity.provider === 'google'
+  );
+
+  if (!googleIdentity) {
+    return { data: null, error: 'No Google account is linked' };
+  }
+
+  const { error } = await client.auth.unlinkIdentity(googleIdentity);
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: null, error: null };
+}
