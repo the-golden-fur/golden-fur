@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createPet,
+  deleteOwnAccount,
   getCustomerProfile,
+  getOwnCustomerAccountStatus,
   updateCustomerProfile,
 } from './customer.api';
 
@@ -93,5 +95,57 @@ describe('customer.api', () => {
       })
     );
     expect(result).toEqual({ data: { id: 'pet-1' }, error: null });
+  });
+
+  it('getOwnCustomerAccountStatus returns the customer plus the auto-delete day count', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        customer: { id: 'customer-1', is_active: false },
+        auto_delete_policy_days: 30,
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getOwnCustomerAccountStatus('customer-1', 'token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/customers/customer-1'),
+      expect.objectContaining({ headers: { Authorization: 'Bearer token' } })
+    );
+    expect(result.data).toEqual({
+      customer: { id: 'customer-1', is_active: false },
+      auto_delete_policy_days: 30,
+    });
+  });
+
+  it('deleteOwnAccount DELETEs the self-service route and returns the outcome', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ outcome: 'anonymized' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await deleteOwnAccount('customer-1', 'token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/customers/customer-1/self'),
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer token' },
+      })
+    );
+    expect(result.data).toEqual({ outcome: 'anonymized' });
+  });
+
+  it('deleteOwnAccount returns an error instead of throwing on a non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'Forbidden' }, false, 403))
+    );
+
+    const result = await deleteOwnAccount('customer-2', 'token');
+
+    expect(result).toEqual({ data: null, error: 'Forbidden' });
   });
 });

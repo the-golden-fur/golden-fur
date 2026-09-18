@@ -60,6 +60,61 @@ export async function getCustomerProfile(
   return { data: result.data?.customer ?? null, error: result.error };
 }
 
+/**
+ * Same GET /customers/:id endpoint as getCustomerProfile, but for the
+ * caller's own id: the server additionally resolves the admin-configured
+ * auto-delete day count when isSelf (customers can't read
+ * policy_configurations directly - RLS is staff-only). Used by the Danger
+ * tab and the deactivated-account notice page; other getCustomerProfile
+ * callers (staff lookups, ProfileTab) don't need this and keep using the
+ * plain function above.
+ */
+export async function getOwnCustomerAccountStatus(
+  customerId: string,
+  accessToken: string
+): Promise<
+  CustomerApiResult<{
+    customer: CustomerProfile;
+    auto_delete_policy_days: number;
+  }>
+> {
+  const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{
+    customer: CustomerProfile;
+    auto_delete_policy_days: number;
+  }>(response);
+}
+
+/**
+ * Settings > Danger > "Delete account" - self-service only (isSelf-gated
+ * server-side; staff keep using the archive-first hardDeleteCustomer
+ * above). Ends in either a real hard delete or an anonymize-in-place
+ * fallback depending on whether the customer has booking/transaction/
+ * credit history - see deleteOrAnonymizeCustomer server-side.
+ */
+export async function deleteOwnAccount(
+  customerId: string,
+  accessToken: string
+): Promise<CustomerApiResult<{ outcome: 'deleted' | 'anonymized' }>> {
+  const response = await fetch(`${API_BASE_URL}/customers/${customerId}/self`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ outcome: 'deleted' | 'anonymized' }>(response);
+}
+
 export async function updateCustomerProfile(
   customerId: string,
   accessToken: string,

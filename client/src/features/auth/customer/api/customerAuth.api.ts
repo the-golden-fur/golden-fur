@@ -64,6 +64,11 @@ export async function login(payload: CustomerLoginPayload) {
     access_token: string;
     refresh_token: string;
     expires_in: number;
+    // Present only when the account is deactivated - credentials are still
+    // valid (login succeeds), but CustomerLoginForm routes to the
+    // deactivated-account notice page instead of the portal. See
+    // customerLoginController.
+    account_status?: 'deactivated';
   }>('/customers/login', payload);
 }
 

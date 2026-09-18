@@ -34,11 +34,17 @@ async function getCustomerOrThrow(
  * -> archive -> hard-delete) the other two entities use.
  */
 export async function deactivateCustomer(customerId: string): Promise<void> {
-  await getCustomerOrThrow(customerId);
+  const customer = await getCustomerOrThrow(customerId);
 
+  // Idempotent: a customer who self-deactivates while already deactivated
+  // (e.g. deleteOrAnonymizeCustomer calling this defensively) keeps their
+  // original deactivated_at rather than resetting the auto-delete clock.
   const { error: customerError } = await supabase
     .from('customer_profiles')
-    .update({ is_active: false })
+    .update({
+      is_active: false,
+      deactivated_at: customer.deactivated_at ?? new Date().toISOString(),
+    })
     .eq('id', customerId);
 
   if (customerError) throwWithStatus(400, customerError.message);
@@ -54,11 +60,16 @@ export async function deactivateCustomer(customerId: string): Promise<void> {
 }
 
 export async function activateCustomer(customerId: string): Promise<void> {
-  await getCustomerOrThrow(customerId);
+  const customer = await getCustomerOrThrow(customerId);
+
+  // Nothing to reactivate into - anonymize already scrubbed the profile.
+  if (customer.anonymized_at) {
+    throwWithStatus(410, 'This account has been permanently deleted');
+  }
 
   const { error } = await supabase
     .from('customer_profiles')
-    .update({ is_active: true })
+    .update({ is_active: true, deactivated_at: null })
     .eq('id', customerId);
 
   if (error) throwWithStatus(400, error.message);
@@ -101,6 +112,35 @@ export async function restoreCustomer(customerId: string): Promise<void> {
   // service.ts), so restoring the customer shouldn't silently undo that.
 }
 
+/**
+ * Reads the system-default policy_configurations row's auto-delete day
+ * count (customers aren't branch-scoped, so per-branch overrides on that
+ * table are never relevant here). Used by getCustomerProfileController
+ * (surfaced to the Danger tab / deactivated-notice page, since customers
+ * can't read policy_configurations directly - RLS is staff-only) and by
+ * the auto-delete scheduled job.
+ */
+const DOCUMENTED_AUTO_DELETE_DAYS_DEFAULT = 30;
+
+export async function getCustomerAutoDeletePolicyDays(): Promise<number> {
+  const { data, error } = await supabase
+    .from('policy_configurations')
+    .select('customer_deactivation_auto_delete_days')
+    .is('branch_id', null)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  // Falls back to the documented column default only if the seeded
+  // system-default row was somehow deleted out-of-band - mirrors
+  // staffPicker.service.ts's DOCUMENTED_DEFAULTS precedent for the same
+  // table.
+  return (
+    data?.customer_deactivation_auto_delete_days ??
+    DOCUMENTED_AUTO_DELETE_DAYS_DEFAULT
+  );
+}
+
 export async function listArchivedCustomers(): Promise<CustomerProfile[]> {
   const { data, error } = await supabase
     .from('customer_profiles')
@@ -127,4 +167,71 @@ export async function hardDeleteCustomer(customerId: string): Promise<void> {
   if (error) throwWithStatus(400, error.message);
 
   await deleteAuthUser(customerId);
+}
+
+const POSTGRES_FOREIGN_KEY_VIOLATION = '23503';
+
+/**
+ * Scrubs personal information in place instead of removing the row, for a
+ * customer whose hard-delete hit a foreign-key wall (they have bookings/
+ * transactions/credit history - none of those tables cascade-delete on
+ * customer_profiles). Does NOT touch auth.users: deleting it would
+ * cascade-delete this very row (customer_profiles.id references
+ * auth.users(id) on delete cascade), and it isn't needed to block login -
+ * customerLoginController looks a customer up by the email they typed,
+ * which no longer matches once account_email is scrubbed below.
+ */
+export async function anonymizeCustomer(customerId: string): Promise<void> {
+  const { error } = await supabase
+    .from('customer_profiles')
+    .update({
+      full_name: 'Deleted Customer',
+      contact_number: null,
+      emergency_contact_name: null,
+      emergency_contact_number: null,
+      facebook_id: null,
+      account_email: `deleted-${customerId}@deleted.goldenfur.internal`,
+      anonymized_at: new Date().toISOString(),
+    })
+    .eq('id', customerId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+/**
+ * Self-service "Delete account" and the scheduled auto-delete job's shared
+ * core: gets the customer to archived (running deactivate/archive first if
+ * the caller hasn't already), then attempts a real hard delete. Only a
+ * foreign-key violation (23503 - the customer has booking/transaction/
+ * credit history none of those tables cascade-delete) falls back to
+ * anonymizing instead; any other error is a real failure and propagates.
+ */
+export async function deleteOrAnonymizeCustomer(
+  customerId: string
+): Promise<'deleted' | 'anonymized'> {
+  const customer = await getCustomerOrThrow(customerId);
+
+  if (customer.is_active) {
+    await deactivateCustomer(customerId);
+  }
+  if (!customer.archived_at) {
+    await archiveCustomer(customerId);
+  }
+
+  const { error } = await supabase
+    .from('customer_profiles')
+    .delete()
+    .eq('id', customerId);
+
+  if (!error) {
+    await deleteAuthUser(customerId);
+    return 'deleted';
+  }
+
+  if (error.code !== POSTGRES_FOREIGN_KEY_VIOLATION) {
+    throwWithStatus(400, error.message);
+  }
+
+  await anonymizeCustomer(customerId);
+  return 'anonymized';
 }

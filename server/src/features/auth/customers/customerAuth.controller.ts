@@ -144,6 +144,10 @@ export async function customerLoginController(req: Request, res: Response) {
     const { data: profile, error: profileError } =
       await getCustomerProfileByEmail(account_email);
 
+    // An anonymized account's account_email no longer matches what the
+    // customer typed (see customerArchive.service.ts's anonymizeCustomer),
+    // so this also naturally covers that case - don't special-case it here,
+    // and don't reveal that this email was once a real account.
     if (profileError || !profile) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -152,6 +156,13 @@ export async function customerLoginController(req: Request, res: Response) {
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,
       expires_in: authData.session.expires_in,
+      // Credentials are valid, so login still succeeds even when
+      // deactivated - the client redirects to the deactivated-account
+      // notice page instead of the portal, using this same session so its
+      // REACTIVATE button can call the self-service activate endpoint
+      // without a second login. Omitted entirely (not `false`) when active,
+      // so the existing client contract for an active login is unchanged.
+      ...(profile.is_active ? {} : { account_status: 'deactivated' as const }),
     });
   } catch (error) {
     console.error('Login error:', error);

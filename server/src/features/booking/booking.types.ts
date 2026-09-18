@@ -547,6 +547,14 @@ export interface PolicyConfiguration {
    * after reading the cancellation reason; the notice-period outcome is not
    * consulted in this mode (see cancellation.service.ts). */
   credit_review_mode: CreditReviewMode;
+  /** Settings > Danger > "Deactivate account" countdown (custom change):
+   * days after deactivated_at with no reactivation before
+   * customerAutoDelete.job.ts permanently removes the account (a real hard
+   * delete, or an anonymize-in-place fallback if the customer has booking/
+   * transaction/credit history). NOT NULL, default 30. Customers aren't
+   * branch-scoped, so only this system-default row's value is ever read -
+   * see getCustomerAutoDeletePolicyDays. */
+  customer_deactivation_auto_delete_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -582,6 +590,7 @@ export type EffectivePolicy = Pick<
   | 'care_log_task_email_enabled'
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
+  | 'customer_deactivation_auto_delete_days'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

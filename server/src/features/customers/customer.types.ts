@@ -21,6 +21,8 @@ export interface CustomerProfile {
   facebook_id: string | null;
   is_active: boolean;
   archived_at: string | null;
+  deactivated_at: string | null;
+  anonymized_at: string | null;
   created_at: string;
   updated_at: string;
 }

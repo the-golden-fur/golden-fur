@@ -147,9 +147,15 @@ describe('customerAuth.controller', () => {
   });
 
   describe('customerLoginController', () => {
-    function mockCustomerProfileFound() {
+    function mockCustomerProfileFound(overrides: Record<string, unknown> = {}) {
       const maybeSingle = vi.fn().mockResolvedValue({
-        data: { id: 'user-id', account_email: 'john@example.com' },
+        data: {
+          id: 'user-id',
+          account_email: 'john@example.com',
+          is_active: true,
+          anonymized_at: null,
+          ...overrides,
+        },
         error: null,
       });
       (supabase.from as any).mockReturnValue({
@@ -211,6 +217,76 @@ describe('customerAuth.controller', () => {
         data: { session: { access_token: 'valid-token' } },
         error: null,
       });
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      });
+
+      await customerLoginController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized' });
+    });
+
+    it('still succeeds for a deactivated account, flagged via account_status', async () => {
+      const req = mockRequest({
+        account_email: 'john@example.com',
+        password: 'password123',
+      });
+      const res = mockResponse();
+
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
+        data: { session: { access_token: 'valid-token' } },
+        error: null,
+      });
+      mockCustomerProfileFound({ is_active: false });
+
+      await customerLoginController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          access_token: 'valid-token',
+          account_status: 'deactivated',
+        })
+      );
+    });
+
+    it('omits account_status entirely for an active account', async () => {
+      const req = mockRequest({
+        account_email: 'john@example.com',
+        password: 'password123',
+      });
+      const res = mockResponse();
+
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
+        data: { session: { access_token: 'valid-token' } },
+        error: null,
+      });
+      mockCustomerProfileFound({ is_active: true });
+
+      await customerLoginController(req, res);
+
+      const jsonArg = res.json.mock.calls[0][0];
+      expect(jsonArg).not.toHaveProperty('account_status');
+    });
+
+    it('rejects an anonymized (permanently deleted) account like it does not exist', async () => {
+      const req = mockRequest({
+        account_email: 'john@example.com',
+        password: 'password123',
+      });
+      const res = mockResponse();
+
+      mockUserClient.auth.signInWithPassword.mockResolvedValue({
+        data: { session: { access_token: 'valid-token' } },
+        error: null,
+      });
+      // The real lookup is by account_email, which no longer matches once
+      // anonymizeCustomer scrubs it - simulated here as "not found".
       (supabase.from as any).mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({

@@ -24,6 +24,11 @@ export function CustomerAuthGuard() {
   // Populated once profileStatus is 'ok', for the Navbar identity chip.
   // Customers have no username/role, unlike staff - just a full name.
   const [fullName, setFullName] = useState<string | null>(null);
+  // null = not yet known. Catches a session that was already live when
+  // deactivation happened elsewhere (another device, or staff-initiated) -
+  // the point-of-login check in CustomerLoginForm only covers a fresh sign
+  // in, not an already-cached session revisiting /portal/*.
+  const [isActive, setIsActive] = useState<boolean | null>(null);
   // 'loading' until the customer_profiles check resolves. Customers and
   // staff share the same Supabase Auth session, so a valid session alone
   // doesn't prove this user is actually a customer - only a matching
@@ -82,6 +87,7 @@ export function CustomerAuthGuard() {
     void getCustomerProfile(user.id, accessToken).then((result) => {
       if (isMounted && result.data) {
         setFullName(result.data.full_name);
+        setIsActive(result.data.is_active);
       }
     });
 
@@ -121,6 +127,10 @@ export function CustomerAuthGuard() {
 
   if (profileStatus !== 'ok') {
     return null;
+  }
+
+  if (isActive === false) {
+    return <Navigate to="/account-deactivated" replace />;
   }
 
   const needsAal2 = mfaEnrolled === true && aal !== 'aal2';
