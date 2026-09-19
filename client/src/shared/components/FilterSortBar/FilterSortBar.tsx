@@ -317,8 +317,11 @@ interface FilterEditorProps {
 function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
   if (field.type === 'date-range') {
     const current: DateRangeValue =
-      value && typeof value === 'object'
-        ? value
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      'preset' in value
+        ? (value as DateRangeValue)
         : { preset: 'all', from: null, to: null };
     return (
       <>
@@ -376,11 +379,15 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
   }
 
   if (field.type === 'multi-select') {
-    return <MultiSelectEditor field={field} value={value} onChange={onChange} />;
+    return (
+      <MultiSelectEditor field={field} value={value} onChange={onChange} />
+    );
   }
 
   if (field.type === 'number-range') {
-    return <NumberRangeEditor field={field} value={value} onChange={onChange} />;
+    return (
+      <NumberRangeEditor field={field} value={value} onChange={onChange} />
+    );
   }
 
   return (
@@ -413,7 +420,11 @@ function MultiSelectEditor({ field, value, onChange }: MultiSelectEditorProps) {
   }
 
   return (
-    <div className={styles.optionList} role="listbox" aria-multiselectable="true">
+    <div
+      className={styles.optionList}
+      role="listbox"
+      aria-multiselectable="true"
+    >
       {field.options.map((option) => {
         const isSelected = selected.includes(option.value);
         return (
@@ -455,7 +466,10 @@ function parseOptionalNumber(raw: string): number | null {
 
 function NumberRangeEditor({ field, value, onChange }: NumberRangeEditorProps) {
   const current: NumberRangeValue =
-    value && typeof value === 'object' && !Array.isArray(value) && 'min' in value
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'min' in value
       ? (value as NumberRangeValue)
       : { min: null, max: null };
 
@@ -469,7 +483,10 @@ function NumberRangeEditor({ field, value, onChange }: NumberRangeEditorProps) {
           inputMode="decimal"
           value={current.min ?? ''}
           onChange={(event) =>
-            onChange({ ...current, min: parseOptionalNumber(event.target.value) })
+            onChange({
+              ...current,
+              min: parseOptionalNumber(event.target.value),
+            })
           }
         />
       </label>
@@ -481,7 +498,10 @@ function NumberRangeEditor({ field, value, onChange }: NumberRangeEditorProps) {
           inputMode="decimal"
           value={current.max ?? ''}
           onChange={(event) =>
-            onChange({ ...current, max: parseOptionalNumber(event.target.value) })
+            onChange({
+              ...current,
+              max: parseOptionalNumber(event.target.value),
+            })
           }
         />
       </label>
