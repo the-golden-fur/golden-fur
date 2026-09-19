@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -20,22 +21,42 @@ import {
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PromoCard } from '../../components/PromoCard/PromoCard';
 import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
-  PromoFilterBar,
-  type PromoStatusFilter,
-  type PromoTimingFilter,
-} from '../../components/PromoFilterBar/PromoFilterBar';
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   SearchSortBar,
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
+import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
 import { getPromoTiming } from '../../utils/promoTiming';
+import {
+  applyPromoFilters,
+  buildPromoFilterFields,
+  derivePromoSortKey,
+  matchesPromoQuery,
+  PROMO_COMPARATORS,
+  PROMO_SORT_FIELDS,
+} from './promoBrowserFields';
 import type {
   BranchSummary,
   CapType,
@@ -49,6 +70,34 @@ import type {
   Service,
 } from '../../maintenance.types';
 import styles from './AdminPromoConfigPage.module.css';
+
+const TIMING_LABELS = {
+  Upcoming: 'Upcoming',
+  Active: 'Active now',
+  Ended: 'Ended',
+} as const;
+
+function formatPromoValue(promo: Promo): string {
+  return promo.discount_type === 'Percentage'
+    ? `${promo.value}% off`
+    : `PHP ${promo.value.toFixed(2)} off`;
+}
+
+function promoWindowText(promo: Promo): string {
+  return promo.condition_note
+    ? promo.condition_note
+    : promo.start_date && promo.end_date
+      ? `${promo.start_date} to ${promo.end_date}`
+      : 'No window set';
+}
+
+type PromoViewMode = 'gallery' | 'table' | 'list';
+
+const PROMO_VIEW_OPTIONS: ViewSwitcherOption<PromoViewMode>[] = [
+  { value: 'gallery', label: 'Gallery', icon: LayoutGrid },
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+];
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -133,9 +182,15 @@ export function AdminPromoConfigPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [branchFilter, setBranchFilter] = useState('All');
-  const [timingFilter, setTimingFilter] = useState<PromoTimingFilter>('All');
-  const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>('Active');
+  // The page has always defaulted to showing only active promos (a status
+  // tile pre-added, same as every other filter tile - removable via its
+  // hover X to see inactive ones too), unlike the other Tier-1 pages in
+  // this rollout which start with no tiles at all.
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    { fieldId: 'status', value: 'active' },
+  ]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [view, setView] = useState<PromoViewMode>('gallery');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
@@ -347,36 +402,37 @@ export function AdminPromoConfigPage() {
     (promo) => promo.id === availabilityPromoId
   );
 
+  const promoFilterFields = useMemo(
+    () => buildPromoFilterFields(capBranches),
+    [capBranches]
+  );
+
   const filteredPromos = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? promos.filter((promo) => matchesPromoQuery(promo, query))
+      : promos;
+    const filtered = applyPromoFilters(searched, filterTiles);
 
-    return promos.filter((promo) => {
-      if (
-        branchFilter !== 'All' &&
-        !availableBranchIds(promo).includes(branchFilter)
-      ) {
-        return false;
-      }
+    if (!sortTile) return filtered;
+    return [...filtered].sort(PROMO_COMPARATORS[derivePromoSortKey(sortTile)]);
+  }, [promos, search, filterTiles, sortTile]);
 
-      if (statusFilter === 'Active' && !promo.is_active) {
-        return false;
-      }
+  function handleAddPromoFilter(fieldId: string) {
+    const field = promoFilterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-      if (statusFilter === 'Inactive' && promo.is_active) {
-        return false;
-      }
+  function handleChangePromoFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
 
-      if (timingFilter !== 'All' && getPromoTiming(promo) !== timingFilter) {
-        return false;
-      }
-
-      if (searchTerm && !promo.name.toLowerCase().includes(searchTerm)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [promos, branchFilter, statusFilter, timingFilter, search]);
+  function handleRemovePromoFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   // Existing scope selections (from an in-edit promo) stay offered even if
   // the referenced service/package has since gone inactive, so editing never
@@ -601,6 +657,64 @@ export function AdminPromoConfigPage() {
     setMessage('Promo archived.');
   };
 
+  function renderPromoActions(promo: Promo) {
+    return (
+      <div className={styles.rowActions}>
+        <ToggleSwitch
+          label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
+          checked={promo.is_active}
+          onChange={(isActive) => void handleActiveToggle(promo, isActive)}
+        />
+        <MoreOptionsMenu
+          label={`Actions for ${promo.name}`}
+          items={[
+            { label: 'Edit', onSelect: () => openEditForm(promo) },
+            {
+              label: 'Branch Availability',
+              onSelect: () => setAvailabilityPromoId(promo.id),
+            },
+            ...(!promo.is_active
+              ? [
+                  {
+                    label: 'Archive',
+                    onSelect: () => void handleArchive(promo),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      </div>
+    );
+  }
+
+  const promoTableColumns: DataTableColumn<Promo>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (promo) => <span className={styles.itemName}>{promo.name}</span>,
+    },
+    {
+      id: 'timing',
+      header: 'Timing',
+      render: (promo) => TIMING_LABELS[getPromoTiming(promo)],
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      render: (promo) => formatPromoValue(promo),
+    },
+    {
+      id: 'window',
+      header: 'Window',
+      render: (promo) => promoWindowText(promo),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (promo) => <StatusBadge isActive={promo.is_active} />,
+    },
+  ];
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -775,17 +889,26 @@ export function AdminPromoConfigPage() {
         </div>
 
         <div className={styles.toolbar}>
-          <PromoFilterBar
-            search={search}
+          <FilterSortBar
+            filterFields={promoFilterFields}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddPromoFilter}
+            onChangeFilter={handleChangePromoFilter}
+            onRemoveFilter={handleRemovePromoFilter}
+            sortFields={PROMO_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
             onSearchChange={setSearch}
-            branches={capBranches}
-            branchFilter={branchFilter}
-            onBranchFilterChange={setBranchFilter}
-            timingFilter={timingFilter}
-            onTimingFilterChange={setTimingFilter}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-          />
+            searchPlaceholder="Search promos..."
+          >
+            <ViewSwitcher
+              options={PROMO_VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              ariaLabel="Promos view"
+            />
+          </FilterSortBar>
 
           <button
             type="button"
@@ -1039,6 +1162,32 @@ export function AdminPromoConfigPage() {
 
         {filteredPromos.length === 0 ? (
           <p className={styles.copy}>No promos match the selected filters.</p>
+        ) : view === 'table' ? (
+          <DataTable
+            columns={promoTableColumns}
+            rows={filteredPromos}
+            getRowKey={(promo) => promo.id}
+            renderRowActions={renderPromoActions}
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={filteredPromos}
+            getRowKey={(promo) => promo.id}
+            renderItem={(promo) => (
+              <div className={styles.rowContent}>
+                <div className={styles.itemMain}>
+                  <span className={styles.itemName}>{promo.name}</span>
+                  <StatusBadge isActive={promo.is_active} />
+                  <span className={styles.timingBadge}>
+                    {TIMING_LABELS[getPromoTiming(promo)]}
+                  </span>
+                  <span className={styles.copy}>{formatPromoValue(promo)}</span>
+                  <span className={styles.copy}>{promoWindowText(promo)}</span>
+                </div>
+                {renderPromoActions(promo)}
+              </div>
+            )}
+          />
         ) : (
           <div className={styles.promoGrid}>
             {filteredPromos.map((promo) => (

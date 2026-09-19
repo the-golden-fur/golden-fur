@@ -118,6 +118,12 @@
   gap: var(--space-2);
 }
 
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .filterField {
   display: grid;
   gap: var(--space-0-5);

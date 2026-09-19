@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -183,5 +184,87 @@ describe('CustomerManagementPage (#76)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /add pet/i }));
 
     expect(await screen.findByLabelText(/^name$/i)).toBeInTheDocument();
+  });
+
+  it('Notion-style remaster (session 110): a search box narrows the list by name or email', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [
+        CUSTOMER,
+        {
+          ...CUSTOMER,
+          id: 'customer-2',
+          full_name: 'Mark Santos',
+          account_email: 'mark@example.com',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    expect(screen.getByText('Mark Santos')).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Search customers...'),
+      'mark@example.com'
+    );
+
+    expect(screen.queryByText('Jane Dela Cruz')).not.toBeInTheDocument();
+    expect(screen.getByText('Mark Santos')).toBeInTheDocument();
+  });
+
+  it('Notion-style remaster (session 110): a Status filter tile narrows the list to active or inactive customers', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [
+        { ...CUSTOMER, is_active: true },
+        {
+          ...CUSTOMER,
+          id: 'customer-2',
+          full_name: 'Mark Santos',
+          is_active: false,
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    expect(screen.getByText('Mark Santos')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Status' }));
+
+    // Status defaults to Active once added.
+    expect(screen.getByText('Jane Dela Cruz')).toBeInTheDocument();
+    expect(screen.queryByText('Mark Santos')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Status: Active/ })
+    );
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(
+      within(dialog).getByRole('option', { name: 'Inactive' })
+    );
+
+    expect(screen.queryByText('Jane Dela Cruz')).not.toBeInTheDocument();
+    expect(screen.getByText('Mark Santos')).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -12,8 +13,25 @@ import type {
   Package,
   Service,
 } from '../../../maintenance/maintenance.types';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { BranchAvailabilityModal } from '../../../maintenance/components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../../maintenance/components/BranchMultiSelect/BranchMultiSelect';
 import {
@@ -23,23 +41,35 @@ import {
   setDiscountBranchAvailability,
   updateDiscount,
 } from '../../api/discounts.api';
-import {
-  DiscountFilterBar,
-  type DiscountScopeTypeFilter,
-  type DiscountStatusFilter,
-} from '../../components/DiscountFilterBar/DiscountFilterBar';
 import { DiscountCategoryScopeSelect } from '../../components/DiscountCategoryScopeSelect/DiscountCategoryScopeSelect';
 import type {
   Discount,
   DiscountScopeType,
   DiscountValueType,
 } from '../../discounts.types';
+import {
+  applyDiscountFilters,
+  buildDiscountFilterFields,
+  deriveDiscountSortKey,
+  DISCOUNT_COMPARATORS,
+  DISCOUNT_GROUP_BY_AXES,
+  DISCOUNT_SORT_FIELDS,
+  matchesDiscountQuery,
+} from './discountBrowserFields';
 import styles from './AdminDiscountManagementPage.module.css';
 
 /** Same list as DISCOUNT_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 function availableBranchIds(discount: Discount): string[] {
   return (discount.discount_branch_availability ?? [])
@@ -69,11 +99,13 @@ export function AdminDiscountManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [branchFilter, setBranchFilter] = useState('All');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
   const [search, setSearch] = useState('');
-  const [scopeTypeFilter, setScopeTypeFilter] =
-    useState<DiscountScopeTypeFilter>('All');
-  const [statusFilter, setStatusFilter] = useState<DiscountStatusFilter>('All');
+  // Epic B #85: this page deliberately renders as a list, not table rows or
+  // cards - keep that as the default, with Table/Board as opt-in
+  // alternatives rather than replacing it.
+  const [view, setView] = useState<ViewMode>('list');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDiscountId, setEditingDiscountId] = useState<string | null>(
@@ -173,49 +205,44 @@ export function AdminDiscountManagementPage() {
     [packages]
   );
 
-  const filteredDiscounts = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
-
-    return discounts.filter((discount) => {
-      if (
-        branchFilter !== 'All' &&
-        !availableBranchIds(discount).includes(branchFilter)
-      ) {
-        return false;
-      }
-
-      if (
-        scopeTypeFilter !== 'All' &&
-        discount.scope_type !== scopeTypeFilter
-      ) {
-        return false;
-      }
-
-      if (statusFilter === 'Active' && !discount.is_active) {
-        return false;
-      }
-
-      if (statusFilter === 'Inactive' && discount.is_active) {
-        return false;
-      }
-
-      if (searchTerm && !discount.name.toLowerCase().includes(searchTerm)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [discounts, branchFilter, scopeTypeFilter, statusFilter, search]);
-
-  const mandatedDiscounts = useMemo(
-    () => filteredDiscounts.filter((discount) => discount.is_mandated),
-    [filteredDiscounts]
+  const filterFields = useMemo(
+    () => buildDiscountFilterFields(branches),
+    [branches]
   );
 
-  const customDiscounts = useMemo(
-    () => filteredDiscounts.filter((discount) => !discount.is_mandated),
-    [filteredDiscounts]
+  const visibleDiscounts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? discounts.filter((discount) => matchesDiscountQuery(discount, query))
+      : discounts;
+    const filtered = applyDiscountFilters(searched, filterTiles);
+
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      DISCOUNT_COMPARATORS[deriveDiscountSortKey(sortTile)]
+    );
+  }, [discounts, search, filterTiles, sortTile]);
+
+  const groupedDiscounts = useGroupBy(
+    visibleDiscounts,
+    view === 'board' ? DISCOUNT_GROUP_BY_AXES[0] : null
   );
+
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   // A package is offered to the form's scope picker if it's available at
   // ANY of the currently selected branches - a discount can span several
@@ -563,25 +590,22 @@ export function AdminDiscountManagementPage() {
     );
   }
 
-  const renderDiscountRow = (discount: Discount) => (
-    <li key={discount.id} className={styles.discountRow}>
-      <div className={styles.discountMain}>
-        <span className={styles.discountName}>{discount.name}</span>
-        <span className={styles.scopeBadge}>
-          {discount.scope_type === 'service'
-            ? 'Service'
-            : discount.scope_type === 'package'
-              ? 'Package'
-              : 'Category'}
-        </span>
-        <span className={styles.discountMeta}>
-          {discount.discount_type === 'Percentage'
-            ? `${discount.value}%`
-            : `PHP ${discount.value.toFixed(2)}`}
-        </span>
-        <span className={styles.discountMeta}>{describeScope(discount)}</span>
-      </div>
+  function scopeTypeLabel(discount: Discount): string {
+    return discount.scope_type === 'service'
+      ? 'Service'
+      : discount.scope_type === 'package'
+        ? 'Package'
+        : 'Category';
+  }
 
+  function valueLabel(discount: Discount): string {
+    return discount.discount_type === 'Percentage'
+      ? `${discount.value}%`
+      : `PHP ${discount.value.toFixed(2)}`;
+  }
+
+  function renderDiscountActions(discount: Discount) {
+    return (
       <div className={styles.discountControls}>
         <MoreOptionsMenu
           label={`Actions for ${discount.name}`}
@@ -602,8 +626,67 @@ export function AdminDiscountManagementPage() {
           ]}
         />
       </div>
-    </li>
-  );
+    );
+  }
+
+  // Custom change (unify active/available): deliberately no Active/Inactive
+  // column - Branch Availability (the "..." menu) is the only control, and
+  // is_active is purely derived from it, not directly settable. Showing a
+  // status badge here would wrongly imply a direct toggle exists.
+  const columns: DataTableColumn<Discount>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (discount) => (
+        <span className={styles.discountName}>{discount.name}</span>
+      ),
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      render: (discount) => (
+        <span className={styles.scopeBadge}>
+          {discount.is_mandated ? 'Government-Mandated' : 'Custom'}
+        </span>
+      ),
+    },
+    {
+      id: 'scopeType',
+      header: 'Scope type',
+      render: (discount) => (
+        <span className={styles.scopeBadge}>{scopeTypeLabel(discount)}</span>
+      ),
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      render: (discount) => (
+        <span className={styles.discountMeta}>{valueLabel(discount)}</span>
+      ),
+    },
+    {
+      id: 'scopeDetail',
+      header: 'Scope',
+      render: (discount) => (
+        <span className={styles.discountMeta}>{describeScope(discount)}</span>
+      ),
+    },
+  ];
+
+  function renderDiscountCard(discount: Discount) {
+    return (
+      <div className={styles.discountMain}>
+        <span className={styles.discountName}>{discount.name}</span>
+        <span className={styles.scopeBadge}>
+          {discount.is_mandated ? 'Government-Mandated' : 'Custom'}
+        </span>
+        <span className={styles.scopeBadge}>{scopeTypeLabel(discount)}</span>
+        <span className={styles.discountMeta}>{valueLabel(discount)}</span>
+        <span className={styles.discountMeta}>{describeScope(discount)}</span>
+        {renderDiscountActions(discount)}
+      </div>
+    );
+  }
 
   return (
     <main className={styles.page}>
@@ -624,17 +707,28 @@ export function AdminDiscountManagementPage() {
         </p>
 
         <div className={styles.toolbar}>
-          <DiscountFilterBar
-            branches={branches}
-            branchFilter={branchFilter}
-            onBranchFilterChange={setBranchFilter}
-            search={search}
+          <FilterSortBar
+            filterFields={filterFields}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddFilter}
+            onChangeFilter={handleChangeFilter}
+            onRemoveFilter={handleRemoveFilter}
+            sortFields={DISCOUNT_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
             onSearchChange={setSearch}
-            scopeTypeFilter={scopeTypeFilter}
-            onScopeTypeFilterChange={setScopeTypeFilter}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-          />
+            searchPlaceholder="Search by name..."
+          >
+            <div className={styles.viewControls}>
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Discounts view"
+              />
+            </div>
+          </FilterSortBar>
 
           <button
             type="button"
@@ -811,37 +905,33 @@ export function AdminDiscountManagementPage() {
           ) : null}
         </Modal>
 
-        <section aria-labelledby="mandated-heading">
-          <h2 className={styles.sectionTitle} id="mandated-heading">
-            Government-Mandated
-          </h2>
-
-          {mandatedDiscounts.length === 0 ? (
-            <p className={styles.copy}>
-              No mandated discounts match the selected filters.
-            </p>
-          ) : (
-            <ul className={styles.discountList}>
-              {mandatedDiscounts.map(renderDiscountRow)}
-            </ul>
-          )}
-        </section>
-
-        <section aria-labelledby="custom-heading">
-          <h2 className={styles.sectionTitle} id="custom-heading">
-            Custom Discounts
-          </h2>
-
-          {customDiscounts.length === 0 ? (
-            <p className={styles.copy}>
-              No custom discounts match the selected filters.
-            </p>
-          ) : (
-            <ul className={styles.discountList}>
-              {customDiscounts.map(renderDiscountRow)}
-            </ul>
-          )}
-        </section>
+        {view === 'table' ? (
+          <DataTable
+            columns={columns}
+            rows={visibleDiscounts}
+            getRowKey={(discount) => discount.id}
+            renderRowActions={renderDiscountActions}
+            emptyMessage="No discounts match the selected filters."
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={visibleDiscounts}
+            getRowKey={(discount) => discount.id}
+            renderItem={renderDiscountCard}
+            emptyMessage="No discounts match the selected filters."
+          />
+        ) : (
+          <DataBoard
+            groups={groupedDiscounts}
+            getRowKey={(discount) => discount.id}
+            renderCard={(discount) => (
+              <div className={styles.discountRow}>
+                {renderDiscountCard(discount)}
+              </div>
+            )}
+            emptyColumnMessage="No discounts here."
+          />
+        )}
       </div>
 
       <BranchAvailabilityModal

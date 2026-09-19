@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -12,13 +13,25 @@ import {
 } from '../../api/maintenance.api';
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
@@ -33,13 +46,23 @@ import {
   type ServiceCategory,
   type UpdateServicePayload,
 } from '../../maintenance.types';
+import {
+  applyServiceFilters,
+  buildServiceFilterFields,
+  deriveServiceSortKey,
+  matchesServiceQuery,
+  SERVICE_COMPARATORS,
+  SERVICE_GROUP_BY_AXES,
+  SERVICE_SORT_FIELDS,
+} from './serviceBrowserFields';
 import styles from './AdminServicesPage.module.css';
 
-type ServiceSortKey = 'name-asc' | 'name-desc';
+type ViewMode = 'table' | 'list' | 'board';
 
-const SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
-  { value: 'name-asc', label: 'Name (A-Z)' },
-  { value: 'name-desc', label: 'Name (Z-A)' },
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
 function availableBranchIds(service: Service): string[] {
@@ -51,8 +74,6 @@ function availableBranchIds(service: Service): string[] {
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
-
-type StatusFilter = 'All' | 'Active' | 'Inactive';
 
 interface ServiceFormState {
   name: string;
@@ -134,16 +155,17 @@ export function AdminServicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [categoryFilter, setCategoryFilter] = useState<ServiceCategory | 'All'>(
-    'All'
-  );
-  const [branchFilter, setBranchFilter] = useState('All');
-  // Custom change (services/packages actions menu): the row-level global
-  // Disable toggle is gone - per-branch availability (below) is now the only
-  // UI-driven way to take a service off sale, since it already fully covers
-  // "unavailable everywhere" (a judgment call: is_active itself is still a
-  // real column, just no longer settable here post-creation).
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('Active');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    // Custom change (services/packages actions menu): the row-level global
+    // Disable toggle is gone - per-branch availability (below) is now the
+    // only UI-driven way to take a service off sale. The page has always
+    // defaulted to showing only active services - kept as a pre-added tile.
+    { fieldId: 'status', value: 'active' },
+  ]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(SERVICE_GROUP_BY_AXES[0].id);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -225,55 +247,46 @@ export function AdminServicesPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const searchSortComparators = useMemo(
-    () => ({
-      'name-asc': (a: Service, b: Service) => a.name.localeCompare(b.name),
-      'name-desc': (a: Service, b: Service) => b.name.localeCompare(a.name),
-    }),
-    []
+  const filterFields = useMemo(
+    () => buildServiceFilterFields(branches),
+    [branches]
   );
 
-  const {
-    search,
-    setSearch,
-    sortKey,
-    setSortKey,
-    result: searchedServices,
-  } = useSearchAndSort<Service, ServiceSortKey>({
-    items: services,
-    matchesQuery: (service, query) =>
-      service.name.toLowerCase().includes(query),
-    comparators: searchSortComparators,
-    initialSortKey: 'name-asc',
-  });
-
   const filteredServices = useMemo(() => {
-    return searchedServices.filter((service) => {
-      if (categoryFilter !== 'All' && service.category !== categoryFilter) {
-        return false;
-      }
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? services.filter((service) => matchesServiceQuery(service, query))
+      : services;
+    const filtered = applyServiceFilters(searched, filterTiles);
 
-      if (statusFilter === 'Active' && !service.is_active) {
-        return false;
-      }
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      SERVICE_COMPARATORS[deriveServiceSortKey(sortTile)]
+    );
+  }, [services, search, filterTiles, sortTile]);
 
-      if (statusFilter === 'Inactive' && service.is_active) {
-        return false;
-      }
+  const activeGroupAxis =
+    SERVICE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedServices = useGroupBy(
+    filteredServices,
+    view === 'board' ? activeGroupAxis : null
+  );
 
-      if (branchFilter !== 'All') {
-        const available = (service.service_branch_availability ?? []).some(
-          (row) => row.branch_id === branchFilter && row.is_available
-        );
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-        if (!available) {
-          return false;
-        }
-      }
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
 
-      return true;
-    });
-  }, [searchedServices, categoryFilter, branchFilter, statusFilter]);
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   const availabilityService = services.find(
     (service) => service.id === availabilityServiceId
@@ -542,6 +555,115 @@ export function AdminServicesPage() {
     closeForm();
   };
 
+  function renderServiceBadges(service: Service) {
+    return (
+      <>
+        {!service.requires_assessed_pet ? (
+          <span className={styles.categoryBadge}>No assessment required</span>
+        ) : null}
+        {service.category === 'Grooming' && service.use_pricing_matrix ? (
+          <span className={styles.categoryBadge}>Varies by weight/coat</span>
+        ) : null}
+        {service.min_nights_for_free_package && service.free_package_name ? (
+          <span className={styles.categoryBadge}>
+            {service.min_nights_for_free_package}+ nights: free{' '}
+            {service.free_package_name}
+          </span>
+        ) : null}
+        {service.category === 'Daycare' &&
+        service.first_hour_fee !== null &&
+        service.succeeding_hour_fee !== null ? (
+          <span className={styles.categoryBadge}>
+            PHP {service.first_hour_fee.toFixed(2)} first hr, PHP{' '}
+            {service.succeeding_hour_fee.toFixed(2)}/hr after
+          </span>
+        ) : null}
+        {service.category === 'Daycare' ? (
+          <span className={styles.categoryBadge}>
+            PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}/night if not
+            picked up
+          </span>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderServiceActions(service: Service) {
+    return (
+      <div className={styles.serviceControls}>
+        <MoreOptionsMenu
+          label={`Actions for ${service.name}`}
+          items={[
+            { label: 'Configure', onSelect: () => openEditForm(service) },
+            {
+              label: 'Branch Availability',
+              onSelect: () => setAvailabilityServiceId(service.id),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  const columns: DataTableColumn<Service>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (service) => {
+        const Icon = getServiceIcon(service.icon);
+        return (
+          <span className={styles.serviceMain}>
+            {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+            <span className={styles.serviceName}>{service.name}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      render: (service) => (
+        <span className={styles.categoryBadge}>{service.category}</span>
+      ),
+    },
+    {
+      id: 'price',
+      header: 'Price',
+      render: (service) =>
+        service.category !== 'Daycare' ? (
+          <span className={styles.servicePrice}>
+            PHP {service.base_price.toFixed(2)}
+          </span>
+        ) : null,
+    },
+    {
+      id: 'details',
+      header: 'Details',
+      render: (service) => (
+        <span className={styles.serviceMain}>
+          {renderServiceBadges(service)}
+        </span>
+      ),
+    },
+  ];
+
+  function renderServiceCard(service: Service) {
+    const Icon = getServiceIcon(service.icon);
+    return (
+      <div className={styles.serviceMain}>
+        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+        <span className={styles.serviceName}>{service.name}</span>
+        <span className={styles.categoryBadge}>{service.category}</span>
+        {service.category !== 'Daycare' ? (
+          <span className={styles.servicePrice}>
+            PHP {service.base_price.toFixed(2)}
+          </span>
+        ) : null}
+        {renderServiceBadges(service)}
+      </div>
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -599,67 +721,45 @@ export function AdminServicesPage() {
         <h1 className={styles.title}>Services</h1>
 
         <div className={styles.toolbar}>
-          <div className={styles.filters}>
-            <SearchSortBar
-              searchValue={search}
-              onSearchChange={setSearch}
-              searchPlaceholder="Search services..."
-              sortValue={sortKey}
-              onSortChange={setSortKey}
-              sortOptions={SORT_OPTIONS}
-            />
-
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Category</span>
-              <select
-                className={styles.filterSelect}
-                value={categoryFilter}
-                onChange={(event) =>
-                  setCategoryFilter(
-                    event.target.value as ServiceCategory | 'All'
-                  )
-                }
-              >
-                <option value="All">All categories</option>
-                {SERVICE_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Branch</span>
-              <select
-                className={styles.filterSelect}
-                value={branchFilter}
-                onChange={(event) => setBranchFilter(event.target.value)}
-              >
-                <option value="All">All branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Status</span>
-              <select
-                className={styles.filterSelect}
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as StatusFilter)
-                }
-              >
-                <option value="Active">Active only</option>
-                <option value="Inactive">Inactive only</option>
-                <option value="All">All</option>
-              </select>
-            </label>
-          </div>
+          <FilterSortBar
+            filterFields={filterFields}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddFilter}
+            onChangeFilter={handleChangeFilter}
+            onRemoveFilter={handleRemoveFilter}
+            sortFields={SERVICE_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search services..."
+          >
+            <div className={styles.filters}>
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Services view"
+              />
+              {view === 'board' ? (
+                <label className={styles.filterField}>
+                  <span className={styles.filterLabel}>Group by</span>
+                  <select
+                    className={styles.filterSelect}
+                    value={groupAxisId}
+                    onChange={(event) => setGroupAxisId(event.target.value)}
+                    aria-label="Group by"
+                  >
+                    {SERVICE_GROUP_BY_AXES.map((axis) => (
+                      <option key={axis.id} value={axis.id}>
+                        {axis.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          </FilterSortBar>
 
           <button
             type="button"
@@ -974,78 +1074,38 @@ export function AdminServicesPage() {
           ) : null}
         </Modal>
 
-        {filteredServices.length === 0 ? (
-          <p className={styles.copy}>No services match the selected filters.</p>
+        {view === 'table' ? (
+          <DataTable
+            columns={columns}
+            rows={filteredServices}
+            getRowKey={(service) => service.id}
+            renderRowActions={renderServiceActions}
+            emptyMessage="No services match the selected filters."
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={filteredServices}
+            getRowKey={(service) => service.id}
+            renderItem={(service) => (
+              <div className={styles.rowContent}>
+                {renderServiceCard(service)}
+                {renderServiceActions(service)}
+              </div>
+            )}
+            emptyMessage="No services match the selected filters."
+          />
         ) : (
-          <ul className={styles.serviceList}>
-            {filteredServices.map((service) => {
-              const Icon = getServiceIcon(service.icon);
-              return (
-                <li key={service.id} className={styles.serviceRow}>
-                  <div className={styles.serviceMain}>
-                    {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-                    <span className={styles.serviceName}>{service.name}</span>
-                    <span className={styles.categoryBadge}>
-                      {service.category}
-                    </span>
-                    {service.category !== 'Daycare' ? (
-                      <span className={styles.servicePrice}>
-                        PHP {service.base_price.toFixed(2)}
-                      </span>
-                    ) : null}
-                    {!service.requires_assessed_pet ? (
-                      <span className={styles.categoryBadge}>
-                        No assessment required
-                      </span>
-                    ) : null}
-                    {service.category === 'Grooming' &&
-                    service.use_pricing_matrix ? (
-                      <span className={styles.categoryBadge}>
-                        Varies by weight/coat
-                      </span>
-                    ) : null}
-                    {service.min_nights_for_free_package &&
-                    service.free_package_name ? (
-                      <span className={styles.categoryBadge}>
-                        {service.min_nights_for_free_package}+ nights: free{' '}
-                        {service.free_package_name}
-                      </span>
-                    ) : null}
-                    {service.category === 'Daycare' &&
-                    service.first_hour_fee !== null &&
-                    service.succeeding_hour_fee !== null ? (
-                      <span className={styles.categoryBadge}>
-                        PHP {service.first_hour_fee.toFixed(2)} first hr, PHP{' '}
-                        {service.succeeding_hour_fee.toFixed(2)}/hr after
-                      </span>
-                    ) : null}
-                    {service.category === 'Daycare' ? (
-                      <span className={styles.categoryBadge}>
-                        PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}
-                        /night if not picked up
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className={styles.serviceControls}>
-                    <MoreOptionsMenu
-                      label={`Actions for ${service.name}`}
-                      items={[
-                        {
-                          label: 'Configure',
-                          onSelect: () => openEditForm(service),
-                        },
-                        {
-                          label: 'Branch Availability',
-                          onSelect: () => setAvailabilityServiceId(service.id),
-                        },
-                      ]}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <DataBoard
+            groups={groupedServices}
+            getRowKey={(service) => service.id}
+            renderCard={(service) => (
+              <div className={styles.serviceRow}>
+                {renderServiceCard(service)}
+                {renderServiceActions(service)}
+              </div>
+            )}
+            emptyColumnMessage="No services here."
+          />
         )}
       </div>
 

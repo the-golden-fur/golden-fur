@@ -301,4 +301,115 @@ describe('AdminCagesPage', () => {
       )
     );
   });
+
+  it('searching narrows the visible cages', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: {
+        ...emptyGrid(),
+        S: [AVAILABLE_CAGE as never],
+        M: [OCCUPIED_CAGE as never],
+      },
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Makati-S-01');
+    expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Search cages...'), 'S-01');
+
+    expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
+    expect(screen.queryByText('Makati-M-01')).not.toBeInTheDocument();
+  });
+
+  it('adding a Size filter tile narrows the visible cages', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: {
+        ...emptyGrid(),
+        S: [AVAILABLE_CAGE as never],
+        M: [OCCUPIED_CAGE as never],
+      },
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Makati-S-01');
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Size' }));
+
+    // Size's default value is the first size option ('S').
+    expect(
+      screen.getByRole('button', { name: /Size: Small/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
+    expect(screen.queryByText('Makati-M-01')).not.toBeInTheDocument();
+  });
+
+  it('switches to List view and still shows every cage', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Makati-S-01');
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
+  });
+
+  it('switches to Board view, grouped by Status by default', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: {
+        ...emptyGrid(),
+        S: [AVAILABLE_CAGE as never],
+        M: [OCCUPIED_CAGE as never],
+      },
+      error: null,
+    });
+
+    const { container } = renderPage();
+    await screen.findByText('Makati-S-01');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+
+    // One column per CageStatus (Available, Occupied, Reserved, Under
+    // Maintenance), each cage under its own status column.
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(4);
+    expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
+    expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
+
+    // Re-grouping by Size (S, M, L, XL) still shows both cages.
+    await user.selectOptions(screen.getByLabelText('Group by'), 'size');
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(4);
+    expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
+    expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
+  });
 });

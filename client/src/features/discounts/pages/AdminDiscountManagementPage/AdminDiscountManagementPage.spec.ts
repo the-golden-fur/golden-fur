@@ -214,12 +214,16 @@ describe('AdminDiscountManagementPage', () => {
     expect(discountsApi.listDiscounts).not.toHaveBeenCalled();
   });
 
-  it('AC-1: shows Senior Citizen and PWD in a distinct Government-Mandated section', async () => {
+  it('AC-1: shows Senior Citizen and PWD, each badged Government-Mandated (combined list, session 110 remaster)', async () => {
     renderPage();
 
-    expect(await screen.findByText('Government-Mandated')).toBeInTheDocument();
-    expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
+    expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
+    // Both discounts in this test are mandated - one badge per row, no
+    // separate "Government-Mandated"/"Custom Discounts" sections any more
+    // (combined into one list + Type badge, per the Ideas backlog).
+    expect(screen.getAllByText('Government-Mandated')).toHaveLength(2);
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
     // Custom change (unify active/available): no row-level toggle and no
     // Active/Inactive badge - Branch Availability is the only control, and
     // is_active is purely derived from it.
@@ -228,10 +232,6 @@ describe('AdminDiscountManagementPage', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
     expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
-    expect(screen.getByText('Custom Discounts')).toBeInTheDocument();
-    expect(
-      screen.getByText('No custom discounts match the selected filters.')
-    ).toBeInTheDocument();
   });
 
   it("unify active/available: turning off a discount's only available branch makes Archive appear (is_active derives from availability, no Configure toggle needed)", async () => {
@@ -405,13 +405,13 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Search'), 'pwd');
+    await user.type(screen.getByPlaceholderText('Search by name...'), 'pwd');
 
     expect(screen.queryByText('Senior Citizen')).not.toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
   });
 
-  it('#85 AC-3: the scope-type filter narrows to Category', async () => {
+  it('#85 AC-3: the Scope filter tile narrows to Category', async () => {
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
       data: [
         buildDiscount(),
@@ -433,12 +433,37 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('Custom Service Discount')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Scope type'), 'category');
+    // Scope's default value is the first option (Service) - open the tile's
+    // popover and pick Category instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Scope' }));
+    await user.click(screen.getByRole('button', { name: /Scope: Service/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Scope filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Category' }));
 
     expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
     expect(
       screen.queryByText('Custom Service Discount')
     ).not.toBeInTheDocument();
+  });
+
+  it('switches to Table view, and Board view grouped by Type', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Senior Citizen');
+
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per Type (Government-Mandated, Custom).
+    expect(
+      screen.getAllByText('Government-Mandated').length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
+    expect(screen.getByText('PWD')).toBeInTheDocument();
   });
 
   it('#85 AC-5: existing Service- and Package-scoped discounts still display and function', async () => {

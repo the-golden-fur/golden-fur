@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataCalendar } from '../../../../shared/components/DataCalendar/DataCalendar';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import {
@@ -276,19 +277,8 @@ export function MonthlySchedulePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, selectedBranchId, year, month]);
 
-  const entriesByDate = useMemo(() => {
-    const map = new Map<string, BranchScheduleEntry[]>();
-    for (const entry of entries) {
-      const key = dateKeyFromDate(new Date(entry.start_time));
-      const bucket = map.get(key) ?? [];
-      bucket.push(entry);
-      map.set(key, bucket);
-    }
-    return map;
-  }, [entries]);
-
   // Staff Grid view: staff rows x date columns, one lookup per (staff, day)
-  // cell instead of re-filtering entriesByDate per staff on every render.
+  // cell instead of re-filtering entries per staff on every render.
   const entriesByStaffAndDate = useMemo(() => {
     const map = new Map<string, Map<string, BranchScheduleEntry[]>>();
     for (const entry of entries) {
@@ -331,12 +321,7 @@ export function MonthlySchedulePage() {
     [roster, modalStaffSearch, modalStaffRoleFilter, modalStaffSort]
   );
 
-  const leadingBlanks = new Date(year, month, 1).getDay();
   const totalDays = daysInMonth(year, month);
-  const cells: Array<number | null> = [
-    ...Array.from({ length: leadingBlanks }, () => null),
-    ...Array.from({ length: totalDays }, (_, index) => index + 1),
-  ];
 
   function goToPrevMonth() {
     if (month === 0) {
@@ -584,59 +569,34 @@ export function MonthlySchedulePage() {
         {isLoading ? (
           <p className={styles.copy}>Loading schedule...</p>
         ) : viewMode === 'calendar' ? (
-          <div className={styles.calendar}>
-            {WEEKDAY_HEADERS.map((label) => (
-              <div key={label} className={styles.weekdayHeader}>
-                {label}
-              </div>
-            ))}
-            {cells.map((day, index) => {
-              if (day === null) {
-                return (
-                  <div key={`blank-${index}`} className={styles.dayCellBlank} />
-                );
-              }
-
-              const key = dateKey(year, month, day);
-              const dayEntries = (entriesByDate.get(key) ?? []).filter(
-                (entry) => filteredRosterIds.has(entry.staff_id)
-              );
-
-              return (
-                <div key={key} className={styles.dayCell}>
-                  <div className={styles.dayCellHeader}>
-                    <span>{day}</span>
-                    <button
-                      type="button"
-                      className={styles.addButton}
-                      onClick={() => openAddPanel(day)}
-                      aria-label={`Add schedule entry on ${key}`}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className={styles.dayChips}>
-                    {dayEntries.map((entry) => (
-                      <button
-                        type="button"
-                        key={entry.id}
-                        className={`${styles.chip} ${
-                          styles[LEAVE_TYPE_CLASS[entry.leave_type]]
-                        }`}
-                        onClick={() => setSelectedEntry(entry)}
-                      >
-                        {entry.staff?.display_name ?? 'Staff'} -{' '}
-                        {entry.leave_type}
-                        {entry.status !== 'approved'
-                          ? ` (${entry.status})`
-                          : ''}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <DataCalendar
+            mode="month"
+            anchorDate={new Date(year, month, 1)}
+            onAnchorDateChange={(date) => {
+              setYear(date.getFullYear());
+              setMonth(date.getMonth());
+            }}
+            items={entries.filter((entry) =>
+              filteredRosterIds.has(entry.staff_id)
+            )}
+            getItemDate={(entry) => dateKeyFromDate(new Date(entry.start_time))}
+            getRowKey={(entry) => entry.id}
+            renderChip={(entry) => (
+              <button
+                type="button"
+                className={`${styles.chip} ${
+                  styles[LEAVE_TYPE_CLASS[entry.leave_type]]
+                }`}
+                onClick={() => setSelectedEntry(entry)}
+              >
+                {entry.staff?.display_name ?? 'Staff'} - {entry.leave_type}
+                {entry.status !== 'approved' ? ` (${entry.status})` : ''}
+              </button>
+            )}
+            onDayActivate={(key) => openAddPanel(Number(key.split('-')[2]))}
+            dayActivateLabel={(key) => `Add schedule entry on ${key}`}
+            showNav={false}
+          />
         ) : roster.length === 0 ? (
           <p className={styles.copy}>No staff at this branch yet.</p>
         ) : filteredRoster.length === 0 ? (

@@ -1458,6 +1458,43 @@ describe('CustomerBookingFlowPage', () => {
     expect(payload.scheduled_end).toBeTruthy();
   });
 
+  it('Notion-style remaster (session 110): a search box on the Services step narrows the option grid without affecting selection', async () => {
+    const TRIM_SERVICE = {
+      ...GROOMING_SERVICE,
+      id: 'service-trim-1',
+      name: 'Trim',
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, TRIM_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    expect(screen.getByText('Trim')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Search services...'), 'bath');
+
+    expect(screen.getByText('Bath')).toBeInTheDocument();
+    expect(screen.queryByText('Trim')).not.toBeInTheDocument();
+
+    // Selecting the still-visible service works exactly as before.
+    await user.click(screen.getByText('Bath'));
+    expect(screen.getByText('Bath').closest('button')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
   it("shows each service's duration and an estimated-duration total on the Services step", async () => {
     const user = userEvent.setup();
     renderPage();

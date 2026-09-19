@@ -611,6 +611,15 @@ export function CustomerBookingFlowPage() {
   const [selectionMode, setSelectionMode] = useState<'service' | 'package'>(
     'service'
   );
+  // Notion-style remaster (session 110), lighter treatment: a plain search
+  // box over the services/packages step's own option grid - this is a
+  // single booking-session selection step, not a persistent "browse
+  // records" list, so search alone (no filter pills/sort/group/view
+  // switcher) is the proportionate amount of the pattern to bring here. See
+  // visibleServicesForCategory/visiblePackagesForCategory below - the
+  // underlying servicesForCategory/packagesForCategory (and everything
+  // derived from them, like pricing) are untouched.
+  const [itemSearch, setItemSearch] = useState('');
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
   // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
@@ -1461,6 +1470,30 @@ export function CustomerBookingFlowPage() {
         )
       ),
     [packages, allServices, category]
+  );
+
+  // Search-narrowed views of the two arrays above, for the option grid only
+  // - servicesForCategory/packagesForCategory themselves stay the full,
+  // unfiltered list (the Package-tab visibility check and every pricing/
+  // duration calculation still read from those, untouched).
+  const itemSearchQuery = itemSearch.trim().toLowerCase();
+  const visibleServicesForCategory = useMemo(
+    () =>
+      itemSearchQuery
+        ? servicesForCategory.filter((service) =>
+            service.name.toLowerCase().includes(itemSearchQuery)
+          )
+        : servicesForCategory,
+    [servicesForCategory, itemSearchQuery]
+  );
+  const visiblePackagesForCategory = useMemo(
+    () =>
+      itemSearchQuery
+        ? packagesForCategory.filter((pkg) =>
+            pkg.name.toLowerCase().includes(itemSearchQuery)
+          )
+        : packagesForCategory,
+    [packagesForCategory, itemSearchQuery]
   );
 
   // Hotel (one cage) and Daycare (one session) only ever hold a single item;
@@ -3229,14 +3262,32 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {category &&
+            (servicesForCategory.length > 1 ||
+              packagesForCategory.length > 1) ? (
+              <input
+                className={styles.itemSearchInput}
+                type="search"
+                placeholder={
+                  selectionMode === 'service'
+                    ? 'Search services...'
+                    : 'Search packages...'
+                }
+                value={itemSearch}
+                onChange={(event) => setItemSearch(event.target.value)}
+              />
+            ) : null}
+
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
                   <p className={styles.copy}>
                     No {category} services available at this branch.
                   </p>
+                ) : visibleServicesForCategory.length === 0 ? (
+                  <p className={styles.copy}>No services match your search.</p>
                 ) : null}
-                {servicesForCategory.map((service) => {
+                {visibleServicesForCategory.map((service) => {
                   const isRecommendedCage =
                     category === 'Hotel' &&
                     selectedPet?.weight_class != null &&
@@ -3312,7 +3363,11 @@ export function CustomerBookingFlowPage() {
 
             {category && selectionMode === 'package' ? (
               <div className={styles.optionGrid}>
-                {packagesForCategory.map((pkg) => {
+                {packagesForCategory.length > 0 &&
+                visiblePackagesForCategory.length === 0 ? (
+                  <p className={styles.copy}>No packages match your search.</p>
+                ) : null}
+                {visiblePackagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
 
                   return (

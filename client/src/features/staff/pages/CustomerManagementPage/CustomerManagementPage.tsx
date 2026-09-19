@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import {
   activateCustomer,
   archiveCustomer,
@@ -15,6 +22,14 @@ import { CustomerRowActionMenu } from '../../../customers/components/menus/Custo
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { listStaff } from '../../api/staff.api';
 import { NewWalkInCustomerForm } from '../../components/forms/NewWalkInCustomerForm/NewWalkInCustomerForm';
+import {
+  applyCustomerFilters,
+  CUSTOMER_COMPARATORS,
+  CUSTOMER_FILTER_FIELDS,
+  CUSTOMER_SORT_FIELDS,
+  deriveCustomerSortKey,
+  matchesCustomerQuery,
+} from './customerBrowserFields';
 import styles from './CustomerManagementPage.module.css';
 
 /**
@@ -57,6 +72,10 @@ export function CustomerManagementPage() {
   const [isPetsLoading, setIsPetsLoading] = useState(false);
   const [petsLoadError, setPetsLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
 
   // Same trick as StaffManagementPage: the viewer's app-level role isn't on
   // the Supabase session, so it's read off their own row in the staff list
@@ -176,6 +195,109 @@ export function CustomerManagementPage() {
     setMessage('Customer archived.');
   }
 
+  const visibleCustomers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? customers.filter((customer) => matchesCustomerQuery(customer, query))
+      : customers;
+    const filtered = applyCustomerFilters(searched, filterTiles);
+
+    // No sort tile means "keep fetch order" rather than imposing a default.
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      CUSTOMER_COMPARATORS[deriveCustomerSortKey(sortTile)]
+    );
+  }, [customers, search, filterTiles, sortTile]);
+
+  function handleAddFilter(fieldId: string) {
+    const field = CUSTOMER_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function renderCustomerItem(customer: CustomerProfile) {
+    return (
+      <>
+        <div className={styles.customerRow}>
+          <span className={styles.customerName}>{customer.full_name}</span>
+          <span className={styles.customerEmail}>{customer.account_email}</span>
+          <CustomerRowActionMenu
+            onSelect={(action) => handleSelectAction(customer.id, action)}
+            canArchive={viewerRole === 'Admin' || viewerRole === 'Superadmin'}
+            isActive={customer.is_active}
+          />
+        </div>
+
+        {activePanel?.customerId === customer.id &&
+        activePanel.action === 'checkProfile' ? (
+          <dl className={styles.profileDetails}>
+            <div className={styles.detail}>
+              <dt className={styles.detailLabel}>Contact number</dt>
+              <dd className={styles.detailValue}>
+                {customer.contact_number ?? '—'}
+              </dd>
+            </div>
+            <div className={styles.detail}>
+              <dt className={styles.detailLabel}>Emergency contact</dt>
+              <dd className={styles.detailValue}>
+                {customer.emergency_contact_name ?? '—'}
+                {customer.emergency_contact_number
+                  ? ` (${customer.emergency_contact_number})`
+                  : ''}
+              </dd>
+            </div>
+            <div className={styles.detail}>
+              <dt className={styles.detailLabel}>Preferred communication</dt>
+              <dd className={styles.detailValue}>
+                {customer.preferred_communication_channel ?? '—'}
+              </dd>
+            </div>
+          </dl>
+        ) : null}
+
+        {activePanel?.customerId === customer.id &&
+        activePanel.action === 'viewPets' ? (
+          isPetsLoading ? (
+            <p className={styles.copy}>Loading pets...</p>
+          ) : petsLoadError ? (
+            <p className={styles.errorBanner} role="alert">
+              {petsLoadError}
+            </p>
+          ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
+            <p className={styles.copy}>No pets on file yet.</p>
+          ) : (
+            <div className={styles.petsGrid}>
+              {(petsByCustomer[customer.id] ?? []).map((pet) => (
+                <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
+              ))}
+            </div>
+          )
+        ) : null}
+
+        {activePanel?.customerId === customer.id &&
+        activePanel.action === 'addPet' &&
+        accessToken ? (
+          <PetForm
+            customerId={customer.id}
+            accessToken={accessToken}
+            onCreated={(pet) => handlePetCreated(customer.id, pet)}
+            isStaff
+          />
+        ) : null}
+      </>
+    );
+  }
+
   function handleSelectAction(customerId: string, action: CustomerRowAction) {
     if (action === 'deactivate') {
       const customer = customers.find((existing) => existing.id === customerId);
@@ -271,92 +393,28 @@ export function CustomerManagementPage() {
         ) : customers.length === 0 ? (
           <p className={styles.copy}>No customers on file yet.</p>
         ) : (
-          <ul className={styles.list}>
-            {customers.map((customer) => (
-              <li className={styles.listItem} key={customer.id}>
-                <div className={styles.customerRow}>
-                  <span className={styles.customerName}>
-                    {customer.full_name}
-                  </span>
-                  <span className={styles.customerEmail}>
-                    {customer.account_email}
-                  </span>
-                  <CustomerRowActionMenu
-                    onSelect={(action) =>
-                      handleSelectAction(customer.id, action)
-                    }
-                    canArchive={
-                      viewerRole === 'Admin' || viewerRole === 'Superadmin'
-                    }
-                    isActive={customer.is_active}
-                  />
-                </div>
+          <>
+            <FilterSortBar
+              filterFields={CUSTOMER_FILTER_FIELDS}
+              filterTiles={filterTiles}
+              onAddFilter={handleAddFilter}
+              onChangeFilter={handleChangeFilter}
+              onRemoveFilter={handleRemoveFilter}
+              sortFields={CUSTOMER_SORT_FIELDS}
+              sortTile={sortTile}
+              onChangeSort={setSortTile}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search customers..."
+            />
 
-                {activePanel?.customerId === customer.id &&
-                activePanel.action === 'checkProfile' ? (
-                  <dl className={styles.profileDetails}>
-                    <div className={styles.detail}>
-                      <dt className={styles.detailLabel}>Contact number</dt>
-                      <dd className={styles.detailValue}>
-                        {customer.contact_number ?? '—'}
-                      </dd>
-                    </div>
-                    <div className={styles.detail}>
-                      <dt className={styles.detailLabel}>Emergency contact</dt>
-                      <dd className={styles.detailValue}>
-                        {customer.emergency_contact_name ?? '—'}
-                        {customer.emergency_contact_number
-                          ? ` (${customer.emergency_contact_number})`
-                          : ''}
-                      </dd>
-                    </div>
-                    <div className={styles.detail}>
-                      <dt className={styles.detailLabel}>
-                        Preferred communication
-                      </dt>
-                      <dd className={styles.detailValue}>
-                        {customer.preferred_communication_channel ?? '—'}
-                      </dd>
-                    </div>
-                  </dl>
-                ) : null}
-
-                {activePanel?.customerId === customer.id &&
-                activePanel.action === 'viewPets' ? (
-                  isPetsLoading ? (
-                    <p className={styles.copy}>Loading pets...</p>
-                  ) : petsLoadError ? (
-                    <p className={styles.errorBanner} role="alert">
-                      {petsLoadError}
-                    </p>
-                  ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
-                    <p className={styles.copy}>No pets on file yet.</p>
-                  ) : (
-                    <div className={styles.petsGrid}>
-                      {(petsByCustomer[customer.id] ?? []).map((pet) => (
-                        <PetCard
-                          key={pet.id}
-                          pet={pet}
-                          linkBasePath="/staff/pets"
-                        />
-                      ))}
-                    </div>
-                  )
-                ) : null}
-
-                {activePanel?.customerId === customer.id &&
-                activePanel.action === 'addPet' &&
-                accessToken ? (
-                  <PetForm
-                    customerId={customer.id}
-                    accessToken={accessToken}
-                    onCreated={(pet) => handlePetCreated(customer.id, pet)}
-                    isStaff
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
+            <DataList
+              items={visibleCustomers}
+              getRowKey={(customer) => customer.id}
+              renderItem={renderCustomerItem}
+              emptyMessage="No customers match your search/filter."
+            />
+          </>
         )}
       </div>
     </main>

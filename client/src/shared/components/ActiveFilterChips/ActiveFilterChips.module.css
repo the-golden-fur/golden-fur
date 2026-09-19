@@ -27,6 +27,31 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Hover/focus-revealed, matching FilterTile's pill convention across the
+   rest of the app - stays in the DOM/a11y tree/tab order at all times
+   (opacity, not display). */
+.icon {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chip:hover .icon,
+.chip:focus-visible .icon {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .icon {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon {
+    transition: none;
+  }
+}
+
 .srOnly {
   composes: sr-only from global;
 }

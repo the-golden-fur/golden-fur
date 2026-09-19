@@ -1,6 +1,24 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   archiveSpinWheelReward,
@@ -15,12 +33,29 @@ import type {
   SpinWheelConfig,
   SpinWheelReward,
 } from '../../rewards.types';
+import {
+  applyRewardFilters,
+  deriveRewardSortKey,
+  matchesRewardQuery,
+  REWARD_COMPARATORS,
+  REWARD_FILTER_FIELDS,
+  REWARD_GROUP_BY_AXES,
+  REWARD_SORT_FIELDS,
+} from './rewardBrowserFields';
 import styles from './AdminSpinWheelConfigPage.module.css';
 
 /** Same list as REWARDS_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 /** Admin config for the coupon spin wheel (session 86): the
  * milestone/spend/pity thresholds, and CRUD on the reward pool - each
@@ -50,6 +85,12 @@ export function AdminSpinWheelConfigPage() {
   const [rewardRarity, setRewardRarity] = useState('');
   const [rewardFormError, setRewardFormError] = useState<string | null>(null);
   const [isSavingReward, setIsSavingReward] = useState(false);
+
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(REWARD_GROUP_BY_AXES[0].id);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -201,6 +242,106 @@ export function AdminSpinWheelConfigPage() {
     setMessage('Reward archived.');
   };
 
+  const visibleRewards = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? rewards.filter((reward) => matchesRewardQuery(reward, query))
+      : rewards;
+    const filtered = applyRewardFilters(searched, filterTiles);
+
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      REWARD_COMPARATORS[deriveRewardSortKey(sortTile)]
+    );
+  }, [rewards, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    REWARD_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedRewards = useGroupBy(
+    visibleRewards,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = REWARD_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function rewardValueLabel(reward: SpinWheelReward): string {
+    return reward.discount_type === 'Percentage'
+      ? `${reward.value}%`
+      : `PHP ${reward.value}`;
+  }
+
+  function renderRewardActions(reward: SpinWheelReward) {
+    return (
+      <span className={styles.rewardActions}>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={() => void handleToggleActive(reward)}
+        >
+          {reward.is_active ? 'Deactivate' : 'Activate'}
+        </button>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={() => void handleArchive(reward)}
+        >
+          Archive
+        </button>
+      </span>
+    );
+  }
+
+  const rewardColumns: DataTableColumn<SpinWheelReward>[] = [
+    { id: 'label', header: 'Label', render: (reward) => reward.label },
+    {
+      id: 'discountType',
+      header: 'Discount type',
+      render: (reward) => reward.discount_type,
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      render: (reward) => rewardValueLabel(reward),
+    },
+    {
+      id: 'rarity',
+      header: 'Rarity',
+      render: (reward) => `${reward.rarity_percent}%`,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (reward) => (reward.is_active ? 'Active' : 'Inactive'),
+    },
+  ];
+
+  function renderRewardCard(reward: SpinWheelReward) {
+    return (
+      <>
+        <span>
+          {reward.label} - {rewardValueLabel(reward)} off -{' '}
+          {reward.rarity_percent}% chance
+          {reward.is_active ? '' : ' (inactive)'}
+        </span>
+        {renderRewardActions(reward)}
+      </>
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -309,35 +450,77 @@ export function AdminSpinWheelConfigPage() {
             the wheel to work).
           </p>
 
-          <ul className={styles.rewardList}>
-            {rewards.map((reward) => (
-              <li key={reward.id} className={styles.rewardCard}>
-                <span>
-                  {reward.label} -{' '}
-                  {reward.discount_type === 'Percentage'
-                    ? `${reward.value}%`
-                    : `PHP ${reward.value}`}{' '}
-                  off - {reward.rarity_percent}% chance
-                </span>
-                <span className={styles.rewardActions}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => void handleToggleActive(reward)}
+          <FilterSortBar
+            filterFields={REWARD_FILTER_FIELDS}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddFilter}
+            onChangeFilter={handleChangeFilter}
+            onRemoveFilter={handleRemoveFilter}
+            sortFields={REWARD_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search rewards..."
+          >
+            <div className={styles.viewControls}>
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Reward pool view"
+              />
+              {view === 'board' ? (
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Group by</span>
+                  <select
+                    className={styles.input}
+                    value={groupAxisId}
+                    onChange={(event) => setGroupAxisId(event.target.value)}
+                    aria-label="Group by"
                   >
-                    {reward.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => void handleArchive(reward)}
-                  >
-                    Archive
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
+                    {REWARD_GROUP_BY_AXES.map((axis) => (
+                      <option key={axis.id} value={axis.id}>
+                        {axis.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          </FilterSortBar>
+
+          {view === 'table' ? (
+            <DataTable
+              columns={rewardColumns}
+              rows={visibleRewards}
+              getRowKey={(reward) => reward.id}
+              renderRowActions={renderRewardActions}
+              emptyMessage="No rewards match this filter."
+            />
+          ) : view === 'list' ? (
+            <DataList
+              items={visibleRewards}
+              getRowKey={(reward) => reward.id}
+              renderItem={(reward) => (
+                <div className={styles.rewardRow}>
+                  {renderRewardCard(reward)}
+                </div>
+              )}
+              emptyMessage="No rewards match this filter."
+            />
+          ) : (
+            <DataBoard
+              groups={groupedRewards}
+              getRowKey={(reward) => reward.id}
+              renderCard={(reward) => (
+                <div className={styles.rewardCard}>
+                  {renderRewardCard(reward)}
+                </div>
+              )}
+              emptyColumnMessage="No rewards here."
+            />
+          )}
 
           <h3 className={styles.subheading}>Add a reward</h3>
           <form className={styles.form} onSubmit={handleRewardSubmit}>
