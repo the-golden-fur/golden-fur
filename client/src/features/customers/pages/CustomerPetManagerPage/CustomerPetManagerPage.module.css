@@ -37,6 +37,62 @@
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.filterField {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.filterLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+}
+
+.listRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.petLink {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.petLink:hover {
+  text-decoration: underline;
+}
+
+.petTypeBadge,
+.assessmentBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
+}
+
 .button {
   border: 0;
   border-radius: var(--radius-pill);
