@@ -227,7 +227,9 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('15% off')).toBeInTheDocument();
     expect(screen.getByText('2026-08-01 to 2026-08-31')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    // "Active" also appears in the default "Status: Active" filter pill now
+    // - at least one match (the card's own badge) is the right bar.
+    expect(screen.getAllByText('Active').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
@@ -305,7 +307,7 @@ describe('AdminPromoConfigPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('branch filter narrows the list without navigating', async () => {
+  it('a Branch filter tile narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         buildPromo(),
@@ -330,9 +332,16 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(await screen.findByText('Makati Only Deal')).toBeInTheDocument();
 
-    await user.selectOptions(
-      screen.getByLabelText('Branch'),
-      'branch-southwoods'
+    // Branch defaults to the first branch (Makati) - open the tile's
+    // popover and pick Southwoods instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
+    await user.click(
+      screen.getByRole('button', { name: /Branch: Makati/ })
+    );
+    const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
+    await user.click(
+      within(popover).getByRole('option', { name: 'Southwoods' })
     );
 
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
@@ -351,13 +360,13 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('Winter Deal')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Search'), 'winter');
+    await user.type(screen.getByPlaceholderText('Search promos...'), 'winter');
 
     expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     expect(screen.getByText('Winter Deal')).toBeInTheDocument();
   });
 
-  it('the timing filter narrows to Ended promos', async () => {
+  it('a Timing filter tile narrows to Ended promos', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         // Far-future end date so "Summer Sale" is never itself Ended,
@@ -379,7 +388,15 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('Old Deal')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Timing'), 'Ended');
+    // Timing defaults to the first option (Upcoming) - open the tile's
+    // popover and pick Ended instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Timing' }));
+    await user.click(
+      screen.getByRole('button', { name: /Timing: Upcoming/ })
+    );
+    const popover = screen.getByRole('dialog', { name: 'Edit Timing filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Ended' }));
 
     expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     expect(screen.getByText('Old Deal')).toBeInTheDocument();
@@ -480,6 +497,74 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('25% off')).toBeInTheDocument();
   });
 
+  it('Gallery is the default view, and Table/List are available alongside it', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('Summer Sale')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('15% off')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Summer Sale').closest('ul')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Gallery' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+  });
+
+  it('Table view: the status toggle and "..." actions work the same as Gallery', async () => {
+    vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
+      data: buildPromo({ is_active: false }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+
+    await user.click(
+      screen.getByRole('switch', { name: 'Disable Summer Sale' })
+    );
+
+    await waitFor(() => {
+      expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
+        'promo-1',
+        'token',
+        { is_active: false }
+      );
+    });
+  });
+
+  it('List view: name, timing, value, window, and status all show, and "..." actions work', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'List' }));
+
+    const list = screen.getByText('Summer Sale').closest('ul') as HTMLElement;
+    expect(within(list).getByText('Summer Sale')).toBeInTheDocument();
+    expect(within(list).getByText('15% off')).toBeInTheDocument();
+    expect(
+      within(list).getByText('2026-08-01 to 2026-08-31')
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(list).getByRole('button', { name: 'Actions for Summer Sale' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    ).toBeInTheDocument();
+  });
+
   it('the status toggle activates/deactivates a promo without a full page reload', async () => {
     vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
       data: buildPromo({ is_active: false }),
@@ -501,16 +586,23 @@ describe('AdminPromoConfigPage', () => {
       );
     });
 
-    // Default status filter is "Active only", so the card disappears...
+    // Default status filter is "Active only" (a pre-added Status tile), so
+    // the card disappears...
     await waitFor(() => {
       expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     });
 
-    // ...and switching to Inactive shows it again with the Inactive badge.
-    await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
+    // ...and switching the tile to Inactive shows it again with the
+    // Inactive badge.
+    await user.click(screen.getByRole('button', { name: /Status: Active/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Status filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
+
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+    // "Inactive" now also appears in the "Status: Inactive" pill - at least
+    // one match (the card's own badge) is the right bar.
     expect(
-      screen.getByText('Inactive', { selector: 'span' })
-    ).toBeInTheDocument();
+      screen.getAllByText('Inactive', { selector: 'span' }).length
+    ).toBeGreaterThanOrEqual(1);
   });
 });
