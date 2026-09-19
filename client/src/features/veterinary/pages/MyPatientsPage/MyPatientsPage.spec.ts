@@ -6,7 +6,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as customerApi from '../../../customers/api/customer.api';
-import type { CustomerProfile, Pet, PetTypeRow } from '../../../customers/customer.types';
+import type {
+  CustomerProfile,
+  Pet,
+  PetTypeRow,
+} from '../../../customers/customer.types';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as vetApi from '../../api/veterinary.api';
 import type { VeterinarianPatient } from '../../veterinary.types';
@@ -68,7 +72,9 @@ function buildPet(overrides: Partial<Pet> = {}): Pet {
   };
 }
 
-function buildCustomer(overrides: Partial<CustomerProfile> = {}): CustomerProfile {
+function buildCustomer(
+  overrides: Partial<CustomerProfile> = {}
+): CustomerProfile {
   return {
     id: 'cust-1',
     full_name: 'Jane Dela Cruz',
@@ -159,7 +165,13 @@ describe('MyPatientsPage', () => {
 
   it('lists patients with their owner and last visit date', async () => {
     stubDefaults(
-      [{ pet_id: 'pet-1', customer_id: 'cust-1', last_visit_at: '2026-01-05T00:00:00.000Z' }],
+      [
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+      ],
       { 'pet-1': buildPet({ name: 'Buddy' }) },
       { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
     );
@@ -173,12 +185,29 @@ describe('MyPatientsPage', () => {
   it('Notion-style remaster (session 110): a search box narrows by pet or owner name', async () => {
     stubDefaults(
       [
-        { pet_id: 'pet-1', customer_id: 'cust-1', last_visit_at: '2026-01-05T00:00:00.000Z' },
-        { pet_id: 'pet-2', customer_id: 'cust-2', last_visit_at: '2026-01-06T00:00:00.000Z' },
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+        {
+          pet_id: 'pet-2',
+          customer_id: 'cust-2',
+          last_visit_at: '2026-01-06T00:00:00.000Z',
+        },
       ],
       {
-        'pet-1': buildPet({ id: 'pet-1', name: 'Buddy', customer_id: 'cust-1' }),
-        'pet-2': buildPet({ id: 'pet-2', name: 'Whiskers', customer_id: 'cust-2', pet_type: 'cat' }),
+        'pet-1': buildPet({
+          id: 'pet-1',
+          name: 'Buddy',
+          customer_id: 'cust-1',
+        }),
+        'pet-2': buildPet({
+          id: 'pet-2',
+          name: 'Whiskers',
+          customer_id: 'cust-2',
+          pet_type: 'cat',
+        }),
       },
       {
         'cust-1': buildCustomer({ id: 'cust-1', full_name: 'Jane Dela Cruz' }),
@@ -204,12 +233,30 @@ describe('MyPatientsPage', () => {
   it('a Pet Type filter tile narrows the roster', async () => {
     stubDefaults(
       [
-        { pet_id: 'pet-1', customer_id: 'cust-1', last_visit_at: '2026-01-05T00:00:00.000Z' },
-        { pet_id: 'pet-2', customer_id: 'cust-2', last_visit_at: '2026-01-06T00:00:00.000Z' },
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+        {
+          pet_id: 'pet-2',
+          customer_id: 'cust-2',
+          last_visit_at: '2026-01-06T00:00:00.000Z',
+        },
       ],
       {
-        'pet-1': buildPet({ id: 'pet-1', name: 'Buddy', customer_id: 'cust-1', pet_type: 'dog' }),
-        'pet-2': buildPet({ id: 'pet-2', name: 'Whiskers', customer_id: 'cust-2', pet_type: 'cat' }),
+        'pet-1': buildPet({
+          id: 'pet-1',
+          name: 'Buddy',
+          customer_id: 'cust-1',
+          pet_type: 'dog',
+        }),
+        'pet-2': buildPet({
+          id: 'pet-2',
+          name: 'Whiskers',
+          customer_id: 'cust-2',
+          pet_type: 'cat',
+        }),
       },
       {
         'cust-1': buildCustomer({ id: 'cust-1', full_name: 'Jane Dela Cruz' }),
@@ -233,7 +280,13 @@ describe('MyPatientsPage', () => {
 
   it('selecting a patient from its "..." menu loads and shows their consultation history', async () => {
     stubDefaults(
-      [{ pet_id: 'pet-1', customer_id: 'cust-1', last_visit_at: '2026-01-05T00:00:00.000Z' }],
+      [
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+      ],
       { 'pet-1': buildPet({ name: 'Buddy' }) },
       { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
     );
@@ -257,6 +310,8 @@ describe('MyPatientsPage', () => {
         'token'
       )
     );
-    expect(await screen.findByText('Owner: Jane Dela Cruz')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Owner: Jane Dela Cruz')
+    ).toBeInTheDocument();
   });
 });

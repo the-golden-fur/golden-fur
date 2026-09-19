@@ -49,8 +49,7 @@ export function buildPromoFilterFields(
     defaultValue: TIMING_OPTIONS[0].value,
     options: TIMING_OPTIONS,
     formatValue: (value) =>
-      TIMING_OPTIONS.find((option) => option.value === value)?.label ??
-      'Any',
+      TIMING_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
   };
 
   const statusField: FilterField = {
@@ -62,14 +61,17 @@ export function buildPromoFilterFields(
     defaultValue: 'active',
     options: STATUS_OPTIONS,
     formatValue: (value) =>
-      STATUS_OPTIONS.find((option) => option.value === value)?.label ??
-      'Any',
+      STATUS_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
   };
 
   return [branchField, timingField, statusField];
 }
 
-export type PromoSortKey = 'name-asc' | 'name-desc' | 'value-desc' | 'value-asc';
+export type PromoSortKey =
+  | 'name-asc'
+  | 'name-desc'
+  | 'value-desc'
+  | 'value-asc';
 
 export const PROMO_SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -114,21 +116,30 @@ export function matchesPromoQuery(promo: Promo, query: string): boolean {
 
 /** Every filter tile here is client-side only, reproducing the page's old
  * `filteredPromos` useMemo as a pure, independently-testable function. */
-export function applyPromoFilters(promos: Promo[], tiles: FilterTile[]): Promo[] {
+export function applyPromoFilters(
+  promos: Promo[],
+  tiles: FilterTile[]
+): Promo[] {
   let result = promos;
 
   for (const tile of tiles) {
-    if (tile.fieldId === 'branch' && typeof tile.value === 'string' && tile.value) {
+    if (
+      tile.fieldId === 'branch' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
       const branchId = tile.value;
       result = result.filter((promo) =>
         availableBranchIds(promo).includes(branchId)
       );
     }
 
-    if (tile.fieldId === 'timing' && typeof tile.value === 'string' && tile.value) {
-      result = result.filter(
-        (promo) => getPromoTiming(promo) === tile.value
-      );
+    if (
+      tile.fieldId === 'timing' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
+      result = result.filter((promo) => getPromoTiming(promo) === tile.value);
     }
 
     if (tile.fieldId === 'status' && typeof tile.value === 'string') {

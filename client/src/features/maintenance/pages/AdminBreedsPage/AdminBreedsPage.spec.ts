@@ -277,7 +277,9 @@ describe('AdminBreedsPage', () => {
     await vi.waitFor(() =>
       expect(deleteBreedAdmin).toHaveBeenCalledWith('breed-1', 'token')
     );
-    expect(await screen.findByText('No breeds match this filter.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No breeds match this filter.')
+    ).toBeInTheDocument();
   });
 
   it('surfaces a 409 error when deleting a breed still in use', async () => {

@@ -54,7 +54,11 @@ describe('applyDiscountFilters', () => {
       is_active: false,
       scope_type: 'service',
       discount_branch_availability: [
-        { discount_id: '2', branch_id: 'branch-southwoods', is_available: false },
+        {
+          discount_id: '2',
+          branch_id: 'branch-southwoods',
+          is_available: false,
+        },
       ],
     }),
   ];

@@ -16,7 +16,9 @@ vi.mock('../../api/catalog.api', () => ({
   archiveCustomerCatalogItem: vi.fn(),
 }));
 
-function buildItem(overrides: Partial<ProductCatalogItem> = {}): ProductCatalogItem {
+function buildItem(
+  overrides: Partial<ProductCatalogItem> = {}
+): ProductCatalogItem {
   return {
     id: 'item-1',
     name: 'Chicken kibble',
@@ -205,9 +207,9 @@ describe('CustomerFoodMedicationPage', () => {
     await screen.findByText('Chicken kibble');
     await user.click(screen.getByRole('button', { name: 'Board' }));
 
-    expect(
-      container.querySelectorAll('section[class*="column"]')
-    ).toHaveLength(2);
+    expect(container.querySelectorAll('section[class*="column"]')).toHaveLength(
+      2
+    );
     expect(screen.getByText(/Chicken kibble/)).toBeInTheDocument();
     expect(screen.getByText(/Amoxicillin/)).toBeInTheDocument();
   });

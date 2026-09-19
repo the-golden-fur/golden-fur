@@ -1482,10 +1482,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     expect(screen.getByText('Trim')).toBeInTheDocument();
 
-    await user.type(
-      screen.getByPlaceholderText('Search services...'),
-      'bath'
-    );
+    await user.type(screen.getByPlaceholderText('Search services...'), 'bath');
 
     expect(screen.getByText('Bath')).toBeInTheDocument();
     expect(screen.queryByText('Trim')).not.toBeInTheDocument();

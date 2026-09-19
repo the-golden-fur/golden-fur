@@ -12,7 +12,10 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
-function distinctValues(items: CatalogItem[], key: 'category' | 'service_scope'): string[] {
+function distinctValues(
+  items: CatalogItem[],
+  key: 'category' | 'service_scope'
+): string[] {
   return Array.from(new Set(items.map((item) => item[key]))).sort((a, b) =>
     a.localeCompare(b)
   );
@@ -30,8 +33,12 @@ export function buildCatalogFilterFields(items: CatalogItem[]): FilterField[] {
     label: 'Category',
     type: 'select',
     defaultValue: categories[0] ?? '',
-    options: categories.map((category) => ({ value: category, label: category })),
-    formatValue: (value) => (typeof value === 'string' && value ? value : 'Any'),
+    options: categories.map((category) => ({
+      value: category,
+      label: category,
+    })),
+    formatValue: (value) =>
+      typeof value === 'string' && value ? value : 'Any',
   };
 
   const scopeField: FilterField = {
@@ -40,7 +47,8 @@ export function buildCatalogFilterFields(items: CatalogItem[]): FilterField[] {
     type: 'select',
     defaultValue: scopes[0] ?? '',
     options: scopes.map((scope) => ({ value: scope, label: scope })),
-    formatValue: (value) => (typeof value === 'string' && value ? value : 'Any'),
+    formatValue: (value) =>
+      typeof value === 'string' && value ? value : 'Any',
   };
 
   const statusField: FilterField = {
@@ -56,7 +64,11 @@ export function buildCatalogFilterFields(items: CatalogItem[]): FilterField[] {
   return [categoryField, scopeField, statusField];
 }
 
-export type CatalogSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+export type CatalogSortKey =
+  | 'name-asc'
+  | 'name-desc'
+  | 'price-asc'
+  | 'price-desc';
 
 export const CATALOG_SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -87,7 +99,9 @@ export const CATALOG_COMPARATORS: Record<
   'price-desc': (a, b) => b.price - a.price,
 };
 
-export function deriveCatalogSortKey(sortTile: SortTile | null): CatalogSortKey {
+export function deriveCatalogSortKey(
+  sortTile: SortTile | null
+): CatalogSortKey {
   if (!sortTile) return 'name-asc';
   if (sortTile.fieldId === 'price') {
     return sortTile.direction === 'desc' ? 'price-desc' : 'price-asc';

@@ -60,11 +60,11 @@ describe('deriveArchiveSort', () => {
   });
 
   it('maps a desc/asc sort tile to the API sort enum', () => {
-    expect(
-      deriveArchiveSort({ fieldId: 'deletedAt', direction: 'asc' })
-    ).toBe('deleted_at_asc');
-    expect(
-      deriveArchiveSort({ fieldId: 'deletedAt', direction: 'desc' })
-    ).toBe('deleted_at_desc');
+    expect(deriveArchiveSort({ fieldId: 'deletedAt', direction: 'asc' })).toBe(
+      'deleted_at_asc'
+    );
+    expect(deriveArchiveSort({ fieldId: 'deletedAt', direction: 'desc' })).toBe(
+      'deleted_at_desc'
+    );
   });
 });

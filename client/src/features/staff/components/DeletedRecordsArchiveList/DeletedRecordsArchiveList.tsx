@@ -247,7 +247,9 @@ export function DeletedRecordsArchiveList({
                   <button
                     type="button"
                     className={styles.restoreButton}
-                    disabled={Boolean(row.restored_at) || restoringId === row.id}
+                    disabled={
+                      Boolean(row.restored_at) || restoringId === row.id
+                    }
                     onClick={() => void handleRestore(row.id)}
                   >
                     {restoringId === row.id ? 'Restoring...' : 'Restore'}

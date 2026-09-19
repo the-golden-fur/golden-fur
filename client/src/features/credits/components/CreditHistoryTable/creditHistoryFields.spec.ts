@@ -7,7 +7,9 @@ import {
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { CreditTransaction } from '../../credits.types';
 
-function buildTxn(overrides: Partial<CreditTransaction> = {}): CreditTransaction {
+function buildTxn(
+  overrides: Partial<CreditTransaction> = {}
+): CreditTransaction {
   return {
     id: 'txn-1',
     credit_balance_id: 'balance-1',
@@ -54,7 +56,9 @@ describe('deriveCreditHistorySortKey + CREDIT_HISTORY_COMPARATORS', () => {
       buildTxn({ id: '2', created_at: '2026-03-01T00:00:00.000Z' }),
     ];
     expect(
-      [...history].sort(CREDIT_HISTORY_COMPARATORS['date-desc']).map((t) => t.id)
+      [...history]
+        .sort(CREDIT_HISTORY_COMPARATORS['date-desc'])
+        .map((t) => t.id)
     ).toEqual(['2', '1']);
   });
 

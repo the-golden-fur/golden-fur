@@ -10,7 +10,9 @@ import {
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { ActivityLogEntry } from '../../hotel.types';
 
-function buildEntry(overrides: Partial<ActivityLogEntry> = {}): ActivityLogEntry {
+function buildEntry(
+  overrides: Partial<ActivityLogEntry> = {}
+): ActivityLogEntry {
   return {
     id: 'log-1',
     branch_id: 'branch-a',
@@ -32,7 +34,9 @@ describe('applyActivityLogFilters', () => {
   ];
 
   it('narrows by action', () => {
-    const tiles: FilterTile[] = [{ fieldId: 'action', value: 'task_completed' }];
+    const tiles: FilterTile[] = [
+      { fieldId: 'action', value: 'task_completed' },
+    ];
     expect(applyActivityLogFilters(entries, tiles).map((e) => e.id)).toEqual([
       '2',
     ]);

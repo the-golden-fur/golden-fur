@@ -182,60 +182,63 @@ export function CagePickerList({
             <p className={styles.copy}>No cages match your search.</p>
           ) : null}
           <div className={styles.grid}>
-          {visibleOptions.map((option) => {
-            const key =
-              option.type === 'no_preference'
-                ? 'no_preference'
-                : option.cage_id;
-            const active = isSelected(option, selected);
-            const isSizeLocked =
-              restrictToPetSize &&
-              option.type === 'specific' &&
-              option.size !== recommendedSize;
+            {visibleOptions.map((option) => {
+              const key =
+                option.type === 'no_preference'
+                  ? 'no_preference'
+                  : option.cage_id;
+              const active = isSelected(option, selected);
+              const isSizeLocked =
+                restrictToPetSize &&
+                option.type === 'specific' &&
+                option.size !== recommendedSize;
 
-            return (
-              <button
-                key={key}
-                type="button"
-                disabled={isSizeLocked}
-                title={
-                  isSizeLocked
-                    ? "Only staff can book a cage size that doesn't match your pet"
-                    : undefined
-                }
-                className={`${styles.card} ${active ? styles.selected : ''} ${isSizeLocked ? styles.locked : ''}`}
-                onClick={() =>
-                  onSelect(
-                    option.type === 'no_preference'
-                      ? { type: 'no_preference' }
-                      : { type: 'specific', cage_id: option.cage_id }
-                  )
-                }
-              >
-                {option.type === 'no_preference' ? (
-                  <span className={styles.noPreferenceIcon} aria-hidden="true">
-                    ?
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={isSizeLocked}
+                  title={
+                    isSizeLocked
+                      ? "Only staff can book a cage size that doesn't match your pet"
+                      : undefined
+                  }
+                  className={`${styles.card} ${active ? styles.selected : ''} ${isSizeLocked ? styles.locked : ''}`}
+                  onClick={() =>
+                    onSelect(
+                      option.type === 'no_preference'
+                        ? { type: 'no_preference' }
+                        : { type: 'specific', cage_id: option.cage_id }
+                    )
+                  }
+                >
+                  {option.type === 'no_preference' ? (
+                    <span
+                      className={styles.noPreferenceIcon}
+                      aria-hidden="true"
+                    >
+                      ?
+                    </span>
+                  ) : (
+                    <span className={styles.avatarFallback} aria-hidden="true">
+                      {getInitials(option.cage_label)}
+                    </span>
+                  )}
+                  <span className={styles.name}>
+                    {option.type === 'no_preference'
+                      ? 'No preference'
+                      : `${option.cage_label} (${option.size})`}
                   </span>
-                ) : (
-                  <span className={styles.avatarFallback} aria-hidden="true">
-                    {getInitials(option.cage_label)}
-                  </span>
-                )}
-                <span className={styles.name}>
-                  {option.type === 'no_preference'
-                    ? 'No preference'
-                    : `${option.cage_label} (${option.size})`}
-                </span>
-                {option.type === 'specific' &&
-                recommendedSize &&
-                option.size === recommendedSize ? (
-                  <span className={styles.recommendedBadge}>Recommended</span>
-                ) : isSizeLocked ? (
-                  <span className={styles.lockedBadge}>Staff only</span>
-                ) : null}
-              </button>
-            );
-          })}
+                  {option.type === 'specific' &&
+                  recommendedSize &&
+                  option.size === recommendedSize ? (
+                    <span className={styles.recommendedBadge}>Recommended</span>
+                  ) : isSizeLocked ? (
+                    <span className={styles.lockedBadge}>Staff only</span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </>
       )}

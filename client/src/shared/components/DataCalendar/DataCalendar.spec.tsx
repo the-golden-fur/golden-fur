@@ -29,7 +29,9 @@ describe('DataCalendar', () => {
       />
     );
 
-    expect(container.querySelectorAll('[class*="dayCellBlank"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[class*="dayCellBlank"]')).toHaveLength(
+      2
+    );
     expect(container.querySelectorAll('[class*="dayChips"]')).toHaveLength(30);
     expect(screen.getByText('September 2026')).toBeInTheDocument();
   });
@@ -111,7 +113,7 @@ describe('DataCalendar', () => {
     expect(onAnchorDateChange).toHaveBeenCalledWith(new Date(2026, 8, 26));
   });
 
-  it('calls onDayActivate with that day\'s date key when its add button is clicked', async () => {
+  it("calls onDayActivate with that day's date key when its add button is clicked", async () => {
     const user = userEvent.setup();
     const onDayActivate = vi.fn();
 
@@ -148,7 +150,9 @@ describe('DataCalendar', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: /Add/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Add/ })
+    ).not.toBeInTheDocument();
   });
 
   it('hides the nav row when showNav is false', () => {

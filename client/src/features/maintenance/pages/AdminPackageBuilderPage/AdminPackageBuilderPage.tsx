@@ -26,7 +26,10 @@ import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleS
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -39,7 +42,10 @@ import {
   SearchSortBar,
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
@@ -124,9 +130,7 @@ export function AdminPackageBuilderPage() {
   const [packageFilterTiles, setPackageFilterTiles] = useState<FilterTile[]>(
     []
   );
-  const [packageSortTile, setPackageSortTile] = useState<SortTile | null>(
-    null
-  );
+  const [packageSortTile, setPackageSortTile] = useState<SortTile | null>(null);
   const [packageSearch, setPackageSearch] = useState('');
   const [packageView, setPackageView] = useState<ViewMode>('table');
   const [packageGroupAxisId, setPackageGroupAxisId] = useState(

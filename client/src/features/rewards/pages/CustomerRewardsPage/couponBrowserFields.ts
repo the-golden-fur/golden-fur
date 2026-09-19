@@ -142,7 +142,6 @@ export function findRewardForCoupon(
   rewards: SpinWheelReward[]
 ): SpinWheelReward | null {
   return (
-    rewards.find((reward) => reward.id === coupon.spin_wheel_reward_id) ??
-    null
+    rewards.find((reward) => reward.id === coupon.spin_wheel_reward_id) ?? null
   );
 }

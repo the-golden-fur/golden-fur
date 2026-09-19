@@ -9,7 +9,9 @@ import type { Breed, PetTypeRow } from '../../maintenance.types';
 
 /** `petTypeOptions` comes from `listPetTypes` - rebuilt whenever that list
  * changes, same as AdminBreedsPage's add-breed dropdown already does. */
-export function buildBreedFilterFields(petTypeOptions: PetTypeRow[]): FilterField[] {
+export function buildBreedFilterFields(
+  petTypeOptions: PetTypeRow[]
+): FilterField[] {
   const petTypeField: FilterField = {
     id: 'petType',
     label: 'Pet type',

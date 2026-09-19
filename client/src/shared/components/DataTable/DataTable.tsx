@@ -47,13 +47,19 @@ export function DataTable<T>({
               <th
                 key={column.id}
                 scope="col"
-                className={column.align === 'end' ? styles.headEnd : styles.head}
+                className={
+                  column.align === 'end' ? styles.headEnd : styles.head
+                }
               >
                 {column.header}
               </th>
             ))}
             {renderRowActions ? (
-              <th scope="col" className={styles.headActions} aria-label="Actions" />
+              <th
+                scope="col"
+                className={styles.headActions}
+                aria-label="Actions"
+              />
             ) : null}
           </tr>
         </thead>
@@ -63,7 +69,9 @@ export function DataTable<T>({
               {columns.map((column) => (
                 <td
                   key={column.id}
-                  className={column.align === 'end' ? styles.cellEnd : styles.cell}
+                  className={
+                    column.align === 'end' ? styles.cellEnd : styles.cell
+                  }
                 >
                   {column.render(row)}
                 </td>

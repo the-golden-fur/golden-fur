@@ -13,7 +13,10 @@ import {
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -22,7 +25,10 @@ import type {
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
@@ -245,8 +251,7 @@ export function AdminServiceTypesPage() {
   }, [serviceTypes, search, filterTiles, sortTile]);
 
   const activeGroupAxis =
-    SERVICE_TYPE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ??
-    null;
+    SERVICE_TYPE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
   const groupedServiceTypes = useGroupBy(
     filteredServiceTypes,
     view === 'board' ? activeGroupAxis : null
@@ -614,9 +619,7 @@ export function AdminServiceTypesPage() {
                       <select
                         className={styles.filterSelect}
                         value={groupAxisId}
-                        onChange={(event) =>
-                          setGroupAxisId(event.target.value)
-                        }
+                        onChange={(event) => setGroupAxisId(event.target.value)}
                         aria-label="Group by"
                       >
                         {SERVICE_TYPE_GROUP_BY_AXES.map((axis) => (

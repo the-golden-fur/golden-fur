@@ -38,9 +38,7 @@ describe('buildPackageFilterFields', () => {
   it('builds Branch and Status fields, Status defaulting to active', () => {
     const fields = buildPackageFilterFields(BRANCHES);
     expect(fields.map((f) => f.id)).toEqual(['branch', 'status']);
-    expect(fields.find((f) => f.id === 'status')?.defaultValue).toBe(
-      'active'
-    );
+    expect(fields.find((f) => f.id === 'status')?.defaultValue).toBe('active');
   });
 });
 

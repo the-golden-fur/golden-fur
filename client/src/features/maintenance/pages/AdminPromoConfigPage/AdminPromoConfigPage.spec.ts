@@ -336,9 +336,7 @@ describe('AdminPromoConfigPage', () => {
     // popover and pick Southwoods instead.
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
-    await user.click(
-      screen.getByRole('button', { name: /Branch: Makati/ })
-    );
+    await user.click(screen.getByRole('button', { name: /Branch: Makati/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
     await user.click(
       within(popover).getByRole('option', { name: 'Southwoods' })
@@ -392,9 +390,7 @@ describe('AdminPromoConfigPage', () => {
     // popover and pick Ended instead.
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('menuitem', { name: 'Timing' }));
-    await user.click(
-      screen.getByRole('button', { name: /Timing: Upcoming/ })
-    );
+    await user.click(screen.getByRole('button', { name: /Timing: Upcoming/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Timing filter' });
     await user.click(within(popover).getByRole('option', { name: 'Ended' }));
 
@@ -506,8 +502,12 @@ describe('AdminPromoConfigPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Table' }));
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(within(screen.getByRole('table')).getByText('Summer Sale')).toBeInTheDocument();
-    expect(within(screen.getByRole('table')).getByText('15% off')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('Summer Sale')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('15% off')
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'List' }));
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

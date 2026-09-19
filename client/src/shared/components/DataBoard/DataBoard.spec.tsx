@@ -62,12 +62,18 @@ describe('DataBoard', () => {
       <DataBoard
         groups={GROUPS}
         getRowKey={(cage) => cage.id}
-        renderCard={(cage) => <span data-testid={`card-${cage.id}`}>{cage.label}</span>}
+        renderCard={(cage) => (
+          <span data-testid={`card-${cage.id}`}>{cage.label}</span>
+        )}
       />
     );
 
     const columns = container.querySelectorAll('section');
-    expect(within(columns[0] as HTMLElement).getByTestId('card-1')).toBeInTheDocument();
-    expect(within(columns[1] as HTMLElement).queryByTestId('card-1')).not.toBeInTheDocument();
+    expect(
+      within(columns[0] as HTMLElement).getByTestId('card-1')
+    ).toBeInTheDocument();
+    expect(
+      within(columns[1] as HTMLElement).queryByTestId('card-1')
+    ).not.toBeInTheDocument();
   });
 });

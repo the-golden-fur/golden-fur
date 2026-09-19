@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,

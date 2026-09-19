@@ -237,7 +237,9 @@ describe('ActivityLogPage (custom change: Hotel/Daycare activity logbook)', () =
     );
 
     await user.hover(screen.getByRole('button', { name: /Date:/ }));
-    await user.click(screen.getByRole('button', { name: 'Remove Date filter' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Remove Date filter' })
+    );
 
     await waitFor(() =>
       expect(hotelApi.listActivityLog).toHaveBeenLastCalledWith('token', {})

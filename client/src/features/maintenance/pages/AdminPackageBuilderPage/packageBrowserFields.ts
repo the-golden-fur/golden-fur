@@ -49,7 +49,11 @@ export function buildPackageFilterFields(
   return [branchField, statusField];
 }
 
-export type PackageSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+export type PackageSortKey =
+  | 'name-asc'
+  | 'name-desc'
+  | 'price-asc'
+  | 'price-desc';
 
 export const PACKAGE_SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -80,7 +84,9 @@ export const PACKAGE_COMPARATORS: Record<
   'price-desc': (a, b) => b.bundled_price - a.bundled_price,
 };
 
-export function derivePackageSortKey(sortTile: SortTile | null): PackageSortKey {
+export function derivePackageSortKey(
+  sortTile: SortTile | null
+): PackageSortKey {
   if (!sortTile) return 'name-asc';
   if (sortTile.fieldId === 'price') {
     return sortTile.direction === 'asc' ? 'price-asc' : 'price-desc';
@@ -107,7 +113,9 @@ export function applyPackageFilters(
       tile.value
     ) {
       const branchId = tile.value;
-      result = result.filter((pkg) => availableBranchIds(pkg).includes(branchId));
+      result = result.filter((pkg) =>
+        availableBranchIds(pkg).includes(branchId)
+      );
     }
 
     if (tile.fieldId === 'status' && typeof tile.value === 'string') {

@@ -48,8 +48,18 @@ describe('buildPetFilterFields', () => {
 
 describe('applyPetFilters', () => {
   const pets = [
-    buildPet({ id: '1', pet_type: 'Dog', weight_class: 'S', assessed_at: '2026-01-01' }),
-    buildPet({ id: '2', pet_type: 'Cat', weight_class: 'M', assessed_at: null }),
+    buildPet({
+      id: '1',
+      pet_type: 'Dog',
+      weight_class: 'S',
+      assessed_at: '2026-01-01',
+    }),
+    buildPet({
+      id: '2',
+      pet_type: 'Cat',
+      weight_class: 'M',
+      assessed_at: null,
+    }),
   ];
 
   it('narrows by pet type', () => {

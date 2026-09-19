@@ -184,11 +184,15 @@ describe('AdminServicesPage', () => {
     expect(screen.getByText('PHP 300.00')).toBeInTheDocument();
     // Category/Branch are now FilterSortBar pill fields, not always-visible
     // selects - confirm they're offered in the Filter menu.
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Filter' }));
     expect(
       screen.getByRole('menuitem', { name: 'Category' })
     ).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'Branch' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch' })
+    ).toBeInTheDocument();
   });
 
   it('AC-1: a Category filter tile narrows the list without navigating', async () => {
@@ -219,8 +223,12 @@ describe('AdminServicesPage', () => {
     await user.click(
       screen.getByRole('button', { name: /Category: Grooming/ })
     );
-    const popover = screen.getByRole('dialog', { name: 'Edit Category filter' });
-    await user.click(within(popover).getByRole('option', { name: 'Veterinary' }));
+    const popover = screen.getByRole('dialog', {
+      name: 'Edit Category filter',
+    });
+    await user.click(
+      within(popover).getByRole('option', { name: 'Veterinary' })
+    );
 
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
@@ -521,10 +529,7 @@ describe('AdminServicesPage', () => {
       await screen.findByRole('button', { name: 'New service' })
     );
     await user.type(screen.getByLabelText('Name'), 'Daycare (per hour)');
-    await user.selectOptions(
-      screen.getByLabelText('Category'),
-      'Daycare'
-    );
+    await user.selectOptions(screen.getByLabelText('Category'), 'Daycare');
 
     expect(screen.queryByLabelText('Base price (PHP)')).not.toBeInTheDocument();
 

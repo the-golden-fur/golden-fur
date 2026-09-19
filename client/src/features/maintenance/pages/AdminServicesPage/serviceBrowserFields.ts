@@ -85,7 +85,9 @@ export const SERVICE_COMPARATORS: Record<
   'name-desc': (a, b) => b.name.localeCompare(a.name),
 };
 
-export function deriveServiceSortKey(sortTile: SortTile | null): ServiceSortKey {
+export function deriveServiceSortKey(
+  sortTile: SortTile | null
+): ServiceSortKey {
   if (!sortTile) return 'name-asc';
   return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
 }

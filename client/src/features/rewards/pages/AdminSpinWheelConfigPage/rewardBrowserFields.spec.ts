@@ -9,7 +9,9 @@ import {
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { SpinWheelReward } from '../../rewards.types';
 
-function buildReward(overrides: Partial<SpinWheelReward> = {}): SpinWheelReward {
+function buildReward(
+  overrides: Partial<SpinWheelReward> = {}
+): SpinWheelReward {
   return {
     id: 'r-1',
     label: 'Ten Percent Off',

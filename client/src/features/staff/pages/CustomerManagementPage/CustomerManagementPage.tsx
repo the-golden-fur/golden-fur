@@ -230,9 +230,7 @@ export function CustomerManagementPage() {
       <>
         <div className={styles.customerRow}>
           <span className={styles.customerName}>{customer.full_name}</span>
-          <span className={styles.customerEmail}>
-            {customer.account_email}
-          </span>
+          <span className={styles.customerEmail}>{customer.account_email}</span>
           <CustomerRowActionMenu
             onSelect={(action) => handleSelectAction(customer.id, action)}
             canArchive={viewerRole === 'Admin' || viewerRole === 'Superadmin'}

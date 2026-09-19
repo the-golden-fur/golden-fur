@@ -25,7 +25,9 @@ export const CAGE_STATUSES: CageStatus[] = [
 
 /** `petTypeOptions` comes from `listPetTypes` - rebuilt whenever that list
  * changes, same as AdminCagesPage's create-form checkboxes already do. */
-export function buildCageFilterFields(petTypeOptions: PetTypeRow[]): FilterField[] {
+export function buildCageFilterFields(
+  petTypeOptions: PetTypeRow[]
+): FilterField[] {
   const sizeField: FilterField = {
     id: 'size',
     label: 'Size',
@@ -129,7 +131,11 @@ export function applyCageFilters(cages: Cage[], tiles: FilterTile[]): Cage[] {
   let result = cages;
 
   for (const tile of tiles) {
-    if (tile.fieldId === 'size' && typeof tile.value === 'string' && tile.value) {
+    if (
+      tile.fieldId === 'size' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
       result = result.filter((cage) => cage.size === tile.value);
     }
     if (

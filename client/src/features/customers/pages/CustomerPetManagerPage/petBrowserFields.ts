@@ -32,7 +32,8 @@ export function buildPetFilterFields(pets: Pet[]): FilterField[] {
     type: 'select',
     defaultValue: petTypes[0] ?? '',
     options: petTypes.map((petType) => ({ value: petType, label: petType })),
-    formatValue: (value) => (typeof value === 'string' && value ? value : 'Any'),
+    formatValue: (value) =>
+      typeof value === 'string' && value ? value : 'Any',
   };
 
   const weightClassField: FilterField = {
@@ -140,7 +141,8 @@ export function buildPetGroupByAxes(pets: Pet[]): GroupByAxis<Pet>[] {
       id: 'assessment',
       label: 'Assessment',
       columns: ['Assessed', 'Not yet assessed'],
-      columnFor: (pet) => (pet.assessed_at !== null ? 'Assessed' : 'Not yet assessed'),
+      columnFor: (pet) =>
+        pet.assessed_at !== null ? 'Assessed' : 'Not yet assessed',
     },
   ];
 }

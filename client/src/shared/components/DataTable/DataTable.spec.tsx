@@ -27,8 +27,12 @@ describe('DataTable', () => {
   it('renders one header per column and one row per item', () => {
     render(<DataTable columns={COLUMNS} rows={ROWS} getRowKey={(r) => r.id} />);
 
-    expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Price' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Name' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Price' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'Bath' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '₱500' })).toBeInTheDocument();
   });
@@ -52,7 +56,14 @@ describe('DataTable', () => {
   });
 
   it('shows the empty message instead of a table when there are no rows', () => {
-    render(<DataTable columns={COLUMNS} rows={[]} getRowKey={(r) => r.id} emptyMessage="No services yet." />);
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        getRowKey={(r) => r.id}
+        emptyMessage="No services yet."
+      />
+    );
 
     expect(screen.getByText('No services yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

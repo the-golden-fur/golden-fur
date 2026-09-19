@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -155,7 +161,10 @@ describe('AdminPetTypesPage', () => {
     renderPage();
     await within(await findBrowserSection()).findByText('Dog');
 
-    await user.type(screen.getByLabelText('Key (not shown to customers)'), 'Bird');
+    await user.type(
+      screen.getByLabelText('Key (not shown to customers)'),
+      'Bird'
+    );
     await user.type(screen.getByLabelText('Name'), 'Bird');
     await user.click(screen.getByRole('button', { name: 'Add pet type' }));
 
@@ -180,7 +189,9 @@ describe('AdminPetTypesPage', () => {
     const section = await findBrowserSection();
     await within(section).findByText('Dog');
 
-    fireEvent.click(within(section).getAllByRole('button', { name: 'Rename' })[0]);
+    fireEvent.click(
+      within(section).getAllByRole('button', { name: 'Rename' })[0]
+    );
     const nameInput = within(section).getByDisplayValue('Dog');
     await user.clear(nameInput);
     await user.type(nameInput, 'Doggo');
@@ -232,7 +243,9 @@ describe('AdminPetTypesPage', () => {
     const section = await findBrowserSection();
     await within(section).findByText('Dog');
 
-    await user.click(within(section).getAllByRole('button', { name: 'Delete' })[0]);
+    await user.click(
+      within(section).getAllByRole('button', { name: 'Delete' })[0]
+    );
 
     await waitFor(() =>
       expect(maintenanceApi.deletePetType).toHaveBeenCalledWith(

@@ -198,7 +198,12 @@ describe('CustomerManagementPage (#76)', () => {
     vi.mocked(listCustomers).mockResolvedValue({
       data: [
         CUSTOMER,
-        { ...CUSTOMER, id: 'customer-2', full_name: 'Mark Santos', account_email: 'mark@example.com' },
+        {
+          ...CUSTOMER,
+          id: 'customer-2',
+          full_name: 'Mark Santos',
+          account_email: 'mark@example.com',
+        },
       ],
       error: null,
     });

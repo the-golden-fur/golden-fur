@@ -84,9 +84,7 @@ export function deriveProcedureSortKey(
   sortTile: SortTile | null
 ): ProcedureSortKey {
   if (!sortTile) return 'description-asc';
-  return sortTile.direction === 'desc'
-    ? 'description-desc'
-    : 'description-asc';
+  return sortTile.direction === 'desc' ? 'description-desc' : 'description-asc';
 }
 
 export function matchesProcedureQuery(

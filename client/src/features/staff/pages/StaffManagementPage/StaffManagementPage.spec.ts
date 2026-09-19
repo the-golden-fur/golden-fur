@@ -266,7 +266,9 @@ describe('StaffManagementPage (#75)', () => {
       screen.getByRole('button', { name: /Role: Superadmin/ })
     );
     const dialog = screen.getByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('option', { name: 'Cashier' }));
+    await userEvent.click(
+      within(dialog).getByRole('option', { name: 'Cashier' })
+    );
 
     expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();

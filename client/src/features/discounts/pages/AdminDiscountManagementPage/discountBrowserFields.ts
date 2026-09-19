@@ -67,7 +67,11 @@ export function buildDiscountFilterFields(
   return [branchField, scopeTypeField, statusField];
 }
 
-export type DiscountSortKey = 'name-asc' | 'name-desc' | 'value-desc' | 'value-asc';
+export type DiscountSortKey =
+  | 'name-asc'
+  | 'name-desc'
+  | 'value-desc'
+  | 'value-asc';
 
 export const DISCOUNT_SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -98,7 +102,9 @@ export const DISCOUNT_COMPARATORS: Record<
   'value-asc': (a, b) => a.value - b.value,
 };
 
-export function deriveDiscountSortKey(sortTile: SortTile | null): DiscountSortKey {
+export function deriveDiscountSortKey(
+  sortTile: SortTile | null
+): DiscountSortKey {
   if (!sortTile) return 'name-asc';
   if (sortTile.fieldId === 'value') {
     return sortTile.direction === 'asc' ? 'value-asc' : 'value-desc';
@@ -106,7 +112,10 @@ export function deriveDiscountSortKey(sortTile: SortTile | null): DiscountSortKe
   return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
 }
 
-export function matchesDiscountQuery(discount: Discount, query: string): boolean {
+export function matchesDiscountQuery(
+  discount: Discount,
+  query: string
+): boolean {
   return discount.name.toLowerCase().includes(query);
 }
 

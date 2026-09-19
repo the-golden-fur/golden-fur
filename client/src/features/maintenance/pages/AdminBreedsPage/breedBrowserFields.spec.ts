@@ -11,12 +11,32 @@ import type { FilterTile } from '../../../../shared/components/FilterSortBar/fil
 import type { Breed, PetTypeRow } from '../../maintenance.types';
 
 const PET_TYPES: PetTypeRow[] = [
-  { id: 'pt-dog', key: 'Dog', name: 'Dog', is_active: true, created_at: '', updated_at: '' },
-  { id: 'pt-cat', key: 'Cat', name: 'Cat', is_active: true, created_at: '', updated_at: '' },
+  {
+    id: 'pt-dog',
+    key: 'Dog',
+    name: 'Dog',
+    is_active: true,
+    created_at: '',
+    updated_at: '',
+  },
+  {
+    id: 'pt-cat',
+    key: 'Cat',
+    name: 'Cat',
+    is_active: true,
+    created_at: '',
+    updated_at: '',
+  },
 ];
 
 function buildBreed(overrides: Partial<Breed> = {}): Breed {
-  return { id: 'b-1', pet_type: 'Dog', name: 'Beagle', created_at: '', ...overrides };
+  return {
+    id: 'b-1',
+    pet_type: 'Dog',
+    name: 'Beagle',
+    created_at: '',
+    ...overrides,
+  };
 }
 
 describe('buildBreedFilterFields', () => {
@@ -58,7 +78,10 @@ describe('deriveBreedSortKey + BREED_COMPARATORS', () => {
   });
 
   it('sorts by name A to Z', () => {
-    const breeds = [buildBreed({ id: '1', name: 'Poodle' }), buildBreed({ id: '2', name: 'Beagle' })];
+    const breeds = [
+      buildBreed({ id: '1', name: 'Poodle' }),
+      buildBreed({ id: '2', name: 'Beagle' }),
+    ];
     expect(
       [...breeds].sort(BREED_COMPARATORS['name-asc']).map((b) => b.id)
     ).toEqual(['2', '1']);

@@ -63,7 +63,10 @@ export function deriveSortKey(sortTile: SortTile | null): PetTypeSortKey {
   return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
 }
 
-export function matchesPetTypeQuery(petType: PetTypeRow, query: string): boolean {
+export function matchesPetTypeQuery(
+  petType: PetTypeRow,
+  query: string
+): boolean {
   return (
     petType.name.toLowerCase().includes(query) ||
     petType.key.toLowerCase().includes(query)

@@ -22,7 +22,10 @@ import {
 import { PromoCard } from '../../components/PromoCard/PromoCard';
 import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -38,7 +41,10 @@ import {
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
@@ -692,8 +698,16 @@ export function AdminPromoConfigPage() {
       header: 'Timing',
       render: (promo) => TIMING_LABELS[getPromoTiming(promo)],
     },
-    { id: 'value', header: 'Value', render: (promo) => formatPromoValue(promo) },
-    { id: 'window', header: 'Window', render: (promo) => promoWindowText(promo) },
+    {
+      id: 'value',
+      header: 'Value',
+      render: (promo) => formatPromoValue(promo),
+    },
+    {
+      id: 'window',
+      header: 'Window',
+      render: (promo) => promoWindowText(promo),
+    },
     {
       id: 'status',
       header: 'Status',

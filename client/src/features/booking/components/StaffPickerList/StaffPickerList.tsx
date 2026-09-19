@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getStaffPickerOptions } from '../../api/booking.api';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
-import type { SortFieldDescriptor, SortTile } from '../../../../shared/components/FilterSortBar/filterField.types';
+import type {
+  SortFieldDescriptor,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import type {
   ServiceCategory,
   StaffPickerOption,

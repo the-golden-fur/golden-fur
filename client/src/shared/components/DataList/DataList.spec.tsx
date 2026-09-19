@@ -37,7 +37,9 @@ describe('DataList', () => {
       />
     );
 
-    expect(screen.getByText('No cages at this branch yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No cages at this branch yet.')
+    ).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 });

@@ -46,7 +46,10 @@ function buildProcedure(
 
 describe('matchesMedicationQuery', () => {
   it('matches on name or default dose', () => {
-    const item = buildMedication({ name: 'Amoxicillin', default_dose: '250mg' });
+    const item = buildMedication({
+      name: 'Amoxicillin',
+      default_dose: '250mg',
+    });
     expect(matchesMedicationQuery(item, 'amox')).toBe(true);
     expect(matchesMedicationQuery(item, '250mg')).toBe(true);
     expect(matchesMedicationQuery(item, 'meloxicam')).toBe(false);
@@ -113,9 +116,7 @@ describe('deriveProcedureSortKey + PROCEDURE_COMPARATORS', () => {
       buildProcedure({ id: '2', description: 'Dental cleaning' }),
     ];
     expect(
-      [...items]
-        .sort(PROCEDURE_COMPARATORS['description-asc'])
-        .map((i) => i.id)
+      [...items].sort(PROCEDURE_COMPARATORS['description-asc']).map((i) => i.id)
     ).toEqual(['2', '1']);
   });
 });

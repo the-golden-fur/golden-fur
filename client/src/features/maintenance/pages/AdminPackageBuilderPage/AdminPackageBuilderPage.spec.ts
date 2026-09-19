@@ -268,9 +268,7 @@ describe('AdminPackageBuilderPage', () => {
     // popover and pick Southwoods instead.
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
-    await user.click(
-      screen.getByRole('button', { name: /Branch: Makati/ })
-    );
+    await user.click(screen.getByRole('button', { name: /Branch: Makati/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
     await user.click(
       within(popover).getByRole('option', { name: 'Southwoods' })
@@ -356,7 +354,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
 
     expect(
       within(row).queryByRole('button', { name: 'Edit' })
@@ -396,7 +396,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
     );
@@ -445,7 +447,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
     );
@@ -487,7 +491,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
     );
@@ -538,7 +544,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
     );
@@ -588,7 +596,9 @@ describe('AdminPackageBuilderPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Golden Package')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
     );
@@ -749,7 +759,9 @@ describe('AdminPackageBuilderPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
-      const row = (await screen.findByText('Golden Package')).closest('tr') as HTMLElement;
+      const row = (await screen.findByText('Golden Package')).closest(
+        'tr'
+      ) as HTMLElement;
       await user.click(
         within(row).getByRole('button', { name: 'Actions for Golden Package' })
       );

@@ -152,9 +152,7 @@ describe('MonthlySchedulePage', () => {
   });
 
   it('clicking a chip opens the entry detail panel', async () => {
-    mockCommon([
-      buildEntry({ leave_type: 'Sick Leave', status: 'pending' }),
-    ]);
+    mockCommon([buildEntry({ leave_type: 'Sick Leave', status: 'pending' })]);
     const user = userEvent.setup();
 
     renderPage();
@@ -166,15 +164,13 @@ describe('MonthlySchedulePage', () => {
     expect(await screen.findByText('Status: pending')).toBeInTheDocument();
   });
 
-  it('clicking a day\'s add button opens the add-entry panel for that date', async () => {
+  it("clicking a day's add button opens the add-entry panel for that date", async () => {
     mockCommon([]);
     const user = userEvent.setup();
 
     renderPage();
 
-    await waitFor(() =>
-      expect(staffApi.listBranchSchedule).toHaveBeenCalled()
-    );
+    await waitFor(() => expect(staffApi.listBranchSchedule).toHaveBeenCalled());
 
     const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15`;
     await user.click(

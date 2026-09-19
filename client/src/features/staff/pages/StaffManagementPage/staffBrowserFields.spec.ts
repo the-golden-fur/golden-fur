@@ -54,16 +54,12 @@ describe('applyStaffFilters', () => {
 
   it('narrows by role', () => {
     const tiles: FilterTile[] = [{ fieldId: 'role', value: 'Cashier' }];
-    expect(applyStaffFilters(staffList, tiles).map((s) => s.id)).toEqual([
-      '2',
-    ]);
+    expect(applyStaffFilters(staffList, tiles).map((s) => s.id)).toEqual(['2']);
   });
 
   it('narrows by branch', () => {
     const tiles: FilterTile[] = [{ fieldId: 'branch', value: 'branch-1' }];
-    expect(applyStaffFilters(staffList, tiles).map((s) => s.id)).toEqual([
-      '1',
-    ]);
+    expect(applyStaffFilters(staffList, tiles).map((s) => s.id)).toEqual(['1']);
   });
 
   it('returns everything when there are no tiles', () => {

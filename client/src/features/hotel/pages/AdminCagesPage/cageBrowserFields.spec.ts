@@ -55,18 +55,12 @@ describe('applyCageFilters', () => {
 
   it('narrows by a single-select size tile', () => {
     const tiles: FilterTile[] = [{ fieldId: 'size', value: 'S' }];
-    expect(applyCageFilters(cages, tiles).map((c) => c.id)).toEqual([
-      '1',
-      '3',
-    ]);
+    expect(applyCageFilters(cages, tiles).map((c) => c.id)).toEqual(['1', '3']);
   });
 
   it('narrows by a multi-select pet-type tile using "matches any"', () => {
     const tiles: FilterTile[] = [{ fieldId: 'petType', value: ['Cat'] }];
-    expect(applyCageFilters(cages, tiles).map((c) => c.id)).toEqual([
-      '2',
-      '3',
-    ]);
+    expect(applyCageFilters(cages, tiles).map((c) => c.id)).toEqual(['2', '3']);
   });
 
   it('combines multiple tiles with AND', () => {

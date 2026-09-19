@@ -186,10 +186,14 @@ describe('VetCatalogPage', () => {
 
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Add medication' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add medication' })
+    );
     const dialog = screen.getByRole('dialog');
     await user.type(within(dialog).getByLabelText('Name'), 'Cefovecin');
-    await user.click(within(dialog).getByRole('button', { name: 'Save medication' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save medication' })
+    );
 
     await waitFor(() =>
       expect(vetApi.createMedicationCatalogItem).toHaveBeenCalledWith(
@@ -201,7 +205,10 @@ describe('VetCatalogPage', () => {
   });
 
   it('deleting a procedure calls the delete API and removes it from the list', async () => {
-    stubDefaults([], [buildProcedure({ id: 'proc-1', description: 'CBC panel' })]);
+    stubDefaults(
+      [],
+      [buildProcedure({ id: 'proc-1', description: 'CBC panel' })]
+    );
     vi.mocked(vetApi.deleteProcedureCatalogItem).mockResolvedValue({
       data: null,
       error: null,

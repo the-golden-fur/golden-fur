@@ -405,10 +405,7 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
 
-    await user.type(
-      screen.getByPlaceholderText('Search by name...'),
-      'pwd'
-    );
+    await user.type(screen.getByPlaceholderText('Search by name...'), 'pwd');
 
     expect(screen.queryByText('Senior Citizen')).not.toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
@@ -440,9 +437,7 @@ describe('AdminDiscountManagementPage', () => {
     // popover and pick Category instead.
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('menuitem', { name: 'Scope' }));
-    await user.click(
-      screen.getByRole('button', { name: /Scope: Service/ })
-    );
+    await user.click(screen.getByRole('button', { name: /Scope: Service/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Scope filter' });
     await user.click(within(popover).getByRole('option', { name: 'Category' }));
 

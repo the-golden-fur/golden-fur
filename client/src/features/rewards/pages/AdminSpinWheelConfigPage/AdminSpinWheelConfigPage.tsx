@@ -4,14 +4,20 @@ import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -244,7 +250,9 @@ export function AdminSpinWheelConfigPage() {
     const filtered = applyRewardFilters(searched, filterTiles);
 
     if (!sortTile) return filtered;
-    return [...filtered].sort(REWARD_COMPARATORS[deriveRewardSortKey(sortTile)]);
+    return [...filtered].sort(
+      REWARD_COMPARATORS[deriveRewardSortKey(sortTile)]
+    );
   }, [rewards, search, filterTiles, sortTile]);
 
   const activeGroupAxis =
@@ -495,7 +503,9 @@ export function AdminSpinWheelConfigPage() {
               items={visibleRewards}
               getRowKey={(reward) => reward.id}
               renderItem={(reward) => (
-                <div className={styles.rewardRow}>{renderRewardCard(reward)}</div>
+                <div className={styles.rewardRow}>
+                  {renderRewardCard(reward)}
+                </div>
               )}
               emptyMessage="No rewards match this filter."
             />
@@ -504,7 +514,9 @@ export function AdminSpinWheelConfigPage() {
               groups={groupedRewards}
               getRowKey={(reward) => reward.id}
               renderCard={(reward) => (
-                <div className={styles.rewardCard}>{renderRewardCard(reward)}</div>
+                <div className={styles.rewardCard}>
+                  {renderRewardCard(reward)}
+                </div>
               )}
               emptyColumnMessage="No rewards here."
             />

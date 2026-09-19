@@ -19,7 +19,9 @@ vi.mock('../../components/SpinWheel/SpinWheel', () => ({
   SpinWheel: () => null,
 }));
 
-function buildReward(overrides: Partial<SpinWheelReward> = {}): SpinWheelReward {
+function buildReward(
+  overrides: Partial<SpinWheelReward> = {}
+): SpinWheelReward {
   return {
     id: 'reward-1',
     label: 'Ten Percent Off',
@@ -148,8 +150,8 @@ describe('CustomerRewardsPage', () => {
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: 'Board' }));
 
-    expect(
-      container.querySelectorAll('section[class*="column"]')
-    ).toHaveLength(2);
+    expect(container.querySelectorAll('section[class*="column"]')).toHaveLength(
+      2
+    );
   });
 });

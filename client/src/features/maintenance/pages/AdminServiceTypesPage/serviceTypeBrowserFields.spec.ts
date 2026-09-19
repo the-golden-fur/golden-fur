@@ -29,7 +29,11 @@ function buildServiceType(overrides: Partial<ServiceType> = {}): ServiceType {
     created_at: '',
     updated_at: '',
     service_type_branch_availability: [
-      { service_type_id: 't-1', branch_id: 'branch-makati', is_available: true },
+      {
+        service_type_id: 't-1',
+        branch_id: 'branch-makati',
+        is_available: true,
+      },
     ],
     ...overrides,
   };
@@ -51,7 +55,11 @@ describe('applyServiceTypeFilters', () => {
       buildServiceType({
         id: '2',
         service_type_branch_availability: [
-          { service_type_id: '2', branch_id: 'branch-southwoods', is_available: true },
+          {
+            service_type_id: '2',
+            branch_id: 'branch-southwoods',
+            is_available: true,
+          },
         ],
       }),
     ];

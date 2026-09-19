@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { CreditHistoryTable } from './CreditHistoryTable';
 import type { CreditTransaction } from '../../credits.types';
 
-function buildTxn(overrides: Partial<CreditTransaction> = {}): CreditTransaction {
+function buildTxn(
+  overrides: Partial<CreditTransaction> = {}
+): CreditTransaction {
   return {
     id: 'txn-1',
     credit_balance_id: 'balance-1',

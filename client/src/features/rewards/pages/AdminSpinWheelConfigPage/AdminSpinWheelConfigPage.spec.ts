@@ -32,7 +32,9 @@ const CONFIG: SpinWheelConfig = {
   updated_at: '',
 };
 
-function buildReward(overrides: Partial<SpinWheelReward> = {}): SpinWheelReward {
+function buildReward(
+  overrides: Partial<SpinWheelReward> = {}
+): SpinWheelReward {
   return {
     id: 'reward-1',
     label: 'Ten Percent Off',
@@ -171,10 +173,7 @@ describe('AdminSpinWheelConfigPage', () => {
     renderPage();
     await screen.findByText('Ten Percent Off');
 
-    await user.type(
-      screen.getByPlaceholderText('Search rewards...'),
-      'flat'
-    );
+    await user.type(screen.getByPlaceholderText('Search rewards...'), 'flat');
 
     expect(screen.queryByText('Ten Percent Off')).not.toBeInTheDocument();
     expect(screen.getByText('Flat 50')).toBeInTheDocument();

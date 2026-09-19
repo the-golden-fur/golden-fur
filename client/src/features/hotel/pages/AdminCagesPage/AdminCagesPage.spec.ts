@@ -398,13 +398,17 @@ describe('AdminCagesPage', () => {
 
     // One column per CageStatus (Available, Occupied, Reserved, Under
     // Maintenance), each cage under its own status column.
-    expect(container.querySelectorAll('section:not([aria-labelledby])')).toHaveLength(4);
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(4);
     expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
     expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
 
     // Re-grouping by Size (S, M, L, XL) still shows both cages.
     await user.selectOptions(screen.getByLabelText('Group by'), 'size');
-    expect(container.querySelectorAll('section:not([aria-labelledby])')).toHaveLength(4);
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(4);
     expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
     expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
   });

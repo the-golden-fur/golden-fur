@@ -9,7 +9,9 @@ import {
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { ProductCatalogItem } from '../../catalog.types';
 
-function buildItem(overrides: Partial<ProductCatalogItem> = {}): ProductCatalogItem {
+function buildItem(
+  overrides: Partial<ProductCatalogItem> = {}
+): ProductCatalogItem {
   return {
     id: '1',
     name: 'Chicken kibble',

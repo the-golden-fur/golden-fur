@@ -24,8 +24,22 @@ function buildRow(overrides: Partial<PatientRow> = {}): PatientRow {
 describe('buildPatientFilterFields', () => {
   it('builds a Pet Type field from the given options', () => {
     const petTypes: PetTypeRow[] = [
-      { id: '1', key: 'dog', name: 'Dog', is_active: true, created_at: '', updated_at: '' },
-      { id: '2', key: 'cat', name: 'Cat', is_active: true, created_at: '', updated_at: '' },
+      {
+        id: '1',
+        key: 'dog',
+        name: 'Dog',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
+      {
+        id: '2',
+        key: 'cat',
+        name: 'Cat',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
     ];
     const fields = buildPatientFilterFields(petTypes);
     expect(fields).toHaveLength(1);
@@ -42,9 +56,7 @@ describe('applyPatientFilters', () => {
 
   it('narrows by pet type', () => {
     const tiles: FilterTile[] = [{ fieldId: 'petType', value: 'cat' }];
-    expect(applyPatientFilters(rows, tiles).map((r) => r.petId)).toEqual([
-      '2',
-    ]);
+    expect(applyPatientFilters(rows, tiles).map((r) => r.petId)).toEqual(['2']);
   });
 
   it('returns everything when there are no tiles', () => {

@@ -28,7 +28,9 @@ function buildCoupon(overrides: Partial<CustomerCoupon> = {}): CustomerCoupon {
   };
 }
 
-function buildReward(overrides: Partial<SpinWheelReward> = {}): SpinWheelReward {
+function buildReward(
+  overrides: Partial<SpinWheelReward> = {}
+): SpinWheelReward {
   return {
     id: 'reward-1',
     label: 'Ten Percent Off',
@@ -52,18 +54,16 @@ describe('applyCouponFilters', () => {
       buildCoupon({ id: '2', is_redeemed: true }),
     ];
     const tiles: FilterTile[] = [{ fieldId: 'status', value: 'used' }];
-    expect(applyCouponFilters(coupons, tiles).map((c) => c.id)).toEqual([
-      '2',
-    ]);
+    expect(applyCouponFilters(coupons, tiles).map((c) => c.id)).toEqual(['2']);
   });
 });
 
 describe('matchesCouponQuery', () => {
   it('matches on the linked reward label or the discount value', () => {
     const coupon = buildCoupon({ value: 10 });
-    expect(matchesCouponQuery(coupon, 'ten percent off', 'Ten Percent Off')).toBe(
-      true
-    );
+    expect(
+      matchesCouponQuery(coupon, 'ten percent off', 'Ten Percent Off')
+    ).toBe(true);
     expect(matchesCouponQuery(coupon, '10', null)).toBe(true);
     expect(matchesCouponQuery(coupon, 'flat 50', null)).toBe(false);
   });
@@ -98,9 +98,7 @@ describe('findRewardForCoupon', () => {
   it('resolves the linked SpinWheelReward by id', () => {
     const rewards = [buildReward({ id: 'reward-1' })];
     const coupon = buildCoupon({ spin_wheel_reward_id: 'reward-1' });
-    expect(findRewardForCoupon(coupon, rewards)?.label).toBe(
-      'Ten Percent Off'
-    );
+    expect(findRewardForCoupon(coupon, rewards)?.label).toBe('Ten Percent Off');
   });
 
   it('returns null when the reward no longer exists', () => {

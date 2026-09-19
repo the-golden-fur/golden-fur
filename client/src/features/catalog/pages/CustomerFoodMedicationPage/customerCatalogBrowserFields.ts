@@ -20,8 +20,7 @@ export const CATEGORY_FILTER_FIELDS: FilterField[] = [
     defaultValue: 'food',
     options: CATEGORY_OPTIONS,
     formatValue: (value) =>
-      CATEGORY_OPTIONS.find((option) => option.value === value)?.label ??
-      'Any',
+      CATEGORY_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
   },
 ];
 
@@ -79,11 +78,12 @@ export function applyCustomerCatalogFilters(
   return result;
 }
 
-export const CUSTOMER_CATALOG_GROUP_BY_AXES: GroupByAxis<ProductCatalogItem>[] = [
-  {
-    id: 'category',
-    label: 'Category',
-    columns: ['Food', 'Medication'],
-    columnFor: (item) => (item.category === 'food' ? 'Food' : 'Medication'),
-  },
-];
+export const CUSTOMER_CATALOG_GROUP_BY_AXES: GroupByAxis<ProductCatalogItem>[] =
+  [
+    {
+      id: 'category',
+      label: 'Category',
+      columns: ['Food', 'Medication'],
+      columnFor: (item) => (item.category === 'food' ? 'Food' : 'Medication'),
+    },
+  ];

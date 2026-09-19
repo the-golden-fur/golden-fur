@@ -165,12 +165,10 @@ describe('CustomerPetManagerPage', () => {
     await user.click(screen.getByRole('button', { name: 'Board' }));
     // One column per pet type (Cat, Dog) - DataBoard's own column sections,
     // not the page's outer panel section.
-    expect(
-      container.querySelectorAll('section[class*="column"]')
-    ).toHaveLength(2);
+    expect(container.querySelectorAll('section[class*="column"]')).toHaveLength(
+      2
+    );
     expect(screen.getByRole('link', { name: /bantay/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /whiskers/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /whiskers/i })).toBeInTheDocument();
   });
 });

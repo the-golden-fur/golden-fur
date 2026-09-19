@@ -157,7 +157,9 @@ describe('AdminServiceTypesPage', () => {
 
     renderPage();
 
-    const groomingRow = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
+    const groomingRow = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
     const hotelRow = screen.getByText('Hotel').closest('tr') as HTMLElement;
 
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
@@ -239,7 +241,9 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
 
     expect(
       within(row).queryByRole('button', { name: 'Rename' })
@@ -275,7 +279,9 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
     );
@@ -323,7 +329,9 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
     );
