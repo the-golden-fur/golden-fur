@@ -80,6 +80,12 @@ export function CagePickerList({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
+  // Notion-style remaster (session 110), lighter treatment: search only -
+  // this is a single-select "pick one cage for this booking" widget, not a
+  // persistent browse-and-manage list (that's AdminCagesPage, which already
+  // got the full search/filter/sort/group/view treatment), so search alone
+  // is the proportionate amount of the pattern here.
+  const [search, setSearch] = useState('');
 
   const onUnavailableRef = useRef(onUnavailable);
   const onSelectRef = useRef(onSelect);
@@ -130,6 +136,15 @@ export function CagePickerList({
     };
   }, [accessToken, branchId, petId]);
 
+  const query = search.trim().toLowerCase();
+  const visibleOptions = query
+    ? options.filter(
+        (option) =>
+          option.type === 'no_preference' ||
+          option.cage_label.toLowerCase().includes(query)
+      )
+    : options;
+
   if (isUnavailable) {
     return null;
   }
@@ -153,8 +168,21 @@ export function CagePickerList({
       {options.length === 1 ? (
         <p className={styles.copy}>No cages are currently available.</p>
       ) : (
-        <div className={styles.grid}>
-          {options.map((option) => {
+        <>
+          {options.length > 3 ? (
+            <input
+              className={styles.searchInput}
+              type="search"
+              placeholder="Search cages..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          ) : null}
+          {visibleOptions.length === 1 ? (
+            <p className={styles.copy}>No cages match your search.</p>
+          ) : null}
+          <div className={styles.grid}>
+          {visibleOptions.map((option) => {
             const key =
               option.type === 'no_preference'
                 ? 'no_preference'
@@ -208,7 +236,8 @@ export function CagePickerList({
               </button>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
