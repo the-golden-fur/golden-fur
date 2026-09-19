@@ -1,6 +1,18 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createPetType,
@@ -17,6 +29,15 @@ import type {
   PetTypePriceOverride,
   PetTypeRow,
 } from '../../maintenance.types';
+import {
+  applyPetTypeFilters,
+  deriveSortKey,
+  matchesPetTypeQuery,
+  PET_TYPE_COMPARATORS,
+  PET_TYPE_FILTER_FIELDS,
+  PET_TYPE_GROUP_BY_AXES,
+  PET_TYPE_SORT_FIELDS,
+} from './petTypeBrowserFields';
 import styles from './AdminPetTypesPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
@@ -24,6 +45,14 @@ import styles from './AdminPetTypesPage.module.css';
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const SYSTEM_DEFAULT_OPTION = '';
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 /**
  * Architectural-Change-History: "Add admin config to pet types... set X
@@ -63,6 +92,13 @@ export function AdminPetTypesPage() {
   const [overrides, setOverrides] = useState<PetTypePriceOverride[]>([]);
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [priceSearch, setPriceSearch] = useState('');
+
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(PET_TYPE_GROUP_BY_AXES[0].id);
 
   useEffect(() => {
     if (!accessToken || !user?.id) {
@@ -339,6 +375,190 @@ export function AdminPetTypesPage() {
     setMessage('Fixed price cleared.');
   }
 
+  const visiblePetTypes = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? petTypes.filter((petType) => matchesPetTypeQuery(petType, query))
+      : petTypes;
+    const filtered = applyPetTypeFilters(searched, filterTiles);
+
+    // No sort tile means "keep fetch order" rather than imposing a default.
+    if (!sortTile) return filtered;
+    return [...filtered].sort(PET_TYPE_COMPARATORS[deriveSortKey(sortTile)]);
+  }, [petTypes, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    PET_TYPE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedPetTypes = useGroupBy(
+    visiblePetTypes,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = PET_TYPE_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function renderPetTypeActions(petType: PetTypeRow) {
+    if (editingId === petType.id) {
+      return (
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.smallButton}
+            onClick={() => void handleRename(petType.id)}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className={styles.smallButtonSecondary}
+            onClick={() => setEditingId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.smallButtonSecondary}
+          onClick={() => startEditing(petType)}
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          className={styles.smallButtonSecondary}
+          onClick={() => void handleToggleActive(petType)}
+        >
+          {petType.is_active ? 'Deactivate' : 'Activate'}
+        </button>
+        <button
+          type="button"
+          className={styles.smallButtonSecondary}
+          onClick={() => void handleDelete(petType.id)}
+        >
+          Delete
+        </button>
+      </div>
+    );
+  }
+
+  const columns = useMemo<DataTableColumn<PetTypeRow>[]>(
+    () => [
+      {
+        id: 'name',
+        header: 'Name',
+        render: (petType) =>
+          editingId === petType.id ? (
+            <input
+              className={styles.input}
+              value={editingName}
+              onChange={(event) => setEditingName(event.target.value)}
+            />
+          ) : (
+            <span
+              className={
+                petType.is_active
+                  ? styles.itemName
+                  : `${styles.itemName} ${styles.itemInactive}`
+              }
+            >
+              {petType.name}
+            </span>
+          ),
+      },
+      {
+        id: 'key',
+        header: 'Key',
+        render: (petType) => (
+          <span className={styles.itemKey}>{petType.key}</span>
+        ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        render: (petType) => (
+          <span
+            className={`${styles.statusBadge} ${
+              petType.is_active ? styles.statusActive : styles.statusInactive
+            }`}
+          >
+            {petType.is_active ? 'Active' : 'Inactive'}
+          </span>
+        ),
+      },
+    ],
+    [editingId, editingName]
+  );
+
+  function renderPetTypeCard(petType: PetTypeRow) {
+    if (editingId === petType.id) {
+      return (
+        <div className={styles.rowMain}>
+          <input
+            className={styles.input}
+            value={editingName}
+            onChange={(event) => setEditingName(event.target.value)}
+          />
+          <span className={styles.itemKey}>{petType.key}</span>
+          {renderPetTypeActions(petType)}
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.rowMain}>
+        <span
+          className={
+            petType.is_active
+              ? styles.itemName
+              : `${styles.itemName} ${styles.itemInactive}`
+          }
+        >
+          {petType.name}
+        </span>
+        <span className={styles.itemKey}>{petType.key}</span>
+        <span
+          className={`${styles.statusBadge} ${
+            petType.is_active ? styles.statusActive : styles.statusInactive
+          }`}
+        >
+          {petType.is_active ? 'Active' : 'Inactive'}
+        </span>
+        {renderPetTypeActions(petType)}
+      </div>
+    );
+  }
+
+  const activePetTypesForPricing = petTypes.filter(
+    (petType) => petType.is_active
+  );
+  const visibleOverridePetTypes = useMemo(() => {
+    const query = priceSearch.trim().toLowerCase();
+    return query
+      ? activePetTypesForPricing.filter((petType) =>
+          matchesPetTypeQuery(petType, query)
+        )
+      : activePetTypesForPricing;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [petTypes, priceSearch]);
+
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
@@ -352,8 +572,6 @@ export function AdminPetTypesPage() {
   if (!isAllowedViewer) {
     return <Navigate to="/staff/settings" replace />;
   }
-
-  const activePetTypes = petTypes.filter((petType) => petType.is_active);
 
   return (
     <main className={styles.page}>
@@ -421,70 +639,75 @@ export function AdminPetTypesPage() {
               {loadError}
             </p>
           ) : (
-            <ul className={styles.list}>
-              {petTypes.map((petType) => (
-                <li className={styles.listItem} key={petType.id}>
-                  {editingId === petType.id ? (
-                    <>
-                      <input
+            <>
+              <FilterSortBar
+                filterFields={PET_TYPE_FILTER_FIELDS}
+                filterTiles={filterTiles}
+                onAddFilter={handleAddFilter}
+                onChangeFilter={handleChangeFilter}
+                onRemoveFilter={handleRemoveFilter}
+                sortFields={PET_TYPE_SORT_FIELDS}
+                sortTile={sortTile}
+                onChangeSort={setSortTile}
+                searchValue={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search pet types..."
+              >
+                <div className={styles.viewControls}>
+                  <ViewSwitcher
+                    options={VIEW_OPTIONS}
+                    value={view}
+                    onChange={setView}
+                    ariaLabel="Pet types view"
+                  />
+                  {view === 'board' ? (
+                    <label className={styles.field}>
+                      <span className={styles.label}>Group by</span>
+                      <select
                         className={styles.input}
-                        value={editingName}
-                        onChange={(event) => setEditingName(event.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className={styles.smallButton}
-                        onClick={() => void handleRename(petType.id)}
+                        value={groupAxisId}
+                        onChange={(event) => setGroupAxisId(event.target.value)}
+                        aria-label="Group by"
                       >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span
-                        className={
-                          petType.is_active
-                            ? styles.itemName
-                            : `${styles.itemName} ${styles.itemInactive}`
-                        }
-                      >
-                        {petType.name}
-                        {petType.is_active ? '' : ' (inactive)'}
-                      </span>
-                      <span className={styles.itemKey}>{petType.key}</span>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => startEditing(petType)}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => void handleToggleActive(petType)}
-                      >
-                        {petType.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => void handleDelete(petType.id)}
-                      >
-                        Delete
-                      </button>
-                    </>
+                        {PET_TYPE_GROUP_BY_AXES.map((axis) => (
+                          <option key={axis.id} value={axis.id}>
+                            {axis.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              </FilterSortBar>
+
+              {view === 'table' ? (
+                <DataTable
+                  columns={columns}
+                  rows={visiblePetTypes}
+                  getRowKey={(petType) => petType.id}
+                  renderRowActions={renderPetTypeActions}
+                  emptyMessage="No pet types match this filter."
+                />
+              ) : view === 'list' ? (
+                <DataList
+                  items={visiblePetTypes}
+                  getRowKey={(petType) => petType.id}
+                  renderItem={renderPetTypeCard}
+                  emptyMessage="No pet types match this filter."
+                />
+              ) : (
+                <DataBoard
+                  groups={groupedPetTypes}
+                  getRowKey={(petType) => petType.id}
+                  renderCard={(petType) => (
+                    <div className={styles.listItem}>
+                      {renderPetTypeCard(petType)}
+                    </div>
                   )}
-                </li>
-              ))}
-            </ul>
+                  emptyColumnMessage="No pet types."
+                />
+              )}
+            </>
           )}
           {rowError ? (
             <p className={styles.errorBanner} role="alert">
@@ -524,8 +747,19 @@ export function AdminPetTypesPage() {
             </select>
           </label>
 
+          <label className={styles.field}>
+            <span className={styles.label}>Search</span>
+            <input
+              className={styles.input}
+              type="search"
+              placeholder="Search pet types..."
+              value={priceSearch}
+              onChange={(event) => setPriceSearch(event.target.value)}
+            />
+          </label>
+
           <ul className={styles.list}>
-            {activePetTypes.map((petType) => {
+            {visibleOverridePetTypes.map((petType) => {
               const ownScopeRow = overrides.find(
                 (row) =>
                   row.pet_type === petType.key &&

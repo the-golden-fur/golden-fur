@@ -127,3 +127,17 @@
   gap: 0.5rem;
   flex-shrink: 0;
 }
+
+.rewardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}

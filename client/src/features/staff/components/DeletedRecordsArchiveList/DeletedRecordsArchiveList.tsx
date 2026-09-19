@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import {
   listDeletedRecordTables,
   listDeletedRecords,
@@ -7,11 +14,15 @@ import {
   restoreDeletedRecord,
 } from '../../api/recordsArchive.api';
 import type { DeletedRecordArchiveEntry } from '../../staff.types';
+import {
+  ARCHIVE_SORT_FIELDS,
+  buildArchiveFilterFields,
+  deriveArchiveServerParams,
+  deriveArchiveSort,
+} from './archiveBrowserFields';
 import styles from './DeletedRecordsArchiveList.module.css';
 
 const PAGE_SIZE = 20;
-
-type SortOption = 'deleted_at_desc' | 'deleted_at_asc';
 
 /**
  * "As any user, I want any record from any table I delete to be stored in
@@ -23,6 +34,13 @@ type SortOption = 'deleted_at_desc' | 'deleted_at_asc';
  * rows). Restore re-inserts the row's full captured snapshot back into its
  * original table - it can fail if a dependent row was also deleted or a
  * new row already occupies the same id, surfaced as a plain error message.
+ *
+ * Notion-style remaster (session 110): the Table/Deleted filters and sort
+ * are now FilterSortBar pills instead of plain `<select>`s, and rows render
+ * through the shared DataList component - everything here is still
+ * server-backed (table/date-range/sort/pagination all round-trip to
+ * GET /staff/deleted-records, which already supported all of this), so this
+ * page is the lowest-risk first proof of the shared pieces.
  */
 export function DeletedRecordsArchiveList({
   accessToken,
@@ -30,9 +48,12 @@ export function DeletedRecordsArchiveList({
   accessToken: string;
 }) {
   const [tables, setTables] = useState<string[]>([]);
-  const [tableFilter, setTableFilter] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>({
+    fieldId: 'deletedAt',
+    direction: 'desc',
+  });
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortOption>('deleted_at_desc');
   const [page, setPage] = useState(1);
 
   const [rows, setRows] = useState<DeletedRecordArchiveEntry[]>([]);
@@ -52,11 +73,22 @@ export function DeletedRecordsArchiveList({
     });
   }, [accessToken]);
 
+  const filterFields = useMemo(
+    () => buildArchiveFilterFields(tables),
+    [tables]
+  );
+
+  const serverParams = useMemo(
+    () => deriveArchiveServerParams(filterTiles),
+    [filterTiles]
+  );
+  const sort = useMemo(() => deriveArchiveSort(sortTile), [sortTile]);
+
   useEffect(() => {
     let isMounted = true;
 
     void listDeletedRecords(accessToken, {
-      table: tableFilter || undefined,
+      ...serverParams,
       search: search.trim() || undefined,
       sort,
       page,
@@ -81,10 +113,34 @@ export function DeletedRecordsArchiveList({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, tableFilter, search, sort, page]);
+  }, [accessToken, serverParams, search, sort, page]);
 
-  function applyFilterChange(next: () => void) {
-    next();
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+    setPage(1);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+    setPage(1);
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+    setPage(1);
+  }
+
+  function handleChangeSort(tile: SortTile | null) {
+    setSortTile(tile);
+    setPage(1);
+  }
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
     setPage(1);
   }
 
@@ -134,52 +190,19 @@ export function DeletedRecordsArchiveList({
         re-inserts the record's own captured data back into its original table.
       </p>
 
-      <div className={styles.toolbar}>
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Table</span>
-          <select
-            className={styles.filterSelect}
-            value={tableFilter}
-            onChange={(event) =>
-              applyFilterChange(() => setTableFilter(event.target.value))
-            }
-          >
-            <option value="">All tables</option>
-            {tables.map((table) => (
-              <option key={table} value={table}>
-                {table}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Search</span>
-          <input
-            className={styles.filterSelect}
-            type="search"
-            placeholder="Search deleted records..."
-            value={search}
-            onChange={(event) =>
-              applyFilterChange(() => setSearch(event.target.value))
-            }
-          />
-        </label>
-
-        <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Sort</span>
-          <select
-            className={styles.filterSelect}
-            value={sort}
-            onChange={(event) =>
-              applyFilterChange(() => setSort(event.target.value as SortOption))
-            }
-          >
-            <option value="deleted_at_desc">Newest first</option>
-            <option value="deleted_at_asc">Oldest first</option>
-          </select>
-        </label>
-      </div>
+      <FilterSortBar
+        filterFields={filterFields}
+        filterTiles={filterTiles}
+        onAddFilter={handleAddFilter}
+        onChangeFilter={handleChangeFilter}
+        onRemoveFilter={handleRemoveFilter}
+        sortFields={ARCHIVE_SORT_FIELDS}
+        sortTile={sortTile}
+        onChangeSort={handleChangeSort}
+        searchValue={search}
+        onSearchChange={handleSearchChange}
+        searchPlaceholder="Search deleted records..."
+      />
 
       {rowError ? (
         <p className={styles.errorBanner} role="alert">
@@ -193,12 +216,13 @@ export function DeletedRecordsArchiveList({
         <p className={styles.errorBanner} role="alert">
           {loadError}
         </p>
-      ) : rows.length === 0 ? (
-        <p className={styles.copy}>No deleted records match this filter.</p>
       ) : (
-        <ul className={styles.list}>
-          {rows.map((row) => (
-            <li className={styles.listItem} key={row.id}>
+        <DataList
+          items={rows}
+          getRowKey={(row) => row.id}
+          emptyMessage="No deleted records match this filter."
+          renderItem={(row) => (
+            <Fragment>
               <div className={styles.listItemMain}>
                 <span className={styles.tableBadge}>{row.source_table}</span>
                 <span className={styles.itemLabel}>
@@ -223,9 +247,7 @@ export function DeletedRecordsArchiveList({
                   <button
                     type="button"
                     className={styles.restoreButton}
-                    disabled={
-                      Boolean(row.restored_at) || restoringId === row.id
-                    }
+                    disabled={Boolean(row.restored_at) || restoringId === row.id}
                     onClick={() => void handleRestore(row.id)}
                   >
                     {restoringId === row.id ? 'Restoring...' : 'Restore'}
@@ -244,9 +266,9 @@ export function DeletedRecordsArchiveList({
                   {JSON.stringify(row.row_data, null, 2)}
                 </pre>
               ) : null}
-            </li>
-          ))}
-        </ul>
+            </Fragment>
+          )}
+        />
       )}
 
       {totalPages > 1 ? (

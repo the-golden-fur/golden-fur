@@ -59,7 +59,7 @@ describe('DeletedRecordsArchiveList', () => {
     ).toBeInTheDocument();
   });
 
-  it('filtering by table re-fetches with the table param and resets to page 1', async () => {
+  it('adding a Table filter tile re-fetches with the table param and resets to page 1', async () => {
     stubDefaults();
 
     const user = userEvent.setup();
@@ -67,7 +67,15 @@ describe('DeletedRecordsArchiveList', () => {
 
     await screen.findByText('pet-1');
 
-    await user.selectOptions(screen.getByLabelText('Table'), 'bookings');
+    // Table options come from listDeletedRecordTables (['bookings', 'pets']
+    // per stubDefaults) - adding the tile starts it at the first option,
+    // same as every other FilterSortBar-backed page.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Table' }));
+
+    expect(
+      screen.getByRole('button', { name: /Table: bookings/ })
+    ).toBeInTheDocument();
 
     await waitFor(() =>
       expect(recordsArchiveApi.listDeletedRecords).toHaveBeenLastCalledWith(
@@ -77,14 +85,17 @@ describe('DeletedRecordsArchiveList', () => {
     );
   });
 
-  it('typing in search re-fetches with the search param', async () => {
+  it('typing in the search box re-fetches with the search param', async () => {
     stubDefaults();
 
     const user = userEvent.setup();
     renderList();
 
     await screen.findByText('pet-1');
-    await user.type(screen.getByLabelText('Search'), 'Buddy');
+    await user.type(
+      screen.getByPlaceholderText('Search deleted records...'),
+      'Buddy'
+    );
 
     await waitFor(() =>
       expect(recordsArchiveApi.listDeletedRecords).toHaveBeenLastCalledWith(

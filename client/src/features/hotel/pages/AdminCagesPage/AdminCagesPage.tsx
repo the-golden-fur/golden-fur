@@ -1,6 +1,18 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { listPetTypes } from '../../../maintenance/api/maintenance.api';
 import type { PetTypeRow } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -11,18 +23,30 @@ import {
   setCageMaintenanceStatus,
   updateCage,
 } from '../../api/hotel.api';
-import type { Cage, CageSize } from '../../hotel.types';
+import type { Cage, CageSize, CageStatus } from '../../hotel.types';
+import {
+  applyCageFilters,
+  buildCageFilterFields,
+  CAGE_COMPARATORS,
+  CAGE_GROUP_BY_AXES,
+  CAGE_SIZE_LABELS,
+  CAGE_SIZES,
+  CAGE_SORT_FIELDS,
+  deriveCageSortKey,
+  matchesCageQuery,
+} from './cageBrowserFields';
 import styles from './AdminCagesPage.module.css';
 
 /** Matches HOTEL_ADMIN_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
-const CAGE_SIZES: CageSize[] = ['S', 'M', 'L', 'XL'];
-const CAGE_SIZE_LABELS: Record<CageSize, string> = {
-  S: 'Small',
-  M: 'Medium',
-  L: 'Large',
-  XL: 'Extra Large',
-};
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 interface CreateFormState {
   cageLabel: string;
@@ -43,6 +67,12 @@ function togglePetType(current: string[], key: string): string[] {
     : [...current, key];
 }
 
+function statusBadgeClass(status: CageStatus): string {
+  if (status === 'Available') return styles.statusAvailable;
+  if (status === 'Under Maintenance') return styles.statusMaintenance;
+  return styles.statusOccupied;
+}
+
 /**
  * Custom change: Cage CRUD (Settings > Config). Admin/Superadmin can add,
  * rename/resize, and delete specific cages - not just toggle Under
@@ -52,6 +82,13 @@ function togglePetType(current: string[], key: string): string[] {
  * grid/status endpoints already have for every role including Superadmin
  * (requireBranch always resolves the caller's own assigned branch - there
  * is no cross-branch override for this feature today).
+ *
+ * Notion-style remaster (session 110): search/filter/sort are FilterSortBar
+ * pills, and the list can switch between Table, List, and Board (grouped by
+ * Status or Size) via ViewSwitcher - this is the first page in the rollout
+ * to prove all three shared view components together. Every filter tile
+ * here is client-side only (see cageBrowserFields.ts) - there's no server
+ * query layer change in this rollout.
  */
 export function AdminCagesPage() {
   const { user, accessToken } = useAuth();
@@ -77,6 +114,12 @@ export function AdminCagesPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
+
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(CAGE_GROUP_BY_AXES[0].id);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -259,6 +302,241 @@ export function AdminCagesPage() {
     setMessage('Cage deleted.');
   }
 
+  const filterFields = useMemo(
+    () => buildCageFilterFields(petTypeOptions),
+    [petTypeOptions]
+  );
+
+  const visibleCages = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? cages.filter((cage) => matchesCageQuery(cage, query))
+      : cages;
+    const filtered = applyCageFilters(searched, filterTiles);
+
+    // No sort tile means "keep the order cages arrived in" (grouped by
+    // size, per loadCages) rather than silently imposing a default sort.
+    if (!sortTile) return filtered;
+    return [...filtered].sort(CAGE_COMPARATORS[deriveCageSortKey(sortTile)]);
+  }, [cages, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    CAGE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedCages = useGroupBy(
+    visibleCages,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function renderCageActions(cage: Cage) {
+    if (editingId === cage.id) {
+      return (
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.smallButton}
+            onClick={() => void handleSaveEdit(cage.id)}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className={styles.smallButtonSecondary}
+            onClick={() => setEditingId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.smallButtonSecondary}
+          onClick={() => startEditing(cage)}
+        >
+          Edit
+        </button>
+        {cage.status === 'Available' || cage.status === 'Under Maintenance' ? (
+          <button
+            type="button"
+            className={styles.smallButtonSecondary}
+            onClick={() => void handleToggleMaintenance(cage)}
+          >
+            {cage.status === 'Under Maintenance'
+              ? 'Mark Available'
+              : 'Mark Under Maintenance'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={styles.smallButtonDanger}
+          disabled={cage.status === 'Occupied' || cage.status === 'Reserved'}
+          onClick={() => void handleDelete(cage)}
+        >
+          Delete
+        </button>
+      </div>
+    );
+  }
+
+  const columns = useMemo<DataTableColumn<Cage>[]>(
+    () => [
+      {
+        id: 'label',
+        header: 'Cage',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <input
+              className={styles.input}
+              value={editingLabel}
+              onChange={(event) => setEditingLabel(event.target.value)}
+            />
+          ) : (
+            <span className={styles.cageLabel}>{cage.cage_label}</span>
+          ),
+      },
+      {
+        id: 'size',
+        header: 'Size',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <select
+              className={styles.input}
+              value={editingSize}
+              onChange={(event) =>
+                setEditingSize(event.target.value as CageSize)
+              }
+            >
+              {CAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className={styles.cageSize}>
+              {CAGE_SIZE_LABELS[cage.size]}
+            </span>
+          ),
+      },
+      {
+        id: 'petTypes',
+        header: 'Pet types',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <div className={styles.petTypeCheckboxes}>
+              {petTypeOptions.map((petType) => (
+                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={editingPetTypes.includes(petType.key)}
+                    onChange={() =>
+                      setEditingPetTypes((prev) =>
+                        togglePetType(prev, petType.key)
+                      )
+                    }
+                  />
+                  {petType.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <span className={styles.petTypesBadge}>
+              {cage.pet_types.join(', ')}
+            </span>
+          ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        render: (cage) => (
+          <span
+            className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
+          >
+            {cage.status}
+          </span>
+        ),
+      },
+    ],
+    [editingId, editingLabel, editingSize, editingPetTypes, petTypeOptions]
+  );
+
+  function renderCageCard(cage: Cage) {
+    if (editingId === cage.id) {
+      return (
+        <div className={styles.rowMain}>
+          <input
+            className={styles.input}
+            value={editingLabel}
+            onChange={(event) => setEditingLabel(event.target.value)}
+          />
+          <select
+            className={styles.input}
+            value={editingSize}
+            onChange={(event) => setEditingSize(event.target.value as CageSize)}
+          >
+            {CAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+          <div className={styles.petTypeCheckboxes}>
+            {petTypeOptions.map((petType) => (
+              <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={editingPetTypes.includes(petType.key)}
+                  onChange={() =>
+                    setEditingPetTypes((prev) =>
+                      togglePetType(prev, petType.key)
+                    )
+                  }
+                />
+                {petType.name}
+              </label>
+            ))}
+          </div>
+          {renderCageActions(cage)}
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.rowMain}>
+        <span className={styles.cageLabel}>{cage.cage_label}</span>
+        <span className={styles.cageSize}>{CAGE_SIZE_LABELS[cage.size]}</span>
+        <span className={styles.petTypesBadge}>
+          {cage.pet_types.join(', ')}
+        </span>
+        <span
+          className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
+        >
+          {cage.status}
+        </span>
+        {renderCageActions(cage)}
+      </div>
+    );
+  }
+
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
@@ -373,127 +651,73 @@ export function AdminCagesPage() {
             {loadError}
           </p>
         ) : (
-          <ul className={styles.list}>
-            {cages.map((cage) => (
-              <li className={styles.listItem} key={cage.id}>
-                <div className={styles.rowMain}>
-                  {editingId === cage.id ? (
-                    <>
-                      <input
-                        className={styles.input}
-                        value={editingLabel}
-                        onChange={(event) =>
-                          setEditingLabel(event.target.value)
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        value={editingSize}
-                        onChange={(event) =>
-                          setEditingSize(event.target.value as CageSize)
-                        }
-                      >
-                        {CAGE_SIZES.map((size) => (
-                          <option key={size} value={size}>
-                            {size}
-                          </option>
-                        ))}
-                      </select>
-                      <div className={styles.petTypeCheckboxes}>
-                        {petTypeOptions.map((petType) => (
-                          <label
-                            key={petType.id}
-                            className={styles.petTypeCheckboxLabel}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={editingPetTypes.includes(petType.key)}
-                              onChange={() =>
-                                setEditingPetTypes((prev) =>
-                                  togglePetType(prev, petType.key)
-                                )
-                              }
-                            />
-                            {petType.name}
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        className={styles.smallButton}
-                        onClick={() => void handleSaveEdit(cage.id)}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className={styles.cageLabel}>
-                        {cage.cage_label}
-                      </span>
-                      <span className={styles.cageSize}>
-                        {CAGE_SIZE_LABELS[cage.size]}
-                      </span>
-                      <span className={styles.petTypesBadge}>
-                        {cage.pet_types.join(', ')}
-                      </span>
-                      <span
-                        className={`${styles.statusBadge} ${
-                          cage.status === 'Available'
-                            ? styles.statusAvailable
-                            : cage.status === 'Under Maintenance'
-                              ? styles.statusMaintenance
-                              : styles.statusOccupied
-                        }`}
-                      >
-                        {cage.status}
-                      </span>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => startEditing(cage)}
-                      >
-                        Edit
-                      </button>
-                      {cage.status === 'Available' ||
-                      cage.status === 'Under Maintenance' ? (
-                        <button
-                          type="button"
-                          className={styles.smallButtonSecondary}
-                          onClick={() => void handleToggleMaintenance(cage)}
-                        >
-                          {cage.status === 'Under Maintenance'
-                            ? 'Mark Available'
-                            : 'Mark Under Maintenance'}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={styles.smallButtonDanger}
-                        disabled={
-                          cage.status === 'Occupied' ||
-                          cage.status === 'Reserved'
-                        }
-                        onClick={() => void handleDelete(cage)}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-            {cages.length === 0 ? (
-              <p className={styles.copy}>No cages at this branch yet.</p>
-            ) : null}
-          </ul>
+          <>
+            <FilterSortBar
+              filterFields={filterFields}
+              filterTiles={filterTiles}
+              onAddFilter={handleAddFilter}
+              onChangeFilter={handleChangeFilter}
+              onRemoveFilter={handleRemoveFilter}
+              sortFields={CAGE_SORT_FIELDS}
+              sortTile={sortTile}
+              onChangeSort={setSortTile}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search cages..."
+            >
+              <div className={styles.viewControls}>
+                <ViewSwitcher
+                  options={VIEW_OPTIONS}
+                  value={view}
+                  onChange={setView}
+                  ariaLabel="Cages view"
+                />
+                {view === 'board' ? (
+                  <label className={styles.field}>
+                    <span className={styles.label}>Group by</span>
+                    <select
+                      className={styles.input}
+                      value={groupAxisId}
+                      onChange={(event) => setGroupAxisId(event.target.value)}
+                      aria-label="Group by"
+                    >
+                      {CAGE_GROUP_BY_AXES.map((axis) => (
+                        <option key={axis.id} value={axis.id}>
+                          {axis.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </FilterSortBar>
+
+            {view === 'table' ? (
+              <DataTable
+                columns={columns}
+                rows={visibleCages}
+                getRowKey={(cage) => cage.id}
+                renderRowActions={renderCageActions}
+                emptyMessage="No cages at this branch yet."
+              />
+            ) : view === 'list' ? (
+              <DataList
+                items={visibleCages}
+                getRowKey={(cage) => cage.id}
+                renderItem={renderCageCard}
+                emptyMessage="No cages at this branch yet."
+              />
+            ) : (
+              <DataBoard
+                groups={groupedCages}
+                getRowKey={(cage) => cage.id}
+                renderCard={(cage) => (
+                  <div className={styles.listItem}>{renderCageCard(cage)}</div>
+                )}
+                emptyColumnMessage="No cages."
+              />
+            )}
+          </>
         )}
 
         {rowError ? (

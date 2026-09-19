@@ -141,6 +141,44 @@
   font-style: italic;
 }
 
+.rowMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.statusBadge {
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+  white-space: nowrap;
+}
+
+.statusActive {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.statusInactive {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
 .priceInput {
   width: 8rem;
   border: 1px solid var(--color-border);

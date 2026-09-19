@@ -224,6 +224,14 @@
   gap: var(--space-2);
 }
 
+.rowContent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .serviceName {
   color: var(--color-text-primary);
   font-size: var(--text-base);

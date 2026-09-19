@@ -157,10 +157,8 @@ describe('AdminServiceTypesPage', () => {
 
     renderPage();
 
-    const groomingRow = (await screen.findByText('Grooming')).closest(
-      'li'
-    ) as HTMLElement;
-    const hotelRow = screen.getByText('Hotel').closest('li') as HTMLElement;
+    const groomingRow = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
+    const hotelRow = screen.getByText('Hotel').closest('tr') as HTMLElement;
 
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
     expect(
@@ -241,9 +239,7 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest(
-      'li'
-    ) as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
 
     expect(
       within(row).queryByRole('button', { name: 'Rename' })
@@ -279,9 +275,7 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest(
-      'li'
-    ) as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
     );
@@ -329,9 +323,7 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Grooming')).closest(
-      'li'
-    ) as HTMLElement;
+    const row = (await screen.findByText('Grooming')).closest('tr') as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
     );
@@ -360,5 +352,72 @@ describe('AdminServiceTypesPage', () => {
     expect(
       within(dialog).getByRole('switch', { name: 'Makati' })
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('switches to List and Board (grouped by Staff picker by default)', async () => {
+    vi.mocked(maintenanceApi.listServiceTypes).mockResolvedValue({
+      data: [
+        buildServiceType({ staff_picker_enabled: true }),
+        buildServiceType({
+          id: 'type-2',
+          key: 'hotel',
+          name: 'Hotel',
+          staff_picker_enabled: false,
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per Staff picker Enabled/Disabled.
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+  });
+
+  it('a Branch filter tile narrows the list', async () => {
+    vi.mocked(maintenanceApi.listServiceTypes).mockResolvedValue({
+      data: [
+        buildServiceType(),
+        buildServiceType({
+          id: 'type-2',
+          key: 'hotel',
+          name: 'Hotel',
+          service_type_branch_availability: [
+            {
+              service_type_id: 'type-2',
+              branch_id: 'branch-southwoods',
+              is_available: true,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Grooming');
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+
+    // Branch defaults to the first branch (Makati) - Grooming is available
+    // there, Hotel (Southwoods-only in this test) is not.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
+
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+    expect(screen.queryByText('Hotel')).not.toBeInTheDocument();
   });
 });

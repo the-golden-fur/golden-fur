@@ -58,7 +58,7 @@ describe('CatalogAdminPage', () => {
       })
     );
 
-    await screen.findByText('No product items yet.');
+    await screen.findByText('No product items match this filter.');
 
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Wet food' },
@@ -120,7 +120,57 @@ describe('CatalogAdminPage', () => {
 
     expect(archiveItem).toHaveBeenCalledWith('item-1', 'token');
     expect(
-      await screen.findByText('No product items yet.')
+      await screen.findByText('No product items match this filter.')
     ).toBeInTheDocument();
+  });
+
+  it('searching narrows the visible items by name or category', async () => {
+    renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({
+          data: [
+            ITEM,
+            { ...ITEM, id: 'item-2', name: 'Wet food', category: 'wet' },
+          ],
+          error: null,
+        }),
+      })
+    );
+
+    await screen.findByText('Dry kibble');
+    expect(screen.getByText('Wet food')).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search products by name or category...'),
+      { target: { value: 'dry' } }
+    );
+
+    expect(screen.getByText('Dry kibble')).toBeInTheDocument();
+    expect(screen.queryByText('Wet food')).not.toBeInTheDocument();
+  });
+
+  it('switches to Board view, grouped by Category by default', async () => {
+    const { container } = renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({
+          data: [
+            ITEM,
+            { ...ITEM, id: 'item-2', name: 'Wet food', category: 'wet' },
+          ],
+          error: null,
+        }),
+      })
+    );
+
+    await screen.findByText('Dry kibble');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    // One column per category (food, wet).
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Dry kibble')).toBeInTheDocument();
+    expect(screen.getByText('Wet food')).toBeInTheDocument();
   });
 });
