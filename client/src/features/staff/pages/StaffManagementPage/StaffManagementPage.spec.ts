@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -204,7 +204,7 @@ describe('StaffManagementPage (#75)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('AC-2: does not show a branch filter for an Admin (branch-scoped) viewer', async () => {
+  it('AC-2: does not offer a Branch filter for an Admin (branch-scoped) viewer', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Admin'), buildProfile()],
@@ -214,10 +214,13 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
-    expect(screen.queryByText('Branch')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch' })
+    ).not.toBeInTheDocument();
   });
 
-  it('AC-2: shows a branch filter for a Superadmin viewer', async () => {
+  it('AC-2: offers a Branch filter for a Superadmin viewer', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Superadmin'), buildProfile()],
@@ -227,7 +230,10 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
-    expect(screen.getByText('Branch')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch' })
+    ).toBeInTheDocument();
   });
 
   it('AC-3: filtering by role updates the visible grid without navigating', async () => {
@@ -254,7 +260,40 @@ describe('StaffManagementPage (#75)', () => {
     await screen.findByText('Jamie Cruz');
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Role'), 'Cashier');
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Role' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Role: Superadmin/ })
+    );
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('option', { name: 'Cashier' }));
+
+    expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
+    expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
+  });
+
+  it('Notion-style remaster (session 110): a search box narrows the grid by name, username, or email', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+        buildProfile({
+          id: 'staff-2',
+          display_name: 'Alex Reyes',
+          username: 'areyes',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.type(
+      screen.getByPlaceholderText('Search staff...'),
+      'areyes'
+    );
 
     expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();

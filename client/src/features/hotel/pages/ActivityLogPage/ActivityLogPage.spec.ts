@@ -1,10 +1,5 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -165,6 +160,7 @@ describe('ActivityLogPage (custom change: Hotel/Daycare activity logbook)', () =
       ],
       error: null,
     });
+    const user = userEvent.setup();
 
     renderPage();
 
@@ -175,15 +171,101 @@ describe('ActivityLogPage (custom change: Hotel/Daycare activity logbook)', () =
     );
     expect(screen.getByText('Completed: Morning meal')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Action'), {
-      target: { value: 'task_completed' },
-    });
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Action' }));
 
+    // Action defaults to the first option (Check-in) once added.
     await waitFor(() =>
       expect(
         screen.queryByText('Checked in for a Hotel stay')
-      ).not.toBeInTheDocument()
+      ).toBeInTheDocument()
     );
+    expect(
+      screen.queryByText('Completed: Morning meal')
+    ).not.toBeInTheDocument();
+  });
+
+  it('Notion-style remaster (session 110): a search box narrows by description or actor name', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Admin'),
+      error: null,
+    });
+    vi.mocked(hotelApi.listActivityLog).mockResolvedValue({
+      data: [
+        buildEntry({ id: 'log-1', description: 'Checked in for a Hotel stay' }),
+        buildEntry({
+          id: 'log-2',
+          action: 'task_completed',
+          description: 'Completed: Morning meal',
+        }),
+      ],
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Checked in for a Hotel stay');
+    await user.type(
+      screen.getByPlaceholderText('Search activity...'),
+      'morning meal'
+    );
+
+    expect(
+      screen.queryByText('Checked in for a Hotel stay')
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Completed: Morning meal')).toBeInTheDocument();
+  });
+
+  it('the Date filter pill can be removed to lift the date bound entirely', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Admin'),
+      error: null,
+    });
+    vi.mocked(hotelApi.listActivityLog).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Checked in for a Hotel stay');
+    expect(hotelApi.listActivityLog).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ dateFrom: expect.any(String) })
+    );
+
+    await user.hover(screen.getByRole('button', { name: /Date:/ }));
+    await user.click(screen.getByRole('button', { name: 'Remove Date filter' }));
+
+    await waitFor(() =>
+      expect(hotelApi.listActivityLog).toHaveBeenLastCalledWith('token', {})
+    );
+  });
+
+  it('switching to Calendar view shows entries as day chips instead of a list', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Admin'),
+      error: null,
+    });
+    // DataCalendar's month view only renders the currently-visible month
+    // (defaults to today's month), so this entry needs a date that's
+    // guaranteed to fall within it, rather than a fixed August date.
+    const midMonth = new Date();
+    midMonth.setDate(15);
+    vi.mocked(hotelApi.listActivityLog).mockResolvedValue({
+      data: [buildEntry({ created_at: midMonth.toISOString() })],
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Checked in for a Hotel stay');
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+    expect(screen.getByText('Checked in for a Hotel stay')).toBeInTheDocument();
   });
 });

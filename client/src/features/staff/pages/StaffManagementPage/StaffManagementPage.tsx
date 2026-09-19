@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../api/staff.api';
@@ -8,23 +14,16 @@ import { StaffCard } from '../../components/cards/StaffCard/StaffCard';
 import { CreateStaffAccountForm } from '../../components/forms/CreateStaffAccountForm/CreateStaffAccountForm';
 import { ManageStaffAccountForm } from '../../components/forms/ManageStaffAccountForm/ManageStaffAccountForm';
 import { UnavailabilityBlockForm } from '../../components/forms/UnavailabilityBlockForm/UnavailabilityBlockForm';
-import type {
-  CreateStaffAccountResult,
-  StaffProfile,
-  StaffRole,
-} from '../../staff.types';
+import type { CreateStaffAccountResult, StaffProfile } from '../../staff.types';
+import {
+  applyStaffFilters,
+  buildStaffFilterFields,
+  deriveStaffSortKey,
+  matchesStaffQuery,
+  STAFF_COMPARATORS,
+  STAFF_SORT_FIELDS,
+} from './staffBrowserFields';
 import styles from './StaffManagementPage.module.css';
-
-const ALL_ROLES: StaffRole[] = [
-  'Superadmin',
-  'Admin',
-  'Supervisor',
-  'Receptionist',
-  'Groomer',
-  'Veterinarian',
-  'Cashier',
-  'Pet Assistant',
-];
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
@@ -43,8 +42,9 @@ export function StaffManagementPage() {
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [roleFilter, setRoleFilter] = useState<StaffRole | 'All'>('All');
-  const [branchFilter, setBranchFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [expandedStaffId, setExpandedStaffId] = useState<string | null>(null);
   const [expandedManageStaffId, setExpandedManageStaffId] = useState<
@@ -111,23 +111,38 @@ export function StaffManagementPage() {
   const viewerRole = viewer?.role ?? null;
   const isAllowedViewer = ALLOWED_VIEWER_ROLES.has(viewerRole ?? '');
 
+  const staffFilterFields = useMemo(
+    () => buildStaffFilterFields(branches, viewerRole === 'Superadmin'),
+    [branches, viewerRole]
+  );
+
   const filteredStaff = useMemo(() => {
-    return staffList.filter((staff) => {
-      if (roleFilter !== 'All' && staff.role !== roleFilter) {
-        return false;
-      }
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? staffList.filter((staff) => matchesStaffQuery(staff, query))
+      : staffList;
+    const filtered = applyStaffFilters(searched, filterTiles);
 
-      if (
-        viewerRole === 'Superadmin' &&
-        branchFilter !== 'All' &&
-        staff.branch_id !== branchFilter
-      ) {
-        return false;
-      }
+    // No sort tile means "keep fetch order" rather than imposing a default.
+    if (!sortTile) return filtered;
+    return [...filtered].sort(STAFF_COMPARATORS[deriveStaffSortKey(sortTile)]);
+  }, [staffList, search, filterTiles, sortTile]);
 
-      return true;
-    });
-  }, [staffList, roleFilter, branchFilter, viewerRole]);
+  function handleAddFilter(fieldId: string) {
+    const field = staffFilterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   const handleBlockCreated = (staffId: string) => {
     setBlockRefreshKeys((prev) => ({
@@ -220,43 +235,19 @@ export function StaffManagementPage() {
           ) : null}
         </section>
 
-        <div className={styles.filters}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Role</span>
-            <select
-              className={styles.filterSelect}
-              value={roleFilter}
-              onChange={(event) =>
-                setRoleFilter(event.target.value as StaffRole | 'All')
-              }
-            >
-              <option value="All">All roles</option>
-              {ALL_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {viewerRole === 'Superadmin' ? (
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Branch</span>
-              <select
-                className={styles.filterSelect}
-                value={branchFilter}
-                onChange={(event) => setBranchFilter(event.target.value)}
-              >
-                <option value="All">All branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
+        <FilterSortBar
+          filterFields={staffFilterFields}
+          filterTiles={filterTiles}
+          onAddFilter={handleAddFilter}
+          onChangeFilter={handleChangeFilter}
+          onRemoveFilter={handleRemoveFilter}
+          sortFields={STAFF_SORT_FIELDS}
+          sortTile={sortTile}
+          onChangeSort={setSortTile}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search staff..."
+        />
 
         {blockMessage ? (
           <p className={styles.successBanner}>{blockMessage}</p>
