@@ -18,6 +18,9 @@ import type {
   FilterField,
   FilterTile as FilterTileState,
   FilterValue,
+  MultiSelectFilterField,
+  NumberRangeFilterField,
+  NumberRangeValue,
   SelectFilterField,
   SortFieldDescriptor,
   SortTile,
@@ -372,6 +375,14 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
     );
   }
 
+  if (field.type === 'multi-select') {
+    return <MultiSelectEditor field={field} value={value} onChange={onChange} />;
+  }
+
+  if (field.type === 'number-range') {
+    return <NumberRangeEditor field={field} value={value} onChange={onChange} />;
+  }
+
   return (
     <SelectEditor
       field={field}
@@ -379,6 +390,102 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
       onChange={onChange}
       close={close}
     />
+  );
+}
+
+interface MultiSelectEditorProps {
+  field: MultiSelectFilterField;
+  value: FilterValue;
+  onChange: (value: FilterValue) => void;
+}
+
+/** Checkbox-style option list. Unlike {@link SelectEditor}, picking an option
+ * does not close the popover - the whole point is toggling several. */
+function MultiSelectEditor({ field, value, onChange }: MultiSelectEditorProps) {
+  const selected = Array.isArray(value) ? value : [];
+
+  function toggle(optionValue: string) {
+    onChange(
+      selected.includes(optionValue)
+        ? selected.filter((existing) => existing !== optionValue)
+        : [...selected, optionValue]
+    );
+  }
+
+  return (
+    <div className={styles.optionList} role="listbox" aria-multiselectable="true">
+      {field.options.map((option) => {
+        const isSelected = selected.includes(option.value);
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            className={styles.menuItem}
+            onClick={() => toggle(option.value)}
+          >
+            {isSelected ? (
+              <Check size={13} aria-hidden="true" />
+            ) : (
+              <span className={styles.menuCheckSpacer} />
+            )}
+            {option.label}
+          </button>
+        );
+      })}
+      {field.options.length === 0 ? (
+        <p className={styles.editorEmpty}>No options.</p>
+      ) : null}
+    </div>
+  );
+}
+
+interface NumberRangeEditorProps {
+  field: NumberRangeFilterField;
+  value: FilterValue;
+  onChange: (value: FilterValue) => void;
+}
+
+function parseOptionalNumber(raw: string): number | null {
+  if (raw.trim() === '') return null;
+  const parsed = Number(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function NumberRangeEditor({ field, value, onChange }: NumberRangeEditorProps) {
+  const current: NumberRangeValue =
+    value && typeof value === 'object' && !Array.isArray(value) && 'min' in value
+      ? (value as NumberRangeValue)
+      : { min: null, max: null };
+
+  return (
+    <>
+      <label className={styles.editorField}>
+        <span className={styles.editorLabel}>{field.minLabel ?? 'Min'}</span>
+        <input
+          className={styles.editorControl}
+          type="number"
+          inputMode="decimal"
+          value={current.min ?? ''}
+          onChange={(event) =>
+            onChange({ ...current, min: parseOptionalNumber(event.target.value) })
+          }
+        />
+      </label>
+      <label className={styles.editorField}>
+        <span className={styles.editorLabel}>{field.maxLabel ?? 'Max'}</span>
+        <input
+          className={styles.editorControl}
+          type="number"
+          inputMode="decimal"
+          value={current.max ?? ''}
+          onChange={(event) =>
+            onChange({ ...current, max: parseOptionalNumber(event.target.value) })
+          }
+        />
+      </label>
+    </>
   );
 }
 

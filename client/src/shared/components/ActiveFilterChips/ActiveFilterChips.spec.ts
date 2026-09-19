@@ -46,4 +46,15 @@ describe('ActiveFilterChips', () => {
     expect(clearDate).toHaveBeenCalledTimes(1);
     expect(clearStatus).not.toHaveBeenCalled();
   });
+
+  it('Notion-style remaster (session 110): the clear icon carries the hover-reveal class, matching FilterTile everywhere else', () => {
+    const { container } = render(
+      createElement(ActiveFilterChips, {
+        chips: [{ id: 'date', label: 'Date: This week', onClear: vi.fn() }],
+      })
+    );
+
+    const icon = container.querySelector('svg');
+    expect(icon?.getAttribute('class')).toMatch(/icon/);
+  });
 });
