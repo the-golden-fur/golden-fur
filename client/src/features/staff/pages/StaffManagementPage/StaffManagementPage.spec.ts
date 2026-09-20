@@ -359,19 +359,25 @@ describe('StaffManagementPage (#75)', () => {
     ).toBeInTheDocument();
   });
 
-  it('gap closure: shows a "Create staff account" section for an Admin/Superadmin viewer', async () => {
+  it('custom change: "Create staff account" only appears as a modal once its button is clicked', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Admin')],
       error: null,
     });
 
+    const user = userEvent.setup();
     renderPage();
 
-    expect(
-      await screen.findByRole('heading', { name: /create staff account/i })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+    await screen.findByRole('button', { name: 'Create staff account' });
+    expect(screen.queryByLabelText(/^username$/i)).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Create staff account' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Create staff account' });
+    expect(within(dialog).getByLabelText(/^username$/i)).toBeInTheDocument();
   });
 
   it('gap closure: an Admin/Superadmin can deactivate a staff account from "Manage account"', async () => {

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -143,15 +149,18 @@ describe('AdminCagesPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByPlaceholderText('e.g. Makati-S-03')
+        screen.getByRole('button', { name: 'Add cage' })
       ).toBeInTheDocument()
     );
+    await user.click(screen.getByRole('button', { name: 'Add cage' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add cage' });
     await user.type(
-      screen.getByPlaceholderText('e.g. Makati-S-03'),
+      within(dialog).getByPlaceholderText('e.g. Makati-S-03'),
       'Makati-S-01'
     );
-    await user.click(screen.getByRole('checkbox', { name: 'Dog' }));
-    await user.click(screen.getByRole('button', { name: 'Add cage' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Dog' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Add cage' }));
 
     await waitFor(() =>
       expect(hotelApi.createCage).toHaveBeenCalledWith(
@@ -162,6 +171,8 @@ describe('AdminCagesPage', () => {
       )
     );
     expect(await screen.findByText('Cage added.')).toBeInTheDocument();
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('Custom change (cage pet-type support): blocks submitting the create form with no pet type selected', async () => {
@@ -179,14 +190,17 @@ describe('AdminCagesPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByPlaceholderText('e.g. Makati-S-03')
+        screen.getByRole('button', { name: 'Add cage' })
       ).toBeInTheDocument()
     );
+    await user.click(screen.getByRole('button', { name: 'Add cage' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add cage' });
     await user.type(
-      screen.getByPlaceholderText('e.g. Makati-S-03'),
+      within(dialog).getByPlaceholderText('e.g. Makati-S-03'),
       'Makati-S-01'
     );
-    await user.click(screen.getByRole('button', { name: 'Add cage' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Add cage' }));
 
     expect(
       await screen.findByText('Select at least one pet type.')
@@ -194,7 +208,7 @@ describe('AdminCagesPage', () => {
     expect(hotelApi.createCage).not.toHaveBeenCalled();
   });
 
-  it('deletes an Available cage but disables delete for an Occupied one', async () => {
+  it('custom change: row actions live behind a single "..." menu, and Delete is left out for an Occupied cage instead of shown disabled', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [{ id: 'staff-1', role: 'Superadmin' } as never],
@@ -218,12 +232,23 @@ describe('AdminCagesPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
     );
+    expect(
+      screen.queryByRole('button', { name: 'Delete' })
+    ).not.toBeInTheDocument();
 
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
-    // Occupied cage's Delete button is disabled.
-    expect(deleteButtons[1]).toBeDisabled();
+    // Occupied cage: no Delete item at all (not just disabled).
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-M-01' })
+    );
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' })
+    ).not.toBeInTheDocument();
 
-    await user.click(deleteButtons[0]);
+    // Available cage: Delete is offered and works.
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await waitFor(() =>
       expect(hotelApi.deleteCage).toHaveBeenCalledWith('cage-1', 'token')
@@ -231,7 +256,7 @@ describe('AdminCagesPage', () => {
     expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument();
   });
 
-  it('toggles Under Maintenance from the row action', async () => {
+  it('toggles Under Maintenance from the "..." menu', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [{ id: 'staff-1', role: 'Admin' } as never],
@@ -250,11 +275,14 @@ describe('AdminCagesPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Mark Under Maintenance' })
+        screen.getByRole('button', { name: 'Actions for Makati-S-01' })
       ).toBeInTheDocument()
     );
     await user.click(
-      screen.getByRole('button', { name: 'Mark Under Maintenance' })
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Mark Under Maintenance' })
     );
 
     await waitFor(() =>
@@ -266,7 +294,7 @@ describe('AdminCagesPage', () => {
     );
   });
 
-  it('edits a cage label/size', async () => {
+  it('edits a cage label/size from the "..." menu', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [{ id: 'staff-1', role: 'Admin' } as never],
@@ -286,7 +314,10 @@ describe('AdminCagesPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
 
     const labelInput = screen.getByDisplayValue('Makati-S-01');
     await user.clear(labelInput);
@@ -411,5 +442,38 @@ describe('AdminCagesPage', () => {
     ).toHaveLength(4);
     expect(screen.getByText('Makati-S-01')).toBeInTheDocument();
     expect(screen.getByText('Makati-M-01')).toBeInTheDocument();
+  });
+
+  it('custom change: Board view hides the "..." button, replacing it with a right-click/long-press menu', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Makati-S-01');
+
+    // Table view: the "..." trigger is visible.
+    expect(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Makati-S-01' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Makati-S-01'));
+
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Mark Under Maintenance' })
+    ).toBeInTheDocument();
   });
 });

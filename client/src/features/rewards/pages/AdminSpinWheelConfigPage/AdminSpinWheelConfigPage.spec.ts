@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -136,7 +136,7 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(screen.getByText('Flat 50')).toBeInTheDocument();
   });
 
-  it('adds a reward via the Add a reward form', async () => {
+  it('"Add a reward" only appears as a modal once its button is clicked', async () => {
     stubDefaults([]);
     vi.mocked(rewardsApi.createSpinWheelReward).mockResolvedValue({
       data: buildReward({ id: 'reward-new', label: 'New Reward' }),
@@ -147,10 +147,17 @@ describe('AdminSpinWheelConfigPage', () => {
     renderPage();
 
     await screen.findByText('Reward pool');
-    await user.type(screen.getByLabelText('Label'), 'New Reward');
-    await user.type(screen.getByLabelText(/^Value/), '10');
-    await user.type(screen.getByLabelText('Rarity (%)'), '100');
-    await user.click(screen.getByRole('button', { name: 'Add reward' }));
+    expect(screen.queryByLabelText('Label')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add a reward' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add a reward' });
+    await user.type(within(dialog).getByLabelText('Label'), 'New Reward');
+    await user.type(within(dialog).getByLabelText(/^Value/), '10');
+    await user.type(within(dialog).getByLabelText('Rarity (%)'), '100');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add reward' })
+    );
 
     await waitFor(() =>
       expect(rewardsApi.createSpinWheelReward).toHaveBeenCalledWith('token', {
@@ -161,6 +168,8 @@ describe('AdminSpinWheelConfigPage', () => {
       })
     );
     expect(await screen.findByText('New Reward')).toBeInTheDocument();
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('searching narrows the visible rewards', async () => {

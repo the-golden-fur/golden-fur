@@ -14,6 +14,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -76,6 +77,7 @@ export function AdminBreedsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [petTypes, setPetTypes] = useState<PetTypeRow[]>([]);
 
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newPetType, setNewPetType] = useState<PetType>('');
   const [newName, setNewName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -217,6 +219,17 @@ export function AdminBreedsPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
+  function openCreateModal() {
+    setNewName('');
+    setFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setFormError(null);
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -241,8 +254,8 @@ export function AdminBreedsPage() {
     }
 
     setBreeds((prev) => [...prev, result.data as Breed]);
-    setNewName('');
     setMessage('Breed added.');
+    closeCreateModal();
   }
 
   function startEditing(breed: Breed) {
@@ -409,56 +422,18 @@ export function AdminBreedsPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Breed Management</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Breed Management</h1>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={openCreateModal}
+          >
+            Add breed
+          </button>
+        </div>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="add-breed-title">
-          <h2 className={styles.sectionTitle} id="add-breed-title">
-            Add breed
-          </h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <label className={styles.field}>
-              <span className={styles.label}>Pet Type</span>
-              <select
-                className={styles.input}
-                value={newPetType}
-                onChange={(event) =>
-                  setNewPetType(event.target.value as PetType)
-                }
-              >
-                {petTypes.map((option) => (
-                  <option key={option.id} value={option.key}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Name</span>
-              <input
-                className={styles.input}
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-              />
-            </label>
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding...' : 'Add breed'}
-            </button>
-          </form>
-        </section>
 
         <section className={styles.panel} aria-labelledby="breeds-list-title">
           <h2 className={styles.sectionTitle} id="breeds-list-title">
@@ -538,6 +513,52 @@ export function AdminBreedsPage() {
           </p>
         ) : null}
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Add breed"
+        onClose={closeCreateModal}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Pet Type</span>
+            <select
+              className={styles.input}
+              value={newPetType}
+              onChange={(event) => setNewPetType(event.target.value as PetType)}
+            >
+              {petTypes.map((option) => (
+                <option key={option.id} value={option.key}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Name</span>
+            <input
+              className={styles.input}
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </label>
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Adding...' : 'Add breed'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 }

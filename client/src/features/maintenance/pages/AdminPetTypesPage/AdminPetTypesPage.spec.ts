@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -31,7 +25,8 @@ vi.mock('../../api/maintenance.api', () => ({
 }));
 
 // key deliberately differs from name (like real seeded data) so text
-// queries for one don't also match the other.
+// queries for one don't also match the other - key is an internal join
+// value now, never rendered or typed into by an admin.
 const DOG = {
   id: 'pt-dog',
   key: 'dog-key',
@@ -50,6 +45,11 @@ const CAT_INACTIVE = {
   updated_at: '',
 };
 
+const BRANCHES = [
+  { id: 'branch-makati', name: 'Makati' },
+  { id: 'branch-southwoods', name: 'Southwoods' },
+];
+
 function stubDefaults() {
   vi.mocked(staffApi.listStaff).mockResolvedValue({
     data: [{ id: 'staff-1', role: 'Admin' } as never],
@@ -60,7 +60,7 @@ function stubDefaults() {
     error: null,
   });
   vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
-    data: [{ id: 'branch-1', name: 'Makati' } as never],
+    data: BRANCHES as never,
     error: null,
   });
   vi.mocked(maintenanceApi.listPetTypePriceOverrides).mockResolvedValue({
@@ -100,22 +100,11 @@ function renderPage() {
   );
 }
 
-/** The page has two sections that both list pet type names (the "Existing
- * pet types" browser, and the "Fixed price overrides" list below it) - most
- * assertions/interactions need to be scoped to one or the other. Async
- * because the section (and its heading) doesn't exist until past the
- * initial role-check/data-load "Loading..." state. */
 async function findBrowserSection() {
   const heading = await screen.findByRole('heading', {
     name: 'Existing pet types',
   });
   return heading.closest('section') as HTMLElement;
-}
-
-function pricingSection() {
-  return screen
-    .getByRole('heading', { name: 'Fixed price overrides' })
-    .closest('section') as HTMLElement;
 }
 
 describe('AdminPetTypesPage', () => {
@@ -136,7 +125,7 @@ describe('AdminPetTypesPage', () => {
     );
   });
 
-  it('lists both active and inactive pet types by default, with a Status badge', async () => {
+  it('lists both active and inactive pet types by default, with a Status badge, and never shows Key', async () => {
     stubDefaults();
 
     renderPage();
@@ -148,12 +137,19 @@ describe('AdminPetTypesPage', () => {
     expect(within(section).getByText('Cat')).toBeInTheDocument();
     expect(within(section).getByText('Active')).toBeInTheDocument();
     expect(within(section).getByText('Inactive')).toBeInTheDocument();
+    expect(screen.queryByText('dog-key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Key/)).not.toBeInTheDocument();
   });
 
-  it('creates a new pet type', async () => {
+  it('"Add pet type" opens a modal with only a Name field, and closes on success', async () => {
     stubDefaults();
     vi.mocked(maintenanceApi.createPetType).mockResolvedValue({
-      data: { ...DOG, id: 'pt-bird', key: 'Bird', name: 'Bird' } as never,
+      data: {
+        ...DOG,
+        id: 'pt-bird',
+        key: 'generated-key',
+        name: 'Bird',
+      } as never,
       error: null,
     });
 
@@ -161,23 +157,56 @@ describe('AdminPetTypesPage', () => {
     renderPage();
     await within(await findBrowserSection()).findByText('Dog');
 
-    await user.type(
-      screen.getByLabelText('Key (not shown to customers)'),
-      'Bird'
-    );
-    await user.type(screen.getByLabelText('Name'), 'Bird');
     await user.click(screen.getByRole('button', { name: 'Add pet type' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add pet type' });
+    expect(within(dialog).queryByLabelText(/Key/)).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Name'), 'Bird');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add pet type' })
+    );
 
     await waitFor(() =>
       expect(maintenanceApi.createPetType).toHaveBeenCalledWith('token', {
-        key: 'Bird',
         name: 'Bird',
       })
     );
     expect(await screen.findByText('Pet type added.')).toBeInTheDocument();
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('renames a pet type from the row action', async () => {
+  it('a row exposes Rename, Configure, Deactivate and Delete behind a single "..." menu', async () => {
+    stubDefaults();
+
+    renderPage();
+    const user = userEvent.setup();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
+
+    expect(
+      within(section).queryByRole('button', { name: 'Rename' })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Deactivate' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Delete' })
+    ).toBeInTheDocument();
+  });
+
+  it('renames a pet type from the "..." menu', async () => {
     stubDefaults();
     vi.mocked(maintenanceApi.updatePetType).mockResolvedValue({
       data: { ...DOG, name: 'Doggo' } as never,
@@ -189,9 +218,11 @@ describe('AdminPetTypesPage', () => {
     const section = await findBrowserSection();
     await within(section).findByText('Dog');
 
-    fireEvent.click(
-      within(section).getAllByRole('button', { name: 'Rename' })[0]
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
     );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
     const nameInput = within(section).getByDisplayValue('Dog');
     await user.clear(nameInput);
     await user.type(nameInput, 'Doggo');
@@ -206,7 +237,7 @@ describe('AdminPetTypesPage', () => {
     );
   });
 
-  it('toggles active/inactive from the row action', async () => {
+  it('toggles active/inactive from the "..." menu', async () => {
     stubDefaults();
     vi.mocked(maintenanceApi.updatePetType).mockResolvedValue({
       data: { ...DOG, is_active: false } as never,
@@ -219,8 +250,9 @@ describe('AdminPetTypesPage', () => {
     await within(section).findByText('Dog');
 
     await user.click(
-      within(section).getAllByRole('button', { name: 'Deactivate' })[0]
+      within(section).getByRole('button', { name: 'Actions for Dog' })
     );
+    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
 
     await waitFor(() =>
       expect(maintenanceApi.updatePetType).toHaveBeenCalledWith(
@@ -231,7 +263,7 @@ describe('AdminPetTypesPage', () => {
     );
   });
 
-  it('deletes a pet type', async () => {
+  it('deletes a pet type from the "..." menu', async () => {
     stubDefaults();
     vi.mocked(maintenanceApi.deletePetType).mockResolvedValue({
       data: null,
@@ -244,8 +276,9 @@ describe('AdminPetTypesPage', () => {
     await within(section).findByText('Dog');
 
     await user.click(
-      within(section).getAllByRole('button', { name: 'Delete' })[0]
+      within(section).getByRole('button', { name: 'Actions for Dog' })
     );
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await waitFor(() =>
       expect(maintenanceApi.deletePetType).toHaveBeenCalledWith(
@@ -311,7 +344,7 @@ describe('AdminPetTypesPage', () => {
     expect(within(section).getByText('Cat')).toBeInTheDocument();
   });
 
-  it('saves and clears a fixed-price override, and the price-override list has its own search box', async () => {
+  it('Configure opens a per-pet-type, per-branch price override modal, and saves/clears an override', async () => {
     stubDefaults();
     vi.mocked(maintenanceApi.upsertPetTypePriceOverride).mockResolvedValue({
       data: {
@@ -325,16 +358,30 @@ describe('AdminPetTypesPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await within(await findBrowserSection()).findByText('Dog');
-    const section = pricingSection();
-    // Cat is inactive, so the pricing section - unlike the browser above it
-    // - only ever lists active pet types.
-    expect(within(section).getByText('Dog')).toBeInTheDocument();
-    expect(within(section).queryByText('Cat')).not.toBeInTheDocument();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
 
-    const priceInput = within(section).getByPlaceholderText('No override');
-    await user.type(priceInput, '800');
-    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Set price override - Dog',
+    });
+    expect(
+      within(dialog).getByText('All branches (default)')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('Makati')).toBeInTheDocument();
+    expect(within(dialog).getByText('Southwoods')).toBeInTheDocument();
+
+    const defaultPriceInput = within(dialog).getByLabelText(
+      'Price for All branches (default)'
+    );
+    await user.type(defaultPriceInput, '800');
+    await user.click(
+      within(dialog).getAllByRole('button', { name: 'Save' })[0]
+    );
 
     await waitFor(() =>
       expect(maintenanceApi.upsertPetTypePriceOverride).toHaveBeenCalledWith(
@@ -342,11 +389,30 @@ describe('AdminPetTypesPage', () => {
         { pet_type: 'dog-key', branch_id: null, fixed_price: 800 }
       )
     );
+  });
 
-    // The pricing section has its own, separate search box from the browser
-    // section above it.
-    expect(
-      within(section).getByPlaceholderText('Search pet types...')
-    ).toBeInTheDocument();
+  it("Configure's search box narrows the branch list", async () => {
+    stubDefaults();
+
+    const user = userEvent.setup();
+    renderPage();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
+
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Set price override - Dog',
+    });
+    await user.type(
+      within(dialog).getByPlaceholderText('Search branches...'),
+      'Makati'
+    );
+
+    expect(within(dialog).getByText('Makati')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
   });
 });

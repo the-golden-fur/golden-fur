@@ -13,6 +13,13 @@
   padding: var(--space-4) var(--space-2);
 }
 
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .title {
   margin: 0;
   color: var(--color-text-primary);
@@ -197,8 +204,7 @@
 }
 
 .smallButton,
-.smallButtonSecondary,
-.smallButtonDanger {
+.smallButtonSecondary {
   border-radius: var(--radius-pill);
   cursor: pointer;
   font-size: var(--text-sm);
@@ -216,15 +222,4 @@
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-primary);
-}
-
-.smallButtonDanger {
-  border: 1px solid var(--color-error-text);
-  background: transparent;
-  color: var(--color-error-text);
-}
-
-.smallButtonDanger:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }

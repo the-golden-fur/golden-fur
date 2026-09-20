@@ -21,10 +21,11 @@
   margin-bottom: 0.75rem;
 }
 
-.subheading {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 1rem 0 0.5rem;
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .copy {

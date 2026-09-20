@@ -1,12 +1,10 @@
 import {
-  Bell,
   CalendarPlus,
   ClipboardList,
   Gift,
   PawPrint,
   Receipt,
   Salad,
-  Wallet,
 } from 'lucide-react';
 import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar';
 
@@ -23,16 +21,20 @@ import type { SidebarSection } from '../../../shared/components/Sidebar/Sidebar'
  * Custom change (live-review): no Home entry either, for the same reason -
  * the Navbar now has its own persistent Home icon button (mirrors the
  * Settings icon), so the sidebar doesn't need to duplicate that too.
+ *
+ * Custom change: no Notifications or Credits entry either, same reasoning -
+ * the Navbar's bell (NotificationBell, with a "View all" link to
+ * /portal/notifications in its dropdown) and credit balance pill
+ * (CreditBalanceIndicator, linking straight to /portal/credits) already
+ * cover both, so a sidebar entry for either would just duplicate it.
  */
 export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
   {
     label: null,
     items: [
-      { title: 'Notifications', to: '/portal/notifications', icon: Bell },
       { title: 'Book a Service', to: '/portal/book', icon: CalendarPlus },
       { title: 'My Bookings', to: '/portal/bookings', icon: ClipboardList },
       { title: 'Transactions', to: '/portal/transactions', icon: Receipt },
-      { title: 'Credits', to: '/portal/credits', icon: Wallet },
       { title: 'My Rewards', to: '/portal/rewards', icon: Gift },
       { title: 'Pet Manager', to: '/portal/pets', icon: PawPrint },
       {

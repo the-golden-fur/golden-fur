@@ -11,13 +11,22 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
 }));
 
+vi.mock('node:crypto', () => ({ randomUUID: vi.fn(() => 'generated-key') }));
+
 interface QueryResult {
   data: unknown;
   error: unknown;
 }
 
+interface BuilderRecord {
+  [method: string]: ReturnType<typeof vi.fn>;
+}
+
+const builders: BuilderRecord[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  builders.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
@@ -25,12 +34,16 @@ function queueFromResults(...results: QueryResult[]) {
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
-    builder.insert = vi.fn(() => builder);
+    builder.insert = vi.fn((payload?: unknown) => {
+      (builder as { insertPayload?: unknown }).insertPayload = payload;
+      return builder;
+    });
     builder.update = vi.fn(() => builder);
     builder.delete = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
+    builders.push(builder as BuilderRecord);
     return builder as never;
   });
 }
@@ -63,26 +76,29 @@ describe('petTypes.service', () => {
   });
 
   describe('createPetType', () => {
-    it('creates a pet type', async () => {
+    it('creates a pet type, generating the key server-side rather than accepting it from the client', async () => {
       queueFromResults({
-        data: { id: 'pet-type-1', key: 'Rabbit', name: 'Rabbit' },
+        data: { id: 'pet-type-1', key: 'generated-key', name: 'Rabbit' },
         error: null,
       });
 
-      const result = await createPetType({ key: 'Rabbit', name: 'Rabbit' });
+      const result = await createPetType({ name: 'Rabbit' });
 
       expect(result.id).toBe('pet-type-1');
+      expect(
+        (builders[0] as { insertPayload?: { key?: string } }).insertPayload?.key
+      ).toBe('generated-key');
     });
 
-    it('rejects a duplicate key with a 409', async () => {
+    it('rejects a duplicate (randomUUID-collision) key with a 409, without referencing client input', async () => {
       queueFromResults({
         data: null,
         error: { code: '23505', message: 'duplicate key value' },
       });
 
-      await expect(
-        createPetType({ key: 'Dog', name: 'Dog' })
-      ).rejects.toMatchObject({ statusCode: 409 });
+      await expect(createPetType({ name: 'Dog' })).rejects.toMatchObject({
+        statusCode: 409,
+      });
     });
   });
 
