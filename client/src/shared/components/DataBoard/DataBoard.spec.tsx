@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { DataBoard } from './DataBoard';
 import type { GroupByBucket } from '../../hooks/useGroupBy/useGroupBy';
 
@@ -75,5 +75,86 @@ describe('DataBoard', () => {
     expect(
       within(columns[1] as HTMLElement).queryByTestId('card-1')
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('DataBoard column drag-to-reorder', () => {
+  function fakeDataTransfer() {
+    return { effectAllowed: '' };
+  }
+
+  it('column headers are not draggable when onReorderColumn is omitted', () => {
+    render(
+      <DataBoard
+        groups={GROUPS}
+        getRowKey={(cage) => cage.id}
+        renderCard={(cage) => <span>{cage.label}</span>}
+      />
+    );
+
+    const header = screen.getByRole('heading', { name: /Available/ });
+    expect(header).toHaveAttribute('draggable', 'false');
+  });
+
+  it('column headers become drag handles when onReorderColumn is provided', () => {
+    render(
+      <DataBoard
+        groups={GROUPS}
+        getRowKey={(cage) => cage.id}
+        renderCard={(cage) => <span>{cage.label}</span>}
+        onReorderColumn={vi.fn()}
+      />
+    );
+
+    const header = screen.getByRole('heading', { name: /Available/ });
+    expect(header).toHaveAttribute('draggable', 'true');
+  });
+
+  it('dragging one column header onto another calls onReorderColumn(dragged, target)', () => {
+    const onReorderColumn = vi.fn();
+    render(
+      <DataBoard
+        groups={GROUPS}
+        getRowKey={(cage) => cage.id}
+        renderCard={(cage) => <span>{cage.label}</span>}
+        onReorderColumn={onReorderColumn}
+      />
+    );
+
+    const availableHeader = screen.getByRole('heading', {
+      name: /Available/,
+    });
+    const occupiedColumn = screen
+      .getByRole('heading', { name: /Occupied/ })
+      .closest('section') as HTMLElement;
+
+    fireEvent.dragStart(availableHeader, { dataTransfer: fakeDataTransfer() });
+    fireEvent.dragOver(occupiedColumn);
+    fireEvent.drop(occupiedColumn);
+
+    expect(onReorderColumn).toHaveBeenCalledWith('Available', 'Occupied');
+  });
+
+  it('dropping a column onto itself does not call onReorderColumn', () => {
+    const onReorderColumn = vi.fn();
+    render(
+      <DataBoard
+        groups={GROUPS}
+        getRowKey={(cage) => cage.id}
+        renderCard={(cage) => <span>{cage.label}</span>}
+        onReorderColumn={onReorderColumn}
+      />
+    );
+
+    const availableHeader = screen.getByRole('heading', {
+      name: /Available/,
+    });
+    const availableColumn = availableHeader.closest('section') as HTMLElement;
+
+    fireEvent.dragStart(availableHeader, { dataTransfer: fakeDataTransfer() });
+    fireEvent.dragOver(availableColumn);
+    fireEvent.drop(availableColumn);
+
+    expect(onReorderColumn).not.toHaveBeenCalled();
   });
 });

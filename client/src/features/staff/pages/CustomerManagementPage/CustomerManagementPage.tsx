@@ -29,6 +29,7 @@ import {
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
   GROUP_SORT_MODE_OPTIONS,
+  moveColumnBefore,
   sortGroupByAxis,
   useGroupBy,
   type GroupSortMode,
@@ -131,6 +132,11 @@ export function CustomerManagementPage() {
   const [view, setView] = useState<CustomerViewMode>('gallery');
   const [groupAxisId, setGroupAxisId] = useState('status');
   const [groupSortMode, setGroupSortMode] = useState<GroupSortMode>('manual');
+  // Per-axis custom column order from dragging a Board column header while
+  // Sort groups is Manual (see StaffManagementPage's identical pattern).
+  const [manualColumnOrders, setManualColumnOrders] = useState<
+    Record<string, string[]>
+  >({});
 
   // Same trick as StaffManagementPage: the viewer's app-level role isn't on
   // the Supabase session, so it's read off their own row in the staff list
@@ -273,8 +279,26 @@ export function CustomerManagementPage() {
   const activeGroupAxis =
     CUSTOMER_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
   const sortedGroupAxis = activeGroupAxis
-    ? sortGroupByAxis(activeGroupAxis, groupSortMode)
+    ? sortGroupByAxis(
+        activeGroupAxis,
+        groupSortMode,
+        manualColumnOrders[activeGroupAxis.id]
+      )
     : null;
+
+  function handleReorderColumn(dragged: string, target: string) {
+    if (!activeGroupAxis) return;
+    const axisId = activeGroupAxis.id;
+    setManualColumnOrders((prev) => ({
+      ...prev,
+      [axisId]: moveColumnBefore(
+        prev[axisId] ?? activeGroupAxis.columns,
+        dragged,
+        target
+      ),
+    }));
+  }
+
   const groupedCustomers = useGroupBy(
     visibleCustomers,
     view === 'board' ? sortedGroupAxis : null
@@ -636,6 +660,9 @@ export function CustomerManagementPage() {
                 groups={groupedCustomers}
                 getRowKey={(customer) => customer.id}
                 renderCard={renderCustomerCard}
+                onReorderColumn={
+                  groupSortMode === 'manual' ? handleReorderColumn : undefined
+                }
               />
             ) : (
               <div className={styles.grid}>

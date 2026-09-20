@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import type { GroupByBucket } from '../../hooks/useGroupBy/useGroupBy';
 import styles from './DataBoard.module.css';
 
@@ -11,6 +11,14 @@ interface DataBoardProps<T> {
    * a status badge (see TransactionBoard's PaymentStatusBadge use). */
   renderColumnHeader?: (column: string, count: number) => ReactNode;
   emptyColumnMessage?: string;
+  /** When provided, each column header becomes a drag handle for manually
+   * reordering columns - called with (draggedColumn, dropTargetColumn) on a
+   * successful drop, which the caller turns into a new manual order (see
+   * `moveColumnBefore` in useGroupBy). Omit this to leave headers static -
+   * a page should only pass it while its own "Sort groups" control is set
+   * to Manual, since dragging a derived (e.g. Alphabetical) order wouldn't
+   * persist anywhere. */
+  onReorderColumn?: (dragged: string, target: string) => void;
 }
 
 /**
@@ -26,15 +34,78 @@ export function DataBoard<T>({
   renderCard,
   renderColumnHeader,
   emptyColumnMessage = 'Nothing here.',
+  onReorderColumn,
 }: DataBoardProps<T>) {
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+
+  function handleDragStart(column: string) {
+    return (event: DragEvent<HTMLHeadingElement>) => {
+      setDraggedColumn(column);
+      event.dataTransfer.effectAllowed = 'move';
+    };
+  }
+
+  function handleDragEnd() {
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  }
+
+  function handleDragOver(column: string) {
+    return (event: DragEvent<HTMLElement>) => {
+      // Required for this element to become a valid drop target at all.
+      event.preventDefault();
+      if (column !== dragOverColumn) setDragOverColumn(column);
+    };
+  }
+
+  function handleDrop(column: string) {
+    return (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      if (draggedColumn && draggedColumn !== column) {
+        onReorderColumn?.(draggedColumn, column);
+      }
+      setDraggedColumn(null);
+      setDragOverColumn(null);
+    };
+  }
+
   return (
     <div
       className={styles.board}
       style={{ '--column-count': groups.length } as CSSProperties}
     >
       {groups.map((group) => (
-        <section key={group.column} className={styles.column}>
-          <h3 className={styles.columnTitle}>
+        <section
+          key={group.column}
+          className={
+            onReorderColumn && dragOverColumn === group.column
+              ? `${styles.column} ${styles.columnDragOver}`
+              : styles.column
+          }
+          onDragOver={onReorderColumn ? handleDragOver(group.column) : undefined}
+          onDragLeave={
+            onReorderColumn
+              ? () =>
+                  setDragOverColumn((current) =>
+                    current === group.column ? null : current
+                  )
+              : undefined
+          }
+          onDrop={onReorderColumn ? handleDrop(group.column) : undefined}
+        >
+          <h3
+            className={
+              onReorderColumn
+                ? `${styles.columnTitle} ${styles.columnTitleDraggable}`
+                : styles.columnTitle
+            }
+            draggable={Boolean(onReorderColumn)}
+            onDragStart={
+              onReorderColumn ? handleDragStart(group.column) : undefined
+            }
+            onDragEnd={onReorderColumn ? handleDragEnd : undefined}
+          >
             {renderColumnHeader ? (
               renderColumnHeader(group.column, group.items.length)
             ) : (

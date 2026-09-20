@@ -31,6 +31,7 @@ import {
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
   GROUP_SORT_MODE_OPTIONS,
+  moveColumnBefore,
   sortGroupByAxis,
   useGroupBy,
   type GroupSortMode,
@@ -96,6 +97,13 @@ export function StaffManagementPage() {
   const [view, setView] = useState<StaffViewMode>('gallery');
   const [groupAxisId, setGroupAxisId] = useState('role');
   const [groupSortMode, setGroupSortMode] = useState<GroupSortMode>('manual');
+  // Per-axis custom column order from dragging a Board column header while
+  // Sort groups is Manual (see DataBoard's onReorderColumn) - keyed by axis
+  // id so switching Group by doesn't lose the other axis's arrangement.
+  // Session-only, same as every other view/filter/sort control on this page.
+  const [manualColumnOrders, setManualColumnOrders] = useState<
+    Record<string, string[]>
+  >({});
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [expandedStaffId, setExpandedStaffId] = useState<string | null>(null);
   const [expandedManageStaffId, setExpandedManageStaffId] = useState<
@@ -187,12 +195,29 @@ export function StaffManagementPage() {
   const activeGroupAxis =
     staffGroupByAxes.find((axis) => axis.id === groupAxisId) ?? null;
   const sortedGroupAxis = activeGroupAxis
-    ? sortGroupByAxis(activeGroupAxis, groupSortMode)
+    ? sortGroupByAxis(
+        activeGroupAxis,
+        groupSortMode,
+        manualColumnOrders[activeGroupAxis.id]
+      )
     : null;
   const groupedStaff = useGroupBy(
     filteredStaff,
     view === 'board' ? sortedGroupAxis : null
   );
+
+  function handleReorderColumn(dragged: string, target: string) {
+    if (!activeGroupAxis) return;
+    const axisId = activeGroupAxis.id;
+    setManualColumnOrders((prev) => ({
+      ...prev,
+      [axisId]: moveColumnBefore(
+        prev[axisId] ?? activeGroupAxis.columns,
+        dragged,
+        target
+      ),
+    }));
+  }
 
   function handleAddFilter(fieldId: string) {
     const field = staffFilterFields.find((f) => f.id === fieldId);
@@ -513,6 +538,9 @@ export function StaffManagementPage() {
             renderCard={(staff) => (
               <div className={styles.boardCard}>{renderStaffCard(staff)}</div>
             )}
+            onReorderColumn={
+              groupSortMode === 'manual' ? handleReorderColumn : undefined
+            }
           />
         ) : (
           <div className={styles.grid}>

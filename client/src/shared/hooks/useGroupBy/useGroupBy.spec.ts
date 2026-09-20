@@ -1,6 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { sortGroupByAxis, useGroupBy, type GroupByAxis } from './useGroupBy';
+import {
+  moveColumnBefore,
+  sortGroupByAxis,
+  useGroupBy,
+  type GroupByAxis,
+} from './useGroupBy';
 
 interface Cage {
   id: string;
@@ -90,5 +95,63 @@ describe('sortGroupByAxis', () => {
       'Occupied',
       'Under Maintenance',
     ]);
+  });
+
+  it("'manual' applies a saved manual order over the axis's own declared order", () => {
+    const sorted = sortGroupByAxis(STATUS_AXIS, 'manual', [
+      'Occupied',
+      'Available',
+    ]);
+
+    expect(sorted.columns).toEqual([
+      'Occupied',
+      'Available',
+      'Under Maintenance',
+    ]);
+  });
+
+  it("'manual' drops stale columns and appends newly-declared ones the saved order never saw", () => {
+    const sorted = sortGroupByAxis(STATUS_AXIS, 'manual', [
+      'Occupied',
+      'Retired', // no longer a declared column - dropped.
+    ]);
+
+    expect(sorted.columns).toEqual([
+      'Occupied',
+      'Available',
+      'Under Maintenance',
+    ]);
+  });
+
+  it("'alphabetical' ignores a saved manual order entirely", () => {
+    const sorted = sortGroupByAxis(STATUS_AXIS, 'alphabetical', [
+      'Occupied',
+      'Available',
+      'Under Maintenance',
+    ]);
+
+    expect(sorted.columns).toEqual([
+      'Available',
+      'Occupied',
+      'Under Maintenance',
+    ]);
+  });
+});
+
+describe('moveColumnBefore', () => {
+  const ORDER = ['Available', 'Occupied', 'Under Maintenance'];
+
+  it('moves a column to sit immediately before the drop target', () => {
+    expect(moveColumnBefore(ORDER, 'Under Maintenance', 'Available')).toEqual(
+      ['Under Maintenance', 'Available', 'Occupied']
+    );
+  });
+
+  it('moving a column onto itself is a no-op', () => {
+    expect(moveColumnBefore(ORDER, 'Occupied', 'Occupied')).toBe(ORDER);
+  });
+
+  it('an unknown drop target is a no-op', () => {
+    expect(moveColumnBefore(ORDER, 'Available', 'Retired')).toBe(ORDER);
   });
 });
