@@ -125,6 +125,7 @@ export function CustomerManagementPage() {
   const [isPetsLoading, setIsPetsLoading] = useState(false);
   const [petsLoadError, setPetsLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const [search, setSearch] = useState('');
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
@@ -202,6 +203,7 @@ export function CustomerManagementPage() {
           )
         : [...prev, customer];
     });
+    setIsCreateModalOpen(false);
     setActivePanel({ customerId: customer.id, action: 'addPet' });
     setMessage('Customer saved. Add a pet below if needed.');
   };
@@ -535,29 +537,26 @@ export function CustomerManagementPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Customer Management</h1>
-          {viewerRole === 'Admin' || viewerRole === 'Superadmin' ? (
-            <Link
-              className={styles.archiveLink}
-              to="/staff/admin/archive?tab=customers"
+          <div className={styles.titleRowActions}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() => setIsCreateModalOpen(true)}
             >
-              View archive
-            </Link>
-          ) : null}
+              New walk-in customer
+            </button>
+            {viewerRole === 'Admin' || viewerRole === 'Superadmin' ? (
+              <Link
+                className={styles.archiveLink}
+                to="/staff/admin/archive?tab=customers"
+              >
+                View archive
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="new-walkin-title">
-          <h2 className={styles.sectionTitle} id="new-walkin-title">
-            New walk-in customer
-          </h2>
-          {accessToken ? (
-            <NewWalkInCustomerForm
-              accessToken={accessToken}
-              onSaved={handleCustomerSaved}
-            />
-          ) : null}
-        </section>
 
         {isLoading ? (
           <p className={styles.copy}>Loading customers...</p>
@@ -681,6 +680,19 @@ export function CustomerManagementPage() {
         onClose={() => setActivePanel(null)}
       >
         {activePanelCustomer ? renderPanelContent(activePanelCustomer) : null}
+      </Modal>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="New walk-in customer"
+        onClose={() => setIsCreateModalOpen(false)}
+      >
+        {accessToken ? (
+          <NewWalkInCustomerForm
+            accessToken={accessToken}
+            onSaved={handleCustomerSaved}
+          />
+        ) : null}
       </Modal>
     </main>
   );

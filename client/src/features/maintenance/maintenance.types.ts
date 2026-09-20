@@ -550,9 +550,11 @@ export interface UpdateBreedPayload {
   name?: string;
 }
 
-/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
- * immutable once created (same shape as ServiceType.key) - pets.pet_type and
- * breeds.pet_type both reference it. */
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is generated
+ * server-side (same treatment as ServiceType.key) - not client-supplied, not
+ * shown in the admin UI, but still returned here since pets.pet_type,
+ * breeds.pet_type, cage_pet_types.pet_type, and pet_type_price_overrides.pet_type
+ * all reference it internally. */
 export interface PetTypeRow {
   id: string;
   key: string;
@@ -563,7 +565,6 @@ export interface PetTypeRow {
 }
 
 export interface CreatePetTypePayload {
-  key: string;
   name: string;
 }
 

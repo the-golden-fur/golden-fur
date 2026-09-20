@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createBranch,
@@ -73,7 +74,7 @@ export function SystemConfigurationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const [showAddBranch, setShowAddBranch] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newBranch, setNewBranch] = useState({
     name: '',
     address: '',
@@ -196,6 +197,23 @@ export function SystemConfigurationPage() {
     });
   }
 
+  function openCreateModal() {
+    setNewBranch({
+      name: '',
+      address: '',
+      contact_number: '',
+      timezone: 'Asia/Manila',
+      is_vet_branch: false,
+    });
+    setAddBranchError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setAddBranchError(null);
+  }
+
   const handleCreateBranch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -237,14 +255,7 @@ export function SystemConfigurationPage() {
       [...prev, created].sort((a, b) => a.name.localeCompare(b.name))
     );
     setSelectedBranchId(created.id);
-    setNewBranch({
-      name: '',
-      address: '',
-      contact_number: '',
-      timezone: 'Asia/Manila',
-      is_vet_branch: false,
-    });
-    setShowAddBranch(false);
+    closeCreateModal();
     setMessage('Branch added. Set its operating hours below.');
   };
 
@@ -345,19 +356,21 @@ export function SystemConfigurationPage() {
           <button
             type="button"
             className={styles.primaryButton}
-            onClick={() => setShowAddBranch((current) => !current)}
+            onClick={openCreateModal}
           >
-            {showAddBranch ? 'Cancel' : '+ Add branch'}
+            + Add branch
           </button>
         </div>
 
-        {showAddBranch ? (
+        <Modal
+          isOpen={isCreateModalOpen}
+          title="Add branch"
+          onClose={closeCreateModal}
+        >
           <form
             className={styles.form}
             onSubmit={(event) => void handleCreateBranch(event)}
           >
-            <h2 className={styles.sectionTitle}>Add branch</h2>
-
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Branch name</span>
               <input
@@ -456,7 +469,7 @@ export function SystemConfigurationPage() {
               </button>
             </div>
           </form>
-        ) : null}
+        </Modal>
 
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Branch</span>

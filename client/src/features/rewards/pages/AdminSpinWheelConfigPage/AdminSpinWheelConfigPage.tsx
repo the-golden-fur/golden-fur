@@ -14,6 +14,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -85,6 +86,7 @@ export function AdminSpinWheelConfigPage() {
   const [rewardRarity, setRewardRarity] = useState('');
   const [rewardFormError, setRewardFormError] = useState<string | null>(null);
   const [isSavingReward, setIsSavingReward] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -204,7 +206,18 @@ export function AdminSpinWheelConfigPage() {
     setRewardValue('');
     setRewardRarity('');
     setMessage('Reward added.');
+    setIsCreateModalOpen(false);
   };
+
+  function openCreateModal() {
+    setRewardFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setRewardFormError(null);
+  }
 
   const handleToggleActive = async (reward: SpinWheelReward) => {
     if (!accessToken) return;
@@ -440,7 +453,16 @@ export function AdminSpinWheelConfigPage() {
         </section>
 
         <section className={styles.formPanel}>
-          <h2 className={styles.sectionTitle}>Reward pool</h2>
+          <div className={styles.titleRow}>
+            <h2 className={styles.sectionTitle}>Reward pool</h2>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={openCreateModal}
+            >
+              Add a reward
+            </button>
+          </div>
           <p
             className={
               raritySum === 100 ? styles.rarityOk : styles.rarityWarning
@@ -521,80 +543,85 @@ export function AdminSpinWheelConfigPage() {
               emptyColumnMessage="No rewards here."
             />
           )}
-
-          <h3 className={styles.subheading}>Add a reward</h3>
-          <form className={styles.form} onSubmit={handleRewardSubmit}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Label</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={rewardLabel}
-                onChange={(event) => setRewardLabel(event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Discount type</span>
-              <select
-                className={styles.input}
-                value={rewardDiscountType}
-                onChange={(event) =>
-                  setRewardDiscountType(event.target.value as DiscountValueType)
-                }
-              >
-                {DISCOUNT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Value
-                {rewardDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                value={rewardValue}
-                onChange={(event) => setRewardValue(event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Rarity (%)</span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={rewardRarity}
-                onChange={(event) => setRewardRarity(event.target.value)}
-                required
-              />
-            </label>
-
-            {rewardFormError ? (
-              <p className={styles.errorBanner} role="alert">
-                {rewardFormError}
-              </p>
-            ) : null}
-
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={isSavingReward}
-            >
-              {isSavingReward ? 'Saving...' : 'Add reward'}
-            </button>
-          </form>
         </section>
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Add a reward"
+        onClose={closeCreateModal}
+      >
+        <form className={styles.form} onSubmit={handleRewardSubmit}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Label</span>
+            <input
+              className={styles.input}
+              type="text"
+              value={rewardLabel}
+              onChange={(event) => setRewardLabel(event.target.value)}
+              required
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Discount type</span>
+            <select
+              className={styles.input}
+              value={rewardDiscountType}
+              onChange={(event) =>
+                setRewardDiscountType(event.target.value as DiscountValueType)
+              }
+            >
+              {DISCOUNT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Value
+              {rewardDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              value={rewardValue}
+              onChange={(event) => setRewardValue(event.target.value)}
+              required
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Rarity (%)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={rewardRarity}
+              onChange={(event) => setRewardRarity(event.target.value)}
+              required
+            />
+          </label>
+
+          {rewardFormError ? (
+            <p className={styles.errorBanner} role="alert">
+              {rewardFormError}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            className={styles.primaryButton}
+            disabled={isSavingReward}
+          >
+            {isSavingReward ? 'Saving...' : 'Add reward'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 }

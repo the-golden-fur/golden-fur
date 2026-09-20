@@ -113,6 +113,7 @@ export function StaffManagementPage() {
     Record<string, number>
   >({});
   const [blockMessage, setBlockMessage] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     if (!accessToken) {
@@ -246,6 +247,9 @@ export function StaffManagementPage() {
 
   const handleAccountCreated = (result: CreateStaffAccountResult) => {
     setStaffList((prev) => [...prev, result.staff]);
+    // Deliberately does not close the modal - CreateStaffAccountForm shows
+    // the temporary password fallback and a Resend email button right after
+    // a successful create, which the admin still needs to read/use.
   };
 
   const handleAccountManaged = (updated: StaffProfile) => {
@@ -398,28 +402,22 @@ export function StaffManagementPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Staff Management</h1>
-          <Link
-            className={styles.archiveLink}
-            to="/staff/admin/archive?tab=staff"
-          >
-            View archive
-          </Link>
+          <div className={styles.titleRowActions}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              Create staff account
+            </button>
+            <Link
+              className={styles.archiveLink}
+              to="/staff/admin/archive?tab=staff"
+            >
+              View archive
+            </Link>
+          </div>
         </div>
-
-        <section className={styles.panel} aria-labelledby="create-staff-title">
-          <h2 className={styles.sectionTitle} id="create-staff-title">
-            Create staff account
-          </h2>
-          {viewerRole ? (
-            <CreateStaffAccountForm
-              accessToken={accessToken}
-              viewerRole={viewerRole}
-              viewerBranchId={viewer?.branch_id ?? ''}
-              branches={branches}
-              onCreated={handleAccountCreated}
-            />
-          ) : null}
-        </section>
 
         <FilterSortBar
           filterFields={staffFilterFields}
@@ -581,6 +579,22 @@ export function StaffManagementPage() {
             accessToken={accessToken}
             onUpdated={handleAccountManaged}
             onArchived={() => handleAccountArchived(expandedManageStaff.id)}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Create staff account"
+        onClose={() => setIsCreateModalOpen(false)}
+      >
+        {viewerRole && accessToken ? (
+          <CreateStaffAccountForm
+            accessToken={accessToken}
+            viewerRole={viewerRole}
+            viewerBranchId={viewer?.branch_id ?? ''}
+            branches={branches}
+            onCreated={handleAccountCreated}
           />
         ) : null}
       </Modal>

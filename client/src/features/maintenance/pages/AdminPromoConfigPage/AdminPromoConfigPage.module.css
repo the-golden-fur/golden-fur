@@ -105,17 +105,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.formPanel {
-  display: grid;
-  gap: var(--space-2);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  max-width: var(--maintenance-form-max-width);
-  padding: var(--space-4);
-}
-
 .sectionTitle {
   margin: 0;
   color: var(--color-text-primary);

@@ -13,6 +13,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -124,6 +125,7 @@ export function CatalogAdminPage({
   const [newPrice, setNewPrice] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -241,6 +243,17 @@ export function CatalogAdminPage({
     setCustomCategory('');
     setCustomServiceScope('');
     setMessage(`${itemNoun} added.`);
+    setIsCreateModalOpen(false);
+  }
+
+  function openCreateModal() {
+    setFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setFormError(null);
   }
 
   function startEditing(item: CatalogItem) {
@@ -454,105 +467,24 @@ export function CatalogAdminPage({
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>{title}</h1>
-          <Link
-            className={styles.archiveLink}
-            to={`/staff/admin/archive?tab=${archiveTab}`}
-          >
-            View archive
-          </Link>
+          <div className={styles.titleRowActions}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={openCreateModal}
+            >
+              Add {itemNoun}
+            </button>
+            <Link
+              className={styles.archiveLink}
+              to={`/staff/admin/archive?tab=${archiveTab}`}
+            >
+              View archive
+            </Link>
+          </div>
         </div>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="add-item-title">
-          <h2 className={styles.sectionTitle} id="add-item-title">
-            Add {itemNoun}
-          </h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <label className={styles.field}>
-              <span className={styles.label}>Name</span>
-              <input
-                className={styles.input}
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Category</span>
-              <select
-                className={styles.input}
-                value={newCategory}
-                onChange={(event) => setNewCategory(event.target.value)}
-              >
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-                <option value={CUSTOM_OPTION}>Other (custom)...</option>
-              </select>
-              {newCategory === CUSTOM_OPTION ? (
-                <input
-                  className={styles.input}
-                  placeholder="Custom category"
-                  value={customCategory}
-                  onChange={(event) => setCustomCategory(event.target.value)}
-                />
-              ) : null}
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Service scope</span>
-              <select
-                className={styles.input}
-                value={newServiceScope}
-                onChange={(event) => setNewServiceScope(event.target.value)}
-              >
-                {serviceScopeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-                <option value={CUSTOM_OPTION}>Other (custom)...</option>
-              </select>
-              {newServiceScope === CUSTOM_OPTION ? (
-                <input
-                  className={styles.input}
-                  placeholder="Custom service scope"
-                  value={customServiceScope}
-                  onChange={(event) =>
-                    setCustomServiceScope(event.target.value)
-                  }
-                />
-              ) : null}
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Price (PHP)</span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                value={newPrice}
-                onChange={(event) => setNewPrice(event.target.value)}
-              />
-            </label>
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding...' : `Add ${itemNoun}`}
-            </button>
-          </form>
-        </section>
 
         {isLoading ? (
           <p className={styles.copy}>Loading {itemNoun} catalog...</p>
@@ -638,6 +570,95 @@ export function CatalogAdminPage({
           </p>
         ) : null}
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title={`Add ${itemNoun}`}
+        onClose={closeCreateModal}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Name</span>
+            <input
+              className={styles.input}
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Category</span>
+            <select
+              className={styles.input}
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+            >
+              {categoryOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value={CUSTOM_OPTION}>Other (custom)...</option>
+            </select>
+            {newCategory === CUSTOM_OPTION ? (
+              <input
+                className={styles.input}
+                placeholder="Custom category"
+                value={customCategory}
+                onChange={(event) => setCustomCategory(event.target.value)}
+              />
+            ) : null}
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Service scope</span>
+            <select
+              className={styles.input}
+              value={newServiceScope}
+              onChange={(event) => setNewServiceScope(event.target.value)}
+            >
+              {serviceScopeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value={CUSTOM_OPTION}>Other (custom)...</option>
+            </select>
+            {newServiceScope === CUSTOM_OPTION ? (
+              <input
+                className={styles.input}
+                placeholder="Custom service scope"
+                value={customServiceScope}
+                onChange={(event) => setCustomServiceScope(event.target.value)}
+              />
+            ) : null}
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Price (PHP)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="0.01"
+              value={newPrice}
+              onChange={(event) => setNewPrice(event.target.value)}
+            />
+          </label>
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Adding...' : `Add ${itemNoun}`}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 }

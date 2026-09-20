@@ -50,10 +50,11 @@ describe('applyPetTypeFilters', () => {
 });
 
 describe('matchesPetTypeQuery', () => {
-  it('matches on name or key', () => {
-    const petType = buildPetType({ name: 'Dog', key: 'Dog' });
+  it('matches on name only - key is an internal join value, not searchable', () => {
+    const petType = buildPetType({ name: 'Dog', key: 'internal-join-value' });
     expect(matchesPetTypeQuery(petType, 'dog')).toBe(true);
     expect(matchesPetTypeQuery(petType, 'cat')).toBe(false);
+    expect(matchesPetTypeQuery(petType, 'internal-join-value')).toBe(false);
   });
 });
 

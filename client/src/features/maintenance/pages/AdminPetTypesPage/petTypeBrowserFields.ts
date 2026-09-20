@@ -24,20 +24,12 @@ export const PET_TYPE_FILTER_FIELDS: FilterField[] = [
   },
 ];
 
-export type PetTypeSortKey = 'name-asc' | 'name-desc' | 'key-asc' | 'key-desc';
+export type PetTypeSortKey = 'name-asc' | 'name-desc';
 
 export const PET_TYPE_SORT_FIELDS: SortFieldDescriptor[] = [
   {
     id: 'name',
     label: 'Name',
-    directions: [
-      { value: 'asc', label: 'A to Z' },
-      { value: 'desc', label: 'Z to A' },
-    ],
-  },
-  {
-    id: 'key',
-    label: 'Key',
     directions: [
       { value: 'asc', label: 'A to Z' },
       { value: 'desc', label: 'Z to A' },
@@ -51,15 +43,10 @@ export const PET_TYPE_COMPARATORS: Record<
 > = {
   'name-asc': (a, b) => a.name.localeCompare(b.name),
   'name-desc': (a, b) => b.name.localeCompare(a.name),
-  'key-asc': (a, b) => a.key.localeCompare(b.key),
-  'key-desc': (a, b) => b.key.localeCompare(a.key),
 };
 
 export function deriveSortKey(sortTile: SortTile | null): PetTypeSortKey {
   if (!sortTile) return 'name-asc';
-  if (sortTile.fieldId === 'key') {
-    return sortTile.direction === 'desc' ? 'key-desc' : 'key-asc';
-  }
   return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
 }
 
@@ -67,10 +54,7 @@ export function matchesPetTypeQuery(
   petType: PetTypeRow,
   query: string
 ): boolean {
-  return (
-    petType.name.toLowerCase().includes(query) ||
-    petType.key.toLowerCase().includes(query)
-  );
+  return petType.name.toLowerCase().includes(query);
 }
 
 /** The one filter tile here (Status) is entirely client-side - `listPetTypes`

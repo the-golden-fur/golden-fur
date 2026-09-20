@@ -925,240 +925,231 @@ export function AdminPromoConfigPage() {
           </p>
         ) : null}
 
-        {isFormOpen ? (
-          <section className={styles.formPanel} aria-labelledby="promo-form">
-            <h2 className={styles.sectionTitle} id="promo-form">
-              {editingPromoId === null ? 'Create promo' : 'Edit promo'}
-            </h2>
+        <Modal
+          isOpen={isFormOpen}
+          title={editingPromoId === null ? 'Create promo' : 'Edit promo'}
+          onClose={closeForm}
+        >
+          {editingPromoId === null && createStep === 'type' ? (
+            // Promo builder wizard, step 1 (session 86): pick the type
+            // before any of the shared/type-specific fields appear. A
+            // promo's type can't be changed after creation, so this is
+            // the only moment it's ever chosen.
+            <div className={styles.form}>
+              <fieldset className={styles.field}>
+                <legend className={styles.fieldLabel}>Promo type</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'date_range'}
+                    onChange={() => setFormPromoType('date_range')}
+                  />{' '}
+                  Date range - active between a start and end date
+                </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'weekly_recurring'}
+                    onChange={() => setFormPromoType('weekly_recurring')}
+                  />{' '}
+                  Weekly recurring - active on chosen days of the week
+                </label>
+              </fieldset>
 
-            {editingPromoId === null && createStep === 'type' ? (
-              // Promo builder wizard, step 1 (session 86): pick the type
-              // before any of the shared/type-specific fields appear. A
-              // promo's type can't be changed after creation, so this is
-              // the only moment it's ever chosen.
-              <div className={styles.form}>
-                <fieldset className={styles.field}>
-                  <legend className={styles.fieldLabel}>Promo type</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name="promo-type"
-                      checked={formPromoType === 'date_range'}
-                      onChange={() => setFormPromoType('date_range')}
-                    />{' '}
-                    Date range - active between a start and end date
-                  </label>
-                  <br />
-                  <label>
-                    <input
-                      type="radio"
-                      name="promo-type"
-                      checked={formPromoType === 'weekly_recurring'}
-                      onChange={() => setFormPromoType('weekly_recurring')}
-                    />{' '}
-                    Weekly recurring - active on chosen days of the week
-                  </label>
-                </fieldset>
-
-                <div className={styles.formActions}>
-                  <button
-                    type="button"
-                    className={styles.primaryButton}
-                    onClick={() => setCreateStep('details')}
-                  >
-                    Next
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={closeForm}
-                  >
-                    Cancel
-                  </button>
-                </div>
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => setCreateStep('details')}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
               </div>
-            ) : (
-              <form className={styles.form} onSubmit={handleSubmit}>
-                {editingPromoId === null ? (
-                  <p className={styles.copy}>
-                    {formPromoType === 'date_range'
-                      ? 'Date range promo'
-                      : 'Weekly recurring promo'}{' '}
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => setCreateStep('type')}
-                    >
-                      Change type
-                    </button>
-                  </p>
-                ) : null}
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Name</span>
-                  <input
-                    className={styles.input}
-                    type="text"
-                    value={formName}
-                    onChange={(event) => setFormName(event.target.value)}
-                    required
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Discount type</span>
-                  <select
-                    className={styles.input}
-                    value={formDiscountType}
-                    onChange={(event) =>
-                      setFormDiscountType(
-                        event.target.value as DiscountValueType
-                      )
-                    }
-                  >
-                    {DISCOUNT_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
-                    Discount value
-                    {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-                  </span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min="0"
-                    max={formDiscountType === 'Percentage' ? 100 : undefined}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={formValue}
-                    onChange={(event) => setFormValue(event.target.value)}
-                    required
-                  />
-                </label>
-
-                {formPromoType === 'date_range' ? (
-                  <>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Start date</span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formStartDate}
-                        onChange={(event) =>
-                          setFormStartDate(event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>End date</span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formEndDate}
-                        onChange={(event) => setFormEndDate(event.target.value)}
-                        required
-                      />
-                    </label>
-                  </>
-                ) : (
-                  <>
-                    <DayOfWeekPicker
-                      label="Days of the week"
-                      selectedDays={formDaysOfWeek}
-                      onChange={setFormDaysOfWeek}
-                    />
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        Start date (optional - limits the overall campaign
-                        window)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formStartDate}
-                        onChange={(event) =>
-                          setFormStartDate(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        End date (optional)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formEndDate}
-                        onChange={(event) => setFormEndDate(event.target.value)}
-                      />
-                    </label>
-                  </>
-                )}
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Scope</span>
-                  <select
-                    className={styles.input}
-                    value={formScopeType}
-                    onChange={(event) => {
-                      setFormScopeType(event.target.value as PromoScopeType);
-                      setFormScopeIds([]);
-                    }}
-                  >
-                    <option value="all_services">All services</option>
-                    <option value="specific">Specific services/packages</option>
-                  </select>
-                </label>
-
-                {formScopeType === 'specific' ? (
-                  <ServiceMultiSelect
-                    label="Included services/packages"
-                    options={scopeOptions}
-                    selectedIds={formScopeIds}
-                    onChange={setFormScopeIds}
-                  />
-                ) : null}
-
-                <BranchMultiSelect
-                  label="Available at"
-                  branches={capBranches}
-                  selectedBranchIds={formBranchIds}
-                  onChange={setFormBranchIds}
-                />
-
-                {formError ? (
-                  <p className={styles.errorBanner} role="alert">
-                    {formError}
-                  </p>
-                ) : null}
-
-                <div className={styles.formActions}>
-                  <button
-                    type="submit"
-                    className={styles.primaryButton}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? 'Saving...' : 'Save promo'}
-                  </button>
+            </div>
+          ) : (
+            <form className={styles.form} onSubmit={handleSubmit}>
+              {editingPromoId === null ? (
+                <p className={styles.copy}>
+                  {formPromoType === 'date_range'
+                    ? 'Date range promo'
+                    : 'Weekly recurring promo'}{' '}
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    onClick={closeForm}
+                    onClick={() => setCreateStep('type')}
                   >
-                    Cancel
+                    Change type
                   </button>
-                </div>
-              </form>
-            )}
-          </section>
-        ) : null}
+                </p>
+              ) : null}
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Name</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Discount type</span>
+                <select
+                  className={styles.input}
+                  value={formDiscountType}
+                  onChange={(event) =>
+                    setFormDiscountType(event.target.value as DiscountValueType)
+                  }
+                >
+                  {DISCOUNT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Discount value
+                  {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="0"
+                  max={formDiscountType === 'Percentage' ? 100 : undefined}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={formValue}
+                  onChange={(event) => setFormValue(event.target.value)}
+                  required
+                />
+              </label>
+
+              {formPromoType === 'date_range' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Start date</span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formStartDate}
+                      onChange={(event) => setFormStartDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>End date</span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formEndDate}
+                      onChange={(event) => setFormEndDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <DayOfWeekPicker
+                    label="Days of the week"
+                    selectedDays={formDaysOfWeek}
+                    onChange={setFormDaysOfWeek}
+                  />
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Start date (optional - limits the overall campaign window)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formStartDate}
+                      onChange={(event) => setFormStartDate(event.target.value)}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      End date (optional)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formEndDate}
+                      onChange={(event) => setFormEndDate(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Scope</span>
+                <select
+                  className={styles.input}
+                  value={formScopeType}
+                  onChange={(event) => {
+                    setFormScopeType(event.target.value as PromoScopeType);
+                    setFormScopeIds([]);
+                  }}
+                >
+                  <option value="all_services">All services</option>
+                  <option value="specific">Specific services/packages</option>
+                </select>
+              </label>
+
+              {formScopeType === 'specific' ? (
+                <ServiceMultiSelect
+                  label="Included services/packages"
+                  options={scopeOptions}
+                  selectedIds={formScopeIds}
+                  onChange={setFormScopeIds}
+                />
+              ) : null}
+
+              <BranchMultiSelect
+                label="Available at"
+                branches={capBranches}
+                selectedBranchIds={formBranchIds}
+                onChange={setFormBranchIds}
+              />
+
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save promo'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
 
         {filteredPromos.length === 0 ? (
           <p className={styles.copy}>No promos match the selected filters.</p>

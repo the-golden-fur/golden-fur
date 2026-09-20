@@ -604,15 +604,16 @@ export const updateBreedValidator = z
   })
   .strict();
 
-/** Custom change: Pet Types admin CRUD. `key` is free-text and immutable
- * once created (like service_types.key) - a brand-new row won't have
- * matching category-specific pricing behavior until an admin also
- * configures a fixed-price override for it (Pet Type Pricing section of the
- * same admin page); the plain weight/coat matrix pricing applies otherwise,
- * same fallback Dog already uses today. */
+/** Custom change: Pet Types admin CRUD. `key` is no longer accepted from the
+ * client - it's generated server-side (petTypes.service.ts), same treatment
+ * as Service Types, since it was redundant admin-facing busywork alongside
+ * the auto-generated `id`. A brand-new row won't have matching
+ * category-specific pricing behavior until an admin also configures a
+ * fixed-price override for it (the row's Configure action); the plain
+ * weight/coat matrix pricing applies otherwise, same fallback Dog already
+ * uses today. */
 export const createPetTypeValidator = z
   .object({
-    key: z.string().trim().min(1, 'Key is required'),
     name: z.string().trim().min(1, 'Name is required'),
   })
   .strict();

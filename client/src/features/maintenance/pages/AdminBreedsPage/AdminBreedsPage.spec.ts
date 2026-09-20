@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,8 +123,6 @@ describe('AdminBreedsPage', () => {
     expect(await screen.findByText('Beagle')).toBeInTheDocument();
     expect(screen.getByText('Persian')).toBeInTheDocument();
     // Pet type badges next to each breed (not separate "X breeds" sections).
-    // "Dog"/"Cat" also appear as <option> text in the Add breed form's Pet
-    // Type select, so at least one match (not exactly one) is the right bar.
     expect(screen.getAllByText('Dog').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Cat').length).toBeGreaterThanOrEqual(1);
   });
@@ -205,10 +203,13 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('No breeds match this filter.');
-    fireEvent.change(screen.getByLabelText(/^name$/i), {
+    fireEvent.click(screen.getByRole('button', { name: /^add breed$/i }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add breed' });
+    fireEvent.change(within(dialog).getByLabelText(/^name$/i), {
       target: { value: 'Poodle' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /add breed/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /add breed/i }));
 
     await vi.waitFor(() =>
       expect(createBreedAdmin).toHaveBeenCalledWith('token', {
@@ -217,6 +218,8 @@ describe('AdminBreedsPage', () => {
       })
     );
     expect(await screen.findByText('Poodle')).toBeInTheDocument();
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renames a breed', async () => {

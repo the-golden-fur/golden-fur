@@ -14,6 +14,12 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -106,6 +112,7 @@ export function AdminCagesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreateFormState>(EMPTY_CREATE_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -191,6 +198,17 @@ export function AdminCagesPage() {
     );
   }
 
+  function openCreateModal() {
+    setCreateForm(EMPTY_CREATE_FORM);
+    setFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setFormError(null);
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -222,8 +240,8 @@ export function AdminCagesPage() {
     }
 
     setCages((prev) => [...prev, result.data as Cage]);
-    setCreateForm(EMPTY_CREATE_FORM);
     setMessage('Cage added.');
+    closeCreateModal();
   }
 
   function startEditing(cage: Cage) {
@@ -349,6 +367,39 @@ export function AdminCagesPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
+  // Custom change: consolidate the row actions behind a single "..." menu
+  // (same treatment as Services/Pet Types/etc.) instead of a row of
+  // always-visible buttons. Delete is left out entirely rather than shown
+  // disabled - MoreOptionsMenu items have no disabled state, and omitting
+  // an inapplicable action is the same convention every other "..." menu in
+  // this app already uses.
+  function cageActionItems(cage: Cage): MoreOptionsMenuItem[] {
+    const items: MoreOptionsMenuItem[] = [
+      { label: 'Edit', onSelect: () => startEditing(cage) },
+    ];
+
+    if (cage.status === 'Available' || cage.status === 'Under Maintenance') {
+      items.push({
+        label:
+          cage.status === 'Under Maintenance'
+            ? 'Mark Available'
+            : 'Mark Under Maintenance',
+        onSelect: () => void handleToggleMaintenance(cage),
+      });
+    }
+
+    if (cage.status !== 'Occupied' && cage.status !== 'Reserved') {
+      items.push({ label: 'Delete', onSelect: () => void handleDelete(cage) });
+    }
+
+    return items;
+  }
+
+  // Table/List: a persistent "..." trigger, same as every other migrated
+  // page. Board reuses the same item list through CardContextMenu instead
+  // (see renderCageBoardCard below) - a kebab button on every card in a
+  // dense board grid is visual noise there, same precedent as Staff/
+  // Customer Management (session 111).
   function renderCageActions(cage: Cage) {
     if (editingId === cage.id) {
       return (
@@ -373,32 +424,10 @@ export function AdminCagesPage() {
 
     return (
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.smallButtonSecondary}
-          onClick={() => startEditing(cage)}
-        >
-          Edit
-        </button>
-        {cage.status === 'Available' || cage.status === 'Under Maintenance' ? (
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={() => void handleToggleMaintenance(cage)}
-          >
-            {cage.status === 'Under Maintenance'
-              ? 'Mark Available'
-              : 'Mark Under Maintenance'}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={styles.smallButtonDanger}
-          disabled={cage.status === 'Occupied' || cage.status === 'Reserved'}
-          onClick={() => void handleDelete(cage)}
-        >
-          Delete
-        </button>
+        <MoreOptionsMenu
+          label={`Actions for ${cage.cage_label}`}
+          items={cageActionItems(cage)}
+        />
       </div>
     );
   }
@@ -485,6 +514,23 @@ export function AdminCagesPage() {
     [editingId, editingLabel, editingSize, editingPetTypes, petTypeOptions]
   );
 
+  function renderCageCardBody(cage: Cage) {
+    return (
+      <>
+        <span className={styles.cageLabel}>{cage.cage_label}</span>
+        <span className={styles.cageSize}>{CAGE_SIZE_LABELS[cage.size]}</span>
+        <span className={styles.petTypesBadge}>
+          {cage.pet_types.join(', ')}
+        </span>
+        <span
+          className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
+        >
+          {cage.status}
+        </span>
+      </>
+    );
+  }
+
   function renderCageCard(cage: Cage) {
     if (editingId === cage.id) {
       return (
@@ -528,18 +574,29 @@ export function AdminCagesPage() {
 
     return (
       <div className={styles.rowMain}>
-        <span className={styles.cageLabel}>{cage.cage_label}</span>
-        <span className={styles.cageSize}>{CAGE_SIZE_LABELS[cage.size]}</span>
-        <span className={styles.petTypesBadge}>
-          {cage.pet_types.join(', ')}
-        </span>
-        <span
-          className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
-        >
-          {cage.status}
-        </span>
+        {renderCageCardBody(cage)}
         {renderCageActions(cage)}
       </div>
+    );
+  }
+
+  // Board: the "..." trigger is hidden entirely in favor of a right-click
+  // (desktop) / long-press (mobile) menu via CardContextMenu - same
+  // precedent as Staff/Customer Management (session 111). Editing state is
+  // unaffected - it still shows the same inline edit form regardless of
+  // view, since editing needs its inputs visible either way.
+  function renderCageBoardCard(cage: Cage) {
+    if (editingId === cage.id) {
+      return renderCageCard(cage);
+    }
+
+    return (
+      <CardContextMenu
+        items={cageActionItems(cage)}
+        label={`Actions for ${cage.cage_label}`}
+      >
+        <div className={styles.rowMain}>{renderCageCardBody(cage)}</div>
+      </CardContextMenu>
     );
   }
 
@@ -560,95 +617,22 @@ export function AdminCagesPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Cages</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Cages</h1>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={openCreateModal}
+          >
+            Add cage
+          </button>
+        </div>
         <p className={styles.copy}>
           Add, rename/resize, or delete a cage at your branch. A cage that is
           currently Occupied or Reserved cannot be deleted.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="add-cage-title">
-          <h2 className={styles.sectionTitle} id="add-cage-title">
-            Add cage
-          </h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <label className={styles.field}>
-              <span className={styles.label}>Cage label</span>
-              <input
-                className={styles.input}
-                value={createForm.cageLabel}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    cageLabel: event.target.value,
-                  }))
-                }
-                placeholder="e.g. Makati-S-03"
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Size</span>
-              <select
-                className={styles.input}
-                value={createForm.size}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    size: event.target.value as CageSize,
-                  }))
-                }
-              >
-                {CAGE_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {CAGE_SIZE_LABELS[size]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className={styles.field}>
-              <span className={styles.label}>Pet types</span>
-              <div className={styles.petTypeCheckboxes}>
-                {petTypeOptions.map((petType) => (
-                  <label
-                    key={petType.id}
-                    className={styles.petTypeCheckboxLabel}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={createForm.petTypes.includes(petType.key)}
-                      onChange={() =>
-                        setCreateForm((prev) => ({
-                          ...prev,
-                          petTypes: togglePetType(prev.petTypes, petType.key),
-                        }))
-                      }
-                    />
-                    {petType.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding...' : 'Add cage'}
-            </button>
-          </form>
-        </section>
 
         {isLoading ? (
           <p className={styles.copy}>Loading cages...</p>
@@ -718,7 +702,9 @@ export function AdminCagesPage() {
                 groups={groupedCages}
                 getRowKey={(cage) => cage.id}
                 renderCard={(cage) => (
-                  <div className={styles.listItem}>{renderCageCard(cage)}</div>
+                  <div className={styles.listItem}>
+                    {renderCageBoardCard(cage)}
+                  </div>
                 )}
                 emptyColumnMessage="No cages."
               />
@@ -732,6 +718,86 @@ export function AdminCagesPage() {
           </p>
         ) : null}
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Add cage"
+        onClose={closeCreateModal}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Cage label</span>
+            <input
+              className={styles.input}
+              value={createForm.cageLabel}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  cageLabel: event.target.value,
+                }))
+              }
+              placeholder="e.g. Makati-S-03"
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Size</span>
+            <select
+              className={styles.input}
+              value={createForm.size}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  size: event.target.value as CageSize,
+                }))
+              }
+            >
+              {CAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {CAGE_SIZE_LABELS[size]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className={styles.field}>
+            <span className={styles.label}>Pet types</span>
+            <div className={styles.petTypeCheckboxes}>
+              {petTypeOptions.map((petType) => (
+                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.petTypes.includes(petType.key)}
+                    onChange={() =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        petTypes: togglePetType(prev.petTypes, petType.key),
+                      }))
+                    }
+                  />
+                  {petType.name}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Adding...' : 'Add cage'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 }
