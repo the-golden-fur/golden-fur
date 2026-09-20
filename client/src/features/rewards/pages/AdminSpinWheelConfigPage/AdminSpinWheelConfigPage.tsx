@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -43,6 +49,7 @@ import {
   REWARD_GROUP_BY_AXES,
   REWARD_SORT_FIELDS,
 } from './rewardBrowserFields';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './AdminSpinWheelConfigPage.module.css';
 
 /** Same list as REWARDS_WRITE_ROLES server-side. */
@@ -144,8 +151,7 @@ export function AdminSpinWheelConfigPage() {
     0
   );
 
-  const handleConfigSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const performConfigSave = useCallback(async () => {
     if (!accessToken) return;
 
     setIsSavingConfig(true);
@@ -157,13 +163,40 @@ export function AdminSpinWheelConfigPage() {
     setIsSavingConfig(false);
 
     if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not save the spin wheel settings.');
-      return;
+      const errorMessage =
+        result.error ?? 'Could not save the spin wheel settings.';
+      setMessage(errorMessage);
+      throw new Error(errorMessage);
     }
 
     setConfig(result.data);
     setMessage('Spin wheel settings saved.');
-  };
+  }, [accessToken, milestoneInterval, spendThreshold, pityThreshold]);
+
+  const handleConfigDiscard = useCallback(() => {
+    if (!config) return;
+    setMessage(null);
+    setMilestoneInterval(String(config.bookings_milestone_interval));
+    setSpendThreshold(String(config.spend_threshold_amount));
+    setPityThreshold(String(config.pity_threshold));
+  }, [config]);
+
+  const isConfigDirty = useMemo(() => {
+    if (!config) return false;
+    return (
+      milestoneInterval !== String(config.bookings_milestone_interval) ||
+      spendThreshold !== String(config.spend_threshold_amount) ||
+      pityThreshold !== String(config.pity_threshold)
+    );
+  }, [config, milestoneInterval, spendThreshold, pityThreshold]);
+
+  useUnsavedChanges({
+    id: 'spin-wheel-thresholds',
+    label: 'Thresholds & pity',
+    isDirty: isConfigDirty,
+    onSave: performConfigSave,
+    onDiscard: handleConfigDiscard,
+  });
 
   const handleRewardSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -398,7 +431,15 @@ export function AdminSpinWheelConfigPage() {
 
         <section className={styles.formPanel}>
           <h2 className={styles.sectionTitle}>Thresholds &amp; pity</h2>
-          <form className={styles.form} onSubmit={handleConfigSubmit}>
+          <form
+            className={styles.form}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void performConfigSave().catch(() => {
+                // message is already set and shown above - nothing else to do.
+              });
+            }}
+          >
             <label className={styles.field}>
               <span className={styles.fieldLabel}>
                 Grant a spin every this many completed bookings

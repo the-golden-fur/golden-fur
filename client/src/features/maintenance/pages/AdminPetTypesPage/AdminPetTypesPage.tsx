@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -21,6 +27,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   createPetType,
@@ -224,8 +231,9 @@ export function AdminPetTypesPage() {
 
   async function handleRename(petTypeId: string) {
     if (!accessToken || !editingName.trim()) {
-      setRowError('Name is required.');
-      return;
+      const message = 'Name is required.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     setRowError(null);
@@ -235,8 +243,9 @@ export function AdminPetTypesPage() {
     });
 
     if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not rename pet type.');
-      return;
+      const message = result.error ?? 'Could not rename pet type.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     setPetTypes((prev) =>
@@ -247,6 +256,37 @@ export function AdminPetTypesPage() {
     setEditingId(null);
     setMessage('Pet type renamed.');
   }
+
+  const editingPetType = petTypes.find((p) => p.id === editingId) ?? null;
+
+  const handleDiscardEdit = useCallback(() => {
+    setEditingId(null);
+    setRowError(null);
+  }, []);
+
+  // handleRename is a plain function (redefined every render), so this
+  // wrapper must list every piece of state it reads as its own deps -
+  // otherwise an unmemoized onSave identity re-triggers useUnsavedChanges'
+  // registration effect on every render, changing the provider's context
+  // value, re-rendering this component, creating another fresh onSave... an
+  // infinite loop with no user action needed to sustain it.
+  const handleUnsavedSave = useCallback(
+    () => (editingId !== null ? handleRename(editingId) : Promise.resolve()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingId, accessToken, editingName]
+  );
+
+  // Pet Types only ever has one row mid-edit at a time (editingId), so this
+  // is the "per-in-progress-edit" shape of the pattern - a stable id with
+  // entering edit mode itself as the dirty signal, no deeper per-field
+  // diffing.
+  useUnsavedChanges({
+    id: 'pet-type-edit',
+    label: editingPetType ? `Pet type: ${editingPetType.name}` : 'Pet type',
+    isDirty: editingId !== null,
+    onSave: handleUnsavedSave,
+    onDiscard: handleDiscardEdit,
+  });
 
   async function handleToggleActive(petType: PetTypeRow) {
     if (!accessToken) return;
@@ -388,14 +428,18 @@ export function AdminPetTypesPage() {
           <button
             type="button"
             className={styles.smallButton}
-            onClick={() => void handleRename(petType.id)}
+            onClick={() =>
+              void handleRename(petType.id).catch(() => {
+                // rowError is already set and shown below - nothing else to do.
+              })
+            }
           >
             Save
           </button>
           <button
             type="button"
             className={styles.smallButtonSecondary}
-            onClick={() => setEditingId(null)}
+            onClick={handleDiscardEdit}
           >
             Cancel
           </button>

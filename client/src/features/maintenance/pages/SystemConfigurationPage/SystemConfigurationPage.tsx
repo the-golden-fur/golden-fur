@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { Modal } from '../../../../shared/components/Modal/Modal';
@@ -15,6 +21,8 @@ import {
   type Weekday,
 } from '../../maintenance.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
+import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import styles from './SystemConfigurationPage.module.css';
 
 /** Superadmin-only - deliberately narrower than every other maintenance
@@ -60,6 +68,7 @@ function formStateFromBranch(branch: Branch): FormState {
  */
 export function SystemConfigurationPage() {
   const { user, accessToken } = useAuth();
+  const unsavedChanges = useUnsavedChangesContext();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -259,9 +268,7 @@ export function SystemConfigurationPage() {
     setMessage('Branch added. Set its operating hours below.');
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!accessToken || !form || !selectedBranch) {
       return;
     }
@@ -282,8 +289,9 @@ export function SystemConfigurationPage() {
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(result.error ?? 'Could not update the branch.');
-      return;
+      const message = result.error ?? 'Could not update the branch.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setBranches((prev) =>
@@ -292,6 +300,44 @@ export function SystemConfigurationPage() {
       )
     );
     setMessage('Branch configuration updated.');
+  }, [accessToken, form, selectedBranch]);
+
+  const handleDiscard = useCallback(() => {
+    if (!selectedBranch) {
+      return;
+    }
+    setFormError(null);
+    setForm(formStateFromBranch(selectedBranch));
+  }, [selectedBranch]);
+
+  const isDirty = useMemo(() => {
+    if (!selectedBranch || !form) {
+      return false;
+    }
+    return (
+      JSON.stringify(form) !==
+      JSON.stringify(formStateFromBranch(selectedBranch))
+    );
+  }, [selectedBranch, form]);
+
+  useUnsavedChanges({
+    id: 'system-configuration',
+    label: selectedBranch ? `Branch: ${selectedBranch.name}` : 'Branch',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
+
+  // Switching branches would otherwise silently discard an in-progress
+  // edit to the currently-selected one - same guardIfDirty treatment as
+  // Settings' own tab switching.
+  const handleBranchSelect = (nextBranchId: string) => {
+    const applySelection = () => setSelectedBranchId(nextBranchId);
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(applySelection);
+    } else {
+      applySelection();
+    }
   };
 
   if (!user?.id || !accessToken) {
@@ -476,7 +522,7 @@ export function SystemConfigurationPage() {
           <select
             className={styles.input}
             value={selectedBranchId}
-            onChange={(event) => setSelectedBranchId(event.target.value)}
+            onChange={(event) => handleBranchSelect(event.target.value)}
           >
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
@@ -492,7 +538,15 @@ export function SystemConfigurationPage() {
           </p>
         ) : null}
 
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // formError is already set and shown below - nothing else to do.
+            });
+          }}
+        >
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Branch name</span>
             <input

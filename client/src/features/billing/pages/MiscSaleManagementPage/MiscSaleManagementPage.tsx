@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -8,6 +8,7 @@ import {
   updateMiscSale,
 } from '../../api/billing.api';
 import type { Transaction } from '../../billing.types';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './MiscSaleManagementPage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -71,6 +72,72 @@ export function MiscSaleManagementPage() {
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
 
+  async function handleSaveEdit(saleId: string) {
+    if (!accessToken) {
+      return;
+    }
+
+    const amount = Number(editingAmount);
+
+    if (!editingDescription.trim() || Number.isNaN(amount) || amount <= 0) {
+      const message = 'Description and a positive amount are required.';
+      setRowError(message);
+      throw new Error(message);
+    }
+
+    setRowError(null);
+
+    const result = await updateMiscSale(
+      saleId,
+      { description: editingDescription.trim(), amount },
+      accessToken
+    );
+
+    if (result.error || !result.data) {
+      const message = result.error ?? 'Could not update this sale.';
+      setRowError(message);
+      throw new Error(message);
+    }
+
+    setSales((prev) =>
+      prev.map((sale) => (sale.id === saleId ? result.data!.transaction : sale))
+    );
+    setEditingId(null);
+  }
+
+  const editingSale = sales.find((sale) => sale.id === editingId) ?? null;
+
+  const handleDiscardEdit = useCallback(() => {
+    setEditingId(null);
+    setRowError(null);
+  }, []);
+
+  // handleSaveEdit is a plain function (redefined every render), so this
+  // wrapper must list every piece of state it reads as its own deps -
+  // otherwise an unmemoized onSave identity re-triggers useUnsavedChanges'
+  // registration effect on every render, changing the provider's context
+  // value, re-rendering this component, creating another fresh onSave... an
+  // infinite loop with no user action needed to sustain it.
+  const handleUnsavedSave = useCallback(
+    () => (editingId !== null ? handleSaveEdit(editingId) : Promise.resolve()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingId, accessToken, editingAmount, editingDescription]
+  );
+
+  // Only one row mid-edit at a time (editingId), so this is the
+  // "per-in-progress-edit" shape of the pattern - a stable id with entering
+  // edit mode itself as the dirty signal, same as AdminCagesPage's cage-edit
+  // registration.
+  useUnsavedChanges({
+    id: 'misc-sale-edit',
+    label: editingSale
+      ? `Sale: ${editingSale.misc_sale_description}`
+      : 'Miscellaneous sale',
+    isDirty: editingId !== null,
+    onSave: handleUnsavedSave,
+    onDiscard: handleDiscardEdit,
+  });
+
   if (isRoleLoading) {
     return <p>Loading...</p>;
   }
@@ -80,8 +147,8 @@ export function MiscSaleManagementPage() {
   }
 
   // Closures don't retain flow narrowing, even for a const - re-bind to a
-  // definitely-string local so handleSaveEdit/handleDelete below don't need
-  // their own redundant null guards.
+  // definitely-string local so handleDelete below doesn't need its own
+  // redundant null guard.
   const token = accessToken;
 
   function startEditing(sale: Transaction) {
@@ -89,33 +156,6 @@ export function MiscSaleManagementPage() {
     setEditingDescription(sale.misc_sale_description ?? '');
     setEditingAmount(String(sale.total_amount));
     setRowError(null);
-  }
-
-  async function handleSaveEdit(saleId: string) {
-    const amount = Number(editingAmount);
-
-    if (!editingDescription.trim() || Number.isNaN(amount) || amount <= 0) {
-      setRowError('Description and a positive amount are required.');
-      return;
-    }
-
-    setRowError(null);
-
-    const result = await updateMiscSale(
-      saleId,
-      { description: editingDescription.trim(), amount },
-      token
-    );
-
-    if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update this sale.');
-      return;
-    }
-
-    setSales((prev) =>
-      prev.map((sale) => (sale.id === saleId ? result.data!.transaction : sale))
-    );
-    setEditingId(null);
   }
 
   async function handleDelete(saleId: string) {
@@ -168,14 +208,18 @@ export function MiscSaleManagementPage() {
                     <button
                       type="button"
                       className={styles.smallButton}
-                      onClick={() => void handleSaveEdit(sale.id)}
+                      onClick={() =>
+                        void handleSaveEdit(sale.id).catch(() => {
+                          // rowError is already set and shown below - nothing else to do.
+                        })
+                      }
                     >
                       Save
                     </button>
                     <button
                       type="button"
                       className={styles.smallButtonSecondary}
-                      onClick={() => setEditingId(null)}
+                      onClick={handleDiscardEdit}
                     >
                       Cancel
                     </button>

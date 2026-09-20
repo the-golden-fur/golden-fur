@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getStaffProfile,
   updateStaffProfile,
@@ -12,6 +12,7 @@ import {
 } from '../../../features/customers/api/customer.api';
 import type { CustomerProfile } from '../../../features/customers/customer.types';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
+import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from '../SettingsPage.module.css';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
@@ -92,9 +93,10 @@ function StaffProfileForm({
     setProfile((prev) => (prev ? { ...prev, profile_photo_url: url } : prev));
   };
 
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  // Split from the form's onSubmit so the shared Save/Discard bar can call
+  // it too (it has no FormEvent to hand in) - throws on failure so the bar
+  // knows the save didn't actually succeed and keeps the section dirty.
+  const performSave = useCallback(async () => {
     if (!profile) {
       return;
     }
@@ -103,11 +105,24 @@ function StaffProfileForm({
     setSaveSuccess(false);
     setIsSaving(true);
 
+    // Pre-existing bug, not introduced by the Save/Discard feature: the
+    // server's updateStaffProfileValidator requires phone_number/emergency
+    // contact fields to be non-empty *if present at all* - it rejects ''
+    // with a 400 "Invalid payload", so these must be omitted rather than
+    // sent blank, same as preferred_communication_channel already was.
+    // Previously this endpoint was only ever hit from a form the user had
+    // already filled in once, so an empty optional field going out as ''
+    // never got exercised until the Save/Discard bar made it easy to save
+    // after touching just one field on an otherwise-blank profile.
     const result = await updateStaffProfile(profile.id, accessToken, {
       display_name: displayName,
-      phone_number: phoneNumber,
-      emergency_contact_name: emergencyContactName,
-      emergency_contact_number: emergencyContactNumber,
+      ...(phoneNumber.trim() ? { phone_number: phoneNumber } : {}),
+      ...(emergencyContactName.trim()
+        ? { emergency_contact_name: emergencyContactName }
+        : {}),
+      ...(emergencyContactNumber.trim()
+        ? { emergency_contact_number: emergencyContactNumber }
+        : {}),
       ...(commsChannel
         ? { preferred_communication_channel: commsChannel }
         : {}),
@@ -116,13 +131,62 @@ function StaffProfileForm({
     setIsSaving(false);
 
     if (result.error || !result.data) {
-      setSaveError(result.error ?? 'Could not save your profile.');
-      return;
+      const message = result.error ?? 'Could not save your profile.';
+      setSaveError(message);
+      throw new Error(message);
     }
 
     setProfile(result.data);
     setSaveSuccess(true);
-  };
+  }, [
+    profile,
+    accessToken,
+    displayName,
+    phoneNumber,
+    emergencyContactName,
+    emergencyContactNumber,
+    commsChannel,
+  ]);
+
+  const handleDiscard = useCallback(() => {
+    if (!profile) {
+      return;
+    }
+    setSaveError(null);
+    setDisplayName(profile.display_name);
+    setPhoneNumber(profile.phone_number ?? '');
+    setEmergencyContactName(profile.emergency_contact_name ?? '');
+    setEmergencyContactNumber(profile.emergency_contact_number ?? '');
+    setCommsChannel(profile.preferred_communication_channel ?? '');
+  }, [profile]);
+
+  const isDirty = useMemo(() => {
+    if (!profile) {
+      return false;
+    }
+    return (
+      displayName !== profile.display_name ||
+      phoneNumber !== (profile.phone_number ?? '') ||
+      emergencyContactName !== (profile.emergency_contact_name ?? '') ||
+      emergencyContactNumber !== (profile.emergency_contact_number ?? '') ||
+      commsChannel !== (profile.preferred_communication_channel ?? '')
+    );
+  }, [
+    profile,
+    displayName,
+    phoneNumber,
+    emergencyContactName,
+    emergencyContactNumber,
+    commsChannel,
+  ]);
+
+  useUnsavedChanges({
+    id: 'profile',
+    label: 'Profile',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   if (isLoading) {
     return <p className={styles.copy}>Loading your profile...</p>;
@@ -157,7 +221,12 @@ function StaffProfileForm({
 
       <form
         className={styles.form}
-        onSubmit={(event) => void handleSave(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void performSave().catch(() => {
+            // saveError is already set and shown below - nothing else to do.
+          });
+        }}
       >
         <label className={styles.field}>
           <span className={styles.label}>Display name</span>
@@ -279,9 +348,7 @@ function CustomerProfileForm({
     };
   }, [userId, accessToken]);
 
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!profile) {
       return;
     }
@@ -290,11 +357,18 @@ function CustomerProfileForm({
     setSaveSuccess(false);
     setIsSaving(true);
 
+    // Same pre-existing bug as StaffProfileForm above: the server rejects
+    // an empty string for these optional fields, so they must be omitted
+    // rather than sent blank when the customer hasn't filled them in.
     const result = await updateCustomerProfile(profile.id, accessToken, {
       full_name: fullName,
-      contact_number: contactNumber,
-      emergency_contact_name: emergencyContactName,
-      emergency_contact_number: emergencyContactNumber,
+      ...(contactNumber.trim() ? { contact_number: contactNumber } : {}),
+      ...(emergencyContactName.trim()
+        ? { emergency_contact_name: emergencyContactName }
+        : {}),
+      ...(emergencyContactNumber.trim()
+        ? { emergency_contact_number: emergencyContactNumber }
+        : {}),
       ...(commsChannel
         ? { preferred_communication_channel: commsChannel }
         : {}),
@@ -303,13 +377,62 @@ function CustomerProfileForm({
     setIsSaving(false);
 
     if (result.error || !result.data) {
-      setSaveError(result.error ?? 'Could not save your profile.');
-      return;
+      const message = result.error ?? 'Could not save your profile.';
+      setSaveError(message);
+      throw new Error(message);
     }
 
     setProfile(result.data);
     setSaveSuccess(true);
-  };
+  }, [
+    profile,
+    accessToken,
+    fullName,
+    contactNumber,
+    emergencyContactName,
+    emergencyContactNumber,
+    commsChannel,
+  ]);
+
+  const handleDiscard = useCallback(() => {
+    if (!profile) {
+      return;
+    }
+    setSaveError(null);
+    setFullName(profile.full_name);
+    setContactNumber(profile.contact_number ?? '');
+    setEmergencyContactName(profile.emergency_contact_name ?? '');
+    setEmergencyContactNumber(profile.emergency_contact_number ?? '');
+    setCommsChannel(profile.preferred_communication_channel ?? '');
+  }, [profile]);
+
+  const isDirty = useMemo(() => {
+    if (!profile) {
+      return false;
+    }
+    return (
+      fullName !== profile.full_name ||
+      contactNumber !== (profile.contact_number ?? '') ||
+      emergencyContactName !== (profile.emergency_contact_name ?? '') ||
+      emergencyContactNumber !== (profile.emergency_contact_number ?? '') ||
+      commsChannel !== (profile.preferred_communication_channel ?? '')
+    );
+  }, [
+    profile,
+    fullName,
+    contactNumber,
+    emergencyContactName,
+    emergencyContactNumber,
+    commsChannel,
+  ]);
+
+  useUnsavedChanges({
+    id: 'profile',
+    label: 'Profile',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   if (isLoading) {
     return <p className={styles.copy}>Loading your profile...</p>;
@@ -327,7 +450,12 @@ function CustomerProfileForm({
     <section className={styles.panel}>
       <form
         className={styles.form}
-        onSubmit={(event) => void handleSave(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void performSave().catch(() => {
+            // saveError is already set and shown below - nothing else to do.
+          });
+        }}
       >
         <label className={styles.field}>
           <span className={styles.label}>Full name</span>

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -25,6 +31,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listPetTypes } from '../../../maintenance/api/maintenance.api';
 import type { PetTypeRow } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -254,13 +261,15 @@ export function AdminCagesPage() {
 
   async function handleSaveEdit(cageId: string) {
     if (!accessToken || !editingLabel.trim()) {
-      setRowError('Cage label is required.');
-      return;
+      const message = 'Cage label is required.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     if (editingPetTypes.length === 0) {
-      setRowError('Select at least one pet type.');
-      return;
+      const message = 'Select at least one pet type.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     setRowError(null);
@@ -276,14 +285,53 @@ export function AdminCagesPage() {
     );
 
     if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update cage.');
-      return;
+      const message = result.error ?? 'Could not update cage.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     replaceCage(result.data);
     setEditingId(null);
     setMessage('Cage updated.');
   }
+
+  const editingCage = cages.find((cage) => cage.id === editingId) ?? null;
+
+  const handleDiscardEdit = useCallback(() => {
+    setEditingId(null);
+    setRowError(null);
+  }, []);
+
+  // handleSaveEdit itself is a plain function (redefined every render, not
+  // useCallback'd), so this wrapper's own deps must list every piece of
+  // state handleSaveEdit actually reads - otherwise (see the bug this
+  // fixed) a fresh, unmemoized onSave identity on every render re-triggers
+  // useUnsavedChanges' registration effect every render, which changes the
+  // provider's context value, which re-renders this component, which
+  // creates another fresh onSave... an infinite loop with no user action
+  // needed to sustain it. Listing the real dependencies here means this
+  // only recomputes when one of them actually changes, each time capturing
+  // that same render's handleSaveEdit (correctly in sync, since both are
+  // defined fresh together every render).
+  const handleUnsavedSave = useCallback(
+    () => (editingId !== null ? handleSaveEdit(editingId) : Promise.resolve()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingId, accessToken, editingLabel, editingSize, editingPetTypes]
+  );
+
+  // Cages only ever has one row mid-edit at a time (editingId), so this is
+  // the "per-in-progress-edit" shape of the pattern - a stable id (there's
+  // never more than one concurrent registration for this page) with
+  // entering edit mode itself as the dirty signal, since there's no
+  // deeper per-field diffing for row edits like there is for whole-page
+  // drafts.
+  useUnsavedChanges({
+    id: 'cage-edit',
+    label: editingCage ? `Cage: ${editingCage.cage_label}` : 'Cage',
+    isDirty: editingId !== null,
+    onSave: handleUnsavedSave,
+    onDiscard: handleDiscardEdit,
+  });
 
   async function handleToggleMaintenance(cage: Cage) {
     if (!accessToken) return;
@@ -407,14 +455,18 @@ export function AdminCagesPage() {
           <button
             type="button"
             className={styles.smallButton}
-            onClick={() => void handleSaveEdit(cage.id)}
+            onClick={() =>
+              void handleSaveEdit(cage.id).catch(() => {
+                // rowError is already set and shown below - nothing else to do.
+              })
+            }
           >
             Save
           </button>
           <button
             type="button"
             className={styles.smallButtonSecondary}
-            onClick={() => setEditingId(null)}
+            onClick={handleDiscardEdit}
           >
             Cancel
           </button>
