@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -18,6 +18,8 @@ import type {
   RescheduleFeeType,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
+import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import styles from './PolicyConfigurationPage.module.css';
 
 /** Admin+Superadmin - matches BOOKING_POLICY_WRITE_ROLES/policy_configurations
@@ -142,6 +144,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
  */
 export function PolicyConfigurationPage() {
   const { user, accessToken } = useAuth();
+  const unsavedChanges = useUnsavedChangesContext();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -240,24 +243,23 @@ export function PolicyConfigurationPage() {
     setFormError(null);
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!accessToken) return;
 
     if (form.lunch_break_start >= form.lunch_break_end) {
-      setFormError('Lunch break end must be after start.');
-      return;
+      const message = 'Lunch break end must be after start.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     if (
       form.credit_expiry_mode === 'fixed_date' &&
       !form.credit_expiry_fixed_date
     ) {
-      setFormError(
-        'Pick the date all of this branch’s credit should expire on.'
-      );
-      return;
+      const message =
+        'Pick the date all of this branch’s credit should expire on.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setIsSubmitting(true);
@@ -306,8 +308,9 @@ export function PolicyConfigurationPage() {
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(result.error ?? 'Could not update the policy.');
-      return;
+      const message = result.error ?? 'Could not update the policy.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setPolicies((prev) => {
@@ -315,6 +318,37 @@ export function PolicyConfigurationPage() {
       return [...next, result.data!];
     });
     setMessage('Policy configuration updated.');
+  }, [accessToken, form, selectedBranchId]);
+
+  const handleDiscard = useCallback(() => {
+    setFormError(null);
+    setForm(formStateFromPolicy(effectivePolicy));
+  }, [effectivePolicy]);
+
+  const isDirty = useMemo(
+    () =>
+      JSON.stringify(form) !==
+      JSON.stringify(formStateFromPolicy(effectivePolicy)),
+    [form, effectivePolicy]
+  );
+
+  useUnsavedChanges({
+    id: 'policy-configuration',
+    label: selectedBranchId
+      ? `Policies: ${branches.find((b) => b.id === selectedBranchId)?.name ?? 'branch'}`
+      : 'Policies: system default',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
+
+  const handleBranchSelect = (nextBranchId: string) => {
+    const applySelection = () => setSelectedBranchId(nextBranchId);
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(applySelection);
+    } else {
+      applySelection();
+    }
   };
 
   if (!user?.id || !accessToken) {
@@ -381,7 +415,7 @@ export function PolicyConfigurationPage() {
           <select
             className={styles.input}
             value={selectedBranchId}
-            onChange={(event) => setSelectedBranchId(event.target.value)}
+            onChange={(event) => handleBranchSelect(event.target.value)}
           >
             <option value={SYSTEM_DEFAULT_OPTION}>
               System default (all branches)
@@ -400,7 +434,15 @@ export function PolicyConfigurationPage() {
           </p>
         ) : null}
 
-        <form className={styles.form} onSubmit={(e) => void handleSubmit(e)}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // formError is already set and shown below - nothing else to do.
+            });
+          }}
+        >
           <section aria-labelledby="notice-heading">
             <h2 className={styles.sectionTitle} id="notice-heading">
               Reschedule notice period

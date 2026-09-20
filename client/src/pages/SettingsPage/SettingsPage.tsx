@@ -22,6 +22,7 @@ import {
 } from '../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useResizableWidth } from '../../shared/hooks/useResizableWidth/useResizableWidth';
 import { useSidebarCollapse } from '../../shared/hooks/useSidebarCollapse/useSidebarCollapse';
+import { useUnsavedChangesContext } from '../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import type { MfaStatusResponse } from '../../shared/auth/mfa.types';
 import { ProfileTab } from './tabs/ProfileTab';
@@ -200,10 +201,18 @@ function applyCustomOrder<T extends string>(ids: T[], order: T[] | null): T[] {
  * the same failure mode as `useSearchParams`, not a fix for it). Plain
  * `useState` is immune to any of that: it isn't tied to the URL at all, so
  * Settings no longer supports deep-linking to a specific tab.
+ *
+ * Custom change (unsaved changes): AppShell mounts one UnsavedChangesProvider
+ * for the whole authenticated shell (shared with Navbar, so leaving Settings
+ * via the brand link or Sign Out can be guarded too, not just in-page tab
+ * switches) - setActiveTab/selectConfigTile/closeSettings below all route
+ * through guardIfDirty so switching tabs/tiles or leaving Settings while a
+ * form is dirty prompts Save/Discard/Cancel first.
  */
 export function SettingsPage({ role }: SettingsPageProps) {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
+  const unsavedChanges = useUnsavedChangesContext();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTabState] = useState<SettingsTab>('profile');
@@ -295,44 +304,65 @@ export function SettingsPage({ role }: SettingsPageProps) {
       ? configTiles.find((tile) => tile.to === configTarget)
       : undefined;
 
+  // Tab/tile switching goes through guardIfDirty - each callback below
+  // builds the actual state change as a plain function, then either runs it
+  // immediately (nothing dirty, or no provider in the tree) or hands it to
+  // guardIfDirty, which only runs it once the "unsaved changes" prompt is
+  // resolved with Save or Discard (never on Cancel).
   const setActiveTab = useCallback(
     (tab: SettingsTab) => {
-      setActiveTabState(tab);
-      setConfigTarget(null);
+      const applyTabChange = () => {
+        setActiveTabState(tab);
+        setConfigTarget(null);
 
-      const nextRecent = { ...recentMap, [tab]: Date.now() };
-      setRecentMap(nextRecent);
-      try {
-        window.localStorage.setItem(
-          `settings-sidebar-recent-${role}`,
-          JSON.stringify(nextRecent)
-        );
-      } catch {
-        // best-effort only
-      }
-    },
-    [recentMap, role]
-  );
-
-  const selectConfigTile = useCallback(
-    (to: string | null) => {
-      setActiveTabState('config');
-      setConfigTarget(to);
-
-      if (to) {
-        const nextRecent = { ...configRecentMap, [to]: Date.now() };
-        setConfigRecentMap(nextRecent);
+        const nextRecent = { ...recentMap, [tab]: Date.now() };
+        setRecentMap(nextRecent);
         try {
           window.localStorage.setItem(
-            `settings-config-recent-${role}`,
+            `settings-sidebar-recent-${role}`,
             JSON.stringify(nextRecent)
           );
         } catch {
           // best-effort only
         }
+      };
+
+      if (unsavedChanges) {
+        unsavedChanges.guardIfDirty(applyTabChange);
+      } else {
+        applyTabChange();
       }
     },
-    [configRecentMap, role]
+    [recentMap, role, unsavedChanges]
+  );
+
+  const selectConfigTile = useCallback(
+    (to: string | null) => {
+      const applyConfigTarget = () => {
+        setActiveTabState('config');
+        setConfigTarget(to);
+
+        if (to) {
+          const nextRecent = { ...configRecentMap, [to]: Date.now() };
+          setConfigRecentMap(nextRecent);
+          try {
+            window.localStorage.setItem(
+              `settings-config-recent-${role}`,
+              JSON.stringify(nextRecent)
+            );
+          } catch {
+            // best-effort only
+          }
+        }
+      };
+
+      if (unsavedChanges) {
+        unsavedChanges.guardIfDirty(applyConfigTarget);
+      } else {
+        applyConfigTarget();
+      }
+    },
+    [configRecentMap, role, unsavedChanges]
   );
 
   const toggleConfigExpanded = () => {
@@ -423,7 +453,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
     persistOrder(`settings-config-order-${role}`, ids);
   };
 
-  const closeSettings = () => navigate(HOME_PATH_BY_ROLE[role]);
+  const closeSettings = () => {
+    const doClose = () => navigate(HOME_PATH_BY_ROLE[role]);
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(doClose);
+    } else {
+      doClose();
+    }
+  };
 
   // Since an embedded Config page is a real, independently-routed admin
   // page (not Settings-owned content), this navigates to its own route

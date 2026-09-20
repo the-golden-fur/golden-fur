@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   getStaffProfile,
   updateStaffUsername,
@@ -11,6 +11,7 @@ import {
 } from '../../../features/auth/customer/api/customerAuth.api';
 import { passwordChangeSchema } from '../../../shared/auth/password.validator';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
+import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from '../SettingsPage.module.css';
 
 interface AccountTabProps {
@@ -44,6 +45,7 @@ function UsernameForm({
   accessToken: string;
 }) {
   const [username, setUsername] = useState('');
+  const [loadedUsername, setLoadedUsername] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ function UsernameForm({
     void getStaffProfile(userId, accessToken).then((result) => {
       if (isMounted && result.data) {
         setUsername(result.data.username);
+        setLoadedUsername(result.data.username);
       }
       if (isMounted) {
         setIsLoading(false);
@@ -66,12 +69,11 @@ function UsernameForm({
     };
   }, [userId, accessToken]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (username.trim().length < 3) {
-      setError('Username must be at least 3 characters');
-      return;
+      const message = 'Username must be at least 3 characters';
+      setError(message);
+      throw new Error(message);
     }
 
     setError(null);
@@ -87,13 +89,28 @@ function UsernameForm({
     setIsSaving(false);
 
     if (result.error || !result.data) {
-      setError(result.error ?? 'Could not update your username.');
-      return;
+      const message = result.error ?? 'Could not update your username.';
+      setError(message);
+      throw new Error(message);
     }
 
     setUsername(result.data.username);
+    setLoadedUsername(result.data.username);
     setSuccess(true);
-  };
+  }, [userId, accessToken, username]);
+
+  const handleDiscard = useCallback(() => {
+    setError(null);
+    setUsername(loadedUsername);
+  }, [loadedUsername]);
+
+  useUnsavedChanges({
+    id: 'account-username',
+    label: 'Username',
+    isDirty: !isLoading && username !== loadedUsername,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   return (
     <section className={styles.panel}>
@@ -106,7 +123,12 @@ function UsernameForm({
       ) : (
         <form
           className={styles.form}
-          onSubmit={(event) => void handleSubmit(event)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // error is already set and shown below - nothing else to do.
+            });
+          }}
         >
           <label className={styles.field}>
             <span className={styles.label}>Username</span>
@@ -140,17 +162,17 @@ function PasswordForm({ role }: { role: ThemeRole }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     const parsed = passwordChangeSchema.safeParse({
       password,
       confirmPassword,
     });
 
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Check your new password.');
-      return;
+      const message =
+        parsed.error.issues[0]?.message ?? 'Check your new password.';
+      setError(message);
+      throw new Error(message);
     }
 
     setError(null);
@@ -166,20 +188,41 @@ function PasswordForm({ role }: { role: ThemeRole }) {
 
     if (result.error) {
       setError(result.error);
-      return;
+      throw new Error(result.error);
     }
 
     setPassword('');
     setConfirmPassword('');
     setSuccess(true);
-  };
+  }, [password, confirmPassword, role]);
+
+  const handleDiscard = useCallback(() => {
+    setError(null);
+    setPassword('');
+    setConfirmPassword('');
+  }, []);
+
+  // Dirty the moment either field has anything typed - there's no "loaded"
+  // password to diff against, unlike every other draft in Settings.
+  useUnsavedChanges({
+    id: 'account-password',
+    label: 'Password',
+    isDirty: password.length > 0 || confirmPassword.length > 0,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   return (
     <section className={styles.panel}>
       <h2 className={styles.sectionTitle}>Password</h2>
       <form
         className={styles.form}
-        onSubmit={(event) => void handleSubmit(event)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void performSave().catch(() => {
+            // error is already set and shown below - nothing else to do.
+          });
+        }}
       >
         <label className={styles.field}>
           <span className={styles.label}>New password</span>

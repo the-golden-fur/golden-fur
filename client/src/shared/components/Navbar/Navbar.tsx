@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Home, Settings } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
+import { useUnsavedChangesContext } from '../../providers/UnsavedChangesProvider/UnsavedChangesContext';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './Navbar.module.css';
 
@@ -70,6 +71,7 @@ export function Navbar({
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const unsavedChanges = useUnsavedChangesContext();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -79,6 +81,25 @@ export function Navbar({
     window.sessionStorage.removeItem('staffMfaPending');
     window.sessionStorage.removeItem('customerMfaPending');
     navigate(LOGIN_PATH_BY_ROLE[role], { replace: true });
+  };
+
+  // Both guarded the same way: run immediately if nothing's dirty (or
+  // there's no provider), otherwise prompt Save/Discard/Cancel first - see
+  // AppShell's UnsavedChangesProvider.
+  const handleSignOutClick = () => {
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(() => void handleSignOut());
+    } else {
+      void handleSignOut();
+    }
+  };
+
+  const handleBrandClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!unsavedChanges) {
+      return;
+    }
+    event.preventDefault();
+    unsavedChanges.guardIfDirty(() => navigate(HOME_PATH_BY_ROLE[role]));
   };
 
   // Custom change (VSCode-style settings modal): while the Settings page
@@ -94,7 +115,11 @@ export function Navbar({
   if (isSettingsRoute) {
     return (
       <nav className={styles.navbar} aria-label="Primary">
-        <Link to={HOME_PATH_BY_ROLE[role]} className={styles.brand}>
+        <Link
+          to={HOME_PATH_BY_ROLE[role]}
+          className={styles.brand}
+          onClick={handleBrandClick}
+        >
           {brandLabel}
         </Link>
 
@@ -104,7 +129,7 @@ export function Navbar({
             type="button"
             className={styles.signOutButton}
             disabled={isSigningOut}
-            onClick={() => void handleSignOut()}
+            onClick={handleSignOutClick}
           >
             {isSigningOut ? 'Signing out...' : 'Sign out'}
           </button>
