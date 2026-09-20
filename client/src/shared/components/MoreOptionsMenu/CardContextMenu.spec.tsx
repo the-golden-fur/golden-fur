@@ -37,7 +37,9 @@ describe('CardContextMenu', () => {
     const event = fireEvent.contextMenu(screen.getByText('Card content'));
 
     expect(event).toBe(false); // false means preventDefault() was called.
-    expect(screen.getByRole('menu', { name: 'Card actions' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menu', { name: 'Card actions' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
   });
 

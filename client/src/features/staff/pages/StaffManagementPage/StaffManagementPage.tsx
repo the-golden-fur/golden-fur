@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Columns3, LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
+import {
+  Columns3,
+  LayoutGrid,
+  List as ListIcon,
+  Table as TableIcon,
+} from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -17,7 +25,10 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
   GROUP_SORT_MODE_OPTIONS,
   sortGroupByAxis,
@@ -480,9 +491,7 @@ export function StaffManagementPage() {
                       {getInitials(staff.display_name)}
                     </span>
                   )}
-                  <span className={styles.itemName}>
-                    {staff.display_name}
-                  </span>
+                  <span className={styles.itemName}>{staff.display_name}</span>
                   <span className={styles.roleBadge}>{staff.role}</span>
                   <span className={styles.copy}>
                     {branchNameById.get(staff.branch_id) ?? '—'}

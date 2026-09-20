@@ -381,9 +381,7 @@ describe('CustomerManagementPage (#76)', () => {
     await screen.findByText('Jane Dela Cruz');
     await userEvent.click(screen.getByRole('button', { name: 'Board' }));
 
-    expect(
-      screen.getByRole('heading', { name: /Active/ })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Active/ })).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: /Inactive/ })
     ).toBeInTheDocument();

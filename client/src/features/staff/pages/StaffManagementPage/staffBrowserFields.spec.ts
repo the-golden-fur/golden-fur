@@ -64,9 +64,9 @@ describe('buildStaffGroupByAxes', () => {
 
     const branchAxis = axes[1];
     expect(branchAxis.columns).toEqual(['Makati', 'Southwoods']);
-    expect(
-      branchAxis.columnFor(buildStaff({ branch_id: 'branch-2' }))
-    ).toBe('Southwoods');
+    expect(branchAxis.columnFor(buildStaff({ branch_id: 'branch-2' }))).toBe(
+      'Southwoods'
+    );
     expect(
       branchAxis.columnFor(buildStaff({ branch_id: 'branch-unknown' }))
     ).toBe('Unknown branch');
@@ -75,9 +75,7 @@ describe('buildStaffGroupByAxes', () => {
   it('the Role axis covers every staff role, including ones not yet on staff', () => {
     const roleAxis = buildStaffGroupByAxes([], false)[0];
     expect(roleAxis.columns).toContain('Superadmin');
-    expect(roleAxis.columnFor(buildStaff({ role: 'Cashier' }))).toBe(
-      'Cashier'
-    );
+    expect(roleAxis.columnFor(buildStaff({ role: 'Cashier' }))).toBe('Cashier');
   });
 });
 

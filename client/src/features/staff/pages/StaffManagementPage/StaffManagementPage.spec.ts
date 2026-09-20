@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -562,8 +568,6 @@ describe('StaffManagementPage (#75)', () => {
     ).toBeInTheDocument();
 
     await userEvent.selectOptions(groupBySelect, 'branch');
-    expect(
-      screen.getByRole('heading', { name: /Makati/ })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Makati/ })).toBeInTheDocument();
   });
 });

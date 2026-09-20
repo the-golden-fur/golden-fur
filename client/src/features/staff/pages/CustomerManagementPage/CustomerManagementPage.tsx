@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Columns3, LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
+import {
+  Columns3,
+  LayoutGrid,
+  List as ListIcon,
+  Table as TableIcon,
+} from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
-import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -15,7 +23,10 @@ import { Modal } from '../../../../shared/components/Modal/Modal';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
-import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
   GROUP_SORT_MODE_OPTIONS,
   sortGroupByAxis,
@@ -300,12 +311,23 @@ export function CustomerManagementPage() {
   // for Admin+; Archive for Admin+ once already inactive), but as plain
   // MoreOptionsMenuItem[] so it can go through CardContextMenu instead of
   // the always-visible "..." trigger CustomerRowActionMenu renders.
-  function buildCustomerActionItems(customer: CustomerProfile): MoreOptionsMenuItem[] {
+  function buildCustomerActionItems(
+    customer: CustomerProfile
+  ): MoreOptionsMenuItem[] {
     const canArchive = viewerRole === 'Admin' || viewerRole === 'Superadmin';
     const items: MoreOptionsMenuItem[] = [
-      { label: 'Check Profile', onSelect: () => handleSelectAction(customer.id, 'checkProfile') },
-      { label: 'View Pets', onSelect: () => handleSelectAction(customer.id, 'viewPets') },
-      { label: 'Add Pet', onSelect: () => handleSelectAction(customer.id, 'addPet') },
+      {
+        label: 'Check Profile',
+        onSelect: () => handleSelectAction(customer.id, 'checkProfile'),
+      },
+      {
+        label: 'View Pets',
+        onSelect: () => handleSelectAction(customer.id, 'viewPets'),
+      },
+      {
+        label: 'Add Pet',
+        onSelect: () => handleSelectAction(customer.id, 'addPet'),
+      },
     ];
     if (canArchive) {
       items.push({
@@ -430,7 +452,11 @@ export function CustomerManagementPage() {
         <span className={styles.customerName}>{customer.full_name}</span>
       ),
     },
-    { id: 'email', header: 'Email', render: (customer) => customer.account_email },
+    {
+      id: 'email',
+      header: 'Email',
+      render: (customer) => customer.account_email,
+    },
     {
       id: 'signInMethod',
       header: 'Sign-in method',
@@ -579,7 +605,9 @@ export function CustomerManagementPage() {
             </FilterSortBar>
 
             {visibleCustomers.length === 0 ? (
-              <p className={styles.copy}>No customers match your search/filter.</p>
+              <p className={styles.copy}>
+                No customers match your search/filter.
+              </p>
             ) : view === 'table' ? (
               <DataTable
                 columns={customerTableColumns}

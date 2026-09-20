@@ -37,7 +37,11 @@ const MOVE_TOLERANCE_PX = 10;
  * left alone so it still reaches whatever's actually inside the card (e.g.
  * a "Resend account email" button).
  */
-export function CardContextMenu({ items, label, children }: CardContextMenuProps) {
+export function CardContextMenu({
+  items,
+  label,
+  children,
+}: CardContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
@@ -89,7 +93,10 @@ export function CardContextMenu({ items, label, children }: CardContextMenuProps
     if (!touch) return;
 
     const heldMs = Date.now() - start.time;
-    const movedPx = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+    const movedPx = Math.hypot(
+      touch.clientX - start.x,
+      touch.clientY - start.y
+    );
 
     if (heldMs >= LONG_PRESS_MS && movedPx < MOVE_TOLERANCE_PX) {
       event.preventDefault();

@@ -44,7 +44,8 @@ export const CUSTOMER_GROUP_BY_AXES: GroupByAxis<CustomerProfile>[] = [
     id: 'signInMethod',
     label: 'Sign-in method',
     columns: ['Email', 'Google', 'Facebook'],
-    columnFor: (customer) => SIGN_IN_METHOD_LABELS[customer.primary_auth_provider],
+    columnFor: (customer) =>
+      SIGN_IN_METHOD_LABELS[customer.primary_auth_provider],
   },
 ];
 
