@@ -4,6 +4,13 @@
   gap: var(--space-3);
   align-items: start;
   overflow-x: auto;
+  /* Without this, a grid item's default min-width: auto refuses to shrink
+     below its content's intrinsic size - with many group-by columns (e.g.
+     8 roles), that intrinsic size is wider than the page, so instead of
+     scrolling within .board's own box (the overflow-x above), the whole
+     page grid stretched and the last columns were clipped by the
+     viewport/sidebar with no way to reach them. */
+  min-width: 0;
 }
 
 .column {
