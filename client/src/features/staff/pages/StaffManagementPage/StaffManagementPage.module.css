@@ -11,6 +11,11 @@
   width: 100%;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
+  /* Keeps DataBoard's Board-view columns (see DataBoard.module.css) at
+     least as wide as a StaffCard actually needs, so a dense Board (e.g. 8
+     Role columns) scrolls horizontally instead of squeezing cards - and
+     StaffCard content - narrower than they can display. */
+  --column-min-width: var(--staff-card-min-width);
 }
 
 .title {
@@ -75,13 +80,16 @@
   display: grid;
   gap: var(--space-2);
   align-content: start;
-  justify-items: start;
 }
 
+/* Board: stretches (the default - no justify-items override) so the card
+   fills its column's actual width instead of shrink-wrapping to StaffCard's
+   own 260px floor, which used to leave long names truncated even in a much
+   wider column. */
 .boardCard {
   display: grid;
   gap: var(--space-2);
-  justify-items: start;
+  min-width: 0;
 }
 
 .viewControls {
