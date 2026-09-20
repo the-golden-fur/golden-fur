@@ -463,10 +463,6 @@ export function SettingsPage({ role }: SettingsPageProps) {
       <div className={styles.panelHeader}>
         <h1 className={styles.title}>Settings</h1>
         <div className={styles.panelHeaderActions}>
-          <MoreOptionsMenu
-            label="Sort settings sections"
-            items={sortMenuItems}
-          />
           {activeConfigTile ? (
             <button
               type="button"
@@ -496,6 +492,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
           aria-label="Settings sections"
           aria-orientation="vertical"
         >
+          <div className={styles.sidebarListHeader}>
+            <span className={styles.sidebarListHeading}>Sections</span>
+            <MoreOptionsMenu
+              label="Sort settings sections"
+              items={sortMenuItems}
+              menuAlign="left"
+            />
+          </div>
           {orderedTabs.map((tab, index) => {
             const Icon = TAB_ICONS[tab];
             const isConfig = tab === 'config';
