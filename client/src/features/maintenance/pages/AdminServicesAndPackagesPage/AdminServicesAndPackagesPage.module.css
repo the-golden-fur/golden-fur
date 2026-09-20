@@ -2,7 +2,7 @@
   composes: animate-fade-in from global;
   display: grid;
   gap: var(--space-3);
-  min-height: 100vh;
+  min-height: var(--config-embed-min-height, 100vh);
 }
 
 .tabList {

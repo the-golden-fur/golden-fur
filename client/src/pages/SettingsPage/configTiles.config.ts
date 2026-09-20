@@ -38,7 +38,17 @@ export interface ConfigTileConfig {
    * Settings' content pane when the tile is selected (custom change:
    * "selecting a tile in admin settings > config will open it inline"),
    * and what the "Open as a full page" button navigates to once one of
-   * these is active. */
+   * these is active.
+   *
+   * Every `Component` here is a standalone routed page whose own root CSS
+   * class sets `min-height: var(--config-embed-min-height, 100vh)` rather
+   * than a bare `100vh` - SettingsPage.module.css's `.content` sets that
+   * variable to `100%` so the page fills the (shorter) embedded pane
+   * instead of forcing a full extra viewport of empty space below its
+   * content when scrolled. A new page added here (or any page it in turn
+   * wraps/embeds, e.g. a mini-navbar-subtabs page) must use the same
+   * `var(--config-embed-min-height, 100vh)` pattern from the start, or the
+   * empty-space bug reproduces for it. */
   Component: ComponentType;
 }
 
