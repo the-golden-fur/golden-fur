@@ -4,12 +4,22 @@ import type {
   SortFieldDescriptor,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import type { GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import type { CustomerProfile } from '../../../customers/customer.types';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
 ];
+
+const SIGN_IN_METHOD_LABELS: Record<
+  CustomerProfile['primary_auth_provider'],
+  string
+> = {
+  email: 'Email',
+  google: 'Google',
+  facebook: 'Facebook',
+};
 
 export const CUSTOMER_FILTER_FIELDS: FilterField[] = [
   {
@@ -20,6 +30,21 @@ export const CUSTOMER_FILTER_FIELDS: FilterField[] = [
     options: STATUS_OPTIONS,
     formatValue: (value) =>
       STATUS_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
+  },
+];
+
+export const CUSTOMER_GROUP_BY_AXES: GroupByAxis<CustomerProfile>[] = [
+  {
+    id: 'status',
+    label: 'Status',
+    columns: ['Active', 'Inactive'],
+    columnFor: (customer) => (customer.is_active ? 'Active' : 'Inactive'),
+  },
+  {
+    id: 'signInMethod',
+    label: 'Sign-in method',
+    columns: ['Email', 'Google', 'Facebook'],
+    columnFor: (customer) => SIGN_IN_METHOD_LABELS[customer.primary_auth_provider],
   },
 ];
 

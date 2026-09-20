@@ -267,4 +267,125 @@ describe('CustomerManagementPage (#76)', () => {
     expect(screen.queryByText('Jane Dela Cruz')).not.toBeInTheDocument();
     expect(screen.getByText('Mark Santos')).toBeInTheDocument();
   });
+
+  it('Notion-style remaster: Gallery is the default view, and Table/List/Board are available alongside it', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [CUSTOMER],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('Jane Dela Cruz')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Jane Dela Cruz').closest('ul')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('Jane Dela Cruz')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Gallery' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Jane Dela Cruz')).toBeInTheDocument();
+  });
+
+  it('Board view groups by Status by default, and a Sort groups control offers Manual/Alphabetical', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [
+        { ...CUSTOMER, is_active: true },
+        {
+          ...CUSTOMER,
+          id: 'customer-2',
+          full_name: 'Mark Santos',
+          is_active: false,
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    expect(
+      screen.getByRole('heading', { name: /Active/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Inactive/ })
+    ).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Sort groups')).toHaveValue('manual');
+    await userEvent.selectOptions(
+      screen.getByLabelText('Sort groups'),
+      'alphabetical'
+    );
+    expect(screen.getByLabelText('Sort groups')).toHaveValue('alphabetical');
+
+    // A second group-by axis is offered too.
+    const groupBySelect = screen.getByLabelText('Group by');
+    expect(
+      within(groupBySelect).getByRole('option', { name: 'Sign-in method' })
+    ).toBeInTheDocument();
+  });
+
+  it('Table view: Check Profile from the "..." menu still opens the same detail modal', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [CUSTOMER],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /customer actions/i })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /check profile/i })
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: 'Profile - Jane Dela Cruz' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('John Dela Cruz (+63 917 000 0002)')
+    ).toBeInTheDocument();
+  });
 });

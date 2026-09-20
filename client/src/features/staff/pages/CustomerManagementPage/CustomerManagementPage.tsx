@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Columns3, LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
+import { DataTable, type DataTableColumn } from '../../../../shared/components/DataTable/DataTable';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
+import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import {
+  GROUP_SORT_MODE_OPTIONS,
+  sortGroupByAxis,
+  useGroupBy,
+  type GroupSortMode,
+} from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import {
   activateCustomer,
   archiveCustomer,
@@ -26,6 +38,7 @@ import {
   applyCustomerFilters,
   CUSTOMER_COMPARATORS,
   CUSTOMER_FILTER_FIELDS,
+  CUSTOMER_GROUP_BY_AXES,
   CUSTOMER_SORT_FIELDS,
   deriveCustomerSortKey,
   matchesCustomerQuery,
@@ -43,6 +56,30 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Superadmin',
 ]);
+
+type CustomerViewMode = 'gallery' | 'table' | 'list' | 'board';
+
+const CUSTOMER_VIEW_OPTIONS: ViewSwitcherOption<CustomerViewMode>[] = [
+  { value: 'gallery', label: 'Gallery', icon: LayoutGrid },
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
+
+const SIGN_IN_METHOD_LABELS: Record<
+  CustomerProfile['primary_auth_provider'],
+  string
+> = {
+  email: 'Email',
+  google: 'Google',
+  facebook: 'Facebook',
+};
+
+const PANEL_TITLES: Record<'checkProfile' | 'viewPets' | 'addPet', string> = {
+  checkProfile: 'Profile',
+  viewPets: 'Pets',
+  addPet: 'Add a pet',
+};
 
 /**
  * Issue #76: renamed from AdminCustomerListPage/"Customer Directory" ->
@@ -62,9 +99,11 @@ export function CustomerManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // 'deactivate'/'archive' are immediate actions (see handleSelectAction)
+  // and never land here - only the three modal-opening actions do.
   const [activePanel, setActivePanel] = useState<{
     customerId: string;
-    action: CustomerRowAction;
+    action: 'checkProfile' | 'viewPets' | 'addPet';
   } | null>(null);
   const [petsByCustomer, setPetsByCustomer] = useState<Record<string, Pet[]>>(
     {}
@@ -76,6 +115,9 @@ export function CustomerManagementPage() {
   const [search, setSearch] = useState('');
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [view, setView] = useState<CustomerViewMode>('gallery');
+  const [groupAxisId, setGroupAxisId] = useState('status');
+  const [groupSortMode, setGroupSortMode] = useState<GroupSortMode>('manual');
 
   // Same trick as StaffManagementPage: the viewer's app-level role isn't on
   // the Supabase session, so it's read off their own row in the staff list
@@ -192,6 +234,12 @@ export function CustomerManagementPage() {
     setCustomers((prev) =>
       prev.filter((existing) => existing.id !== customerId)
     );
+    // The detail Modal is no longer keyed per-row, so it must be explicitly
+    // closed here - an archived customer no longer exists in the list for
+    // it to reopen against.
+    setActivePanel((current) =>
+      current?.customerId === customerId ? null : current
+    );
     setMessage('Customer archived.');
   }
 
@@ -209,6 +257,16 @@ export function CustomerManagementPage() {
     );
   }, [customers, search, filterTiles, sortTile]);
 
+  const activeGroupAxis =
+    CUSTOMER_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const sortedGroupAxis = activeGroupAxis
+    ? sortGroupByAxis(activeGroupAxis, groupSortMode)
+    : null;
+  const groupedCustomers = useGroupBy(
+    visibleCustomers,
+    view === 'board' ? sortedGroupAxis : null
+  );
+
   function handleAddFilter(fieldId: string) {
     const field = CUSTOMER_FILTER_FIELDS.find((f) => f.id === fieldId);
     if (!field) return;
@@ -225,76 +283,13 @@ export function CustomerManagementPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
-  function renderCustomerItem(customer: CustomerProfile) {
+  function renderCustomerActions(customer: CustomerProfile) {
     return (
-      <>
-        <div className={styles.customerRow}>
-          <span className={styles.customerName}>{customer.full_name}</span>
-          <span className={styles.customerEmail}>{customer.account_email}</span>
-          <CustomerRowActionMenu
-            onSelect={(action) => handleSelectAction(customer.id, action)}
-            canArchive={viewerRole === 'Admin' || viewerRole === 'Superadmin'}
-            isActive={customer.is_active}
-          />
-        </div>
-
-        {activePanel?.customerId === customer.id &&
-        activePanel.action === 'checkProfile' ? (
-          <dl className={styles.profileDetails}>
-            <div className={styles.detail}>
-              <dt className={styles.detailLabel}>Contact number</dt>
-              <dd className={styles.detailValue}>
-                {customer.contact_number ?? '—'}
-              </dd>
-            </div>
-            <div className={styles.detail}>
-              <dt className={styles.detailLabel}>Emergency contact</dt>
-              <dd className={styles.detailValue}>
-                {customer.emergency_contact_name ?? '—'}
-                {customer.emergency_contact_number
-                  ? ` (${customer.emergency_contact_number})`
-                  : ''}
-              </dd>
-            </div>
-            <div className={styles.detail}>
-              <dt className={styles.detailLabel}>Preferred communication</dt>
-              <dd className={styles.detailValue}>
-                {customer.preferred_communication_channel ?? '—'}
-              </dd>
-            </div>
-          </dl>
-        ) : null}
-
-        {activePanel?.customerId === customer.id &&
-        activePanel.action === 'viewPets' ? (
-          isPetsLoading ? (
-            <p className={styles.copy}>Loading pets...</p>
-          ) : petsLoadError ? (
-            <p className={styles.errorBanner} role="alert">
-              {petsLoadError}
-            </p>
-          ) : (petsByCustomer[customer.id] ?? []).length === 0 ? (
-            <p className={styles.copy}>No pets on file yet.</p>
-          ) : (
-            <div className={styles.petsGrid}>
-              {(petsByCustomer[customer.id] ?? []).map((pet) => (
-                <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
-              ))}
-            </div>
-          )
-        ) : null}
-
-        {activePanel?.customerId === customer.id &&
-        activePanel.action === 'addPet' &&
-        accessToken ? (
-          <PetForm
-            customerId={customer.id}
-            accessToken={accessToken}
-            onCreated={(pet) => handlePetCreated(customer.id, pet)}
-            isStaff
-          />
-        ) : null}
-      </>
+      <CustomerRowActionMenu
+        onSelect={(action) => handleSelectAction(customer.id, action)}
+        canArchive={viewerRole === 'Admin' || viewerRole === 'Superadmin'}
+        isActive={customer.is_active}
+      />
     );
   }
 
@@ -310,16 +305,7 @@ export function CustomerManagementPage() {
       return;
     }
 
-    const isSameSelection =
-      activePanel?.customerId === customerId && activePanel.action === action;
-
     setMessage(null);
-
-    if (isSameSelection) {
-      setActivePanel(null);
-      return;
-    }
-
     setActivePanel({ customerId, action });
 
     if (action === 'viewPets' && accessToken && !petsByCustomer[customerId]) {
@@ -337,6 +323,112 @@ export function CustomerManagementPage() {
         setPetsByCustomer((prev) => ({ ...prev, [customerId]: result.data! }));
       });
     }
+  }
+
+  const activePanelCustomer = customers.find(
+    (customer) => customer.id === activePanel?.customerId
+  );
+
+  function renderPanelContent(customer: CustomerProfile) {
+    if (activePanel?.action === 'checkProfile') {
+      return (
+        <dl className={styles.profileDetails}>
+          <div className={styles.detail}>
+            <dt className={styles.detailLabel}>Contact number</dt>
+            <dd className={styles.detailValue}>
+              {customer.contact_number ?? '—'}
+            </dd>
+          </div>
+          <div className={styles.detail}>
+            <dt className={styles.detailLabel}>Emergency contact</dt>
+            <dd className={styles.detailValue}>
+              {customer.emergency_contact_name ?? '—'}
+              {customer.emergency_contact_number
+                ? ` (${customer.emergency_contact_number})`
+                : ''}
+            </dd>
+          </div>
+          <div className={styles.detail}>
+            <dt className={styles.detailLabel}>Preferred communication</dt>
+            <dd className={styles.detailValue}>
+              {customer.preferred_communication_channel ?? '—'}
+            </dd>
+          </div>
+        </dl>
+      );
+    }
+
+    if (activePanel?.action === 'viewPets') {
+      if (isPetsLoading) return <p className={styles.copy}>Loading pets...</p>;
+      if (petsLoadError) {
+        return (
+          <p className={styles.errorBanner} role="alert">
+            {petsLoadError}
+          </p>
+        );
+      }
+      if ((petsByCustomer[customer.id] ?? []).length === 0) {
+        return <p className={styles.copy}>No pets on file yet.</p>;
+      }
+      return (
+        <div className={styles.petsGrid}>
+          {(petsByCustomer[customer.id] ?? []).map((pet) => (
+            <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
+          ))}
+        </div>
+      );
+    }
+
+    if (activePanel?.action === 'addPet' && accessToken) {
+      return (
+        <PetForm
+          customerId={customer.id}
+          accessToken={accessToken}
+          onCreated={(pet) => handlePetCreated(customer.id, pet)}
+          isStaff
+        />
+      );
+    }
+
+    return null;
+  }
+
+  const customerTableColumns: DataTableColumn<CustomerProfile>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (customer) => (
+        <span className={styles.customerName}>{customer.full_name}</span>
+      ),
+    },
+    { id: 'email', header: 'Email', render: (customer) => customer.account_email },
+    {
+      id: 'signInMethod',
+      header: 'Sign-in method',
+      render: (customer) =>
+        SIGN_IN_METHOD_LABELS[customer.primary_auth_provider],
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (customer) => <StatusBadge isActive={customer.is_active} />,
+    },
+  ];
+
+  function renderCustomerCard(customer: CustomerProfile) {
+    return (
+      <div className={styles.customerCard}>
+        <div className={styles.cardHeader}>
+          <span className={styles.customerName}>{customer.full_name}</span>
+          <StatusBadge isActive={customer.is_active} />
+        </div>
+        <span className={styles.customerEmail}>{customer.account_email}</span>
+        <span className={styles.signInBadge}>
+          {SIGN_IN_METHOD_LABELS[customer.primary_auth_provider]}
+        </span>
+        {renderCustomerActions(customer)}
+      </div>
+    );
   }
 
   if (isRoleLoading) {
@@ -406,17 +498,102 @@ export function CustomerManagementPage() {
               searchValue={search}
               onSearchChange={setSearch}
               searchPlaceholder="Search customers..."
-            />
+            >
+              <div className={styles.viewControls}>
+                <ViewSwitcher
+                  options={CUSTOMER_VIEW_OPTIONS}
+                  value={view}
+                  onChange={setView}
+                  ariaLabel="Customers view"
+                />
+                {view === 'board' ? (
+                  <>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Group by</span>
+                      <select
+                        className={styles.input}
+                        value={groupAxisId}
+                        onChange={(event) => setGroupAxisId(event.target.value)}
+                        aria-label="Group by"
+                      >
+                        {CUSTOMER_GROUP_BY_AXES.map((axis) => (
+                          <option key={axis.id} value={axis.id}>
+                            {axis.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Sort groups</span>
+                      <select
+                        className={styles.input}
+                        value={groupSortMode}
+                        onChange={(event) =>
+                          setGroupSortMode(event.target.value as GroupSortMode)
+                        }
+                        aria-label="Sort groups"
+                      >
+                        {GROUP_SORT_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                ) : null}
+              </div>
+            </FilterSortBar>
 
-            <DataList
-              items={visibleCustomers}
-              getRowKey={(customer) => customer.id}
-              renderItem={renderCustomerItem}
-              emptyMessage="No customers match your search/filter."
-            />
+            {visibleCustomers.length === 0 ? (
+              <p className={styles.copy}>No customers match your search/filter.</p>
+            ) : view === 'table' ? (
+              <DataTable
+                columns={customerTableColumns}
+                rows={visibleCustomers}
+                getRowKey={(customer) => customer.id}
+                renderRowActions={renderCustomerActions}
+              />
+            ) : view === 'list' ? (
+              <DataList
+                items={visibleCustomers}
+                getRowKey={(customer) => customer.id}
+                renderItem={(customer) => (
+                  <div className={styles.customerRow}>
+                    <span className={styles.customerName}>
+                      {customer.full_name}
+                    </span>
+                    <span className={styles.customerEmail}>
+                      {customer.account_email}
+                    </span>
+                    {renderCustomerActions(customer)}
+                  </div>
+                )}
+              />
+            ) : view === 'board' ? (
+              <DataBoard
+                groups={groupedCustomers}
+                getRowKey={(customer) => customer.id}
+                renderCard={renderCustomerCard}
+              />
+            ) : (
+              <div className={styles.grid}>
+                {visibleCustomers.map((customer) => (
+                  <div key={customer.id}>{renderCustomerCard(customer)}</div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      <Modal
+        isOpen={activePanel !== null && activePanelCustomer !== undefined}
+        title={`${activePanel ? PANEL_TITLES[activePanel.action] : ''} - ${activePanelCustomer?.full_name ?? ''}`}
+        onClose={() => setActivePanel(null)}
+      >
+        {activePanelCustomer ? renderPanelContent(activePanelCustomer) : null}
+      </Modal>
     </main>
   );
 }
