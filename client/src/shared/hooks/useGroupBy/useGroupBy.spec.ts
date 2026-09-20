@@ -142,9 +142,11 @@ describe('moveColumnBefore', () => {
   const ORDER = ['Available', 'Occupied', 'Under Maintenance'];
 
   it('moves a column to sit immediately before the drop target', () => {
-    expect(moveColumnBefore(ORDER, 'Under Maintenance', 'Available')).toEqual(
-      ['Under Maintenance', 'Available', 'Occupied']
-    );
+    expect(moveColumnBefore(ORDER, 'Under Maintenance', 'Available')).toEqual([
+      'Under Maintenance',
+      'Available',
+      'Occupied',
+    ]);
   });
 
   it('moving a column onto itself is a no-op', () => {

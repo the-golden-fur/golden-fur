@@ -1,4 +1,9 @@
-import { useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import {
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import type { GroupByBucket } from '../../hooks/useGroupBy/useGroupBy';
 import styles from './DataBoard.module.css';
 
@@ -83,7 +88,9 @@ export function DataBoard<T>({
               ? `${styles.column} ${styles.columnDragOver}`
               : styles.column
           }
-          onDragOver={onReorderColumn ? handleDragOver(group.column) : undefined}
+          onDragOver={
+            onReorderColumn ? handleDragOver(group.column) : undefined
+          }
           onDragLeave={
             onReorderColumn
               ? () =>
