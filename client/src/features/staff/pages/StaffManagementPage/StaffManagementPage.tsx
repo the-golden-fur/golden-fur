@@ -12,7 +12,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
   GROUP_SORT_MODE_OPTIONS,
@@ -225,21 +229,46 @@ export function StaffManagementPage() {
     );
   };
 
+  function staffActionItems(staff: StaffProfile): MoreOptionsMenuItem[] {
+    return [
+      {
+        label: 'Set day(s) off',
+        onSelect: () => setExpandedStaffId(staff.id),
+      },
+      {
+        label: 'Manage account',
+        onSelect: () => setExpandedManageStaffId(staff.id),
+      },
+    ];
+  }
+
+  // Table/List: a persistent "..." trigger, same as every other migrated
+  // page. Gallery/Board reuse the same item list but through
+  // CardContextMenu instead (see renderStaffCard below) - a kebab button on
+  // every card in a dense grid/board is visual noise there.
   function renderStaffActions(staff: StaffProfile) {
     return (
       <MoreOptionsMenu
         label={`Actions for ${staff.display_name}`}
-        items={[
-          {
-            label: 'Set day(s) off',
-            onSelect: () => setExpandedStaffId(staff.id),
-          },
-          {
-            label: 'Manage account',
-            onSelect: () => setExpandedManageStaffId(staff.id),
-          },
-        ]}
+        items={staffActionItems(staff)}
       />
+    );
+  }
+
+  function renderStaffCard(staff: StaffProfile) {
+    return (
+      <CardContextMenu
+        items={staffActionItems(staff)}
+        label={`Actions for ${staff.display_name}`}
+      >
+        <StaffCard
+          staffId={staff.id}
+          profile={staff}
+          accessToken={accessToken}
+          branchName={branchNameById.get(staff.branch_id)}
+          refreshKey={blockRefreshKeys[staff.id]}
+        />
+      </CardContextMenu>
     );
   }
 
@@ -473,30 +502,14 @@ export function StaffManagementPage() {
             groups={groupedStaff}
             getRowKey={(staff) => staff.id}
             renderCard={(staff) => (
-              <div className={styles.boardCard}>
-                <StaffCard
-                  staffId={staff.id}
-                  profile={staff}
-                  accessToken={accessToken}
-                  branchName={branchNameById.get(staff.branch_id)}
-                  refreshKey={blockRefreshKeys[staff.id]}
-                />
-                {renderStaffActions(staff)}
-              </div>
+              <div className={styles.boardCard}>{renderStaffCard(staff)}</div>
             )}
           />
         ) : (
           <div className={styles.grid}>
             {filteredStaff.map((staff) => (
               <div className={styles.gridItem} key={staff.id}>
-                <StaffCard
-                  staffId={staff.id}
-                  profile={staff}
-                  accessToken={accessToken}
-                  branchName={branchNameById.get(staff.branch_id)}
-                  refreshKey={blockRefreshKeys[staff.id]}
-                />
-                {renderStaffActions(staff)}
+                {renderStaffCard(staff)}
               </div>
             ))}
           </div>

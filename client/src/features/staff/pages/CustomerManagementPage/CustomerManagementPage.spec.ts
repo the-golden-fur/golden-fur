@@ -105,6 +105,10 @@ describe('CustomerManagementPage (#76)', () => {
     await screen.findByText('Jane Dela Cruz');
     expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
 
+    // Gallery/Board (default view) trigger the actions menu via
+    // right-click/long-press instead of a visible button - switch to Table,
+    // which still has the persistent "..." trigger.
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
     fireEvent.click(screen.getByRole('button', { name: /customer actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /check profile/i }));
 
@@ -149,6 +153,7 @@ describe('CustomerManagementPage (#76)', () => {
     renderPage();
 
     await screen.findByText('Jane Dela Cruz');
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
     fireEvent.click(screen.getByRole('button', { name: /customer actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /view pets/i }));
 
@@ -180,6 +185,7 @@ describe('CustomerManagementPage (#76)', () => {
     renderPage();
 
     await screen.findByText('Jane Dela Cruz');
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
     fireEvent.click(screen.getByRole('button', { name: /customer actions/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /add pet/i }));
 
@@ -305,6 +311,47 @@ describe('CustomerManagementPage (#76)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Gallery' }));
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Jane Dela Cruz')).toBeInTheDocument();
+  });
+
+  it('Gallery and Board views have no visible "..." trigger, but right-click opens the actions menu', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Receptionist' }],
+      error: null,
+    } as never);
+    vi.mocked(listCustomers).mockResolvedValue({
+      data: [CUSTOMER],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jane Dela Cruz');
+    expect(
+      screen.queryByRole('button', { name: /customer actions/i })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jane Dela Cruz'));
+    expect(
+      screen.getByRole('menuitem', { name: /check profile/i })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /check profile/i }));
+    expect(
+      await screen.findByText('John Dela Cruz (+63 917 000 0002)')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(
+      screen.queryByRole('button', { name: /customer actions/i })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jane Dela Cruz'));
+    expect(
+      screen.getByRole('menuitem', { name: /view pets/i })
+    ).toBeInTheDocument();
   });
 
   it('Board view groups by Status by default, and a Sort groups control offers Manual/Alphabetical', async () => {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -323,6 +323,11 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
+    // Gallery/Board (default view) trigger the actions menu via
+    // right-click/long-press instead of a visible button - switch to Table,
+    // which still has the persistent "..." trigger, to keep this test's
+    // focus on the unavailability-block flow rather than the menu trigger.
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
     await userEvent.click(
       screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
     );
@@ -384,6 +389,7 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
     await userEvent.click(
       screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
     );
@@ -455,6 +461,43 @@ describe('StaffManagementPage (#75)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Gallery' }));
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Jamie Cruz')).toBeInTheDocument();
+  });
+
+  it('Gallery and Board views have no visible "..." trigger, but right-click opens the actions menu', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Jamie Cruz' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jamie Cruz'));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Set day(s) off' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Set day(s) off - Jamie Cruz' })
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Jamie Cruz' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jamie Cruz'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Manage account' })
+    ).toBeInTheDocument();
   });
 
   it('Board view groups by Role by default, and a Sort groups control offers Manual/Alphabetical', async () => {

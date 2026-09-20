@@ -12,6 +12,8 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ViewSwitcher, type ViewSwitcherOption } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
@@ -293,6 +295,33 @@ export function CustomerManagementPage() {
     );
   }
 
+  // Board/Gallery: mirrors CustomerRowActionMenu's own conditional item
+  // logic (Check Profile/View Pets/Add Pet always; Deactivate/Reactivate
+  // for Admin+; Archive for Admin+ once already inactive), but as plain
+  // MoreOptionsMenuItem[] so it can go through CardContextMenu instead of
+  // the always-visible "..." trigger CustomerRowActionMenu renders.
+  function buildCustomerActionItems(customer: CustomerProfile): MoreOptionsMenuItem[] {
+    const canArchive = viewerRole === 'Admin' || viewerRole === 'Superadmin';
+    const items: MoreOptionsMenuItem[] = [
+      { label: 'Check Profile', onSelect: () => handleSelectAction(customer.id, 'checkProfile') },
+      { label: 'View Pets', onSelect: () => handleSelectAction(customer.id, 'viewPets') },
+      { label: 'Add Pet', onSelect: () => handleSelectAction(customer.id, 'addPet') },
+    ];
+    if (canArchive) {
+      items.push({
+        label: customer.is_active ? 'Deactivate' : 'Reactivate',
+        onSelect: () => handleSelectAction(customer.id, 'deactivate'),
+      });
+    }
+    if (canArchive && !customer.is_active) {
+      items.push({
+        label: 'Archive',
+        onSelect: () => handleSelectAction(customer.id, 'archive'),
+      });
+    }
+    return items;
+  }
+
   function handleSelectAction(customerId: string, action: CustomerRowAction) {
     if (action === 'deactivate') {
       const customer = customers.find((existing) => existing.id === customerId);
@@ -417,17 +446,21 @@ export function CustomerManagementPage() {
 
   function renderCustomerCard(customer: CustomerProfile) {
     return (
-      <div className={styles.customerCard}>
-        <div className={styles.cardHeader}>
-          <span className={styles.customerName}>{customer.full_name}</span>
-          <StatusBadge isActive={customer.is_active} />
+      <CardContextMenu
+        items={buildCustomerActionItems(customer)}
+        label={`Actions for ${customer.full_name}`}
+      >
+        <div className={styles.customerCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.customerName}>{customer.full_name}</span>
+            <StatusBadge isActive={customer.is_active} />
+          </div>
+          <span className={styles.customerEmail}>{customer.account_email}</span>
+          <span className={styles.signInBadge}>
+            {SIGN_IN_METHOD_LABELS[customer.primary_auth_provider]}
+          </span>
         </div>
-        <span className={styles.customerEmail}>{customer.account_email}</span>
-        <span className={styles.signInBadge}>
-          {SIGN_IN_METHOD_LABELS[customer.primary_auth_provider]}
-        </span>
-        {renderCustomerActions(customer)}
-      </div>
+      </CardContextMenu>
     );
   }
 

@@ -3,6 +3,14 @@
   display: inline-flex;
 }
 
+/* CardContextMenu's wrapper - unlike .container, this wraps a whole card
+   (Board/Gallery), not a small trigger button, so it stretches to fill
+   that card's grid cell rather than shrink-wrapping its content. */
+.contextWrapper {
+  position: relative;
+  display: grid;
+}
+
 .trigger {
   display: inline-flex;
   align-items: center;
