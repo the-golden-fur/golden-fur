@@ -67,3 +67,61 @@ export function useGroupBy<T>(
     return [...declared, ...extra];
   }, [items, axis]);
 }
+
+export type GroupSortMode = 'manual' | 'alphabetical';
+
+export const GROUP_SORT_MODE_OPTIONS: {
+  value: GroupSortMode;
+  label: string;
+}[] = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'alphabetical', label: 'Alphabetical' },
+];
+
+/** Reorders an axis's declared columns for display - 'manual' keeps the
+ * axis's own author-defined order (e.g. a role hierarchy or a status
+ * pipeline, where the sequence itself is meaningful) unless the viewer has
+ * dragged columns into a custom order (`manualOrder`, from `reorderColumn`
+ * below); 'alphabetical' sorts them A-Z instead and ignores `manualOrder`.
+ * Leaves `columnFor` and everything else about the axis untouched - pass
+ * the result straight into `useGroupBy`. */
+export function sortGroupByAxis<T>(
+  axis: GroupByAxis<T>,
+  mode: GroupSortMode,
+  manualOrder?: string[]
+): GroupByAxis<T> {
+  if (mode === 'alphabetical') {
+    return {
+      ...axis,
+      columns: [...axis.columns].sort((a, b) => a.localeCompare(b)),
+    };
+  }
+  if (!manualOrder) return axis;
+  // A column the axis no longer declares (stale saved order) is dropped; one
+  // the axis declares but the saved order never saw (a newly-added column)
+  // is appended at the end, in the axis's own original order.
+  const known = new Set(axis.columns);
+  const ordered = manualOrder.filter((column) => known.has(column));
+  const seen = new Set(ordered);
+  const remaining = axis.columns.filter((column) => !seen.has(column));
+  return { ...axis, columns: [...ordered, ...remaining] };
+}
+
+/** Moves `column` to sit immediately before `before` in `order`, for a
+ * drag-and-drop column reorder in Manual sort mode (see `DataBoard`'s
+ * `onReorderColumn`). Dropping a column onto itself is a no-op. */
+export function moveColumnBefore(
+  order: string[],
+  column: string,
+  before: string
+): string[] {
+  if (column === before) return order;
+  const withoutColumn = order.filter((entry) => entry !== column);
+  const beforeIndex = withoutColumn.indexOf(before);
+  if (beforeIndex === -1) return order;
+  return [
+    ...withoutColumn.slice(0, beforeIndex),
+    column,
+    ...withoutColumn.slice(beforeIndex),
+  ];
+}

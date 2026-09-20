@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCustomerFilters,
   CUSTOMER_COMPARATORS,
+  CUSTOMER_GROUP_BY_AXES,
   deriveCustomerSortKey,
   matchesCustomerQuery,
 } from './customerBrowserFields';
@@ -68,6 +69,29 @@ describe('matchesCustomerQuery', () => {
     expect(matchesCustomerQuery(customer, 'jane')).toBe(true);
     expect(matchesCustomerQuery(customer, 'example.com')).toBe(true);
     expect(matchesCustomerQuery(customer, 'santos')).toBe(false);
+  });
+});
+
+describe('CUSTOMER_GROUP_BY_AXES', () => {
+  it('offers a Status axis with Active/Inactive columns', () => {
+    const statusAxis = CUSTOMER_GROUP_BY_AXES.find((a) => a.id === 'status');
+    expect(statusAxis?.columns).toEqual(['Active', 'Inactive']);
+    expect(statusAxis?.columnFor(buildCustomer({ is_active: true }))).toBe(
+      'Active'
+    );
+    expect(statusAxis?.columnFor(buildCustomer({ is_active: false }))).toBe(
+      'Inactive'
+    );
+  });
+
+  it('offers a Sign-in method axis derived from primary_auth_provider', () => {
+    const methodAxis = CUSTOMER_GROUP_BY_AXES.find(
+      (a) => a.id === 'signInMethod'
+    );
+    expect(methodAxis?.columns).toEqual(['Email', 'Google', 'Facebook']);
+    expect(
+      methodAxis?.columnFor(buildCustomer({ primary_auth_provider: 'google' }))
+    ).toBe('Google');
   });
 });
 

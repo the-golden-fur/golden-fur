@@ -5,6 +5,7 @@ import {
 } from '../../../api/staff.api';
 import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../../staff.types';
+import { ResendEmailButton } from '../../buttons/ResendEmailButton/ResendEmailButton';
 import styles from './ManageStaffAccountForm.module.css';
 
 const ALL_ROLES: StaffRole[] = [
@@ -112,6 +113,13 @@ export function ManageStaffAccountForm({
 
   return (
     <div className={styles.wrapper}>
+      {/* Issue #74/#75 AC-4: reachable from an existing staff profile, not
+          just the creation-confirmation screen. Moved here (for now) from a
+          persistent button on every StaffCard, which was crowding Board and
+          Gallery cards - "Manage account" is already the "..." destination
+          for account-level actions on this page. */}
+      <ResendEmailButton staffId={staffId} accessToken={accessToken} />
+
       {canChangeRoleOrBranch ? (
         <div className={styles.roleBranchFields}>
           <label className={styles.field}>
