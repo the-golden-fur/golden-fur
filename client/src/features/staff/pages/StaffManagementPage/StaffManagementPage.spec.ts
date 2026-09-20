@@ -418,7 +418,7 @@ describe('StaffManagementPage (#75)', () => {
     );
   });
 
-  it('AC-4: the resend-email action is reachable from an existing staff profile', async () => {
+  it('AC-4: the resend-email action is reachable from an existing staff profile, via "Manage account"', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [
@@ -431,9 +431,16 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Manage account' })
+    );
     expect(
-      screen.getAllByRole('button', { name: /resend account email/i }).length
-    ).toBeGreaterThan(0);
+      screen.getByRole('button', { name: /resend account email/i })
+    ).toBeInTheDocument();
   });
 
   it('Notion-style remaster: Gallery is the default view, and Table/List/Board are available alongside it', async () => {
