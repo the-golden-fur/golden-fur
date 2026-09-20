@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyStaffFilters,
   buildStaffFilterFields,
+  buildStaffGroupByAxes,
   deriveStaffSortKey,
   matchesStaffQuery,
   STAFF_COMPARATORS,
@@ -43,6 +44,40 @@ describe('buildStaffFilterFields', () => {
   it('also offers a Branch filter for a Superadmin viewer', () => {
     const fields = buildStaffFilterFields(branches, true);
     expect(fields.map((f) => f.id)).toEqual(['role', 'branch']);
+  });
+});
+
+describe('buildStaffGroupByAxes', () => {
+  const branches = [
+    { id: 'branch-1', name: 'Makati', is_vet_branch: true },
+    { id: 'branch-2', name: 'Southwoods', is_vet_branch: false },
+  ];
+
+  it('offers only a Role axis for a non-Superadmin viewer', () => {
+    const axes = buildStaffGroupByAxes(branches, false);
+    expect(axes.map((a) => a.id)).toEqual(['role']);
+  });
+
+  it('also offers a Branch axis for a Superadmin viewer', () => {
+    const axes = buildStaffGroupByAxes(branches, true);
+    expect(axes.map((a) => a.id)).toEqual(['role', 'branch']);
+
+    const branchAxis = axes[1];
+    expect(branchAxis.columns).toEqual(['Makati', 'Southwoods']);
+    expect(
+      branchAxis.columnFor(buildStaff({ branch_id: 'branch-2' }))
+    ).toBe('Southwoods');
+    expect(
+      branchAxis.columnFor(buildStaff({ branch_id: 'branch-unknown' }))
+    ).toBe('Unknown branch');
+  });
+
+  it('the Role axis covers every staff role, including ones not yet on staff', () => {
+    const roleAxis = buildStaffGroupByAxes([], false)[0];
+    expect(roleAxis.columns).toContain('Superadmin');
+    expect(roleAxis.columnFor(buildStaff({ role: 'Cashier' }))).toBe(
+      'Cashier'
+    );
   });
 });
 

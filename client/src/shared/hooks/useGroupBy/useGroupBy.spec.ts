@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { useGroupBy, type GroupByAxis } from './useGroupBy';
+import { sortGroupByAxis, useGroupBy, type GroupByAxis } from './useGroupBy';
 
 interface Cage {
   id: string;
@@ -51,6 +51,44 @@ describe('useGroupBy', () => {
     expect(result.current).toEqual([
       { column: 'Occupied', items: [CAGES[1]] },
       { column: 'Available', items: [CAGES[0], CAGES[2], stray] },
+    ]);
+  });
+});
+
+describe('sortGroupByAxis', () => {
+  it("'manual' returns the axis unchanged", () => {
+    expect(sortGroupByAxis(STATUS_AXIS, 'manual')).toBe(STATUS_AXIS);
+  });
+
+  it("'alphabetical' sorts the columns A-Z without touching columnFor", () => {
+    const sorted = sortGroupByAxis(STATUS_AXIS, 'alphabetical');
+
+    expect(sorted.columns).toEqual([
+      'Available',
+      'Occupied',
+      'Under Maintenance',
+    ]);
+    expect(sorted.columnFor).toBe(STATUS_AXIS.columnFor);
+    // Original axis is untouched.
+    expect(STATUS_AXIS.columns).toEqual([
+      'Available',
+      'Occupied',
+      'Under Maintenance',
+    ]);
+  });
+
+  it("'alphabetical' actually reorders when the declared order isn't already sorted", () => {
+    const axis: GroupByAxis<{ id: string; status: string }> = {
+      id: 'status',
+      label: 'Status',
+      columns: ['Occupied', 'Available', 'Under Maintenance'],
+      columnFor: (item) => item.status,
+    };
+
+    expect(sortGroupByAxis(axis, 'alphabetical').columns).toEqual([
+      'Available',
+      'Occupied',
+      'Under Maintenance',
     ]);
   });
 });

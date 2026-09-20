@@ -67,3 +67,29 @@ export function useGroupBy<T>(
     return [...declared, ...extra];
   }, [items, axis]);
 }
+
+export type GroupSortMode = 'manual' | 'alphabetical';
+
+export const GROUP_SORT_MODE_OPTIONS: {
+  value: GroupSortMode;
+  label: string;
+}[] = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'alphabetical', label: 'Alphabetical' },
+];
+
+/** Reorders an axis's declared columns for display - 'manual' keeps the
+ * axis's own author-defined order (e.g. a role hierarchy or a status
+ * pipeline, where the sequence itself is meaningful), 'alphabetical' sorts
+ * them A-Z instead. Leaves `columnFor` and everything else about the axis
+ * untouched - pass the result straight into `useGroupBy`. */
+export function sortGroupByAxis<T>(
+  axis: GroupByAxis<T>,
+  mode: GroupSortMode
+): GroupByAxis<T> {
+  if (mode === 'manual') return axis;
+  return {
+    ...axis,
+    columns: [...axis.columns].sort((a, b) => a.localeCompare(b)),
+  };
+}

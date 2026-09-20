@@ -4,6 +4,7 @@ import type {
   SortFieldDescriptor,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import type { GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../staff.types';
 
@@ -52,6 +53,36 @@ export function buildStaffFilterFields(
   };
 
   return [roleField, branchField];
+}
+
+/** Branch is only offered as a group-by axis for a Superadmin viewer, same
+ * gating as the Branch filter - an Admin's roster is already all one
+ * branch, so grouping by it would just produce a single column. */
+export function buildStaffGroupByAxes(
+  branches: BranchSummary[],
+  isSuperadminViewer: boolean
+): GroupByAxis<StaffProfile>[] {
+  const roleAxis: GroupByAxis<StaffProfile> = {
+    id: 'role',
+    label: 'Role',
+    columns: ALL_ROLES,
+    columnFor: (staff) => staff.role,
+  };
+
+  if (!isSuperadminViewer) {
+    return [roleAxis];
+  }
+
+  const branchAxis: GroupByAxis<StaffProfile> = {
+    id: 'branch',
+    label: 'Branch',
+    columns: branches.map((branch) => branch.name),
+    columnFor: (staff) =>
+      branches.find((branch) => branch.id === staff.branch_id)?.name ??
+      'Unknown branch',
+  };
+
+  return [roleAxis, branchAxis];
 }
 
 export type StaffSortKey = 'name-asc' | 'name-desc';
