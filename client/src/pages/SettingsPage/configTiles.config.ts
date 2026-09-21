@@ -2,7 +2,6 @@ import type { ComponentType } from 'react';
 import {
   Calculator,
   DoorOpen,
-  Dog,
   Gift,
   Package,
   PawPrint,
@@ -18,8 +17,7 @@ import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/A
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
-import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
-import { AdminPetTypesPage } from '../../features/maintenance/pages/AdminPetTypesPage/AdminPetTypesPage';
+import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/AdminPetsPage';
 import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
@@ -89,19 +87,12 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: AdminPromosAndRewardsPage,
   },
   {
-    title: 'Breed Management',
-    description: 'Add, rename, or remove breeds available on pet profiles.',
-    to: '/staff/admin/maintenance/breeds',
-    icon: Dog,
-    Component: AdminBreedsPage,
-  },
-  {
-    title: 'Pet Types',
+    title: 'Pets',
     description:
-      'CRUD for pet types, plus a per-branch fixed price that overrides service/package pricing (e.g. Cat = 800 for everything).',
-    to: '/staff/admin/maintenance/pet-types',
+      'Pet types (plus a per-branch fixed price override) and breed management.',
+    to: '/staff/admin/maintenance/pets',
     icon: PawPrint,
-    Component: AdminPetTypesPage,
+    Component: AdminPetsPage,
   },
   {
     title: 'Product Catalog',

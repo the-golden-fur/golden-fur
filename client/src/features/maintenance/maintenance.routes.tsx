@@ -5,8 +5,7 @@ import { AdminServicesAndPackagesPage } from './pages/AdminServicesAndPackagesPa
 import { PricingConfigurationPage } from './pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
-import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
-import { AdminPetTypesPage } from './pages/AdminPetTypesPage/AdminPetTypesPage';
+import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
 import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
 
 /**
@@ -43,12 +42,18 @@ export const maintenanceRoutes = (
         }
       />
       <Route
+        path="/staff/admin/maintenance/pets"
+        element={<AdminPetsPage />}
+      />
+      {/* Pet Types + Breeds merge (session 87) - old bookmarked/linked
+          paths still resolve, just onto the merged page. */}
+      <Route
         path="/staff/admin/maintenance/breeds"
-        element={<AdminBreedsPage />}
+        element={<Navigate to="/staff/admin/maintenance/pets" replace />}
       />
       <Route
         path="/staff/admin/maintenance/pet-types"
-        element={<AdminPetTypesPage />}
+        element={<Navigate to="/staff/admin/maintenance/pets" replace />}
       />
       <Route
         path="/staff/admin/maintenance/system-configuration"
