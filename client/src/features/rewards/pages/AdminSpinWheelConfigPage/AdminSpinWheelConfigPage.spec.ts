@@ -147,12 +147,12 @@ describe('AdminSpinWheelConfigPage', () => {
     renderPage();
 
     await screen.findByText('Reward pool');
-    expect(screen.queryByLabelText('Label')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Add a reward' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Add a reward' });
-    await user.type(within(dialog).getByLabelText('Label'), 'New Reward');
+    await user.type(within(dialog).getByLabelText('Title'), 'New Reward');
     await user.type(within(dialog).getByLabelText(/^Value/), '10');
     await user.type(within(dialog).getByLabelText('Rarity (%)'), '100');
     await user.click(

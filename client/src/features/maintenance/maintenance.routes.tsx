@@ -1,10 +1,10 @@
 import { Fragment } from 'react';
-import { Route } from 'react-router';
+import { Navigate, Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { AdminServicesAndPackagesPage } from './pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from './pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
-import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
+import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
 import { AdminPetTypesPage } from './pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
@@ -31,8 +31,14 @@ export const maintenanceRoutes = (
         element={<WeightClassConfigurationPage />}
       />
       <Route
+        path="/staff/admin/maintenance/promos-and-rewards"
+        element={<AdminPromosAndRewardsPage />}
+      />
+      {/* Promos + Coupon Spin Wheel merge (session 87) - old bookmarked/
+          linked paths still resolve, just onto the merged page. */}
+      <Route
         path="/staff/admin/maintenance/promos"
-        element={<AdminPromoConfigPage />}
+        element={<Navigate to="/staff/admin/maintenance/promos-and-rewards" replace />}
       />
       <Route
         path="/staff/admin/maintenance/breeds"

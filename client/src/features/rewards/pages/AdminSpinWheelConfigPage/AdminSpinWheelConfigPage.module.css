@@ -1,4 +1,11 @@
 .page {
+  /* Embed-height convention (see configTiles.config.ts's doc comment on
+     ConfigTileConfig.Component) - this page is about to be embedded inside
+     AdminPromosAndRewardsPage's tab bar, itself reachable either as a
+     standalone route or inline inside Settings; without this, the old
+     bare padding-only rule left a full extra viewport of empty space
+     below the real content whenever it was squeezed into a shorter pane. */
+  min-height: var(--config-embed-min-height, 100vh);
   padding: 1.5rem;
 }
 

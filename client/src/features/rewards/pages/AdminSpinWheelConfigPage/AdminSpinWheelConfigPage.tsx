@@ -206,7 +206,7 @@ export function AdminSpinWheelConfigPage() {
     const rarity = Number(rewardRarity);
 
     if (rewardLabel.trim() === '' || rewardValue === '' || value < 0) {
-      setRewardFormError('A label and a non-negative value are required.');
+      setRewardFormError('A title and a non-negative value are required.');
       return;
     }
     if (rewardRarity === '' || rarity <= 0 || rarity > 100) {
@@ -352,7 +352,7 @@ export function AdminSpinWheelConfigPage() {
   }
 
   const rewardColumns: DataTableColumn<SpinWheelReward>[] = [
-    { id: 'label', header: 'Label', render: (reward) => reward.label },
+    { id: 'label', header: 'Title', render: (reward) => reward.label },
     {
       id: 'discountType',
       header: 'Discount type',
@@ -594,7 +594,7 @@ export function AdminSpinWheelConfigPage() {
       >
         <form className={styles.form} onSubmit={handleRewardSubmit}>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Label</span>
+            <span className={styles.fieldLabel}>Title</span>
             <input
               className={styles.input}
               type="text"

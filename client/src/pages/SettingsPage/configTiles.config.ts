@@ -1,6 +1,5 @@
 import type { ComponentType } from 'react';
 import {
-  BadgePercent,
   Calculator,
   DoorOpen,
   Dog,
@@ -18,7 +17,7 @@ import {
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
-import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
+import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
 import { AdminPetTypesPage } from '../../features/maintenance/pages/AdminPetTypesPage/AdminPetTypesPage';
 import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
@@ -27,7 +26,6 @@ import { AdminDiscountManagementPage } from '../../features/discounts/pages/Admi
 import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
-import { AdminSpinWheelConfigPage } from '../../features/rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -83,11 +81,12 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: WeightClassConfigurationPage,
   },
   {
-    title: 'Promos',
-    description: 'Configure time-limited promotions.',
-    to: '/staff/admin/maintenance/promos',
-    icon: BadgePercent,
-    Component: AdminPromoConfigPage,
+    title: 'Promos & Rewards',
+    description:
+      'Configure time-limited promotions and spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
+    to: '/staff/admin/maintenance/promos-and-rewards',
+    icon: Gift,
+    Component: AdminPromosAndRewardsPage,
   },
   {
     title: 'Breed Management',
@@ -140,14 +139,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/hotel/cages',
     icon: DoorOpen,
     Component: AdminCagesPage,
-  },
-  {
-    title: 'Coupon Spin Wheel',
-    description:
-      'Configure spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
-    to: '/staff/admin/spin-wheel-config',
-    icon: Gift,
-    Component: AdminSpinWheelConfigPage,
   },
 ];
 

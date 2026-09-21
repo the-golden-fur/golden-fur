@@ -50,7 +50,7 @@ export type RewardSortKey =
 export const REWARD_SORT_FIELDS: SortFieldDescriptor[] = [
   {
     id: 'label',
-    label: 'Label',
+    label: 'Title',
     directions: [
       { value: 'asc', label: 'A to Z' },
       { value: 'desc', label: 'Z to A' },
