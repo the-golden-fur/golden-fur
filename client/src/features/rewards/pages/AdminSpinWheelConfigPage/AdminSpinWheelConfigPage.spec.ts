@@ -227,7 +227,7 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(screen.getByText(/Flat 50/)).toBeInTheDocument();
   });
 
-  it('toggles a reward active/inactive from the row action', async () => {
+  it('toggles a reward active/inactive from the "..." menu', async () => {
     stubDefaults();
     vi.mocked(rewardsApi.updateSpinWheelReward).mockResolvedValue({
       data: buildReward({ is_active: false }),
@@ -238,7 +238,10 @@ describe('AdminSpinWheelConfigPage', () => {
     renderPage();
     await screen.findByText('Ten Percent Off');
 
-    await user.click(screen.getByRole('button', { name: 'Deactivate' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
 
     await waitFor(() =>
       expect(rewardsApi.updateSpinWheelReward).toHaveBeenCalledWith(
@@ -249,8 +252,24 @@ describe('AdminSpinWheelConfigPage', () => {
     );
   });
 
-  it('archives a reward', async () => {
-    stubDefaults();
+  it('hides Archive in the "..." menu while a reward is still active', async () => {
+    stubDefaults([buildReward({ is_active: true })]);
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Ten Percent Off');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
+    );
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Archive' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('archives a reward from the "..." menu once it is inactive', async () => {
+    stubDefaults([buildReward({ is_active: false })]);
     vi.mocked(rewardsApi.archiveSpinWheelReward).mockResolvedValue({
       data: null,
       error: null,
@@ -260,7 +279,10 @@ describe('AdminSpinWheelConfigPage', () => {
     renderPage();
     await screen.findByText('Ten Percent Off');
 
-    await user.click(screen.getByRole('button', { name: 'Archive' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
 
     await waitFor(() =>
       expect(rewardsApi.archiveSpinWheelReward).toHaveBeenCalledWith(
@@ -269,5 +291,59 @@ describe('AdminSpinWheelConfigPage', () => {
       )
     );
     expect(screen.queryByText('Ten Percent Off')).not.toBeInTheDocument();
+  });
+
+  it('Configure opens a pre-filled edit modal and saves via updateSpinWheelReward', async () => {
+    stubDefaults([
+      buildReward({
+        id: 'reward-1',
+        label: 'Ten Percent Off',
+        discount_type: 'Percentage',
+        value: 10,
+        rarity_percent: 60,
+      }),
+    ]);
+    vi.mocked(rewardsApi.updateSpinWheelReward).mockResolvedValue({
+      data: buildReward({ label: 'Fifteen Percent Off', value: 15 }),
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Ten Percent Off');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit reward' });
+    expect(within(dialog).getByLabelText('Title')).toHaveValue(
+      'Ten Percent Off'
+    );
+    expect(within(dialog).getByLabelText(/^Value/)).toHaveValue(10);
+    expect(within(dialog).getByLabelText('Rarity (%)')).toHaveValue(60);
+
+    await user.clear(within(dialog).getByLabelText('Title'));
+    await user.type(within(dialog).getByLabelText('Title'), 'Fifteen Percent Off');
+    await user.clear(within(dialog).getByLabelText(/^Value/));
+    await user.type(within(dialog).getByLabelText(/^Value/), '15');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
+
+    await waitFor(() =>
+      expect(rewardsApi.updateSpinWheelReward).toHaveBeenCalledWith(
+        'reward-1',
+        'token',
+        {
+          label: 'Fifteen Percent Off',
+          discount_type: 'Percentage',
+          value: 15,
+          rarity_percent: 60,
+        }
+      )
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

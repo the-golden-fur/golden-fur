@@ -21,6 +21,7 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -93,7 +94,8 @@ export function AdminSpinWheelConfigPage() {
   const [rewardRarity, setRewardRarity] = useState('');
   const [rewardFormError, setRewardFormError] = useState<string | null>(null);
   const [isSavingReward, setIsSavingReward] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -217,38 +219,64 @@ export function AdminSpinWheelConfigPage() {
     setIsSavingReward(true);
     setRewardFormError(null);
 
-    const result = await createSpinWheelReward(accessToken, {
+    const payload = {
       label: rewardLabel.trim(),
       discount_type: rewardDiscountType,
       value,
       rarity_percent: rarity,
-    });
+    };
+
+    const result = editingRewardId
+      ? await updateSpinWheelReward(editingRewardId, accessToken, payload)
+      : await createSpinWheelReward(accessToken, payload);
 
     setIsSavingReward(false);
 
     if (result.error || !result.data) {
       setRewardFormError(
         result.error ??
-          'Could not create the reward - check the rarity total sums to 100.'
+          `Could not ${editingRewardId ? 'update' : 'create'} the reward - check the rarity total sums to 100.`
       );
       return;
     }
 
-    setRewards((prev) => [...prev, result.data as SpinWheelReward]);
+    const saved = result.data as SpinWheelReward;
+    setRewards((prev) =>
+      editingRewardId
+        ? prev.map((item) => (item.id === editingRewardId ? saved : item))
+        : [...prev, saved]
+    );
     setRewardLabel('');
     setRewardValue('');
     setRewardRarity('');
-    setMessage('Reward added.');
-    setIsCreateModalOpen(false);
+    setMessage(editingRewardId ? 'Reward updated.' : 'Reward added.');
+    setIsRewardModalOpen(false);
+    setEditingRewardId(null);
   };
 
   function openCreateModal() {
+    setEditingRewardId(null);
+    setRewardLabel('');
+    setRewardDiscountType('Percentage');
+    setRewardValue('');
+    setRewardRarity('');
     setRewardFormError(null);
-    setIsCreateModalOpen(true);
+    setIsRewardModalOpen(true);
   }
 
-  function closeCreateModal() {
-    setIsCreateModalOpen(false);
+  function openEditModal(reward: SpinWheelReward) {
+    setEditingRewardId(reward.id);
+    setRewardLabel(reward.label);
+    setRewardDiscountType(reward.discount_type);
+    setRewardValue(String(reward.value));
+    setRewardRarity(String(reward.rarity_percent));
+    setRewardFormError(null);
+    setIsRewardModalOpen(true);
+  }
+
+  function closeRewardModal() {
+    setIsRewardModalOpen(false);
+    setEditingRewardId(null);
     setRewardFormError(null);
   }
 
@@ -333,20 +361,19 @@ export function AdminSpinWheelConfigPage() {
   function renderRewardActions(reward: SpinWheelReward) {
     return (
       <span className={styles.rewardActions}>
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={() => void handleToggleActive(reward)}
-        >
-          {reward.is_active ? 'Deactivate' : 'Activate'}
-        </button>
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={() => void handleArchive(reward)}
-        >
-          Archive
-        </button>
+        <MoreOptionsMenu
+          label={`Actions for ${reward.label}`}
+          items={[
+            { label: 'Configure', onSelect: () => openEditModal(reward) },
+            {
+              label: reward.is_active ? 'Deactivate' : 'Activate',
+              onSelect: () => void handleToggleActive(reward),
+            },
+            ...(!reward.is_active
+              ? [{ label: 'Archive', onSelect: () => void handleArchive(reward) }]
+              : []),
+          ]}
+        />
       </span>
     );
   }
@@ -588,9 +615,9 @@ export function AdminSpinWheelConfigPage() {
       </div>
 
       <Modal
-        isOpen={isCreateModalOpen}
-        title="Add a reward"
-        onClose={closeCreateModal}
+        isOpen={isRewardModalOpen}
+        title={editingRewardId ? 'Edit reward' : 'Add a reward'}
+        onClose={closeRewardModal}
       >
         <form className={styles.form} onSubmit={handleRewardSubmit}>
           <label className={styles.field}>
@@ -659,7 +686,11 @@ export function AdminSpinWheelConfigPage() {
             className={styles.primaryButton}
             disabled={isSavingReward}
           >
-            {isSavingReward ? 'Saving...' : 'Add reward'}
+            {isSavingReward
+              ? 'Saving...'
+              : editingRewardId
+                ? 'Save changes'
+                : 'Add reward'}
           </button>
         </form>
       </Modal>
