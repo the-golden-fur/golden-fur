@@ -179,6 +179,21 @@ describe('customer profile CRUD (Issue #31)', () => {
       expect(res.body.customers).toHaveLength(2);
     });
 
+    it('is available to a Cashier (Transactions page payer search)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Cashier' }, error: null },
+        { data: [{ id: 'customer-1' }, { id: 'customer-2' }], error: null }
+      );
+
+      const res = await request(app)
+        .get('/customers')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.customers).toHaveLength(2);
+    });
+
     it('AC-3: returns 403 for a Groomer', async () => {
       mockCaller('staff-1');
       queueFromResults({ data: { role: 'Groomer' }, error: null });

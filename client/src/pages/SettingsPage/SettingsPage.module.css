@@ -56,6 +56,18 @@
   flex-direction: column;
   flex-shrink: 0;
   gap: var(--space-0-5);
+  /* overflow-x is explicit, not left to default - setting only overflow-y
+     makes the unset x-axis compute to auto too (CSS's "one axis visible,
+     other isn't -> visible becomes auto" rule), which was clipping the
+     "..." sort menu's popup horizontally the moment it moved from the
+     panel header into this scrollable sidebar (bug: a MoreOptionsMenu
+     popup is a normal DOM descendant for overflow-clipping purposes even
+     though it's position: absolute - its containing block being this
+     element doesn't exempt it from a clipping ancestor). Vertical
+     scrolling for the (possibly long) section list still works; the
+     popup can now render past the sidebar's right edge into .content
+     instead of wrapping into an unreadable single-character column. */
+  overflow-x: visible;
   overflow-y: auto;
   border-right: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -241,6 +253,18 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* A short tab (e.g. Preferences, for an account with few notification
+     rows) doesn't fill this pane's full height - confirmed via inspection
+     to be plain empty background, not a color/rendering bug, but with
+     flex-start (the default) all of that leftover space lands below the
+     last card, reading as a big dead zone at the bottom of the page ("dark
+     box"). `safe center` centers short content instead, splitting the
+     leftover space evenly above/below so it reads as intentional; `safe`
+     is what keeps this from regressing a genuinely tall tab (e.g. Profile
+     with the avatar picker) - it falls back to start-alignment the moment
+     content overflows, so the top of a scrolled, taller-than-the-pane tab
+     is never clipped the way plain `center` would clip it. */
+  justify-content: safe center;
   /* Embedded Config pages are standalone routes whose own root class sets
      min-height: 100vh (correct there); left unset that forces a full
      viewport of height inside this shorter pane, showing as an empty block

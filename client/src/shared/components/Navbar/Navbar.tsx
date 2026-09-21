@@ -11,6 +11,35 @@ export interface NavbarIdentity {
   primary: string;
   /** Staff role label - omitted for customers. */
   secondary?: string;
+  /** Settings > Profile's chosen avatar (upload or preset) - null/undefined
+   * falls back to an initials badge below. */
+  photoUrl?: string | null;
+}
+
+/** First letter of up to the first two words - "Makati Superadmin 1" -> "MS",
+ * "Jamie" -> "J". Used only when there's no photoUrl to show instead. */
+function identityInitials(primary: string): string {
+  return primary
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+}
+
+function IdentityAvatar({ identity }: { identity: NavbarIdentity }) {
+  if (identity.photoUrl) {
+    return (
+      <img className={styles.identityAvatar} src={identity.photoUrl} alt="" />
+    );
+  }
+
+  return (
+    <span className={styles.identityAvatarFallback} aria-hidden="true">
+      {identityInitials(identity.primary)}
+    </span>
+  );
 }
 
 interface NavbarProps {
@@ -160,12 +189,15 @@ export function Navbar({
       >
         {identity ? (
           <div className={styles.identity}>
-            <span className={styles.identityPrimary}>{identity.primary}</span>
-            {identity.secondary ? (
-              <span className={styles.identitySecondary}>
-                {identity.secondary}
-              </span>
-            ) : null}
+            <IdentityAvatar identity={identity} />
+            <span className={styles.identityText}>
+              <span className={styles.identityPrimary}>{identity.primary}</span>
+              {identity.secondary ? (
+                <span className={styles.identitySecondary}>
+                  {identity.secondary}
+                </span>
+              ) : null}
+            </span>
           </div>
         ) : null}
         {creditIndicator}

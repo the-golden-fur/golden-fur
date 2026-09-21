@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getStaffProfile,
+  setAvatarPreset as setStaffAvatarPreset,
   updateStaffProfile,
+  uploadAvatar as uploadStaffAvatar,
 } from '../../../features/staff/api/staff.api';
-import { AvatarUploader } from '../../../features/staff/components/forms/AvatarUploader/AvatarUploader';
 import { UnavailabilityBlockBadge } from '../../../features/staff/components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import type { StaffProfile } from '../../../features/staff/staff.types';
 import {
   getCustomerProfile,
+  setAvatarPreset as setCustomerAvatarPreset,
   updateCustomerProfile,
+  uploadAvatar as uploadCustomerAvatar,
 } from '../../../features/customers/api/customer.api';
 import type { CustomerProfile } from '../../../features/customers/customer.types';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
+import { AvatarPicker } from '../../../shared/components/AvatarPicker/AvatarPicker';
+import { notifyIdentityChanged } from '../../../shared/events/identityEvents';
 import styles from '../SettingsPage.module.css';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
@@ -89,8 +94,9 @@ function StaffProfileForm({
     };
   }, [userId, accessToken]);
 
-  const handleAvatarUploaded = (url: string) => {
+  const handleAvatarChanged = (url: string) => {
     setProfile((prev) => (prev ? { ...prev, profile_photo_url: url } : prev));
+    notifyIdentityChanged();
   };
 
   // Split from the form's onSubmit so the shared Save/Discard bar can call
@@ -203,11 +209,13 @@ function StaffProfileForm({
   return (
     <section className={styles.panel}>
       <div className={styles.identitySection}>
-        <AvatarUploader
-          staffId={profile.id}
-          accessToken={accessToken}
-          currentAvatarUrl={profile.profile_photo_url}
-          onUploaded={handleAvatarUploaded}
+        <AvatarPicker
+          currentUrl={profile.profile_photo_url}
+          upload={(file) => uploadStaffAvatar(profile.id, accessToken, file)}
+          selectPreset={(presetId) =>
+            setStaffAvatarPreset(profile.id, accessToken, presetId)
+          }
+          onChanged={handleAvatarChanged}
         />
         <div className={styles.identityInfo}>
           <h2 className={styles.name}>{profile.display_name}</h2>
@@ -446,8 +454,26 @@ function CustomerProfileForm({
     );
   }
 
+  const handleAvatarChanged = (url: string) => {
+    setProfile((prev) => (prev ? { ...prev, profile_photo_url: url } : prev));
+    notifyIdentityChanged();
+  };
+
   return (
     <section className={styles.panel}>
+      <div className={styles.identitySection}>
+        <AvatarPicker
+          currentUrl={profile.profile_photo_url}
+          upload={(file) => uploadCustomerAvatar(profile.id, accessToken, file)}
+          selectPreset={(presetId) =>
+            setCustomerAvatarPreset(profile.id, accessToken, presetId)
+          }
+          onChanged={handleAvatarChanged}
+        />
+        <div className={styles.identityInfo}>
+          <h2 className={styles.name}>{profile.full_name}</h2>
+        </div>
+      </div>
       <form
         className={styles.form}
         onSubmit={(event) => {

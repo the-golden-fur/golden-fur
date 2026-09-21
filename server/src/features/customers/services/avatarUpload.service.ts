@@ -1,6 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { PRESET_AVATAR_URLS_BY_ID } from '../../../shared/config/presetAvatars.ts';
-import { ADMIN_ROLES } from '../staff.types.ts';
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
@@ -11,7 +10,6 @@ const ALLOWED_AVATAR_MIME_TYPES = new Set([
 
 interface AvatarUploadParams {
   requesterId: string;
-  requesterRole: string;
   targetId: string;
   file: {
     buffer: Buffer;
@@ -21,40 +19,48 @@ interface AvatarUploadParams {
   };
 }
 
+interface AvatarPresetParams {
+  requesterId: string;
+  targetId: string;
+  presetId: string;
+}
+
 export interface AvatarUploadResult {
   avatarUrl: string;
 }
 
-export async function uploadStaffAvatar({
+function throwWithStatus(statusCode: number, message: string): never {
+  const error = new Error(message);
+  (error as Error & { statusCode?: number }).statusCode = statusCode;
+  throw error;
+}
+
+/**
+ * Mirrors staff/services/avatarUpload.service.ts's uploadStaffAvatar - same
+ * 'avatars' Storage bucket, same targetId/-prefixed path, same
+ * upload-then-clean-up-previous-objects shape - but self-only, since
+ * there's no "staff member uploads on a customer's behalf" case for this
+ * feature the way an Admin can for another staff member's avatar.
+ */
+export async function uploadCustomerAvatar({
   requesterId,
-  requesterRole,
   targetId,
   file,
 }: AvatarUploadParams): Promise<AvatarUploadResult> {
-  const isSelf = requesterId === targetId;
-
-  if (!isSelf && !ADMIN_ROLES.includes(requesterRole)) {
-    const error = new Error('Forbidden');
-    (error as Error & { statusCode?: number }).statusCode = 403;
-    throw error;
+  if (requesterId !== targetId) {
+    throwWithStatus(403, 'Forbidden');
   }
 
   if (!file || !file.buffer) {
-    const error = new Error('No file provided');
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, 'No file provided');
   }
 
   if (!ALLOWED_AVATAR_MIME_TYPES.has(file.mimetype)) {
-    const error = new Error('Unsupported file type');
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, 'Unsupported file type');
   }
 
   if (file.size > MAX_AVATAR_SIZE_BYTES) {
-    const error = new Error('File too large');
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, 'File too large');
   }
 
   const timestamp = Date.now();
@@ -73,23 +79,16 @@ export async function uploadStaffAvatar({
   );
 
   if (uploadError || !uploadData?.path) {
-    const error = new Error(uploadError?.message ?? 'Upload failed');
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, uploadError?.message ?? 'Upload failed');
   }
 
   const { data: existingObjects, error: listError } = await storageClient.list(
     targetId,
-    {
-      limit: 100,
-      offset: 0,
-    }
+    { limit: 100, offset: 0 }
   );
 
   if (listError) {
-    const error = new Error(listError.message);
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, listError.message);
   }
 
   const previousObjects = (existingObjects ?? []).filter(
@@ -109,69 +108,48 @@ export async function uploadStaffAvatar({
   const avatarUrl = publicUrlData?.publicUrl ?? '';
 
   const { data, error } = await supabase
-    .from('staff_profiles')
+    .from('customer_profiles')
     .update({ profile_photo_url: avatarUrl })
     .eq('id', targetId)
     .select('*')
     .maybeSingle();
 
   if (error || !data) {
-    const errorMessage = error?.message ?? 'Profile update failed';
-    const wrappedError = new Error(errorMessage);
-    (wrappedError as Error & { statusCode?: number }).statusCode = 400;
-    throw wrappedError;
+    throwWithStatus(400, error?.message ?? 'Profile update failed');
   }
 
   return { avatarUrl };
 }
 
-interface AvatarPresetParams {
-  requesterId: string;
-  requesterRole: string;
-  targetId: string;
-  presetId: string;
-}
-
 /**
  * "Choose preset" needs no Storage round-trip - it resolves a client-sent
  * preset id against the server's own PRESET_AVATAR_URLS_BY_ID (never a
- * client-supplied url directly) and stores that trusted url. Same
- * self-or-Admin permission rule as uploadStaffAvatar above.
+ * client-supplied url directly) and stores that trusted url.
  */
-export async function setStaffAvatarPreset({
+export async function setCustomerAvatarPreset({
   requesterId,
-  requesterRole,
   targetId,
   presetId,
 }: AvatarPresetParams): Promise<AvatarUploadResult> {
-  const isSelf = requesterId === targetId;
-
-  if (!isSelf && !ADMIN_ROLES.includes(requesterRole)) {
-    const error = new Error('Forbidden');
-    (error as Error & { statusCode?: number }).statusCode = 403;
-    throw error;
+  if (requesterId !== targetId) {
+    throwWithStatus(403, 'Forbidden');
   }
 
   const avatarUrl = PRESET_AVATAR_URLS_BY_ID[presetId];
 
   if (!avatarUrl) {
-    const error = new Error('Unknown preset');
-    (error as Error & { statusCode?: number }).statusCode = 400;
-    throw error;
+    throwWithStatus(400, 'Unknown preset');
   }
 
   const { data, error } = await supabase
-    .from('staff_profiles')
+    .from('customer_profiles')
     .update({ profile_photo_url: avatarUrl })
     .eq('id', targetId)
     .select('*')
     .maybeSingle();
 
   if (error || !data) {
-    const errorMessage = error?.message ?? 'Profile update failed';
-    const wrappedError = new Error(errorMessage);
-    (wrappedError as Error & { statusCode?: number }).statusCode = 400;
-    throw wrappedError;
+    throwWithStatus(400, error?.message ?? 'Profile update failed');
   }
 
   return { avatarUrl };

@@ -19,6 +19,7 @@ export interface CustomerProfile {
   account_email: string;
   primary_auth_provider: AuthProvider;
   facebook_id: string | null;
+  profile_photo_url: string | null;
   is_active: boolean;
   archived_at: string | null;
   deactivated_at: string | null;

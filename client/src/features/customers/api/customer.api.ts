@@ -137,6 +137,58 @@ export async function updateCustomerProfile(
   return { data: result.data?.customer ?? null, error: result.error };
 }
 
+/** Mirrors staff.api.ts's uploadAvatar - multipart upload into the same
+ * 'avatars' Storage bucket, self-only. */
+export async function uploadAvatar(
+  customerId: string,
+  accessToken: string,
+  file: File
+): Promise<CustomerApiResult<{ profile_photo_url: string }>> {
+  const formData = new FormData();
+  formData.append('avatar', file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/avatar`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ profile_photo_url: string }>(response);
+}
+
+/** "Choose preset" - same endpoint as uploadAvatar, a plain JSON body
+ * instead of multipart so the server can tell the two flows apart. */
+export async function setAvatarPreset(
+  customerId: string,
+  accessToken: string,
+  presetId: string
+): Promise<CustomerApiResult<{ profile_photo_url: string }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/avatar`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify({ preset_id: presetId }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ profile_photo_url: string }>(response);
+}
+
 export async function listCustomers(
   accessToken: string,
   emailFilter?: string

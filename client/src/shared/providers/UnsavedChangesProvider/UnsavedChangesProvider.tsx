@@ -19,19 +19,23 @@ interface UnsavedChangesProviderProps {
 }
 
 /**
- * Mounted once by SettingsPage, for the duration it's open. Any descendant
- * can call useUnsavedChanges to register a draft (a form, or one
- * in-progress row edit); while at least one is dirty, this renders a
- * Discord-style bottom bar (Save changes / Discard) and warns on an actual
- * browser tab close/refresh. guardIfDirty - used by SettingsPage's own
- * tab/tile switching and by useGuardedNavigate - opens a blocking
- * confirmation (Save / Discard / Cancel) before letting the caller's
- * action through.
+ * Mounted once by AppShell, for the whole authenticated shell - not locally
+ * inside SettingsPage, even though every current registrant lives there,
+ * because Navbar (a sibling of the routed <Outlet/> content, not a
+ * descendant of it) also needs to guard its own Sign Out/brand-link with
+ * the same dirty state. Any descendant can call useUnsavedChanges to
+ * register a draft (a form, or one in-progress row edit); while at least
+ * one is dirty, this renders a Discord-style bottom bar (Save changes /
+ * Discard) and warns on an actual browser tab close/refresh. guardIfDirty -
+ * used by SettingsPage's own tab/tile switching, Navbar's guarded actions,
+ * and useGuardedNavigate - opens a blocking confirmation (Save / Discard /
+ * Cancel) before letting the caller's action through.
  *
- * Scope: Settings-embedded forms/pages only. A Config page reached via its
- * own standalone route (outside Settings) has no provider in its tree, so
- * useUnsavedChanges silently no-ops there - this session's ask was "when
- * editing things in Settings page," not every route in the app.
+ * Scope: forms/pages embedded in Settings only (nothing outside Settings
+ * currently registers a draft) - a Config page reached via its own
+ * standalone route has no reason to call useUnsavedChanges, so it silently
+ * has nothing registered there. The provider itself is app-wide only so
+ * Navbar can reach it; it isn't retrofitting every route's forms.
  *
  * In-app browser back/forward (popstate) isn't guarded - the app doesn't
  * use a data router (see App.tsx), so there's no clean hook for it here;
