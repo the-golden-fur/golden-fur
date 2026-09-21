@@ -35,7 +35,7 @@ having started a second, colliding copy of one that was already up.
   hook frees both ports once your turn ends regardless. It does not fire
   mid-turn, so it never interrupts a dev server you're actively still
   using within the same response. If a dev server crashes with
-  `EADDRINUSE` *mid-turn* (the Stop hook hasn't fired yet), a leftover
+  `EADDRINUSE` _mid-turn_ (the Stop hook hasn't fired yet), a leftover
   background task from earlier in the same turn is almost always why -
   stop it with `TaskStop`, then re-check the port: killing only the
   top-level `npm run dev` task can leave orphaned `tsx watch`/`vite`
