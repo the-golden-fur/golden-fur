@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -693,12 +693,6 @@ export function AdminDiscountManagementPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>Discounts</h1>
-          <Link
-            className={styles.archiveLink}
-            to="/staff/admin/archive?tab=discounts"
-          >
-            View archive
-          </Link>
         </div>
         <p className={styles.copy}>
           A discount is active wherever it&apos;s available - use a row&apos;s

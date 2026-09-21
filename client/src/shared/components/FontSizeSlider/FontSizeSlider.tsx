@@ -1,4 +1,5 @@
 import { useContext } from 'react';
+import type { CSSProperties } from 'react';
 import { ThemeContext } from '../../providers/ThemeProvider/themeContext';
 import type { FontSizePreference } from '../../providers/ThemeProvider/themeContext';
 import styles from './FontSizeSlider.module.css';
@@ -27,17 +28,21 @@ const FONT_SIZE_LABELS: Record<FontSizePreference, string> = {
 export function FontSizeSlider() {
   const { fontSize, setFontSize } = useContext(ThemeContext);
   const stepIndex = FONT_SIZE_STEPS.indexOf(fontSize);
+  const clampedIndex = stepIndex === -1 ? 1 : stepIndex;
+  const fillPercent =
+    (clampedIndex / (FONT_SIZE_STEPS.length - 1)) * 100;
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.sliderRow}>
         <input
           className={styles.slider}
+          style={{ '--slider-fill': `${fillPercent}%` } as CSSProperties}
           type="range"
           min={0}
           max={FONT_SIZE_STEPS.length - 1}
           step={1}
-          value={stepIndex === -1 ? 1 : stepIndex}
+          value={clampedIndex}
           onChange={(event) =>
             setFontSize(FONT_SIZE_STEPS[Number(event.target.value)])
           }
