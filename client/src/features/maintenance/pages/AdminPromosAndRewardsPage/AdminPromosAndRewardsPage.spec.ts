@@ -35,9 +35,8 @@ describe('AdminPromosAndRewardsPage', () => {
 
     expect(screen.getByText('Spin Wheel content')).toBeInTheDocument();
     expect(screen.queryByText('Promos content')).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Coupon Spin Wheel' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
+    expect(
+      screen.getByRole('tab', { name: 'Coupon Spin Wheel' })
+    ).toHaveAttribute('aria-selected', 'true');
   });
 });

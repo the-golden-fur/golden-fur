@@ -38,7 +38,9 @@ export const maintenanceRoutes = (
           linked paths still resolve, just onto the merged page. */}
       <Route
         path="/staff/admin/maintenance/promos"
-        element={<Navigate to="/staff/admin/maintenance/promos-and-rewards" replace />}
+        element={
+          <Navigate to="/staff/admin/maintenance/promos-and-rewards" replace />
+        }
       />
       <Route
         path="/staff/admin/maintenance/breeds"
