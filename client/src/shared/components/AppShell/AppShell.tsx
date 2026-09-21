@@ -13,6 +13,9 @@ export interface AppShellIdentity {
   primary: string;
   /** Staff role label - omitted for customers. */
   secondary?: string;
+  /** Settings > Profile's chosen avatar (upload or preset) - null/undefined
+   * falls back to an initials placeholder in Navbar. */
+  photoUrl?: string | null;
 }
 
 interface AppShellProps {

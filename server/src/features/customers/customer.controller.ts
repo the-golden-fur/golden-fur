@@ -1,4 +1,5 @@
-import type { Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import multer from 'multer';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
@@ -17,6 +18,10 @@ import {
   listArchivedCustomers,
   restoreCustomer,
 } from './services/customerArchive.service.ts';
+import {
+  setCustomerAvatarPreset,
+  uploadCustomerAvatar,
+} from './services/avatarUpload.service.ts';
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -208,6 +213,85 @@ export async function updateCustomerProfileController(
     return res.status(200).json({ customer: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/** Same shape as staff.controller.ts's handleAvatarUploadError - kept as
+ * its own copy per-feature rather than a cross-feature import, matching
+ * this file's other small per-feature helpers (e.g. throwWithStatus in
+ * customerArchive.service.ts). */
+export function handleAvatarUploadError(
+  err: unknown,
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large' });
+    }
+
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (err) {
+    return res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : 'Upload failed' });
+  }
+
+  return next();
+}
+
+export async function uploadCustomerAvatarController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!targetId) {
+    return res.status(400).json({ error: 'Missing customer id' });
+  }
+
+  const file = req.file as
+    | {
+        buffer: Buffer;
+        mimetype: string;
+        originalname: string;
+        size: number;
+      }
+    | undefined;
+
+  // "Choose preset" sends JSON ({ preset_id }), not multipart - multer's
+  // avatarUpload.single('avatar') middleware skips non-multipart requests
+  // entirely (req.file stays undefined) rather than erroring, so both flows
+  // share this one route/controller (same shape as the staff endpoint).
+  const presetId =
+    !file && typeof req.body?.preset_id === 'string'
+      ? req.body.preset_id
+      : null;
+
+  if (!file && !presetId) {
+    return res.status(400).json({ error: 'No file or preset provided' });
+  }
+
+  try {
+    const result = file
+      ? await uploadCustomerAvatar({ requesterId, targetId, file })
+      : await setCustomerAvatarPreset({
+          requesterId,
+          targetId,
+          presetId: presetId as string,
+        });
+
+    return res.status(200).json({ profile_photo_url: result.avatarUrl });
+  } catch (error) {
+    return sendServiceError(res, error);
   }
 }
 

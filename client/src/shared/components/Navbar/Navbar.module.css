@@ -75,6 +75,34 @@
 
 .identity {
   display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.identityAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.identityAvatarFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.identityText {
+  display: flex;
   flex-direction: column;
   align-items: flex-end;
   line-height: 1.2;

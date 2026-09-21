@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import {
   activateCustomerController,
@@ -6,15 +7,21 @@ import {
   deactivateCustomerController,
   deleteOwnAccountController,
   getCustomerProfileController,
+  handleAvatarUploadError,
   hardDeleteCustomerController,
   listArchivedCustomersController,
   listCustomersController,
   restoreCustomerController,
   updateCustomerProfileController,
+  uploadCustomerAvatarController,
 } from './customer.controller.ts';
 import petRoutes from './pets/pet.routes.ts';
 
 const router = Router();
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 router.get('/customers', jwtMiddleware, listCustomersController);
 router.get(
@@ -24,6 +31,13 @@ router.get(
 );
 router.get('/customers/:id', jwtMiddleware, getCustomerProfileController);
 router.patch('/customers/:id', jwtMiddleware, updateCustomerProfileController);
+router.post(
+  '/customers/:id/avatar',
+  jwtMiddleware,
+  avatarUpload.single('avatar'),
+  handleAvatarUploadError,
+  uploadCustomerAvatarController
+);
 router.patch(
   '/customers/:id/deactivate',
   jwtMiddleware,

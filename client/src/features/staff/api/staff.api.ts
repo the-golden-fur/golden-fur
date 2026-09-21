@@ -123,6 +123,29 @@ export async function uploadAvatar(
   return parseBody<{ profile_photo_url: string }>(response);
 }
 
+/** "Choose preset" - same endpoint as uploadAvatar, a plain JSON body
+ * instead of multipart so the server can tell the two flows apart. */
+export async function setAvatarPreset(
+  staffId: string,
+  accessToken: string,
+  presetId: string
+): Promise<StaffApiResult<{ profile_photo_url: string }>> {
+  const response = await fetch(`${API_BASE_URL}/staff/${staffId}/avatar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify({ preset_id: presetId }),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ profile_photo_url: string }>(response);
+}
+
 export async function listUnavailabilityBlocks(
   staffId: string,
   accessToken: string,
