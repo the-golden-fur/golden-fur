@@ -93,9 +93,8 @@ export function CustomerCreditsPage() {
       ) : balances.length === 0 ? (
         <p className={styles.copy}>
           You have <strong>{formatCurrency(0)}</strong> in account credit.
-          Credit is added when you cancel a booking within the allowed
-          notice period, and can be spent on a future visit to the same
-          branch.
+          Credit is added when you cancel a booking within the allowed notice
+          period, and can be spent on a future visit to the same branch.
         </p>
       ) : (
         <>

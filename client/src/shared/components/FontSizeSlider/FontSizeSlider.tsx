@@ -29,8 +29,7 @@ export function FontSizeSlider() {
   const { fontSize, setFontSize } = useContext(ThemeContext);
   const stepIndex = FONT_SIZE_STEPS.indexOf(fontSize);
   const clampedIndex = stepIndex === -1 ? 1 : stepIndex;
-  const fillPercent =
-    (clampedIndex / (FONT_SIZE_STEPS.length - 1)) * 100;
+  const fillPercent = (clampedIndex / (FONT_SIZE_STEPS.length - 1)) * 100;
 
   return (
     <div className={styles.wrapper}>
