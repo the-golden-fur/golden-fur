@@ -78,6 +78,29 @@ async function isAuthorizedForProfileLookup(
   return role !== null && PROFILE_LOOKUP_ROLES.includes(role);
 }
 
+/**
+ * GET /customers (list) is read-only, same sensitivity as
+ * PROFILE_LOOKUP_ROLES' single-record lookup above - Cashier needs it to
+ * search customers by name for the Transactions page's payer filter
+ * (TransactionHistoryTable.tsx). Deliberately its own check rather than
+ * broadening isAuthorizedStaff: that helper also gates
+ * updateCustomerProfileController (a write), which Cashier must not get.
+ * Groomer/Veterinarian are left out here (unlike PROFILE_LOOKUP_ROLES) -
+ * their use case is looking up one already-known customer from their own
+ * queue, not searching/browsing the full customer list.
+ */
+const CUSTOMER_LIST_ROLES: readonly string[] = [
+  ...CUSTOMER_MANAGER_ROLES,
+  'Cashier',
+];
+
+async function isAuthorizedForCustomerList(
+  requesterId: string
+): Promise<boolean> {
+  const role = await getStaffRoleOrNull(requesterId);
+  return role !== null && CUSTOMER_LIST_ROLES.includes(role);
+}
+
 function paramId(req: AuthenticatedRequest, name: string): string | undefined {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : value;
@@ -93,7 +116,7 @@ export async function listCustomersController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedStaff(requesterId))) {
+  if (!(await isAuthorizedForCustomerList(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
