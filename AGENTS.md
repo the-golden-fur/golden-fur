@@ -211,12 +211,14 @@ by hand over the branch diff.
 
 ### Auto-run wiring
 
-`.claude/settings.json` (checked in) wires one Claude Code hook. Hooks are
-Claude-specific — other AI tools replicate the intent via their own
+`.claude/settings.json` (checked in) wires three Claude Code hooks. Hooks
+are Claude-specific — other AI tools replicate the intent via their own
 mechanisms. (The `pr-guard` `PreToolUse` hook was removed — there is no
 CI/review gate to enforce. Earlier removals: three `Stop` hooks
 — `maintenance-reminders.sh`, `gitkeep-cleanup.sh` here and
-`gitkeep-sweep.sh` in the vault — were removed 2026-09-06.)
+`gitkeep-sweep.sh` in the vault — were removed 2026-09-06. The `Stop` hook
+below is a distinct, narrower case — see its own note on why it doesn't
+re-open that decision.)
 
 **`session-router`** (`UserPromptSubmit`) — deterministically routes the
 session by matching the prompt text; injects guidance, never blocks:
@@ -244,6 +246,21 @@ into implementation, not only recorded in the host's own ephemeral
 `~/.claude/plans/*.md` file. Fails open (allows) if the vault repo isn't
 present at the expected sibling path. Host-specific like `session-router`;
 other tools have no equivalent gate.
+
+**free-dev-ports** (`Stop`) — runs `.claude/hooks/free-dev-ports.sh` (a
+plain bash script, no Node dependency — separate from `scripts/free-ports.mjs`,
+which stays as `predev`'s own port-freeing mechanism, see the `dev-servers`
+skill) every time Claude finishes responding, so a background `npm run dev`
+Claude started for its own live verification doesn't linger past the turn
+and collide with the user's own next dev server start (silently bumping
+their Vite to 5174, or crashing their server with `EADDRINUSE`, per
+repeated real reports). Unlike the removed `Stop` hooks above (reminders,
+gitkeep sweeping — general-purpose nagging), this only ever kills a
+listener on ports 3000/5173 — never a broad process sweep — and is a
+no-op when nothing's listening. Carries the same Windows IPv6 fix as
+`free-ports.mjs` (no `-p TCP` filter, since that silently excludes a Vite
+dev server bound to `[::1]:5173` — common whenever `localhost` resolves to
+`::1` first).
 
 ### Why two PR skills instead of one
 

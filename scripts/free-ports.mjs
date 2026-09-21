@@ -30,7 +30,14 @@ const isWindows = process.platform === 'win32';
 function listenerPids(port) {
   try {
     if (isWindows) {
-      const out = execSync(`netstat -ano -p TCP`, { encoding: 'utf8' });
+      // No -p filter: `-p TCP` silently excludes IPv6 listeners (Windows
+      // splits TCP/TCPv6 as separate netstat protocol filters), so a Vite
+      // dev server bound to [::1]:5173 - which happens whenever `localhost`
+      // resolves to ::1 first, the common case on this OS - was never
+      // found, never freed, and kept colliding with the next npm run dev.
+      // UDP rows never show LISTENING, so the filter below already excludes
+      // them without needing -p TCP to do it.
+      const out = execSync(`netstat -ano`, { encoding: 'utf8' });
       return [
         ...new Set(
           out

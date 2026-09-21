@@ -19,7 +19,29 @@ having started a second, colliding copy of one that was already up.
   `node scripts/free-ports.mjs` first, killing any stale listener on the
   port it's about to bind (the fix for recurring `EADDRINUSE :::3000` and
   the silent Vite-on-5174 → CORS mess). CORS also allows any `localhost:*`
-  origin outside production, so a 5174 fallback still works.
+  origin outside production, so a 5174 fallback still works. `free-ports.mjs`
+  used to miss a Vite dev server bound to the IPv6 loopback (`[::1]:5173`,
+  common whenever `localhost` resolves to `::1` first) on Windows, since its
+  `netstat -ano -p TCP` call silently excludes IPv6 listeners — fixed by
+  dropping the `-p TCP` filter (the existing LISTENING-line check already
+  excludes UDP rows on its own, so nothing else needed to change).
+- A `Stop` hook (`.claude/settings.json`, documented in `AGENTS.md`'s
+  "Auto-run wiring") runs `.claude/hooks/free-dev-ports.sh` (a standalone
+  bash script, not `free-ports.mjs` - kept separate so the Stop hook has no
+  Node dependency, though it carries the same Windows IPv6 fix) every time
+  Claude finishes responding, as a backstop specifically for
+  **agent-started** servers: if you background `npm run dev` for live
+  verification, stop relying on remembering to kill it yourself - this
+  hook frees both ports once your turn ends regardless. It does not fire
+  mid-turn, so it never interrupts a dev server you're actively still
+  using within the same response. If a dev server crashes with
+  `EADDRINUSE` *mid-turn* (the Stop hook hasn't fired yet), a leftover
+  background task from earlier in the same turn is almost always why -
+  stop it with `TaskStop`, then re-check the port: killing only the
+  top-level `npm run dev` task can leave orphaned `tsx watch`/`vite`
+  children still bound to the port (same caveat as the "if asked to
+  stop/kill" section below), so confirm with `Get-NetTCPConnection`
+  and force-kill any PID still listed before telling the user it's clear.
 - Root `npm run dev` (via `concurrently`) or the VS Code task **"🚀 Dev:
   Start All"** starts both together. The VS Code tasks **"💻 Client: Dev"**
   and **"🖥️ Server: Dev"** each start only one half — if a user's terminal
