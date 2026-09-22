@@ -370,7 +370,12 @@ export function AdminSpinWheelConfigPage() {
               onSelect: () => void handleToggleActive(reward),
             },
             ...(!reward.is_active
-              ? [{ label: 'Archive', onSelect: () => void handleArchive(reward) }]
+              ? [
+                  {
+                    label: 'Archive',
+                    onSelect: () => void handleArchive(reward),
+                  },
+                ]
               : []),
           ]}
         />

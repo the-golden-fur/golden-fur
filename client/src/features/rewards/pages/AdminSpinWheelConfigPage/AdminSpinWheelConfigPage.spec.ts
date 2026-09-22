@@ -325,7 +325,10 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(within(dialog).getByLabelText('Rarity (%)')).toHaveValue(60);
 
     await user.clear(within(dialog).getByLabelText('Title'));
-    await user.type(within(dialog).getByLabelText('Title'), 'Fifteen Percent Off');
+    await user.type(
+      within(dialog).getByLabelText('Title'),
+      'Fifteen Percent Off'
+    );
     await user.clear(within(dialog).getByLabelText(/^Value/));
     await user.type(within(dialog).getByLabelText(/^Value/), '15');
     await user.click(

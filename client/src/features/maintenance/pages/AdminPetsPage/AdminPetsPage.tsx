@@ -31,11 +31,7 @@ export function AdminPetsPage() {
 
   return (
     <main className={styles.page}>
-      <div
-        className={styles.tabList}
-        role="tablist"
-        aria-label="Pets sections"
-      >
+      <div className={styles.tabList} role="tablist" aria-label="Pets sections">
         {SECTIONS.map((section) => (
           <button
             key={section}
