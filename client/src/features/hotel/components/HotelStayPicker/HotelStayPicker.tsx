@@ -11,7 +11,8 @@ import {
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   QueueFilterBar,
@@ -218,6 +219,15 @@ export function HotelStayPicker({
     initialSortKey: 'checkout-soonest',
   });
 
+  function buildStayActionItems(item: EnrichedStay): MoreOptionsMenuItem[] {
+    return [
+      {
+        label: 'View booking details',
+        onSelect: () => navigate(`/staff/bookings/${item.stay.booking_id}`),
+      },
+    ];
+  }
+
   const filterChips = useMemo(() => {
     const chips: { id: string; label: string; onClear: () => void }[] = [];
 
@@ -310,69 +320,66 @@ export function HotelStayPicker({
           {filteredAndSorted.map((item) => {
             const isCheckoutable = item.stay.status === 'Active';
 
-            return (
-              <li key={item.stay.id}>
-                <div
-                  className={`${styles.card} ${
-                    selectedStayId === item.stay.id ? styles.selected : ''
-                  } ${!isCheckoutable ? styles.disabledCard : ''}`}
-                >
-                  <div className={styles.cardHeader}>
-                    <span className={styles.petName}>{item.petName}</span>
-                    <span className={styles.cageBadge}>
-                      {item.stay.cage_label}
+            const cardContent = (
+              <div
+                className={`${styles.card} ${
+                  selectedStayId === item.stay.id ? styles.selected : ''
+                } ${!isCheckoutable ? styles.disabledCard : ''}`}
+              >
+                <div className={styles.cardHeader}>
+                  <span className={styles.petName}>{item.petName}</span>
+                  <span className={styles.cageBadge}>
+                    {item.stay.cage_label}
+                  </span>
+                  {!isCheckoutable ? (
+                    <span className={styles.checkedOutBadge}>
+                      Already checked out
                     </span>
-                    {!isCheckoutable ? (
-                      <span className={styles.checkedOutBadge}>
-                        Already checked out
-                      </span>
-                    ) : isOverdue(item.stay.scheduled_check_out_date!) ? (
-                      <span className={styles.overdueBadge}>Overdue</span>
-                    ) : null}
-                    {item.stay.booking_id ? (
-                      <span className={styles.menuSlot}>
-                        <MoreOptionsMenu
-                          label={`More options for ${item.petName}`}
-                          items={[
-                            {
-                              label: 'View booking details',
-                              onSelect: () =>
-                                navigate(
-                                  `/staff/bookings/${item.stay.booking_id}`
-                                ),
-                            },
-                          ]}
-                        />
-                      </span>
-                    ) : null}
-                  </div>
-                  <span className={styles.metaLine}>
-                    Owner: {item.ownerName} ({item.ownerContact})
-                  </span>
-                  {item.stay.check_in_at ? (
-                    <span className={styles.metaLine}>
-                      Checked in: {formatDateTime(item.stay.check_in_at)}
-                    </span>
-                  ) : null}
-                  <span className={styles.metaLine}>
-                    Checkout due:{' '}
-                    {formatDate(item.stay.scheduled_check_out_date!)}
-                  </span>
-                  <span className={styles.metaLine}>
-                    Downpayment: PHP {item.stay.downpayment_amount!.toFixed(2)}
-                  </span>
-                  {isCheckoutable ? (
-                    <div className={styles.cardControls}>
-                      <button
-                        type="button"
-                        className={styles.checkOutButton}
-                        onClick={() => onSelect(item.stay)}
-                      >
-                        Check out
-                      </button>
-                    </div>
+                  ) : isOverdue(item.stay.scheduled_check_out_date!) ? (
+                    <span className={styles.overdueBadge}>Overdue</span>
                   ) : null}
                 </div>
+                <span className={styles.metaLine}>
+                  Owner: {item.ownerName} ({item.ownerContact})
+                </span>
+                {item.stay.check_in_at ? (
+                  <span className={styles.metaLine}>
+                    Checked in: {formatDateTime(item.stay.check_in_at)}
+                  </span>
+                ) : null}
+                <span className={styles.metaLine}>
+                  Checkout due:{' '}
+                  {formatDate(item.stay.scheduled_check_out_date!)}
+                </span>
+                <span className={styles.metaLine}>
+                  Downpayment: PHP {item.stay.downpayment_amount!.toFixed(2)}
+                </span>
+                {isCheckoutable ? (
+                  <div className={styles.cardControls}>
+                    <button
+                      type="button"
+                      className={styles.checkOutButton}
+                      onClick={() => onSelect(item.stay)}
+                    >
+                      Check out
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+
+            return (
+              <li key={item.stay.id}>
+                {item.stay.booking_id ? (
+                  <CardContextMenu
+                    label={`Actions for ${item.petName}`}
+                    items={buildStayActionItems(item)}
+                  >
+                    {cardContent}
+                  </CardContextMenu>
+                ) : (
+                  cardContent
+                )}
               </li>
             );
           })}

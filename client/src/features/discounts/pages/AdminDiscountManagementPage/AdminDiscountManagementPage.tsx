@@ -26,7 +26,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -604,26 +608,30 @@ export function AdminDiscountManagementPage() {
       : `PHP ${discount.value.toFixed(2)}`;
   }
 
+  function buildDiscountActionItems(discount: Discount): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditForm(discount) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityDiscountId(discount.id),
+      },
+      ...(!discount.is_active && !discount.is_mandated
+        ? [
+            {
+              label: 'Archive',
+              onSelect: () => void handleArchive(discount),
+            },
+          ]
+        : []),
+    ];
+  }
+
   function renderDiscountActions(discount: Discount) {
     return (
       <div className={styles.discountControls}>
         <MoreOptionsMenu
           label={`Actions for ${discount.name}`}
-          items={[
-            { label: 'Configure', onSelect: () => openEditForm(discount) },
-            {
-              label: 'Branch Availability',
-              onSelect: () => setAvailabilityDiscountId(discount.id),
-            },
-            ...(!discount.is_active && !discount.is_mandated
-              ? [
-                  {
-                    label: 'Archive',
-                    onSelect: () => void handleArchive(discount),
-                  },
-                ]
-              : []),
-          ]}
+          items={buildDiscountActionItems(discount)}
         />
       </div>
     );
@@ -673,6 +681,10 @@ export function AdminDiscountManagementPage() {
     },
   ];
 
+  // List view keeps the visible tap-to-open button (renderDiscountActions
+  // above) - Epic B #85 deliberately keeps List as this page's default,
+  // primary browsing surface (not a dense card grid), so it's exempt from
+  // the tap-to-hold treatment below.
   function renderDiscountCard(discount: Discount) {
     return (
       <div className={styles.discountMain}>
@@ -685,6 +697,28 @@ export function AdminDiscountManagementPage() {
         <span className={styles.discountMeta}>{describeScope(discount)}</span>
         {renderDiscountActions(discount)}
       </div>
+    );
+  }
+
+  // Board card - tap-to-hold (CardContextMenu) instead of a persistent
+  // "..." button, matching Cages/Staff/Customer Management - only the dense
+  // card grid gets the hold gesture (List above stays as-is).
+  function renderDiscountBoardCard(discount: Discount) {
+    return (
+      <CardContextMenu
+        label={`Actions for ${discount.name}`}
+        items={buildDiscountActionItems(discount)}
+      >
+        <div className={styles.discountMain}>
+          <span className={styles.discountName}>{discount.name}</span>
+          <span className={styles.scopeBadge}>
+            {discount.is_mandated ? 'Government-Mandated' : 'Custom'}
+          </span>
+          <span className={styles.scopeBadge}>{scopeTypeLabel(discount)}</span>
+          <span className={styles.discountMeta}>{valueLabel(discount)}</span>
+          <span className={styles.discountMeta}>{describeScope(discount)}</span>
+        </div>
+      </CardContextMenu>
     );
   }
 
@@ -920,7 +954,7 @@ export function AdminDiscountManagementPage() {
             getRowKey={(discount) => discount.id}
             renderCard={(discount) => (
               <div className={styles.discountRow}>
-                {renderDiscountCard(discount)}
+                {renderDiscountBoardCard(discount)}
               </div>
             )}
             emptyColumnMessage="No discounts here."

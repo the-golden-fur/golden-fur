@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -220,9 +226,7 @@ describe('VetCatalogPage', () => {
     await user.click(await screen.findByRole('tab', { name: 'Procedures' }));
     await screen.findByText('CBC panel');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for CBC panel' })
-    );
+    fireEvent.contextMenu(screen.getByText('CBC panel'));
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await waitFor(() =>
@@ -232,5 +236,20 @@ describe('VetCatalogPage', () => {
       )
     );
     expect(screen.queryByText('CBC panel')).not.toBeInTheDocument();
+  });
+
+  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    stubDefaults([buildMedication({ name: 'Amoxicillin' })]);
+
+    renderPage();
+
+    await screen.findByText('Amoxicillin');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Amoxicillin' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Amoxicillin'));
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
   });
 });

@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -342,6 +348,26 @@ describe('AdminPetTypesPage', () => {
     ).toHaveLength(2);
     expect(within(section).getByText('Dog')).toBeInTheDocument();
     expect(within(section).getByText('Cat')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    stubDefaults();
+
+    const user = userEvent.setup();
+    renderPage();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
+
+    await user.click(within(section).getByRole('button', { name: 'Board' }));
+
+    expect(
+      within(section).queryByRole('button', { name: 'Actions for Dog' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(within(section).getByText('Dog'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
   });
 
   it('Configure opens a per-pet-type, per-branch price override modal, and saves/clears an override', async () => {

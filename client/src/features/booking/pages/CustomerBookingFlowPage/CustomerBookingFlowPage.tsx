@@ -488,6 +488,20 @@ export function CustomerBookingFlowPage() {
   const navigate = useNavigate();
   const isReceptionistMode = location.pathname.startsWith('/staff');
 
+  // vet-bookings-queue-access: Consultation Queue's "New Consultation"
+  // button navigates here with this in its history state - locks the
+  // booking to the Veterinary service type for the whole visit to this
+  // page, same way isBranchLockedStaff locks the branch. Read once (this
+  // page is always freshly mounted when navigated to, so it never needs to
+  // react to the state object changing later).
+  const lockedServiceCategory =
+    location.state &&
+    typeof location.state === 'object' &&
+    'lockedServiceCategory' in location.state
+      ? ((location.state as { lockedServiceCategory: ServiceCategory })
+          .lockedServiceCategory ?? null)
+      : null;
+
   const [walkInCustomer, setWalkInCustomer] = useState<CustomerProfile | null>(
     null
   );
@@ -607,7 +621,9 @@ export function CustomerBookingFlowPage() {
     ? (viewerBranchId ?? '')
     : pickedBranchId;
 
-  const [category, setCategory] = useState<ServiceCategory | ''>('');
+  const [category, setCategory] = useState<ServiceCategory | ''>(
+    lockedServiceCategory ?? ''
+  );
   const [selectionMode, setSelectionMode] = useState<'service' | 'package'>(
     'service'
   );
@@ -1113,6 +1129,12 @@ export function CustomerBookingFlowPage() {
     if (hasCheckedDraftRef.current || !draftStorageKey) return;
     hasCheckedDraftRef.current = true;
 
+    // vet-bookings-queue-access: New Consultation always starts fresh -
+    // restoring some earlier, unrelated draft here (keyed per staff user,
+    // not per session) could silently override the locked category with
+    // whatever that draft was for.
+    if (lockedServiceCategory) return;
+
     const draft = readBookingDraft(draftStorageKey);
     if (!draft) return;
 
@@ -1149,7 +1171,7 @@ export function CustomerBookingFlowPage() {
       // check attestation, not something that should survive a page reload.
       setShowRestoredBanner(true);
     });
-  }, [draftStorageKey, isReceptionistMode]);
+  }, [draftStorageKey, isReceptionistMode, lockedServiceCategory]);
 
   // Debounced so browsing between steps or typing into a field doesn't hit
   // localStorage synchronously on every change - only the settled value
@@ -1235,7 +1257,11 @@ export function CustomerBookingFlowPage() {
 
     setSelectedPetId('');
     setPickedBranchId('');
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setBookingSource('Online');
@@ -1847,7 +1873,11 @@ export function CustomerBookingFlowPage() {
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    list.push({ key: 'category', label: 'Service Type' });
+    // vet-bookings-queue-access: a New Consultation booking already has its
+    // service type fixed by lockedServiceCategory - nothing left to pick.
+    if (!lockedServiceCategory) {
+      list.push({ key: 'category', label: 'Service Type' });
+    }
     list.push({ key: 'items', label: 'Services' });
 
     // Walk-in booking flow: receptionist-only, sits right before Date &
@@ -1889,6 +1919,7 @@ export function CustomerBookingFlowPage() {
   }, [
     isBranchLockedStaff,
     isReceptionistMode,
+    lockedServiceCategory,
     category,
     staffPickerUnavailable,
     staffPickerAppliesToCategory,
@@ -2095,7 +2126,11 @@ export function CustomerBookingFlowPage() {
     // pet can only book Assessment's Initial Assessment, so a selection
     // valid for one pet may not be for another (mirrors handleBranchSelect's
     // own reset below).
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
@@ -2116,7 +2151,11 @@ export function CustomerBookingFlowPage() {
     if (branchId === selectedBranchId) return;
 
     setPickedBranchId(branchId);
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
@@ -2524,7 +2563,11 @@ export function CustomerBookingFlowPage() {
    * handleBranchSelect's own reset lists. */
   function resetForNextBooking() {
     setSelectedPetId('');
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setBookingSource('Online');

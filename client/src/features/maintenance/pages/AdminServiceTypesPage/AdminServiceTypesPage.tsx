@@ -24,7 +24,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -480,17 +484,23 @@ export function AdminServiceTypesPage() {
     setMessage('Service type updated.');
   }
 
+  function buildServiceTypeActionItems(
+    serviceType: ServiceType
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditModal(serviceType) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityServiceTypeId(serviceType.id),
+      },
+    ];
+  }
+
   function renderServiceTypeActions(serviceType: ServiceType) {
     return (
       <MoreOptionsMenu
         label={`Actions for ${serviceType.name}`}
-        items={[
-          { label: 'Configure', onSelect: () => openEditModal(serviceType) },
-          {
-            label: 'Branch Availability',
-            onSelect: () => setAvailabilityServiceTypeId(serviceType.id),
-          },
-        ]}
+        items={buildServiceTypeActionItems(serviceType)}
       />
     );
   }
@@ -533,15 +543,23 @@ export function AdminServiceTypesPage() {
     },
   ];
 
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderServiceTypeActions
+  // above) - only the dense card grid gets the hold gesture.
   function renderServiceTypeCard(serviceType: ServiceType) {
     const Icon = getServiceIcon(serviceType.icon);
     return (
-      <div className={styles.rowMain}>
-        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-        <span className={styles.typeName}>{serviceType.name}</span>
-        {renderServiceTypeBadges(serviceType)}
-        {renderServiceTypeActions(serviceType)}
-      </div>
+      <CardContextMenu
+        label={`Actions for ${serviceType.name}`}
+        items={buildServiceTypeActionItems(serviceType)}
+      >
+        <div className={styles.rowMain}>
+          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+          <span className={styles.typeName}>{serviceType.name}</span>
+          {renderServiceTypeBadges(serviceType)}
+        </div>
+      </CardContextMenu>
     );
   }
 

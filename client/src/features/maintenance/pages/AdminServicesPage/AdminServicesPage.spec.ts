@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -593,6 +599,25 @@ describe('AdminServicesPage', () => {
     ).toHaveLength(5);
     expect(screen.getByText('Bath')).toBeInTheDocument();
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Bath');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Bath');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Bath' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Bath'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
   });
 
   it('defaults to Active-only via a pre-added Status filter tile', async () => {

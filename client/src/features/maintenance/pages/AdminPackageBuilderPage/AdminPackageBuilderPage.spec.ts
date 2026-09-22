@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -808,5 +814,24 @@ describe('AdminPackageBuilderPage', () => {
     ).toHaveLength(2);
     expect(screen.getByText('Golden Package')).toBeInTheDocument();
     expect(screen.getByText('Inactive Combo')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Golden Package');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Golden Package');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Golden Package' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Golden Package'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
   });
 });

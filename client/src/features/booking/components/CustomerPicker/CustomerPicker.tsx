@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { listCustomers } from '../../../customers/api/customer.api';
+import {
+  getCustomerProfile,
+  listCustomers,
+} from '../../../customers/api/customer.api';
 import type {
   CommunicationChannel,
   CustomerProfile,
@@ -61,7 +64,33 @@ export function CustomerPicker({
     CommunicationChannel | 'All'
   >('All');
 
+  // vet-bookings-queue-access: a Veterinarian isn't authorized to call the
+  // broad GET /customers list endpoint at all (see customer.controller.ts's
+  // CUSTOMER_LIST_ROLES) - calling it here would always 403 before
+  // restrictToCustomerIds ever gets a chance to filter the result, which
+  // used to leak the raw "Forbidden" error into this screen. When a
+  // restriction set is present, fetch exactly those known customers by id
+  // instead, via the single-customer endpoint a Veterinarian IS allowed to
+  // call (PROFILE_LOOKUP_ROLES).
   const load = useCallback(() => {
+    if (restrictToCustomerIds) {
+      const ids = [...restrictToCustomerIds];
+
+      void Promise.all(
+        ids.map((id) => getCustomerProfile(id, accessToken))
+      ).then((results) => {
+        setIsLoading(false);
+
+        const loaded = results
+          .map((result) => result.data)
+          .filter((customer): customer is CustomerProfile => customer !== null);
+
+        setError(null);
+        setCustomers(loaded);
+      });
+      return;
+    }
+
     void listCustomers(accessToken).then((result) => {
       setIsLoading(false);
 
@@ -73,7 +102,7 @@ export function CustomerPicker({
       setError(null);
       setCustomers(result.data);
     });
-  }, [accessToken]);
+  }, [accessToken, restrictToCustomerIds]);
 
   useEffect(() => {
     load();

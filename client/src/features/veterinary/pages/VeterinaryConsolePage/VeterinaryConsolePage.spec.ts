@@ -1,7 +1,13 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
@@ -141,6 +147,21 @@ function stubPetAndOwner() {
   });
 }
 
+/** vet-bookings-queue-access: renders whatever history state New
+ * Consultation navigated with, so a test can assert on it without needing
+ * to mount the real (heavy) CustomerBookingFlowPage. */
+function BookingBuilderStub() {
+  const location = useLocation();
+  return createElement(
+    'div',
+    null,
+    `Booking builder - locked category: ${
+      (location.state as { lockedServiceCategory?: string } | null)
+        ?.lockedServiceCategory ?? 'none'
+    }`
+  );
+}
+
 function renderPage() {
   const authValue: AuthContextValue = {
     session: null,
@@ -169,6 +190,10 @@ function renderPage() {
           createElement(Route, {
             path: '/staff/settings',
             element: createElement('div', null, 'Staff profile page'),
+          }),
+          createElement(Route, {
+            path: '/staff/bookings/new',
+            element: createElement(BookingBuilderStub),
           })
         )
       )
@@ -375,9 +400,10 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     renderPage();
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Options for Whiskers' })
-    );
+    // shared-toolbar-and-tap-to-hold: List view's card has no persistent
+    // "..." button (see CardContextMenu) - right-click (desktop) or a
+    // long-press (touch) opens the same menu instead.
+    fireEvent.contextMenu(await screen.findByText('Whiskers'));
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'View Details' })
     );
@@ -397,7 +423,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     expect(within(dialog).queryByRole('spinbutton')).not.toBeInTheDocument();
   });
 
-  it('AC-1: the status filter narrows the queue to just the selected booking status', async () => {
+  it('shared-toolbar-and-tap-to-hold: adding a Status filter tile narrows the queue to just that status', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
       error: null,
@@ -413,18 +439,74 @@ describe('VeterinaryConsolePage (#70)', () => {
     });
     stubPetAndOwner();
 
+    const user = userEvent.setup();
     renderPage();
 
     await screen.findAllByText('Whiskers');
+    const queue = screen.getByRole('list');
+    expect(
+      within(queue).getByText('In Progress', { selector: 'span' })
+    ).toBeInTheDocument();
 
-    await userEvent.selectOptions(
-      screen.getByLabelText('Status'),
-      'In Progress'
+    // Status defaults to 'Pending' (the first status) when the tile is
+    // first added - same shared FilterSortBar every other admin list page
+    // uses (e.g. Breeds, Pet Types), not this page's own bespoke dropdown.
+    // Scoped to the queue list itself - the filter tile's own pill also
+    // renders the bare word "Pending" as a <span>.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Status' }));
+
+    expect(
+      within(queue).getByText('Pending', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      within(queue).queryByText('In Progress', { selector: 'span' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shared-toolbar-and-tap-to-hold: switches to Table view, where row actions are a persistent "..." button (tap stays tap)', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'Completed')] },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Whiskers');
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Options for Whiskers' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    ).toBeInTheDocument();
+  });
+
+  it('vet-bookings-queue-access: New Consultation opens the booking builder locked to Veterinary', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [] },
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'New Consultation' })
     );
 
-    expect(screen.queryByText('Pending', { selector: 'span' })).toBeNull();
     expect(
-      screen.getByText('In Progress', { selector: 'span' })
+      await screen.findByText('Booking builder - locked category: Veterinary')
     ).toBeInTheDocument();
   });
 });

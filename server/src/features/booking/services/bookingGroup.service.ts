@@ -307,14 +307,13 @@ export async function createBookingGroup({
       : null;
   }
 
-  // Step 6: same "does this ever need a charge" / "fully-discounted, owes
-  // nothing" rules as createBooking, generalized to the group - a
-  // Veterinary-only group never gets an upfront charge at all (priced during
-  // the visit), matching every one of its member bookings individually.
-  const requiresUpfrontCharge = resolvedSubBookings.some(
-    (sub) => sub.serviceCategory !== 'Veterinary'
-  );
-  const nothingOwed = requiresUpfrontCharge && combinedNetTotal <= 0;
+  // Step 6: same "fully-discounted, owes nothing" rule as createBooking,
+  // generalized to the group. Every category gets an upfront charge now,
+  // including Veterinary (see createBooking's own requiresUpfrontCharge
+  // removal) - it used to be exempt, which left an online vet booking with
+  // a downpayment due date and no transaction ever created to pay it
+  // against.
+  const nothingOwed = combinedNetTotal <= 0;
 
   const holdsSlot = !downpaymentRequired;
   const downpaymentDueAt = holdsSlot
@@ -526,9 +525,10 @@ export async function createBookingGroup({
   for (let i = 0; i < insertedBookingRows.length; i += 1) {
     const booking = insertedBookingRows[i];
     const sub = resolvedSubBookings[i];
-    const isConfirmedAtCreation =
-      booking.booking_source === 'Walk-in' ||
-      booking.service_category === 'Veterinary';
+    // Applies to every Online category, including Veterinary - only
+    // Walk-ins are confirmed on creation. See createBooking's own
+    // isConfirmedAtCreation for the full rationale.
+    const isConfirmedAtCreation = booking.booking_source === 'Walk-in';
 
     if (isConfirmedAtCreation) {
       await sendBookingConfirmedNotification(booking, {
@@ -552,7 +552,7 @@ export async function createBookingGroup({
 
   // Step 12: ONE initial charge for the whole group (best-effort - a
   // failure here must not undo the group).
-  if (requiresUpfrontCharge && !nothingOwed && combinedNetTotal > 0) {
+  if (!nothingOwed && combinedNetTotal > 0) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_group_charge',

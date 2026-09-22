@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -136,11 +142,12 @@ describe('CustomerBookingsPage', () => {
     });
   });
 
-  /** Reschedule/Cancel live behind the row's "..." menu now. */
-  async function openMenu(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(
-      await screen.findByRole('button', { name: /options for this/i })
-    );
+  /** Reschedule/Cancel live behind a right-click/long-press context menu now
+   * (CardContextMenu) - no persistent "..." button. Every test here uses the
+   * default buildBooking() (Grooming, pet-1) with an empty pets list, so the
+   * card's title text is always "Grooming - Pet". */
+  async function openMenu() {
+    fireEvent.contextMenu(await screen.findByText('Grooming - Pet'));
   }
 
   it("AC-1: shows only the caller's bookings with a status badge", async () => {
@@ -168,7 +175,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await openMenu(user);
+    await openMenu();
     await user.click(screen.getByText('Cancel'));
 
     // An explicit modal dialog appears; the API must not be called yet.
@@ -184,7 +191,7 @@ describe('CustomerBookingsPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(bookingApi.cancelBooking).not.toHaveBeenCalled();
 
-    await openMenu(user);
+    await openMenu();
     await user.click(screen.getByText('Cancel'));
 
     vi.mocked(bookingApi.cancelBooking).mockResolvedValue({
@@ -228,7 +235,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await openMenu(user);
+    await openMenu();
     await user.click(screen.getByText('Cancel'));
     await user.click(screen.getByText('Yes, cancel'));
 
@@ -264,7 +271,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await openMenu(user);
+    await openMenu();
     await user.click(screen.getByText('Cancel'));
 
     // The dialog discloses the policy before the customer confirms.
@@ -341,7 +348,7 @@ describe('CustomerBookingsPage', () => {
 
     renderPage();
 
-    await openMenu(user);
+    await openMenu();
     await user.click(screen.getByText('View details'));
 
     const dialog = await screen.findByRole('dialog');
@@ -413,5 +420,24 @@ describe('CustomerBookingsPage', () => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument()
     );
     expect(screen.queryByText('Pay')).not.toBeInTheDocument();
+  });
+
+  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Pending' })],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Grooming - Pet');
+
+    expect(
+      screen.queryByRole('button', { name: /options for this/i })
+    ).not.toBeInTheDocument();
+
+    await openMenu();
+    expect(screen.getByText('View details')).toBeInTheDocument();
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
   });
 });

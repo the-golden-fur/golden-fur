@@ -22,6 +22,11 @@ import type {
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
@@ -348,6 +353,13 @@ export function AdminBreedsPage() {
     setMessage('Breed deleted.');
   }
 
+  function buildBreedActionItems(breed: Breed): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Rename', onSelect: () => startEditing(breed) },
+      { label: 'Delete', onSelect: () => void handleDelete(breed.id) },
+    ];
+  }
+
   function renderBreedActions(breed: Breed) {
     if (editingId === breed.id) {
       return (
@@ -376,20 +388,10 @@ export function AdminBreedsPage() {
 
     return (
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.smallButtonSecondary}
-          onClick={() => startEditing(breed)}
-        >
-          Rename
-        </button>
-        <button
-          type="button"
-          className={styles.smallButtonSecondary}
-          onClick={() => void handleDelete(breed.id)}
-        >
-          Delete
-        </button>
+        <MoreOptionsMenu
+          label={`Actions for ${breed.name}`}
+          items={buildBreedActionItems(breed)}
+        />
       </div>
     );
   }
@@ -439,13 +441,17 @@ export function AdminBreedsPage() {
     }
 
     return (
-      <div className={styles.rowMain}>
-        <span className={styles.breedName}>{breed.name}</span>
-        <span className={styles.petTypeBadge}>
-          {petTypeName(breed.pet_type)}
-        </span>
-        {renderBreedActions(breed)}
-      </div>
+      <CardContextMenu
+        label={`Actions for ${breed.name}`}
+        items={buildBreedActionItems(breed)}
+      >
+        <div className={styles.rowMain}>
+          <span className={styles.breedName}>{breed.name}</span>
+          <span className={styles.petTypeBadge}>
+            {petTypeName(breed.pet_type)}
+          </span>
+        </div>
+      </CardContextMenu>
     );
   }
 

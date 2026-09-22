@@ -37,7 +37,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   SearchSortBar,
   type SortOption,
@@ -698,20 +702,24 @@ export function AdminPackageBuilderPage() {
     closeForm();
   };
 
+  function buildPackageActionItems(pkg: Package): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditForm(pkg) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityPackageId(pkg.id),
+      },
+      ...(!pkg.is_active
+        ? [{ label: 'Archive', onSelect: () => void handleArchive(pkg) }]
+        : []),
+    ];
+  }
+
   function renderPackageActions(pkg: Package) {
     return (
       <MoreOptionsMenu
         label={`Actions for ${pkg.name}`}
-        items={[
-          { label: 'Configure', onSelect: () => openEditForm(pkg) },
-          {
-            label: 'Branch Availability',
-            onSelect: () => setAvailabilityPackageId(pkg.id),
-          },
-          ...(!pkg.is_active
-            ? [{ label: 'Archive', onSelect: () => void handleArchive(pkg) }]
-            : []),
-        ]}
+        items={buildPackageActionItems(pkg)}
       />
     );
   }
@@ -767,17 +775,26 @@ export function AdminPackageBuilderPage() {
     },
   ];
 
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderPackageActions
+  // above) - only the dense card grid gets the hold gesture.
   function renderPackageCard(pkg: Package) {
     const Icon = getServiceIcon(pkg.icon);
     return (
-      <div className={styles.packageMain}>
-        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-        <span className={styles.packageName}>{pkg.name}</span>
-        {renderPackageBadges(pkg)}
-        <span className={styles.packageMeta}>
-          PHP {pkg.bundled_price.toFixed(2)}
-        </span>
-      </div>
+      <CardContextMenu
+        label={`Actions for ${pkg.name}`}
+        items={buildPackageActionItems(pkg)}
+      >
+        <div className={styles.packageMain}>
+          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+          <span className={styles.packageName}>{pkg.name}</span>
+          {renderPackageBadges(pkg)}
+          <span className={styles.packageMeta}>
+            PHP {pkg.bundled_price.toFixed(2)}
+          </span>
+        </div>
+      </CardContextMenu>
     );
   }
 
@@ -1088,12 +1105,7 @@ export function AdminPackageBuilderPage() {
             items={filteredPackages}
             getRowKey={(pkg) => pkg.id}
             renderItem={(pkg) => (
-              <div className={styles.rowContent}>
-                {renderPackageCard(pkg)}
-                <div className={styles.packageControls}>
-                  {renderPackageActions(pkg)}
-                </div>
-              </div>
+              <div className={styles.rowContent}>{renderPackageCard(pkg)}</div>
             )}
             emptyMessage="No packages match the selected filters."
           />
@@ -1102,12 +1114,7 @@ export function AdminPackageBuilderPage() {
             groups={groupedPackages}
             getRowKey={(pkg) => pkg.id}
             renderCard={(pkg) => (
-              <div className={styles.packageRow}>
-                {renderPackageCard(pkg)}
-                <div className={styles.packageControls}>
-                  {renderPackageActions(pkg)}
-                </div>
-              </div>
+              <div className={styles.packageRow}>{renderPackageCard(pkg)}</div>
             )}
             emptyColumnMessage="No packages here."
           />

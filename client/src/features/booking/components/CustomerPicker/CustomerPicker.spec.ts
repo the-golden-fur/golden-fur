@@ -1,12 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { listCustomers } from '../../../customers/api/customer.api';
+import {
+  getCustomerProfile,
+  listCustomers,
+} from '../../../customers/api/customer.api';
 import type { CustomerProfile } from '../../../customers/customer.types';
 import { CustomerPicker } from './CustomerPicker';
 
 vi.mock('../../../customers/api/customer.api', () => ({
   listCustomers: vi.fn(),
+  getCustomerProfile: vi.fn(),
 }));
 
 const CUSTOMERS: CustomerProfile[] = [
@@ -150,11 +154,13 @@ describe('CustomerPicker', () => {
   });
 
   describe('restrictToCustomerIds (vet-bookings-queue-access)', () => {
-    it('only shows customers in the restriction set, and hides the "create a new customer" link', async () => {
-      vi.mocked(listCustomers).mockResolvedValue({
-        data: CUSTOMERS,
-        error: null,
-      });
+    it('fetches only the restricted customers by id, never the broad list endpoint (Forbidden-error fix)', async () => {
+      vi.mocked(getCustomerProfile).mockImplementation((id) =>
+        Promise.resolve({
+          data: CUSTOMERS.find((customer) => customer.id === id) ?? null,
+          error: null,
+        })
+      );
 
       render(
         createElement(CustomerPicker, {
@@ -169,14 +175,14 @@ describe('CustomerPicker', () => {
       expect(
         screen.queryByText(/create a new customer/i)
       ).not.toBeInTheDocument();
+      expect(getCustomerProfile).toHaveBeenCalledWith('cust-2', 'token');
+      // A Veterinarian isn't authorized to call this endpoint - calling it
+      // here is exactly the bug (a leaked "Forbidden" error) this fetch
+      // strategy avoids.
+      expect(listCustomers).not.toHaveBeenCalled();
     });
 
     it('shows a restriction-specific empty state when the set excludes every customer', async () => {
-      vi.mocked(listCustomers).mockResolvedValue({
-        data: CUSTOMERS,
-        error: null,
-      });
-
       render(
         createElement(CustomerPicker, {
           accessToken: 'token',
@@ -190,6 +196,8 @@ describe('CustomerPicker', () => {
           'No customers match your search. You can only book customers you have treated.'
         )
       ).toBeInTheDocument();
+      expect(getCustomerProfile).not.toHaveBeenCalled();
+      expect(listCustomers).not.toHaveBeenCalled();
     });
   });
 });
