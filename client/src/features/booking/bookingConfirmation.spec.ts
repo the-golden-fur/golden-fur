@@ -47,9 +47,17 @@ describe('deriveBookingConfirmationState', () => {
     ).toBe('Confirmed');
   });
 
-  it('a Veterinary Pending booking is Confirmed (price is set during the visit)', () => {
+  it('an unpaid online Veterinary Pending booking is Unconfirmed, same as every other category', () => {
     expect(
       deriveBookingConfirmationState(input({ service_category: 'Veterinary' }))
+    ).toBe('Unconfirmed');
+  });
+
+  it('a walk-in Veterinary Pending booking is Confirmed (customer is present)', () => {
+    expect(
+      deriveBookingConfirmationState(
+        input({ service_category: 'Veterinary', booking_source: 'Walk-in' })
+      )
     ).toBe('Confirmed');
   });
 

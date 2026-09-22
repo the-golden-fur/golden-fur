@@ -1,13 +1,12 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
 import { formatWeight } from '../../../../shared/utils/petWeight';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import {
-  MoreOptionsMenu,
-  type MoreOptionsMenuItem,
-} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
@@ -16,20 +15,23 @@ import {
   getPet,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import {
-  QueueFilterBar,
-  type QueueStatusOption,
-} from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import {
-  dateRangePresetLabel,
-  resolveDateRangePreset,
-  type DateRangePreset,
-} from '../../../../shared/components/QueueFilterBar/dateRangePreset';
-import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
-import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy, type GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listConsultationQueue,
@@ -41,6 +43,13 @@ import type {
   ProcedureInput,
 } from '../../veterinary.types';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
+import {
+  CONSULTATION_QUEUE_FILTER_FIELDS,
+  CONSULTATION_QUEUE_SORT_FIELDS,
+  CONSULTATION_STATUS_GROUPS,
+  deriveDateRange,
+  deriveStatusFilter,
+} from './consultationQueueFilterFields';
 import styles from './VeterinaryConsolePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -50,22 +59,15 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-// Booking-status revision: the queue endpoint returns the day's actionable
-// consultations (bookings.status Pending/In Progress) plus its Completed
-// ones (read-only) - see consultation.service.ts's listConsultationQueue.
-// Cancelled/No-show are omitted since those bookings frequently never had a
-// consultation row to begin with (see LIST_BOOKING_STATUSES server-side).
-const STATUS_GROUPS: BookingStatus[] = ['Pending', 'In Progress', 'Completed'];
 type StatusFilter = BookingStatus | 'All';
-const STATUS_OPTIONS: QueueStatusOption[] = [
-  { value: 'All', label: 'All statuses' },
-  ...STATUS_GROUPS.map((status) => ({ value: status, label: status })),
-];
 
 type SortKey = 'time' | 'pet-name';
-const SORT_OPTIONS: SortOption<SortKey>[] = [
-  { value: 'time', label: 'Sort: Scheduled time (earliest)' },
-  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
+
+type ViewMode = 'table' | 'list' | 'board';
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
 // Issue #70 AC-1/AC-4: no WebSocket/realtime infra exists anywhere in this
@@ -82,6 +84,7 @@ function formatScheduledTime(iso: string): string {
 
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
+  const navigate = useNavigate();
   const { weightUnit } = useContext(ThemeContext);
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
@@ -90,12 +93,14 @@ export function VeterinaryConsolePage() {
   const [staffRole, setStaffRole] = useState<string | null>(null);
 
   const [consultations, setConsultations] = useState<Consultation[]>([]);
-  const [dateRangePreset, setDateRangePreset] =
-    useState<DateRangePreset>('today');
-  const [customDate, setCustomDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  // Pre-seeded with the Date tile so the queue still defaults to Today -
+  // removing that tile (like any other) is then a deliberate "every date"
+  // choice, not the default. No Status tile by default = every status
+  // (deriveStatusFilter's own 'All').
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    { fieldId: 'date', value: { preset: 'today', from: null, to: null } },
+  ]);
+  const [view, setView] = useState<ViewMode>('list');
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -108,9 +113,28 @@ export function VeterinaryConsolePage() {
   const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
 
   const dateRange = useMemo(
-    () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
-    [dateRangePreset, customDate]
+    () => deriveDateRange(filterTiles),
+    [filterTiles]
   );
+  const statusFilter: StatusFilter = deriveStatusFilter(filterTiles);
+
+  function handleAddFilter(fieldId: string) {
+    const field = CONSULTATION_QUEUE_FILTER_FIELDS.find(
+      (f) => f.id === fieldId
+    );
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -256,42 +280,36 @@ export function VeterinaryConsolePage() {
     initialSortKey: 'time',
   });
 
-  const filterChips = useMemo(() => {
-    const chips: { id: string; label: string; onClear: () => void }[] = [];
+  // FilterSortBar's Sort control always shows a direction per field, but
+  // this page only ever offers one direction each (earliest / A-Z) - the
+  // tile is just a presentation of useSearchAndSort's own sortKey, not a
+  // second, independent piece of state. "Clear sort" reverts to the
+  // default rather than a true no-sort state, since an unordered queue
+  // would be confusing.
+  const sortTile: SortTile = {
+    fieldId: sortKey,
+    direction: sortKey === 'time' ? 'earliest' : 'az',
+  };
 
-    if (dateRangePreset !== 'today') {
-      chips.push({
-        id: 'date',
-        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
-        onClear: () => setDateRangePreset('today'),
-      });
-    }
-    if (statusFilter !== 'All') {
-      chips.push({
-        id: 'status',
-        label: `Status: ${statusFilter}`,
-        onClear: () => setStatusFilter('All'),
-      });
-    }
-    if (search.trim() !== '') {
-      chips.push({
-        id: 'search',
-        label: `Search: "${search.trim()}"`,
-        onClear: () => setSearch(''),
-      });
-    }
-    if (sortKey !== 'time') {
-      chips.push({
-        id: 'sort',
-        label:
-          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
-          sortKey,
-        onClear: () => setSortKey('time'),
-      });
-    }
+  function handleChangeSort(tile: SortTile | null) {
+    setSortKey(tile ? (tile.fieldId as SortKey) : 'time');
+  }
 
-    return chips;
-  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
+  // Board view's columns - Pending/In Progress/Completed, the same three
+  // groups the queue already limits itself to server-side. Fixed (not a
+  // page-picked axis, unlike e.g. Breeds' pet-type grouping) since status
+  // is the only grouping that makes sense for a queue.
+  const STATUS_GROUP_AXIS: GroupByAxis<QueueRow> = {
+    id: 'status',
+    label: 'Status',
+    columns: CONSULTATION_STATUS_GROUPS,
+    columnFor: (row) => row.consultation.booking?.status ?? 'Pending',
+  };
+
+  const groupedRows = useGroupBy(
+    visibleRows,
+    view === 'board' ? STATUS_GROUP_AXIS : null
+  );
 
   const selectedRow = rows.find((row) => row.consultation.id === selectedId);
   const pendingStartRow = rows.find(
@@ -397,6 +415,124 @@ export function VeterinaryConsolePage() {
     );
   }
 
+  const columns: DataTableColumn<QueueRow>[] = [
+    {
+      id: 'pet',
+      header: 'Pet',
+      render: (row) => (
+        <button
+          type="button"
+          className={
+            row.consultation.id === selectedId
+              ? styles.petNameButtonActive
+              : styles.petNameButton
+          }
+          onClick={() => selectConsultation(row.consultation.id)}
+        >
+          {row.petName}
+        </button>
+      ),
+    },
+    { id: 'owner', header: 'Owner', render: (row) => row.ownerName },
+    {
+      id: 'time',
+      header: 'Scheduled',
+      render: (row) => formatScheduledTime(row.scheduledStart),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (row) =>
+        row.consultation.booking?.status ? (
+          <BookingStatusBadge status={row.consultation.booking.status} />
+        ) : (
+          '—'
+        ),
+    },
+  ];
+
+  function renderRowActions(row: QueueRow) {
+    const rowBookingStatus = row.consultation.booking?.status;
+    return (
+      <div className={styles.rowActions}>
+        {canWrite && rowBookingStatus === 'Pending' ? (
+          <button
+            type="button"
+            className={styles.startButton}
+            disabled={isSaving}
+            onClick={() => requestStart(row.consultation.id)}
+          >
+            Start Consultation
+          </button>
+        ) : null}
+        <MoreOptionsMenu
+          label={`Options for ${row.petName}`}
+          items={[
+            {
+              label: 'View Details',
+              onSelect: () => setViewDetailsId(row.consultation.id),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  // List/Board card - tap still selects the consultation (CardContextMenu
+  // deliberately leaves a plain tap alone so it still reaches this), a
+  // long-press (touch) or right-click (desktop) opens View Details instead
+  // of a persistent "..." button sitting on every card in the grid.
+  function renderQueueCard(row: QueueRow) {
+    const rowBookingStatus = row.consultation.booking?.status;
+
+    return (
+      <CardContextMenu
+        label={`Options for ${row.petName}`}
+        items={[
+          {
+            label: 'View Details',
+            onSelect: () => setViewDetailsId(row.consultation.id),
+          },
+        ]}
+      >
+        <div
+          className={
+            row.consultation.id === selectedId
+              ? styles.rowItemActive
+              : styles.rowItem
+          }
+        >
+          <button
+            type="button"
+            className={styles.rowButton}
+            onClick={() => selectConsultation(row.consultation.id)}
+          >
+            <div className={styles.rowHeader}>
+              <span className={styles.rowPetName}>{row.petName}</span>
+              {rowBookingStatus ? (
+                <BookingStatusBadge status={rowBookingStatus} />
+              ) : null}
+            </div>
+            <span className={styles.rowMeta}>Owner: {row.ownerName}</span>
+            <span className={styles.rowMeta}>
+              {formatScheduledTime(row.scheduledStart)}
+            </span>
+          </button>
+          {canWrite && rowBookingStatus === 'Pending' ? (
+            <button
+              type="button"
+              className={styles.startButton}
+              disabled={isSaving}
+              onClick={() => requestStart(row.consultation.id)}
+            >
+              Start Consultation
+            </button>
+          ) : null}
+        </div>
+      </CardContextMenu>
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -427,31 +563,44 @@ export function VeterinaryConsolePage() {
     <main className={styles.page}>
       <div className={styles.content}>
         <div className={styles.pageHeader}>
-          <h1 className={styles.title}>Veterinary Console</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>Veterinary Console</h1>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() =>
+                navigate('/staff/bookings/new', {
+                  state: { lockedServiceCategory: 'Veterinary' },
+                })
+              }
+            >
+              New Consultation
+            </button>
+          </div>
 
           <div className={styles.filterBarRow}>
-            <QueueFilterBar
-              dateRangePreset={dateRangePreset}
-              onDateRangePresetChange={setDateRangePreset}
-              customDate={customDate}
-              onCustomDateChange={setCustomDate}
-              statusValue={statusFilter}
-              onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
-              statusOptions={STATUS_OPTIONS}
+            <FilterSortBar
+              filterFields={CONSULTATION_QUEUE_FILTER_FIELDS}
+              filterTiles={filterTiles}
+              onAddFilter={handleAddFilter}
+              onChangeFilter={handleChangeFilter}
+              onRemoveFilter={handleRemoveFilter}
+              sortFields={CONSULTATION_QUEUE_SORT_FIELDS}
+              sortTile={sortTile}
+              onChangeSort={handleChangeSort}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search by pet or owner..."
             >
-              <SearchSortBar
-                searchValue={search}
-                onSearchChange={setSearch}
-                searchPlaceholder="Search by pet or owner..."
-                sortValue={sortKey}
-                onSortChange={setSortKey}
-                sortOptions={SORT_OPTIONS}
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Consultation queue view"
               />
-            </QueueFilterBar>
+            </FilterSortBar>
           </div>
         </div>
-
-        <ActiveFilterChips chips={filterChips} />
 
         {isLoading ? (
           <p className={styles.copy}>Loading consultations...</p>
@@ -462,71 +611,28 @@ export function VeterinaryConsolePage() {
         ) : (
           <div className={styles.layout}>
             <div className={styles.queue}>
-              {visibleRows.length === 0 ? (
-                <p className={styles.copy}>
-                  No consultations match these filters.
-                </p>
+              {view === 'table' ? (
+                <DataTable
+                  columns={columns}
+                  rows={visibleRows}
+                  getRowKey={(row) => row.consultation.id}
+                  renderRowActions={renderRowActions}
+                  emptyMessage="No consultations match these filters."
+                />
+              ) : view === 'list' ? (
+                <DataList
+                  items={visibleRows}
+                  getRowKey={(row) => row.consultation.id}
+                  renderItem={renderQueueCard}
+                  emptyMessage="No consultations match these filters."
+                />
               ) : (
-                <ul className={styles.rowList}>
-                  {visibleRows.map((row) => {
-                    const rowBookingStatus = row.consultation.booking?.status;
-
-                    const rowMenuItems: MoreOptionsMenuItem[] = [
-                      {
-                        label: 'View Details',
-                        onSelect: () => setViewDetailsId(row.consultation.id),
-                      },
-                    ];
-
-                    return (
-                      <li
-                        key={row.consultation.id}
-                        className={
-                          row.consultation.id === selectedId
-                            ? styles.rowItemActive
-                            : styles.rowItem
-                        }
-                      >
-                        <button
-                          type="button"
-                          className={styles.rowButton}
-                          onClick={() =>
-                            selectConsultation(row.consultation.id)
-                          }
-                        >
-                          <div className={styles.rowHeader}>
-                            <span className={styles.rowPetName}>
-                              {row.petName}
-                            </span>
-                            {rowBookingStatus ? (
-                              <BookingStatusBadge status={rowBookingStatus} />
-                            ) : null}
-                          </div>
-                          <span className={styles.rowMeta}>
-                            Owner: {row.ownerName}
-                          </span>
-                          <span className={styles.rowMeta}>
-                            {formatScheduledTime(row.scheduledStart)}
-                          </span>
-                        </button>
-                        {canWrite && rowBookingStatus === 'Pending' ? (
-                          <button
-                            type="button"
-                            className={styles.startButton}
-                            disabled={isSaving}
-                            onClick={() => requestStart(row.consultation.id)}
-                          >
-                            Start Consultation
-                          </button>
-                        ) : null}
-                        <MoreOptionsMenu
-                          label={`Options for ${row.petName}`}
-                          items={rowMenuItems}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
+                <DataBoard
+                  groups={groupedRows}
+                  getRowKey={(row) => row.consultation.id}
+                  renderCard={renderQueueCard}
+                  emptyColumnMessage="No consultations here."
+                />
               )}
             </div>
 

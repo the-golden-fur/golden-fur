@@ -24,6 +24,7 @@ import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   listCustomers: vi.fn(),
+  getCustomerProfile: vi.fn(),
 }));
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
@@ -405,6 +406,46 @@ function renderStaffPage() {
   );
 }
 
+/** vet-bookings-queue-access: Consultation Queue's New Consultation button
+ * navigates here with this history state - see VeterinaryConsolePage. */
+function renderStaffPageLockedToVeterinary() {
+  const authValue: AuthContextValue = {
+    session: null,
+    user: { id: 'staff-1', email: 'vet@goldenfur.com' },
+    accessToken: 'token',
+    isLoading: false,
+    refreshSession: vi.fn(),
+    applySession: vi.fn(),
+    signOut: vi.fn(),
+  };
+
+  return render(
+    createElement(
+      MemoryRouter,
+      {
+        initialEntries: [
+          {
+            pathname: '/staff/bookings/new',
+            state: { lockedServiceCategory: 'Veterinary' },
+          },
+        ],
+      },
+      createElement(
+        AuthContext.Provider,
+        { value: authValue },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, {
+            path: '/staff/bookings/new',
+            element: createElement(CustomerBookingFlowPage),
+          })
+        )
+      )
+    )
+  );
+}
+
 describe('CustomerBookingFlowPage', () => {
   beforeEach(() => {
     // Draft autosave/restore persists to real localStorage (must survive an
@@ -419,6 +460,13 @@ describe('CustomerBookingFlowPage', () => {
     });
     vi.mocked(customerApi.listCustomers).mockResolvedValue({
       data: [CUSTOMER],
+      error: null,
+    });
+    // vet-bookings-queue-access: CustomerPicker fetches a Veterinarian's
+    // restricted customers one at a time via this endpoint, not the list
+    // one above.
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: CUSTOMER,
       error: null,
     });
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
@@ -2246,10 +2294,17 @@ describe('CustomerBookingFlowPage', () => {
         data: [staffSelf('Veterinarian')],
         error: null,
       });
-      vi.mocked(customerApi.listCustomers).mockResolvedValue({
-        data: [CUSTOMER, UNTREATED_CUSTOMER],
-        error: null,
-      });
+      // Forbidden-error fix: a Veterinarian's Customer step fetches each
+      // treated customer by id, never the broad list endpoint a vet isn't
+      // authorized to call - so this only ever resolves cust-1 (CUSTOMER),
+      // proving Alex Untreated (cust-2) is never even requested, let alone
+      // shown.
+      vi.mocked(customerApi.getCustomerProfile).mockImplementation((id) =>
+        Promise.resolve({
+          data: [CUSTOMER, UNTREATED_CUSTOMER].find((c) => c.id === id) ?? null,
+          error: null,
+        })
+      );
       vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
         data: [
           {
@@ -2265,15 +2320,12 @@ describe('CustomerBookingFlowPage', () => {
 
       expect(await screen.findByText('Jamie Cruz')).toBeInTheDocument();
       expect(screen.queryByText('Alex Untreated')).not.toBeInTheDocument();
+      expect(customerApi.listCustomers).not.toHaveBeenCalled();
     });
 
     it('a Veterinarian with no treated customers yet sees the restricted empty state, not the full customer list', async () => {
       vi.mocked(staffApi.listStaff).mockResolvedValue({
         data: [staffSelf('Veterinarian')],
-        error: null,
-      });
-      vi.mocked(customerApi.listCustomers).mockResolvedValue({
-        data: [CUSTOMER],
         error: null,
       });
       vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
@@ -2289,6 +2341,45 @@ describe('CustomerBookingFlowPage', () => {
         )
       ).toBeInTheDocument();
       expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
+    });
+
+    it('New Consultation: a locked service category removes the Service Type step entirely, not just auto-advances past it', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Veterinarian')],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listMyPatients).mockResolvedValue({
+        data: [
+          {
+            pet_id: 'pet-1',
+            customer_id: CUSTOMER.id,
+            last_visit_at: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPageLockedToVeterinary();
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      // Not merely skipped-over - absent from the stepper's own step list,
+      // which always renders every step (including upcoming ones).
+      expect(screen.queryByText('Service Type')).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      await user.click(screen.getByText('Max'));
+      await user.click(screen.getByText('Next'));
+
+      // Landed straight on Services - never the category-picker buttons
+      // (Grooming/Hotel/Daycare/Veterinary) Service Type would have shown.
+      expect(screen.queryByText('Service Type')).not.toBeInTheDocument();
+      expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
     });
   });
 });

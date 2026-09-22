@@ -526,9 +526,11 @@ export async function createBookingGroup({
   for (let i = 0; i < insertedBookingRows.length; i += 1) {
     const booking = insertedBookingRows[i];
     const sub = resolvedSubBookings[i];
-    const isConfirmedAtCreation =
-      booking.booking_source === 'Walk-in' ||
-      booking.service_category === 'Veterinary';
+    // Applies to every Online category, including Veterinary - it's priced
+    // during the visit (see requiresUpfrontCharge above), not confirmed
+    // status. Only Walk-ins are confirmed on creation - see createBooking's
+    // own isConfirmedAtCreation for the full rationale.
+    const isConfirmedAtCreation = booking.booking_source === 'Walk-in';
 
     if (isConfirmedAtCreation) {
       await sendBookingConfirmedNotification(booking, {

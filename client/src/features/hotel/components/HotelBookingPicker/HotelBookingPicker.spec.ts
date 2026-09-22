@@ -168,15 +168,13 @@ describe('HotelBookingPicker', () => {
     );
   });
 
-  it('the "..." menu\'s "View booking details" calls onViewDetails with that booking', async () => {
+  it('right-click "View booking details" calls onViewDetails with that booking', async () => {
     setupMocks([booking()]);
 
     const { props } = renderPicker();
 
     await screen.findByText('Mochi');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'More options for Mochi' })
-    );
+    fireEvent.contextMenu(screen.getByText('Mochi'));
     fireEvent.click(
       screen.getByRole('menuitem', { name: 'View booking details' })
     );
@@ -184,6 +182,23 @@ describe('HotelBookingPicker', () => {
     expect(props.onViewDetails).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'booking-1' })
     );
+  });
+
+  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    setupMocks([booking()]);
+
+    renderPicker();
+
+    await screen.findByText('Mochi');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Mochi' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Mochi'));
+    expect(
+      screen.getByRole('menuitem', { name: 'View booking details' })
+    ).toBeInTheDocument();
   });
 
   it('the booking being checked in shows a pending label and a disabled button', async () => {

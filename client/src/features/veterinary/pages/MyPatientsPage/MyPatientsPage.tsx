@@ -19,7 +19,8 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   getPetConsultationHistory,
   listMyPatients,
@@ -246,6 +247,14 @@ export function MyPatientsPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
+  function buildPatientActionItems(row: {
+    petId: string;
+  }): MoreOptionsMenuItem[] {
+    return [
+      { label: 'View History', onSelect: () => selectPatient(row.petId) },
+    ];
+  }
+
   const selectedRow = rows.find((row) => row.petId === selectedPetId);
 
   function selectPatient(petId: string) {
@@ -331,30 +340,30 @@ export function MyPatientsPage() {
                 getRowKey={(row) => row.petId}
                 emptyMessage="No patients match these filters. Patients appear here after you complete a consultation for them."
                 renderItem={(row) => (
-                  <div className={styles.rowContent}>
-                    <div
-                      className={
-                        row.petId === selectedPetId
-                          ? styles.cardActive
-                          : styles.card
-                      }
-                    >
-                      <span className={styles.rowPetName}>{row.petName}</span>
-                      <span className={styles.rowMeta}>{row.ownerName}</span>
-                      <span className={styles.rowMeta}>
-                        Last visit: {formatDate(row.lastVisitAt)}
-                      </span>
+                  <CardContextMenu
+                    label={`Actions for ${row.petName}`}
+                    items={buildPatientActionItems(row)}
+                  >
+                    <div className={styles.rowContent}>
+                      <div
+                        className={
+                          row.petId === selectedPetId
+                            ? styles.cardActive
+                            : styles.card
+                        }
+                      >
+                        <span className={styles.rowPetName}>
+                          {row.petName}
+                        </span>
+                        <span className={styles.rowMeta}>
+                          {row.ownerName}
+                        </span>
+                        <span className={styles.rowMeta}>
+                          Last visit: {formatDate(row.lastVisitAt)}
+                        </span>
+                      </div>
                     </div>
-                    <MoreOptionsMenu
-                      label={`More options for ${row.petName}`}
-                      items={[
-                        {
-                          label: 'View History',
-                          onSelect: () => selectPatient(row.petId),
-                        },
-                      ]}
-                    />
-                  </div>
+                  </CardContextMenu>
                 )}
               />
             </div>
@@ -376,7 +385,8 @@ export function MyPatientsPage() {
                 </div>
               ) : (
                 <p className={styles.copy}>
-                  Use the ⋮ menu on a patient to view their history.
+                  Right-click (or press and hold) a patient to view their
+                  history.
                 </p>
               )}
             </div>

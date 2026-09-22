@@ -477,14 +477,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           },
           {
             title: 'Consultation Queue',
-            description: "Today's consultations and pet medical history.",
-            to: '/staff/veterinary/console',
-          },
-          {
-            title: 'Bookings Queue',
             description:
-              "Your branch's booking queue - book a follow-up visit for a patient you have treated.",
-            to: '/staff/bookings/queue',
+              "Today's consultations and pet medical history - schedule a new consultation for a patient right from here.",
+            to: '/staff/veterinary/console',
           },
           {
             title: 'My Patients',

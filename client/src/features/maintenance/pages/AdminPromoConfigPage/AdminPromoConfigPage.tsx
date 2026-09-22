@@ -33,7 +33,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   SearchSortBar,
   type SortOption,
@@ -657,6 +661,24 @@ export function AdminPromoConfigPage() {
     setMessage('Promo archived.');
   };
 
+  function buildPromoActionItems(promo: Promo): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditForm(promo) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityPromoId(promo.id),
+      },
+      ...(!promo.is_active
+        ? [
+            {
+              label: 'Archive',
+              onSelect: () => void handleArchive(promo),
+            },
+          ]
+        : []),
+    ];
+  }
+
   function renderPromoActions(promo: Promo) {
     return (
       <div className={styles.rowActions}>
@@ -667,23 +689,46 @@ export function AdminPromoConfigPage() {
         />
         <MoreOptionsMenu
           label={`Actions for ${promo.name}`}
-          items={[
-            { label: 'Edit', onSelect: () => openEditForm(promo) },
-            {
-              label: 'Branch Availability',
-              onSelect: () => setAvailabilityPromoId(promo.id),
-            },
-            ...(!promo.is_active
-              ? [
-                  {
-                    label: 'Archive',
-                    onSelect: () => void handleArchive(promo),
-                  },
-                ]
-              : []),
-          ]}
+          items={buildPromoActionItems(promo)}
         />
       </div>
+    );
+  }
+
+  // List card (no Board view on this page) - tap-to-hold (CardContextMenu)
+  // instead of a persistent "..." button, matching Cages/Staff/Customer
+  // Management. Table view keeps the visible tap-to-open button
+  // (renderPromoActions above) - only the dense card list gets the hold
+  // gesture. The ToggleSwitch is a direct control, not a menu item, so it
+  // stays visible inside the card (a plain tap still reaches it - see
+  // CardContextMenu's own doc comment).
+  function renderPromoCard(promo: Promo) {
+    return (
+      <CardContextMenu
+        label={`Actions for ${promo.name}`}
+        items={buildPromoActionItems(promo)}
+      >
+        <div className={styles.rowContent}>
+          <div className={styles.itemMain}>
+            <span className={styles.itemName}>{promo.name}</span>
+            <StatusBadge isActive={promo.is_active} />
+            <span className={styles.timingBadge}>
+              {TIMING_LABELS[getPromoTiming(promo)]}
+            </span>
+            <span className={styles.copy}>{formatPromoValue(promo)}</span>
+            <span className={styles.copy}>{promoWindowText(promo)}</span>
+          </div>
+          <div className={styles.rowActions}>
+            <ToggleSwitch
+              label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
+              checked={promo.is_active}
+              onChange={(isActive) =>
+                void handleActiveToggle(promo, isActive)
+              }
+            />
+          </div>
+        </div>
+      </CardContextMenu>
     );
   }
 
@@ -1164,20 +1209,7 @@ export function AdminPromoConfigPage() {
           <DataList
             items={filteredPromos}
             getRowKey={(promo) => promo.id}
-            renderItem={(promo) => (
-              <div className={styles.rowContent}>
-                <div className={styles.itemMain}>
-                  <span className={styles.itemName}>{promo.name}</span>
-                  <StatusBadge isActive={promo.is_active} />
-                  <span className={styles.timingBadge}>
-                    {TIMING_LABELS[getPromoTiming(promo)]}
-                  </span>
-                  <span className={styles.copy}>{formatPromoValue(promo)}</span>
-                  <span className={styles.copy}>{promoWindowText(promo)}</span>
-                </div>
-                {renderPromoActions(promo)}
-              </div>
-            )}
+            renderItem={renderPromoCard}
           />
         ) : (
           <div className={styles.promoGrid}>

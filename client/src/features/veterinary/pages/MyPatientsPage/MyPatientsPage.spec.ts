@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -278,7 +278,7 @@ describe('MyPatientsPage', () => {
     expect(screen.queryByText('Whiskers')).not.toBeInTheDocument();
   });
 
-  it('selecting a patient from its "..." menu loads and shows their consultation history', async () => {
+  it('right-click "View History" loads and shows the patient\'s consultation history', async () => {
     stubDefaults(
       [
         {
@@ -299,9 +299,7 @@ describe('MyPatientsPage', () => {
     renderPage();
 
     await screen.findByText('Buddy');
-    await user.click(
-      screen.getByRole('button', { name: 'More options for Buddy' })
-    );
+    fireEvent.contextMenu(screen.getByText('Buddy'));
     await user.click(screen.getByRole('menuitem', { name: 'View History' }));
 
     await waitFor(() =>
@@ -312,6 +310,33 @@ describe('MyPatientsPage', () => {
     );
     expect(
       await screen.findByText('Owner: Jane Dela Cruz')
+    ).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    stubDefaults(
+      [
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+      ],
+      { 'pet-1': buildPet({ name: 'Buddy' }) },
+      { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
+    );
+
+    renderPage();
+
+    await screen.findByText('Buddy');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Buddy' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Buddy'));
+    expect(
+      screen.getByRole('menuitem', { name: 'View History' })
     ).toBeInTheDocument();
   });
 });

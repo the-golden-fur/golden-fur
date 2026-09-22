@@ -154,6 +154,34 @@ describe('AdminBreedsPage', () => {
     expect(screen.getByText('Persian')).toBeInTheDocument();
   });
 
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: BREEDS,
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Beagle');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Beagle');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Beagle' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Beagle'));
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+  });
+
   it('a Pet type filter tile narrows the breed list', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },
@@ -243,7 +271,8 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /rename/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     fireEvent.change(screen.getByDisplayValue('Beagle'), {
       target: { value: 'Beagle Renamed' },
     });
@@ -275,7 +304,8 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await vi.waitFor(() =>
       expect(deleteBreedAdmin).toHaveBeenCalledWith('breed-1', 'token')
@@ -307,7 +337,8 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     expect(
       await screen.findByText(/still assigned to one or more pets/i)

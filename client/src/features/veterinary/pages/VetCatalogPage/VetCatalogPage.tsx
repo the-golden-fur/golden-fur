@@ -10,7 +10,8 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   createMedicationCatalogItem,
   createProcedureCatalogItem,
@@ -387,6 +388,27 @@ export function VetCatalogPage() {
     }
   }
 
+  function buildMedicationActionItems(
+    item: VetMedicationCatalogItem
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditMedication(item) },
+      {
+        label: 'Delete',
+        onSelect: () => void handleDeleteMedication(item.id),
+      },
+    ];
+  }
+
+  function buildProcedureActionItems(
+    item: VetProcedureCatalogItem
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditProcedure(item) },
+      { label: 'Delete', onSelect: () => void handleDeleteProcedure(item.id) },
+    ];
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -490,32 +512,26 @@ export function VetCatalogPage() {
               getRowKey={(item) => item.id}
               emptyMessage="No medications match these filters."
               renderItem={(item) => (
-                <div className={styles.rowContent}>
-                  <div className={styles.itemMain}>
-                    <span className={styles.itemName}>{item.name}</span>
-                    {item.default_dose ? (
-                      <span className={styles.badge}>{item.default_dose}</span>
-                    ) : null}
-                    {item.default_price != null ? (
-                      <span className={styles.badge}>
-                        ₱{item.default_price}
-                      </span>
-                    ) : null}
+                <CardContextMenu
+                  label={`Actions for ${item.name}`}
+                  items={buildMedicationActionItems(item)}
+                >
+                  <div className={styles.rowContent}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemName}>{item.name}</span>
+                      {item.default_dose ? (
+                        <span className={styles.badge}>
+                          {item.default_dose}
+                        </span>
+                      ) : null}
+                      {item.default_price != null ? (
+                        <span className={styles.badge}>
+                          ₱{item.default_price}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <MoreOptionsMenu
-                    label={`Actions for ${item.name}`}
-                    items={[
-                      {
-                        label: 'Edit',
-                        onSelect: () => openEditMedication(item),
-                      },
-                      {
-                        label: 'Delete',
-                        onSelect: () => void handleDeleteMedication(item.id),
-                      },
-                    ]}
-                  />
-                </div>
+                </CardContextMenu>
               )}
             />
           </>
@@ -549,34 +565,26 @@ export function VetCatalogPage() {
               getRowKey={(item) => item.id}
               emptyMessage="No procedures match these filters."
               renderItem={(item) => (
-                <div className={styles.rowContent}>
-                  <div className={styles.itemMain}>
-                    <span className={styles.itemName}>
-                      {item.procedure_type}
-                    </span>
-                    <span className={styles.itemDescription}>
-                      {item.description}
-                    </span>
-                    {item.default_price != null ? (
-                      <span className={styles.badge}>
-                        ₱{item.default_price}
+                <CardContextMenu
+                  label={`Actions for ${item.description}`}
+                  items={buildProcedureActionItems(item)}
+                >
+                  <div className={styles.rowContent}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemName}>
+                        {item.procedure_type}
                       </span>
-                    ) : null}
+                      <span className={styles.itemDescription}>
+                        {item.description}
+                      </span>
+                      {item.default_price != null ? (
+                        <span className={styles.badge}>
+                          ₱{item.default_price}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <MoreOptionsMenu
-                    label={`Actions for ${item.description}`}
-                    items={[
-                      {
-                        label: 'Edit',
-                        onSelect: () => openEditProcedure(item),
-                      },
-                      {
-                        label: 'Delete',
-                        onSelect: () => void handleDeleteProcedure(item.id),
-                      },
-                    ]}
-                  />
-                </div>
+                </CardContextMenu>
               )}
             />
           </>

@@ -1255,10 +1255,12 @@ export async function createBooking({
   // deriveBookingConfirmationState) - it isn't a secured appointment yet, so
   // neither the customer's "booking confirmed" alert nor the assigned
   // staff's "you were picked" alert fires here. Both are sent instead by
-  // recomputeBookingPaymentStatus when the first payment settles. Walk-ins
-  // and Veterinary (priced during the visit) are confirmed on creation.
-  const isConfirmedAtCreation =
-    bookingSource === 'Walk-in' || input.service_category === 'Veterinary';
+  // recomputeBookingPaymentStatus when the first payment settles. This
+  // applies to every Online category, including Veterinary - it's priced
+  // during the visit (see requiresUpfrontCharge above), not confirmed
+  // status. Only Walk-ins (always staff-created, on the spot) are confirmed
+  // on creation.
+  const isConfirmedAtCreation = bookingSource === 'Walk-in';
 
   if (isConfirmedAtCreation) {
     await sendBookingConfirmedNotification(booking);

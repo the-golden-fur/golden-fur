@@ -9,7 +9,7 @@ import type { Pet } from '../../../customers/customer.types';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { BookingDetailsModal } from '../../components/BookingDetailsModal/BookingDetailsModal';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
@@ -334,26 +334,32 @@ export function CustomerBookingsPage() {
                 : []),
             ];
 
+            const bookingCardContent = (
+              <div className={styles.bookingMain}>
+                <span className={styles.bookingTitle}>
+                  {booking.service_category} -{' '}
+                  {petNameById.get(booking.pet_id) ?? 'Pet'}
+                </span>
+                <span className={styles.bookingMeta}>
+                  {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
+                  {formatDateTime(booking.scheduled_start)}
+                </span>
+                <BookingConfirmationBadge booking={booking} />
+              </div>
+            );
+
             return (
               <li key={booking.id} className={styles.bookingRow}>
-                <div className={styles.bookingMain}>
-                  <span className={styles.bookingTitle}>
-                    {booking.service_category} -{' '}
-                    {petNameById.get(booking.pet_id) ?? 'Pet'}
-                  </span>
-                  <span className={styles.bookingMeta}>
-                    {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
-                    {formatDateTime(booking.scheduled_start)}
-                  </span>
-                  <BookingConfirmationBadge booking={booking} />
-                </div>
-
                 {menuItems.length > 0 && !isRescheduling && !isCancelling ? (
-                  <MoreOptionsMenu
-                    label={`Options for this ${booking.service_category} booking`}
+                  <CardContextMenu
+                    label={`Actions for this ${booking.service_category} booking`}
                     items={menuItems}
-                  />
-                ) : null}
+                  >
+                    {bookingCardContent}
+                  </CardContextMenu>
+                ) : (
+                  bookingCardContent
+                )}
 
                 {isRescheduling ? (
                   <div className={styles.actionPanel}>

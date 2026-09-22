@@ -28,6 +28,39 @@
   line-height: 1.2;
 }
 
+/* vet-bookings-queue-access: New Consultation sits next to the title, same
+   spot ReceptionistBookingsQueuePage puts its own "New booking" button. */
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.primaryButton {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-accent-gold-highlight);
+  box-shadow: var(--shadow-md);
+}
+
 .copy {
   margin: 0;
   color: var(--color-text-secondary);
@@ -95,12 +128,30 @@
   gap: var(--space-3);
 }
 
-.rowList {
-  display: grid;
-  gap: var(--space-1);
-  list-style: none;
-  margin: 0;
+/* Table view's Pet column - the row's selection trigger there, same job
+   .rowButton does for the List/Board card. */
+.petNameButton {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   padding: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.petNameButtonActive {
+  composes: petNameButton;
+  color: var(--color-accent-gold-primary);
+}
+
+/* Table view's trailing actions column - Start Consultation + the "..."
+   menu, side by side (Table keeps a persistent, tap-to-open menu; List/
+   Board use CardContextMenu's hold-to-open instead - see renderQueueCard). */
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-content: flex-end;
 }
 
 /* Custom change (kebab-inside-card fix): the border/background/shadow used

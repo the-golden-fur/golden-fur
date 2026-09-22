@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -464,6 +470,25 @@ describe('AdminDiscountManagementPage', () => {
     ).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Senior Citizen')).toBeInTheDocument();
     expect(screen.getByText('PWD')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Senior Citizen');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Senior Citizen');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Senior Citizen' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Senior Citizen'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
   });
 
   it('#85 AC-5: existing Service- and Package-scoped discounts still display and function', async () => {

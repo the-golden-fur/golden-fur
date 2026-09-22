@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -543,7 +549,7 @@ describe('AdminPromoConfigPage', () => {
     });
   });
 
-  it('List view: name, timing, value, window, and status all show, and "..." actions work', async () => {
+  it('List view: name, timing, value, window, and status all show', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -556,10 +562,24 @@ describe('AdminPromoConfigPage', () => {
     expect(
       within(list).getByText('2026-08-01 to 2026-08-31')
     ).toBeInTheDocument();
+  });
 
-    await user.click(
-      within(list).getByRole('button', { name: 'Actions for Summer Sale' })
-    );
+  it('tap-to-hold: List view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'List' }));
+
+    const list = await screen
+      .findByText('Summer Sale')
+      .then((el) => el.closest('ul') as HTMLElement);
+
+    expect(
+      within(list).queryByRole('button', { name: 'Actions for Summer Sale' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(within(list).getByText('Summer Sale'));
     expect(
       screen.getByRole('menuitem', { name: 'Branch Availability' })
     ).toBeInTheDocument();

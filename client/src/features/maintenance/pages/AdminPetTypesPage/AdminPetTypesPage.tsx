@@ -21,7 +21,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -421,6 +425,21 @@ export function AdminPetTypesPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
+  function buildPetTypeActionItems(petType: PetTypeRow): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Rename', onSelect: () => startEditing(petType) },
+      {
+        label: 'Configure',
+        onSelect: () => setPriceModalPetType(petType),
+      },
+      {
+        label: petType.is_active ? 'Deactivate' : 'Activate',
+        onSelect: () => void handleToggleActive(petType),
+      },
+      { label: 'Delete', onSelect: () => void handleDelete(petType.id) },
+    ];
+  }
+
   function renderPetTypeActions(petType: PetTypeRow) {
     if (editingId === petType.id) {
       return (
@@ -451,18 +470,7 @@ export function AdminPetTypesPage() {
       <div className={styles.actions}>
         <MoreOptionsMenu
           label={`Actions for ${petType.name}`}
-          items={[
-            { label: 'Rename', onSelect: () => startEditing(petType) },
-            {
-              label: 'Configure',
-              onSelect: () => setPriceModalPetType(petType),
-            },
-            {
-              label: petType.is_active ? 'Deactivate' : 'Activate',
-              onSelect: () => void handleToggleActive(petType),
-            },
-            { label: 'Delete', onSelect: () => void handleDelete(petType.id) },
-          ]}
+          items={buildPetTypeActionItems(petType)}
         />
       </div>
     );
@@ -509,6 +517,10 @@ export function AdminPetTypesPage() {
     [editingId, editingName]
   );
 
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderPetTypeActions
+  // above) - only the dense card grid gets the hold gesture.
   function renderPetTypeCard(petType: PetTypeRow) {
     if (editingId === petType.id) {
       return (
@@ -524,25 +536,29 @@ export function AdminPetTypesPage() {
     }
 
     return (
-      <div className={styles.rowMain}>
-        <span
-          className={
-            petType.is_active
-              ? styles.itemName
-              : `${styles.itemName} ${styles.itemInactive}`
-          }
-        >
-          {petType.name}
-        </span>
-        <span
-          className={`${styles.statusBadge} ${
-            petType.is_active ? styles.statusActive : styles.statusInactive
-          }`}
-        >
-          {petType.is_active ? 'Active' : 'Inactive'}
-        </span>
-        {renderPetTypeActions(petType)}
-      </div>
+      <CardContextMenu
+        label={`Actions for ${petType.name}`}
+        items={buildPetTypeActionItems(petType)}
+      >
+        <div className={styles.rowMain}>
+          <span
+            className={
+              petType.is_active
+                ? styles.itemName
+                : `${styles.itemName} ${styles.itemInactive}`
+            }
+          >
+            {petType.name}
+          </span>
+          <span
+            className={`${styles.statusBadge} ${
+              petType.is_active ? styles.statusActive : styles.statusInactive
+            }`}
+          >
+            {petType.is_active ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+      </CardContextMenu>
     );
   }
 

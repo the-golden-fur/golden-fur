@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -380,7 +380,10 @@ export function ReceptionistBookingsQueuePage() {
     : (viewerBranchId ?? undefined);
 
   useEffect(() => {
-    if (!accessToken || isRoleLoading) return;
+    // A Veterinarian is about to be redirected away (see the
+    // vet-bookings-queue-access render-time check below) - no point loading
+    // this page's own queue data for them first.
+    if (!accessToken || isRoleLoading || viewerRole === 'Veterinarian') return;
 
     const token = accessToken;
     let isMounted = true;
@@ -444,6 +447,7 @@ export function ReceptionistBookingsQueuePage() {
   }, [
     accessToken,
     isRoleLoading,
+    viewerRole,
     effectiveBranchId,
     dateRange.from,
     dateRange.to,
@@ -789,6 +793,16 @@ export function ReceptionistBookingsQueuePage() {
         </div>
       </main>
     );
+  }
+
+  // vet-bookings-queue-access: a Veterinarian no longer has a Bookings Queue
+  // of their own - Consultation Queue's New Consultation button is the
+  // replacement entry point into the booking builder. Redirect a direct
+  // visit here (the sidebar link is already gone for this role) rather than
+  // just hiding controls, so this really is "no access", not "hidden but
+  // reachable".
+  if (viewerRole === 'Veterinarian') {
+    return <Navigate to="/staff/veterinary/console" replace />;
   }
 
   // Cancellation always routes through this explicit modal - the row's

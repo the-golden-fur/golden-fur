@@ -21,9 +21,10 @@ type ConfirmationInput = Pick<
  * cashier records a payment.
  *
  * - Online + Pending + nobody has paid  -> Unconfirmed  (not a secured
- *   booking - no staff alert, can't be checked in yet)
- * - Pending otherwise (paid, walk-in, or Veterinary - which is priced
- *   during the visit, so there is nothing to collect up front)  -> Confirmed
+ *   booking - no staff alert, can't be checked in yet - applies to every
+ *   service category, including Veterinary: it's still an unsecured online
+ *   booking even though it's priced during the visit rather than upfront)
+ * - Pending otherwise (paid, or walk-in)  -> Confirmed
  * - In Progress                          -> In service   (live in a module queue)
  * - Completed                            -> Completed
  * - Cancelled by the expiry sweep        -> Expired
@@ -49,7 +50,6 @@ export function deriveBookingConfirmationState(
     default: {
       const awaitingPayment =
         booking.booking_source === 'Online' &&
-        booking.service_category !== 'Veterinary' &&
         booking.payment_status === 'Pending';
       return awaitingPayment ? 'Unconfirmed' : 'Confirmed';
     }

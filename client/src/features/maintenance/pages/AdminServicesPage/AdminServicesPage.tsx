@@ -26,7 +26,11 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
@@ -588,18 +592,22 @@ export function AdminServicesPage() {
     );
   }
 
+  function buildServiceActionItems(service: Service): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditForm(service) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityServiceId(service.id),
+      },
+    ];
+  }
+
   function renderServiceActions(service: Service) {
     return (
       <div className={styles.serviceControls}>
         <MoreOptionsMenu
           label={`Actions for ${service.name}`}
-          items={[
-            { label: 'Configure', onSelect: () => openEditForm(service) },
-            {
-              label: 'Branch Availability',
-              onSelect: () => setAvailabilityServiceId(service.id),
-            },
-          ]}
+          items={buildServiceActionItems(service)}
         />
       </div>
     );
@@ -647,20 +655,29 @@ export function AdminServicesPage() {
     },
   ];
 
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderServiceActions
+  // above) - only the dense card grid gets the hold gesture.
   function renderServiceCard(service: Service) {
     const Icon = getServiceIcon(service.icon);
     return (
-      <div className={styles.serviceMain}>
-        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-        <span className={styles.serviceName}>{service.name}</span>
-        <span className={styles.categoryBadge}>{service.category}</span>
-        {service.category !== 'Daycare' ? (
-          <span className={styles.servicePrice}>
-            PHP {service.base_price.toFixed(2)}
-          </span>
-        ) : null}
-        {renderServiceBadges(service)}
-      </div>
+      <CardContextMenu
+        label={`Actions for ${service.name}`}
+        items={buildServiceActionItems(service)}
+      >
+        <div className={styles.serviceMain}>
+          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+          <span className={styles.serviceName}>{service.name}</span>
+          <span className={styles.categoryBadge}>{service.category}</span>
+          {service.category !== 'Daycare' ? (
+            <span className={styles.servicePrice}>
+              PHP {service.base_price.toFixed(2)}
+            </span>
+          ) : null}
+          {renderServiceBadges(service)}
+        </div>
+      </CardContextMenu>
     );
   }
 
@@ -1089,7 +1106,6 @@ export function AdminServicesPage() {
             renderItem={(service) => (
               <div className={styles.rowContent}>
                 {renderServiceCard(service)}
-                {renderServiceActions(service)}
               </div>
             )}
             emptyMessage="No services match the selected filters."
@@ -1101,7 +1117,6 @@ export function AdminServicesPage() {
             renderCard={(service) => (
               <div className={styles.serviceRow}>
                 {renderServiceCard(service)}
-                {renderServiceActions(service)}
               </div>
             )}
             emptyColumnMessage="No services here."
