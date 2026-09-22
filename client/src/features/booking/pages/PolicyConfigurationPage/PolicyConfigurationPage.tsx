@@ -23,7 +23,7 @@ import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedCh
 import styles from './PolicyConfigurationPage.module.css';
 
 /** Admin+Superadmin - matches BOOKING_POLICY_WRITE_ROLES/policy_configurations
- * RLS server-side, unlike System Configuration's Superadmin-only gate. */
+ * RLS server-side, unlike Branches' Superadmin-only gate. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const SYSTEM_DEFAULT_OPTION = '';
@@ -135,14 +135,33 @@ const DOCUMENTED_DEFAULTS: FormState = {
  * client consumer at all. Lets Admin/Superadmin configure the reschedule
  * notice period (read by reschedule.service.ts and the Bookings Queue's
  * Reschedule button gate) and the fixed lunch break - system-wide default or
- * per-branch override, same branch-selector UX as System Configuration. (The
+ * per-branch override, same branch-selector UX as Branches. (The
  * Daycare overnight fee briefly lived here too - Custom change: Daycare fee
  * configuration - but moved to be per-service instead, on live follow-up
  * feedback, so each Daycare service can set its own; see AdminServicesPage.
  * Staff Picker visibility/eligible roles similarly moved out - it's now
  * per-service-type, see AdminServiceTypesPage.)
+ *
+ * initialBranchId/lockBranchSelector (session 87): Branches' own "Configure"
+ * row action pre-scopes this page to one branch, disabling the selector.
+ * Both optional/additive - the standalone route renders this with neither.
  */
-export function PolicyConfigurationPage() {
+interface PolicyConfigurationPageProps {
+  /** Branches page > a row's "Configure" action pre-scopes this page to
+   * that one branch, instead of the standalone route's default "system
+   * default" starting point. Both optional and additive - the standalone
+   * /staff/admin/maintenance/policies route (kept for anyone with an old
+   * link) renders this same component with neither prop set. */
+  initialBranchId?: string;
+  /** Disables the branch <select> so a pre-scoped visit can't be
+   * accidentally re-pointed at a different branch. */
+  lockBranchSelector?: boolean;
+}
+
+export function PolicyConfigurationPage({
+  initialBranchId,
+  lockBranchSelector,
+}: PolicyConfigurationPageProps = {}) {
   const { user, accessToken } = useAuth();
   const unsavedChanges = useUnsavedChangesContext();
 
@@ -152,7 +171,7 @@ export function PolicyConfigurationPage() {
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [policies, setPolicies] = useState<PolicyConfiguration[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState(
-    SYSTEM_DEFAULT_OPTION
+    initialBranchId ?? SYSTEM_DEFAULT_OPTION
   );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -416,6 +435,7 @@ export function PolicyConfigurationPage() {
             className={styles.input}
             value={selectedBranchId}
             onChange={(event) => handleBranchSelect(event.target.value)}
+            disabled={lockBranchSelector}
           >
             <option value={SYSTEM_DEFAULT_OPTION}>
               System default (all branches)

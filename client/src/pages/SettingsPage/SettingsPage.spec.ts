@@ -84,13 +84,14 @@ vi.mock('./configTiles.config', () => ({
       Component: () => createElement('p', null, 'Embedded Cages Page'),
     },
   ],
-  SYSTEM_CONFIG_TILE: {
-    title: 'System Configuration',
+  BRANCHES_TILE: {
+    title: 'Branches',
     description: 'Branch config.',
-    to: '/staff/admin/maintenance/system-configuration',
+    to: '/staff/admin/maintenance/branches',
     icon: Wrench,
-    Component: () => createElement('p', null, 'Embedded System Config Page'),
+    Component: () => createElement('p', null, 'Embedded Branches Page'),
   },
+  HIDDEN_CONFIG_TILES: [],
 }));
 
 function LocationProbe() {

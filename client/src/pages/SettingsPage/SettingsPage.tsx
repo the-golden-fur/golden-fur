@@ -31,7 +31,11 @@ import { AccountTab } from './tabs/AccountTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { ConfigTab } from './tabs/ConfigTab';
 import { DangerTab } from './tabs/DangerTab';
-import { CONFIG_TILES, SYSTEM_CONFIG_TILE } from './configTiles.config';
+import {
+  BRANCHES_TILE,
+  CONFIG_TILES,
+  HIDDEN_CONFIG_TILES,
+} from './configTiles.config';
 import styles from './SettingsPage.module.css';
 
 interface SettingsPageProps {
@@ -217,6 +221,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTabState] = useState<SettingsTab>('profile');
   const [configTarget, setConfigTarget] = useState<string | null>(null);
+  /** Extra props for whichever Config tile is active - e.g. Branches' own
+   * "Configure" row action pre-scoping Policies to one branch. Set via
+   * selectConfigTile's second argument, cleared whenever a tile is
+   * selected without one so a stale branch scope doesn't leak into the
+   * next tile switched to. */
+  const [pendingConfigProps, setPendingConfigProps] = useState<
+    Record<string, unknown> | undefined
+  >(undefined);
   const {
     collapsed: dashboardSidebarCollapsed,
     setCollapsed: setDashboardSidebarCollapsed,
@@ -286,7 +298,7 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const isSuperadmin = status?.role === 'Superadmin';
 
   const configTiles = useMemo(
-    () => (isSuperadmin ? [...CONFIG_TILES, SYSTEM_CONFIG_TILE] : CONFIG_TILES),
+    () => (isSuperadmin ? [...CONFIG_TILES, BRANCHES_TILE] : CONFIG_TILES),
     [isSuperadmin]
   );
 
@@ -299,9 +311,16 @@ export function SettingsPage({ role }: SettingsPageProps) {
       : ['profile', 'preferences', 'account', 'security'];
   }, [role, isAdmin]);
 
+  // Falls back to HIDDEN_CONFIG_TILES (e.g. Policies) so a tile that isn't
+  // listed in the sidebar/ConfigTab grid can still be navigated to directly
+  // (Branches' own "Configure" row action) and rendered inline here.
+  // Deliberately NOT folded into the `configTiles` memo above - that memo
+  // also drives the visible sidebar sub-items list (orderedConfigTiles,
+  // below), so adding a hidden tile there would leak it back into view.
   const activeConfigTile =
     activeTab === 'config' && configTarget
-      ? configTiles.find((tile) => tile.to === configTarget)
+      ? (configTiles.find((tile) => tile.to === configTarget) ??
+        HIDDEN_CONFIG_TILES.find((tile) => tile.to === configTarget))
       : undefined;
 
   // Tab/tile switching goes through guardIfDirty - each callback below
@@ -314,6 +333,7 @@ export function SettingsPage({ role }: SettingsPageProps) {
       const applyTabChange = () => {
         setActiveTabState(tab);
         setConfigTarget(null);
+        setPendingConfigProps(undefined);
 
         const nextRecent = { ...recentMap, [tab]: Date.now() };
         setRecentMap(nextRecent);
@@ -337,10 +357,11 @@ export function SettingsPage({ role }: SettingsPageProps) {
   );
 
   const selectConfigTile = useCallback(
-    (to: string | null) => {
+    (to: string | null, props?: Record<string, unknown>) => {
       const applyConfigTarget = () => {
         setActiveTabState('config');
         setConfigTarget(to);
+        setPendingConfigProps(props);
 
         if (to) {
           const nextRecent = { ...configRecentMap, [to]: Date.now() };
@@ -701,7 +722,10 @@ export function SettingsPage({ role }: SettingsPageProps) {
           {activeTab === 'danger' && role === 'customer' ? <DangerTab /> : null}
           {activeTab === 'config' && isAdmin ? (
             activeConfigTile ? (
-              <activeConfigTile.Component />
+              <activeConfigTile.Component
+                onNavigateToConfig={selectConfigTile}
+                {...(pendingConfigProps ?? {})}
+              />
             ) : (
               <ConfigTab
                 isSuperadmin={isSuperadmin}

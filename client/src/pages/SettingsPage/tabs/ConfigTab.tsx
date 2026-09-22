@@ -14,8 +14,8 @@ import {
   type ViewSwitcherOption,
 } from '../../../shared/components/ViewSwitcher/ViewSwitcher';
 import {
+  BRANCHES_TILE,
   CONFIG_TILES,
-  SYSTEM_CONFIG_TILE,
   type ConfigTileConfig,
 } from '../configTiles.config';
 import styles from '../SettingsPage.module.css';
@@ -71,15 +71,16 @@ interface ConfigTileWithAccess extends ConfigTileConfig {
  * admin-config page - the pages themselves (maintenance.routes.tsx,
  * discounts.routes.tsx) are untouched; only their entry surface moved here
  * from the admin dashboard, which now holds only day-to-day operational
- * tiles (see staffDashboard.config.ts). System Configuration is
- * Superadmin-only, matching that page's own ALLOWED_VIEWER_ROLES gate.
+ * tiles (see staffDashboard.config.ts). Branches (formerly "System
+ * Configuration") is Superadmin-only, matching that page's own
+ * ALLOWED_VIEWER_ROLES gate.
  *
  * Custom change (search/sort/filter + list/grid): the same FilterSortBar +
  * ViewSwitcher pattern used on pages like Discounts, applied to this tile
  * list itself rather than to a table of records - "Grid" is the original
  * card layout, "List" stacks each tile as a full-width row. "Access" is the
  * one real filterable attribute a static tile list has (every tile here is
- * Admin+Superadmin except System Configuration, which is Superadmin-only).
+ * Admin+Superadmin except Branches, which is Superadmin-only).
  */
 export function ConfigTab({ isSuperadmin, onSelectTile }: ConfigTabProps) {
   const allTiles = useMemo<ConfigTileWithAccess[]>(() => {
@@ -88,7 +89,7 @@ export function ConfigTab({ isSuperadmin, onSelectTile }: ConfigTabProps) {
       superadminOnly: false,
     }));
     return isSuperadmin
-      ? [...tiles, { ...SYSTEM_CONFIG_TILE, superadminOnly: true }]
+      ? [...tiles, { ...BRANCHES_TILE, superadminOnly: true }]
       : tiles;
   }, [isSuperadmin]);
 

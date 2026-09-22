@@ -1,9 +1,13 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  archiveBranch,
   createBranch,
   getBranch,
+  hardDeleteBranch,
+  listArchivedBranches,
   listBranchesFull,
+  restoreBranch,
   updateBranch,
 } from './services/branches.service.ts';
 import {
@@ -86,6 +90,54 @@ export async function updateBranchController(
   try {
     const branch = await updateBranch(paramId(req, 'id'), parsed.data);
     return res.status(200).json({ branch });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveBranchController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await archiveBranch(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreBranchController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restoreBranch(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedBranchesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const branches = await listArchivedBranches();
+    return res.status(200).json({ branches });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteBranchController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteBranch(paramId(req, 'id'));
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

@@ -28,6 +28,11 @@ import {
   restorePromo,
 } from '../../../maintenance/api/maintenance.api';
 import {
+  hardDeleteBranch,
+  listArchivedBranches,
+  restoreBranch,
+} from '../../../maintenance/api/branches.api';
+import {
   hardDeleteStaffAccount,
   listArchivedStaff,
   restoreStaffAccount,
@@ -46,6 +51,7 @@ type ArchiveTab =
   | 'discounts'
   | 'promos'
   | 'packages'
+  | 'branches'
   | 'deleted-records';
 
 const TABS: { key: ArchiveTab; label: string }[] = [
@@ -55,6 +61,7 @@ const TABS: { key: ArchiveTab; label: string }[] = [
   { key: 'discounts', label: 'Discounts' },
   { key: 'promos', label: 'Promos' },
   { key: 'packages', label: 'Packages' },
+  { key: 'branches', label: 'Branches' },
   { key: 'deleted-records', label: 'Deleted Records' },
 ];
 
@@ -215,6 +222,17 @@ export function AdminArchivePage() {
             renderLabel={(item) =>
               `${item.name} (PHP ${item.bundled_price.toFixed(2)})`
             }
+          />
+        ) : null}
+
+        {activeTab === 'branches' ? (
+          <ArchiveList
+            entityLabel="branches"
+            accessToken={accessToken}
+            fetchArchived={listArchivedBranches}
+            restoreItem={restoreBranch}
+            hardDeleteItem={hardDeleteBranch}
+            renderLabel={(item) => item.name}
           />
         ) : null}
 
