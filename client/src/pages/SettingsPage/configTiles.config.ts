@@ -46,12 +46,16 @@ export interface ConfigTileConfig {
    * `var(--config-embed-min-height, 100vh)` pattern from the start, or the
    * empty-space bug reproduces for it.
    *
-   * Typed `ComponentType<any>` rather than a bare prop-less `ComponentType`
-   * (session 87, Branches->Policies pre-scoping) since SettingsPage.tsx can
-   * now pass extra props through to whichever tile it renders
-   * (`pendingConfigProps`, set via `selectConfigTile`'s second argument) -
-   * every tile that doesn't expect any simply ignores them. */
-  Component: ComponentType<any>;
+   * Typed `ComponentType<Record<string, unknown>>` rather than a bare
+   * prop-less `ComponentType` (session 87, Branches->Policies pre-scoping)
+   * since SettingsPage.tsx can now pass extra props through to whichever
+   * tile it renders (`pendingConfigProps`, set via `selectConfigTile`'s
+   * second argument) - every tile that doesn't expect any simply ignores
+   * them. A component typed with fewer/no declared props is still
+   * assignable here (TS allows a function needing fewer args where more
+   * are supplied), so every existing zero-prop tile Component below is
+   * unaffected. */
+  Component: ComponentType<Record<string, unknown>>;
 }
 
 /**
