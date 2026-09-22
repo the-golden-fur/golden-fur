@@ -6,7 +6,7 @@ import { PricingConfigurationPage } from './pages/PricingConfigurationPage/Prici
 import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
-import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
+import { BranchesPage } from './pages/BranchesPage/BranchesPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -41,10 +41,7 @@ export const maintenanceRoutes = (
           <Navigate to="/staff/admin/maintenance/promos-and-rewards" replace />
         }
       />
-      <Route
-        path="/staff/admin/maintenance/pets"
-        element={<AdminPetsPage />}
-      />
+      <Route path="/staff/admin/maintenance/pets" element={<AdminPetsPage />} />
       {/* Pet Types + Breeds merge (session 87) - old bookmarked/linked
           paths still resolve, just onto the merged page. */}
       <Route
@@ -56,8 +53,14 @@ export const maintenanceRoutes = (
         element={<Navigate to="/staff/admin/maintenance/pets" replace />}
       />
       <Route
+        path="/staff/admin/maintenance/branches"
+        element={<BranchesPage />}
+      />
+      {/* System Configuration renamed to Branches, folding in Policies
+          (session 87) - old bookmarked/linked path still resolves. */}
+      <Route
         path="/staff/admin/maintenance/system-configuration"
-        element={<SystemConfigurationPage />}
+        element={<Navigate to="/staff/admin/maintenance/branches" replace />}
       />
     </Route>
   </Fragment>

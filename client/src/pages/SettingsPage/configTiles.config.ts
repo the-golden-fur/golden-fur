@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import {
+  Building2,
   Calculator,
   DoorOpen,
   Gift,
@@ -9,7 +10,6 @@ import {
   Receipt,
   Scale,
   ScrollText,
-  Settings2,
   ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
@@ -18,7 +18,7 @@ import { PricingConfigurationPage } from '../../features/maintenance/pages/Prici
 import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
 import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/AdminPetsPage';
-import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
+import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/BranchesPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
 import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
@@ -44,8 +44,14 @@ export interface ConfigTileConfig {
    * content when scrolled. A new page added here (or any page it in turn
    * wraps/embeds, e.g. a mini-navbar-subtabs page) must use the same
    * `var(--config-embed-min-height, 100vh)` pattern from the start, or the
-   * empty-space bug reproduces for it. */
-  Component: ComponentType;
+   * empty-space bug reproduces for it.
+   *
+   * Typed `ComponentType<any>` rather than a bare prop-less `ComponentType`
+   * (session 87, Branches->Policies pre-scoping) since SettingsPage.tsx can
+   * now pass extra props through to whichever tile it renders
+   * (`pendingConfigProps`, set via `selectConfigTile`'s second argument) -
+   * every tile that doesn't expect any simply ignores them. */
+  Component: ComponentType<any>;
 }
 
 /**
@@ -117,14 +123,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: MiscSaleManagementPage,
   },
   {
-    title: 'Policies',
-    description:
-      'Reschedule & new-booking notice periods, reschedule fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
-    to: '/staff/admin/maintenance/policies',
-    icon: ScrollText,
-    Component: PolicyConfigurationPage,
-  },
-  {
     title: 'Cages',
     description: 'Add, edit, delete, or mark a cage Under Maintenance.',
     to: '/staff/admin/hotel/cages',
@@ -133,10 +131,42 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   },
 ];
 
-export const SYSTEM_CONFIG_TILE: ConfigTileConfig = {
-  title: 'System Configuration',
-  description: 'Branch name, address, and operating hours.',
-  to: '/staff/admin/maintenance/system-configuration',
-  icon: Settings2,
-  Component: SystemConfigurationPage,
+/**
+ * Renamed from "System Configuration" (session 87) - now a full Notion-style
+ * multi-branch browser instead of a single-branch edit form, and folds in
+ * what used to be the separate "Policies" tile (below) via each branch
+ * row's "Configure" action. Still Superadmin-only, appended conditionally
+ * to `CONFIG_TILES` (see SettingsPage.tsx) rather than living in the array
+ * itself, same as before its rename.
+ */
+export const BRANCHES_TILE: ConfigTileConfig = {
+  title: 'Branches',
+  description:
+    'Branch name, address, operating hours, and (per branch) booking policies.',
+  to: '/staff/admin/maintenance/branches',
+  icon: Building2,
+  Component: BranchesPage,
 };
+
+/**
+ * No longer a listed Config tile (folded into Branches, session 87) - kept
+ * resolvable, not listed, so a Branches row's "Configure" action can still
+ * navigate to it and have SettingsPage render it inline. Deliberately NOT
+ * added to CONFIG_TILES (would reappear in the sidebar/ConfigTab grid) -
+ * see HIDDEN_CONFIG_TILES and SettingsPage.tsx's activeConfigTile lookup.
+ * The standalone /staff/admin/maintenance/policies route (unscoped, for
+ * anyone with an old link) still renders this same PolicyConfigurationPage
+ * directly, without going through this constant at all.
+ */
+export const POLICIES_HIDDEN_TILE: ConfigTileConfig = {
+  title: 'Policies',
+  description:
+    'Reschedule & new-booking notice periods, reschedule fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
+  to: '/staff/admin/maintenance/policies',
+  icon: ScrollText,
+  Component: PolicyConfigurationPage,
+};
+
+/** Resolvable-but-not-listed tiles - see POLICIES_HIDDEN_TILE's own doc
+ * comment for why this can't just live in CONFIG_TILES. */
+export const HIDDEN_CONFIG_TILES: ConfigTileConfig[] = [POLICIES_HIDDEN_TILE];

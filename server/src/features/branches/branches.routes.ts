@@ -3,9 +3,13 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archiveBranchController,
   createBranchController,
   getBranchController,
+  hardDeleteBranchController,
+  listArchivedBranchesController,
   listBranchesController,
+  restoreBranchController,
   updateBranchController,
 } from './branches.controller.ts';
 import { BRANCH_CONFIG_ROLES } from './branches.types.ts';
@@ -27,8 +31,22 @@ const superadminOnly = [
 ];
 
 router.get('/branches', superadminOnly, listBranchesController);
+// Must be registered before /branches/:id, or Express would match "archived"
+// as an :id (same ordering promos.routes.ts's own archived-list route needs).
+router.get(
+  '/branches/archived',
+  superadminOnly,
+  listArchivedBranchesController
+);
 router.post('/branches', superadminOnly, createBranchController);
 router.get('/branches/:id', superadminOnly, getBranchController);
 router.patch('/branches/:id', superadminOnly, updateBranchController);
+router.delete('/branches/:id', superadminOnly, archiveBranchController);
+router.post('/branches/:id/restore', superadminOnly, restoreBranchController);
+router.delete(
+  '/branches/:id/permanent',
+  superadminOnly,
+  hardDeleteBranchController
+);
 
 export default router;

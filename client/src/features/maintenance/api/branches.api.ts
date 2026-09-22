@@ -95,3 +95,68 @@ export async function updateBranch(
   const result = await parseBody<{ branch: Branch }>(response);
   return { data: result.data?.branch ?? null, error: result.error };
 }
+
+/** Soft-archive - the branch must already be deactivated (is_active:
+ * false via updateBranch) or the server rejects this with a 403. */
+export async function archiveBranch(
+  branchId: string,
+  accessToken: string
+): Promise<BranchesApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/branches/${branchId}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function restoreBranch(
+  branchId: string,
+  accessToken: string
+): Promise<BranchesApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}/branches/${branchId}/restore`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+export async function listArchivedBranches(
+  accessToken: string
+): Promise<BranchesApiResult<Branch[]>> {
+  const response = await fetch(`${API_BASE_URL}/branches/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ branches: Branch[] }>(response);
+  return { data: result.data?.branches ?? null, error: result.error };
+}
+
+export async function hardDeleteBranch(
+  branchId: string,
+  accessToken: string
+): Promise<BranchesApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/branches/${branchId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}

@@ -277,6 +277,8 @@ export interface Branch {
   is_vet_branch: boolean;
   operating_hours: OperatingHours;
   timezone: string;
+  is_active: boolean;
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -287,6 +289,8 @@ export interface UpdateBranchPayload {
   is_vet_branch?: boolean;
   timezone?: string;
   operating_hours?: OperatingHours;
+  /** Deactivate/reactivate - a plain field update, same as promos. */
+  is_active?: boolean;
 }
 
 export interface CreateBranchPayload {
