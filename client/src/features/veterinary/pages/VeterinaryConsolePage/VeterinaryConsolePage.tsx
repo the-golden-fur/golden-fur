@@ -31,7 +31,10 @@ import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
-import { useGroupBy, type GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import {
+  useGroupBy,
+  type GroupByAxis,
+} from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listConsultationQueue,
@@ -112,10 +115,7 @@ export function VeterinaryConsolePage() {
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
   const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
 
-  const dateRange = useMemo(
-    () => deriveDateRange(filterTiles),
-    [filterTiles]
-  );
+  const dateRange = useMemo(() => deriveDateRange(filterTiles), [filterTiles]);
   const statusFilter: StatusFilter = deriveStatusFilter(filterTiles);
 
   function handleAddFilter(fieldId: string) {

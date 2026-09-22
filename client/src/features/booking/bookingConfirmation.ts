@@ -22,8 +22,8 @@ type ConfirmationInput = Pick<
  *
  * - Online + Pending + nobody has paid  -> Unconfirmed  (not a secured
  *   booking - no staff alert, can't be checked in yet - applies to every
- *   service category, including Veterinary: it's still an unsecured online
- *   booking even though it's priced during the visit rather than upfront)
+ *   service category, including Veterinary, which now gets a real upfront
+ *   charge like everything else)
  * - Pending otherwise (paid, or walk-in)  -> Confirmed
  * - In Progress                          -> In service   (live in a module queue)
  * - Completed                            -> Completed

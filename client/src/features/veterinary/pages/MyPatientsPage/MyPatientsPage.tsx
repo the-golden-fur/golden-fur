@@ -352,12 +352,8 @@ export function MyPatientsPage() {
                             : styles.card
                         }
                       >
-                        <span className={styles.rowPetName}>
-                          {row.petName}
-                        </span>
-                        <span className={styles.rowMeta}>
-                          {row.ownerName}
-                        </span>
+                        <span className={styles.rowPetName}>{row.petName}</span>
+                        <span className={styles.rowMeta}>{row.ownerName}</span>
                         <span className={styles.rowMeta}>
                           Last visit: {formatDate(row.lastVisitAt)}
                         </span>

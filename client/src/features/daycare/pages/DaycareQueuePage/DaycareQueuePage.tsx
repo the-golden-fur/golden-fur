@@ -51,6 +51,13 @@ function formatDateTime(iso: string): string {
   });
 }
 
+// Same gap noted on Consultation Queue/Groomer Dashboard/Bookings Queue/
+// Hotel Queue: no WebSocket/realtime infra exists anywhere in this codebase
+// yet, so this queue refreshes via polling on the same interval those
+// already use - a cashier settling a payment on a different page/tab
+// doesn't push an update here otherwise.
+const REFRESH_INTERVAL_MS = 15_000;
+
 /**
  * Daycare Queue redesign: replaces the former Check In/Check Out tab panels
  * (DaycareCheckInPanel/DaycareCheckoutPanel picking their own booking/
@@ -128,15 +135,14 @@ export function DaycareQueuePage() {
     if (roleStatus !== 'ok' || !accessToken || !branchId) return;
 
     const token = accessToken;
+    // Same reason as `token` above - a nested function declaration loses
+    // the enclosing `!branchId` narrowing.
+    const branch = branchId;
     let isMounted = true;
 
-    void listBookings(token, {
-      branchId,
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-      serviceCategory: 'Daycare',
-      status: statusFilter === 'All' ? undefined : statusFilter,
-    }).then((result) => {
+    function handleQueueResult(
+      result: Awaited<ReturnType<typeof listBookings>>
+    ) {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -179,10 +185,24 @@ export function DaycareQueuePage() {
           return next;
         });
       });
-    });
+    }
+
+    function fetchQueue() {
+      void listBookings(token, {
+        branchId: branch,
+        dateFrom: dateRange.from ?? undefined,
+        dateTo: dateRange.to ?? undefined,
+        serviceCategory: 'Daycare',
+        status: statusFilter === 'All' ? undefined : statusFilter,
+      }).then(handleQueueResult);
+    }
+
+    fetchQueue();
+    const interval = setInterval(fetchQueue, REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [
     roleStatus,

@@ -365,7 +365,9 @@ describe('AdminPetTypesPage', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.contextMenu(within(section).getByText('Dog'));
-    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
   });
 
   it('Configure opens a per-pet-type, per-branch price override modal, and saves/clears an override', async () => {

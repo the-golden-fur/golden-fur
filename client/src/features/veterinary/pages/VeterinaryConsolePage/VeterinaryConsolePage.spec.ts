@@ -506,9 +506,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
 
     expect(
-      await screen.findByText(
-        'Booking builder - locked category: Veterinary'
-      )
+      await screen.findByText('Booking builder - locked category: Veterinary')
     ).toBeInTheDocument();
   });
 });

@@ -50,6 +50,13 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
   ),
 ];
 
+// Same gap noted on Consultation Queue/Groomer Dashboard/Bookings Queue: no
+// WebSocket/realtime infra exists anywhere in this codebase yet, so this
+// queue refreshes via polling on the same interval those already use - a
+// cashier settling a payment on a different page/tab doesn't push an update
+// here otherwise.
+const REFRESH_INTERVAL_MS = 15_000;
+
 interface EnrichedBooking {
   booking: Booking;
   petName: string;
@@ -183,14 +190,9 @@ export function HotelBookingPicker({
     const token = accessToken;
     let isMounted = true;
 
-    void listBookings(token, {
-      branchId,
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-      serviceCategory: 'Hotel',
-      status: statusFilter === 'All' ? undefined : statusFilter,
-      excludeUnpaidDownpayment: true,
-    }).then((result) => {
+    function handleQueueResult(
+      result: Awaited<ReturnType<typeof listBookings>>
+    ) {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -233,10 +235,25 @@ export function HotelBookingPicker({
           return next;
         });
       });
-    });
+    }
+
+    function fetchQueue() {
+      void listBookings(token, {
+        branchId,
+        dateFrom: dateRange.from ?? undefined,
+        dateTo: dateRange.to ?? undefined,
+        serviceCategory: 'Hotel',
+        status: statusFilter === 'All' ? undefined : statusFilter,
+        excludeUnpaidDownpayment: true,
+      }).then(handleQueueResult);
+    }
+
+    fetchQueue();
+    const interval = setInterval(fetchQueue, REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [accessToken, branchId, dateRange.from, dateRange.to, statusFilter]);
 
@@ -425,9 +442,7 @@ export function HotelBookingPicker({
                     <span className={styles.metaLine}>
                       Owner: {item.ownerName} ({item.ownerContact})
                     </span>
-                    <span className={styles.metaLine}>
-                      {item.serviceLabel}
-                    </span>
+                    <span className={styles.metaLine}>{item.serviceLabel}</span>
                     <span className={styles.metaLine}>
                       Check-in: {formatDateTime(item.booking.scheduled_start)}
                     </span>

@@ -41,9 +41,7 @@ describe('deriveStatusFilter', () => {
   });
 
   it('reads the status tile value', () => {
-    const tiles: FilterTile[] = [
-      { fieldId: 'status', value: 'In Progress' },
-    ];
+    const tiles: FilterTile[] = [{ fieldId: 'status', value: 'In Progress' }];
     expect(deriveStatusFilter(tiles)).toBe('In Progress');
   });
 });

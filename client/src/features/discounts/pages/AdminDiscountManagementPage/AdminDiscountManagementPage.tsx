@@ -608,9 +608,7 @@ export function AdminDiscountManagementPage() {
       : `PHP ${discount.value.toFixed(2)}`;
   }
 
-  function buildDiscountActionItems(
-    discount: Discount
-  ): MoreOptionsMenuItem[] {
+  function buildDiscountActionItems(discount: Discount): MoreOptionsMenuItem[] {
     return [
       { label: 'Configure', onSelect: () => openEditForm(discount) },
       {
@@ -718,9 +716,7 @@ export function AdminDiscountManagementPage() {
           </span>
           <span className={styles.scopeBadge}>{scopeTypeLabel(discount)}</span>
           <span className={styles.discountMeta}>{valueLabel(discount)}</span>
-          <span className={styles.discountMeta}>
-            {describeScope(discount)}
-          </span>
+          <span className={styles.discountMeta}>{describeScope(discount)}</span>
         </div>
       </CardContextMenu>
     );

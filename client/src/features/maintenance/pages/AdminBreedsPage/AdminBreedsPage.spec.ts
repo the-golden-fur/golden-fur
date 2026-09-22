@@ -179,7 +179,9 @@ describe('AdminBreedsPage', () => {
     ).not.toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByText('Beagle'));
-    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
   });
 
   it('a Pet type filter tile narrows the breed list', async () => {

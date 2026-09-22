@@ -59,6 +59,11 @@ import {
 } from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
 
+// Same gap noted on Consultation Queue/Groomer Dashboard: no WebSocket/
+// realtime infra exists anywhere in this codebase yet, so this queue
+// refreshes via polling on the same interval those two already use.
+const REFRESH_INTERVAL_MS = 15_000;
+
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...BOOKING_CONFIRMATION_STATES.map((state) => ({
@@ -388,15 +393,9 @@ export function ReceptionistBookingsQueuePage() {
     const token = accessToken;
     let isMounted = true;
 
-    void listBookings(token, {
-      branchId: effectiveBranchId,
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-      serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
-      status: confirmationToStatusParam(confirmationFilter),
-      paymentStatus:
-        paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
-    }).then((result) => {
+    function handleQueueResult(
+      result: Awaited<ReturnType<typeof listBookings>>
+    ) {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -439,10 +438,32 @@ export function ReceptionistBookingsQueuePage() {
           return next;
         });
       });
-    });
+    }
+
+    function fetchQueue() {
+      void listBookings(token, {
+        branchId: effectiveBranchId,
+        dateFrom: dateRange.from ?? undefined,
+        dateTo: dateRange.to ?? undefined,
+        serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
+        status: confirmationToStatusParam(confirmationFilter),
+        paymentStatus:
+          paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
+      }).then(handleQueueResult);
+    }
+
+    fetchQueue();
+
+    // No realtime infra (same gap noted on Consultation Queue/Groomer
+    // Dashboard) - a cashier settling a payment on a different page/tab
+    // doesn't push an update here, so this queue used to sit showing
+    // "Unconfirmed" indefinitely after a booking was actually confirmed.
+    // Poll on the same interval those two queues already use.
+    const interval = setInterval(fetchQueue, REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [
     accessToken,

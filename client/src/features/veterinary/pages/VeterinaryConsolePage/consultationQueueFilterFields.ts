@@ -86,9 +86,7 @@ export function deriveDateRange(tiles: FilterTile[]): DateRangeBounds {
 }
 
 /** The client-side status filter - 'All' when no 'status' tile is present. */
-export function deriveStatusFilter(
-  tiles: FilterTile[]
-): BookingStatus | 'All' {
+export function deriveStatusFilter(tiles: FilterTile[]): BookingStatus | 'All' {
   const tile = tiles.find((entry) => entry.fieldId === 'status');
   return tile && typeof tile.value === 'string'
     ? (tile.value as BookingStatus)

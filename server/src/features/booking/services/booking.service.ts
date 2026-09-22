@@ -1031,8 +1031,13 @@ export async function createBooking({
   // create_initial_booking_charge, 20260902162): 'downpayment' (only when the
   // branch down-payment policy is on) creates TWO Pending transactions - the
   // down payment plus a 'balance' transaction for the rest; 'full' / no policy
-  // creates ONE for the whole net total.
-  const requiresUpfrontCharge = input.service_category !== 'Veterinary';
+  // creates ONE for the whole net total. Every category gets an upfront
+  // charge now, including Veterinary - it used to be exempt ("priced during
+  // the visit"), but that left an online vet booking with a downpayment due
+  // date and no transaction ever created to pay it against, a dead end a
+  // cashier could never resolve. The professional fee determined during the
+  // consultation is still billed separately at checkout, same as before;
+  // this only concerns the booking-time charge.
   const paymentScheme: PaymentScheme =
     downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
@@ -1042,7 +1047,7 @@ export async function createBooking({
   // charge to create and no payment to collect, so it's born Fully Paid
   // (otherwise it would sit Pending forever: startBooking, add_booking_payment
   // and payForBooking all refuse a zero-owed booking).
-  const nothingOwed = requiresUpfrontCharge && netTotal <= 0;
+  const nothingOwed = netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -1271,10 +1276,9 @@ export async function createBooking({
   }
 
   // Emit the initial charge transaction(s) (best-effort - a failure here must
-  // not undo the booking; the cashier can add the charge manually). Vet
-  // bookings are priced during the visit, so they get no upfront charge; a
+  // not undo the booking; the cashier can add the charge manually). A
   // fully-discounted booking (nothingOwed) owes nothing.
-  if (requiresUpfrontCharge && !nothingOwed && netTotal > 0) {
+  if (!nothingOwed && netTotal > 0) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_charge',
@@ -1886,8 +1890,10 @@ async function updateBookingRow(
  * a secured appointment. Checking it in would strand it In Progress,
  * invisible to its own module queue (which excludes unpaid rows) and no
  * longer swept by applyDownpaymentExpiry. Record the payment first
- * (Payments Queue). Veterinary is exempt - it's priced during the visit,
- * so there's nothing to collect before the consultation starts.
+ * (Payments Queue). Applies to every category now, including Veterinary -
+ * it gets a real upfront charge like everything else (see
+ * requiresUpfrontCharge's removal), so there's no longer a "nothing to
+ * collect" case to exempt it from this gate for.
  */
 export async function startBooking({
   bookingId,
@@ -1900,7 +1906,6 @@ export async function startBooking({
 
   if (
     booking.booking_source === 'Online' &&
-    booking.service_category !== 'Veterinary' &&
     booking.payment_status === 'Pending'
   ) {
     throwWithStatus(

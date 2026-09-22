@@ -722,9 +722,7 @@ export function AdminPromoConfigPage() {
             <ToggleSwitch
               label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
               checked={promo.is_active}
-              onChange={(isActive) =>
-                void handleActiveToggle(promo, isActive)
-              }
+              onChange={(isActive) => void handleActiveToggle(promo, isActive)}
             />
           </div>
         </div>

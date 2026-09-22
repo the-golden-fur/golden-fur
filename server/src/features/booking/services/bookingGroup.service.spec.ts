@@ -746,7 +746,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     ).toBe(true);
   });
 
-  it('(d) a group where every sub-booking is Veterinary never calls the group charge RPC', async () => {
+  it('(d) a group where every sub-booking is Veterinary still calls the group charge RPC (no longer priced-during-visit-only)', async () => {
     vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
 
     queueFromResults(
@@ -821,9 +821,14 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       } as never,
     });
 
-    expect(supabase.rpc).not.toHaveBeenCalledWith(
+    expect(supabase.rpc).toHaveBeenCalledWith(
       'create_initial_booking_group_charge',
-      expect.anything()
+      {
+        p_booking_group_id: 'group-1',
+        p_scheme: 'full',
+        p_net_total: 1000,
+        p_downpayment_amount: null,
+      }
     );
   });
 
