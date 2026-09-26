@@ -58,6 +58,10 @@
 
 .sizeGroup {
   display: grid;
+  /* The widget can be stretched taller than its content (e.g. beside the
+     Supervisor dashboard's right-hand grid); pack title + badges at the top
+     instead of spreading the extra height into the badge row. */
+  align-content: start;
   gap: var(--space-1);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -74,11 +78,15 @@
 .badges {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: var(--space-1);
 }
 
 .badge {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   border-radius: var(--radius-pill);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
