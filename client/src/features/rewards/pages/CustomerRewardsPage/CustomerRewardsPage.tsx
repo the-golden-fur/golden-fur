@@ -5,12 +5,13 @@ import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { formatRelativeTime } from '../../../../shared/utils/formatRelativeTime';
 import {
   getMyCoupons,
-  getMySpinCredits,
-  listSpinWheelRewards,
+  getPromoWheel,
   spinTheWheel,
 } from '../../api/rewards.api';
-import type { CustomerCoupon, SpinWheelReward } from '../../rewards.types';
+import type { CustomerCoupon, PromoWheel } from '../../rewards.types';
 import { SpinWheel } from '../../components/SpinWheel/SpinWheel';
+import { notifySpinCreditsChanged } from '../../providers/spinCreditsEvents';
+import { useSpinCredits } from '../../providers/useSpinCredits';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
@@ -35,7 +36,6 @@ import {
   COUPON_GROUP_BY_AXES,
   COUPON_SORT_FIELDS,
   deriveCouponSortKey,
-  findRewardForCoupon,
   matchesCouponQuery,
 } from './couponBrowserFields';
 import styles from './CustomerRewardsPage.module.css';
@@ -54,15 +54,20 @@ function discountLabel(coupon: CustomerCoupon): string {
     : `${formatCurrency(coupon.value)} off`;
 }
 
-/** "My Rewards" (session 86) - spin-credit count, the spin wheel itself,
- * and the customer's coupon list (unused + already-used). */
+/** "My Rewards" (session 86; per-promo wheels since session 114) - how many
+ * spins the customer has waiting per spin-wheel promo, that promo's own
+ * wheel (its reward pool, with each reward's rarity and % chance), and the
+ * customer's coupon list (unused + already-used). Spins skipped in the
+ * pop-up land here. */
 export function CustomerRewardsPage() {
   const { accessToken } = useAuth();
+  const { summary, total, refresh: refreshSpins } = useSpinCredits();
 
-  const [rewards, setRewards] = useState<SpinWheelReward[]>([]);
   const [coupons, setCoupons] = useState<CustomerCoupon[]>([]);
-  const [availableSpins, setAvailableSpins] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
+  const [wheel, setWheel] = useState<PromoWheel | null>(null);
+  const [wheelError, setWheelError] = useState<string | null>(null);
   const [resultRewardId, setResultRewardId] = useState<string | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -73,29 +78,59 @@ export function CustomerRewardsPage() {
   const [view, setView] = useState<ViewMode>('table');
   const [groupAxisId] = useState(COUPON_GROUP_BY_AXES[0].id);
 
-  const refresh = () => {
+  const refreshCoupons = () => {
     if (!accessToken) return;
-    void Promise.all([
-      listSpinWheelRewards(accessToken),
-      getMyCoupons(accessToken),
-      getMySpinCredits(accessToken),
-    ]).then(([rewardsResult, couponsResult, creditsResult]) => {
-      if (rewardsResult.data) setRewards(rewardsResult.data);
-      if (couponsResult.data) setCoupons(couponsResult.data);
-      if (creditsResult.data !== null) setAvailableSpins(creditsResult.data);
+    void getMyCoupons(accessToken).then((result) => {
+      if (result.data) setCoupons(result.data);
       setIsLoading(false);
     });
   };
 
-  useEffect(refresh, [accessToken]);
+  useEffect(refreshCoupons, [accessToken]);
+
+  // While a spin is animating, stay on its wheel even if that promo's count
+  // just dropped to 0; otherwise follow the picker (falling back to the
+  // first promo that still has spins).
+  const activePromoId =
+    wheel && isSpinning
+      ? wheel.promoId
+      : summary.byPromo.some((group) => group.promoId === selectedPromoId)
+        ? selectedPromoId
+        : (summary.byPromo[0]?.promoId ?? null);
+
+  const activeCount =
+    summary.byPromo.find((group) => group.promoId === activePromoId)?.count ??
+    0;
+
+  useEffect(() => {
+    if (!accessToken || !activePromoId) return;
+    if (wheel?.promoId === activePromoId) return;
+
+    let active = true;
+    void getPromoWheel(accessToken, activePromoId).then((result) => {
+      if (!active) return;
+      if (result.error || !result.data) {
+        setWheelError(result.error ?? 'Could not load this wheel.');
+        return;
+      }
+      setWheelError(null);
+      setWheel(result.data);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken, activePromoId, wheel?.promoId]);
 
   const handleSpin = async () => {
-    if (!accessToken || availableSpins <= 0 || isSpinning) return;
+    if (!accessToken || !activePromoId || activeCount <= 0 || isSpinning) {
+      return;
+    }
 
     setIsSpinning(true);
     setMessage(null);
 
-    const result = await spinTheWheel(accessToken);
+    const result = await spinTheWheel(accessToken, { promoId: activePromoId });
 
     if (result.error || !result.data) {
       setIsSpinning(false);
@@ -107,21 +142,24 @@ export function CustomerRewardsPage() {
   };
 
   const handleAnimationComplete = () => {
+    const reward = wheel?.rewards.find((item) => item.id === resultRewardId);
     setIsSpinning(false);
     setResultRewardId(null);
-    setMessage('Coupon added to My Coupons!');
-    refresh();
+    setMessage(
+      reward
+        ? `You won: ${reward.label}! Coupon added to My Coupons.`
+        : 'Coupon added to My Coupons!'
+    );
+    refreshCoupons();
+    refreshSpins();
+    notifySpinCreditsChanged();
   };
 
   const visibleCoupons = useMemo(() => {
     const query = search.trim().toLowerCase();
     const searched = query
       ? coupons.filter((coupon) =>
-          matchesCouponQuery(
-            coupon,
-            query,
-            findRewardForCoupon(coupon, rewards)?.label ?? null
-          )
+          matchesCouponQuery(coupon, query, coupon.reward_label ?? null)
         )
       : coupons;
     const filtered = applyCouponFilters(searched, filterTiles);
@@ -132,7 +170,7 @@ export function CustomerRewardsPage() {
     return [...filtered].sort(
       COUPON_COMPARATORS[deriveCouponSortKey(sortTile)]
     );
-  }, [coupons, rewards, search, filterTiles, sortTile]);
+  }, [coupons, search, filterTiles, sortTile]);
 
   const activeGroupAxis =
     COUPON_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
@@ -158,11 +196,12 @@ export function CustomerRewardsPage() {
   }
 
   function renderCouponContent(coupon: CustomerCoupon) {
-    const reward = findRewardForCoupon(coupon, rewards);
     return (
       <>
         <span className={styles.couponDiscount}>{discountLabel(coupon)}</span>
-        {reward ? <span className={styles.copy}>{reward.label}</span> : null}
+        {coupon.reward_label ? (
+          <span className={styles.copy}>{coupon.reward_label}</span>
+        ) : null}
         <span className={styles.copy}>
           Obtained {formatRelativeTime(coupon.created_at)}
         </span>
@@ -189,7 +228,7 @@ export function CustomerRewardsPage() {
     {
       id: 'reward',
       header: 'Reward',
-      render: (coupon) => findRewardForCoupon(coupon, rewards)?.label ?? '—',
+      render: (coupon) => coupon.reward_label ?? '—',
     },
     {
       id: 'obtained',
@@ -236,21 +275,65 @@ export function CustomerRewardsPage() {
 
         <section className={styles.spinSection}>
           <p className={styles.spinCount}>
-            You have <strong>{availableSpins}</strong> spin
-            {availableSpins === 1 ? '' : 's'} available.
+            You have <strong>{total}</strong> spin
+            {total === 1 ? '' : 's'} available.
           </p>
 
-          <SpinWheel
-            rewards={rewards}
-            resultRewardId={resultRewardId}
-            onAnimationComplete={handleAnimationComplete}
-          />
+          {summary.byPromo.length > 1 ? (
+            <div
+              className={styles.promoPicker}
+              role="group"
+              aria-label="Choose a wheel"
+            >
+              {summary.byPromo.map((group) => (
+                <button
+                  key={group.promoId}
+                  type="button"
+                  className={
+                    group.promoId === activePromoId
+                      ? `${styles.promoPill} ${styles.promoPillActive}`
+                      : styles.promoPill
+                  }
+                  aria-pressed={group.promoId === activePromoId}
+                  onClick={() => setSelectedPromoId(group.promoId)}
+                  disabled={isSpinning}
+                >
+                  {group.promoName} ×{group.count}
+                </button>
+              ))}
+            </div>
+          ) : summary.byPromo[0] ? (
+            <p className={styles.copy}>{summary.byPromo[0].promoName}</p>
+          ) : null}
+
+          {total === 0 && !isSpinning ? (
+            <p className={styles.copy}>
+              No spins right now - keep booking and logging in to earn one!
+            </p>
+          ) : wheelError ? (
+            <p className={styles.errorBanner} role="alert">
+              {wheelError}
+            </p>
+          ) : wheel && wheel.promoId === activePromoId ? (
+            <SpinWheel
+              rewards={wheel.rewards}
+              resultRewardId={resultRewardId}
+              onAnimationComplete={handleAnimationComplete}
+            />
+          ) : (
+            <p className={styles.copy}>Loading wheel...</p>
+          )}
 
           <button
             type="button"
             className={styles.spinButton}
             onClick={() => void handleSpin()}
-            disabled={availableSpins <= 0 || isSpinning}
+            disabled={
+              activeCount <= 0 ||
+              isSpinning ||
+              !wheel ||
+              wheel.rewards.length === 0
+            }
           >
             {isSpinning ? 'Spinning...' : 'Spin the wheel'}
           </button>
@@ -267,7 +350,7 @@ export function CustomerRewardsPage() {
 
           {coupons.length === 0 ? (
             <p className={styles.copy}>
-              No coupons yet - keep booking to earn a spin!
+              No coupons yet - spin a wheel to win one!
             </p>
           ) : (
             <>

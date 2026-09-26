@@ -40,9 +40,14 @@ function buildPromo(overrides: Partial<Promo> = {}): Promo {
 }
 
 describe('buildPromoFilterFields', () => {
-  it('builds Branch, Timing, and Status fields', () => {
+  it('builds Branch, Timing, Status, and Type fields', () => {
     const fields = buildPromoFilterFields(BRANCHES);
-    expect(fields.map((f) => f.id)).toEqual(['branch', 'timing', 'status']);
+    expect(fields.map((f) => f.id)).toEqual([
+      'branch',
+      'timing',
+      'status',
+      'type',
+    ]);
   });
 
   it('Status defaults to active (the page has always defaulted to active-only)', () => {
@@ -75,6 +80,27 @@ describe('applyPromoFilters', () => {
     const tiles: FilterTile[] = [{ fieldId: 'status', value: 'inactive' }];
     expect(applyPromoFilters(promos, tiles).map((p) => p.id)).toEqual(['2']);
   });
+
+  it('session 114: a spin-wheel promo (no branch rows) matches every branch', () => {
+    const promos = [
+      buildPromo({
+        id: 'spin',
+        promo_type: 'spin_wheel',
+        promo_branch_availability: [],
+      }),
+    ];
+    const tiles: FilterTile[] = [{ fieldId: 'branch', value: 'branch-makati' }];
+    expect(applyPromoFilters(promos, tiles).map((p) => p.id)).toEqual(['spin']);
+  });
+
+  it('session 114: narrows by promo type', () => {
+    const promos = [
+      buildPromo({ id: '1' }),
+      buildPromo({ id: '2', promo_type: 'spin_wheel' }),
+    ];
+    const tiles: FilterTile[] = [{ fieldId: 'type', value: 'spin_wheel' }];
+    expect(applyPromoFilters(promos, tiles).map((p) => p.id)).toEqual(['2']);
+  });
 });
 
 describe('matchesPromoQuery', () => {
@@ -98,5 +124,15 @@ describe('derivePromoSortKey + PROMO_COMPARATORS', () => {
     expect(
       [...promos].sort(PROMO_COMPARATORS['value-desc']).map((p) => p.id)
     ).toEqual(['2', '1']);
+  });
+
+  it('sorts a spin-wheel promo (null value) as 0', () => {
+    const promos = [
+      buildPromo({ id: 'spin', value: null }),
+      buildPromo({ id: '1', value: 10 }),
+    ];
+    expect(
+      [...promos].sort(PROMO_COMPARATORS['value-asc']).map((p) => p.id)
+    ).toEqual(['spin', '1']);
   });
 });

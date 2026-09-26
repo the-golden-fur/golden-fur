@@ -1,24 +1,30 @@
 import { useState } from 'react';
 import { AdminPromoConfigPage } from '../AdminPromoConfigPage/AdminPromoConfigPage';
-import { AdminSpinWheelConfigPage } from '../../../rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage';
+import { AdminRewardsPage } from '../../../rewards/pages/AdminRewardsPage/AdminRewardsPage';
+import { AdminRewardPoolsPage } from '../../../rewards/pages/AdminRewardPoolsPage/AdminRewardPoolsPage';
 import styles from './AdminPromosAndRewardsPage.module.css';
 
-type Section = 'promos' | 'spin-wheel';
+type Section = 'promos' | 'rewards' | 'reward-pools';
 
-const SECTIONS: Section[] = ['promos', 'spin-wheel'];
+const SECTIONS: Section[] = ['promos', 'rewards', 'reward-pools'];
 
 const SECTION_LABELS: Record<Section, string> = {
   promos: 'Promos',
-  'spin-wheel': 'Coupon Spin Wheel',
+  rewards: 'Rewards',
+  'reward-pools': 'Reward Pools',
 };
 
 /**
- * Combines the two previously-separate admin pages (Promos, Coupon Spin
- * Wheel) into one Settings > Config entry ("Promos & Rewards"), same
+ * One Settings > Config entry ("Promos & Rewards"), same
  * mini-navbar-subtabs shape as AdminServicesAndPackagesPage - each section
- * renders the existing page component unmodified (own role gating,
- * fetching, and forms untouched), this is purely a navigation/entry-point
- * consolidation.
+ * renders its own page component unmodified (own role gating, fetching, and
+ * forms), this is purely a navigation/entry-point consolidation.
+ *
+ * Session 114: the old "Coupon Spin Wheel" tab is gone - a spin wheel is
+ * now a promo TYPE (Promos > New promo > Coupon spin wheel, with its
+ * trigger conditions, reward pool, and pity), and its catalog is split into
+ * Rewards (every reward a wheel can land on) and Reward Pools (named sets
+ * of rewards a spin-wheel promo draws from).
  *
  * Deliberately plain useState, not useSearchParams (AdminServicesAndPackagesPage's
  * own choice) - SettingsPage.tsx's own doc comment explains why: any
@@ -57,7 +63,8 @@ export function AdminPromosAndRewardsPage() {
       </div>
 
       {activeSection === 'promos' ? <AdminPromoConfigPage /> : null}
-      {activeSection === 'spin-wheel' ? <AdminSpinWheelConfigPage /> : null}
+      {activeSection === 'rewards' ? <AdminRewardsPage /> : null}
+      {activeSection === 'reward-pools' ? <AdminRewardPoolsPage /> : null}
     </main>
   );
 }

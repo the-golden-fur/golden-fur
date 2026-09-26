@@ -1,42 +1,35 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as rewardsApi from '../../api/rewards.api';
-import type { CustomerCoupon, SpinWheelReward } from '../../rewards.types';
+import {
+  SpinCreditsContext,
+  type SpinCreditsContextValue,
+} from '../../providers/SpinCreditsContext';
+import type {
+  CustomerCoupon,
+  PromoWheel,
+  SpinCreditSummary,
+} from '../../rewards.types';
 import { CustomerRewardsPage } from './CustomerRewardsPage';
 
 vi.mock('../../api/rewards.api', () => ({
-  listSpinWheelRewards: vi.fn(),
   getMyCoupons: vi.fn(),
-  getMySpinCredits: vi.fn(),
+  getPromoWheel: vi.fn(),
   spinTheWheel: vi.fn(),
 }));
 
 vi.mock('../../components/SpinWheel/SpinWheel', () => ({
-  SpinWheel: () => null,
+  SpinWheel: ({ rewards }: { rewards: Array<{ label: string }> }) =>
+    createElement(
+      'div',
+      { 'data-testid': 'wheel' },
+      rewards.map((reward) => reward.label).join(', ')
+    ),
 }));
-
-function buildReward(
-  overrides: Partial<SpinWheelReward> = {}
-): SpinWheelReward {
-  return {
-    id: 'reward-1',
-    label: 'Ten Percent Off',
-    discount_type: 'Percentage',
-    value: 10,
-    rarity_percent: 60,
-    is_active: true,
-    archived_at: null,
-    created_by: null,
-    updated_by: null,
-    created_at: '',
-    updated_at: '',
-    ...overrides,
-  };
-}
 
 function buildCoupon(overrides: Partial<CustomerCoupon> = {}): CustomerCoupon {
   return {
@@ -52,11 +45,39 @@ function buildCoupon(overrides: Partial<CustomerCoupon> = {}): CustomerCoupon {
     redeemed_by_booking_group_id: null,
     expires_at: null,
     created_at: '2026-01-01T00:00:00.000Z',
+    reward_label: 'Ten Percent Off',
     ...overrides,
   };
 }
 
-function renderPage() {
+function buildWheel(promoId: string, label: string): PromoWheel {
+  return {
+    promoId,
+    promoName: promoId,
+    rarestTier: 'Rare',
+    pityThreshold: 10,
+    rewards: [
+      {
+        id: `${promoId}-reward`,
+        label,
+        discount_type: 'Percentage',
+        value: 10,
+        rarity_tier: 'Rare',
+        chance_percent: 100,
+      },
+    ],
+  };
+}
+
+const TWO_PROMOS: SpinCreditSummary = {
+  total: 3,
+  byPromo: [
+    { promoId: 'promo-loyalty', promoName: 'Loyalty Spin', count: 2 },
+    { promoId: 'promo-monthly', promoName: 'Monthly Login Bonus', count: 1 },
+  ],
+};
+
+function renderPage(summary: SpinCreditSummary = TWO_PROMOS) {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'customer-1', email: 'customer@example.com' },
@@ -66,29 +87,40 @@ function renderPage() {
     applySession: vi.fn(),
     signOut: vi.fn(),
   };
+  const spinValue: SpinCreditsContextValue = {
+    summary,
+    total: summary.total,
+    isLoading: false,
+    refresh: vi.fn(),
+  };
 
   return render(
     createElement(
       AuthContext.Provider,
       { value: authValue },
-      createElement(CustomerRewardsPage)
+      createElement(
+        SpinCreditsContext.Provider,
+        { value: spinValue },
+        createElement(CustomerRewardsPage)
+      )
     )
   );
 }
 
 function stubDefaults(coupons: CustomerCoupon[] = [buildCoupon()]) {
-  vi.mocked(rewardsApi.listSpinWheelRewards).mockResolvedValue({
-    data: [buildReward()],
-    error: null,
-  });
   vi.mocked(rewardsApi.getMyCoupons).mockResolvedValue({
     data: coupons,
     error: null,
   });
-  vi.mocked(rewardsApi.getMySpinCredits).mockResolvedValue({
-    data: 2,
-    error: null,
-  });
+  vi.mocked(rewardsApi.getPromoWheel).mockImplementation(
+    async (_token, promoId) => ({
+      data: buildWheel(
+        promoId,
+        promoId === 'promo-monthly' ? 'Rare Prize' : 'Common Prize'
+      ),
+      error: null,
+    })
+  );
 }
 
 describe('CustomerRewardsPage', () => {
@@ -102,11 +134,11 @@ describe('CustomerRewardsPage', () => {
     renderPage();
 
     expect(
-      await screen.findByText('No coupons yet - keep booking to earn a spin!')
+      await screen.findByText('No coupons yet - spin a wheel to win one!')
     ).toBeInTheDocument();
   });
 
-  it('lists coupons in a combined table, with the linked reward label', async () => {
+  it('lists coupons in a combined table, with the reward title from the server', async () => {
     stubDefaults([
       buildCoupon({ id: '1' }),
       buildCoupon({ id: '2', is_redeemed: true, redeemed_at: '2026-02-01' }),
@@ -153,5 +185,72 @@ describe('CustomerRewardsPage', () => {
     expect(container.querySelectorAll('section[class*="column"]')).toHaveLength(
       2
     );
+  });
+
+  describe('per-promo wheels (session 114)', () => {
+    it('shows the total spin count and one button per promo with its count', async () => {
+      stubDefaults();
+
+      renderPage();
+
+      expect(await screen.findByText('3')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Loyalty Spin ×2' })
+      ).toHaveAttribute('aria-pressed', 'true');
+      expect(
+        screen.getByRole('button', { name: 'Monthly Login Bonus ×1' })
+      ).toBeInTheDocument();
+      expect(await screen.findByTestId('wheel')).toHaveTextContent(
+        'Common Prize'
+      );
+    });
+
+    it("switching promos loads that promo's own wheel and spins it", async () => {
+      stubDefaults();
+      vi.mocked(rewardsApi.spinTheWheel).mockResolvedValue({
+        data: {
+          rewardId: 'promo-monthly-reward',
+          wasPity: false,
+          couponId: 'coupon-9',
+          historyId: 'history-9',
+          promoId: 'promo-monthly',
+        },
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByTestId('wheel');
+
+      await user.click(
+        screen.getByRole('button', { name: 'Monthly Login Bonus ×1' })
+      );
+      expect(await screen.findByTestId('wheel')).toHaveTextContent(
+        'Rare Prize'
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Spin the wheel' }));
+
+      await waitFor(() =>
+        expect(rewardsApi.spinTheWheel).toHaveBeenCalledWith('token', {
+          promoId: 'promo-monthly',
+        })
+      );
+    });
+
+    it('with no spins, shows how to earn one and disables spinning', async () => {
+      stubDefaults();
+
+      renderPage({ total: 0, byPromo: [] });
+
+      expect(
+        await screen.findByText(
+          'No spins right now - keep booking and logging in to earn one!'
+        )
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Spin the wheel' })
+      ).toBeDisabled();
+    });
   });
 });

@@ -7,30 +7,19 @@ import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/Auth
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as rewardsApi from '../../api/rewards.api';
-import type { SpinWheelConfig, SpinWheelReward } from '../../rewards.types';
-import { AdminSpinWheelConfigPage } from './AdminSpinWheelConfigPage';
+import type { SpinWheelReward } from '../../rewards.types';
+import { AdminRewardsPage } from './AdminRewardsPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
   listStaff: vi.fn(),
 }));
 
 vi.mock('../../api/rewards.api', () => ({
-  getSpinWheelConfig: vi.fn(),
-  updateSpinWheelConfig: vi.fn(),
   listSpinWheelRewards: vi.fn(),
   createSpinWheelReward: vi.fn(),
   updateSpinWheelReward: vi.fn(),
   archiveSpinWheelReward: vi.fn(),
 }));
-
-const CONFIG: SpinWheelConfig = {
-  id: 'config-1',
-  bookings_milestone_interval: 5,
-  spend_threshold_amount: 5000,
-  pity_threshold: 10,
-  updated_by_staff_id: null,
-  updated_at: '',
-};
 
 function buildReward(
   overrides: Partial<SpinWheelReward> = {}
@@ -40,13 +29,15 @@ function buildReward(
     label: 'Ten Percent Off',
     discount_type: 'Percentage',
     value: 10,
-    rarity_percent: 60,
+    rarity_tier: 'Common',
+    weight: 60,
     is_active: true,
     archived_at: null,
     created_by: null,
     updated_by: null,
     created_at: '',
     updated_at: '',
+    pools: [],
     ...overrides,
   };
 }
@@ -54,10 +45,6 @@ function buildReward(
 function stubDefaults(rewards: SpinWheelReward[] = [buildReward()]) {
   vi.mocked(staffApi.listStaff).mockResolvedValue({
     data: [{ id: 'staff-1', role: 'Admin' } as never],
-    error: null,
-  });
-  vi.mocked(rewardsApi.getSpinWheelConfig).mockResolvedValue({
-    data: CONFIG,
     error: null,
   });
   vi.mocked(rewardsApi.listSpinWheelRewards).mockResolvedValue({
@@ -80,7 +67,7 @@ function renderPage() {
   return render(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/staff/admin/spin-wheel-config'] },
+      { initialEntries: ['/staff/admin/rewards'] },
       createElement(
         AuthContext.Provider,
         { value: authValue },
@@ -88,8 +75,8 @@ function renderPage() {
           Routes,
           null,
           createElement(Route, {
-            path: '/staff/admin/spin-wheel-config',
-            element: createElement(AdminSpinWheelConfigPage),
+            path: '/staff/admin/rewards',
+            element: createElement(AdminRewardsPage),
           }),
           createElement(Route, {
             path: '/staff/settings',
@@ -101,7 +88,7 @@ function renderPage() {
   );
 }
 
-describe('AdminSpinWheelConfigPage', () => {
+describe('AdminRewardsPage (session 114)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -117,15 +104,20 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
   });
 
-  it('lists rewards in the default Table view', async () => {
+  it('lists rewards with their tier, weight, and pools in the default Table view', async () => {
     stubDefaults([
-      buildReward({ id: '1', label: 'Ten Percent Off' }),
+      buildReward({
+        id: '1',
+        label: 'Ten Percent Off',
+        pools: [{ id: 'pool-1', name: 'Standard' }],
+      }),
       buildReward({
         id: '2',
         label: 'Flat 50',
         discount_type: 'Flat',
         value: 50,
-        rarity_percent: 40,
+        rarity_tier: 'Legendary',
+        weight: 2,
       }),
     ]);
 
@@ -133,10 +125,21 @@ describe('AdminSpinWheelConfigPage', () => {
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(screen.getByText('Ten Percent Off')).toBeInTheDocument();
-    expect(screen.getByText('Flat 50')).toBeInTheDocument();
+    expect(screen.getByText('Legendary')).toBeInTheDocument();
+    expect(screen.getByText('Standard')).toBeInTheDocument();
+    expect(screen.getByText('Not in any pool')).toBeInTheDocument();
   });
 
-  it('"Add a reward" only appears as a modal once its button is clicked', async () => {
+  it('never shows a "must total 100%" rule', async () => {
+    stubDefaults([buildReward({ weight: 7 })]);
+
+    renderPage();
+    await screen.findByText('Ten Percent Off');
+
+    expect(screen.queryByText(/must equal 100/)).not.toBeInTheDocument();
+  });
+
+  it('"Add New Reward" opens a modal and saves title, tier, weight, and value', async () => {
     stubDefaults([]);
     vi.mocked(rewardsApi.createSpinWheelReward).mockResolvedValue({
       data: buildReward({ id: 'reward-new', label: 'New Reward' }),
@@ -146,15 +149,20 @@ describe('AdminSpinWheelConfigPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText('Reward pool');
+    await screen.findByRole('heading', { name: 'Rewards' });
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Add a reward' }));
+    await user.click(screen.getByRole('button', { name: 'Add New Reward' }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Add a reward' });
+    const dialog = screen.getByRole('dialog', { name: 'Add New Reward' });
     await user.type(within(dialog).getByLabelText('Title'), 'New Reward');
     await user.type(within(dialog).getByLabelText(/^Value/), '10');
-    await user.type(within(dialog).getByLabelText('Rarity (%)'), '100');
+    await user.selectOptions(within(dialog).getByLabelText('Rarity'), 'Epic');
+    // Picking a tier nudges the untouched suggested weight to that tier's
+    // suggestion (Epic = 5).
+    expect(within(dialog).getByLabelText(/^Weight/)).toHaveValue(5);
+    await user.clear(within(dialog).getByLabelText(/^Weight/));
+    await user.type(within(dialog).getByLabelText(/^Weight/), '3');
     await user.click(
       within(dialog).getByRole('button', { name: 'Add reward' })
     );
@@ -164,12 +172,35 @@ describe('AdminSpinWheelConfigPage', () => {
         label: 'New Reward',
         discount_type: 'Percentage',
         value: 10,
-        rarity_percent: 100,
+        rarity_tier: 'Epic',
+        weight: 3,
       })
     );
     expect(await screen.findByText('New Reward')).toBeInTheDocument();
-    // The modal closes on success - the form no longer sits on the page.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('rejects a weight of 0', async () => {
+    stubDefaults([]);
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Rewards' });
+
+    await user.click(screen.getByRole('button', { name: 'Add New Reward' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add New Reward' });
+    await user.type(within(dialog).getByLabelText('Title'), 'Zero');
+    await user.type(within(dialog).getByLabelText(/^Value/), '5');
+    await user.clear(within(dialog).getByLabelText(/^Weight/));
+    await user.type(within(dialog).getByLabelText(/^Weight/), '0');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add reward' })
+    );
+
+    // The input's own min blocks the submit before handleRewardSubmit's
+    // guard even runs - either way, nothing is saved.
+    expect(within(dialog).getByLabelText(/^Weight/)).toBeInvalid();
+    expect(rewardsApi.createSpinWheelReward).not.toHaveBeenCalled();
   });
 
   it('searching narrows the visible rewards', async () => {
@@ -188,41 +219,19 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(screen.getByText('Flat 50')).toBeInTheDocument();
   });
 
-  it('adding a Status filter tile narrows to Active rewards', async () => {
+  it('switches to Board view, grouped by Rarity by default', async () => {
     stubDefaults([
-      buildReward({ id: '1', label: 'Ten Percent Off', is_active: true }),
-      buildReward({ id: '2', label: 'Flat 50', is_active: false }),
+      buildReward({ id: '1', label: 'Ten Percent Off', rarity_tier: 'Common' }),
+      buildReward({ id: '2', label: 'Flat 50', rarity_tier: 'Epic' }),
     ]);
 
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Ten Percent Off');
-    expect(screen.getByText('Flat 50')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Status' }));
-
-    expect(screen.getByText('Ten Percent Off')).toBeInTheDocument();
-    expect(screen.queryByText('Flat 50')).not.toBeInTheDocument();
-  });
-
-  it('switches to Board view, grouped by Status by default', async () => {
-    stubDefaults([
-      buildReward({ id: '1', label: 'Ten Percent Off', is_active: true }),
-      buildReward({ id: '2', label: 'Flat 50', is_active: false }),
-    ]);
-
-    const user = userEvent.setup();
-    const { container } = renderPage();
-    await screen.findByText('Ten Percent Off');
 
     await user.click(screen.getByRole('button', { name: 'Board' }));
 
-    expect(
-      container.querySelectorAll('section:not(.formPanel)')
-    ).not.toHaveLength(0);
-    // Board-view cards keep the label/value/rarity combined in one span
-    // (matching the page's original card text), so match by substring.
+    expect(screen.getByLabelText('Group by')).toHaveValue('tier');
     expect(screen.getByText(/Ten Percent Off/)).toBeInTheDocument();
     expect(screen.getByText(/Flat 50/)).toBeInTheDocument();
   });
@@ -252,22 +261,6 @@ describe('AdminSpinWheelConfigPage', () => {
     );
   });
 
-  it('hides Archive in the "..." menu while a reward is still active', async () => {
-    stubDefaults([buildReward({ is_active: true })]);
-
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Ten Percent Off');
-
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
-    );
-
-    expect(
-      screen.queryByRole('menuitem', { name: 'Archive' })
-    ).not.toBeInTheDocument();
-  });
-
   it('archives a reward from the "..." menu once it is inactive', async () => {
     stubDefaults([buildReward({ is_active: false })]);
     vi.mocked(rewardsApi.archiveSpinWheelReward).mockResolvedValue({
@@ -294,15 +287,7 @@ describe('AdminSpinWheelConfigPage', () => {
   });
 
   it('Configure opens a pre-filled edit modal and saves via updateSpinWheelReward', async () => {
-    stubDefaults([
-      buildReward({
-        id: 'reward-1',
-        label: 'Ten Percent Off',
-        discount_type: 'Percentage',
-        value: 10,
-        rarity_percent: 60,
-      }),
-    ]);
+    stubDefaults([buildReward({ rarity_tier: 'Rare', weight: 12 })]);
     vi.mocked(rewardsApi.updateSpinWheelReward).mockResolvedValue({
       data: buildReward({ label: 'Fifteen Percent Off', value: 15 }),
       error: null,
@@ -321,8 +306,8 @@ describe('AdminSpinWheelConfigPage', () => {
     expect(within(dialog).getByLabelText('Title')).toHaveValue(
       'Ten Percent Off'
     );
-    expect(within(dialog).getByLabelText(/^Value/)).toHaveValue(10);
-    expect(within(dialog).getByLabelText('Rarity (%)')).toHaveValue(60);
+    expect(within(dialog).getByLabelText('Rarity')).toHaveValue('Rare');
+    expect(within(dialog).getByLabelText(/^Weight/)).toHaveValue(12);
 
     await user.clear(within(dialog).getByLabelText('Title'));
     await user.type(
@@ -343,7 +328,8 @@ describe('AdminSpinWheelConfigPage', () => {
           label: 'Fifteen Percent Off',
           discount_type: 'Percentage',
           value: 15,
-          rarity_percent: 60,
+          rarity_tier: 'Rare',
+          weight: 12,
         }
       )
     );

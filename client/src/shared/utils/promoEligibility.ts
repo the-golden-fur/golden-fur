@@ -27,7 +27,7 @@ export function manilaDateString(date: Date = new Date()): string {
   return toManilaDate(date).toISOString().slice(0, 10);
 }
 
-export type PromoType = 'date_range' | 'weekly_recurring';
+export type PromoType = 'date_range' | 'weekly_recurring' | 'spin_wheel';
 
 export interface PromoEligibilityInput {
   is_active: boolean;
@@ -37,10 +37,19 @@ export interface PromoEligibilityInput {
   days_of_week: number[] | null;
 }
 
+/** Session 114: a spin_wheel promo hands out spins, not a discount - never
+ * offered or applied as one. */
+export function isDiscountPromo(promo: { promo_type: PromoType }): boolean {
+  return promo.promo_type !== 'spin_wheel';
+}
+
+/** "Can this promo be applied as a discount right now?" - always false for
+ * a spin_wheel promo. */
 export function isPromoCurrentlyEligible(
   promo: PromoEligibilityInput,
   now: Date = new Date()
 ): boolean {
+  if (!isDiscountPromo(promo)) return false;
   if (!promo.is_active) return false;
 
   const today = manilaDateString(now);

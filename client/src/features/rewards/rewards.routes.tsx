@@ -8,11 +8,12 @@ import { CustomerRewardsPage } from './pages/CustomerRewardsPage/CustomerRewards
  * customer-facing "My Rewards" page, wrapped in CustomerAuthGuard, same
  * split as credits.routes.tsx's /portal/credits.
  *
- * The admin config page (AdminSpinWheelConfigPage) no longer has its own
- * standalone route here (session 87) - it moved inside
- * AdminPromosAndRewardsPage, registered in maintenance.routes.tsx as
- * /staff/admin/maintenance/promos-and-rewards. The old path redirects
- * there for anyone with a bookmarked/linked URL.
+ * The admin side has no standalone route here: it lives inside
+ * AdminPromosAndRewardsPage (registered in maintenance.routes.tsx as
+ * /staff/admin/maintenance/promos-and-rewards) as the Rewards and Reward
+ * Pools tabs, with spin-wheel promos themselves on the Promos tab
+ * (session 114). The old config path redirects there for anyone with a
+ * bookmarked/linked URL.
  */
 export const rewardsRoutes = (
   <Fragment>

@@ -15,10 +15,13 @@ export interface PromoCap {
 }
 
 function promoLabel(promo: Promo): string {
+  // Only discount promos ever reach this list (the booking flow filters out
+  // spin-wheel promos), so value is always set in practice.
+  const value = Number(promo.value ?? 0);
   const amount =
     promo.discount_type === 'Percentage'
-      ? `${promo.value}%`
-      : `PHP ${promo.value.toFixed(2)}`;
+      ? `${value}%`
+      : `PHP ${value.toFixed(2)}`;
   return `${promo.name} (${amount})`;
 }
 
@@ -118,7 +121,11 @@ export function PromoCouponMultiSelect({
       id: promo.id,
       kind: 'promo',
       label: promoLabel(promo),
-      amount: estimatedSavings(promo.discount_type, promo.value, groupSubtotal),
+      amount: estimatedSavings(
+        promo.discount_type ?? 'Flat',
+        Number(promo.value ?? 0),
+        groupSubtotal
+      ),
       expiresAt: promo.end_date,
     }));
 

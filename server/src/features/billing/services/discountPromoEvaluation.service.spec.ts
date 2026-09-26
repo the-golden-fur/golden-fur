@@ -17,14 +17,19 @@ interface QueryResult {
  * table/chain produced it (call order is deterministic per evaluatePromos
  * run: promos select, then the branch-scoped cap lookup, then optionally
  * the default cap lookup). */
+const builders: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  builders.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
+    builders.push(builder as Record<string, ReturnType<typeof vi.fn>>);
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.neq = vi.fn(() => builder);
     builder.in = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
@@ -138,6 +143,27 @@ describe('evaluatePromos', () => {
     // Full amounts, not trimmed - a count cap has no notion of a partial promo.
     expect(applied[0].line.unit_price).toBe(-300);
     expect(applied[1].line.unit_price).toBe(-200);
+  });
+
+  it('never loads spin-wheel or archived promos as auto-apply candidates (session 114)', async () => {
+    queueFromResults({ data: [], error: null });
+
+    const applied = await evaluatePromos(buildBooking(), 1000);
+
+    expect(applied).toEqual([]);
+    expect(builders[0].neq).toHaveBeenCalledWith('promo_type', 'spin_wheel');
+    expect(builders[0].is).toHaveBeenCalledWith('archived_at', null);
+  });
+
+  it('drops a spin-wheel promo even if one slips past the query filter', async () => {
+    queueFromResults({
+      data: [buildPromoRow({ id: 'spin', promo_type: 'spin_wheel' })],
+      error: null,
+    });
+
+    const applied = await evaluatePromos(buildBooking(), 1000);
+
+    expect(applied).toEqual([]);
   });
 
   it('a count cap of 0 drops every otherwise-matching promo', async () => {

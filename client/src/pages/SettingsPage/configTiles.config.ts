@@ -91,7 +91,7 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   {
     title: 'Promos & Rewards',
     description:
-      'Configure time-limited promotions and spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
+      'Configure promotions (including coupon spin wheels and their trigger conditions), spin-wheel rewards, and reward pools.',
     to: '/staff/admin/maintenance/promos-and-rewards',
     icon: Gift,
     Component: AdminPromosAndRewardsPage,

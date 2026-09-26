@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -31,15 +25,15 @@ import { listStaff } from '../../../staff/api/staff.api';
 import {
   archiveSpinWheelReward,
   createSpinWheelReward,
-  getSpinWheelConfig,
   listSpinWheelRewards,
-  updateSpinWheelConfig,
   updateSpinWheelReward,
 } from '../../api/rewards.api';
-import type {
-  DiscountValueType,
-  SpinWheelConfig,
-  SpinWheelReward,
+import { RarityBadge } from '../../components/RarityBadge/RarityBadge';
+import {
+  RARITY_TIERS,
+  type DiscountValueType,
+  type RarityTier,
+  type SpinWheelReward,
 } from '../../rewards.types';
 import {
   applyRewardFilters,
@@ -50,13 +44,22 @@ import {
   REWARD_GROUP_BY_AXES,
   REWARD_SORT_FIELDS,
 } from './rewardBrowserFields';
-import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
-import styles from './AdminSpinWheelConfigPage.module.css';
+import styles from './AdminRewardsPage.module.css';
 
 /** Same list as REWARDS_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const DISCOUNT_TYPES: DiscountValueType[] = ['Percentage', 'Flat'];
+
+/** A sensible starting weight per tier when an admin picks a tier in the
+ * form - only a suggestion (the weight field stays freely editable). */
+const SUGGESTED_WEIGHT: Record<RarityTier, number> = {
+  Common: 40,
+  Uncommon: 20,
+  Rare: 10,
+  Epic: 5,
+  Legendary: 2,
+};
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -66,32 +69,46 @@ const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
   { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
-/** Admin config for the coupon spin wheel (session 86): the
- * milestone/spend/pity thresholds, and CRUD on the reward pool - each
- * reward's %/flat amount and its rarity %, which the active set must sum to
- * 100 (enforced authoritatively by a deferred DB trigger; this page also
- * shows a live running sum as a client-side guard). */
-export function AdminSpinWheelConfigPage() {
+function rewardValueLabel(reward: SpinWheelReward): string {
+  return reward.discount_type === 'Percentage'
+    ? `${reward.value}% off`
+    : `PHP ${reward.value} off`;
+}
+
+function poolsLabel(reward: SpinWheelReward): string {
+  const pools = reward.pools ?? [];
+  if (pools.length === 0) return 'Not in any pool';
+  return pools.map((pool) => pool.name).join(', ');
+}
+
+/**
+ * Settings > Promos & Rewards > Rewards (session 114; was the Coupon Spin
+ * Wheel subpage from session 86). The reward catalog every reward pool picks
+ * from. Each reward has a rarity tier and a free weight - its actual %
+ * chance is worked out per pool (weight / total weight of the pool's active
+ * rewards), so adding or switching off a reward never requires rebalancing
+ * the others. Trigger conditions and pity now live on each spin-wheel promo
+ * (Promos tab), and pools on the Reward Pools tab.
+ */
+export function AdminRewardsPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
-  const [config, setConfig] = useState<SpinWheelConfig | null>(null);
   const [rewards, setRewards] = useState<SpinWheelReward[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  const [milestoneInterval, setMilestoneInterval] = useState('');
-  const [spendThreshold, setSpendThreshold] = useState('');
-  const [pityThreshold, setPityThreshold] = useState('');
-  const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   const [rewardLabel, setRewardLabel] = useState('');
   const [rewardDiscountType, setRewardDiscountType] =
     useState<DiscountValueType>('Percentage');
   const [rewardValue, setRewardValue] = useState('');
-  const [rewardRarity, setRewardRarity] = useState('');
+  const [rewardTier, setRewardTier] = useState<RarityTier>('Common');
+  const [rewardWeight, setRewardWeight] = useState(
+    String(SUGGESTED_WEIGHT.Common)
+  );
   const [rewardFormError, setRewardFormError] = useState<string | null>(null);
   const [isSavingReward, setIsSavingReward] = useState(false);
   const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
@@ -122,97 +139,42 @@ export function AdminSpinWheelConfigPage() {
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
 
-  const refresh = () => {
-    if (!accessToken) return;
-    void Promise.all([
-      getSpinWheelConfig(accessToken),
-      listSpinWheelRewards(accessToken, true),
-    ]).then(([configResult, rewardsResult]) => {
-      setIsLoading(false);
-      if (configResult.data) {
-        setConfig(configResult.data);
-        setMilestoneInterval(
-          String(configResult.data.bookings_milestone_interval)
-        );
-        setSpendThreshold(String(configResult.data.spend_threshold_amount));
-        setPityThreshold(String(configResult.data.pity_threshold));
-      }
-      if (rewardsResult.data) setRewards(rewardsResult.data);
-    });
-  };
-
   useEffect(() => {
-    if (!isAllowedViewer) return;
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, isAllowedViewer]);
+    if (!accessToken || !isAllowedViewer) return;
 
-  const activeRewards = rewards.filter((reward) => reward.is_active);
-  const raritySum = activeRewards.reduce(
-    (sum, reward) => sum + Number(reward.rarity_percent),
-    0
-  );
-
-  const performConfigSave = useCallback(async () => {
-    if (!accessToken) return;
-
-    setIsSavingConfig(true);
-    const result = await updateSpinWheelConfig(accessToken, {
-      bookings_milestone_interval: Number(milestoneInterval),
-      spend_threshold_amount: Number(spendThreshold),
-      pity_threshold: Number(pityThreshold),
+    let isMounted = true;
+    void listSpinWheelRewards(accessToken, true).then((result) => {
+      if (!isMounted) return;
+      setIsLoading(false);
+      if (result.error || !result.data) {
+        setLoadError(result.error ?? 'Could not load rewards.');
+        return;
+      }
+      setRewards(result.data);
     });
-    setIsSavingConfig(false);
 
-    if (result.error || !result.data) {
-      const errorMessage =
-        result.error ?? 'Could not save the spin wheel settings.';
-      setMessage(errorMessage);
-      throw new Error(errorMessage);
-    }
-
-    setConfig(result.data);
-    setMessage('Spin wheel settings saved.');
-  }, [accessToken, milestoneInterval, spendThreshold, pityThreshold]);
-
-  const handleConfigDiscard = useCallback(() => {
-    if (!config) return;
-    setMessage(null);
-    setMilestoneInterval(String(config.bookings_milestone_interval));
-    setSpendThreshold(String(config.spend_threshold_amount));
-    setPityThreshold(String(config.pity_threshold));
-  }, [config]);
-
-  const isConfigDirty = useMemo(() => {
-    if (!config) return false;
-    return (
-      milestoneInterval !== String(config.bookings_milestone_interval) ||
-      spendThreshold !== String(config.spend_threshold_amount) ||
-      pityThreshold !== String(config.pity_threshold)
-    );
-  }, [config, milestoneInterval, spendThreshold, pityThreshold]);
-
-  useUnsavedChanges({
-    id: 'spin-wheel-thresholds',
-    label: 'Thresholds & pity',
-    isDirty: isConfigDirty,
-    onSave: performConfigSave,
-    onDiscard: handleConfigDiscard,
-  });
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isAllowedViewer]);
 
   const handleRewardSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!accessToken) return;
 
     const value = Number(rewardValue);
-    const rarity = Number(rewardRarity);
+    const weight = Number(rewardWeight);
 
     if (rewardLabel.trim() === '' || rewardValue === '' || value < 0) {
       setRewardFormError('A title and a non-negative value are required.');
       return;
     }
-    if (rewardRarity === '' || rarity <= 0 || rarity > 100) {
-      setRewardFormError('Rarity must be a percentage between 0 and 100.');
+    if (rewardDiscountType === 'Percentage' && value > 100) {
+      setRewardFormError('A percentage value cannot exceed 100.');
+      return;
+    }
+    if (rewardWeight === '' || !(weight > 0)) {
+      setRewardFormError('Weight must be a number greater than 0.');
       return;
     }
 
@@ -223,7 +185,8 @@ export function AdminSpinWheelConfigPage() {
       label: rewardLabel.trim(),
       discount_type: rewardDiscountType,
       value,
-      rarity_percent: rarity,
+      rarity_tier: rewardTier,
+      weight,
     };
 
     const result = editingRewardId
@@ -235,7 +198,7 @@ export function AdminSpinWheelConfigPage() {
     if (result.error || !result.data) {
       setRewardFormError(
         result.error ??
-          `Could not ${editingRewardId ? 'update' : 'create'} the reward - check the rarity total sums to 100.`
+          `Could not ${editingRewardId ? 'update' : 'create'} the reward.`
       );
       return;
     }
@@ -246,9 +209,6 @@ export function AdminSpinWheelConfigPage() {
         ? prev.map((item) => (item.id === editingRewardId ? saved : item))
         : [...prev, saved]
     );
-    setRewardLabel('');
-    setRewardValue('');
-    setRewardRarity('');
     setMessage(editingRewardId ? 'Reward updated.' : 'Reward added.');
     setIsRewardModalOpen(false);
     setEditingRewardId(null);
@@ -259,7 +219,8 @@ export function AdminSpinWheelConfigPage() {
     setRewardLabel('');
     setRewardDiscountType('Percentage');
     setRewardValue('');
-    setRewardRarity('');
+    setRewardTier('Common');
+    setRewardWeight(String(SUGGESTED_WEIGHT.Common));
     setRewardFormError(null);
     setIsRewardModalOpen(true);
   }
@@ -269,7 +230,8 @@ export function AdminSpinWheelConfigPage() {
     setRewardLabel(reward.label);
     setRewardDiscountType(reward.discount_type);
     setRewardValue(String(reward.value));
-    setRewardRarity(String(reward.rarity_percent));
+    setRewardTier(reward.rarity_tier);
+    setRewardWeight(String(reward.weight));
     setRewardFormError(null);
     setIsRewardModalOpen(true);
   }
@@ -280,6 +242,15 @@ export function AdminSpinWheelConfigPage() {
     setRewardFormError(null);
   }
 
+  function handleTierChange(tier: RarityTier) {
+    // Only nudge the weight while it still holds the previous tier's
+    // suggestion - never overwrite a number the admin typed themselves.
+    if (rewardWeight === String(SUGGESTED_WEIGHT[rewardTier])) {
+      setRewardWeight(String(SUGGESTED_WEIGHT[tier]));
+    }
+    setRewardTier(tier);
+  }
+
   const handleToggleActive = async (reward: SpinWheelReward) => {
     if (!accessToken) return;
 
@@ -288,10 +259,7 @@ export function AdminSpinWheelConfigPage() {
     });
 
     if (result.error || !result.data) {
-      setMessage(
-        result.error ??
-          'Could not update the reward - check the rarity total sums to 100.'
-      );
+      setMessage(result.error ?? 'Could not update the reward.');
       return;
     }
 
@@ -300,6 +268,7 @@ export function AdminSpinWheelConfigPage() {
         item.id === reward.id ? (result.data as SpinWheelReward) : item
       )
     );
+    setMessage(reward.is_active ? 'Reward deactivated.' : 'Reward activated.');
   };
 
   const handleArchive = async (reward: SpinWheelReward) => {
@@ -352,12 +321,6 @@ export function AdminSpinWheelConfigPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
-  function rewardValueLabel(reward: SpinWheelReward): string {
-    return reward.discount_type === 'Percentage'
-      ? `${reward.value}%`
-      : `PHP ${reward.value}`;
-  }
-
   function renderRewardActions(reward: SpinWheelReward) {
     return (
       <span className={styles.rewardActions}>
@@ -386,20 +349,17 @@ export function AdminSpinWheelConfigPage() {
   const rewardColumns: DataTableColumn<SpinWheelReward>[] = [
     { id: 'label', header: 'Title', render: (reward) => reward.label },
     {
-      id: 'discountType',
-      header: 'Discount type',
-      render: (reward) => reward.discount_type,
-    },
-    {
-      id: 'value',
-      header: 'Value',
-      render: (reward) => rewardValueLabel(reward),
-    },
-    {
       id: 'rarity',
       header: 'Rarity',
-      render: (reward) => `${reward.rarity_percent}%`,
+      render: (reward) => <RarityBadge tier={reward.rarity_tier} />,
     },
+    { id: 'weight', header: 'Weight', render: (reward) => reward.weight },
+    {
+      id: 'value',
+      header: 'Reward',
+      render: (reward) => rewardValueLabel(reward),
+    },
+    { id: 'pools', header: 'Pools', render: (reward) => poolsLabel(reward) },
     {
       id: 'status',
       header: 'Status',
@@ -410,10 +370,18 @@ export function AdminSpinWheelConfigPage() {
   function renderRewardCard(reward: SpinWheelReward) {
     return (
       <>
-        <span>
-          {reward.label} - {rewardValueLabel(reward)} off -{' '}
-          {reward.rarity_percent}% chance
-          {reward.is_active ? '' : ' (inactive)'}
+        <span className={styles.cardMain}>
+          <span>
+            {reward.label}
+            {reward.is_active ? '' : ' (inactive)'}
+          </span>
+          <span className={styles.cardMeta}>
+            <RarityBadge tier={reward.rarity_tier} /> weight {reward.weight}
+            {' · '}
+            {rewardValueLabel(reward)}
+            {' · '}
+            {poolsLabel(reward)}
+          </span>
         </span>
         {renderRewardActions(reward)}
       </>
@@ -424,7 +392,7 @@ export function AdminSpinWheelConfigPage() {
     return (
       <main className={styles.page}>
         <p className={styles.errorBanner} role="alert">
-          Unable to load the spin wheel configuration panel.
+          Unable to load the rewards panel.
         </p>
       </main>
     );
@@ -442,10 +410,20 @@ export function AdminSpinWheelConfigPage() {
     return <Navigate to="/staff/settings" replace />;
   }
 
-  if (isLoading || !config) {
+  if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading spin wheel configuration...</p>
+        <p className={styles.copy}>Loading rewards...</p>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className={styles.page}>
+        <p className={styles.errorBanner} role="alert">
+          {loadError}
+        </p>
       </main>
     );
   }
@@ -453,7 +431,22 @@ export function AdminSpinWheelConfigPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Coupon Spin Wheel</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Rewards</h1>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={openCreateModal}
+          >
+            Add New Reward
+          </button>
+        </div>
+        <p className={styles.copy}>
+          Every reward a spin wheel can land on. Give each one a rarity and a
+          weight - a bigger weight means more likely. Its actual % chance is
+          worked out automatically inside each reward pool, so you never have to
+          make anything add up to 100%.
+        </p>
 
         {message ? (
           <p className={styles.successBanner} role="status">
@@ -461,167 +454,80 @@ export function AdminSpinWheelConfigPage() {
           </p>
         ) : null}
 
-        <section className={styles.formPanel}>
-          <h2 className={styles.sectionTitle}>Thresholds &amp; pity</h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void performConfigSave().catch(() => {
-                // message is already set and shown above - nothing else to do.
-              });
-            }}
-          >
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Grant a spin every this many completed bookings
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="1"
-                step="1"
-                value={milestoneInterval}
-                onChange={(event) => setMilestoneInterval(event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Or grant a spin when one transaction totals at least (PHP)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                value={spendThreshold}
-                onChange={(event) => setSpendThreshold(event.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Pity: guarantee the lowest-rarity reward after this many spins
-                without one
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min="1"
-                step="1"
-                value={pityThreshold}
-                onChange={(event) => setPityThreshold(event.target.value)}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={isSavingConfig}
-            >
-              {isSavingConfig ? 'Saving...' : 'Save settings'}
-            </button>
-          </form>
-        </section>
-
-        <section className={styles.formPanel}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.sectionTitle}>Reward pool</h2>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={openCreateModal}
-            >
-              Add a reward
-            </button>
+        <FilterSortBar
+          filterFields={REWARD_FILTER_FIELDS}
+          filterTiles={filterTiles}
+          onAddFilter={handleAddFilter}
+          onChangeFilter={handleChangeFilter}
+          onRemoveFilter={handleRemoveFilter}
+          sortFields={REWARD_SORT_FIELDS}
+          sortTile={sortTile}
+          onChangeSort={setSortTile}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search rewards..."
+        >
+          <div className={styles.viewControls}>
+            <ViewSwitcher
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              ariaLabel="Rewards view"
+            />
+            {view === 'board' ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Group by</span>
+                <select
+                  className={styles.input}
+                  value={groupAxisId}
+                  onChange={(event) => setGroupAxisId(event.target.value)}
+                  aria-label="Group by"
+                >
+                  {REWARD_GROUP_BY_AXES.map((axis) => (
+                    <option key={axis.id} value={axis.id}>
+                      {axis.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
-          <p
-            className={
-              raritySum === 100 ? styles.rarityOk : styles.rarityWarning
-            }
-          >
-            Active rewards' rarity adds up to {raritySum}% (must equal 100% for
-            the wheel to work).
-          </p>
+        </FilterSortBar>
 
-          <FilterSortBar
-            filterFields={REWARD_FILTER_FIELDS}
-            filterTiles={filterTiles}
-            onAddFilter={handleAddFilter}
-            onChangeFilter={handleChangeFilter}
-            onRemoveFilter={handleRemoveFilter}
-            sortFields={REWARD_SORT_FIELDS}
-            sortTile={sortTile}
-            onChangeSort={setSortTile}
-            searchValue={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Search rewards..."
-          >
-            <div className={styles.viewControls}>
-              <ViewSwitcher
-                options={VIEW_OPTIONS}
-                value={view}
-                onChange={setView}
-                ariaLabel="Reward pool view"
-              />
-              {view === 'board' ? (
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Group by</span>
-                  <select
-                    className={styles.input}
-                    value={groupAxisId}
-                    onChange={(event) => setGroupAxisId(event.target.value)}
-                    aria-label="Group by"
-                  >
-                    {REWARD_GROUP_BY_AXES.map((axis) => (
-                      <option key={axis.id} value={axis.id}>
-                        {axis.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-            </div>
-          </FilterSortBar>
-
-          {view === 'table' ? (
-            <DataTable
-              columns={rewardColumns}
-              rows={visibleRewards}
-              getRowKey={(reward) => reward.id}
-              renderRowActions={renderRewardActions}
-              emptyMessage="No rewards match this filter."
-            />
-          ) : view === 'list' ? (
-            <DataList
-              items={visibleRewards}
-              getRowKey={(reward) => reward.id}
-              renderItem={(reward) => (
-                <div className={styles.rewardRow}>
-                  {renderRewardCard(reward)}
-                </div>
-              )}
-              emptyMessage="No rewards match this filter."
-            />
-          ) : (
-            <DataBoard
-              groups={groupedRewards}
-              getRowKey={(reward) => reward.id}
-              renderCard={(reward) => (
-                <div className={styles.rewardCard}>
-                  {renderRewardCard(reward)}
-                </div>
-              )}
-              emptyColumnMessage="No rewards here."
-            />
-          )}
-        </section>
+        {view === 'table' ? (
+          <DataTable
+            columns={rewardColumns}
+            rows={visibleRewards}
+            getRowKey={(reward) => reward.id}
+            renderRowActions={renderRewardActions}
+            emptyMessage="No rewards match this filter."
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={visibleRewards}
+            getRowKey={(reward) => reward.id}
+            renderItem={(reward) => (
+              <div className={styles.rewardRow}>{renderRewardCard(reward)}</div>
+            )}
+            emptyMessage="No rewards match this filter."
+          />
+        ) : (
+          <DataBoard
+            groups={groupedRewards}
+            getRowKey={(reward) => reward.id}
+            renderCard={(reward) => (
+              <div className={styles.rewardCard}>
+                {renderRewardCard(reward)}
+              </div>
+            )}
+            emptyColumnMessage="No rewards here."
+          />
+        )}
       </div>
 
       <Modal
         isOpen={isRewardModalOpen}
-        title={editingRewardId ? 'Edit reward' : 'Add a reward'}
+        title={editingRewardId ? 'Edit reward' : 'Add New Reward'}
         onClose={closeRewardModal}
       >
         <form className={styles.form} onSubmit={handleRewardSubmit}>
@@ -632,6 +538,7 @@ export function AdminSpinWheelConfigPage() {
               type="text"
               value={rewardLabel}
               onChange={(event) => setRewardLabel(event.target.value)}
+              placeholder="e.g. 10% off your next booking"
               required
             />
           </label>
@@ -660,6 +567,7 @@ export function AdminSpinWheelConfigPage() {
               className={styles.input}
               type="number"
               min="0"
+              max={rewardDiscountType === 'Percentage' ? 100 : undefined}
               step="0.01"
               value={rewardValue}
               onChange={(event) => setRewardValue(event.target.value)}
@@ -667,17 +575,37 @@ export function AdminSpinWheelConfigPage() {
             />
           </label>
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Rarity (%)</span>
+            <span className={styles.fieldLabel}>Rarity</span>
+            <select
+              className={styles.input}
+              value={rewardTier}
+              onChange={(event) =>
+                handleTierChange(event.target.value as RarityTier)
+              }
+            >
+              {RARITY_TIERS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {tier}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Weight (chance)</span>
             <input
               className={styles.input}
               type="number"
-              min="0"
-              max="100"
+              min="0.01"
               step="0.01"
-              value={rewardRarity}
-              onChange={(event) => setRewardRarity(event.target.value)}
+              value={rewardWeight}
+              onChange={(event) => setRewardWeight(event.target.value)}
               required
             />
+            <span className={styles.hint}>
+              Bigger = more likely. A reward with weight 20 is twice as likely
+              as one with weight 10 in the same pool. The % chance is shown on
+              the Reward Pools tab.
+            </span>
           </label>
 
           {rewardFormError ? (

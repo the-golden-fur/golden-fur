@@ -92,23 +92,25 @@
   color: var(--success-color, #2e7d32);
 }
 
-.rarityOk {
-  color: var(--success-color, #2e7d32);
-  font-weight: 600;
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted-text-color, #666);
 }
 
-.rarityWarning {
-  color: var(--error-color, #b3261e);
-  font-weight: 600;
-}
-
-.rewardList {
-  list-style: none;
-  padding: 0;
-  margin: 0.5rem 0;
+.cardMain {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted-text-color, #666);
 }
 
 .rewardCard {

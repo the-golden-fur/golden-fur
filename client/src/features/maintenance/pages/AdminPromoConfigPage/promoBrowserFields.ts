@@ -18,6 +18,18 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
+const TYPE_OPTIONS = [
+  { value: 'date_range', label: 'Date range' },
+  { value: 'weekly_recurring', label: 'Weekly recurring' },
+  { value: 'spin_wheel', label: 'Coupon spin wheel' },
+];
+
+/** A spin-wheel promo has no discount of its own (session 114) - it sorts
+ * as 0 by value. */
+function promoValue(promo: Promo): number {
+  return Number(promo.value ?? 0);
+}
+
 function availableBranchIds(promo: Promo): string[] {
   return (promo.promo_branch_availability ?? [])
     .filter((row) => row.is_available)
@@ -64,7 +76,17 @@ export function buildPromoFilterFields(
       STATUS_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
   };
 
-  return [branchField, timingField, statusField];
+  const typeField: FilterField = {
+    id: 'type',
+    label: 'Type',
+    type: 'select',
+    defaultValue: 'spin_wheel',
+    options: TYPE_OPTIONS,
+    formatValue: (value) =>
+      TYPE_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
+  };
+
+  return [branchField, timingField, statusField, typeField];
 }
 
 export type PromoSortKey =
@@ -98,8 +120,8 @@ export const PROMO_COMPARATORS: Record<
 > = {
   'name-asc': (a, b) => a.name.localeCompare(b.name),
   'name-desc': (a, b) => b.name.localeCompare(a.name),
-  'value-desc': (a, b) => b.value - a.value,
-  'value-asc': (a, b) => a.value - b.value,
+  'value-desc': (a, b) => promoValue(b) - promoValue(a),
+  'value-asc': (a, b) => promoValue(a) - promoValue(b),
 };
 
 export function derivePromoSortKey(sortTile: SortTile | null): PromoSortKey {
@@ -129,9 +151,21 @@ export function applyPromoFilters(
       tile.value
     ) {
       const branchId = tile.value;
-      result = result.filter((promo) =>
-        availableBranchIds(promo).includes(branchId)
+      // Spin-wheel promos are customer-wide (no branch availability rows),
+      // so they match every branch.
+      result = result.filter(
+        (promo) =>
+          promo.promo_type === 'spin_wheel' ||
+          availableBranchIds(promo).includes(branchId)
       );
+    }
+
+    if (
+      tile.fieldId === 'type' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
+      result = result.filter((promo) => promo.promo_type === tile.value);
     }
 
     if (

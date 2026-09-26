@@ -11,6 +11,9 @@ import { NotificationBell } from '../../../../notifications/components/Notificat
 import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
 import { CreditBalanceProvider } from '../../../../credits/providers/CreditBalanceProvider';
 import { CreditBalanceIndicator } from '../../../../credits/components/CreditBalanceIndicator/CreditBalanceIndicator';
+import { SpinCreditsProvider } from '../../../../rewards/providers/SpinCreditsProvider';
+import { SpinCreditsIndicator } from '../../../../rewards/components/SpinCreditsIndicator/SpinCreditsIndicator';
+import { SpinWheelPopup } from '../../../../rewards/components/SpinWheelPopup/SpinWheelPopup';
 import { IDENTITY_CHANGED_EVENT } from '../../../../../shared/events/identityEvents';
 
 export function CustomerAuthGuard() {
@@ -154,36 +157,49 @@ export function CustomerAuthGuard() {
     return <Navigate to="/portal/mfa/verify" replace />;
   }
 
+  // Session 114: SpinCreditsProvider does the daily check-in (login-based
+  // spin triggers) and feeds both the navbar spins chip and the spin
+  // pop-up. The pop-up renders as AppShell children so it sits inside the
+  // routed shell and can open over any portal page.
   return (
     <CreditBalanceProvider>
-      <AppShell
-        role="customer"
-        brandLabel="Golden Fur"
-        identity={fullName ? { primary: fullName, photoUrl } : null}
-        sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
-        creditIndicator={<CreditBalanceIndicator />}
-        notificationBell={
-          accessToken ? (
-            <NotificationBell
-              accessToken={accessToken}
-              notificationsHref="/portal/notifications"
-            />
-          ) : null
-        }
-        composeButton={
-          accessToken ? (
-            <ComposeEntryPoint
-              accessToken={accessToken}
-              viewerRole={null}
-              isOpen={isComposeOpen}
-              onOpenChange={setIsComposeOpen}
-            />
-          ) : null
-        }
-        onContactSupport={
-          accessToken ? () => setIsComposeOpen(true) : undefined
-        }
-      />
+      <SpinCreditsProvider>
+        <AppShell
+          role="customer"
+          brandLabel="Golden Fur"
+          identity={fullName ? { primary: fullName, photoUrl } : null}
+          sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+          creditIndicator={
+            <>
+              <SpinCreditsIndicator />
+              <CreditBalanceIndicator />
+            </>
+          }
+          notificationBell={
+            accessToken ? (
+              <NotificationBell
+                accessToken={accessToken}
+                notificationsHref="/portal/notifications"
+              />
+            ) : null
+          }
+          composeButton={
+            accessToken ? (
+              <ComposeEntryPoint
+                accessToken={accessToken}
+                viewerRole={null}
+                isOpen={isComposeOpen}
+                onOpenChange={setIsComposeOpen}
+              />
+            ) : null
+          }
+          onContactSupport={
+            accessToken ? () => setIsComposeOpen(true) : undefined
+          }
+        >
+          <SpinWheelPopup />
+        </AppShell>
+      </SpinCreditsProvider>
     </CreditBalanceProvider>
   );
 }

@@ -5,7 +5,8 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import type { SpinWheelReward } from '../../rewards.types';
+import { RARITY_TIERS, type SpinWheelReward } from '../../rewards.types';
+import { tierRank } from '../../utils/rewardChance';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -16,6 +17,8 @@ const DISCOUNT_TYPE_OPTIONS = [
   { value: 'Percentage', label: 'Percentage' },
   { value: 'Flat', label: 'Flat' },
 ];
+
+const TIER_OPTIONS = RARITY_TIERS.map((tier) => ({ value: tier, label: tier }));
 
 export const REWARD_FILTER_FIELDS: FilterField[] = [
   {
@@ -37,6 +40,15 @@ export const REWARD_FILTER_FIELDS: FilterField[] = [
       DISCOUNT_TYPE_OPTIONS.find((option) => option.value === value)?.label ??
       'Any',
   },
+  {
+    id: 'tier',
+    label: 'Rarity',
+    type: 'select',
+    defaultValue: 'Common',
+    options: TIER_OPTIONS,
+    formatValue: (value) =>
+      TIER_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
+  },
 ];
 
 export type RewardSortKey =
@@ -45,7 +57,9 @@ export type RewardSortKey =
   | 'value-desc'
   | 'value-asc'
   | 'rarity-desc'
-  | 'rarity-asc';
+  | 'rarity-asc'
+  | 'weight-desc'
+  | 'weight-asc';
 
 export const REWARD_SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -68,6 +82,14 @@ export const REWARD_SORT_FIELDS: SortFieldDescriptor[] = [
     id: 'rarity',
     label: 'Rarity',
     directions: [
+      { value: 'desc', label: 'Rarest first' },
+      { value: 'asc', label: 'Most common first' },
+    ],
+  },
+  {
+    id: 'weight',
+    label: 'Weight',
+    directions: [
       { value: 'desc', label: 'High to low' },
       { value: 'asc', label: 'Low to high' },
     ],
@@ -82,8 +104,11 @@ export const REWARD_COMPARATORS: Record<
   'label-desc': (a, b) => b.label.localeCompare(a.label),
   'value-desc': (a, b) => b.value - a.value,
   'value-asc': (a, b) => a.value - b.value,
-  'rarity-desc': (a, b) => b.rarity_percent - a.rarity_percent,
-  'rarity-asc': (a, b) => a.rarity_percent - b.rarity_percent,
+  // tierRank: Legendary = 0, so "rarest first" is ascending rank.
+  'rarity-desc': (a, b) => tierRank(a.rarity_tier) - tierRank(b.rarity_tier),
+  'rarity-asc': (a, b) => tierRank(b.rarity_tier) - tierRank(a.rarity_tier),
+  'weight-desc': (a, b) => b.weight - a.weight,
+  'weight-asc': (a, b) => a.weight - b.weight,
 };
 
 export function deriveRewardSortKey(sortTile: SortTile | null): RewardSortKey {
@@ -93,6 +118,9 @@ export function deriveRewardSortKey(sortTile: SortTile | null): RewardSortKey {
   }
   if (sortTile.fieldId === 'rarity') {
     return sortTile.direction === 'asc' ? 'rarity-asc' : 'rarity-desc';
+  }
+  if (sortTile.fieldId === 'weight') {
+    return sortTile.direction === 'asc' ? 'weight-asc' : 'weight-desc';
   }
   return sortTile.direction === 'desc' ? 'label-desc' : 'label-asc';
 }
@@ -125,12 +153,26 @@ export function applyRewardFilters(
     ) {
       result = result.filter((reward) => reward.discount_type === tile.value);
     }
+
+    if (
+      tile.fieldId === 'tier' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
+      result = result.filter((reward) => reward.rarity_tier === tile.value);
+    }
   }
 
   return result;
 }
 
 export const REWARD_GROUP_BY_AXES: GroupByAxis<SpinWheelReward>[] = [
+  {
+    id: 'tier',
+    label: 'Rarity',
+    columns: [...RARITY_TIERS],
+    columnFor: (reward) => reward.rarity_tier,
+  },
   {
     id: 'status',
     label: 'Status',
