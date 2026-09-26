@@ -17,6 +17,7 @@ import { StaffDashboardPage } from './StaffDashboardPage';
 
 vi.mock('../../api/staff.api', () => ({
   getStaffProfile: vi.fn(),
+  listUnavailabilityBlocks: vi.fn(),
 }));
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
@@ -31,6 +32,7 @@ vi.mock('../../../reports/api/reports.api', () => ({
 
 vi.mock('../../../booking/api/booking.api', () => ({
   listBookings: vi.fn(),
+  listPendingCreditReviews: vi.fn(),
 }));
 
 vi.mock('../../../grooming/api/grooming.api', () => ({
@@ -39,6 +41,7 @@ vi.mock('../../../grooming/api/grooming.api', () => ({
 
 vi.mock('../../../hotel/api/hotel.api', () => ({
   listHotelStays: vi.fn(),
+  getCareLogEntries: vi.fn(),
 }));
 
 vi.mock('../../../daycare/api/daycare.api', () => ({
@@ -108,6 +111,23 @@ describe('StaffDashboardPage', () => {
   beforeEach(() => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildProfile({ role: 'Groomer' }),
+      error: null,
+    });
+    // Default (Groomer) dashboard widgets - empty queues/checklist.
+    vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
+      data: { sessions: [] },
+      error: null,
+    });
+    vi.mocked(hotelApi.listHotelStays).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [],
       error: null,
     });
   });
@@ -282,5 +302,154 @@ describe('StaffDashboardPage', () => {
         name: 'Veterinary Consultation Queue',
       })
     ).not.toBeInTheDocument();
+  });
+  it('shows Cage Occupancy, My Schedule, Customer Management, and Branch Reports for a Supervisor viewer', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Supervisor', display_name: 'Sue Pervisor' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listUnavailabilityBlocks).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(reportsApi.getCageOccupancyReport).mockResolvedValue({
+      data: [{ size: 'M', status: 'Available', cage_count: 3 }],
+      error: null,
+    });
+
+    renderDashboard('/staff/dashboard/supervisor');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Cage Occupancy' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'My Schedule' })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: 'View schedule' })
+    ).toHaveAttribute('href', '/staff/my-schedule');
+    expect(
+      screen.getByRole('link', { name: /customer management/i })
+    ).toHaveAttribute('href', '/staff/admin/customers');
+    expect(
+      screen.getByRole('link', { name: /branch reports/i })
+    ).toHaveAttribute('href', '/staff/reports/dsr');
+  });
+  it('shows the Boarding Checklist and Grooming, Hotel, and Daycare queues for a Groomer viewer', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        {
+          id: 'entry-1',
+          stay_id: 'stay-1',
+          care_type: 'Feeding',
+          scheduled_date: '2026-09-26',
+          description: 'Breakfast',
+          time_block: 'Morning',
+          status: 'Completed',
+          completed_at: null,
+          completed_by: null,
+          created_at: '2026-09-26T00:00:00.000Z',
+        },
+        {
+          id: 'entry-2',
+          stay_id: 'stay-1',
+          care_type: 'Walking',
+          scheduled_date: '2026-09-26',
+          description: 'Evening walk',
+          time_block: 'Evening',
+          status: 'Pending',
+          completed_at: null,
+          completed_by: null,
+          created_at: '2026-09-26T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderDashboard('/staff/dashboard/groomer');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Boarding Checklist' })
+    ).toBeInTheDocument();
+    expect(await screen.findByText('1 of 2')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '50'
+    );
+    expect(
+      screen.getByRole('link', { name: 'Open checklist' })
+    ).toHaveAttribute('href', '/staff/hotel/care-log');
+    expect(
+      screen.getByRole('heading', { name: 'Grooming Queue' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Hotel Queue' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Daycare Queue' })
+    ).toBeInTheDocument();
+  });
+  it('shows Transactions, My Schedule, Credit Management, and Credit Review Queue for a Cashier viewer', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Cashier', display_name: 'Cash Ier' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listUnavailabilityBlocks).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(bookingApi.listPendingCreditReviews).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        {
+          id: 'txn-1',
+          booking_id: 'booking-1',
+          booking_group_id: null,
+          customer_id: 'customer-1',
+          customer_name: 'Jane Owner',
+          branch_id: 'branch-1',
+          transaction_type: 'booking_payment',
+          payment_method: 'Cash',
+          payment_status: 'Fully Paid',
+          payment_choice: 'full',
+          total_amount: 1500,
+          misc_sale_description: null,
+          created_at: new Date().toISOString(),
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Fully Paid',
+            total_price: 1500,
+            discount_amount: 0,
+            promo_amount: 0,
+          },
+        },
+      ],
+      error: null,
+    });
+
+    renderDashboard('/staff/dashboard/cashier');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Transactions' })
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Grooming payment')).toBeInTheDocument();
+    expect(screen.getByText(/jane owner/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute(
+      'href',
+      '/staff/reports/transaction-history'
+    );
+    expect(
+      screen.getByRole('heading', { name: 'My Schedule' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /credit management/i })
+    ).toHaveAttribute('href', '/staff/credits');
+    expect(
+      screen.getByRole('heading', { name: 'Credit Review Queue' })
+    ).toBeInTheDocument();
   });
 });

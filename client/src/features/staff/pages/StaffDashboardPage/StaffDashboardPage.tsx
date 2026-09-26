@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, UserPlus } from 'lucide-react';
+import {
+  BarChart3,
+  CalendarPlus,
+  Coins,
+  UserPlus,
+  UserSearch,
+} from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../api/staff.api';
@@ -21,6 +27,9 @@ import { ReceptionistBookingsQueueWidget } from '../../components/dashboard/Rece
 import { AssessmentQueueWidget } from '../../components/dashboard/AssessmentQueueWidget/AssessmentQueueWidget';
 import { CreditReviewQueueWidget } from '../../components/dashboard/CreditReviewQueueWidget/CreditReviewQueueWidget';
 import { CageOccupancyWidget } from '../../components/dashboard/CageOccupancyWidget/CageOccupancyWidget';
+import { BoardingChecklistWidget } from '../../components/dashboard/BoardingChecklistWidget/BoardingChecklistWidget';
+import { TransactionsWidget } from '../../components/dashboard/TransactionsWidget/TransactionsWidget';
+import { MyScheduleWidget } from '../../components/dashboard/MyScheduleWidget/MyScheduleWidget';
 import {
   ROLE_TO_DASHBOARD_SLUG,
   STAFF_DASHBOARD_CONFIG,
@@ -90,6 +99,9 @@ export function StaffDashboardPage() {
   const isSuperadmin = role === 'Superadmin';
   const isVeterinarian = role === 'Veterinarian';
   const isReceptionist = role === 'Receptionist';
+  const isSupervisor = role === 'Supervisor';
+  const isGroomer = role === 'Groomer';
+  const isCashier = role === 'Cashier';
 
   useEffect(() => {
     if (!isSuperadmin) return;
@@ -222,6 +234,66 @@ export function StaffDashboardPage() {
           </div>
 
           <CageOccupancyWidget branchId={branchId} accessToken={accessToken} />
+        </div>
+      ) : isSupervisor && branchId ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.splitTop}>
+            <CageOccupancyWidget
+              branchId={branchId}
+              accessToken={accessToken}
+            />
+
+            <div className={styles.splitGrid}>
+              <div className={styles.splitWide}>
+                <MyScheduleWidget staffId={user.id} accessToken={accessToken} />
+              </div>
+              <DashboardTile
+                title="Customer Management"
+                description="Look up customers, pets, and walk-in records."
+                to="/staff/admin/customers"
+                icon={UserSearch}
+              />
+              <DashboardTile
+                title="Branch Reports"
+                description="Daily Sales Report - branch-wide performance reporting."
+                to="/staff/reports/dsr"
+                icon={BarChart3}
+              />
+            </div>
+          </div>
+        </div>
+      ) : isGroomer ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.splitTop}>
+            <BoardingChecklistWidget accessToken={accessToken} />
+
+            <div className={styles.splitGrid}>
+              <div className={styles.splitWide}>
+                <GroomingQueueWidget accessToken={accessToken} />
+              </div>
+              <HotelQueueWidget accessToken={accessToken} />
+              <DaycareQueueWidget accessToken={accessToken} />
+            </div>
+          </div>
+        </div>
+      ) : isCashier ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.splitTop}>
+            <TransactionsWidget accessToken={accessToken} />
+
+            <div className={styles.splitGrid}>
+              <div className={styles.splitWide}>
+                <MyScheduleWidget staffId={user.id} accessToken={accessToken} />
+              </div>
+              <DashboardTile
+                title="Credit Management"
+                description="Look up a customer's branch credit balance, history, and expiry."
+                to="/staff/credits"
+                icon={Coins}
+              />
+              <CreditReviewQueueWidget accessToken={accessToken} />
+            </div>
+          </div>
         </div>
       ) : null}
     </main>

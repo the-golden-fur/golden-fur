@@ -12,9 +12,10 @@
 .content {
   display: grid;
   gap: var(--space-4);
-  max-width: 64rem;
+  /* Left-aligned (not a centered max-width column) so the welcome heading
+     lines up with the full-width widget rows below it, which share the
+     same var(--space-2) side padding. */
   width: 100%;
-  margin: 0 auto;
   padding: var(--space-4) var(--space-2);
 }
 
@@ -131,6 +132,42 @@
 
 @media (max-width: 640px) {
   .receptionistQuickGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Supervisor, Groomer, and Cashier dashboard layout: same big-left / 2x2-right split
+   as .receptionistTop - one large widget on the left; on the right, a
+   2-column grid whose first item (.splitWide) spans the top row (1x2) above
+   two side-by-side widgets. Supervisor: Cage Occupancy | My Schedule over
+   Customer Management + Branch Reports. Groomer: Boarding Checklist |
+   Grooming Queue over Hotel Queue + Daycare Queue. Cashier: Transactions |
+   My Schedule over Credit Management + Credit Review Queue. */
+.splitTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.splitTop > :first-child {
+  flex: 1 1 320px;
+}
+
+.splitGrid {
+  flex: 2 1 480px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.splitWide {
+  display: grid;
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .splitGrid {
     grid-template-columns: 1fr;
   }
 }
