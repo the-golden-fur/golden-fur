@@ -10,21 +10,31 @@ import {
 import type {
   CustomerProfile,
   Pet,
-  PetType,
   PetTypeRow,
 } from '../../../customers/customer.types';
-import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   getPetConsultationHistory,
   listMyPatients,
 } from '../../api/veterinary.api';
 import type { Consultation } from '../../veterinary.types';
 import { PetHistoryTab } from '../../components/PetHistoryTab/PetHistoryTab';
+import {
+  applyPatientFilters,
+  buildPatientFilterFields,
+  derivePatientSortKey,
+  matchesPatientQuery,
+  PATIENT_COMPARATORS,
+  PATIENT_SORT_FIELDS,
+} from './myPatientsBrowserFields';
 import styles from './MyPatientsPage.module.css';
 
 /** "My Patients" is a personal roster, unlike the Consultation Queue (which
@@ -32,14 +42,6 @@ import styles from './MyPatientsPage.module.css';
  * owns the data can see it, matching the server's own requester-scoped
  * query (listVeterinarianPatients always filters by the caller's id). */
 const ALLOWED_VIEWER_ROLES = new Set(['Veterinarian']);
-
-type SortKey = 'recent' | 'pet-name';
-const SORT_OPTIONS: SortOption<SortKey>[] = [
-  { value: 'recent', label: 'Sort: Most recent visit' },
-  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
-];
-
-type PetTypeFilter = PetType | 'All';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -59,8 +61,16 @@ export function MyPatientsPage() {
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [petTypeFilter, setPetTypeFilter] = useState<PetTypeFilter>('All');
   const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
+
+  const [search, setSearch] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  // Matches this page's old useSearchAndSort default - patients have always
+  // opened sorted by most recent visit, not in raw fetch order.
+  const [sortTile, setSortTile] = useState<SortTile | null>({
+    fieldId: 'recent',
+    direction: 'desc',
+  });
 
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
   const [petHistory, setPetHistory] = useState<Consultation[]>([]);
@@ -203,31 +213,47 @@ export function MyPatientsPage() {
     });
   }, [patients, pets, owners]);
 
-  type PatientRow = (typeof rows)[number];
-
-  const {
-    search,
-    setSearch,
-    sortKey,
-    setSortKey,
-    result: searchedRows,
-  } = useSearchAndSort<PatientRow, SortKey>({
-    items: rows,
-    matchesQuery: (row, query) =>
-      row.petName.toLowerCase().includes(query) ||
-      row.ownerName.toLowerCase().includes(query),
-    comparators: {
-      recent: (a, b) =>
-        new Date(b.lastVisitAt).getTime() - new Date(a.lastVisitAt).getTime(),
-      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
-    },
-    initialSortKey: 'recent',
-  });
+  const patientFilterFields = useMemo(
+    () => buildPatientFilterFields(petTypeOptions),
+    [petTypeOptions]
+  );
 
   const visibleRows = useMemo(() => {
-    if (petTypeFilter === 'All') return searchedRows;
-    return searchedRows.filter((row) => row.petType === petTypeFilter);
-  }, [searchedRows, petTypeFilter]);
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? rows.filter((row) => matchesPatientQuery(row, query))
+      : rows;
+    const filtered = applyPatientFilters(searched, filterTiles);
+
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      PATIENT_COMPARATORS[derivePatientSortKey(sortTile)]
+    );
+  }, [rows, search, filterTiles, sortTile]);
+
+  function handleAddFilter(fieldId: string) {
+    const field = patientFilterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function buildPatientActionItems(row: {
+    petId: string;
+  }): MoreOptionsMenuItem[] {
+    return [
+      { label: 'View History', onSelect: () => selectPatient(row.petId) },
+    ];
+  }
 
   const selectedRow = rows.find((row) => row.petId === selectedPetId);
 
@@ -284,34 +310,19 @@ export function MyPatientsPage() {
           <h1 className={styles.title}>My Patients</h1>
 
           <div className={styles.toolbar}>
-            <div className={styles.filters}>
-              <SearchSortBar
-                searchValue={search}
-                onSearchChange={setSearch}
-                searchPlaceholder="Search by pet or owner..."
-                sortValue={sortKey}
-                onSortChange={setSortKey}
-                sortOptions={SORT_OPTIONS}
-              />
-
-              <label className={styles.filterField}>
-                <span className={styles.filterLabel}>Pet Type</span>
-                <select
-                  className={styles.filterSelect}
-                  value={petTypeFilter}
-                  onChange={(event) =>
-                    setPetTypeFilter(event.target.value as PetTypeFilter)
-                  }
-                >
-                  <option value="All">All types</option>
-                  {petTypeOptions.map((type) => (
-                    <option key={type.id} value={type.key}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <FilterSortBar
+              filterFields={patientFilterFields}
+              filterTiles={filterTiles}
+              onAddFilter={handleAddFilter}
+              onChangeFilter={handleChangeFilter}
+              onRemoveFilter={handleRemoveFilter}
+              sortFields={PATIENT_SORT_FIELDS}
+              sortTile={sortTile}
+              onChangeSort={setSortTile}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search by pet or owner..."
+            />
           </div>
         </div>
 
@@ -324,42 +335,33 @@ export function MyPatientsPage() {
         ) : (
           <div className={styles.layout}>
             <div className={styles.queue}>
-              {visibleRows.length === 0 ? (
-                <p className={styles.copy}>
-                  No patients match these filters. Patients appear here after
-                  you complete a consultation for them.
-                </p>
-              ) : (
-                <ul className={styles.rowList}>
-                  {visibleRows.map((row) => (
-                    <li
-                      key={row.petId}
-                      className={
-                        row.petId === selectedPetId
-                          ? styles.rowItemActive
-                          : styles.rowItem
-                      }
-                    >
-                      <div className={styles.card}>
+              <DataList
+                items={visibleRows}
+                getRowKey={(row) => row.petId}
+                emptyMessage="No patients match these filters. Patients appear here after you complete a consultation for them."
+                renderItem={(row) => (
+                  <CardContextMenu
+                    label={`Actions for ${row.petName}`}
+                    items={buildPatientActionItems(row)}
+                  >
+                    <div className={styles.rowContent}>
+                      <div
+                        className={
+                          row.petId === selectedPetId
+                            ? styles.cardActive
+                            : styles.card
+                        }
+                      >
                         <span className={styles.rowPetName}>{row.petName}</span>
                         <span className={styles.rowMeta}>{row.ownerName}</span>
                         <span className={styles.rowMeta}>
                           Last visit: {formatDate(row.lastVisitAt)}
                         </span>
                       </div>
-                      <MoreOptionsMenu
-                        label={`More options for ${row.petName}`}
-                        items={[
-                          {
-                            label: 'View History',
-                            onSelect: () => selectPatient(row.petId),
-                          },
-                        ]}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
+                    </div>
+                  </CardContextMenu>
+                )}
+              />
             </div>
 
             <div className={styles.detail}>
@@ -379,7 +381,8 @@ export function MyPatientsPage() {
                 </div>
               ) : (
                 <p className={styles.copy}>
-                  Use the ⋮ menu on a patient to view their history.
+                  Right-click (or press and hold) a patient to view their
+                  history.
                 </p>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -12,6 +12,7 @@ import {
   type PricingConfiguration,
   type PricingRuleType,
 } from '../../maintenance.types';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './PricingConfigurationPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -187,9 +188,7 @@ export function PricingConfigurationPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!accessToken || !form) {
       return;
     }
@@ -206,12 +205,12 @@ export function PricingConfigurationPage() {
       const value = Number(rule.value);
 
       if (!(value >= 0) || (rule.type === 'multiplier' && !(value > 0))) {
-        setFormError(
+        const message =
           rule.type === 'multiplier'
             ? `${label}'s multiplier must be a positive number.`
-            : `${label}'s value must be zero or more.`
-        );
-        return;
+            : `${label}'s value must be zero or more.`;
+        setFormError(message);
+        throw new Error(message);
       }
     }
 
@@ -234,16 +233,42 @@ export function PricingConfigurationPage() {
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(
-        result.error ?? 'Could not update the pricing configuration.'
-      );
-      return;
+      const message =
+        result.error ?? 'Could not update the pricing configuration.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setConfiguration(result.data);
     setForm(formStateFromConfiguration(result.data));
     setMessage('Pricing configuration updated.');
-  };
+  }, [accessToken, form]);
+
+  const handleDiscard = useCallback(() => {
+    if (!configuration) {
+      return;
+    }
+    setFormError(null);
+    setForm(formStateFromConfiguration(configuration));
+  }, [configuration]);
+
+  const isDirty = useMemo(() => {
+    if (!configuration || !form) {
+      return false;
+    }
+    return (
+      JSON.stringify(form) !==
+      JSON.stringify(formStateFromConfiguration(configuration))
+    );
+  }, [configuration, form]);
+
+  useUnsavedChanges({
+    id: 'pricing-configuration',
+    label: 'Pricing Configuration',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   if (!user?.id || !accessToken) {
     return (
@@ -312,7 +337,15 @@ export function PricingConfigurationPage() {
           </p>
         ) : null}
 
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // formError is already set and shown below - nothing else to do.
+            });
+          }}
+        >
           <RuleField
             legend="Small size"
             rule={form.sizeSmall}

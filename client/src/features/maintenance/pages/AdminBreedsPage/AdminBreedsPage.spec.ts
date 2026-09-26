@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -104,7 +104,7 @@ describe('AdminBreedsPage', () => {
     expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
   });
 
-  it('lists breeds grouped by pet type for an Admin viewer', async () => {
+  it('lists every breed in one combined table, with a Pet type badge', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },
       accessToken: 'token',
@@ -122,8 +122,92 @@ describe('AdminBreedsPage', () => {
 
     expect(await screen.findByText('Beagle')).toBeInTheDocument();
     expect(screen.getByText('Persian')).toBeInTheDocument();
-    expect(screen.getByText('Dog breeds')).toBeInTheDocument();
-    expect(screen.getByText('Cat breeds')).toBeInTheDocument();
+    // Pet type badges next to each breed (not separate "X breeds" sections).
+    expect(screen.getAllByText('Dog').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Cat').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('switches to Board view, grouped by Pet type by default', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: BREEDS,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    await screen.findByText('Beagle');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    // One column per pet type (Dog, Cat).
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Beagle')).toBeInTheDocument();
+    expect(screen.getByText('Persian')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: BREEDS,
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Beagle');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Beagle');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Beagle' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Beagle'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+  });
+
+  it('a Pet type filter tile narrows the breed list', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: BREEDS,
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Beagle');
+    expect(screen.getByText('Persian')).toBeInTheDocument();
+
+    // Pet type's default value is the first pet type option (Dog).
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pet type' }));
+
+    expect(screen.getByText('Beagle')).toBeInTheDocument();
+    expect(screen.queryByText('Persian')).not.toBeInTheDocument();
   });
 
   it('adds a new breed', async () => {
@@ -148,11 +232,14 @@ describe('AdminBreedsPage', () => {
 
     renderPage();
 
-    await screen.findByText('No dog breeds yet.');
-    fireEvent.change(screen.getByLabelText(/^name$/i), {
+    await screen.findByText('No breeds match this filter.');
+    fireEvent.click(screen.getByRole('button', { name: /^add breed$/i }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add breed' });
+    fireEvent.change(within(dialog).getByLabelText(/^name$/i), {
       target: { value: 'Poodle' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /add breed/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /add breed/i }));
 
     await vi.waitFor(() =>
       expect(createBreedAdmin).toHaveBeenCalledWith('token', {
@@ -161,6 +248,8 @@ describe('AdminBreedsPage', () => {
       })
     );
     expect(await screen.findByText('Poodle')).toBeInTheDocument();
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renames a breed', async () => {
@@ -184,7 +273,8 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /rename/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     fireEvent.change(screen.getByDisplayValue('Beagle'), {
       target: { value: 'Beagle Renamed' },
     });
@@ -216,12 +306,15 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await vi.waitFor(() =>
       expect(deleteBreedAdmin).toHaveBeenCalledWith('breed-1', 'token')
     );
-    expect(await screen.findByText('No dog breeds yet.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No breeds match this filter.')
+    ).toBeInTheDocument();
   });
 
   it('surfaces a 409 error when deleting a breed still in use', async () => {
@@ -246,7 +339,8 @@ describe('AdminBreedsPage', () => {
     renderPage();
 
     await screen.findByText('Beagle');
-    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     expect(
       await screen.findByText(/still assigned to one or more pets/i)

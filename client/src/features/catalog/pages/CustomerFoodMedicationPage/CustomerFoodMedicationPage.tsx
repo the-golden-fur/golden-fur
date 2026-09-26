@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
   archiveCustomerCatalogItem,
@@ -6,11 +7,46 @@ import {
   listCustomerCatalog,
   updateCustomerCatalogItem,
 } from '../../api/catalog.api';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import type {
   CustomerCatalogCategory,
   ProductCatalogItem,
 } from '../../catalog.types';
+import {
+  applyCustomerCatalogFilters,
+  CATEGORY_FILTER_FIELDS,
+  CUSTOMER_CATALOG_COMPARATORS,
+  CUSTOMER_CATALOG_GROUP_BY_AXES,
+  CUSTOMER_CATALOG_SORT_FIELDS,
+  deriveCustomerCatalogSortKey,
+  matchesCustomerCatalogQuery,
+} from './customerCatalogBrowserFields';
 import styles from './CustomerFoodMedicationPage.module.css';
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 /**
  * #22: a customer's own reusable food/medication "types", selectable on
@@ -21,6 +57,14 @@ import styles from './CustomerFoodMedicationPage.module.css';
  * step. `listCustomerCatalog` can still return global (owner_customer_id
  * null) rows if any exist, but every row this page's own CRUD creates is
  * always owned by the viewing customer, so all rows render as editable.
+ *
+ * Notion-style remaster (session 110): per the Ideas backlog ("combine the
+ * food items and medications into one list/table... Notion like search,
+ * filter, sort and group by... table, list and board view options"), the
+ * old two-section (Food / Medication) layout is now one combined browser -
+ * Board view grouped by Category reproduces the old sections. Rename/
+ * Remove moved from always-visible buttons to a "..." menu, matching every
+ * other admin/customer list in this rollout.
  */
 export function CustomerFoodMedicationPage() {
   const { user, accessToken } = useAuth();
@@ -34,6 +78,12 @@ export function CustomerFoodMedicationPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId] = useState(CUSTOMER_CATALOG_GROUP_BY_AXES[0].id);
+
   const loadItems = () => {
     if (!accessToken) return;
     void listCustomerCatalog(accessToken).then((result) => {
@@ -46,6 +96,43 @@ export function CustomerFoodMedicationPage() {
     loadItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? items.filter((item) => matchesCustomerCatalogQuery(item, query))
+      : items;
+    const filtered = applyCustomerCatalogFilters(searched, filterTiles);
+
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      CUSTOMER_CATALOG_COMPARATORS[deriveCustomerCatalogSortKey(sortTile)]
+    );
+  }, [items, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    CUSTOMER_CATALOG_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ??
+    null;
+  const groupedItems = useGroupBy(
+    visibleItems,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = CATEGORY_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   if (!user?.id || !accessToken) {
     return (
@@ -109,73 +196,88 @@ export function CustomerFoodMedicationPage() {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
-  const renderSection = (category: CustomerCatalogCategory, label: string) => {
-    const sectionItems = items.filter((item) => item.category === category);
+  function startEditing(item: ProductCatalogItem) {
+    setEditingId(item.id);
+    setEditingName(item.name);
+  }
+
+  function renderItemActions(item: ProductCatalogItem) {
+    if (editingId === item.id) {
+      return (
+        <div className={styles.itemActions}>
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => void handleRename(item.id)}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => setEditingId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
 
     return (
-      <section className={styles.panel}>
-        <h2 className={styles.sectionTitle}>{label}</h2>
-        {sectionItems.length === 0 ? (
-          <p className={styles.copy}>No {label.toLowerCase()} types yet.</p>
-        ) : (
-          <ul className={styles.itemList}>
-            {sectionItems.map((item) => (
-              <li key={item.id} className={styles.item}>
-                {editingId === item.id ? (
-                  <>
-                    <input
-                      className={styles.input}
-                      value={editingName}
-                      onChange={(event) => setEditingName(event.target.value)}
-                    />
-                    <div className={styles.itemActions}>
-                      <button
-                        type="button"
-                        className={styles.linkButton}
-                        onClick={() => void handleRename(item.id)}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.linkButton}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className={styles.itemName}>{item.name}</span>
-                    <div className={styles.itemActions}>
-                      <button
-                        type="button"
-                        className={styles.linkButton}
-                        onClick={() => {
-                          setEditingId(item.id);
-                          setEditingName(item.name);
-                        }}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.linkButton}
-                        onClick={() => void handleRemove(item.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <MoreOptionsMenu
+        label={`Actions for ${item.name}`}
+        items={[
+          { label: 'Rename', onSelect: () => startEditing(item) },
+          { label: 'Remove', onSelect: () => void handleRemove(item.id) },
+        ]}
+      />
     );
-  };
+  }
+
+  const columns: DataTableColumn<ProductCatalogItem>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (item) =>
+        editingId === item.id ? (
+          <input
+            className={styles.input}
+            value={editingName}
+            onChange={(event) => setEditingName(event.target.value)}
+          />
+        ) : (
+          <span className={styles.itemName}>{item.name}</span>
+        ),
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      render: (item) => (item.category === 'food' ? 'Food' : 'Medication'),
+    },
+  ];
+
+  function renderItemContent(item: ProductCatalogItem) {
+    return (
+      <>
+        {editingId === item.id ? (
+          <input
+            className={styles.input}
+            value={editingName}
+            onChange={(event) => setEditingName(event.target.value)}
+          />
+        ) : (
+          <span className={styles.itemName}>
+            {item.name} ({item.category === 'food' ? 'Food' : 'Medication'})
+          </span>
+        )}
+        {renderItemActions(item)}
+      </>
+    );
+  }
+
+  function renderItemRow(item: ProductCatalogItem) {
+    return <div className={styles.rowContent}>{renderItemContent(item)}</div>;
+  }
 
   return (
     <main className={styles.page}>
@@ -195,10 +297,56 @@ export function CustomerFoodMedicationPage() {
       {isLoading ? (
         <p className={styles.copy}>Loading...</p>
       ) : (
-        <>
-          {renderSection('food', 'Food')}
-          {renderSection('medication', 'Medication')}
-        </>
+        <section className={styles.panel}>
+          <h2 className={styles.sectionTitle}>Your types</h2>
+
+          <FilterSortBar
+            filterFields={CATEGORY_FILTER_FIELDS}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddFilter}
+            onChangeFilter={handleChangeFilter}
+            onRemoveFilter={handleRemoveFilter}
+            sortFields={CUSTOMER_CATALOG_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search your types..."
+          >
+            <ViewSwitcher
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              ariaLabel="Food and medication view"
+            />
+          </FilterSortBar>
+
+          {view === 'table' ? (
+            <DataTable
+              columns={columns}
+              rows={visibleItems}
+              getRowKey={(item) => item.id}
+              renderRowActions={renderItemActions}
+              emptyMessage="No types match this filter."
+            />
+          ) : view === 'list' ? (
+            <DataList
+              items={visibleItems}
+              getRowKey={(item) => item.id}
+              renderItem={renderItemRow}
+              emptyMessage="No types match this filter."
+            />
+          ) : (
+            <DataBoard
+              groups={groupedItems}
+              getRowKey={(item) => item.id}
+              renderCard={(item) => (
+                <div className={styles.item}>{renderItemContent(item)}</div>
+              )}
+              emptyColumnMessage="No types here."
+            />
+          )}
+        </section>
       )}
 
       <section className={styles.panel}>

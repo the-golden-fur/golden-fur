@@ -7,6 +7,7 @@ import {
   Maximize2,
   Shield,
   SlidersHorizontal,
+  TriangleAlert,
   UserCog,
   UserRound,
   Wrench,
@@ -21,6 +22,7 @@ import {
 } from '../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { useResizableWidth } from '../../shared/hooks/useResizableWidth/useResizableWidth';
 import { useSidebarCollapse } from '../../shared/hooks/useSidebarCollapse/useSidebarCollapse';
+import { useUnsavedChangesContext } from '../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import type { ThemeRole } from '../../shared/providers/ThemeProvider/themeContext';
 import type { MfaStatusResponse } from '../../shared/auth/mfa.types';
 import { ProfileTab } from './tabs/ProfileTab';
@@ -28,7 +30,12 @@ import { PreferencesTab } from './tabs/PreferencesTab';
 import { AccountTab } from './tabs/AccountTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { ConfigTab } from './tabs/ConfigTab';
-import { CONFIG_TILES, SYSTEM_CONFIG_TILE } from './configTiles.config';
+import { DangerTab } from './tabs/DangerTab';
+import {
+  BRANCHES_TILE,
+  CONFIG_TILES,
+  HIDDEN_CONFIG_TILES,
+} from './configTiles.config';
 import styles from './SettingsPage.module.css';
 
 interface SettingsPageProps {
@@ -40,7 +47,8 @@ type SettingsTab =
   | 'preferences'
   | 'account'
   | 'security'
-  | 'config';
+  | 'config'
+  | 'danger';
 
 type SidebarSortMode = 'custom' | 'alphabetical' | 'recent';
 
@@ -50,6 +58,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   account: 'Account',
   security: 'Security',
   config: 'Config',
+  danger: 'Danger',
 };
 
 const TAB_ICONS: Record<SettingsTab, LucideIcon> = {
@@ -58,6 +67,7 @@ const TAB_ICONS: Record<SettingsTab, LucideIcon> = {
   account: UserCog,
   security: Shield,
   config: Wrench,
+  danger: TriangleAlert,
 };
 
 const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
@@ -195,14 +205,30 @@ function applyCustomOrder<T extends string>(ids: T[], order: T[] | null): T[] {
  * the same failure mode as `useSearchParams`, not a fix for it). Plain
  * `useState` is immune to any of that: it isn't tied to the URL at all, so
  * Settings no longer supports deep-linking to a specific tab.
+ *
+ * Custom change (unsaved changes): AppShell mounts one UnsavedChangesProvider
+ * for the whole authenticated shell (shared with Navbar, so leaving Settings
+ * via the brand link or Sign Out can be guarded too, not just in-page tab
+ * switches) - setActiveTab/selectConfigTile/closeSettings below all route
+ * through guardIfDirty so switching tabs/tiles or leaving Settings while a
+ * form is dirty prompts Save/Discard/Cancel first.
  */
 export function SettingsPage({ role }: SettingsPageProps) {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
+  const unsavedChanges = useUnsavedChangesContext();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeTab, setActiveTabState] = useState<SettingsTab>('profile');
   const [configTarget, setConfigTarget] = useState<string | null>(null);
+  /** Extra props for whichever Config tile is active - e.g. Branches' own
+   * "Configure" row action pre-scoping Policies to one branch. Set via
+   * selectConfigTile's second argument, cleared whenever a tile is
+   * selected without one so a stale branch scope doesn't leak into the
+   * next tile switched to. */
+  const [pendingConfigProps, setPendingConfigProps] = useState<
+    Record<string, unknown> | undefined
+  >(undefined);
   const {
     collapsed: dashboardSidebarCollapsed,
     setCollapsed: setDashboardSidebarCollapsed,
@@ -272,61 +298,92 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const isSuperadmin = status?.role === 'Superadmin';
 
   const configTiles = useMemo(
-    () => (isSuperadmin ? [...CONFIG_TILES, SYSTEM_CONFIG_TILE] : CONFIG_TILES),
+    () => (isSuperadmin ? [...CONFIG_TILES, BRANCHES_TILE] : CONFIG_TILES),
     [isSuperadmin]
   );
 
-  const tabs: SettingsTab[] = useMemo(
-    () =>
-      isAdmin
-        ? ['profile', 'preferences', 'account', 'security', 'config']
-        : ['profile', 'preferences', 'account', 'security'],
-    [isAdmin]
-  );
+  const tabs: SettingsTab[] = useMemo(() => {
+    if (role === 'customer') {
+      return ['profile', 'preferences', 'account', 'security', 'danger'];
+    }
+    return isAdmin
+      ? ['profile', 'preferences', 'account', 'security', 'config']
+      : ['profile', 'preferences', 'account', 'security'];
+  }, [role, isAdmin]);
 
+  // Falls back to HIDDEN_CONFIG_TILES (e.g. Policies) so a tile that isn't
+  // listed in the sidebar/ConfigTab grid can still be navigated to directly
+  // (Branches' own "Configure" row action) and rendered inline here.
+  // Deliberately NOT folded into the `configTiles` memo above - that memo
+  // also drives the visible sidebar sub-items list (orderedConfigTiles,
+  // below), so adding a hidden tile there would leak it back into view.
   const activeConfigTile =
     activeTab === 'config' && configTarget
-      ? configTiles.find((tile) => tile.to === configTarget)
+      ? (configTiles.find((tile) => tile.to === configTarget) ??
+        HIDDEN_CONFIG_TILES.find((tile) => tile.to === configTarget))
       : undefined;
 
+  // Tab/tile switching goes through guardIfDirty - each callback below
+  // builds the actual state change as a plain function, then either runs it
+  // immediately (nothing dirty, or no provider in the tree) or hands it to
+  // guardIfDirty, which only runs it once the "unsaved changes" prompt is
+  // resolved with Save or Discard (never on Cancel).
   const setActiveTab = useCallback(
     (tab: SettingsTab) => {
-      setActiveTabState(tab);
-      setConfigTarget(null);
+      const applyTabChange = () => {
+        setActiveTabState(tab);
+        setConfigTarget(null);
+        setPendingConfigProps(undefined);
 
-      const nextRecent = { ...recentMap, [tab]: Date.now() };
-      setRecentMap(nextRecent);
-      try {
-        window.localStorage.setItem(
-          `settings-sidebar-recent-${role}`,
-          JSON.stringify(nextRecent)
-        );
-      } catch {
-        // best-effort only
-      }
-    },
-    [recentMap, role]
-  );
-
-  const selectConfigTile = useCallback(
-    (to: string | null) => {
-      setActiveTabState('config');
-      setConfigTarget(to);
-
-      if (to) {
-        const nextRecent = { ...configRecentMap, [to]: Date.now() };
-        setConfigRecentMap(nextRecent);
+        const nextRecent = { ...recentMap, [tab]: Date.now() };
+        setRecentMap(nextRecent);
         try {
           window.localStorage.setItem(
-            `settings-config-recent-${role}`,
+            `settings-sidebar-recent-${role}`,
             JSON.stringify(nextRecent)
           );
         } catch {
           // best-effort only
         }
+      };
+
+      if (unsavedChanges) {
+        unsavedChanges.guardIfDirty(applyTabChange);
+      } else {
+        applyTabChange();
       }
     },
-    [configRecentMap, role]
+    [recentMap, role, unsavedChanges]
+  );
+
+  const selectConfigTile = useCallback(
+    (to: string | null, props?: Record<string, unknown>) => {
+      const applyConfigTarget = () => {
+        setActiveTabState('config');
+        setConfigTarget(to);
+        setPendingConfigProps(props);
+
+        if (to) {
+          const nextRecent = { ...configRecentMap, [to]: Date.now() };
+          setConfigRecentMap(nextRecent);
+          try {
+            window.localStorage.setItem(
+              `settings-config-recent-${role}`,
+              JSON.stringify(nextRecent)
+            );
+          } catch {
+            // best-effort only
+          }
+        }
+      };
+
+      if (unsavedChanges) {
+        unsavedChanges.guardIfDirty(applyConfigTarget);
+      } else {
+        applyConfigTarget();
+      }
+    },
+    [configRecentMap, role, unsavedChanges]
   );
 
   const toggleConfigExpanded = () => {
@@ -417,7 +474,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
     persistOrder(`settings-config-order-${role}`, ids);
   };
 
-  const closeSettings = () => navigate(HOME_PATH_BY_ROLE[role]);
+  const closeSettings = () => {
+    const doClose = () => navigate(HOME_PATH_BY_ROLE[role]);
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(doClose);
+    } else {
+      doClose();
+    }
+  };
 
   // Since an embedded Config page is a real, independently-routed admin
   // page (not Settings-owned content), this navigates to its own route
@@ -457,10 +521,6 @@ export function SettingsPage({ role }: SettingsPageProps) {
       <div className={styles.panelHeader}>
         <h1 className={styles.title}>Settings</h1>
         <div className={styles.panelHeaderActions}>
-          <MoreOptionsMenu
-            label="Sort settings sections"
-            items={sortMenuItems}
-          />
           {activeConfigTile ? (
             <button
               type="button"
@@ -490,6 +550,14 @@ export function SettingsPage({ role }: SettingsPageProps) {
           aria-label="Settings sections"
           aria-orientation="vertical"
         >
+          <div className={styles.sidebarListHeader}>
+            <span className={styles.sidebarListHeading}>Sections</span>
+            <MoreOptionsMenu
+              label="Sort settings sections"
+              items={sortMenuItems}
+              menuAlign="left"
+            />
+          </div>
           {orderedTabs.map((tab, index) => {
             const Icon = TAB_ICONS[tab];
             const isConfig = tab === 'config';
@@ -651,9 +719,13 @@ export function SettingsPage({ role }: SettingsPageProps) {
               onChanged={() => setRefreshKey((key) => key + 1)}
             />
           ) : null}
+          {activeTab === 'danger' && role === 'customer' ? <DangerTab /> : null}
           {activeTab === 'config' && isAdmin ? (
             activeConfigTile ? (
-              <activeConfigTile.Component />
+              <activeConfigTile.Component
+                onNavigateToConfig={selectConfigTile}
+                {...(pendingConfigProps ?? {})}
+              />
             ) : (
               <ConfigTab
                 isSuperadmin={isSuperadmin}

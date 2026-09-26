@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -7,6 +7,7 @@ import {
   updatePetWeightClassConfiguration,
 } from '../../api/maintenance.api';
 import type { PetWeightClassConfiguration } from '../../maintenance.types';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './WeightClassConfigurationPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -124,9 +125,7 @@ export function WeightClassConfigurationPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!accessToken || !form) {
       return;
     }
@@ -136,14 +135,15 @@ export function WeightClassConfigurationPage() {
     const xl = Number(form.xlMinKg);
 
     if (![m, l, xl].every((value) => Number.isFinite(value) && value > 0)) {
-      setFormError('Every cut-off must be a positive number of kilograms.');
-      return;
+      const message = 'Every cut-off must be a positive number of kilograms.';
+      setFormError(message);
+      throw new Error(message);
     }
     if (!(m < l && l < xl)) {
-      setFormError(
-        'Cut-offs must increase: M must be below L, and L below XL.'
-      );
-      return;
+      const message =
+        'Cut-offs must increase: M must be below L, and L below XL.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setIsSubmitting(true);
@@ -159,16 +159,42 @@ export function WeightClassConfigurationPage() {
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(
-        result.error ?? 'Could not update the weight class configuration.'
-      );
-      return;
+      const message =
+        result.error ?? 'Could not update the weight class configuration.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setConfiguration(result.data);
     setForm(formStateFromConfiguration(result.data));
     setMessage('Weight class configuration updated.');
-  };
+  }, [accessToken, form]);
+
+  const handleDiscard = useCallback(() => {
+    if (!configuration) {
+      return;
+    }
+    setFormError(null);
+    setForm(formStateFromConfiguration(configuration));
+  }, [configuration]);
+
+  const isDirty = useMemo(() => {
+    if (!configuration || !form) {
+      return false;
+    }
+    return (
+      JSON.stringify(form) !==
+      JSON.stringify(formStateFromConfiguration(configuration))
+    );
+  }, [configuration, form]);
+
+  useUnsavedChanges({
+    id: 'weight-class-configuration',
+    label: 'Weight Classes',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
 
   if (!user?.id || !accessToken) {
     return (
@@ -236,7 +262,15 @@ export function WeightClassConfigurationPage() {
           </p>
         ) : null}
 
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // formError is already set and shown below - nothing else to do.
+            });
+          }}
+        >
           <label className={styles.field}>
             <span className={styles.fieldLabel}>M starts at (kg)</span>
             <input

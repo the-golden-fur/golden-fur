@@ -38,6 +38,20 @@ vi.mock('../../../../credits/api/credits.api', () => ({
   listCreditBalances: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
+// Session 114: CustomerAuthGuard also mounts SpinCreditsProvider (the
+// spins navbar chip + pop-up), which self-checks-in on mount - same
+// real-relative-fetch reason as notifications/credits above.
+vi.mock('../../../../rewards/api/rewards.api', () => ({
+  checkIn: vi.fn().mockResolvedValue({
+    data: { granted: [], credits: { total: 0, byPromo: [] } },
+    error: null,
+  }),
+  getMySpinCredits: vi.fn().mockResolvedValue({
+    data: { total: 0, byPromo: [] },
+    error: null,
+  }),
+}));
+
 function createAuthValue(
   overrides: Partial<AuthContextValue>
 ): AuthContextValue {
@@ -79,6 +93,10 @@ function renderGuard(authValue: AuthContextValue, initialPath = '/portal') {
           createElement(Route, {
             path: '/portal/mfa/verify',
             element: createElement('div', null, 'MFA challenge'),
+          }),
+          createElement(Route, {
+            path: '/account-deactivated',
+            element: createElement('div', null, 'Deactivated notice'),
           })
         )
       )
@@ -238,6 +256,46 @@ describe('CustomerAuthGuard', () => {
     );
 
     expect(await screen.findByText('Customer portal')).toBeInTheDocument();
+  });
+
+  it('redirects to the deactivated-account notice page when the profile is inactive', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        id: 'user-1',
+        full_name: 'Jane Doe',
+        contact_number: null,
+        emergency_contact_name: null,
+        emergency_contact_number: null,
+        preferred_communication_channel: null,
+        account_email: 'jane@example.com',
+        primary_auth_provider: 'email',
+        facebook_id: null,
+        is_active: false,
+        archived_at: null,
+        deactivated_at: '2026-01-01T00:00:00.000Z',
+        anonymized_at: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'customer@example.com' },
+        },
+        user: { id: 'user-1', email: 'customer@example.com' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(await screen.findByText('Deactivated notice')).toBeInTheDocument();
+    expect(screen.queryByText('Customer portal')).not.toBeInTheDocument();
   });
 
   it('signs out and redirects to login when the session has no customer_profiles row (cross-role session)', async () => {

@@ -1,9 +1,8 @@
 import type { ComponentType } from 'react';
 import {
-  BadgePercent,
+  Building2,
   Calculator,
   DoorOpen,
-  Dog,
   Gift,
   Package,
   PawPrint,
@@ -11,23 +10,20 @@ import {
   Receipt,
   Scale,
   ScrollText,
-  Settings2,
   ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from '../../features/maintenance/pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from '../../features/maintenance/pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
-import { AdminPromoConfigPage } from '../../features/maintenance/pages/AdminPromoConfigPage/AdminPromoConfigPage';
-import { AdminBreedsPage } from '../../features/maintenance/pages/AdminBreedsPage/AdminBreedsPage';
-import { AdminPetTypesPage } from '../../features/maintenance/pages/AdminPetTypesPage/AdminPetTypesPage';
-import { SystemConfigurationPage } from '../../features/maintenance/pages/SystemConfigurationPage/SystemConfigurationPage';
+import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
+import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/AdminPetsPage';
+import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/BranchesPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
 import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
-import { AdminSpinWheelConfigPage } from '../../features/rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -38,8 +34,28 @@ export interface ConfigTileConfig {
    * Settings' content pane when the tile is selected (custom change:
    * "selecting a tile in admin settings > config will open it inline"),
    * and what the "Open as a full page" button navigates to once one of
-   * these is active. */
-  Component: ComponentType;
+   * these is active.
+   *
+   * Every `Component` here is a standalone routed page whose own root CSS
+   * class sets `min-height: var(--config-embed-min-height, 100vh)` rather
+   * than a bare `100vh` - SettingsPage.module.css's `.content` sets that
+   * variable to `100%` so the page fills the (shorter) embedded pane
+   * instead of forcing a full extra viewport of empty space below its
+   * content when scrolled. A new page added here (or any page it in turn
+   * wraps/embeds, e.g. a mini-navbar-subtabs page) must use the same
+   * `var(--config-embed-min-height, 100vh)` pattern from the start, or the
+   * empty-space bug reproduces for it.
+   *
+   * Typed `ComponentType<Record<string, unknown>>` rather than a bare
+   * prop-less `ComponentType` (session 87, Branches->Policies pre-scoping)
+   * since SettingsPage.tsx can now pass extra props through to whichever
+   * tile it renders (`pendingConfigProps`, set via `selectConfigTile`'s
+   * second argument) - every tile that doesn't expect any simply ignores
+   * them. A component typed with fewer/no declared props is still
+   * assignable here (TS allows a function needing fewer args where more
+   * are supplied), so every existing zero-prop tile Component below is
+   * unaffected. */
+  Component: ComponentType<Record<string, unknown>>;
 }
 
 /**
@@ -73,26 +89,20 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: WeightClassConfigurationPage,
   },
   {
-    title: 'Promos',
-    description: 'Configure time-limited promotions.',
-    to: '/staff/admin/maintenance/promos',
-    icon: BadgePercent,
-    Component: AdminPromoConfigPage,
-  },
-  {
-    title: 'Breed Management',
-    description: 'Add, rename, or remove breeds available on pet profiles.',
-    to: '/staff/admin/maintenance/breeds',
-    icon: Dog,
-    Component: AdminBreedsPage,
-  },
-  {
-    title: 'Pet Types',
+    title: 'Promos & Rewards',
     description:
-      'CRUD for pet types, plus a per-branch fixed price that overrides service/package pricing (e.g. Cat = 800 for everything).',
-    to: '/staff/admin/maintenance/pet-types',
+      'Configure promotions (including coupon spin wheels and their trigger conditions), spin-wheel rewards, and reward pools.',
+    to: '/staff/admin/maintenance/promos-and-rewards',
+    icon: Gift,
+    Component: AdminPromosAndRewardsPage,
+  },
+  {
+    title: 'Pets',
+    description:
+      'Pet types (plus a per-branch fixed price override) and breed management.',
+    to: '/staff/admin/maintenance/pets',
     icon: PawPrint,
-    Component: AdminPetTypesPage,
+    Component: AdminPetsPage,
   },
   {
     title: 'Product Catalog',
@@ -117,34 +127,50 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: MiscSaleManagementPage,
   },
   {
-    title: 'Policies',
-    description:
-      'Reschedule & new-booking notice periods, reschedule fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
-    to: '/staff/admin/maintenance/policies',
-    icon: ScrollText,
-    Component: PolicyConfigurationPage,
-  },
-  {
     title: 'Cages',
     description: 'Add, edit, delete, or mark a cage Under Maintenance.',
     to: '/staff/admin/hotel/cages',
     icon: DoorOpen,
     Component: AdminCagesPage,
   },
-  {
-    title: 'Coupon Spin Wheel',
-    description:
-      'Configure spin-wheel rewards, rarity, and the booking/spend thresholds and pity requirement that grant a spin.',
-    to: '/staff/admin/spin-wheel-config',
-    icon: Gift,
-    Component: AdminSpinWheelConfigPage,
-  },
 ];
 
-export const SYSTEM_CONFIG_TILE: ConfigTileConfig = {
-  title: 'System Configuration',
-  description: 'Branch name, address, and operating hours.',
-  to: '/staff/admin/maintenance/system-configuration',
-  icon: Settings2,
-  Component: SystemConfigurationPage,
+/**
+ * Renamed from "System Configuration" (session 87) - now a full Notion-style
+ * multi-branch browser instead of a single-branch edit form, and folds in
+ * what used to be the separate "Policies" tile (below) via each branch
+ * row's "Configure" action. Still Superadmin-only, appended conditionally
+ * to `CONFIG_TILES` (see SettingsPage.tsx) rather than living in the array
+ * itself, same as before its rename.
+ */
+export const BRANCHES_TILE: ConfigTileConfig = {
+  title: 'Branches',
+  description:
+    'Branch name, address, operating hours, and (per branch) booking policies.',
+  to: '/staff/admin/maintenance/branches',
+  icon: Building2,
+  Component: BranchesPage,
 };
+
+/**
+ * No longer a listed Config tile (folded into Branches, session 87) - kept
+ * resolvable, not listed, so a Branches row's "Configure" action can still
+ * navigate to it and have SettingsPage render it inline. Deliberately NOT
+ * added to CONFIG_TILES (would reappear in the sidebar/ConfigTab grid) -
+ * see HIDDEN_CONFIG_TILES and SettingsPage.tsx's activeConfigTile lookup.
+ * The standalone /staff/admin/maintenance/policies route (unscoped, for
+ * anyone with an old link) still renders this same PolicyConfigurationPage
+ * directly, without going through this constant at all.
+ */
+export const POLICIES_HIDDEN_TILE: ConfigTileConfig = {
+  title: 'Policies',
+  description:
+    'Reschedule & new-booking notice periods, reschedule fee, Staff Picker, lunch break, payments & downpayment, cancellation credit, credit expiry.',
+  to: '/staff/admin/maintenance/policies',
+  icon: ScrollText,
+  Component: PolicyConfigurationPage,
+};
+
+/** Resolvable-but-not-listed tiles - see POLICIES_HIDDEN_TILE's own doc
+ * comment for why this can't just live in CONFIG_TILES. */
+export const HIDDEN_CONFIG_TILES: ConfigTileConfig[] = [POLICIES_HIDDEN_TILE];

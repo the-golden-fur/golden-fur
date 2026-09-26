@@ -1,0 +1,96 @@
+.bar {
+  composes: animate-fade-in from global;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-lg);
+}
+
+.message {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--color-error-text);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.discardButton,
+.saveButton,
+.cancelButton {
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.9rem;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition:
+    filter 160ms ease,
+    border-color 160ms ease;
+}
+
+.discardButton,
+.cancelButton {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.discardButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.saveButton {
+  border: 1px solid transparent;
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.saveButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.discardButton:disabled,
+.saveButton:disabled,
+.cancelButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.confirmBody {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.confirmCopy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--lh-base);
+  font-size: var(--text-sm);
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

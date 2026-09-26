@@ -1,22 +1,23 @@
--- Custom change (coupon spin wheel + weekly-recurring promos, session 86).
+-- Custom change (coupon spin wheel + weekly-recurring promos, session 86;
+-- reward pools + spin-wheel promos, session 114).
 --
 -- Pure-SQL alternative to custom-rewards.seed.ts, for when you'd rather
 -- paste this into the Supabase SQL Editor / run it via psql than a Node
 -- script. Self-contained - every insert below is plain SQL.
 --
--- spin_wheel_config's own thresholds are NOT seeded here - that singleton
--- settings row is written directly by migration 20260913196 itself (a real
--- column DEFAULT + `insert ... default values`), the same way
--- promo_cap_configuration/pricing_configuration already do. This file only
--- seeds actual per-row reference data:
---
---   1. spin_wheel_rewards - a 5-tier starter catalog whose rarity
---      percentages sum to exactly 100 (all-or-nothing: only inserts when the
---      table is currently empty, so a partial re-run never risks landing on
---      a sum that isn't 100).
---   2. promos / promo_branch_availability - one demo weekly_recurring promo
+--   1. spin_wheel_rewards - a starter catalog with a rarity tier + weight
+--      per reward (chance = weight / total weight within a pool, so nothing
+--      has to add up to 100). Per-row: only inserts labels not present yet.
+--   2. reward_pools / reward_pool_rewards - "Standard" (the original five
+--      rewards; the pool row itself is normally created by migration
+--      20260925213) and a demo "Rare Rewards" pool (Rare/Epic/Legendary).
+--   3. promos / promo_branch_availability - one demo weekly_recurring promo
 --      ("Midweek Discount", every Tuesday/Wednesday), available at every
 --      branch.
+--   4. promos / spin_wheel_promo_settings - one demo spin_wheel promo
+--      ("Monthly Login Bonus": a 5-day login streak within a month spins the
+--      Rare Rewards pool, pity 3). No branch availability - spin-wheel
+--      promos are customer-wide.
 --
 -- Not part of one of the original M01-M14 modules, so this folder
 -- deliberately has no `mNN-` prefix - mirrors how out-of-module migrations
@@ -28,23 +29,65 @@
 -- against a database that already has these rows.
 
 -- ============================================================
--- 1. spin_wheel_rewards - 5-tier starter catalog (all-or-nothing)
+-- 1. spin_wheel_rewards - starter catalog (per-row)
 -- ============================================================
 
-insert into public.spin_wheel_rewards (label, discount_type, value, rarity_percent, is_active)
-select v.label, v.discount_type::public.discount_type, v.value, v.rarity_percent, true
+insert into public.spin_wheel_rewards (label, discount_type, value, rarity_tier, weight, is_active)
+select v.label, v.discount_type::public.discount_type, v.value, v.rarity_tier::public.reward_rarity_tier, v.weight, true
 from (
   values
-    ('5% off your next booking', 'Percentage', 5.00, 40.00),
-    ('10% off your next booking', 'Percentage', 10.00, 30.00),
-    ('15% off your next booking', 'Percentage', 15.00, 15.00),
-    ('PHP 100 off', 'Flat', 100.00, 10.00),
-    ('PHP 250 off', 'Flat', 250.00, 5.00)
-) as v(label, discount_type, value, rarity_percent)
-where not exists (select 1 from public.spin_wheel_rewards);
+    ('5% off your next booking', 'Percentage', 5.00, 'Common', 40.00),
+    ('10% off your next booking', 'Percentage', 10.00, 'Common', 30.00),
+    ('15% off your next booking', 'Percentage', 15.00, 'Uncommon', 15.00),
+    ('PHP 100 off', 'Flat', 100.00, 'Rare', 10.00),
+    ('20% off your next booking', 'Percentage', 20.00, 'Epic', 8.00),
+    ('PHP 250 off', 'Flat', 250.00, 'Legendary', 5.00)
+) as v(label, discount_type, value, rarity_tier, weight)
+where not exists (
+  select 1 from public.spin_wheel_rewards as existing
+  where existing.label = v.label
+);
 
 -- ============================================================
--- 2. Demo weekly-recurring promo (+ promo_branch_availability)
+-- 2. Reward pools + members
+-- ============================================================
+
+insert into public.reward_pools (name, description)
+select v.name, v.description
+from (
+  values
+    ('Standard', 'The original spin wheel reward list, converted automatically when reward pools were introduced.'),
+    ('Rare Rewards', 'Only the rarest rewards - for loyal, frequent visitors.')
+) as v(name, description)
+where not exists (
+  select 1 from public.reward_pools as existing
+  where existing.name = v.name and existing.archived_at is null
+);
+
+insert into public.reward_pool_rewards (reward_pool_id, spin_wheel_reward_id)
+select p.id, r.id
+from (
+  values
+    ('Standard', '5% off your next booking'),
+    ('Standard', '10% off your next booking'),
+    ('Standard', '15% off your next booking'),
+    ('Standard', 'PHP 100 off'),
+    ('Standard', 'PHP 250 off'),
+    ('Rare Rewards', 'PHP 100 off'),
+    ('Rare Rewards', '20% off your next booking'),
+    ('Rare Rewards', 'PHP 250 off')
+) as v(pool_name, reward_label)
+join public.reward_pools as p
+  on p.name = v.pool_name and p.archived_at is null
+join public.spin_wheel_rewards as r
+  on r.label = v.reward_label
+where not exists (
+  select 1 from public.reward_pool_rewards as existing
+  where existing.reward_pool_id = p.id and existing.spin_wheel_reward_id = r.id
+);
+
+-- ============================================================
+-- 3. Demo weekly-recurring promo (+ promo_branch_availability)
 -- ============================================================
 
 insert into public.promos (name, promo_type, days_of_week, discount_type, value, scope_type, is_active)
@@ -61,4 +104,27 @@ where p.name = 'Midweek Discount'
   and not exists (
     select 1 from public.promo_branch_availability as existing
     where existing.promo_id = p.id and existing.branch_id = b.id
+  );
+
+-- ============================================================
+-- 4. Demo spin-wheel promo (+ spin_wheel_promo_settings)
+-- ============================================================
+
+insert into public.promos (name, promo_type, is_active)
+select 'Monthly Login Bonus', 'spin_wheel'::public.promo_type, true
+where not exists (
+  select 1 from public.promos where name = 'Monthly Login Bonus'
+);
+
+insert into public.spin_wheel_promo_settings (
+  promo_id, reward_pool_id, pity_threshold, login_trigger, login_streak_days
+)
+select p.id, rp.id, 3, 'monthly_login_streak', 5
+from public.promos as p
+join public.reward_pools as rp
+  on rp.name = 'Rare Rewards' and rp.archived_at is null
+where p.name = 'Monthly Login Bonus'
+  and not exists (
+    select 1 from public.spin_wheel_promo_settings as existing
+    where existing.promo_id = p.id
   );

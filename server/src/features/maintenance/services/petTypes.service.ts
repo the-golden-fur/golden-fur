@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { PetTypeRow } from '../maintenance.types.ts';
 import type {
@@ -32,18 +33,28 @@ export async function listPetTypes(): Promise<PetTypeRow[]> {
   return data ?? [];
 }
 
+/**
+ * `key` is no longer client-supplied (admin backlog: it was redundant
+ * busywork alongside the auto-generated `id`, and showed up unhelpfully in
+ * the admin list) - it's generated here instead. It still does real internal
+ * work as the join point pets.pet_type, breeds.pet_type,
+ * cage_pet_types.pet_type, and pet_type_price_overrides.pet_type all use, so
+ * it can't just disappear - only its admin-facing presence does.
+ */
 export async function createPetType(
   input: CreatePetTypeInput
 ): Promise<PetTypeRow> {
   const { data, error } = await supabase
     .from('pet_types')
-    .insert({ key: input.key, name: input.name })
+    .insert({ key: randomUUID(), name: input.name })
     .select('*')
     .maybeSingle();
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      throwWithStatus(409, `A pet type with key "${input.key}" already exists`);
+      // Practically unreachable with a randomUUID() key - kept as
+      // defense-in-depth against a manual/out-of-band insert.
+      throwWithStatus(409, 'A pet type with that key already exists');
     }
     throwWithStatus(400, error.message);
   }

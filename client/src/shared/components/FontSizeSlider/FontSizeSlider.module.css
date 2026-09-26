@@ -11,7 +11,49 @@
 
 .slider {
   flex: 1;
-  accent-color: var(--color-accent-gold-primary);
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent-gold-primary) var(--slider-fill, 0%),
+    var(--color-border) var(--slider-fill, 0%)
+  );
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--color-accent-gold-primary);
+  cursor: pointer;
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent-gold-primary) var(--slider-fill, 0%),
+    var(--color-border) var(--slider-fill, 0%)
+  );
+}
+
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-accent-gold-primary);
+  cursor: pointer;
 }
 
 .currentLabel {

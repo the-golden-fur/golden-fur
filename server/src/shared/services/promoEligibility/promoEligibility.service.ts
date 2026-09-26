@@ -32,7 +32,7 @@ export function manilaDateString(date: Date = new Date()): string {
   return toManilaDate(date).toISOString().slice(0, 10);
 }
 
-export type PromoType = 'date_range' | 'weekly_recurring';
+export type PromoType = 'date_range' | 'weekly_recurring' | 'spin_wheel';
 
 export interface PromoEligibilityInput {
   is_active: boolean;
@@ -43,15 +43,28 @@ export interface PromoEligibilityInput {
 }
 
 /**
- * A date_range promo is eligible within [start_date, end_date] (either
- * bound optional). A weekly_recurring promo is eligible on any of
- * days_of_week, Manila-local, AND (if set) still within an optional overall
- * start_date/end_date campaign window on top of the day match.
+ * Session 114: a spin_wheel promo is a campaign that hands out spins, not a
+ * discount - it has no discount_type/value of its own and must never be
+ * offered or applied as one (booking-time promo list, checkout auto-apply,
+ * public catalog).
+ */
+export function isDiscountPromo(promo: { promo_type: PromoType }): boolean {
+  return promo.promo_type !== 'spin_wheel';
+}
+
+/**
+ * "Can this promo be applied as a discount right now?" A date_range promo
+ * is eligible within [start_date, end_date] (either bound optional). A
+ * weekly_recurring promo is eligible on any of days_of_week, Manila-local,
+ * AND (if set) still within an optional overall start_date/end_date
+ * campaign window on top of the day match. A spin_wheel promo is never
+ * eligible as a discount (see isDiscountPromo).
  */
 export function isPromoCurrentlyEligible(
   promo: PromoEligibilityInput,
   now: Date = new Date()
 ): boolean {
+  if (!isDiscountPromo(promo)) return false;
   if (!promo.is_active) return false;
 
   const today = manilaDateString(now);

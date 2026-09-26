@@ -515,6 +515,10 @@ export const updatePolicyValidator = z
     care_log_daily_report_enabled: z.boolean().optional(),
     // Manual-cancellation-credit-review custom change.
     credit_review_mode: z.enum(CREDIT_REVIEW_MODES).optional(),
+    // Settings > Danger > "Deactivate account" countdown (custom change).
+    // Customers aren't branch-scoped, so only the system-default row's
+    // value is ever actually read - see getCustomerAutoDeletePolicyDays.
+    customer_deactivation_auto_delete_days: z.number().int().min(1).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

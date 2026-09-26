@@ -1,7 +1,7 @@
 .page {
   composes: animate-fade-in from global;
   display: grid;
-  min-height: 100vh;
+  min-height: var(--config-embed-min-height, 100vh);
 }
 
 .content {
@@ -26,17 +26,6 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-}
-
-.archiveLink {
-  color: var(--color-accent-gold-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  text-decoration: none;
-}
-
-.archiveLink:hover {
-  text-decoration: underline;
 }
 
 .copy {
@@ -114,6 +103,12 @@
 .discountControls {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.viewControls {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
 }

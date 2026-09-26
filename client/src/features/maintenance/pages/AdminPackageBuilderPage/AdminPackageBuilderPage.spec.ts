@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -240,7 +246,7 @@ describe('AdminPackageBuilderPage', () => {
     expect(screen.getByText('PHP 650.00')).toBeInTheDocument();
   });
 
-  it('AC-1: branch filter narrows the list without navigating', async () => {
+  it('AC-1: a Branch filter tile narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
       data: [
         buildPackage(),
@@ -264,9 +270,14 @@ describe('AdminPackageBuilderPage', () => {
 
     expect(await screen.findByText('Golden Package')).toBeInTheDocument();
 
-    await user.selectOptions(
-      screen.getByLabelText('Branch'),
-      'branch-southwoods'
+    // Branch defaults to the first branch (Makati) - open the tile's
+    // popover and pick Southwoods instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
+    await user.click(screen.getByRole('button', { name: /Branch: Makati/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
+    await user.click(
+      within(popover).getByRole('option', { name: 'Southwoods' })
     );
 
     expect(screen.queryByText('Golden Package')).not.toBeInTheDocument();
@@ -350,7 +361,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
 
     expect(
@@ -392,7 +403,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -443,7 +454,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -487,7 +498,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -540,7 +551,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -592,7 +603,7 @@ describe('AdminPackageBuilderPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Golden Package')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -691,31 +702,34 @@ describe('AdminPackageBuilderPage', () => {
   });
 
   describe('service/package sort options (custom change)', () => {
-    it('offers a price sort alongside name for both packages and the service picker', async () => {
+    it('offers a Price sort in the package list (FilterSortBar) and the service picker (SearchSortBar)', async () => {
       renderPage();
       const user = userEvent.setup();
 
-      // Package list's own SearchSortBar renders these once, before the
-      // builder is even open.
+      // Package list's own FilterSortBar - Price appears in the Sort menu
+      // once opened.
       expect(await screen.findByText('Golden Package')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Sort' }));
+      expect(
+        screen.getByRole('menuitem', { name: 'Price · Low to high' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('menuitem', { name: 'Price · High to low' })
+      ).toBeInTheDocument();
+      await user.keyboard('{Escape}');
+
+      // The service picker's own SearchSortBar (a plain <select>, untouched
+      // by this rollout) still offers the same options once the builder is
+      // open with a branch selected.
+      await user.click(screen.getByRole('button', { name: 'New package' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+
       expect(
         screen.getByRole('option', { name: 'Price (low-high)' })
       ).toBeInTheDocument();
       expect(
         screen.getByRole('option', { name: 'Price (high-low)' })
       ).toBeInTheDocument();
-
-      // The service picker's own SearchSortBar adds a second copy of each
-      // once the builder is open with a branch selected.
-      await user.click(screen.getByRole('button', { name: 'New package' }));
-      await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
-
-      expect(
-        screen.getAllByRole('option', { name: 'Price (low-high)' })
-      ).toHaveLength(2);
-      expect(
-        screen.getAllByRole('option', { name: 'Price (high-low)' })
-      ).toHaveLength(2);
     });
   });
 
@@ -752,7 +766,7 @@ describe('AdminPackageBuilderPage', () => {
       await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
       const row = (await screen.findByText('Golden Package')).closest(
-        'li'
+        'tr'
       ) as HTMLElement;
       await user.click(
         within(row).getByRole('button', { name: 'Actions for Golden Package' })
@@ -767,5 +781,57 @@ describe('AdminPackageBuilderPage', () => {
       await user.click(screen.getByRole('button', { name: 'New package' }));
       expect(screen.getByLabelText('Package name')).toHaveValue('');
     });
+  });
+
+  it('switches to List and Board (grouped by Status by default)', async () => {
+    vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+      data: [
+        buildPackage({ is_active: true }),
+        buildPackage({
+          id: 'package-2',
+          name: 'Inactive Combo',
+          is_active: false,
+          package_branch_availability: [],
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Golden Package')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Golden Package')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per Status (Active/Inactive).
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Golden Package')).toBeInTheDocument();
+    expect(screen.getByText('Inactive Combo')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Golden Package');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Golden Package');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Golden Package' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Golden Package'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
   });
 });

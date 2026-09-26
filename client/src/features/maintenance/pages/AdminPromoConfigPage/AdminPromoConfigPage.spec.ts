@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -8,6 +14,8 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../api/maintenance.api';
+import * as rewardsApi from '../../../rewards/api/rewards.api';
+import type { RewardPool } from '../../../rewards/rewards.types';
 import type {
   Package,
   Promo,
@@ -31,6 +39,28 @@ vi.mock('../../api/maintenance.api', () => ({
   listPromoCapConfigurations: vi.fn(),
   upsertPromoCapConfiguration: vi.fn(),
 }));
+
+vi.mock('../../../rewards/api/rewards.api', () => ({
+  listRewardPools: vi.fn(),
+}));
+
+const REWARD_POOLS: RewardPool[] = [
+  {
+    id: 'pool-standard',
+    name: 'Standard',
+    description: null,
+    is_active: true,
+    archived_at: null,
+    created_by: null,
+    updated_by: null,
+    created_at: '',
+    updated_at: '',
+    rewards: [],
+    active_reward_count: 5,
+    rarest_tier: 'Legendary',
+    promos: [],
+  },
+];
 
 const BRANCHES = [
   { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
@@ -207,6 +237,10 @@ describe('AdminPromoConfigPage', () => {
       data: CAP_CONFIGURATIONS,
       error: null,
     });
+    vi.mocked(rewardsApi.listRewardPools).mockResolvedValue({
+      data: REWARD_POOLS,
+      error: null,
+    });
   });
 
   it('AC-5: redirects a non-Admin/Superadmin role to /staff/settings', async () => {
@@ -227,7 +261,9 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('15% off')).toBeInTheDocument();
     expect(screen.getByText('2026-08-01 to 2026-08-31')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    // "Active" also appears in the default "Status: Active" filter pill now
+    // - at least one match (the card's own badge) is the right bar.
+    expect(screen.getAllByText('Active').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
@@ -305,7 +341,7 @@ describe('AdminPromoConfigPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('branch filter narrows the list without navigating', async () => {
+  it('a Branch filter tile narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         buildPromo(),
@@ -330,9 +366,14 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(await screen.findByText('Makati Only Deal')).toBeInTheDocument();
 
-    await user.selectOptions(
-      screen.getByLabelText('Branch'),
-      'branch-southwoods'
+    // Branch defaults to the first branch (Makati) - open the tile's
+    // popover and pick Southwoods instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
+    await user.click(screen.getByRole('button', { name: /Branch: Makati/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
+    await user.click(
+      within(popover).getByRole('option', { name: 'Southwoods' })
     );
 
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
@@ -351,13 +392,13 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('Winter Deal')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Search'), 'winter');
+    await user.type(screen.getByPlaceholderText('Search promos...'), 'winter');
 
     expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     expect(screen.getByText('Winter Deal')).toBeInTheDocument();
   });
 
-  it('the timing filter narrows to Ended promos', async () => {
+  it('a Timing filter tile narrows to Ended promos', async () => {
     vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
       data: [
         // Far-future end date so "Summer Sale" is never itself Ended,
@@ -379,7 +420,13 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
     expect(screen.getByText('Old Deal')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Timing'), 'Ended');
+    // Timing defaults to the first option (Upcoming) - open the tile's
+    // popover and pick Ended instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Timing' }));
+    await user.click(screen.getByRole('button', { name: /Timing: Upcoming/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Timing filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Ended' }));
 
     expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     expect(screen.getByText('Old Deal')).toBeInTheDocument();
@@ -480,6 +527,92 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('25% off')).toBeInTheDocument();
   });
 
+  it('Gallery is the default view, and Table/List are available alongside it', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('Summer Sale')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('15% off')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Summer Sale').closest('ul')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Gallery' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+  });
+
+  it('Table view: the status toggle and "..." actions work the same as Gallery', async () => {
+    vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
+      data: buildPromo({ is_active: false }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+
+    await user.click(
+      screen.getByRole('switch', { name: 'Disable Summer Sale' })
+    );
+
+    await waitFor(() => {
+      expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
+        'promo-1',
+        'token',
+        { is_active: false }
+      );
+    });
+  });
+
+  it('List view: name, timing, value, window, and status all show', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'List' }));
+
+    const list = screen.getByText('Summer Sale').closest('ul') as HTMLElement;
+    expect(within(list).getByText('Summer Sale')).toBeInTheDocument();
+    expect(within(list).getByText('15% off')).toBeInTheDocument();
+    expect(
+      within(list).getByText('2026-08-01 to 2026-08-31')
+    ).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: List view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
+    await user.click(screen.getByRole('button', { name: 'List' }));
+
+    const list = await screen
+      .findByText('Summer Sale')
+      .then((el) => el.closest('ul') as HTMLElement);
+
+    expect(
+      within(list).queryByRole('button', { name: 'Actions for Summer Sale' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(within(list).getByText('Summer Sale'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch Availability' })
+    ).toBeInTheDocument();
+  });
+
   it('the status toggle activates/deactivates a promo without a full page reload', async () => {
     vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
       data: buildPromo({ is_active: false }),
@@ -501,16 +634,187 @@ describe('AdminPromoConfigPage', () => {
       );
     });
 
-    // Default status filter is "Active only", so the card disappears...
+    // Default status filter is "Active only" (a pre-added Status tile), so
+    // the card disappears...
     await waitFor(() => {
       expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
     });
 
-    // ...and switching to Inactive shows it again with the Inactive badge.
-    await user.selectOptions(screen.getByLabelText('Status'), 'Inactive');
+    // ...and switching the tile to Inactive shows it again with the
+    // Inactive badge.
+    await user.click(screen.getByRole('button', { name: /Status: Active/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Status filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
+
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
+    // "Inactive" now also appears in the "Status: Inactive" pill - at least
+    // one match (the card's own badge) is the right bar.
     expect(
-      screen.getByText('Inactive', { selector: 'span' })
-    ).toBeInTheDocument();
+      screen.getAllByText('Inactive', { selector: 'span' }).length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  describe('Coupon spin wheel promo type (session 114)', () => {
+    async function openSpinWheelForm() {
+      renderPage();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'New promo' })
+      );
+      await user.click(
+        screen.getByRole('radio', { name: /Coupon spin wheel/ })
+      );
+      await user.click(screen.getByRole('button', { name: 'Next' }));
+
+      return user;
+    }
+
+    it('shows pool, triggers, and pity - and hides discount, scope, and branches', async () => {
+      await openSpinWheelForm();
+
+      expect(screen.getByLabelText('Reward pool')).toBeInTheDocument();
+      expect(
+        screen.getByRole('radiogroup', { name: 'Login condition' })
+      ).toBeInTheDocument();
+      expect(screen.getByText('Pity system')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Discount value/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Scope')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Makati' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('login conditions are mutually exclusive - picking a streak unselects daily login', async () => {
+      const user = await openSpinWheelForm();
+
+      await user.click(screen.getByRole('radio', { name: 'Daily login' }));
+      expect(screen.getByRole('radio', { name: 'Daily login' })).toBeChecked();
+
+      await user.click(
+        screen.getByRole('radio', { name: 'Monthly login streak' })
+      );
+
+      expect(
+        screen.getByRole('radio', { name: 'Monthly login streak' })
+      ).toBeChecked();
+      expect(
+        screen.getByRole('radio', { name: 'Daily login' })
+      ).not.toBeChecked();
+      expect(screen.getByLabelText('Days in a row')).toBeInTheDocument();
+    });
+
+    it('creates a spin wheel promo with its pool, triggers, and pity - no discount or branches', async () => {
+      vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
+        data: buildPromo({
+          id: 'spin-1',
+          name: 'Monthly Bonus',
+          promo_type: 'spin_wheel',
+          discount_type: null,
+          value: null,
+          scope_type: null,
+          promo_branch_availability: [],
+        }),
+        error: null,
+      });
+
+      const user = await openSpinWheelForm();
+
+      await user.type(screen.getByLabelText('Name'), 'Monthly Bonus');
+      await user.selectOptions(
+        screen.getByLabelText('Reward pool'),
+        'pool-standard'
+      );
+      // "Every 5 completed bookings" is on by default - turn it off so the
+      // login streak is the only trigger.
+      await user.click(screen.getByRole('checkbox', { name: 'Every' }));
+      await user.click(
+        screen.getByRole('radio', { name: 'Monthly login streak' })
+      );
+      await user.type(screen.getByLabelText('Days in a row'), '5');
+      await user.clear(screen.getByLabelText('Pity threshold (spins)'));
+      await user.type(screen.getByLabelText('Pity threshold (spins)'), '3');
+      await user.click(screen.getByRole('button', { name: 'Save promo' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.createPromo).toHaveBeenCalledWith('token', {
+          name: 'Monthly Bonus',
+          promo_type: 'spin_wheel',
+          spin_wheel: {
+            reward_pool_id: 'pool-standard',
+            booking_milestone_interval: null,
+            spend_threshold_amount: null,
+            login_trigger: 'monthly_login_streak',
+            login_streak_days: 5,
+            pity_threshold: 3,
+          },
+        })
+      );
+      expect(
+        await screen.findByText('Spin wheel promo created.')
+      ).toBeInTheDocument();
+    });
+
+    it('refuses to save with no trigger turned on', async () => {
+      const user = await openSpinWheelForm();
+
+      await user.type(screen.getByLabelText('Name'), 'No Triggers');
+      await user.selectOptions(
+        screen.getByLabelText('Reward pool'),
+        'pool-standard'
+      );
+      await user.click(screen.getByRole('checkbox', { name: 'Every' }));
+      await user.click(screen.getByRole('button', { name: 'Save promo' }));
+
+      expect(
+        await screen.findByText('Turn on at least one trigger condition.')
+      ).toBeInTheDocument();
+      expect(maintenanceApi.createPromo).not.toHaveBeenCalled();
+    });
+
+    it('lists a spin wheel promo by its pool and triggers, without Branch Availability', async () => {
+      vi.mocked(maintenanceApi.listPromos).mockResolvedValue({
+        data: [
+          buildPromo({
+            id: 'spin-1',
+            name: 'Loyalty Spin',
+            promo_type: 'spin_wheel',
+            start_date: null,
+            end_date: null,
+            discount_type: null,
+            value: null,
+            scope_type: null,
+            promo_branch_availability: [],
+            spin_wheel_promo_settings: {
+              promo_id: 'spin-1',
+              reward_pool_id: 'pool-standard',
+              pity_threshold: 10,
+              booking_milestone_interval: 5,
+              spend_threshold_amount: null,
+              login_trigger: 'daily_login',
+              login_streak_days: null,
+              updated_at: '',
+              reward_pools: { id: 'pool-standard', name: 'Standard' },
+            },
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Loyalty Spin')).toBeInTheDocument();
+      expect(screen.getByText('Spin wheel · Standard')).toBeInTheDocument();
+      expect(
+        screen.getByText('every 5 completed bookings, daily login')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Branch Availability' })
+      ).not.toBeInTheDocument();
+      expect(maintenanceApi.listPromos).toHaveBeenCalledWith('token', {
+        includeInactive: true,
+        includeSpinWheel: true,
+      });
+    });
   });
 });

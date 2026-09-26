@@ -7,6 +7,7 @@ import { errorHandler } from './shared/errors/errorHandler.middleware.ts';
 import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpiry.job.ts';
 import { startAppointmentReminderScheduler } from './features/notifications/services/appointmentReminder.job.ts';
 import { startCareLogDailyReportScheduler } from './features/notifications/services/careLogDailyReport.job.ts';
+import { startCustomerAutoDeleteScheduler } from './features/customers/jobs/customerAutoDelete.job.ts';
 
 const app = express();
 
@@ -60,6 +61,11 @@ if (process.env.NODE_ENV !== 'test') {
   // Per-hotel-stay care summary - hourly poll from 21:00 server time, one
   // email per stay per day instead of one-per-completed-task (Brevo quota).
   startCareLogDailyReportScheduler();
+
+  // Settings > Danger > "Deactivate account" countdown - permanently
+  // deletes (or anonymizes, if the customer has history) an account left
+  // deactivated past the admin-configured threshold.
+  startCustomerAutoDeleteScheduler();
 }
 
 export default app;

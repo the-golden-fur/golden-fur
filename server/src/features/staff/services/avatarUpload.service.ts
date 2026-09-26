@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { PRESET_AVATAR_URLS_BY_ID } from '../../../shared/config/presetAvatars.ts';
 import { ADMIN_ROLES } from '../staff.types.ts';
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
@@ -106,6 +107,58 @@ export async function uploadStaffAvatar({
     .getPublicUrl(uploadData.path);
 
   const avatarUrl = publicUrlData?.publicUrl ?? '';
+
+  const { data, error } = await supabase
+    .from('staff_profiles')
+    .update({ profile_photo_url: avatarUrl })
+    .eq('id', targetId)
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    const errorMessage = error?.message ?? 'Profile update failed';
+    const wrappedError = new Error(errorMessage);
+    (wrappedError as Error & { statusCode?: number }).statusCode = 400;
+    throw wrappedError;
+  }
+
+  return { avatarUrl };
+}
+
+interface AvatarPresetParams {
+  requesterId: string;
+  requesterRole: string;
+  targetId: string;
+  presetId: string;
+}
+
+/**
+ * "Choose preset" needs no Storage round-trip - it resolves a client-sent
+ * preset id against the server's own PRESET_AVATAR_URLS_BY_ID (never a
+ * client-supplied url directly) and stores that trusted url. Same
+ * self-or-Admin permission rule as uploadStaffAvatar above.
+ */
+export async function setStaffAvatarPreset({
+  requesterId,
+  requesterRole,
+  targetId,
+  presetId,
+}: AvatarPresetParams): Promise<AvatarUploadResult> {
+  const isSelf = requesterId === targetId;
+
+  if (!isSelf && !ADMIN_ROLES.includes(requesterRole)) {
+    const error = new Error('Forbidden');
+    (error as Error & { statusCode?: number }).statusCode = 403;
+    throw error;
+  }
+
+  const avatarUrl = PRESET_AVATAR_URLS_BY_ID[presetId];
+
+  if (!avatarUrl) {
+    const error = new Error('Unknown preset');
+    (error as Error & { statusCode?: number }).statusCode = 400;
+    throw error;
+  }
 
   const { data, error } = await supabase
     .from('staff_profiles')

@@ -746,7 +746,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     ).toBe(true);
   });
 
-  it('(d) a group where every sub-booking is Veterinary never calls the group charge RPC', async () => {
+  it('(d) a group where every sub-booking is Veterinary still calls the group charge RPC (no longer priced-during-visit-only)', async () => {
     vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
 
     queueFromResults(
@@ -821,13 +821,25 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       } as never,
     });
 
-    expect(supabase.rpc).not.toHaveBeenCalledWith(
+    expect(supabase.rpc).toHaveBeenCalledWith(
       'create_initial_booking_group_charge',
-      expect.anything()
+      {
+        p_booking_group_id: 'group-1',
+        p_scheme: 'full',
+        p_net_total: 1000,
+        p_downpayment_amount: null,
+      }
     );
   });
 
   // --- booking_group_email_mode (Brevo quota) -----------------------------
+  // "confirmed at creation" now only comes from booking_source: 'Walk-in'
+  // (Online Veterinary no longer auto-confirms - see isConfirmedAtCreation).
+  // These mocked rows carry that explicitly; the real request going through
+  // createBookingGroup (vetGroupInput below) stays Online/unvalidated-role
+  // Veterinary otherwise, since booking_group_email_mode dispatch - the
+  // thing actually under test here - only reads the (mocked) inserted row's
+  // own booking_source, not the raw request.
   function queueVetGroupConfirmedAtCreation(policy: unknown) {
     queueFromResults(
       { data: [policy], error: null }, // resolveEffectivePolicy (shared, once)
@@ -846,6 +858,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
         data: bookingRow({
           id: 'booking-g1',
           service_category: 'Veterinary',
+          booking_source: 'Walk-in',
           branch_id: 'branch-makati',
         }),
         error: null,
@@ -856,6 +869,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
         data: bookingRow({
           id: 'booking-g2',
           service_category: 'Veterinary',
+          booking_source: 'Walk-in',
           branch_id: 'branch-makati',
           scheduled_start: isoAt(hours(3)),
           scheduled_end: isoAt(hours(4)),
@@ -867,11 +881,19 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       { data: [{ id: 'booking-g1' }], error: null }, // confirmCapacityAfterInsert sub1
       { data: [{ id: 'booking-g2' }], error: null }, // confirmCapacityAfterInsert sub2
       {
-        data: bookingRow({ id: 'booking-g1', service_category: 'Veterinary' }),
+        data: bookingRow({
+          id: 'booking-g1',
+          service_category: 'Veterinary',
+          booking_source: 'Walk-in',
+        }),
         error: null,
       }, // final fetch sub1
       {
-        data: bookingRow({ id: 'booking-g2', service_category: 'Veterinary' }),
+        data: bookingRow({
+          id: 'booking-g2',
+          service_category: 'Veterinary',
+          booking_source: 'Walk-in',
+        }),
         error: null,
       } // final fetch sub2
     );

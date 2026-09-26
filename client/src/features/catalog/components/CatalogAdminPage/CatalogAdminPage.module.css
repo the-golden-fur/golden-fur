@@ -27,6 +27,12 @@
   gap: var(--space-2);
 }
 
+.titleRowActions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
 .archiveLink {
   color: var(--color-accent-gold-primary);
   font-size: var(--text-sm);
@@ -146,6 +152,13 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-2);
+}
+
+.rowMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .itemName {

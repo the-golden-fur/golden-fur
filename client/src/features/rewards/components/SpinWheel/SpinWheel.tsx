@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { SpinWheelReward } from '../../rewards.types';
+import type { WheelReward } from '../../rewards.types';
+import { formatChance } from '../../utils/rewardChance';
 import styles from './SpinWheel.module.css';
 
 const COLORS = [
@@ -13,16 +14,21 @@ const COLORS = [
 ];
 
 interface Segment {
-  reward: SpinWheelReward;
+  reward: WheelReward;
   startAngle: number;
   endAngle: number;
   color: string;
 }
 
-function buildSegments(rewards: SpinWheelReward[]): Segment[] {
+function buildSegments(rewards: WheelReward[]): Segment[] {
+  // Chances come from the server already normalized to 100, but rounding
+  // (33.33 x 3) can leave a hairline gap - scale by their own total so the
+  // slices always close the circle exactly.
+  const total =
+    rewards.reduce((sum, reward) => sum + reward.chance_percent, 0) || 1;
   let angle = 0;
   return rewards.map((reward, index) => {
-    const sweep = (reward.rarity_percent / 100) * 360;
+    const sweep = (reward.chance_percent / total) * 360;
     const segment: Segment = {
       reward,
       startAngle: angle,
@@ -53,7 +59,8 @@ function arcPath(
 }
 
 interface SpinWheelProps {
-  rewards: SpinWheelReward[];
+  /** One promo's pool, with each reward's computed chance (session 114). */
+  rewards: WheelReward[];
   /** The already-server-decided winning reward id, or null before a spin
    * result is known. The wheel's landing spot always renders THIS result -
    * it never picks its own outcome. */
@@ -66,7 +73,8 @@ const SIZE = 260;
 
 /**
  * Coupon spin wheel (session 86) - a hand-rolled SVG pie-slice wheel sized
- * by each reward's rarity_percent, since no animation library is in this
+ * by each reward's chance within the promo's reward pool (session 114:
+ * weight / total weight, computed server-side), since no animation library is in this
  * project's dependency tree (kept that way deliberately - see the session
  * plan). Spinning is a pure CSS transform/transition; the actual outcome
  * always comes from the server's spin_wheel() RPC result, passed in as
@@ -113,6 +121,14 @@ export function SpinWheel({
 
   const radius = SIZE / 2;
 
+  if (segments.length === 0) {
+    return (
+      <p className={styles.empty}>
+        This wheel has no rewards right now. Check back soon!
+      </p>
+    );
+  }
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.pointer} aria-hidden="true" />
@@ -148,7 +164,11 @@ export function SpinWheel({
               style={{ backgroundColor: segment.color }}
               aria-hidden="true"
             />
-            {segment.reward.label} ({segment.reward.rarity_percent}%)
+            {segment.reward.label}
+            <span className={styles.legendMeta}>
+              {segment.reward.rarity_tier} ·{' '}
+              {formatChance(segment.reward.chance_percent)}
+            </span>
           </li>
         ))}
       </ul>

@@ -347,4 +347,209 @@ describe('promos.service', () => {
       expect(result.id).toBe('promo-1');
     });
   });
+
+  describe('spin wheel promos (session 114)', () => {
+    const POOL_ID = '11111111-1111-4111-8111-111111111111';
+
+    const SETTINGS = {
+      promo_id: 'spin-1',
+      reward_pool_id: POOL_ID,
+      pity_threshold: 10,
+      booking_milestone_interval: 5,
+      spend_threshold_amount: null,
+      login_trigger: null,
+      login_streak_days: null,
+      updated_at: '2026-09-25T00:00:00.000Z',
+    };
+
+    const SPIN_PROMO = {
+      ...DATE_PROMO,
+      id: 'spin-1',
+      name: 'Loyalty Spin',
+      promo_type: 'spin_wheel',
+      start_date: null,
+      end_date: null,
+      discount_type: null,
+      value: null,
+      scope_type: null,
+      promo_branch_availability: [],
+      spin_wheel_promo_settings: SETTINGS,
+    };
+
+    const USABLE_POOL = {
+      id: POOL_ID,
+      is_active: true,
+      archived_at: null,
+      reward_pool_rewards: [
+        { spin_wheel_rewards: { is_active: true, archived_at: null } },
+      ],
+    };
+
+    it('listPromos excludes spin-wheel promos by default (booking + public catalogs)', async () => {
+      queueFromResults({ data: [DATE_PROMO, SPIN_PROMO], error: null });
+
+      const result = await listPromos({ includeInactive: true });
+
+      expect(result.map((promo) => promo.id)).toEqual(['promo-1']);
+    });
+
+    it('listPromos includes spin-wheel promos for the admin tab, matching any branch', async () => {
+      queueFromResults({ data: [DATE_PROMO, SPIN_PROMO], error: null });
+
+      const result = await listPromos({
+        includeInactive: true,
+        includeSpinWheel: true,
+        branchId: BRANCH_MAKATI,
+      });
+
+      expect(result.map((promo) => promo.id)).toEqual(['promo-1', 'spin-1']);
+    });
+
+    it('normalizes a single-element settings array into an object', async () => {
+      queueFromResults({
+        data: { ...SPIN_PROMO, spin_wheel_promo_settings: [SETTINGS] },
+        error: null,
+      });
+
+      const result = await getPromoById('spin-1');
+
+      expect(result.spin_wheel_promo_settings).toEqual(SETTINGS);
+    });
+
+    it('createPromo writes settings and no branch availability rows', async () => {
+      queueFromResults(
+        { data: USABLE_POOL, error: null }, // pool check
+        { data: { id: 'spin-1' }, error: null }, // insert promo
+        { data: null, error: null }, // insert settings
+        { data: SPIN_PROMO, error: null } // final fetch
+      );
+
+      const result = await createPromo({
+        requesterId: 'admin-1',
+        input: {
+          name: 'Loyalty Spin',
+          promo_type: 'spin_wheel',
+          spin_wheel: {
+            reward_pool_id: POOL_ID,
+            pity_threshold: 10,
+            booking_milestone_interval: 5,
+          },
+        },
+      });
+
+      expect(result.id).toBe('spin-1');
+      expect(supabase.from).not.toHaveBeenCalledWith(
+        'promo_branch_availability'
+      );
+      expect(builders[2].insert.mock.calls[0][0]).toEqual({
+        promo_id: 'spin-1',
+        reward_pool_id: POOL_ID,
+        pity_threshold: 10,
+        booking_milestone_interval: 5,
+        spend_threshold_amount: null,
+        login_trigger: null,
+        login_streak_days: null,
+      });
+    });
+
+    it('createPromo refuses a pool with no active rewards', async () => {
+      queueFromResults({
+        data: { ...USABLE_POOL, reward_pool_rewards: [] },
+        error: null,
+      });
+
+      await expect(
+        createPromo({
+          requesterId: 'admin-1',
+          input: {
+            name: 'Empty Spin',
+            promo_type: 'spin_wheel',
+            spin_wheel: {
+              reward_pool_id: POOL_ID,
+              booking_milestone_interval: 5,
+            },
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(supabase.from).not.toHaveBeenCalledWith('promos');
+    });
+
+    it('updatePromo rejects discount fields on a spin-wheel promo', async () => {
+      queueFromResults({ data: SPIN_PROMO, error: null });
+
+      await expect(
+        updatePromo({
+          requesterId: 'admin-1',
+          promoId: 'spin-1',
+          updates: { value: 10 },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('updatePromo re-checks the merged settings (clearing the only trigger is refused)', async () => {
+      queueFromResults({ data: SPIN_PROMO, error: null });
+
+      await expect(
+        updatePromo({
+          requesterId: 'admin-1',
+          promoId: 'spin-1',
+          updates: { spin_wheel: { booking_milestone_interval: null } },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('updatePromo upserts merged settings when switching to a login trigger', async () => {
+      queueFromResults(
+        { data: SPIN_PROMO, error: null }, // existing
+        { data: null, error: null }, // upsert settings
+        { data: SPIN_PROMO, error: null } // final fetch
+      );
+
+      await updatePromo({
+        requesterId: 'admin-1',
+        promoId: 'spin-1',
+        updates: {
+          spin_wheel: {
+            login_trigger: 'weekly_login_streak',
+            login_streak_days: 5,
+          },
+        },
+      });
+
+      expect(builders[1].upsert.mock.calls[0][0]).toMatchObject({
+        promo_id: 'spin-1',
+        reward_pool_id: POOL_ID,
+        booking_milestone_interval: 5,
+        login_trigger: 'weekly_login_streak',
+        login_streak_days: 5,
+      });
+    });
+
+    it('updatePromo refuses spin_wheel settings on a discount promo', async () => {
+      queueFromResults({ data: DATE_PROMO, error: null });
+
+      await expect(
+        updatePromo({
+          requesterId: 'admin-1',
+          promoId: 'promo-1',
+          updates: { spin_wheel: { pity_threshold: 3 } },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('setPromoBranchAvailability refuses a spin-wheel promo', async () => {
+      queueFromResults({
+        data: { id: 'spin-1', promo_type: 'spin_wheel' },
+        error: null,
+      });
+
+      await expect(
+        setPromoBranchAvailability({
+          promoId: 'spin-1',
+          branchId: BRANCH_MAKATI,
+          isAvailable: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
 });

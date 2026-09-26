@@ -1,4 +1,5 @@
-import type { Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import multer from 'multer';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
@@ -11,10 +12,16 @@ import {
   activateCustomer,
   archiveCustomer,
   deactivateCustomer,
+  deleteOrAnonymizeCustomer,
+  getCustomerAutoDeletePolicyDays,
   hardDeleteCustomer,
   listArchivedCustomers,
   restoreCustomer,
 } from './services/customerArchive.service.ts';
+import {
+  setCustomerAvatarPreset,
+  uploadCustomerAvatar,
+} from './services/avatarUpload.service.ts';
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -71,6 +78,29 @@ async function isAuthorizedForProfileLookup(
   return role !== null && PROFILE_LOOKUP_ROLES.includes(role);
 }
 
+/**
+ * GET /customers (list) is read-only, same sensitivity as
+ * PROFILE_LOOKUP_ROLES' single-record lookup above - Cashier needs it to
+ * search customers by name for the Transactions page's payer filter
+ * (TransactionHistoryTable.tsx). Deliberately its own check rather than
+ * broadening isAuthorizedStaff: that helper also gates
+ * updateCustomerProfileController (a write), which Cashier must not get.
+ * Groomer/Veterinarian are left out here (unlike PROFILE_LOOKUP_ROLES) -
+ * their use case is looking up one already-known customer from their own
+ * queue, not searching/browsing the full customer list.
+ */
+const CUSTOMER_LIST_ROLES: readonly string[] = [
+  ...CUSTOMER_MANAGER_ROLES,
+  'Cashier',
+];
+
+async function isAuthorizedForCustomerList(
+  requesterId: string
+): Promise<boolean> {
+  const role = await getStaffRoleOrNull(requesterId);
+  return role !== null && CUSTOMER_LIST_ROLES.includes(role);
+}
+
 function paramId(req: AuthenticatedRequest, name: string): string | undefined {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : value;
@@ -86,7 +116,7 @@ export async function listCustomersController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedStaff(requesterId))) {
+  if (!(await isAuthorizedForCustomerList(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -145,6 +175,17 @@ export async function getCustomerProfileController(
       return res.status(404).json({ error: 'Customer profile not found' });
     }
 
+    // Only fetched for the customer's own lookup - staff viewing another
+    // customer's profile have no use for this, and customers can't read
+    // policy_configurations directly (RLS is staff-only). The Danger tab
+    // and the deactivated-account notice page both need this number.
+    if (isSelf) {
+      const autoDeleteDays = await getCustomerAutoDeletePolicyDays();
+      return res
+        .status(200)
+        .json({ customer: data, auto_delete_policy_days: autoDeleteDays });
+    }
+
     return res.status(200).json({ customer: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
@@ -198,6 +239,85 @@ export async function updateCustomerProfileController(
   }
 }
 
+/** Same shape as staff.controller.ts's handleAvatarUploadError - kept as
+ * its own copy per-feature rather than a cross-feature import, matching
+ * this file's other small per-feature helpers (e.g. throwWithStatus in
+ * customerArchive.service.ts). */
+export function handleAvatarUploadError(
+  err: unknown,
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large' });
+    }
+
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (err) {
+    return res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : 'Upload failed' });
+  }
+
+  return next();
+}
+
+export async function uploadCustomerAvatarController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!targetId) {
+    return res.status(400).json({ error: 'Missing customer id' });
+  }
+
+  const file = req.file as
+    | {
+        buffer: Buffer;
+        mimetype: string;
+        originalname: string;
+        size: number;
+      }
+    | undefined;
+
+  // "Choose preset" sends JSON ({ preset_id }), not multipart - multer's
+  // avatarUpload.single('avatar') middleware skips non-multipart requests
+  // entirely (req.file stays undefined) rather than erroring, so both flows
+  // share this one route/controller (same shape as the staff endpoint).
+  const presetId =
+    !file && typeof req.body?.preset_id === 'string'
+      ? req.body.preset_id
+      : null;
+
+  if (!file && !presetId) {
+    return res.status(400).json({ error: 'No file or preset provided' });
+  }
+
+  try {
+    const result = file
+      ? await uploadCustomerAvatar({ requesterId, targetId, file })
+      : await setCustomerAvatarPreset({
+          requesterId,
+          targetId,
+          presetId: presetId as string,
+        });
+
+    return res.status(200).json({ profile_photo_url: result.avatarUrl });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function deactivateCustomerController(
   req: AuthenticatedRequest,
   res: Response
@@ -209,7 +329,9 @@ export async function deactivateCustomerController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedAdmin(requesterId))) {
+  const isSelf = requesterId === targetId;
+
+  if (!isSelf && !(await isAuthorizedAdmin(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -232,13 +354,46 @@ export async function activateCustomerController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedAdmin(requesterId))) {
+  const isSelf = requesterId === targetId;
+
+  if (!isSelf && !(await isAuthorizedAdmin(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
   try {
     await activateCustomer(targetId as string);
     return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Settings > Danger > "Delete account" (self-service only - staff keep
+ * using the existing archive-first DELETE /customers/:id below, which has
+ * different, stricter semantics). Runs deleteOrAnonymizeCustomer, which
+ * ends in either a real hard delete or an anonymized-in-place row
+ * depending on whether the customer has booking/transaction/credit
+ * history - see that function's doc comment.
+ */
+export async function deleteOwnAccountController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (requesterId !== targetId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const outcome = await deleteOrAnonymizeCustomer(targetId as string);
+    return res.status(200).json({ outcome });
   } catch (error) {
     return sendServiceError(res, error);
   }

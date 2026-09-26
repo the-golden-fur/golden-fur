@@ -9,9 +9,23 @@ export interface DateRangeValue {
   to: string | null;
 }
 
-/** What a single filter tile holds. A plain string for select fields, a
- * {@link DateRangeValue} for a date-range field. */
-export type FilterValue = string | DateRangeValue | null;
+/** The value stored on a `number-range` filter tile. Either bound may stay
+ * null = open-ended (e.g. only a max price set). */
+export interface NumberRangeValue {
+  min: number | null;
+  max: number | null;
+}
+
+/** What a single filter tile holds. A plain string for single-select fields,
+ * a `string[]` for {@link MultiSelectFilterField}, a {@link DateRangeValue}
+ * for a date-range field, or a {@link NumberRangeValue} for a number-range
+ * field. */
+export type FilterValue =
+  | string
+  | string[]
+  | DateRangeValue
+  | NumberRangeValue
+  | null;
 
 export interface FilterOption {
   value: string;
@@ -38,11 +52,33 @@ export interface SelectFilterField extends FilterFieldBase {
   options: FilterOption[];
 }
 
+/** Same option list as {@link SelectFilterField}, but a tile of this type
+ * holds a `string[]` and its popover stays open while multiple options are
+ * toggled - for genuinely multi-valued fields (e.g. a cage's supported pet
+ * types) where forcing a single choice would hide real matches. */
+export interface MultiSelectFilterField extends FilterFieldBase {
+  type: 'multi-select';
+  options: FilterOption[];
+}
+
 export interface DateRangeFilterField extends FilterFieldBase {
   type: 'date-range';
 }
 
-export type FilterField = SelectFilterField | DateRangeFilterField;
+/** A "between X and Y" numeric filter (e.g. price range). Either bound may
+ * be left blank. */
+export interface NumberRangeFilterField extends FilterFieldBase {
+  type: 'number-range';
+  /** Labels for the two inputs. Default to "Min"/"Max". */
+  minLabel?: string;
+  maxLabel?: string;
+}
+
+export type FilterField =
+  | SelectFilterField
+  | MultiSelectFilterField
+  | DateRangeFilterField
+  | NumberRangeFilterField;
 
 export interface FilterTile {
   fieldId: string;

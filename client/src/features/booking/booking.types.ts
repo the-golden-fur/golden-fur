@@ -667,6 +667,11 @@ export interface PolicyConfiguration {
    * staff member to approve/deny after reading the cancellation reason; the
    * notice-period outcome is not consulted in this mode. */
   credit_review_mode: CreditReviewMode;
+  /** Settings > Danger > "Deactivate account" countdown (custom change):
+   * days after deactivation with no reactivation before the account is
+   * permanently removed. NOT NULL, default 30. Customers aren't
+   * branch-scoped, so only the system-default row's value is ever read. */
+  customer_deactivation_auto_delete_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -698,6 +703,7 @@ export type EffectivePolicy = Pick<
   | 'care_log_task_email_enabled'
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
+  | 'customer_deactivation_auto_delete_days'
 >;
 
 export interface UpdatePolicyPayload {
@@ -727,6 +733,7 @@ export interface UpdatePolicyPayload {
   care_log_task_email_enabled?: boolean;
   care_log_daily_report_enabled?: boolean;
   credit_review_mode?: CreditReviewMode;
+  customer_deactivation_auto_delete_days?: number;
 }
 
 export interface StaffPreferenceInput {

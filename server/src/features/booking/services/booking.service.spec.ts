@@ -365,7 +365,7 @@ describe('booking.service (#51)', () => {
     });
   });
 
-  it('does not emit an initial charge for a Veterinary booking (priced during the visit)', async () => {
+  it('emits an initial full-payment charge for a Veterinary booking too (no longer priced-during-visit-only)', async () => {
     vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -394,9 +394,12 @@ describe('booking.service (#51)', () => {
       },
     });
 
-    expect(
-      recordedWrites.find((write) => write.table === 'transactions')
-    ).toBeUndefined();
+    expect(supabase.rpc).toHaveBeenCalledWith('create_initial_booking_charge', {
+      p_booking_id: 'booking-1',
+      p_scheme: 'full',
+      p_net_total: 500,
+      p_downpayment_amount: null,
+    });
   });
 
   it('AC-4: a Daycare booking starts Pending and holds its capacity slot immediately', async () => {
@@ -442,7 +445,7 @@ describe('booking.service (#51)', () => {
     expect(insert?.payload).toMatchObject({ status: 'Pending' });
   });
 
-  it('AC-4: Veterinary confirms without any payment gate', async () => {
+  it('AC-4: a Veterinary booking is created Pending regardless of payment_confirmed input', async () => {
     vi.mocked(getServiceById).mockResolvedValue(VET_SERVICE);
     queueFromResults(
       { data: PET, error: null }, // pet ownership
@@ -1249,26 +1252,23 @@ describe('booking.service (#51)', () => {
       );
     });
 
-    it('startBooking: allows a Veterinary Online booking with no payment yet (priced during the visit)', async () => {
-      queueFromResults(
-        {
-          data: {
-            ...INSERTED_BOOKING,
-            status: 'Pending',
-            booking_source: 'Online',
-            service_category: 'Veterinary',
-            payment_status: 'Pending',
-          },
-          error: null,
-        }, // load
-        {
-          data: { ...INSERTED_BOOKING, status: 'In Progress' },
-          error: null,
-        } // update
-      );
+    it('startBooking: rejects an unpaid Veterinary Online booking too (no longer exempt from the payment gate)', async () => {
+      queueFromResults({
+        data: {
+          ...INSERTED_BOOKING,
+          status: 'Pending',
+          booking_source: 'Online',
+          service_category: 'Veterinary',
+          payment_status: 'Pending',
+        },
+        error: null,
+      });
 
-      expect((await startBooking({ bookingId: 'booking-1' })).status).toBe(
-        'In Progress'
+      await expect(
+        startBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(recordedWrites.find((write) => write.method === 'update')).toBe(
+        undefined
       );
     });
 

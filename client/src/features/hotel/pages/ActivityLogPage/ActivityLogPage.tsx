@@ -12,17 +12,29 @@ import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { listActivityLog } from '../../api/hotel.api';
+import { DataCalendar } from '../../../../shared/components/DataCalendar/DataCalendar';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import {
-  QueueFilterBar,
-  type QueueStatusOption,
-} from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
-import {
-  dateRangePresetLabel,
-  resolveDateRangePreset,
-  type DateRangePreset,
-} from '../../../../shared/components/QueueFilterBar/dateRangePreset';
-import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import type { ActivityLogAction, ActivityLogEntry } from '../../hotel.types';
+import {
+  ACTIVITY_LOG_COMPARATORS,
+  ACTIVITY_LOG_FILTER_FIELDS,
+  ACTIVITY_LOG_SORT_FIELDS,
+  activityLogDateKey,
+  applyActivityLogFilters,
+  deriveActivityLogServerParams,
+  deriveActivityLogSortKey,
+  matchesActivityLogQuery,
+} from './activityLogBrowserFields';
 import styles from './ActivityLogPage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -33,16 +45,11 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
-type ActionFilter = 'All' | ActivityLogAction;
+type ViewMode = 'list' | 'calendar';
 
-const ACTION_OPTIONS: QueueStatusOption[] = [
-  { value: 'All', label: 'All actions' },
-  { value: 'check_in', label: 'Check-in' },
-  { value: 'check_out', label: 'Check-out' },
-  { value: 'task_started', label: 'Task started' },
-  { value: 'task_completed', label: 'Task completed' },
-  { value: 'task_reopened', label: 'Task reopened' },
-  { value: 'task_missed', label: 'Task missed' },
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'list', label: 'List' },
+  { value: 'calendar', label: 'Calendar' },
 ];
 
 const ACTION_ICON: Record<ActivityLogAction, LucideIcon> = {
@@ -105,20 +112,22 @@ export function ActivityLogPage() {
     'loading'
   );
 
-  const [dateRangePreset, setDateRangePreset] =
-    useState<DateRangePreset>('today');
-  const [customDate, setCustomDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [actionFilter, setActionFilter] = useState<ActionFilter>('All');
+  const [view, setView] = useState<ViewMode>('list');
+  const [calendarAnchor, setCalendarAnchor] = useState(() => new Date());
+  const [search, setSearch] = useState('');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    // Matches the page's old always-on "Today" default.
+    { fieldId: 'date', value: { preset: 'today', from: null, to: null } },
+  ]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
 
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const dateRange = useMemo(
-    () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
-    [dateRangePreset, customDate]
+  const serverParams = useMemo(
+    () => deriveActivityLogServerParams(filterTiles),
+    [filterTiles]
   );
 
   useEffect(() => {
@@ -148,10 +157,7 @@ export function ActivityLogPage() {
 
     let isMounted = true;
 
-    void listActivityLog(accessToken, {
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-    }).then((result) => {
+    void listActivityLog(accessToken, serverParams).then((result) => {
       if (!isMounted) return;
       setIsLoading(false);
 
@@ -167,36 +173,37 @@ export function ActivityLogPage() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, roleStatus, dateRange.from, dateRange.to]);
+  }, [accessToken, roleStatus, serverParams]);
 
-  const filtered = useMemo(
-    () =>
-      actionFilter === 'All'
-        ? entries
-        : entries.filter((entry) => entry.action === actionFilter),
-    [entries, actionFilter]
-  );
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? entries.filter((entry) => matchesActivityLogQuery(entry, query))
+      : entries;
+    const withFilters = applyActivityLogFilters(searched, filterTiles);
 
-  const filterChips = useMemo(() => {
-    const chips: { id: string; label: string; onClear: () => void }[] = [];
+    // No sort tile means "keep fetch order" (already newest-first, server-side).
+    if (!sortTile) return withFilters;
+    return [...withFilters].sort(
+      ACTIVITY_LOG_COMPARATORS[deriveActivityLogSortKey(sortTile)]
+    );
+  }, [entries, search, filterTiles, sortTile]);
 
-    if (dateRangePreset !== 'today') {
-      chips.push({
-        id: 'date',
-        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
-        onClear: () => setDateRangePreset('today'),
-      });
-    }
-    if (actionFilter !== 'All') {
-      chips.push({
-        id: 'action',
-        label: `Action: ${ACTION_OPTIONS.find((option) => option.value === actionFilter)?.label ?? actionFilter}`,
-        onClear: () => setActionFilter('All'),
-      });
-    }
+  function handleAddFilter(fieldId: string) {
+    const field = ACTIVITY_LOG_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-    return chips;
-  }, [dateRangePreset, actionFilter]);
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   if (!user?.id || !accessToken) {
     return (
@@ -229,18 +236,26 @@ export function ActivityLogPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Activity Log</h1>
 
-        <QueueFilterBar
-          dateRangePreset={dateRangePreset}
-          onDateRangePresetChange={setDateRangePreset}
-          customDate={customDate}
-          onCustomDateChange={setCustomDate}
-          statusValue={actionFilter}
-          onStatusChange={(value) => setActionFilter(value as ActionFilter)}
-          statusOptions={ACTION_OPTIONS}
-          statusLabel="Action"
-        />
-
-        <ActiveFilterChips chips={filterChips} />
+        <FilterSortBar
+          filterFields={ACTIVITY_LOG_FILTER_FIELDS}
+          filterTiles={filterTiles}
+          onAddFilter={handleAddFilter}
+          onChangeFilter={handleChangeFilter}
+          onRemoveFilter={handleRemoveFilter}
+          sortFields={ACTIVITY_LOG_SORT_FIELDS}
+          sortTile={sortTile}
+          onChangeSort={setSortTile}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search activity..."
+        >
+          <ViewSwitcher
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={setView}
+            ariaLabel="Activity log view"
+          />
+        </FilterSortBar>
 
         <p className={styles.resultCount}>
           {isLoading
@@ -254,20 +269,16 @@ export function ActivityLogPage() {
           </p>
         ) : null}
 
-        {!isLoading && !error && filtered.length === 0 ? (
-          <p className={styles.copy}>
-            No activity matches these filters. Try widening the date range or
-            action above.
-          </p>
-        ) : null}
-
-        {!isLoading && filtered.length > 0 ? (
-          <ul className={styles.list}>
-            {filtered.map((entry) => {
+        {!isLoading && view === 'list' ? (
+          <DataList
+            items={filtered}
+            getRowKey={(entry) => entry.id}
+            emptyMessage="No activity matches these filters. Try widening the date range or action above."
+            renderItem={(entry) => {
               const Icon = ACTION_ICON[entry.action];
 
               return (
-                <li key={entry.id} className={styles.row}>
+                <div className={styles.row}>
                   <span
                     className={`${styles.actionBadge} ${actionClass(entry.action, styles)}`}
                   >
@@ -281,10 +292,32 @@ export function ActivityLogPage() {
                     {entry.actor_staff?.display_name ?? 'System'} ·{' '}
                     {formatDateTime(entry.created_at)}
                   </span>
-                </li>
+                </div>
               );
-            })}
-          </ul>
+            }}
+          />
+        ) : null}
+
+        {!isLoading && view === 'calendar' ? (
+          <DataCalendar
+            mode="month"
+            anchorDate={calendarAnchor}
+            onAnchorDateChange={setCalendarAnchor}
+            items={filtered}
+            getItemDate={activityLogDateKey}
+            getRowKey={(entry) => entry.id}
+            renderChip={(entry) => {
+              const Icon = ACTION_ICON[entry.action];
+              return (
+                <span
+                  className={`${styles.calendarChip} ${actionClass(entry.action, styles)}`}
+                >
+                  <Icon size={11} aria-hidden="true" />
+                  {entry.description}
+                </span>
+              );
+            }}
+          />
         ) : null}
       </div>
     </main>

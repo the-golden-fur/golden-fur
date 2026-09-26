@@ -1,5 +1,11 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { SpinHistoryEntry, SpinResult } from '../rewards.types.ts';
+import type {
+  PromoWheel,
+  SpinCreditSummary,
+  SpinHistoryEntry,
+  SpinResult,
+} from '../rewards.types.ts';
+import { getRewardPoolById } from './rewardPools.service.ts';
 import {
   resolveTargetCustomerId,
   type RequesterScopedParams,
@@ -11,41 +17,134 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-export async function getMySpinCreditCount(
-  params: RequesterScopedParams
-): Promise<number> {
-  const targetCustomerId = await resolveTargetCustomerId(params);
-
-  const { count, error } = await supabase
+/** Groups a customer's unconsumed spin credits by the spin-wheel promo that
+ * granted them. Promo names come from here (service role) - customers
+ * can't read the promos table through RLS. */
+export async function summarizeSpinCredits(
+  customerId: string
+): Promise<SpinCreditSummary> {
+  const { data, error } = await supabase
     .from('customer_spin_credits')
-    .select('id', { count: 'exact', head: true })
-    .eq('customer_id', targetCustomerId)
+    .select('promo_id, promos(name)')
+    .eq('customer_id', customerId)
     .eq('is_consumed', false);
 
   if (error) throwWithStatus(400, error.message);
 
-  return count ?? 0;
+  const byPromo = new Map<
+    string,
+    { promoId: string; promoName: string; count: number }
+  >();
+
+  // A many-to-one embed arrives as an object at runtime; supabase-js's
+  // generated-less typing calls it an array, hence the unknown cast.
+  for (const row of (data ?? []) as unknown as Array<{
+    promo_id: string;
+    promos: { name: string } | Array<{ name: string }> | null;
+  }>) {
+    const promo = Array.isArray(row.promos) ? row.promos[0] : row.promos;
+    const existing = byPromo.get(row.promo_id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      byPromo.set(row.promo_id, {
+        promoId: row.promo_id,
+        promoName: promo?.name ?? 'Spin wheel',
+        count: 1,
+      });
+    }
+  }
+
+  const groups = [...byPromo.values()].sort((a, b) =>
+    a.promoName.localeCompare(b.promoName)
+  );
+
+  return {
+    total: groups.reduce((sum, group) => sum + group.count, 0),
+    byPromo: groups,
+  };
+}
+
+export async function getMySpinCredits(
+  params: RequesterScopedParams
+): Promise<SpinCreditSummary> {
+  const targetCustomerId = await resolveTargetCustomerId(params);
+  return summarizeSpinCredits(targetCustomerId);
+}
+
+/**
+ * The wheel a customer sees for one spin-wheel promo: its pool's landable
+ * rewards with their computed chances. Only reward labels/values/odds are
+ * exposed - the same information the wheel legend already shows.
+ */
+export async function getPromoWheel(promoId: string): Promise<PromoWheel> {
+  const { data, error } = await supabase
+    .from('spin_wheel_promo_settings')
+    .select('reward_pool_id, pity_threshold, promos(id, name, promo_type)')
+    .eq('promo_id', promoId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  const settings = data as {
+    reward_pool_id: string;
+    pity_threshold: number | null;
+    promos: { id: string; name: string; promo_type: string } | null;
+  } | null;
+
+  if (!settings || settings.promos?.promo_type !== 'spin_wheel') {
+    throwWithStatus(404, 'Spin wheel promo not found');
+  }
+
+  const pool = await getRewardPoolById(settings.reward_pool_id);
+
+  return {
+    promoId,
+    promoName: settings.promos.name,
+    rarestTier: pool.rarest_tier,
+    pityThreshold: settings.pity_threshold,
+    rewards: pool.rewards
+      .filter((reward) => reward.chance_percent > 0)
+      .map((reward) => ({
+        id: reward.id,
+        label: reward.label,
+        discount_type: reward.discount_type,
+        value: reward.value,
+        rarity_tier: reward.rarity_tier,
+        chance_percent: reward.chance_percent,
+      })),
+  };
 }
 
 /**
  * Calls the spin_wheel() Postgres RPC (atomic: consumes a credit, rolls or
- * applies pity, records history, issues the resulting coupon - see
- * 20260913198_custom_rewards_create_spin_history_and_spin_wheel_rpc.sql).
+ * applies pity against that credit's promo's reward pool, records history,
+ * issues the resulting coupon - see
+ * 20260925214_custom_rewards_rewrite_spin_wheel_rpc_and_grant_triggers.sql).
  * The animation on the client always renders THIS result - it never picks
  * its own outcome.
  */
-export async function spin(params: RequesterScopedParams): Promise<SpinResult> {
+export async function spin(
+  params: RequesterScopedParams & { promoId?: string }
+): Promise<SpinResult> {
   const targetCustomerId = await resolveTargetCustomerId(params);
 
   const { data, error } = await supabase.rpc('spin_wheel', {
     p_customer_id: targetCustomerId,
+    p_promo_id: params.promoId ?? null,
   });
 
   if (error) {
-    const message = /no available spin credit/.test(error.message)
-      ? 'No spin credits available'
-      : error.message;
-    throwWithStatus(400, message);
+    if (/no available spin credit/.test(error.message)) {
+      throwWithStatus(400, 'No spin credits available');
+    }
+    if (/no active rewards/.test(error.message)) {
+      throwWithStatus(
+        409,
+        'This spin wheel has no rewards right now. Your spin is saved - please try again later.'
+      );
+    }
+    throwWithStatus(400, error.message);
   }
 
   // spin_wheel() is a `returns table(...)` function - supabase-js hands
@@ -56,6 +155,7 @@ export async function spin(params: RequesterScopedParams): Promise<SpinResult> {
         was_pity: boolean;
         coupon_id: string;
         history_id: string;
+        wheel_promo_id: string;
       }
     | undefined;
 
@@ -66,6 +166,7 @@ export async function spin(params: RequesterScopedParams): Promise<SpinResult> {
     wasPity: row.was_pity,
     couponId: row.coupon_id,
     historyId: row.history_id,
+    promoId: row.wheel_promo_id,
   };
 }
 

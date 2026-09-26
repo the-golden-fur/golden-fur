@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   createMedicationCatalogItem,
   createProcedureCatalogItem,
@@ -25,6 +28,18 @@ import {
   type VetMedicationCatalogItem,
   type VetProcedureCatalogItem,
 } from '../../veterinary.types';
+import {
+  applyProcedureFilters,
+  deriveMedicationSortKey,
+  deriveProcedureSortKey,
+  matchesMedicationQuery,
+  matchesProcedureQuery,
+  MEDICATION_COMPARATORS,
+  MEDICATION_SORT_FIELDS,
+  PROCEDURE_COMPARATORS,
+  PROCEDURE_FILTER_FIELDS,
+  PROCEDURE_SORT_FIELDS,
+} from './vetCatalogBrowserFields';
 import styles from './VetCatalogPage.module.css';
 
 /** Personal catalog - unlike the rest of this feature (any Veterinarian may
@@ -33,20 +48,6 @@ import styles from './VetCatalogPage.module.css';
 const ALLOWED_VIEWER_ROLES = new Set(['Veterinarian']);
 
 type CatalogTab = 'medications' | 'procedures';
-
-type MedicationSortKey = 'name-asc' | 'name-desc';
-const MEDICATION_SORT_OPTIONS: SortOption<MedicationSortKey>[] = [
-  { value: 'name-asc', label: 'Name (A-Z)' },
-  { value: 'name-desc', label: 'Name (Z-A)' },
-];
-
-type ProcedureSortKey = 'description-asc' | 'description-desc';
-const PROCEDURE_SORT_OPTIONS: SortOption<ProcedureSortKey>[] = [
-  { value: 'description-asc', label: 'Description (A-Z)' },
-  { value: 'description-desc', label: 'Description (Z-A)' },
-];
-
-type ProcedureTypeFilter = ProcedureType | 'All';
 
 interface MedicationFormState {
   name: string;
@@ -89,8 +90,21 @@ export function VetCatalogPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const [procedureTypeFilter, setProcedureTypeFilter] =
-    useState<ProcedureTypeFilter>('All');
+  const [medicationSearch, setMedicationSearch] = useState('');
+  // Matches this page's old useSearchAndSort default - medications and
+  // procedures have always opened pre-sorted, not in raw fetch order.
+  const [medicationSortTile, setMedicationSortTile] = useState<SortTile | null>(
+    { fieldId: 'name', direction: 'asc' }
+  );
+
+  const [procedureSearch, setProcedureSearch] = useState('');
+  const [procedureFilterTiles, setProcedureFilterTiles] = useState<
+    FilterTile[]
+  >([]);
+  const [procedureSortTile, setProcedureSortTile] = useState<SortTile | null>({
+    fieldId: 'description',
+    direction: 'asc',
+  });
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formKind, setFormKind] = useState<CatalogTab | null>(null);
@@ -155,48 +169,52 @@ export function VetCatalogPage() {
     };
   }, [roleStatus, accessToken]);
 
-  const {
-    search: medicationSearch,
-    setSearch: setMedicationSearch,
-    sortKey: medicationSortKey,
-    setSortKey: setMedicationSortKey,
-    result: visibleMedications,
-  } = useSearchAndSort<VetMedicationCatalogItem, MedicationSortKey>({
-    items: medications,
-    matchesQuery: (item, query) =>
-      item.name.toLowerCase().includes(query) ||
-      (item.default_dose ?? '').toLowerCase().includes(query),
-    comparators: {
-      'name-asc': (a, b) => a.name.localeCompare(b.name),
-      'name-desc': (a, b) => b.name.localeCompare(a.name),
-    },
-    initialSortKey: 'name-asc',
-  });
+  const visibleMedications = useMemo(() => {
+    const query = medicationSearch.trim().toLowerCase();
+    const searched = query
+      ? medications.filter((item) => matchesMedicationQuery(item, query))
+      : medications;
 
-  const {
-    search: procedureSearch,
-    setSearch: setProcedureSearch,
-    sortKey: procedureSortKey,
-    setSortKey: setProcedureSortKey,
-    result: searchedProcedures,
-  } = useSearchAndSort<VetProcedureCatalogItem, ProcedureSortKey>({
-    items: procedures,
-    matchesQuery: (item, query) =>
-      item.description.toLowerCase().includes(query) ||
-      item.procedure_type.toLowerCase().includes(query),
-    comparators: {
-      'description-asc': (a, b) => a.description.localeCompare(b.description),
-      'description-desc': (a, b) => b.description.localeCompare(a.description),
-    },
-    initialSortKey: 'description-asc',
-  });
+    // No sort tile means "keep fetch order" rather than imposing a default.
+    if (!medicationSortTile) return searched;
+    return [...searched].sort(
+      MEDICATION_COMPARATORS[deriveMedicationSortKey(medicationSortTile)]
+    );
+  }, [medications, medicationSearch, medicationSortTile]);
 
   const visibleProcedures = useMemo(() => {
-    if (procedureTypeFilter === 'All') return searchedProcedures;
-    return searchedProcedures.filter(
-      (item) => item.procedure_type === procedureTypeFilter
+    const query = procedureSearch.trim().toLowerCase();
+    const searched = query
+      ? procedures.filter((item) => matchesProcedureQuery(item, query))
+      : procedures;
+    const filtered = applyProcedureFilters(searched, procedureFilterTiles);
+
+    if (!procedureSortTile) return filtered;
+    return [...filtered].sort(
+      PROCEDURE_COMPARATORS[deriveProcedureSortKey(procedureSortTile)]
     );
-  }, [searchedProcedures, procedureTypeFilter]);
+  }, [procedures, procedureSearch, procedureFilterTiles, procedureSortTile]);
+
+  function handleAddProcedureFilter(fieldId: string) {
+    const field = PROCEDURE_FILTER_FIELDS.find((f) => f.id === fieldId);
+    if (!field) return;
+    setProcedureFilterTiles((prev) => [
+      ...prev,
+      { fieldId, value: field.defaultValue },
+    ]);
+  }
+
+  function handleChangeProcedureFilter(fieldId: string, value: FilterValue) {
+    setProcedureFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveProcedureFilter(fieldId: string) {
+    setProcedureFilterTiles((prev) =>
+      prev.filter((tile) => tile.fieldId !== fieldId)
+    );
+  }
 
   function openCreateMedication() {
     setFormKind('medications');
@@ -370,6 +388,27 @@ export function VetCatalogPage() {
     }
   }
 
+  function buildMedicationActionItems(
+    item: VetMedicationCatalogItem
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditMedication(item) },
+      {
+        label: 'Delete',
+        onSelect: () => void handleDeleteMedication(item.id),
+      },
+    ];
+  }
+
+  function buildProcedureActionItems(
+    item: VetProcedureCatalogItem
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditProcedure(item) },
+      { label: 'Delete', onSelect: () => void handleDeleteProcedure(item.id) },
+    ];
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -446,16 +485,19 @@ export function VetCatalogPage() {
         ) : activeTab === 'medications' ? (
           <>
             <div className={styles.toolbar}>
-              <div className={styles.filters}>
-                <SearchSortBar
-                  searchValue={medicationSearch}
-                  onSearchChange={setMedicationSearch}
-                  searchPlaceholder="Search medications..."
-                  sortValue={medicationSortKey}
-                  onSortChange={setMedicationSortKey}
-                  sortOptions={MEDICATION_SORT_OPTIONS}
-                />
-              </div>
+              <FilterSortBar
+                filterFields={[]}
+                filterTiles={[]}
+                onAddFilter={() => {}}
+                onChangeFilter={() => {}}
+                onRemoveFilter={() => {}}
+                sortFields={MEDICATION_SORT_FIELDS}
+                sortTile={medicationSortTile}
+                onChangeSort={setMedicationSortTile}
+                searchValue={medicationSearch}
+                onSearchChange={setMedicationSearch}
+                searchPlaceholder="Search medications..."
+              />
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -465,12 +507,16 @@ export function VetCatalogPage() {
               </button>
             </div>
 
-            {visibleMedications.length === 0 ? (
-              <p className={styles.copy}>No medications match these filters.</p>
-            ) : (
-              <ul className={styles.itemList}>
-                {visibleMedications.map((item) => (
-                  <li key={item.id} className={styles.itemRow}>
+            <DataList
+              items={visibleMedications}
+              getRowKey={(item) => item.id}
+              emptyMessage="No medications match these filters."
+              renderItem={(item) => (
+                <CardContextMenu
+                  label={`Actions for ${item.name}`}
+                  items={buildMedicationActionItems(item)}
+                >
+                  <div className={styles.rowContent}>
                     <div className={styles.itemMain}>
                       <span className={styles.itemName}>{item.name}</span>
                       {item.default_dose ? (
@@ -484,56 +530,27 @@ export function VetCatalogPage() {
                         </span>
                       ) : null}
                     </div>
-                    <MoreOptionsMenu
-                      label={`Actions for ${item.name}`}
-                      items={[
-                        {
-                          label: 'Edit',
-                          onSelect: () => openEditMedication(item),
-                        },
-                        {
-                          label: 'Delete',
-                          onSelect: () => void handleDeleteMedication(item.id),
-                        },
-                      ]}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
+                  </div>
+                </CardContextMenu>
+              )}
+            />
           </>
         ) : (
           <>
             <div className={styles.toolbar}>
-              <div className={styles.filters}>
-                <SearchSortBar
-                  searchValue={procedureSearch}
-                  onSearchChange={setProcedureSearch}
-                  searchPlaceholder="Search procedures..."
-                  sortValue={procedureSortKey}
-                  onSortChange={setProcedureSortKey}
-                  sortOptions={PROCEDURE_SORT_OPTIONS}
-                />
-                <label className={styles.filterField}>
-                  <span className={styles.filterLabel}>Type</span>
-                  <select
-                    className={styles.filterSelect}
-                    value={procedureTypeFilter}
-                    onChange={(event) =>
-                      setProcedureTypeFilter(
-                        event.target.value as ProcedureTypeFilter
-                      )
-                    }
-                  >
-                    <option value="All">All types</option>
-                    {PROCEDURE_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              <FilterSortBar
+                filterFields={PROCEDURE_FILTER_FIELDS}
+                filterTiles={procedureFilterTiles}
+                onAddFilter={handleAddProcedureFilter}
+                onChangeFilter={handleChangeProcedureFilter}
+                onRemoveFilter={handleRemoveProcedureFilter}
+                sortFields={PROCEDURE_SORT_FIELDS}
+                sortTile={procedureSortTile}
+                onChangeSort={setProcedureSortTile}
+                searchValue={procedureSearch}
+                onSearchChange={setProcedureSearch}
+                searchPlaceholder="Search procedures..."
+              />
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -543,12 +560,16 @@ export function VetCatalogPage() {
               </button>
             </div>
 
-            {visibleProcedures.length === 0 ? (
-              <p className={styles.copy}>No procedures match these filters.</p>
-            ) : (
-              <ul className={styles.itemList}>
-                {visibleProcedures.map((item) => (
-                  <li key={item.id} className={styles.itemRow}>
+            <DataList
+              items={visibleProcedures}
+              getRowKey={(item) => item.id}
+              emptyMessage="No procedures match these filters."
+              renderItem={(item) => (
+                <CardContextMenu
+                  label={`Actions for ${item.description}`}
+                  items={buildProcedureActionItems(item)}
+                >
+                  <div className={styles.rowContent}>
                     <div className={styles.itemMain}>
                       <span className={styles.itemName}>
                         {item.procedure_type}
@@ -562,23 +583,10 @@ export function VetCatalogPage() {
                         </span>
                       ) : null}
                     </div>
-                    <MoreOptionsMenu
-                      label={`Actions for ${item.description}`}
-                      items={[
-                        {
-                          label: 'Edit',
-                          onSelect: () => openEditProcedure(item),
-                        },
-                        {
-                          label: 'Delete',
-                          onSelect: () => void handleDeleteProcedure(item.id),
-                        },
-                      ]}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
+                  </div>
+                </CardContextMenu>
+              )}
+            />
           </>
         )}
       </div>

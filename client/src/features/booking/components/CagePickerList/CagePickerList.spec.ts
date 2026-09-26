@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { CagePickerList } from './CagePickerList';
@@ -115,5 +116,52 @@ describe('CagePickerList', () => {
 
     fireEvent.click(noPreference);
     expect(onSelect).toHaveBeenCalledWith({ type: 'no_preference' });
+  });
+
+  it('Notion-style remaster (session 110): a search box appears once there are enough cages, and narrows the grid without hiding "No preference"', async () => {
+    vi.mocked(bookingApi.getCagePickerOptions).mockResolvedValue({
+      data: {
+        cage_picker_enabled: true,
+        options: [
+          ...OPTIONS,
+          {
+            type: 'specific' as const,
+            cage_id: 'cage-l',
+            cage_label: 'Southwoods-L-01',
+            size: 'L',
+          },
+        ],
+      },
+      error: null,
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      createElement(CagePickerList, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        petId: 'pet-1',
+        selected: null,
+        onSelect,
+      })
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(4));
+
+    await user.type(
+      screen.getByPlaceholderText('Search cages...'),
+      'southwoods'
+    );
+
+    expect(
+      screen.getByRole('button', { name: /Southwoods-L-01/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /No preference/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Makati-S-01/ })
+    ).not.toBeInTheDocument();
   });
 });

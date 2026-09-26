@@ -1,0 +1,75 @@
+.board {
+  display: grid;
+  /* --column-min-width lets a page raise the floor for its own card's
+     actual minimum width (see StaffManagementPage.module.css) - otherwise
+     a card whose own min-width exceeds this track's floor overflows its
+     column instead of the two staying in sync. */
+  grid-template-columns: repeat(
+    var(--column-count, 3),
+    minmax(var(--column-min-width, 15rem), 1fr)
+  );
+  gap: var(--space-3);
+  align-items: start;
+  overflow-x: auto;
+  /* Without this, a grid item's default min-width: auto refuses to shrink
+     below its content's intrinsic size - with many group-by columns (e.g.
+     8 roles), that intrinsic size is wider than the page, so instead of
+     scrolling within .board's own box (the overflow-x above), the whole
+     page grid stretched and the last columns were clipped by the
+     viewport/sidebar with no way to reach them. */
+  min-width: 0;
+}
+
+.column {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  border-top: 3px solid var(--color-border);
+  padding: var(--space-2);
+  min-width: 14rem;
+}
+
+.columnTitle {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.columnTitleDraggable {
+  cursor: grab;
+  border-radius: var(--radius-sm);
+  user-select: none;
+}
+
+.columnTitleDraggable:active {
+  cursor: grabbing;
+}
+
+/* Shown on the column currently under the drag - a dashed accent border
+   tells the viewer where a manual-sort drop will land. */
+.columnDragOver {
+  outline: 2px dashed var(--color-accent-gold-primary);
+  outline-offset: -2px;
+}
+
+.columnCount {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 60rem) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}

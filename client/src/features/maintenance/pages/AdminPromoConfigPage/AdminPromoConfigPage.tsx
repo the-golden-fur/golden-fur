@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -20,22 +21,56 @@ import {
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PromoCard } from '../../components/PromoCard/PromoCard';
 import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
-  PromoFilterBar,
-  type PromoStatusFilter,
-  type PromoTimingFilter,
-} from '../../components/PromoFilterBar/PromoFilterBar';
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   SearchSortBar,
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
+import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
+import { SpinWheelPromoFields } from '../../components/SpinWheelPromoFields/SpinWheelPromoFields';
+import { listRewardPools } from '../../../rewards/api/rewards.api';
+import type { RewardPool } from '../../../rewards/rewards.types';
+import { formatPromoValue, promoWindowText } from '../../utils/promoDisplay';
 import { getPromoTiming } from '../../utils/promoTiming';
+import {
+  emptySpinWheelForm,
+  spinWheelFormFromSettings,
+  spinWheelFormToInput,
+  type SpinWheelFormState,
+} from '../../utils/spinWheelPromo';
+import {
+  applyPromoFilters,
+  buildPromoFilterFields,
+  derivePromoSortKey,
+  matchesPromoQuery,
+  PROMO_COMPARATORS,
+  PROMO_SORT_FIELDS,
+} from './promoBrowserFields';
 import type {
   BranchSummary,
   CapType,
@@ -49,6 +84,26 @@ import type {
   Service,
 } from '../../maintenance.types';
 import styles from './AdminPromoConfigPage.module.css';
+
+const TIMING_LABELS = {
+  Upcoming: 'Upcoming',
+  Active: 'Active now',
+  Ended: 'Ended',
+} as const;
+
+const PROMO_TYPE_LABELS: Record<PromoType, string> = {
+  date_range: 'Date range promo',
+  weekly_recurring: 'Weekly recurring promo',
+  spin_wheel: 'Coupon spin wheel',
+};
+
+type PromoViewMode = 'gallery' | 'table' | 'list';
+
+const PROMO_VIEW_OPTIONS: ViewSwitcherOption<PromoViewMode>[] = [
+  { value: 'gallery', label: 'Gallery', icon: LayoutGrid },
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+];
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -133,9 +188,15 @@ export function AdminPromoConfigPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [branchFilter, setBranchFilter] = useState('All');
-  const [timingFilter, setTimingFilter] = useState<PromoTimingFilter>('All');
-  const [statusFilter, setStatusFilter] = useState<PromoStatusFilter>('Active');
+  // The page has always defaulted to showing only active promos (a status
+  // tile pre-added, same as every other filter tile - removable via its
+  // hover X to see inactive ones too), unlike the other Tier-1 pages in
+  // this rollout which start with no tiles at all.
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    { fieldId: 'status', value: 'active' },
+  ]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [view, setView] = useState<PromoViewMode>('gallery');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
@@ -162,6 +223,11 @@ export function AdminPromoConfigPage() {
   const [availabilityPromoId, setAvailabilityPromoId] = useState<string | null>(
     null
   );
+  // Session 114: the "Coupon spin wheel" promo type's own fields, and the
+  // reward pools it can draw from.
+  const [spinForm, setSpinForm] =
+    useState<SpinWheelFormState>(emptySpinWheelForm);
+  const [rewardPools, setRewardPools] = useState<RewardPool[]>([]);
 
   const [capBranches, setCapBranches] = useState<BranchSummary[]>([]);
   const [capConfigurations, setCapConfigurations] = useState<
@@ -212,12 +278,16 @@ export function AdminPromoConfigPage() {
     let isMounted = true;
 
     void Promise.all([
-      listPromos(accessToken, { includeInactive: true }),
+      listPromos(accessToken, {
+        includeInactive: true,
+        includeSpinWheel: true,
+      }),
       // Active only - a promo should not offer a deactivated service/package
       // as a new scope target.
       listServices(accessToken),
       listPackages(accessToken),
-    ]).then(([promosResult, servicesResult, packagesResult]) => {
+      listRewardPools(accessToken),
+    ]).then(([promosResult, servicesResult, packagesResult, poolsResult]) => {
       if (!isMounted) {
         return;
       }
@@ -232,6 +302,7 @@ export function AdminPromoConfigPage() {
       setPromos(promosResult.data);
       setServices(servicesResult.data ?? []);
       setPackages(packagesResult.data ?? []);
+      setRewardPools(poolsResult.data ?? []);
     });
 
     return () => {
@@ -347,36 +418,37 @@ export function AdminPromoConfigPage() {
     (promo) => promo.id === availabilityPromoId
   );
 
+  const promoFilterFields = useMemo(
+    () => buildPromoFilterFields(capBranches),
+    [capBranches]
+  );
+
   const filteredPromos = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? promos.filter((promo) => matchesPromoQuery(promo, query))
+      : promos;
+    const filtered = applyPromoFilters(searched, filterTiles);
 
-    return promos.filter((promo) => {
-      if (
-        branchFilter !== 'All' &&
-        !availableBranchIds(promo).includes(branchFilter)
-      ) {
-        return false;
-      }
+    if (!sortTile) return filtered;
+    return [...filtered].sort(PROMO_COMPARATORS[derivePromoSortKey(sortTile)]);
+  }, [promos, search, filterTiles, sortTile]);
 
-      if (statusFilter === 'Active' && !promo.is_active) {
-        return false;
-      }
+  function handleAddPromoFilter(fieldId: string) {
+    const field = promoFilterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-      if (statusFilter === 'Inactive' && promo.is_active) {
-        return false;
-      }
+  function handleChangePromoFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
 
-      if (timingFilter !== 'All' && getPromoTiming(promo) !== timingFilter) {
-        return false;
-      }
-
-      if (searchTerm && !promo.name.toLowerCase().includes(searchTerm)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [promos, branchFilter, statusFilter, timingFilter, search]);
+  function handleRemovePromoFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   // Existing scope selections (from an in-edit promo) stay offered even if
   // the referenced service/package has since gone inactive, so editing never
@@ -447,6 +519,7 @@ export function AdminPromoConfigPage() {
     setFormScopeType('all_services');
     setFormScopeIds([]);
     setFormBranchIds([]);
+    setSpinForm(emptySpinWheelForm());
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -459,13 +532,14 @@ export function AdminPromoConfigPage() {
     setFormPromoType(promo.promo_type);
     setFormDaysOfWeek(promo.days_of_week ?? []);
     setFormName(promo.name);
-    setFormDiscountType(promo.discount_type);
-    setFormValue(String(promo.value));
+    setFormDiscountType(promo.discount_type ?? 'Percentage');
+    setFormValue(promo.value != null ? String(promo.value) : '');
     setFormStartDate(promo.start_date ?? '');
     setFormEndDate(promo.end_date ?? '');
-    setFormScopeType(promo.scope_type);
+    setFormScopeType(promo.scope_type ?? 'all_services');
     setFormScopeIds(scopeToCompositeIds(promo));
     setFormBranchIds(availableBranchIds(promo));
+    setSpinForm(spinWheelFormFromSettings(promo.spin_wheel_promo_settings));
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -601,10 +675,186 @@ export function AdminPromoConfigPage() {
     setMessage('Promo archived.');
   };
 
+  function buildPromoActionItems(promo: Promo): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Edit', onSelect: () => openEditForm(promo) },
+      // A spin-wheel promo is customer-wide - no branch availability.
+      ...(promo.promo_type !== 'spin_wheel'
+        ? [
+            {
+              label: 'Branch Availability',
+              onSelect: () => setAvailabilityPromoId(promo.id),
+            },
+          ]
+        : []),
+      ...(!promo.is_active
+        ? [
+            {
+              label: 'Archive',
+              onSelect: () => void handleArchive(promo),
+            },
+          ]
+        : []),
+    ];
+  }
+
+  function renderPromoActions(promo: Promo) {
+    return (
+      <div className={styles.rowActions}>
+        <ToggleSwitch
+          label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
+          checked={promo.is_active}
+          onChange={(isActive) => void handleActiveToggle(promo, isActive)}
+        />
+        <MoreOptionsMenu
+          label={`Actions for ${promo.name}`}
+          items={buildPromoActionItems(promo)}
+        />
+      </div>
+    );
+  }
+
+  // List card (no Board view on this page) - tap-to-hold (CardContextMenu)
+  // instead of a persistent "..." button, matching Cages/Staff/Customer
+  // Management. Table view keeps the visible tap-to-open button
+  // (renderPromoActions above) - only the dense card list gets the hold
+  // gesture. The ToggleSwitch is a direct control, not a menu item, so it
+  // stays visible inside the card (a plain tap still reaches it - see
+  // CardContextMenu's own doc comment).
+  function renderPromoCard(promo: Promo) {
+    return (
+      <CardContextMenu
+        label={`Actions for ${promo.name}`}
+        items={buildPromoActionItems(promo)}
+      >
+        <div className={styles.rowContent}>
+          <div className={styles.itemMain}>
+            <span className={styles.itemName}>{promo.name}</span>
+            <StatusBadge isActive={promo.is_active} />
+            <span className={styles.timingBadge}>
+              {TIMING_LABELS[getPromoTiming(promo)]}
+            </span>
+            <span className={styles.copy}>{formatPromoValue(promo)}</span>
+            <span className={styles.copy}>{promoWindowText(promo)}</span>
+          </div>
+          <div className={styles.rowActions}>
+            <ToggleSwitch
+              label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
+              checked={promo.is_active}
+              onChange={(isActive) => void handleActiveToggle(promo, isActive)}
+            />
+          </div>
+        </div>
+      </CardContextMenu>
+    );
+  }
+
+  const promoTableColumns: DataTableColumn<Promo>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (promo) => <span className={styles.itemName}>{promo.name}</span>,
+    },
+    {
+      id: 'timing',
+      header: 'Timing',
+      render: (promo) => TIMING_LABELS[getPromoTiming(promo)],
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      render: (promo) => formatPromoValue(promo),
+    },
+    {
+      id: 'window',
+      header: 'Window',
+      render: (promo) => promoWindowText(promo),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (promo) => <StatusBadge isActive={promo.is_active} />,
+    },
+  ];
+
+  /**
+   * Session 114: create/edit for the "Coupon spin wheel" type - no discount,
+   * scope, or branches (a spin wheel is customer-wide and its rewards come
+   * from the chosen reward pool); just a name, the spin_wheel settings, and
+   * an optional overall start/end window.
+   */
+  async function submitSpinWheelPromo() {
+    if (!accessToken) return;
+
+    if (formName.trim() === '') {
+      setFormError('A name is required.');
+      return;
+    }
+
+    if (formStartDate && formEndDate && formEndDate < formStartDate) {
+      setFormError('The end date must be on or after the start date.');
+      return;
+    }
+
+    const parsed = spinWheelFormToInput(spinForm);
+    if (parsed.error !== null) {
+      setFormError(parsed.error);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    if (editingPromoId === null) {
+      const result = await createPromo(accessToken, {
+        name: formName.trim(),
+        promo_type: 'spin_wheel',
+        ...(formStartDate ? { start_date: formStartDate } : {}),
+        ...(formEndDate ? { end_date: formEndDate } : {}),
+        spin_wheel: parsed.input,
+      });
+
+      setIsSubmitting(false);
+
+      if (result.error || !result.data) {
+        setFormError(result.error ?? 'Could not create the spin wheel.');
+        return;
+      }
+
+      setPromos((prev) => [...prev, result.data as Promo]);
+      setMessage('Spin wheel promo created.');
+      closeForm();
+      return;
+    }
+
+    const result = await updatePromo(editingPromoId, accessToken, {
+      name: formName.trim(),
+      start_date: formStartDate || null,
+      end_date: formEndDate || null,
+      spin_wheel: parsed.input,
+    });
+
+    setIsSubmitting(false);
+
+    if (result.error || !result.data) {
+      setFormError(result.error ?? 'Could not update the spin wheel.');
+      return;
+    }
+
+    replacePromo(result.data);
+    setMessage('Spin wheel promo updated.');
+    closeForm();
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!accessToken) {
+      return;
+    }
+
+    if (formPromoType === 'spin_wheel') {
+      await submitSpinWheelPromo();
       return;
     }
 
@@ -775,17 +1025,26 @@ export function AdminPromoConfigPage() {
         </div>
 
         <div className={styles.toolbar}>
-          <PromoFilterBar
-            search={search}
+          <FilterSortBar
+            filterFields={promoFilterFields}
+            filterTiles={filterTiles}
+            onAddFilter={handleAddPromoFilter}
+            onChangeFilter={handleChangePromoFilter}
+            onRemoveFilter={handleRemovePromoFilter}
+            sortFields={PROMO_SORT_FIELDS}
+            sortTile={sortTile}
+            onChangeSort={setSortTile}
+            searchValue={search}
             onSearchChange={setSearch}
-            branches={capBranches}
-            branchFilter={branchFilter}
-            onBranchFilterChange={setBranchFilter}
-            timingFilter={timingFilter}
-            onTimingFilterChange={setTimingFilter}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-          />
+            searchPlaceholder="Search promos..."
+          >
+            <ViewSwitcher
+              options={PROMO_VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              ariaLabel="Promos view"
+            />
+          </FilterSortBar>
 
           <button
             type="button"
@@ -802,243 +1061,276 @@ export function AdminPromoConfigPage() {
           </p>
         ) : null}
 
-        {isFormOpen ? (
-          <section className={styles.formPanel} aria-labelledby="promo-form">
-            <h2 className={styles.sectionTitle} id="promo-form">
-              {editingPromoId === null ? 'Create promo' : 'Edit promo'}
-            </h2>
+        <Modal
+          isOpen={isFormOpen}
+          title={editingPromoId === null ? 'Create promo' : 'Edit promo'}
+          onClose={closeForm}
+        >
+          {editingPromoId === null && createStep === 'type' ? (
+            // Promo builder wizard, step 1 (session 86): pick the type
+            // before any of the shared/type-specific fields appear. A
+            // promo's type can't be changed after creation, so this is
+            // the only moment it's ever chosen.
+            <div className={styles.form}>
+              <fieldset className={styles.field}>
+                <legend className={styles.fieldLabel}>Promo type</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'date_range'}
+                    onChange={() => setFormPromoType('date_range')}
+                  />{' '}
+                  Date range - active between a start and end date
+                </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'weekly_recurring'}
+                    onChange={() => setFormPromoType('weekly_recurring')}
+                  />{' '}
+                  Weekly recurring - active on chosen days of the week
+                </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'spin_wheel'}
+                    onChange={() => setFormPromoType('spin_wheel')}
+                  />{' '}
+                  Coupon spin wheel - pops up a prize wheel for customers who
+                  meet your trigger conditions
+                </label>
+              </fieldset>
 
-            {editingPromoId === null && createStep === 'type' ? (
-              // Promo builder wizard, step 1 (session 86): pick the type
-              // before any of the shared/type-specific fields appear. A
-              // promo's type can't be changed after creation, so this is
-              // the only moment it's ever chosen.
-              <div className={styles.form}>
-                <fieldset className={styles.field}>
-                  <legend className={styles.fieldLabel}>Promo type</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name="promo-type"
-                      checked={formPromoType === 'date_range'}
-                      onChange={() => setFormPromoType('date_range')}
-                    />{' '}
-                    Date range - active between a start and end date
-                  </label>
-                  <br />
-                  <label>
-                    <input
-                      type="radio"
-                      name="promo-type"
-                      checked={formPromoType === 'weekly_recurring'}
-                      onChange={() => setFormPromoType('weekly_recurring')}
-                    />{' '}
-                    Weekly recurring - active on chosen days of the week
-                  </label>
-                </fieldset>
-
-                <div className={styles.formActions}>
-                  <button
-                    type="button"
-                    className={styles.primaryButton}
-                    onClick={() => setCreateStep('details')}
-                  >
-                    Next
-                  </button>
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => setCreateStep('details')}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form className={styles.form} onSubmit={handleSubmit}>
+              {editingPromoId === null ? (
+                <p className={styles.copy}>
+                  {PROMO_TYPE_LABELS[formPromoType]}{' '}
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    onClick={closeForm}
+                    onClick={() => setCreateStep('type')}
                   >
-                    Cancel
+                    Change type
                   </button>
-                </div>
-              </div>
-            ) : (
-              <form className={styles.form} onSubmit={handleSubmit}>
-                {editingPromoId === null ? (
-                  <p className={styles.copy}>
-                    {formPromoType === 'date_range'
-                      ? 'Date range promo'
-                      : 'Weekly recurring promo'}{' '}
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => setCreateStep('type')}
+                </p>
+              ) : null}
+
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Name</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={formName}
+                  onChange={(event) => setFormName(event.target.value)}
+                  required
+                />
+              </label>
+
+              {formPromoType !== 'spin_wheel' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Discount type</span>
+                    <select
+                      className={styles.input}
+                      value={formDiscountType}
+                      onChange={(event) =>
+                        setFormDiscountType(
+                          event.target.value as DiscountValueType
+                        )
+                      }
                     >
-                      Change type
-                    </button>
-                  </p>
-                ) : null}
+                      {DISCOUNT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Name</span>
-                  <input
-                    className={styles.input}
-                    type="text"
-                    value={formName}
-                    onChange={(event) => setFormName(event.target.value)}
-                    required
-                  />
-                </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Discount value
+                      {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      max={formDiscountType === 'Percentage' ? 100 : undefined}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={formValue}
+                      onChange={(event) => setFormValue(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <SpinWheelPromoFields
+                  value={spinForm}
+                  onChange={setSpinForm}
+                  pools={rewardPools}
+                />
+              )}
 
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Discount type</span>
-                  <select
-                    className={styles.input}
-                    value={formDiscountType}
-                    onChange={(event) =>
-                      setFormDiscountType(
-                        event.target.value as DiscountValueType
-                      )
-                    }
-                  >
-                    {DISCOUNT_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
-                    Discount value
-                    {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-                  </span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min="0"
-                    max={formDiscountType === 'Percentage' ? 100 : undefined}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={formValue}
-                    onChange={(event) => setFormValue(event.target.value)}
-                    required
-                  />
-                </label>
-
-                {formPromoType === 'date_range' ? (
-                  <>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Start date</span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formStartDate}
-                        onChange={(event) =>
-                          setFormStartDate(event.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>End date</span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formEndDate}
-                        onChange={(event) => setFormEndDate(event.target.value)}
-                        required
-                      />
-                    </label>
-                  </>
-                ) : (
-                  <>
+              {formPromoType === 'date_range' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Start date</span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formStartDate}
+                      onChange={(event) => setFormStartDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>End date</span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formEndDate}
+                      onChange={(event) => setFormEndDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  {formPromoType === 'weekly_recurring' ? (
                     <DayOfWeekPicker
                       label="Days of the week"
                       selectedDays={formDaysOfWeek}
                       onChange={setFormDaysOfWeek}
                     />
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        Start date (optional - limits the overall campaign
-                        window)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formStartDate}
-                        onChange={(event) =>
-                          setFormStartDate(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        End date (optional)
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="date"
-                        value={formEndDate}
-                        onChange={(event) => setFormEndDate(event.target.value)}
-                      />
-                    </label>
-                  </>
-                )}
+                  ) : null}
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Start date (optional - limits the overall campaign window)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formStartDate}
+                      onChange={(event) => setFormStartDate(event.target.value)}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      End date (optional)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="date"
+                      value={formEndDate}
+                      onChange={(event) => setFormEndDate(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
 
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Scope</span>
-                  <select
-                    className={styles.input}
-                    value={formScopeType}
-                    onChange={(event) => {
-                      setFormScopeType(event.target.value as PromoScopeType);
-                      setFormScopeIds([]);
-                    }}
-                  >
-                    <option value="all_services">All services</option>
-                    <option value="specific">Specific services/packages</option>
-                  </select>
-                </label>
+              {formPromoType !== 'spin_wheel' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Scope</span>
+                    <select
+                      className={styles.input}
+                      value={formScopeType}
+                      onChange={(event) => {
+                        setFormScopeType(event.target.value as PromoScopeType);
+                        setFormScopeIds([]);
+                      }}
+                    >
+                      <option value="all_services">All services</option>
+                      <option value="specific">
+                        Specific services/packages
+                      </option>
+                    </select>
+                  </label>
 
-                {formScopeType === 'specific' ? (
-                  <ServiceMultiSelect
-                    label="Included services/packages"
-                    options={scopeOptions}
-                    selectedIds={formScopeIds}
-                    onChange={setFormScopeIds}
+                  {formScopeType === 'specific' ? (
+                    <ServiceMultiSelect
+                      label="Included services/packages"
+                      options={scopeOptions}
+                      selectedIds={formScopeIds}
+                      onChange={setFormScopeIds}
+                    />
+                  ) : null}
+
+                  <BranchMultiSelect
+                    label="Available at"
+                    branches={capBranches}
+                    selectedBranchIds={formBranchIds}
+                    onChange={setFormBranchIds}
                   />
-                ) : null}
+                </>
+              ) : null}
 
-                <BranchMultiSelect
-                  label="Available at"
-                  branches={capBranches}
-                  selectedBranchIds={formBranchIds}
-                  onChange={setFormBranchIds}
-                />
+              {formError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {formError}
+                </p>
+              ) : null}
 
-                {formError ? (
-                  <p className={styles.errorBanner} role="alert">
-                    {formError}
-                  </p>
-                ) : null}
-
-                <div className={styles.formActions}>
-                  <button
-                    type="submit"
-                    className={styles.primaryButton}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? 'Saving...' : 'Save promo'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={closeForm}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-          </section>
-        ) : null}
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save promo'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeForm}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
 
         {filteredPromos.length === 0 ? (
           <p className={styles.copy}>No promos match the selected filters.</p>
+        ) : view === 'table' ? (
+          <DataTable
+            columns={promoTableColumns}
+            rows={filteredPromos}
+            getRowKey={(promo) => promo.id}
+            renderRowActions={renderPromoActions}
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={filteredPromos}
+            getRowKey={(promo) => promo.id}
+            renderItem={renderPromoCard}
+          />
         ) : (
           <div className={styles.promoGrid}>
             {filteredPromos.map((promo) => (

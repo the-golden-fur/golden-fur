@@ -23,12 +23,34 @@ import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/Pric
 import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   SearchSortBar,
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
@@ -45,6 +67,15 @@ import {
   type Service,
   type ServiceCategory,
 } from '../../maintenance.types';
+import {
+  applyPackageFilters,
+  buildPackageFilterFields,
+  derivePackageSortKey,
+  matchesPackageQuery,
+  PACKAGE_COMPARATORS,
+  PACKAGE_GROUP_BY_AXES,
+  PACKAGE_SORT_FIELDS,
+} from './packageBrowserFields';
 import styles from './AdminPackageBuilderPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
@@ -59,16 +90,13 @@ const SERVICE_SORT_OPTIONS: SortOption<ServiceSortKey>[] = [
   { value: 'price-desc', label: 'Price (high-low)' },
 ];
 
-type PackageSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+type ViewMode = 'table' | 'list' | 'board';
 
-const PACKAGE_SORT_OPTIONS: SortOption<PackageSortKey>[] = [
-  { value: 'name-asc', label: 'Name (A-Z)' },
-  { value: 'name-desc', label: 'Name (Z-A)' },
-  { value: 'price-asc', label: 'Price (low-high)' },
-  { value: 'price-desc', label: 'Price (high-low)' },
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
 ];
-
-type PackageStatusFilter = 'All' | 'Active' | 'Inactive';
 
 function availableBranchIds(pkg: Package): string[] {
   return (pkg.package_branch_availability ?? [])
@@ -103,12 +131,15 @@ export function AdminPackageBuilderPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [branchFilter, setBranchFilter] = useState('All');
-  // Inactive packages stay visible by default (not just Active) - the
-  // Archive action only appears once a package is already Inactive, so
-  // hiding Inactive rows by default would hide the very rows that action is
-  // for.
-  const [statusFilter, setStatusFilter] = useState<PackageStatusFilter>('All');
+  const [packageFilterTiles, setPackageFilterTiles] = useState<FilterTile[]>(
+    []
+  );
+  const [packageSortTile, setPackageSortTile] = useState<SortTile | null>(null);
+  const [packageSearch, setPackageSearch] = useState('');
+  const [packageView, setPackageView] = useState<ViewMode>('table');
+  const [packageGroupAxisId, setPackageGroupAxisId] = useState(
+    PACKAGE_GROUP_BY_AXES[0].id
+  );
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
@@ -232,51 +263,52 @@ export function AdminPackageBuilderPage() {
     [branches]
   );
 
-  const packageComparators = useMemo(
-    () => ({
-      'name-asc': (a: Package, b: Package) => a.name.localeCompare(b.name),
-      'name-desc': (a: Package, b: Package) => b.name.localeCompare(a.name),
-      'price-asc': (a: Package, b: Package) =>
-        a.bundled_price - b.bundled_price,
-      'price-desc': (a: Package, b: Package) =>
-        b.bundled_price - a.bundled_price,
-    }),
-    []
+  const packageFilterFields = useMemo(
+    () => buildPackageFilterFields(branches),
+    [branches]
   );
 
-  const {
-    search: packageSearch,
-    setSearch: setPackageSearch,
-    sortKey: packageSortKey,
-    setSortKey: setPackageSortKey,
-    result: searchedPackages,
-  } = useSearchAndSort<Package, PackageSortKey>({
-    items: packages,
-    matchesQuery: (pkg, query) => pkg.name.toLowerCase().includes(query),
-    comparators: packageComparators,
-    initialSortKey: 'name-asc',
-  });
-
   const filteredPackages = useMemo(() => {
-    return searchedPackages.filter((pkg) => {
-      if (statusFilter === 'Active' && !pkg.is_active) {
-        return false;
-      }
+    const query = packageSearch.trim().toLowerCase();
+    const searched = query
+      ? packages.filter((pkg) => matchesPackageQuery(pkg, query))
+      : packages;
+    const filtered = applyPackageFilters(searched, packageFilterTiles);
 
-      if (statusFilter === 'Inactive' && pkg.is_active) {
-        return false;
-      }
+    if (!packageSortTile) return filtered;
+    return [...filtered].sort(
+      PACKAGE_COMPARATORS[derivePackageSortKey(packageSortTile)]
+    );
+  }, [packages, packageSearch, packageFilterTiles, packageSortTile]);
 
-      if (
-        branchFilter !== 'All' &&
-        !availableBranchIds(pkg).includes(branchFilter)
-      ) {
-        return false;
-      }
+  const activePackageGroupAxis =
+    PACKAGE_GROUP_BY_AXES.find((axis) => axis.id === packageGroupAxisId) ??
+    null;
+  const groupedPackages = useGroupBy(
+    filteredPackages,
+    packageView === 'board' ? activePackageGroupAxis : null
+  );
 
-      return true;
-    });
-  }, [searchedPackages, statusFilter, branchFilter]);
+  function handleAddPackageFilter(fieldId: string) {
+    const field = packageFilterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setPackageFilterTiles((prev) => [
+      ...prev,
+      { fieldId, value: field.defaultValue },
+    ]);
+  }
+
+  function handleChangePackageFilter(fieldId: string, value: FilterValue) {
+    setPackageFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemovePackageFilter(fieldId: string) {
+    setPackageFilterTiles((prev) =>
+      prev.filter((tile) => tile.fieldId !== fieldId)
+    );
+  }
 
   // Only services offered at every one of the form's selected branches are
   // pickable. A member's own weight/coat matrix flag has no bearing on this
@@ -670,6 +702,102 @@ export function AdminPackageBuilderPage() {
     closeForm();
   };
 
+  function buildPackageActionItems(pkg: Package): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditForm(pkg) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityPackageId(pkg.id),
+      },
+      ...(!pkg.is_active
+        ? [{ label: 'Archive', onSelect: () => void handleArchive(pkg) }]
+        : []),
+    ];
+  }
+
+  function renderPackageActions(pkg: Package) {
+    return (
+      <MoreOptionsMenu
+        label={`Actions for ${pkg.name}`}
+        items={buildPackageActionItems(pkg)}
+      />
+    );
+  }
+
+  function renderPackageBadges(pkg: Package) {
+    return (
+      <>
+        {availableBranchIds(pkg).map((branchId) => (
+          <span key={branchId} className={styles.branchBadge}>
+            {branchNameById.get(branchId) ?? `Branch ${branchId.slice(0, 8)}`}
+          </span>
+        ))}
+        <span className={styles.packageMeta}>
+          {(pkg.package_services ?? []).length} services
+        </span>
+        {pkg.use_pricing_matrix ? (
+          <span className={styles.branchBadge}>Varies by weight/coat</span>
+        ) : null}
+      </>
+    );
+  }
+
+  const packageColumns: DataTableColumn<Package>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (pkg) => {
+        const Icon = getServiceIcon(pkg.icon);
+        return (
+          <span className={styles.packageMain}>
+            {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+            <span className={styles.packageName}>{pkg.name}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'price',
+      header: 'Price',
+      align: 'end',
+      render: (pkg) => (
+        <span className={styles.packageMeta}>
+          PHP {pkg.bundled_price.toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: 'details',
+      header: 'Details',
+      render: (pkg) => (
+        <span className={styles.packageMain}>{renderPackageBadges(pkg)}</span>
+      ),
+    },
+  ];
+
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderPackageActions
+  // above) - only the dense card grid gets the hold gesture.
+  function renderPackageCard(pkg: Package) {
+    const Icon = getServiceIcon(pkg.icon);
+    return (
+      <CardContextMenu
+        label={`Actions for ${pkg.name}`}
+        items={buildPackageActionItems(pkg)}
+      >
+        <div className={styles.packageMain}>
+          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+          <span className={styles.packageName}>{pkg.name}</span>
+          {renderPackageBadges(pkg)}
+          <span className={styles.packageMeta}>
+            PHP {pkg.bundled_price.toFixed(2)}
+          </span>
+        </div>
+      </CardContextMenu>
+    );
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -732,47 +860,47 @@ export function AdminPackageBuilderPage() {
         </div>
 
         <div className={styles.toolbar}>
-          <div className={styles.filters}>
-            <SearchSortBar
-              searchValue={packageSearch}
-              onSearchChange={setPackageSearch}
-              searchPlaceholder="Search packages..."
-              sortValue={packageSortKey}
-              onSortChange={setPackageSortKey}
-              sortOptions={PACKAGE_SORT_OPTIONS}
-            />
-
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Branch</span>
-              <select
-                className={styles.filterSelect}
-                value={branchFilter}
-                onChange={(event) => setBranchFilter(event.target.value)}
-              >
-                <option value="All">All branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.filterField}>
-              <span className={styles.filterLabel}>Status</span>
-              <select
-                className={styles.filterSelect}
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as PackageStatusFilter)
-                }
-              >
-                <option value="All">All</option>
-                <option value="Active">Active only</option>
-                <option value="Inactive">Inactive only</option>
-              </select>
-            </label>
-          </div>
+          <FilterSortBar
+            filterFields={packageFilterFields}
+            filterTiles={packageFilterTiles}
+            onAddFilter={handleAddPackageFilter}
+            onChangeFilter={handleChangePackageFilter}
+            onRemoveFilter={handleRemovePackageFilter}
+            sortFields={PACKAGE_SORT_FIELDS}
+            sortTile={packageSortTile}
+            onChangeSort={setPackageSortTile}
+            searchValue={packageSearch}
+            onSearchChange={setPackageSearch}
+            searchPlaceholder="Search packages..."
+          >
+            <div className={styles.filters}>
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={packageView}
+                onChange={setPackageView}
+                ariaLabel="Packages view"
+              />
+              {packageView === 'board' ? (
+                <label className={styles.filterField}>
+                  <span className={styles.filterLabel}>Group by</span>
+                  <select
+                    className={styles.filterSelect}
+                    value={packageGroupAxisId}
+                    onChange={(event) =>
+                      setPackageGroupAxisId(event.target.value)
+                    }
+                    aria-label="Group by"
+                  >
+                    {PACKAGE_GROUP_BY_AXES.map((axis) => (
+                      <option key={axis.id} value={axis.id}>
+                        {axis.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          </FilterSortBar>
 
           <button
             type="button"
@@ -964,63 +1092,32 @@ export function AdminPackageBuilderPage() {
           ) : null}
         </Modal>
 
-        {filteredPackages.length === 0 ? (
-          <p className={styles.copy}>No packages match the selected filters.</p>
+        {packageView === 'table' ? (
+          <DataTable
+            columns={packageColumns}
+            rows={filteredPackages}
+            getRowKey={(pkg) => pkg.id}
+            renderRowActions={renderPackageActions}
+            emptyMessage="No packages match the selected filters."
+          />
+        ) : packageView === 'list' ? (
+          <DataList
+            items={filteredPackages}
+            getRowKey={(pkg) => pkg.id}
+            renderItem={(pkg) => (
+              <div className={styles.rowContent}>{renderPackageCard(pkg)}</div>
+            )}
+            emptyMessage="No packages match the selected filters."
+          />
         ) : (
-          <ul className={styles.packageList}>
-            {filteredPackages.map((pkg) => {
-              const Icon = getServiceIcon(pkg.icon);
-              return (
-                <li key={pkg.id} className={styles.packageRow}>
-                  <div className={styles.packageMain}>
-                    {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-                    <span className={styles.packageName}>{pkg.name}</span>
-                    {availableBranchIds(pkg).map((branchId) => (
-                      <span key={branchId} className={styles.branchBadge}>
-                        {branchNameById.get(branchId) ??
-                          `Branch ${branchId.slice(0, 8)}`}
-                      </span>
-                    ))}
-                    <span className={styles.packageMeta}>
-                      {(pkg.package_services ?? []).length} services
-                    </span>
-                    <span className={styles.packageMeta}>
-                      PHP {pkg.bundled_price.toFixed(2)}
-                    </span>
-                    {pkg.use_pricing_matrix ? (
-                      <span className={styles.branchBadge}>
-                        Varies by weight/coat
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className={styles.packageControls}>
-                    <MoreOptionsMenu
-                      label={`Actions for ${pkg.name}`}
-                      items={[
-                        {
-                          label: 'Configure',
-                          onSelect: () => openEditForm(pkg),
-                        },
-                        {
-                          label: 'Branch Availability',
-                          onSelect: () => setAvailabilityPackageId(pkg.id),
-                        },
-                        ...(!pkg.is_active
-                          ? [
-                              {
-                                label: 'Archive',
-                                onSelect: () => void handleArchive(pkg),
-                              },
-                            ]
-                          : []),
-                      ]}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <DataBoard
+            groups={groupedPackages}
+            getRowKey={(pkg) => pkg.id}
+            renderCard={(pkg) => (
+              <div className={styles.packageRow}>{renderPackageCard(pkg)}</div>
+            )}
+            emptyColumnMessage="No packages here."
+          />
         )}
       </div>
 

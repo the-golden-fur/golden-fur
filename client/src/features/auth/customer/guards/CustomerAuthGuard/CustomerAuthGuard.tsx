@@ -11,6 +11,10 @@ import { NotificationBell } from '../../../../notifications/components/Notificat
 import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
 import { CreditBalanceProvider } from '../../../../credits/providers/CreditBalanceProvider';
 import { CreditBalanceIndicator } from '../../../../credits/components/CreditBalanceIndicator/CreditBalanceIndicator';
+import { SpinCreditsProvider } from '../../../../rewards/providers/SpinCreditsProvider';
+import { SpinCreditsIndicator } from '../../../../rewards/components/SpinCreditsIndicator/SpinCreditsIndicator';
+import { SpinWheelPopup } from '../../../../rewards/components/SpinWheelPopup/SpinWheelPopup';
+import { IDENTITY_CHANGED_EVENT } from '../../../../../shared/events/identityEvents';
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
@@ -22,8 +26,19 @@ export function CustomerAuthGuard() {
   // setup time - mirrors StaffAuthGuard's status fetch.
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
   // Populated once profileStatus is 'ok', for the Navbar identity chip.
-  // Customers have no username/role, unlike staff - just a full name.
+  // Customers have no username/role, unlike staff - just a full name
+  // (+ avatar).
   const [fullName, setFullName] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // Bumped by the IDENTITY_CHANGED_EVENT listener below so the profile
+  // effect re-fetches after Settings > Profile changes the avatar/name,
+  // without needing a full reload.
+  const [identityRefreshKey, setIdentityRefreshKey] = useState(0);
+  // null = not yet known. Catches a session that was already live when
+  // deactivation happened elsewhere (another device, or staff-initiated) -
+  // the point-of-login check in CustomerLoginForm only covers a fresh sign
+  // in, not an already-cached session revisiting /portal/*.
+  const [isActive, setIsActive] = useState<boolean | null>(null);
   // 'loading' until the customer_profiles check resolves. Customers and
   // staff share the same Supabase Auth session, so a valid session alone
   // doesn't prove this user is actually a customer - only a matching
@@ -82,13 +97,22 @@ export function CustomerAuthGuard() {
     void getCustomerProfile(user.id, accessToken).then((result) => {
       if (isMounted && result.data) {
         setFullName(result.data.full_name);
+        setPhotoUrl(result.data.profile_photo_url ?? null);
+        setIsActive(result.data.is_active);
       }
     });
 
     return () => {
       isMounted = false;
     };
-  }, [profileStatus, accessToken, user?.id]);
+  }, [profileStatus, accessToken, user?.id, identityRefreshKey]);
+
+  useEffect(() => {
+    const handleIdentityChanged = () => setIdentityRefreshKey((key) => key + 1);
+    window.addEventListener(IDENTITY_CHANGED_EVENT, handleIdentityChanged);
+    return () =>
+      window.removeEventListener(IDENTITY_CHANGED_EVENT, handleIdentityChanged);
+  }, []);
 
   const handleDenied = useCallback(() => {
     void signOut().finally(() => {
@@ -123,42 +147,59 @@ export function CustomerAuthGuard() {
     return null;
   }
 
+  if (isActive === false) {
+    return <Navigate to="/account-deactivated" replace />;
+  }
+
   const needsAal2 = mfaEnrolled === true && aal !== 'aal2';
 
   if (needsAal2 && location.pathname !== '/portal/mfa/verify') {
     return <Navigate to="/portal/mfa/verify" replace />;
   }
 
+  // Session 114: SpinCreditsProvider does the daily check-in (login-based
+  // spin triggers) and feeds both the navbar spins chip and the spin
+  // pop-up. The pop-up renders as AppShell children so it sits inside the
+  // routed shell and can open over any portal page.
   return (
     <CreditBalanceProvider>
-      <AppShell
-        role="customer"
-        brandLabel="Golden Fur"
-        identity={fullName ? { primary: fullName } : null}
-        sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
-        creditIndicator={<CreditBalanceIndicator />}
-        notificationBell={
-          accessToken ? (
-            <NotificationBell
-              accessToken={accessToken}
-              notificationsHref="/portal/notifications"
-            />
-          ) : null
-        }
-        composeButton={
-          accessToken ? (
-            <ComposeEntryPoint
-              accessToken={accessToken}
-              viewerRole={null}
-              isOpen={isComposeOpen}
-              onOpenChange={setIsComposeOpen}
-            />
-          ) : null
-        }
-        onContactSupport={
-          accessToken ? () => setIsComposeOpen(true) : undefined
-        }
-      />
+      <SpinCreditsProvider>
+        <AppShell
+          role="customer"
+          brandLabel="Golden Fur"
+          identity={fullName ? { primary: fullName, photoUrl } : null}
+          sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+          creditIndicator={
+            <>
+              <SpinCreditsIndicator />
+              <CreditBalanceIndicator />
+            </>
+          }
+          notificationBell={
+            accessToken ? (
+              <NotificationBell
+                accessToken={accessToken}
+                notificationsHref="/portal/notifications"
+              />
+            ) : null
+          }
+          composeButton={
+            accessToken ? (
+              <ComposeEntryPoint
+                accessToken={accessToken}
+                viewerRole={null}
+                isOpen={isComposeOpen}
+                onOpenChange={setIsComposeOpen}
+              />
+            ) : null
+          }
+          onContactSupport={
+            accessToken ? () => setIsComposeOpen(true) : undefined
+          }
+        >
+          <SpinWheelPopup />
+        </AppShell>
+      </SpinCreditsProvider>
     </CreditBalanceProvider>
   );
 }

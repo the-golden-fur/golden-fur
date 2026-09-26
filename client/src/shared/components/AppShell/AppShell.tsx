@@ -4,6 +4,7 @@ import { Navbar } from '../Navbar/Navbar';
 import { Sidebar, type SidebarSection } from '../Sidebar/Sidebar';
 import { HelpMascot } from '../HelpMascot/HelpMascot';
 import { SidebarCollapseProvider } from '../../providers/SidebarCollapseProvider/SidebarCollapseProvider';
+import { UnsavedChangesProvider } from '../../providers/UnsavedChangesProvider/UnsavedChangesProvider';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './AppShell.module.css';
 
@@ -12,6 +13,9 @@ export interface AppShellIdentity {
   primary: string;
   /** Staff role label - omitted for customers. */
   secondary?: string;
+  /** Settings > Profile's chosen avatar (upload or preset) - null/undefined
+   * falls back to an initials placeholder in Navbar. */
+  photoUrl?: string | null;
 }
 
 interface AppShellProps {
@@ -83,41 +87,50 @@ export function AppShell({
       collapsed={collapsed}
       setCollapsed={setCollapsedPersist}
     >
-      <div className={styles.shell}>
-        <div className={styles.navbarWrapper}>
-          <Navbar
-            role={role}
-            brandLabel={brandLabel}
-            identity={identity}
-            notificationBell={notificationBell}
-            composeButton={composeButton}
-            creditIndicator={creditIndicator}
-          />
-        </div>
-        <div className={styles.body}>
-          <Sidebar
-            sections={sidebarSections}
-            collapsed={collapsed}
-            onToggleCollapse={toggleCollapse}
-            role={role}
-          />
-          <main className={styles.main}>
-            {children}
-            <Outlet />
-          </main>
-        </div>
+      {/* Custom change (unsaved changes): mounted once here, for the whole
+          authenticated shell, rather than locally inside SettingsPage -
+          Navbar (a sibling of the routed <Outlet/> content, not a
+          descendant of it) needs the same context so leaving Settings via
+          the brand link or Sign Out can be guarded too, not just in-page
+          tab switches. Idle (registers nothing, renders nothing) on every
+          route outside Settings. */}
+      <UnsavedChangesProvider>
+        <div className={styles.shell}>
+          <div className={styles.navbarWrapper}>
+            <Navbar
+              role={role}
+              brandLabel={brandLabel}
+              identity={identity}
+              notificationBell={notificationBell}
+              composeButton={composeButton}
+              creditIndicator={creditIndicator}
+            />
+          </div>
+          <div className={styles.body}>
+            <Sidebar
+              sections={sidebarSections}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapse}
+              role={role}
+            />
+            <main className={styles.main}>
+              {children}
+              <Outlet />
+            </main>
+          </div>
 
-        {role === 'customer' ? (
-          <HelpMascot
-            links={[
-              onContactSupport
-                ? { label: 'Contact support', onClick: onContactSupport }
-                : { label: 'Contact support', href: '#' },
-              { label: 'My Bookings', href: '/portal/bookings' },
-            ]}
-          />
-        ) : null}
-      </div>
+          {role === 'customer' ? (
+            <HelpMascot
+              links={[
+                onContactSupport
+                  ? { label: 'Contact support', onClick: onContactSupport }
+                  : { label: 'Contact support', href: '#' },
+                { label: 'My Bookings', href: '/portal/bookings' },
+              ]}
+            />
+          ) : null}
+        </div>
+      </UnsavedChangesProvider>
     </SidebarCollapseProvider>
   );
 }

@@ -16,7 +16,7 @@ function renderTab(isSuperadmin: boolean, onSelectTile = vi.fn()) {
 }
 
 describe('ConfigTab', () => {
-  it('renders every admin-config page as a selectable tile for an Admin (no System Configuration)', () => {
+  it('renders every admin-config page as a selectable tile for an Admin (no Branches)', () => {
     renderTab(false);
 
     expect(
@@ -26,15 +26,15 @@ describe('ConfigTab', () => {
       screen.getByRole('button', { name: /^discounts/i })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /system configuration/i })
+      screen.queryByRole('button', { name: /^branches/i })
     ).not.toBeInTheDocument();
   });
 
-  it('adds the System Configuration tile for a Superadmin', () => {
+  it('adds the Branches tile for a Superadmin', () => {
     renderTab(true);
 
     expect(
-      screen.getByRole('button', { name: /system configuration/i })
+      screen.getByRole('button', { name: /^branches/i })
     ).toBeInTheDocument();
   });
 

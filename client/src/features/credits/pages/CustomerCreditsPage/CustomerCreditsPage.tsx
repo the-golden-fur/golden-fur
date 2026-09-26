@@ -29,17 +29,17 @@ export function CustomerCreditsPage() {
   const { accessToken } = useAuth();
   const { balances, total, isLoading } = useCreditBalance();
 
-  const funded = useMemo(
-    () => balances.filter((balance) => balance.balance > 0),
-    [balances]
-  );
+  // Every branch the customer has ever had credit at, including one that's
+  // since been spent down to zero - shown as a $0 balance card rather than
+  // dropped, so a fully-spent branch doesn't look identical to "never had
+  // credit here."
   const branchKey = useMemo(
     () =>
-      funded
+      balances
         .map((balance) => balance.branch_id)
         .sort()
         .join(','),
-    [funded]
+    [balances]
   );
 
   const [branches, setBranches] = useState<BranchSummary[]>([]);
@@ -62,9 +62,9 @@ export function CustomerCreditsPage() {
   }, []);
 
   useEffect(() => {
-    if (!accessToken || funded.length === 0) return;
+    if (!accessToken || balances.length === 0) return;
     let active = true;
-    for (const balance of funded) {
+    for (const balance of balances) {
       void listCreditHistory(accessToken, balance.branch_id).then((result) => {
         if (!active || !result.data) return;
         setHistoryByBranch((prev) => ({
@@ -77,7 +77,7 @@ export function CustomerCreditsPage() {
       active = false;
     };
     // branchKey + total stand in for "the set or size of my balances changed";
-    // funded is a fresh array every poll and would refetch needlessly.
+    // balances is a fresh array every poll and would refetch needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, branchKey, total]);
 
@@ -88,25 +88,25 @@ export function CustomerCreditsPage() {
     <main className={styles.page}>
       <h1 className={styles.title}>Account Credit</h1>
 
-      {isLoading && funded.length === 0 ? (
+      {isLoading && balances.length === 0 ? (
         <p className={styles.copy}>Loading your credit...</p>
-      ) : funded.length === 0 ? (
+      ) : balances.length === 0 ? (
         <p className={styles.copy}>
-          You don&apos;t have any account credit right now. Credit is added when
-          you cancel a booking within the allowed notice period, and can be
-          spent on a future visit to the same branch.
+          You have <strong>{formatCurrency(0)}</strong> in account credit.
+          Credit is added when you cancel a booking within the allowed notice
+          period, and can be spent on a future visit to the same branch.
         </p>
       ) : (
         <>
           <p className={styles.copy}>
             You have <strong>{formatCurrency(total)}</strong> in account credit
-            across {funded.length} {funded.length === 1 ? 'branch' : 'branches'}
-            . Credit is tied to the branch it was issued at and cannot be moved
-            between branches.
+            across {balances.length}{' '}
+            {balances.length === 1 ? 'branch' : 'branches'}. Credit is tied to
+            the branch it was issued at and cannot be moved between branches.
           </p>
 
           <div className={styles.sections}>
-            {funded.map((balance) => {
+            {balances.map((balance) => {
               const history = historyByBranch[balance.branch_id] ?? [];
               const isExpanded = expandedBranchId === balance.branch_id;
               const schedule = computeExpirySchedule(

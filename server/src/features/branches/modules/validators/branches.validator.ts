@@ -30,6 +30,9 @@ export const updateBranchValidator = z
     is_vet_branch: z.boolean().optional(),
     timezone: z.string().trim().min(1).optional(),
     operating_hours: operatingHoursValidator.optional(),
+    /** Deactivate/reactivate - a plain field update, same as promos'
+     * updatePromo, not a dedicated endpoint. */
+    is_active: z.boolean().optional(),
   })
   .strict();
 

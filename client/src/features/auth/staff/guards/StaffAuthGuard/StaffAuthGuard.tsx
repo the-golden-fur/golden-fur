@@ -17,6 +17,7 @@ import type { StaffRole } from '../../../../staff/staff.types';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
+import { IDENTITY_CHANGED_EVENT } from '../../../../../shared/events/identityEvents';
 
 function isStaffRole(role: string | null): role is StaffRole {
   return Boolean(role) && role! in ROLE_TO_DASHBOARD_SLUG;
@@ -72,8 +73,13 @@ export function StaffAuthGuard() {
   // on `role` keeps the array reference stable across unrelated re-renders.
   const sidebarSections = useMemo(() => buildSidebarSections(role), [role]);
   // Populated alongside role from the same getStaffProfile call, for the
-  // Navbar identity chip (username · role).
+  // Navbar identity chip (username · role · avatar).
   const [username, setUsername] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // Bumped by the IDENTITY_CHANGED_EVENT listener below so the profile
+  // effect re-fetches after Settings > Profile changes the avatar/name,
+  // without needing a full reload.
+  const [identityRefreshKey, setIdentityRefreshKey] = useState(0);
   // null = not yet known. Drives whether an Admin/Superadmin without a TOTP
   // factor sees the mandatory setup popup instead of being redirected to a
   // challenge page that would 400 with "No TOTP factor found".
@@ -103,6 +109,7 @@ export function StaffAuthGuard() {
       if (result.data) {
         setRole(result.data.role ?? null);
         setUsername(result.data.username ?? null);
+        setPhotoUrl(result.data.profile_photo_url ?? null);
         setProfileStatus('ok');
       } else if (result.error) {
         setProfileStatus('denied');
@@ -118,7 +125,14 @@ export function StaffAuthGuard() {
     return () => {
       isMounted = false;
     };
-  }, [session, accessToken, user?.id]);
+  }, [session, accessToken, user?.id, identityRefreshKey]);
+
+  useEffect(() => {
+    const handleIdentityChanged = () => setIdentityRefreshKey((key) => key + 1);
+    window.addEventListener(IDENTITY_CHANGED_EVENT, handleIdentityChanged);
+    return () =>
+      window.removeEventListener(IDENTITY_CHANGED_EVENT, handleIdentityChanged);
+  }, []);
 
   const handleTimeout = useCallback(() => {
     void signOut().finally(() => {
@@ -187,7 +201,9 @@ export function StaffAuthGuard() {
         role="staff"
         brandLabel="Golden Fur Staff"
         identity={
-          username && role ? { primary: username, secondary: role } : null
+          username && role
+            ? { primary: username, secondary: role, photoUrl }
+            : null
         }
         sidebarSections={sidebarSections}
         notificationBell={

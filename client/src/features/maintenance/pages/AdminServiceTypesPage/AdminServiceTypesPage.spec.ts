@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -158,9 +164,9 @@ describe('AdminServiceTypesPage', () => {
     renderPage();
 
     const groomingRow = (await screen.findByText('Grooming')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
-    const hotelRow = screen.getByText('Hotel').closest('li') as HTMLElement;
+    const hotelRow = screen.getByText('Hotel').closest('tr') as HTMLElement;
 
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
     expect(
@@ -242,7 +248,7 @@ describe('AdminServiceTypesPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Grooming')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
 
     expect(
@@ -280,7 +286,7 @@ describe('AdminServiceTypesPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Grooming')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
@@ -330,7 +336,7 @@ describe('AdminServiceTypesPage', () => {
     const user = userEvent.setup();
 
     const row = (await screen.findByText('Grooming')).closest(
-      'li'
+      'tr'
     ) as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
@@ -360,5 +366,91 @@ describe('AdminServiceTypesPage', () => {
     expect(
       within(dialog).getByRole('switch', { name: 'Makati' })
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('switches to List and Board (grouped by Staff picker by default)', async () => {
+    vi.mocked(maintenanceApi.listServiceTypes).mockResolvedValue({
+      data: [
+        buildServiceType({ staff_picker_enabled: true }),
+        buildServiceType({
+          id: 'type-2',
+          key: 'hotel',
+          name: 'Hotel',
+          staff_picker_enabled: false,
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per Staff picker Enabled/Disabled.
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Grooming');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Grooming');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Grooming' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Grooming'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+  });
+
+  it('a Branch filter tile narrows the list', async () => {
+    vi.mocked(maintenanceApi.listServiceTypes).mockResolvedValue({
+      data: [
+        buildServiceType(),
+        buildServiceType({
+          id: 'type-2',
+          key: 'hotel',
+          name: 'Hotel',
+          service_type_branch_availability: [
+            {
+              service_type_id: 'type-2',
+              branch_id: 'branch-southwoods',
+              is_available: true,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Grooming');
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+
+    // Branch defaults to the first branch (Makati) - Grooming is available
+    // there, Hotel (Southwoods-only in this test) is not.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
+
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
+    expect(screen.queryByText('Hotel')).not.toBeInTheDocument();
   });
 });

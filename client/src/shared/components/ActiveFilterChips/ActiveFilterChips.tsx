@@ -35,7 +35,14 @@ export function ActiveFilterChips({ chips }: ActiveFilterChipsProps) {
           onClick={chip.onClear}
         >
           <span>{chip.label}</span>
-          <X size={13} aria-hidden="true" />
+          {/* Notion-style remaster (session 110), Tier 3 chip-styling pass:
+           * hover/focus-revealed, matching FilterTile's pill convention -
+           * this whole chip stays a single "click anywhere to clear"
+           * button (unlike FilterTile, there's no separate popover editor
+           * here; editing still happens via the page's own QueueFilterBar
+           * controls), just re-skinned to look the same as everywhere
+           * else in the app. */}
+          <X className={styles.icon} size={13} aria-hidden="true" />
           <span className={styles.srOnly}>Clear {chip.label}</span>
         </button>
       ))}

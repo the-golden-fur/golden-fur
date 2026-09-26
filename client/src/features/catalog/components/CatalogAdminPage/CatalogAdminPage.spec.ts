@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,27 +58,35 @@ describe('CatalogAdminPage', () => {
       })
     );
 
-    await screen.findByText('No product items yet.');
+    await screen.findByText('No product items match this filter.');
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Name'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add product' });
+    fireEvent.change(within(dialog).getByLabelText('Name'), {
       target: { value: 'Wet food' },
     });
-    fireEvent.change(screen.getByLabelText('Category'), {
+    fireEvent.change(within(dialog).getByLabelText('Category'), {
       target: { value: 'food' },
     });
-    fireEvent.change(screen.getByLabelText('Service scope'), {
+    fireEvent.change(within(dialog).getByLabelText('Service scope'), {
       target: { value: 'hotel' },
     });
-    fireEvent.change(screen.getByLabelText('Price (PHP)'), {
+    fireEvent.change(within(dialog).getByLabelText('Price (PHP)'), {
       target: { value: '75' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Add product' })
+    );
 
     await screen.findByText('Wet food');
     expect(createItem).toHaveBeenCalledWith(
       { name: 'Wet food', category: 'food', service_scope: 'hotel', price: 75 },
       'token'
     );
+    // The modal closes on success - the form no longer sits on the page.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('Deactivate calls updateItem with is_active: false', async () => {
@@ -120,7 +128,57 @@ describe('CatalogAdminPage', () => {
 
     expect(archiveItem).toHaveBeenCalledWith('item-1', 'token');
     expect(
-      await screen.findByText('No product items yet.')
+      await screen.findByText('No product items match this filter.')
     ).toBeInTheDocument();
+  });
+
+  it('searching narrows the visible items by name or category', async () => {
+    renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({
+          data: [
+            ITEM,
+            { ...ITEM, id: 'item-2', name: 'Wet food', category: 'wet' },
+          ],
+          error: null,
+        }),
+      })
+    );
+
+    await screen.findByText('Dry kibble');
+    expect(screen.getByText('Wet food')).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Search products by name or category...'),
+      { target: { value: 'dry' } }
+    );
+
+    expect(screen.getByText('Dry kibble')).toBeInTheDocument();
+    expect(screen.queryByText('Wet food')).not.toBeInTheDocument();
+  });
+
+  it('switches to Board view, grouped by Category by default', async () => {
+    const { container } = renderWithRouter(
+      buildProps({
+        listItems: vi.fn().mockResolvedValue({
+          data: [
+            ITEM,
+            { ...ITEM, id: 'item-2', name: 'Wet food', category: 'wet' },
+          ],
+          error: null,
+        }),
+      })
+    );
+
+    await screen.findByText('Dry kibble');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    // One column per category (food, wet).
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(2);
+    expect(screen.getByText('Dry kibble')).toBeInTheDocument();
+    expect(screen.getByText('Wet food')).toBeInTheDocument();
   });
 });

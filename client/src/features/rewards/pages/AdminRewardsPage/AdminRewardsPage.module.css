@@ -1,0 +1,145 @@
+.page {
+  /* Embed-height convention (see configTiles.config.ts's doc comment on
+     ConfigTileConfig.Component) - this page is about to be embedded inside
+     AdminPromosAndRewardsPage's tab bar, itself reachable either as a
+     standalone route or inline inside Settings; without this, the old
+     bare padding-only rule left a full extra viewport of empty space
+     below the real content whenever it was squeezed into a shorter pane. */
+  min-height: var(--config-embed-min-height, 100vh);
+  padding: 1.5rem;
+}
+
+.content {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.copy {
+  color: var(--muted-text-color, #666);
+}
+
+.formPanel {
+  padding: 1rem;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 12px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fieldLabel {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.input {
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d9d9d9);
+}
+
+.primaryButton {
+  align-self: flex-start;
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-color, #d9534f);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorBanner {
+  color: var(--error-color, #b3261e);
+}
+
+.successBanner {
+  color: var(--success-color, #2e7d32);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted-text-color, #666);
+}
+
+.cardMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted-text-color, #666);
+}
+
+.rewardCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.rewardActions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.rewardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}

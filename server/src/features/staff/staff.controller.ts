@@ -9,7 +9,10 @@ import {
   updateStaffProfileValidator,
   updateStaffUsernameValidator,
 } from './modules/validators/staff.validator.ts';
-import { uploadStaffAvatar } from './services/avatarUpload.service.ts';
+import {
+  setStaffAvatarPreset,
+  uploadStaffAvatar,
+} from './services/avatarUpload.service.ts';
 import { resendAccountEmail } from './services/resendAccountEmail.service.ts';
 import {
   archiveStaffAccount,
@@ -211,17 +214,28 @@ export async function uploadAvatarController(
       }
     | undefined;
 
-  if (!file) {
-    return res.status(400).json({ error: 'No file provided' });
+  // "Choose preset" sends JSON ({ preset_id }), not multipart - multer's
+  // avatarUpload.single('avatar') middleware skips non-multipart requests
+  // entirely (req.file stays undefined) rather than erroring, so both flows
+  // share this one route/controller.
+  const presetId =
+    !file && typeof req.body?.preset_id === 'string'
+      ? req.body.preset_id
+      : null;
+
+  if (!file && !presetId) {
+    return res.status(400).json({ error: 'No file or preset provided' });
   }
 
   try {
-    const result = await uploadStaffAvatar({
-      requesterId,
-      requesterRole,
-      targetId,
-      file,
-    });
+    const result = file
+      ? await uploadStaffAvatar({ requesterId, requesterRole, targetId, file })
+      : await setStaffAvatarPreset({
+          requesterId,
+          requesterRole,
+          targetId,
+          presetId: presetId as string,
+        });
 
     return res.status(200).json({ profile_photo_url: result.avatarUrl });
   } catch (error) {

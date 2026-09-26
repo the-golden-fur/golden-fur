@@ -3,13 +3,6 @@ import { UNAVAILABILITY_LEAVE_TYPES } from '../../staff.types';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
 
-const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_AVATAR_MIME_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-]);
-
 /**
  * Mirrors the server's updateStaffProfileValidator (staff.validator.ts) so
  * invalid submissions are caught before the round trip - role/branch_id/
@@ -44,15 +37,6 @@ export const updateStaffProfileValidator = z
 export type UpdateStaffProfileInput = z.infer<
   typeof updateStaffProfileValidator
 >;
-
-export const avatarFileSchema = z
-  .instanceof(File)
-  .refine((file) => ALLOWED_AVATAR_MIME_TYPES.has(file.type), {
-    message: 'Unsupported file type. Use PNG, JPEG, or WEBP.',
-  })
-  .refine((file) => file.size <= MAX_AVATAR_SIZE_BYTES, {
-    message: 'File too large. Maximum size is 5MB.',
-  });
 
 /**
  * Mirrors the server's create-block payload shape (staff.controller.ts). A

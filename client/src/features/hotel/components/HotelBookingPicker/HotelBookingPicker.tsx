@@ -10,7 +10,8 @@ import {
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
@@ -48,6 +49,13 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
     (status) => ({ value: status, label: status })
   ),
 ];
+
+// Same gap noted on Consultation Queue/Groomer Dashboard/Bookings Queue: no
+// WebSocket/realtime infra exists anywhere in this codebase yet, so this
+// queue refreshes via polling on the same interval those already use - a
+// cashier settling a payment on a different page/tab doesn't push an update
+// here otherwise.
+const REFRESH_INTERVAL_MS = 15_000;
 
 interface EnrichedBooking {
   booking: Booking;
@@ -182,14 +190,9 @@ export function HotelBookingPicker({
     const token = accessToken;
     let isMounted = true;
 
-    void listBookings(token, {
-      branchId,
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-      serviceCategory: 'Hotel',
-      status: statusFilter === 'All' ? undefined : statusFilter,
-      excludeUnpaidDownpayment: true,
-    }).then((result) => {
+    function handleQueueResult(
+      result: Awaited<ReturnType<typeof listBookings>>
+    ) {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -232,10 +235,25 @@ export function HotelBookingPicker({
           return next;
         });
       });
-    });
+    }
+
+    function fetchQueue() {
+      void listBookings(token, {
+        branchId,
+        dateFrom: dateRange.from ?? undefined,
+        dateTo: dateRange.to ?? undefined,
+        serviceCategory: 'Hotel',
+        status: statusFilter === 'All' ? undefined : statusFilter,
+        excludeUnpaidDownpayment: true,
+      }).then(handleQueueResult);
+    }
+
+    fetchQueue();
+    const interval = setInterval(fetchQueue, REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [accessToken, branchId, dateRange.from, dateRange.to, statusFilter]);
 
@@ -286,6 +304,17 @@ export function HotelBookingPicker({
     },
     initialSortKey: 'soonest',
   });
+
+  function buildBookingActionItems(
+    item: EnrichedBooking
+  ): MoreOptionsMenuItem[] {
+    return [
+      {
+        label: 'View booking details',
+        onSelect: () => onViewDetails(item.booking),
+      },
+    ];
+  }
 
   const filterChips = useMemo(() => {
     const chips: { id: string; label: string; onClear: () => void }[] = [];
@@ -386,79 +415,75 @@ export function HotelBookingPicker({
 
             return (
               <li key={item.booking.id}>
-                <div
-                  className={`${styles.card} ${
-                    selectedBookingId === item.booking.id ? styles.selected : ''
-                  } ${!isCheckinable ? styles.disabledCard : ''}`}
+                <CardContextMenu
+                  label={`Actions for ${item.petName}`}
+                  items={buildBookingActionItems(item)}
                 >
-                  <div className={styles.cardHeader}>
-                    <span className={styles.petName}>{item.petName}</span>
-                    <span className={styles.weightBadge}>
-                      {item.weightClass}
-                    </span>
-                    {isCheckedIn ? (
-                      <span className={styles.checkedInBadge}>
-                        Already checked in
+                  <div
+                    className={`${styles.card} ${
+                      selectedBookingId === item.booking.id
+                        ? styles.selected
+                        : ''
+                    } ${!isCheckinable ? styles.disabledCard : ''}`}
+                  >
+                    <div className={styles.cardHeader}>
+                      <span className={styles.petName}>{item.petName}</span>
+                      <span className={styles.weightBadge}>
+                        {item.weightClass}
                       </span>
-                    ) : !isCheckinable ? (
-                      <BookingStatusBadge status={item.booking.status} />
-                    ) : null}
-                    <span className={styles.menuSlot}>
-                      <MoreOptionsMenu
-                        label={`More options for ${item.petName}`}
-                        items={[
-                          {
-                            label: 'View booking details',
-                            onSelect: () => onViewDetails(item.booking),
-                          },
-                        ]}
-                      />
-                    </span>
-                  </div>
-                  <span className={styles.metaLine}>
-                    Owner: {item.ownerName} ({item.ownerContact})
-                  </span>
-                  <span className={styles.metaLine}>{item.serviceLabel}</span>
-                  <span className={styles.metaLine}>
-                    Check-in: {formatDateTime(item.booking.scheduled_start)}
-                  </span>
-                  <span className={styles.metaLine}>
-                    Checkout: {formatDate(item.booking.scheduled_end)}
-                  </span>
-                  {item.booking.downpayment_amount != null ? (
+                      {isCheckedIn ? (
+                        <span className={styles.checkedInBadge}>
+                          Already checked in
+                        </span>
+                      ) : !isCheckinable ? (
+                        <BookingStatusBadge status={item.booking.status} />
+                      ) : null}
+                    </div>
                     <span className={styles.metaLine}>
-                      Downpayment: PHP{' '}
-                      {item.booking.downpayment_amount.toFixed(2)}
+                      Owner: {item.ownerName} ({item.ownerContact})
                     </span>
-                  ) : null}
-                  {item.booking.special_instructions ? (
-                    <span className={styles.notes}>
-                      {item.booking.special_instructions}
+                    <span className={styles.metaLine}>{item.serviceLabel}</span>
+                    <span className={styles.metaLine}>
+                      Check-in: {formatDateTime(item.booking.scheduled_start)}
                     </span>
-                  ) : null}
-                  <div className={styles.cardControls}>
-                    {isCheckinable ? (
-                      <button
-                        type="button"
-                        className={styles.checkInButton}
-                        disabled={checkingInBookingId === item.booking.id}
-                        onClick={() => onCheckIn(item.booking)}
-                      >
-                        {checkingInBookingId === item.booking.id
-                          ? 'Checking in...'
-                          : 'Check in'}
-                      </button>
+                    <span className={styles.metaLine}>
+                      Checkout: {formatDate(item.booking.scheduled_end)}
+                    </span>
+                    {item.booking.downpayment_amount != null ? (
+                      <span className={styles.metaLine}>
+                        Downpayment: PHP{' '}
+                        {item.booking.downpayment_amount.toFixed(2)}
+                      </span>
                     ) : null}
-                    {isCheckedIn && item.existingStayId ? (
-                      <Link
-                        className={styles.checkoutLink}
-                        to={`/staff/hotel/checkout/${item.existingStayId}`}
-                      >
-                        Go to checkout &rarr;
-                      </Link>
+                    {item.booking.special_instructions ? (
+                      <span className={styles.notes}>
+                        {item.booking.special_instructions}
+                      </span>
                     ) : null}
+                    <div className={styles.cardControls}>
+                      {isCheckinable ? (
+                        <button
+                          type="button"
+                          className={styles.checkInButton}
+                          disabled={checkingInBookingId === item.booking.id}
+                          onClick={() => onCheckIn(item.booking)}
+                        >
+                          {checkingInBookingId === item.booking.id
+                            ? 'Checking in...'
+                            : 'Check in'}
+                        </button>
+                      ) : null}
+                      {isCheckedIn && item.existingStayId ? (
+                        <Link
+                          className={styles.checkoutLink}
+                          to={`/staff/hotel/checkout/${item.existingStayId}`}
+                        >
+                          Go to checkout &rarr;
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                </CardContextMenu>
               </li>
             );
           })}

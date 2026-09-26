@@ -89,9 +89,9 @@ export interface PetHealthCondition {
 
 /** "My Patients": one row per distinct pet the requesting veterinarian has
  * finished a consultation for, with that pet's most recent finished-visit
- * date. customer_id (the pet's owner) lets the Bookings Queue's New Booking
- * flow restrict a Veterinarian's Customer step to owners they've actually
- * treated (vet-bookings-queue-access). */
+ * date. customer_id (the pet's owner) lets the Consultation Queue's New
+ * Consultation flow restrict a Veterinarian's Customer step to owners
+ * they've actually treated (vet-bookings-queue-access). */
 export interface VeterinarianPatient {
   pet_id: string;
   customer_id: string;

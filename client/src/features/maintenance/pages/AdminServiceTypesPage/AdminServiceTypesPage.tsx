@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
@@ -10,13 +11,29 @@ import {
   updateServiceType,
 } from '../../api/maintenance.api';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
-import { Modal } from '../../../../shared/components/Modal/Modal';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { StaffRoleMultiSelect } from '../../components/StaffRoleMultiSelect/StaffRoleMultiSelect';
@@ -25,16 +42,26 @@ import { getServiceIcon } from '../../../../shared/components/IconPicker/service
 import { ImageUploader } from '../../../../shared/components/ImageUploader/ImageUploader';
 import { uploadServiceImage } from '../../api/maintenance.api';
 import type { BranchSummary, ServiceType } from '../../maintenance.types';
+import {
+  applyServiceTypeFilters,
+  buildServiceTypeFilterFields,
+  deriveServiceTypeSortKey,
+  matchesServiceTypeQuery,
+  SERVICE_TYPE_COMPARATORS,
+  SERVICE_TYPE_GROUP_BY_AXES,
+  SERVICE_TYPE_SORT_FIELDS,
+} from './serviceTypeBrowserFields';
 import styles from './AdminServiceTypesPage.module.css';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
-type ServiceTypeSortKey = 'name-asc' | 'name-desc';
+type ViewMode = 'table' | 'list' | 'board';
 
-const SORT_OPTIONS: SortOption<ServiceTypeSortKey>[] = [
-  { value: 'name-asc', label: 'Name (A-Z)' },
-  { value: 'name-desc', label: 'Name (Z-A)' },
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
 interface CreateFormState {
@@ -98,7 +125,13 @@ export function AdminServiceTypesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [branchFilter, setBranchFilter] = useState('All');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(
+    SERVICE_TYPE_GROUP_BY_AXES[0].id
+  );
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] =
@@ -201,36 +234,48 @@ export function AdminServiceTypesPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const comparators = useMemo(
-    () => ({
-      'name-asc': (a: ServiceType, b: ServiceType) =>
-        a.name.localeCompare(b.name),
-      'name-desc': (a: ServiceType, b: ServiceType) =>
-        b.name.localeCompare(a.name),
-    }),
-    []
+  const filterFields = useMemo(
+    () => buildServiceTypeFilterFields(branches),
+    [branches]
   );
 
-  const { search, setSearch, sortKey, setSortKey, result } = useSearchAndSort<
-    ServiceType,
-    ServiceTypeSortKey
-  >({
-    items: serviceTypes,
-    matchesQuery: (serviceType, query) =>
-      serviceType.name.toLowerCase().includes(query),
-    comparators,
-    initialSortKey: 'name-asc',
-  });
-
   const filteredServiceTypes = useMemo(() => {
-    if (branchFilter === 'All') {
-      return result;
-    }
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? serviceTypes.filter((serviceType) =>
+          matchesServiceTypeQuery(serviceType, query)
+        )
+      : serviceTypes;
+    const filtered = applyServiceTypeFilters(searched, filterTiles);
 
-    return result.filter((serviceType) =>
-      availableBranchIds(serviceType).includes(branchFilter)
+    if (!sortTile) return filtered;
+    return [...filtered].sort(
+      SERVICE_TYPE_COMPARATORS[deriveServiceTypeSortKey(sortTile)]
     );
-  }, [result, branchFilter]);
+  }, [serviceTypes, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    SERVICE_TYPE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedServiceTypes = useGroupBy(
+    filteredServiceTypes,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
 
   const availabilityServiceType = serviceTypes.find(
     (serviceType) => serviceType.id === availabilityServiceTypeId
@@ -439,6 +484,85 @@ export function AdminServiceTypesPage() {
     setMessage('Service type updated.');
   }
 
+  function buildServiceTypeActionItems(
+    serviceType: ServiceType
+  ): MoreOptionsMenuItem[] {
+    return [
+      { label: 'Configure', onSelect: () => openEditModal(serviceType) },
+      {
+        label: 'Branch Availability',
+        onSelect: () => setAvailabilityServiceTypeId(serviceType.id),
+      },
+    ];
+  }
+
+  function renderServiceTypeActions(serviceType: ServiceType) {
+    return (
+      <MoreOptionsMenu
+        label={`Actions for ${serviceType.name}`}
+        items={buildServiceTypeActionItems(serviceType)}
+      />
+    );
+  }
+
+  function renderServiceTypeBadges(serviceType: ServiceType) {
+    return (
+      <>
+        {serviceType.staff_picker_enabled ? (
+          <span className={styles.pickerBadge}>Staff picker enabled</span>
+        ) : null}
+        {serviceType.cage_picker_enabled ? (
+          <span className={styles.pickerBadge}>Cage picker enabled</span>
+        ) : null}
+      </>
+    );
+  }
+
+  const columns: DataTableColumn<ServiceType>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      render: (serviceType) => {
+        const Icon = getServiceIcon(serviceType.icon);
+        return (
+          <span className={styles.rowMain}>
+            {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+            <span className={styles.typeName}>{serviceType.name}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'pickers',
+      header: 'Pickers',
+      render: (serviceType) => (
+        <span className={styles.rowMain}>
+          {renderServiceTypeBadges(serviceType)}
+        </span>
+      ),
+    },
+  ];
+
+  // List/Board card - tap-to-hold (CardContextMenu) instead of a
+  // persistent "..." button, matching Cages/Staff/Customer Management.
+  // Table view keeps the visible tap-to-open button (renderServiceTypeActions
+  // above) - only the dense card grid gets the hold gesture.
+  function renderServiceTypeCard(serviceType: ServiceType) {
+    const Icon = getServiceIcon(serviceType.icon);
+    return (
+      <CardContextMenu
+        label={`Actions for ${serviceType.name}`}
+        items={buildServiceTypeActionItems(serviceType)}
+      >
+        <div className={styles.rowMain}>
+          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+          <span className={styles.typeName}>{serviceType.name}</span>
+          {renderServiceTypeBadges(serviceType)}
+        </div>
+      </CardContextMenu>
+    );
+  }
+
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
@@ -487,75 +611,73 @@ export function AdminServiceTypesPage() {
         ) : (
           <>
             <div className={styles.toolbar}>
-              <SearchSortBar
+              <FilterSortBar
+                filterFields={filterFields}
+                filterTiles={filterTiles}
+                onAddFilter={handleAddFilter}
+                onChangeFilter={handleChangeFilter}
+                onRemoveFilter={handleRemoveFilter}
+                sortFields={SERVICE_TYPE_SORT_FIELDS}
+                sortTile={sortTile}
+                onChangeSort={setSortTile}
                 searchValue={search}
                 onSearchChange={setSearch}
                 searchPlaceholder="Search service types..."
-                sortValue={sortKey}
-                onSortChange={setSortKey}
-                sortOptions={SORT_OPTIONS}
-              />
-              <label className={styles.filterField}>
-                <span className={styles.filterLabel}>Branch</span>
-                <select
-                  className={styles.filterSelect}
-                  value={branchFilter}
-                  onChange={(event) => setBranchFilter(event.target.value)}
-                >
-                  <option value="All">All branches</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              >
+                <div className={styles.rowMain}>
+                  <ViewSwitcher
+                    options={VIEW_OPTIONS}
+                    value={view}
+                    onChange={setView}
+                    ariaLabel="Service types view"
+                  />
+                  {view === 'board' ? (
+                    <label className={styles.filterField}>
+                      <span className={styles.filterLabel}>Group by</span>
+                      <select
+                        className={styles.filterSelect}
+                        value={groupAxisId}
+                        onChange={(event) => setGroupAxisId(event.target.value)}
+                        aria-label="Group by"
+                      >
+                        {SERVICE_TYPE_GROUP_BY_AXES.map((axis) => (
+                          <option key={axis.id} value={axis.id}>
+                            {axis.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              </FilterSortBar>
             </div>
 
-            {filteredServiceTypes.length === 0 ? (
-              <p className={styles.copy}>
-                No service types match the selected filters.
-              </p>
+            {view === 'table' ? (
+              <DataTable
+                columns={columns}
+                rows={filteredServiceTypes}
+                getRowKey={(serviceType) => serviceType.id}
+                renderRowActions={renderServiceTypeActions}
+                emptyMessage="No service types match the selected filters."
+              />
+            ) : view === 'list' ? (
+              <DataList
+                items={filteredServiceTypes}
+                getRowKey={(serviceType) => serviceType.id}
+                renderItem={renderServiceTypeCard}
+                emptyMessage="No service types match the selected filters."
+              />
             ) : (
-              <ul className={styles.list}>
-                {filteredServiceTypes.map((serviceType) => {
-                  const Icon = getServiceIcon(serviceType.icon);
-                  return (
-                    <li className={styles.listItem} key={serviceType.id}>
-                      <div className={styles.rowMain}>
-                        {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-                        <span className={styles.typeName}>
-                          {serviceType.name}
-                        </span>
-                        {serviceType.staff_picker_enabled ? (
-                          <span className={styles.pickerBadge}>
-                            Staff picker enabled
-                          </span>
-                        ) : null}
-                        {serviceType.cage_picker_enabled ? (
-                          <span className={styles.pickerBadge}>
-                            Cage picker enabled
-                          </span>
-                        ) : null}
-                        <MoreOptionsMenu
-                          label={`Actions for ${serviceType.name}`}
-                          items={[
-                            {
-                              label: 'Configure',
-                              onSelect: () => openEditModal(serviceType),
-                            },
-                            {
-                              label: 'Branch Availability',
-                              onSelect: () =>
-                                setAvailabilityServiceTypeId(serviceType.id),
-                            },
-                          ]}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <DataBoard
+                groups={groupedServiceTypes}
+                getRowKey={(serviceType) => serviceType.id}
+                renderCard={(serviceType) => (
+                  <div className={styles.listItem}>
+                    {renderServiceTypeCard(serviceType)}
+                  </div>
+                )}
+                emptyColumnMessage="No service types here."
+              />
             )}
           </>
         )}

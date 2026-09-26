@@ -95,11 +95,9 @@ describe('CustomerCreditsPage', () => {
     vi.mocked(listCreditHistory).mockResolvedValue({ data: [], error: null });
   });
 
-  it('shows an empty state when the customer has no credit', () => {
+  it('shows a zero balance when the customer has no credit', () => {
     renderPage();
-    expect(
-      screen.getByText(/don't have any account credit/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText('₱0.00')).toBeInTheDocument();
   });
 
   it('lists a per-branch section with balance and soonest expiry', async () => {

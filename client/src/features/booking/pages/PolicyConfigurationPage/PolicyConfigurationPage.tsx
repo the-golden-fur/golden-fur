@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -18,10 +18,12 @@ import type {
   RescheduleFeeType,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
+import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import styles from './PolicyConfigurationPage.module.css';
 
 /** Admin+Superadmin - matches BOOKING_POLICY_WRITE_ROLES/policy_configurations
- * RLS server-side, unlike System Configuration's Superadmin-only gate. */
+ * RLS server-side, unlike Branches' Superadmin-only gate. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const SYSTEM_DEFAULT_OPTION = '';
@@ -58,6 +60,7 @@ interface FormState {
   booking_group_email_mode: 'combined' | 'per_booking';
   care_log_task_email_enabled: boolean;
   care_log_daily_report_enabled: boolean;
+  customer_deactivation_auto_delete_days: number;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -90,6 +93,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     booking_group_email_mode: policy.booking_group_email_mode,
     care_log_task_email_enabled: policy.care_log_task_email_enabled,
     care_log_daily_report_enabled: policy.care_log_daily_report_enabled,
+    customer_deactivation_auto_delete_days:
+      policy.customer_deactivation_auto_delete_days,
   };
 }
 
@@ -120,6 +125,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   booking_group_email_mode: 'combined',
   care_log_task_email_enabled: false,
   care_log_daily_report_enabled: true,
+  customer_deactivation_auto_delete_days: 30,
 };
 
 /**
@@ -129,15 +135,35 @@ const DOCUMENTED_DEFAULTS: FormState = {
  * client consumer at all. Lets Admin/Superadmin configure the reschedule
  * notice period (read by reschedule.service.ts and the Bookings Queue's
  * Reschedule button gate) and the fixed lunch break - system-wide default or
- * per-branch override, same branch-selector UX as System Configuration. (The
+ * per-branch override, same branch-selector UX as Branches. (The
  * Daycare overnight fee briefly lived here too - Custom change: Daycare fee
  * configuration - but moved to be per-service instead, on live follow-up
  * feedback, so each Daycare service can set its own; see AdminServicesPage.
  * Staff Picker visibility/eligible roles similarly moved out - it's now
  * per-service-type, see AdminServiceTypesPage.)
+ *
+ * initialBranchId/lockBranchSelector (session 87): Branches' own "Configure"
+ * row action pre-scopes this page to one branch, disabling the selector.
+ * Both optional/additive - the standalone route renders this with neither.
  */
-export function PolicyConfigurationPage() {
+interface PolicyConfigurationPageProps {
+  /** Branches page > a row's "Configure" action pre-scopes this page to
+   * that one branch, instead of the standalone route's default "system
+   * default" starting point. Both optional and additive - the standalone
+   * /staff/admin/maintenance/policies route (kept for anyone with an old
+   * link) renders this same component with neither prop set. */
+  initialBranchId?: string;
+  /** Disables the branch <select> so a pre-scoped visit can't be
+   * accidentally re-pointed at a different branch. */
+  lockBranchSelector?: boolean;
+}
+
+export function PolicyConfigurationPage({
+  initialBranchId,
+  lockBranchSelector,
+}: PolicyConfigurationPageProps = {}) {
   const { user, accessToken } = useAuth();
+  const unsavedChanges = useUnsavedChangesContext();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -145,7 +171,7 @@ export function PolicyConfigurationPage() {
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [policies, setPolicies] = useState<PolicyConfiguration[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState(
-    SYSTEM_DEFAULT_OPTION
+    initialBranchId ?? SYSTEM_DEFAULT_OPTION
   );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -236,24 +262,23 @@ export function PolicyConfigurationPage() {
     setFormError(null);
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const performSave = useCallback(async () => {
     if (!accessToken) return;
 
     if (form.lunch_break_start >= form.lunch_break_end) {
-      setFormError('Lunch break end must be after start.');
-      return;
+      const message = 'Lunch break end must be after start.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     if (
       form.credit_expiry_mode === 'fixed_date' &&
       !form.credit_expiry_fixed_date
     ) {
-      setFormError(
-        'Pick the date all of this branch’s credit should expire on.'
-      );
-      return;
+      const message =
+        'Pick the date all of this branch’s credit should expire on.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setIsSubmitting(true);
@@ -295,13 +320,16 @@ export function PolicyConfigurationPage() {
       booking_group_email_mode: form.booking_group_email_mode,
       care_log_task_email_enabled: form.care_log_task_email_enabled,
       care_log_daily_report_enabled: form.care_log_daily_report_enabled,
+      customer_deactivation_auto_delete_days:
+        form.customer_deactivation_auto_delete_days,
     });
 
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setFormError(result.error ?? 'Could not update the policy.');
-      return;
+      const message = result.error ?? 'Could not update the policy.';
+      setFormError(message);
+      throw new Error(message);
     }
 
     setPolicies((prev) => {
@@ -309,6 +337,37 @@ export function PolicyConfigurationPage() {
       return [...next, result.data!];
     });
     setMessage('Policy configuration updated.');
+  }, [accessToken, form, selectedBranchId]);
+
+  const handleDiscard = useCallback(() => {
+    setFormError(null);
+    setForm(formStateFromPolicy(effectivePolicy));
+  }, [effectivePolicy]);
+
+  const isDirty = useMemo(
+    () =>
+      JSON.stringify(form) !==
+      JSON.stringify(formStateFromPolicy(effectivePolicy)),
+    [form, effectivePolicy]
+  );
+
+  useUnsavedChanges({
+    id: 'policy-configuration',
+    label: selectedBranchId
+      ? `Policies: ${branches.find((b) => b.id === selectedBranchId)?.name ?? 'branch'}`
+      : 'Policies: system default',
+    isDirty,
+    onSave: performSave,
+    onDiscard: handleDiscard,
+  });
+
+  const handleBranchSelect = (nextBranchId: string) => {
+    const applySelection = () => setSelectedBranchId(nextBranchId);
+    if (unsavedChanges) {
+      unsavedChanges.guardIfDirty(applySelection);
+    } else {
+      applySelection();
+    }
   };
 
   if (!user?.id || !accessToken) {
@@ -375,7 +434,8 @@ export function PolicyConfigurationPage() {
           <select
             className={styles.input}
             value={selectedBranchId}
-            onChange={(event) => setSelectedBranchId(event.target.value)}
+            onChange={(event) => handleBranchSelect(event.target.value)}
+            disabled={lockBranchSelector}
           >
             <option value={SYSTEM_DEFAULT_OPTION}>
               System default (all branches)
@@ -394,7 +454,15 @@ export function PolicyConfigurationPage() {
           </p>
         ) : null}
 
-        <form className={styles.form} onSubmit={(e) => void handleSubmit(e)}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void performSave().catch(() => {
+              // formError is already set and shown below - nothing else to do.
+            });
+          }}
+        >
           <section aria-labelledby="notice-heading">
             <h2 className={styles.sectionTitle} id="notice-heading">
               Reschedule notice period
@@ -978,6 +1046,43 @@ export function PolicyConfigurationPage() {
               One email per active hotel stay each evening, listing that
               day&apos;s completed, missed, and still-scheduled care tasks.
             </p>
+          </section>
+
+          <section aria-labelledby="customer-deactivation-heading">
+            <h2
+              className={styles.sectionTitle}
+              id="customer-deactivation-heading"
+            >
+              Customer account deletion
+            </h2>
+            <p className={styles.copy}>
+              When a customer deactivates their own account (Settings &gt;
+              Danger), it&apos;s permanently deleted after this many days if
+              they don&apos;t log back in to reactivate it. Customers
+              aren&apos;t branch-scoped, so this only ever applies system-wide -
+              editable here only when configuring the system default, not a
+              branch override.
+            </p>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Delete after (days of inactivity)
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                disabled={Boolean(selectedBranchId)}
+                value={form.customer_deactivation_auto_delete_days}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    customer_deactivation_auto_delete_days: Number(
+                      event.target.value
+                    ),
+                  }))
+                }
+              />
+            </label>
           </section>
 
           {formError ? (

@@ -488,6 +488,20 @@ export function CustomerBookingFlowPage() {
   const navigate = useNavigate();
   const isReceptionistMode = location.pathname.startsWith('/staff');
 
+  // vet-bookings-queue-access: Consultation Queue's "New Consultation"
+  // button navigates here with this in its history state - locks the
+  // booking to the Veterinary service type for the whole visit to this
+  // page, same way isBranchLockedStaff locks the branch. Read once (this
+  // page is always freshly mounted when navigated to, so it never needs to
+  // react to the state object changing later).
+  const lockedServiceCategory =
+    location.state &&
+    typeof location.state === 'object' &&
+    'lockedServiceCategory' in location.state
+      ? ((location.state as { lockedServiceCategory: ServiceCategory })
+          .lockedServiceCategory ?? null)
+      : null;
+
   const [walkInCustomer, setWalkInCustomer] = useState<CustomerProfile | null>(
     null
   );
@@ -607,10 +621,21 @@ export function CustomerBookingFlowPage() {
     ? (viewerBranchId ?? '')
     : pickedBranchId;
 
-  const [category, setCategory] = useState<ServiceCategory | ''>('');
+  const [category, setCategory] = useState<ServiceCategory | ''>(
+    lockedServiceCategory ?? ''
+  );
   const [selectionMode, setSelectionMode] = useState<'service' | 'package'>(
     'service'
   );
+  // Notion-style remaster (session 110), lighter treatment: a plain search
+  // box over the services/packages step's own option grid - this is a
+  // single booking-session selection step, not a persistent "browse
+  // records" list, so search alone (no filter pills/sort/group/view
+  // switcher) is the proportionate amount of the pattern to bring here. See
+  // visibleServicesForCategory/visiblePackagesForCategory below - the
+  // underlying servicesForCategory/packagesForCategory (and everything
+  // derived from them, like pricing) are untouched.
+  const [itemSearch, setItemSearch] = useState('');
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
   // Pet Types admin CRUD + fixed-price override (20260912191/20260912192):
@@ -1104,6 +1129,12 @@ export function CustomerBookingFlowPage() {
     if (hasCheckedDraftRef.current || !draftStorageKey) return;
     hasCheckedDraftRef.current = true;
 
+    // vet-bookings-queue-access: New Consultation always starts fresh -
+    // restoring some earlier, unrelated draft here (keyed per staff user,
+    // not per session) could silently override the locked category with
+    // whatever that draft was for.
+    if (lockedServiceCategory) return;
+
     const draft = readBookingDraft(draftStorageKey);
     if (!draft) return;
 
@@ -1140,7 +1171,7 @@ export function CustomerBookingFlowPage() {
       // check attestation, not something that should survive a page reload.
       setShowRestoredBanner(true);
     });
-  }, [draftStorageKey, isReceptionistMode]);
+  }, [draftStorageKey, isReceptionistMode, lockedServiceCategory]);
 
   // Debounced so browsing between steps or typing into a field doesn't hit
   // localStorage synchronously on every change - only the settled value
@@ -1226,7 +1257,11 @@ export function CustomerBookingFlowPage() {
 
     setSelectedPetId('');
     setPickedBranchId('');
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setBookingSource('Online');
@@ -1463,6 +1498,30 @@ export function CustomerBookingFlowPage() {
     [packages, allServices, category]
   );
 
+  // Search-narrowed views of the two arrays above, for the option grid only
+  // - servicesForCategory/packagesForCategory themselves stay the full,
+  // unfiltered list (the Package-tab visibility check and every pricing/
+  // duration calculation still read from those, untouched).
+  const itemSearchQuery = itemSearch.trim().toLowerCase();
+  const visibleServicesForCategory = useMemo(
+    () =>
+      itemSearchQuery
+        ? servicesForCategory.filter((service) =>
+            service.name.toLowerCase().includes(itemSearchQuery)
+          )
+        : servicesForCategory,
+    [servicesForCategory, itemSearchQuery]
+  );
+  const visiblePackagesForCategory = useMemo(
+    () =>
+      itemSearchQuery
+        ? packagesForCategory.filter((pkg) =>
+            pkg.name.toLowerCase().includes(itemSearchQuery)
+          )
+        : packagesForCategory,
+    [packagesForCategory, itemSearchQuery]
+  );
+
   // Hotel (one cage) and Daycare (one session) only ever hold a single item;
   // Grooming/Veterinary stay multi-select.
   const singleSelectCategory = category === 'Hotel' || category === 'Daycare';
@@ -1650,8 +1709,8 @@ export function CustomerBookingFlowPage() {
         key: { kind: 'promo' as const, id: promo.id },
         amount:
           promo.discount_type === 'Percentage'
-            ? groupSubtotal * (promo.value / 100)
-            : Math.min(promo.value, groupSubtotal),
+            ? groupSubtotal * (Number(promo.value ?? 0) / 100)
+            : Math.min(Number(promo.value ?? 0), groupSubtotal),
       }));
 
     const couponCandidates = selectedCouponIds
@@ -1814,7 +1873,11 @@ export function CustomerBookingFlowPage() {
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    list.push({ key: 'category', label: 'Service Type' });
+    // vet-bookings-queue-access: a New Consultation booking already has its
+    // service type fixed by lockedServiceCategory - nothing left to pick.
+    if (!lockedServiceCategory) {
+      list.push({ key: 'category', label: 'Service Type' });
+    }
     list.push({ key: 'items', label: 'Services' });
 
     // Walk-in booking flow: receptionist-only, sits right before Date &
@@ -1856,6 +1919,7 @@ export function CustomerBookingFlowPage() {
   }, [
     isBranchLockedStaff,
     isReceptionistMode,
+    lockedServiceCategory,
     category,
     staffPickerUnavailable,
     staffPickerAppliesToCategory,
@@ -2062,7 +2126,11 @@ export function CustomerBookingFlowPage() {
     // pet can only book Assessment's Initial Assessment, so a selection
     // valid for one pet may not be for another (mirrors handleBranchSelect's
     // own reset below).
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
@@ -2083,7 +2151,11 @@ export function CustomerBookingFlowPage() {
     if (branchId === selectedBranchId) return;
 
     setPickedBranchId(branchId);
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setSelectedDiscountId('');
@@ -2491,7 +2563,11 @@ export function CustomerBookingFlowPage() {
    * handleBranchSelect's own reset lists. */
   function resetForNextBooking() {
     setSelectedPetId('');
-    setCategory('');
+    // vet-bookings-queue-access: a locked category stays locked through
+    // every reset - re-picking a pet/branch, starting over, or adding
+    // another booking must not reopen the (currently hidden) Service Type
+    // step.
+    setCategory(lockedServiceCategory ?? '');
     setSelectionMode('service');
     setSelectionsByCategory({});
     setBookingSource('Online');
@@ -3229,14 +3305,32 @@ export function CustomerBookingFlowPage() {
               </p>
             ) : null}
 
+            {category &&
+            (servicesForCategory.length > 1 ||
+              packagesForCategory.length > 1) ? (
+              <input
+                className={styles.itemSearchInput}
+                type="search"
+                placeholder={
+                  selectionMode === 'service'
+                    ? 'Search services...'
+                    : 'Search packages...'
+                }
+                value={itemSearch}
+                onChange={(event) => setItemSearch(event.target.value)}
+              />
+            ) : null}
+
             {category && selectionMode === 'service' ? (
               <div className={styles.optionGrid}>
                 {servicesForCategory.length === 0 ? (
                   <p className={styles.copy}>
                     No {category} services available at this branch.
                   </p>
+                ) : visibleServicesForCategory.length === 0 ? (
+                  <p className={styles.copy}>No services match your search.</p>
                 ) : null}
-                {servicesForCategory.map((service) => {
+                {visibleServicesForCategory.map((service) => {
                   const isRecommendedCage =
                     category === 'Hotel' &&
                     selectedPet?.weight_class != null &&
@@ -3312,7 +3406,11 @@ export function CustomerBookingFlowPage() {
 
             {category && selectionMode === 'package' ? (
               <div className={styles.optionGrid}>
-                {packagesForCategory.map((pkg) => {
+                {packagesForCategory.length > 0 &&
+                visiblePackagesForCategory.length === 0 ? (
+                  <p className={styles.copy}>No packages match your search.</p>
+                ) : null}
+                {visiblePackagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
 
                   return (

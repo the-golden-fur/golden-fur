@@ -47,6 +47,15 @@ export function CustomerLoginForm() {
     setSessionPersistence(true);
     await applySession(result.data.access_token, result.data.refresh_token);
 
+    // Credentials are valid, so login still succeeds even when deactivated
+    // - route to the notice page instead of the portal/MFA flow, using the
+    // session just established so its REACTIVATE button can call the
+    // self-service activate endpoint without a second login.
+    if (result.data.account_status === 'deactivated') {
+      navigate('/account-deactivated', { replace: true });
+      return;
+    }
+
     // The login response doesn't carry enrollment status - ask the
     // authoritative status endpoint, same as staff, so a customer who has
     // already turned MFA on in Settings gets challenged every login.

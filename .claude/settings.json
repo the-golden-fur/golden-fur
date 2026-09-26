@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/free-dev-ports.sh\" 2>/dev/null || true",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

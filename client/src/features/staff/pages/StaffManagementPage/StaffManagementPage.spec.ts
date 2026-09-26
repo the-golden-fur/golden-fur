@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -204,7 +210,7 @@ describe('StaffManagementPage (#75)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('AC-2: does not show a branch filter for an Admin (branch-scoped) viewer', async () => {
+  it('AC-2: does not offer a Branch filter for an Admin (branch-scoped) viewer', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Admin'), buildProfile()],
@@ -214,10 +220,13 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
-    expect(screen.queryByText('Branch')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch' })
+    ).not.toBeInTheDocument();
   });
 
-  it('AC-2: shows a branch filter for a Superadmin viewer', async () => {
+  it('AC-2: offers a Branch filter for a Superadmin viewer', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Superadmin'), buildProfile()],
@@ -227,7 +236,10 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
-    expect(screen.getByText('Branch')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch' })
+    ).toBeInTheDocument();
   });
 
   it('AC-3: filtering by role updates the visible grid without navigating', async () => {
@@ -254,7 +266,42 @@ describe('StaffManagementPage (#75)', () => {
     await screen.findByText('Jamie Cruz');
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Role'), 'Cashier');
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Role' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Role: Superadmin/ })
+    );
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(
+      within(dialog).getByRole('option', { name: 'Cashier' })
+    );
+
+    expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
+    expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
+  });
+
+  it('Notion-style remaster (session 110): a search box narrows the grid by name, username, or email', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+        buildProfile({
+          id: 'staff-2',
+          display_name: 'Alex Reyes',
+          username: 'areyes',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.type(
+      screen.getByPlaceholderText('Search staff...'),
+      'areyes'
+    );
 
     expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
     expect(screen.getByText('Alex Reyes')).toBeInTheDocument();
@@ -263,8 +310,6 @@ describe('StaffManagementPage (#75)', () => {
   it('AC-4: an Admin can create an unavailability block on behalf of a staff member from the list', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
-      // Jamie Cruz (staff-1) listed first so getAllByRole(...)[0] below
-      // targets her card's button, not the viewer's own card.
       data: [buildProfile(), buildViewerProfile('Admin')],
       error: null,
     });
@@ -284,9 +329,20 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
+    // Gallery/Board (default view) trigger the actions menu via
+    // right-click/long-press instead of a visible button - switch to Table,
+    // which still has the persistent "..." trigger, to keep this test's
+    // focus on the unavailability-block flow rather than the menu trigger.
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
     await userEvent.click(
-      screen.getAllByRole('button', { name: /set day\(s\) off/i })[0]
+      screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
     );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Set day(s) off' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Set day(s) off - Jamie Cruz' })
+    ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: /take the rest of today off/i })
     );
@@ -303,19 +359,25 @@ describe('StaffManagementPage (#75)', () => {
     ).toBeInTheDocument();
   });
 
-  it('gap closure: shows a "Create staff account" section for an Admin/Superadmin viewer', async () => {
+  it('custom change: "Create staff account" only appears as a modal once its button is clicked', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewerProfile('Admin')],
       error: null,
     });
 
+    const user = userEvent.setup();
     renderPage();
 
-    expect(
-      await screen.findByRole('heading', { name: /create staff account/i })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+    await screen.findByRole('button', { name: 'Create staff account' });
+    expect(screen.queryByLabelText(/^username$/i)).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Create staff account' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Create staff account' });
+    expect(within(dialog).getByLabelText(/^username$/i)).toBeInTheDocument();
   });
 
   it('gap closure: an Admin/Superadmin can deactivate a staff account from "Manage account"', async () => {
@@ -339,11 +401,16 @@ describe('StaffManagementPage (#75)', () => {
     renderPage();
 
     await screen.findByText('Jamie Cruz');
-    // Index 1, not 0: the viewer's own card renders first (it's not filtered
-    // out of the list), so index 0 is the signed-in Superadmin's own button.
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
     await userEvent.click(
-      screen.getAllByRole('button', { name: /manage account/i })[1]
+      screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
     );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Manage account' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Manage account - Jamie Cruz' })
+    ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: /deactivate account/i })
     );
@@ -357,7 +424,65 @@ describe('StaffManagementPage (#75)', () => {
     );
   });
 
-  it('AC-4: the resend-email action is reachable from an existing staff profile', async () => {
+  it('AC-4: the resend-email action is reachable from an existing staff profile, via "Manage account"', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actions for Jamie Cruz' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Manage account' })
+    );
+    expect(
+      screen.getByRole('button', { name: /resend account email/i })
+    ).toBeInTheDocument();
+  });
+
+  it('Notion-style remaster: Gallery is the default view, and Table/List/Board are available alongside it', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).getByText('Jamie Cruz')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Jamie Cruz').closest('ul')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(screen.getByText('Jamie Cruz')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Gallery' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Jamie Cruz')).toBeInTheDocument();
+  });
+
+  it('Gallery and Board views have no visible "..." trigger, but right-click opens the actions menu', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [
@@ -371,7 +496,91 @@ describe('StaffManagementPage (#75)', () => {
 
     await screen.findByText('Jamie Cruz');
     expect(
-      screen.getAllByRole('button', { name: /resend account email/i }).length
-    ).toBeGreaterThan(0);
+      screen.queryByRole('button', { name: 'Actions for Jamie Cruz' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jamie Cruz'));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Set day(s) off' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Set day(s) off - Jamie Cruz' })
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Jamie Cruz' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Jamie Cruz'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Manage account' })
+    ).toBeInTheDocument();
+  });
+
+  it('Board view groups by Role by default, and a Sort groups control offers Manual/Alphabetical', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({
+          id: 'staff-1',
+          display_name: 'Jamie Cruz',
+          role: 'Groomer',
+        }),
+        buildProfile({
+          id: 'staff-2',
+          display_name: 'Alex Reyes',
+          role: 'Cashier',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    // One column per role, including empty ones - headings disambiguate
+    // from a staff card's own role badge, which shows the same text.
+    expect(
+      screen.getByRole('heading', { name: /Groomer/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Cashier/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /Superadmin/ })
+    ).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Sort groups')).toHaveValue('manual');
+    await userEvent.selectOptions(
+      screen.getByLabelText('Sort groups'),
+      'alphabetical'
+    );
+    expect(screen.getByLabelText('Sort groups')).toHaveValue('alphabetical');
+  });
+
+  it('Board view offers a Branch group-by axis for a Superadmin viewer only', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewerProfile('Superadmin'), buildProfile()],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Board' }));
+
+    const groupBySelect = screen.getByLabelText('Group by');
+    expect(
+      within(groupBySelect).getByRole('option', { name: 'Branch' })
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(groupBySelect, 'branch');
+    expect(screen.getByRole('heading', { name: /Makati/ })).toBeInTheDocument();
   });
 });

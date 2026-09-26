@@ -36,5 +36,7 @@ export interface Branch {
   is_vet_branch: boolean;
   operating_hours: OperatingHours;
   timezone: string;
+  is_active: boolean;
+  archived_at: string | null;
   created_at: string;
 }

@@ -22,8 +22,15 @@ const STAFF_ROLES = [
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;
-/** Custom change (promo variations, session 86). */
-const PROMO_TYPES = ['date_range', 'weekly_recurring'] as const;
+/** Custom change (promo variations, session 86; spin_wheel, session 114). */
+const PROMO_TYPES = ['date_range', 'weekly_recurring', 'spin_wheel'] as const;
+/** Session 114: at most one per spin-wheel promo (a single column in
+ * spin_wheel_promo_settings - see 20260925211). */
+const SPIN_LOGIN_TRIGGERS = [
+  'daily_login',
+  'weekly_login_streak',
+  'monthly_login_streak',
+] as const;
 const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
@@ -397,6 +404,87 @@ export const promoScopeItemValidator = z
     'Each scope item targets exactly one of service_id or package_id'
   );
 
+/**
+ * Session 114: a spin-wheel promo's settings - which reward pool it spins,
+ * its pity threshold, and its trigger conditions. The booking and spend
+ * triggers combine freely; login_trigger is a single field, so "daily login"
+ * vs "weekly streak" vs "monthly streak" can never be enabled together.
+ * Every field is nullable so an update can clear one (e.g. turn off the
+ * spend trigger); the create/merged-state rules live in
+ * validateSpinWheelSettings below.
+ */
+export const spinWheelSettingsValidator = z
+  .object({
+    reward_pool_id: z.uuid(),
+    pity_threshold: z.number().int().positive().nullable().optional(),
+    booking_milestone_interval: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional(),
+    spend_threshold_amount: z.number().positive().nullable().optional(),
+    login_trigger: z.enum(SPIN_LOGIN_TRIGGERS).nullable().optional(),
+    login_streak_days: z.number().int().positive().nullable().optional(),
+  })
+  .strict();
+
+export type SpinWheelSettingsInput = z.infer<typeof spinWheelSettingsValidator>;
+
+/** Rules for a COMPLETE settings object (a create, or an update merged over
+ * the stored row by promos.service.ts). Returns human-readable problems
+ * rather than adding zod issues directly so the service layer can reuse it
+ * on the merged state. */
+export function spinWheelSettingsProblems(
+  settings: Partial<SpinWheelSettingsInput>
+): Array<{ path: string; message: string }> {
+  const problems: Array<{ path: string; message: string }> = [];
+
+  if (!settings.reward_pool_id) {
+    problems.push({
+      path: 'reward_pool_id',
+      message: 'Choose a reward pool for this spin wheel',
+    });
+  }
+
+  const hasTrigger =
+    settings.booking_milestone_interval != null ||
+    settings.spend_threshold_amount != null ||
+    settings.login_trigger != null;
+
+  if (!hasTrigger) {
+    problems.push({
+      path: 'booking_milestone_interval',
+      message: 'Turn on at least one trigger condition',
+    });
+  }
+
+  const streakDays = settings.login_streak_days;
+
+  if (settings.login_trigger === 'weekly_login_streak') {
+    if (streakDays == null || streakDays < 1 || streakDays > 7) {
+      problems.push({
+        path: 'login_streak_days',
+        message: 'A weekly login streak needs 1 to 7 days',
+      });
+    }
+  } else if (settings.login_trigger === 'monthly_login_streak') {
+    if (streakDays == null || streakDays < 1 || streakDays > 31) {
+      problems.push({
+        path: 'login_streak_days',
+        message: 'A monthly login streak needs 1 to 31 days',
+      });
+    }
+  } else if (streakDays != null) {
+    problems.push({
+      path: 'login_streak_days',
+      message: 'Streak days only apply to a weekly or monthly login streak',
+    });
+  }
+
+  return problems;
+}
+
 function validatePromoShape(
   input: {
     promo_type?: (typeof PROMO_TYPES)[number];
@@ -437,12 +525,31 @@ function validatePromoShape(
   // existing+updates state, including days_of_week vs. the stored
   // promo_type).
   if (input.promo_type !== undefined) {
-    // Custom change (promo variations): a weekly_recurring promo's
-    // "condition"/schedule IS days_of_week - start_date/end_date remain
-    // valid as an optional overall campaign window on top of it, but
-    // days_of_week and condition_note are mutually exclusive with each
-    // other, same as condition_note/dates above.
-    if (promoType === 'weekly_recurring') {
+    // Session 114: a spin-wheel promo's schedule is its trigger conditions
+    // (spin_wheel settings) - dates are an optional overall campaign window,
+    // and days_of_week/condition_note never apply.
+    if (promoType === 'spin_wheel') {
+      if (hasCondition) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['condition_note'],
+          message: 'A spin wheel promo cannot have a condition_note',
+        });
+      }
+      if (hasDays) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['days_of_week'],
+          message:
+            "days_of_week is only valid when promo_type is 'weekly_recurring'",
+        });
+      }
+    } else if (promoType === 'weekly_recurring') {
+      // Custom change (promo variations): a weekly_recurring promo's
+      // "condition"/schedule IS days_of_week - start_date/end_date remain
+      // valid as an optional overall campaign window on top of it, but
+      // days_of_week and condition_note are mutually exclusive with each
+      // other, same as condition_note/dates above.
       if (hasCondition) {
         ctx.addIssue({
           code: 'custom',
@@ -539,16 +646,95 @@ export const createPromoValidator = z
     end_date: dateString.optional(),
     days_of_week: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     condition_note: z.string().trim().min(1).optional(),
-    discount_type: z.enum(DISCOUNT_TYPES),
-    value: z.number().nonnegative(),
-    scope_type: z.enum(PROMO_SCOPE_TYPES),
+    // Required for every type except spin_wheel (session 114), which has no
+    // discount of its own and no per-branch availability - enforced in the
+    // superRefine below rather than here so the error names the field.
+    discount_type: z.enum(DISCOUNT_TYPES).optional(),
+    value: z.number().nonnegative().optional(),
+    scope_type: z.enum(PROMO_SCOPE_TYPES).optional(),
     scope: z.array(promoScopeItemValidator).optional(),
-    branch_ids: z.array(z.uuid()).min(1, 'Select at least one branch'),
+    branch_ids: z.array(z.uuid()).optional(),
+    /** Only for promo_type 'spin_wheel', and required there. */
+    spin_wheel: spinWheelSettingsValidator.optional(),
   })
   .strict()
-  .superRefine((input, ctx) =>
-    validatePromoShape(input, ctx, { requireWindow: true })
-  );
+  .superRefine((input, ctx) => {
+    validatePromoShape(input, ctx, { requireWindow: true });
+
+    if (input.promo_type === 'spin_wheel') {
+      for (const field of [
+        'discount_type',
+        'value',
+        'scope_type',
+        'scope',
+        'branch_ids',
+      ] as const) {
+        if (input[field] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `A spin wheel promo has no ${field} - its rewards come from the reward pool`,
+          });
+        }
+      }
+
+      if (!input.spin_wheel) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['spin_wheel'],
+          message:
+            'A spin wheel promo needs a reward pool and trigger settings',
+        });
+        return;
+      }
+
+      for (const problem of spinWheelSettingsProblems(input.spin_wheel)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['spin_wheel', problem.path],
+          message: problem.message,
+        });
+      }
+      return;
+    }
+
+    if (input.spin_wheel !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spin_wheel'],
+        message:
+          "spin_wheel settings are only valid when promo_type is 'spin_wheel'",
+      });
+    }
+    if (input.discount_type === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['discount_type'],
+        message: 'Discount type is required',
+      });
+    }
+    if (input.value === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['value'],
+        message: 'Discount value is required',
+      });
+    }
+    if (input.scope_type === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['scope_type'],
+        message: 'Scope is required',
+      });
+    }
+    if (!input.branch_ids?.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['branch_ids'],
+        message: 'Select at least one branch',
+      });
+    }
+  });
 
 /**
  * Partial update: pair rules are enforced on whatever is present (the
@@ -577,6 +763,10 @@ export const updatePromoValidator = z
     scope_type: z.enum(PROMO_SCOPE_TYPES).optional(),
     scope: z.array(promoScopeItemValidator).optional(),
     is_active: z.boolean().optional(),
+    // Session 114: partial spin-wheel settings for an existing spin_wheel
+    // promo - merged over the stored row and re-checked as a whole by
+    // promos.service.ts's updatePromo (spinWheelSettingsProblems).
+    spin_wheel: spinWheelSettingsValidator.partial().optional(),
   })
   .strict()
   .superRefine((input, ctx) =>
@@ -604,15 +794,16 @@ export const updateBreedValidator = z
   })
   .strict();
 
-/** Custom change: Pet Types admin CRUD. `key` is free-text and immutable
- * once created (like service_types.key) - a brand-new row won't have
- * matching category-specific pricing behavior until an admin also
- * configures a fixed-price override for it (Pet Type Pricing section of the
- * same admin page); the plain weight/coat matrix pricing applies otherwise,
- * same fallback Dog already uses today. */
+/** Custom change: Pet Types admin CRUD. `key` is no longer accepted from the
+ * client - it's generated server-side (petTypes.service.ts), same treatment
+ * as Service Types, since it was redundant admin-facing busywork alongside
+ * the auto-generated `id`. A brand-new row won't have matching
+ * category-specific pricing behavior until an admin also configures a
+ * fixed-price override for it (the row's Configure action); the plain
+ * weight/coat matrix pricing applies otherwise, same fallback Dog already
+ * uses today. */
 export const createPetTypeValidator = z
   .object({
-    key: z.string().trim().min(1, 'Key is required'),
     name: z.string().trim().min(1, 'Name is required'),
   })
   .strict();

@@ -1,6 +1,37 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Navigate } from 'react-router';
+import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
+import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listPetTypes } from '../../../maintenance/api/maintenance.api';
 import type { PetTypeRow } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -11,18 +42,30 @@ import {
   setCageMaintenanceStatus,
   updateCage,
 } from '../../api/hotel.api';
-import type { Cage, CageSize } from '../../hotel.types';
+import type { Cage, CageSize, CageStatus } from '../../hotel.types';
+import {
+  applyCageFilters,
+  buildCageFilterFields,
+  CAGE_COMPARATORS,
+  CAGE_GROUP_BY_AXES,
+  CAGE_SIZE_LABELS,
+  CAGE_SIZES,
+  CAGE_SORT_FIELDS,
+  deriveCageSortKey,
+  matchesCageQuery,
+} from './cageBrowserFields';
 import styles from './AdminCagesPage.module.css';
 
 /** Matches HOTEL_ADMIN_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
-const CAGE_SIZES: CageSize[] = ['S', 'M', 'L', 'XL'];
-const CAGE_SIZE_LABELS: Record<CageSize, string> = {
-  S: 'Small',
-  M: 'Medium',
-  L: 'Large',
-  XL: 'Extra Large',
-};
+
+type ViewMode = 'table' | 'list' | 'board';
+
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'board', label: 'Board', icon: Columns3 },
+];
 
 interface CreateFormState {
   cageLabel: string;
@@ -43,6 +86,12 @@ function togglePetType(current: string[], key: string): string[] {
     : [...current, key];
 }
 
+function statusBadgeClass(status: CageStatus): string {
+  if (status === 'Available') return styles.statusAvailable;
+  if (status === 'Under Maintenance') return styles.statusMaintenance;
+  return styles.statusOccupied;
+}
+
 /**
  * Custom change: Cage CRUD (Settings > Config). Admin/Superadmin can add,
  * rename/resize, and delete specific cages - not just toggle Under
@@ -52,6 +101,13 @@ function togglePetType(current: string[], key: string): string[] {
  * grid/status endpoints already have for every role including Superadmin
  * (requireBranch always resolves the caller's own assigned branch - there
  * is no cross-branch override for this feature today).
+ *
+ * Notion-style remaster (session 110): search/filter/sort are FilterSortBar
+ * pills, and the list can switch between Table, List, and Board (grouped by
+ * Status or Size) via ViewSwitcher - this is the first page in the rollout
+ * to prove all three shared view components together. Every filter tile
+ * here is client-side only (see cageBrowserFields.ts) - there's no server
+ * query layer change in this rollout.
  */
 export function AdminCagesPage() {
   const { user, accessToken } = useAuth();
@@ -63,6 +119,7 @@ export function AdminCagesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreateFormState>(EMPTY_CREATE_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -77,6 +134,12 @@ export function AdminCagesPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
+
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('table');
+  const [groupAxisId, setGroupAxisId] = useState(CAGE_GROUP_BY_AXES[0].id);
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -142,6 +205,17 @@ export function AdminCagesPage() {
     );
   }
 
+  function openCreateModal() {
+    setCreateForm(EMPTY_CREATE_FORM);
+    setFormError(null);
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setIsCreateModalOpen(false);
+    setFormError(null);
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -173,8 +247,8 @@ export function AdminCagesPage() {
     }
 
     setCages((prev) => [...prev, result.data as Cage]);
-    setCreateForm(EMPTY_CREATE_FORM);
     setMessage('Cage added.');
+    closeCreateModal();
   }
 
   function startEditing(cage: Cage) {
@@ -187,13 +261,15 @@ export function AdminCagesPage() {
 
   async function handleSaveEdit(cageId: string) {
     if (!accessToken || !editingLabel.trim()) {
-      setRowError('Cage label is required.');
-      return;
+      const message = 'Cage label is required.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     if (editingPetTypes.length === 0) {
-      setRowError('Select at least one pet type.');
-      return;
+      const message = 'Select at least one pet type.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     setRowError(null);
@@ -209,14 +285,53 @@ export function AdminCagesPage() {
     );
 
     if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update cage.');
-      return;
+      const message = result.error ?? 'Could not update cage.';
+      setRowError(message);
+      throw new Error(message);
     }
 
     replaceCage(result.data);
     setEditingId(null);
     setMessage('Cage updated.');
   }
+
+  const editingCage = cages.find((cage) => cage.id === editingId) ?? null;
+
+  const handleDiscardEdit = useCallback(() => {
+    setEditingId(null);
+    setRowError(null);
+  }, []);
+
+  // handleSaveEdit itself is a plain function (redefined every render, not
+  // useCallback'd), so this wrapper's own deps must list every piece of
+  // state handleSaveEdit actually reads - otherwise (see the bug this
+  // fixed) a fresh, unmemoized onSave identity on every render re-triggers
+  // useUnsavedChanges' registration effect every render, which changes the
+  // provider's context value, which re-renders this component, which
+  // creates another fresh onSave... an infinite loop with no user action
+  // needed to sustain it. Listing the real dependencies here means this
+  // only recomputes when one of them actually changes, each time capturing
+  // that same render's handleSaveEdit (correctly in sync, since both are
+  // defined fresh together every render).
+  const handleUnsavedSave = useCallback(
+    () => (editingId !== null ? handleSaveEdit(editingId) : Promise.resolve()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingId, accessToken, editingLabel, editingSize, editingPetTypes]
+  );
+
+  // Cages only ever has one row mid-edit at a time (editingId), so this is
+  // the "per-in-progress-edit" shape of the pattern - a stable id (there's
+  // never more than one concurrent registration for this page) with
+  // entering edit mode itself as the dirty signal, since there's no
+  // deeper per-field diffing for row edits like there is for whole-page
+  // drafts.
+  useUnsavedChanges({
+    id: 'cage-edit',
+    label: editingCage ? `Cage: ${editingCage.cage_label}` : 'Cage',
+    isDirty: editingId !== null,
+    onSave: handleUnsavedSave,
+    onDiscard: handleDiscardEdit,
+  });
 
   async function handleToggleMaintenance(cage: Cage) {
     if (!accessToken) return;
@@ -259,6 +374,284 @@ export function AdminCagesPage() {
     setMessage('Cage deleted.');
   }
 
+  const filterFields = useMemo(
+    () => buildCageFilterFields(petTypeOptions),
+    [petTypeOptions]
+  );
+
+  const visibleCages = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? cages.filter((cage) => matchesCageQuery(cage, query))
+      : cages;
+    const filtered = applyCageFilters(searched, filterTiles);
+
+    // No sort tile means "keep the order cages arrived in" (grouped by
+    // size, per loadCages) rather than silently imposing a default sort.
+    if (!sortTile) return filtered;
+    return [...filtered].sort(CAGE_COMPARATORS[deriveCageSortKey(sortTile)]);
+  }, [cages, search, filterTiles, sortTile]);
+
+  const activeGroupAxis =
+    CAGE_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ?? null;
+  const groupedCages = useGroupBy(
+    visibleCages,
+    view === 'board' ? activeGroupAxis : null
+  );
+
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
+
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
+    );
+  }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  // Custom change: consolidate the row actions behind a single "..." menu
+  // (same treatment as Services/Pet Types/etc.) instead of a row of
+  // always-visible buttons. Delete is left out entirely rather than shown
+  // disabled - MoreOptionsMenu items have no disabled state, and omitting
+  // an inapplicable action is the same convention every other "..." menu in
+  // this app already uses.
+  function cageActionItems(cage: Cage): MoreOptionsMenuItem[] {
+    const items: MoreOptionsMenuItem[] = [
+      { label: 'Edit', onSelect: () => startEditing(cage) },
+    ];
+
+    if (cage.status === 'Available' || cage.status === 'Under Maintenance') {
+      items.push({
+        label:
+          cage.status === 'Under Maintenance'
+            ? 'Mark Available'
+            : 'Mark Under Maintenance',
+        onSelect: () => void handleToggleMaintenance(cage),
+      });
+    }
+
+    if (cage.status !== 'Occupied' && cage.status !== 'Reserved') {
+      items.push({ label: 'Delete', onSelect: () => void handleDelete(cage) });
+    }
+
+    return items;
+  }
+
+  // Table/List: a persistent "..." trigger, same as every other migrated
+  // page. Board reuses the same item list through CardContextMenu instead
+  // (see renderCageBoardCard below) - a kebab button on every card in a
+  // dense board grid is visual noise there, same precedent as Staff/
+  // Customer Management (session 111).
+  function renderCageActions(cage: Cage) {
+    if (editingId === cage.id) {
+      return (
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.smallButton}
+            onClick={() =>
+              void handleSaveEdit(cage.id).catch(() => {
+                // rowError is already set and shown below - nothing else to do.
+              })
+            }
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className={styles.smallButtonSecondary}
+            onClick={handleDiscardEdit}
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.actions}>
+        <MoreOptionsMenu
+          label={`Actions for ${cage.cage_label}`}
+          items={cageActionItems(cage)}
+        />
+      </div>
+    );
+  }
+
+  const columns = useMemo<DataTableColumn<Cage>[]>(
+    () => [
+      {
+        id: 'label',
+        header: 'Cage',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <input
+              className={styles.input}
+              value={editingLabel}
+              onChange={(event) => setEditingLabel(event.target.value)}
+            />
+          ) : (
+            <span className={styles.cageLabel}>{cage.cage_label}</span>
+          ),
+      },
+      {
+        id: 'size',
+        header: 'Size',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <select
+              className={styles.input}
+              value={editingSize}
+              onChange={(event) =>
+                setEditingSize(event.target.value as CageSize)
+              }
+            >
+              {CAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className={styles.cageSize}>
+              {CAGE_SIZE_LABELS[cage.size]}
+            </span>
+          ),
+      },
+      {
+        id: 'petTypes',
+        header: 'Pet types',
+        render: (cage) =>
+          editingId === cage.id ? (
+            <div className={styles.petTypeCheckboxes}>
+              {petTypeOptions.map((petType) => (
+                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={editingPetTypes.includes(petType.key)}
+                    onChange={() =>
+                      setEditingPetTypes((prev) =>
+                        togglePetType(prev, petType.key)
+                      )
+                    }
+                  />
+                  {petType.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <span className={styles.petTypesBadge}>
+              {cage.pet_types.join(', ')}
+            </span>
+          ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        render: (cage) => (
+          <span
+            className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
+          >
+            {cage.status}
+          </span>
+        ),
+      },
+    ],
+    [editingId, editingLabel, editingSize, editingPetTypes, petTypeOptions]
+  );
+
+  function renderCageCardBody(cage: Cage) {
+    return (
+      <>
+        <span className={styles.cageLabel}>{cage.cage_label}</span>
+        <span className={styles.cageSize}>{CAGE_SIZE_LABELS[cage.size]}</span>
+        <span className={styles.petTypesBadge}>
+          {cage.pet_types.join(', ')}
+        </span>
+        <span
+          className={`${styles.statusBadge} ${statusBadgeClass(cage.status)}`}
+        >
+          {cage.status}
+        </span>
+      </>
+    );
+  }
+
+  function renderCageCard(cage: Cage) {
+    if (editingId === cage.id) {
+      return (
+        <div className={styles.rowMain}>
+          <input
+            className={styles.input}
+            value={editingLabel}
+            onChange={(event) => setEditingLabel(event.target.value)}
+          />
+          <select
+            className={styles.input}
+            value={editingSize}
+            onChange={(event) => setEditingSize(event.target.value as CageSize)}
+          >
+            {CAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+          <div className={styles.petTypeCheckboxes}>
+            {petTypeOptions.map((petType) => (
+              <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={editingPetTypes.includes(petType.key)}
+                  onChange={() =>
+                    setEditingPetTypes((prev) =>
+                      togglePetType(prev, petType.key)
+                    )
+                  }
+                />
+                {petType.name}
+              </label>
+            ))}
+          </div>
+          {renderCageActions(cage)}
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.rowMain}>
+        {renderCageCardBody(cage)}
+        {renderCageActions(cage)}
+      </div>
+    );
+  }
+
+  // Board: the "..." trigger is hidden entirely in favor of a right-click
+  // (desktop) / long-press (mobile) menu via CardContextMenu - same
+  // precedent as Staff/Customer Management (session 111). Editing state is
+  // unaffected - it still shows the same inline edit form regardless of
+  // view, since editing needs its inputs visible either way.
+  function renderCageBoardCard(cage: Cage) {
+    if (editingId === cage.id) {
+      return renderCageCard(cage);
+    }
+
+    return (
+      <CardContextMenu
+        items={cageActionItems(cage)}
+        label={`Actions for ${cage.cage_label}`}
+      >
+        <div className={styles.rowMain}>{renderCageCardBody(cage)}</div>
+      </CardContextMenu>
+    );
+  }
+
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
@@ -276,95 +669,22 @@ export function AdminCagesPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Cages</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>Cages</h1>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={openCreateModal}
+          >
+            Add cage
+          </button>
+        </div>
         <p className={styles.copy}>
           Add, rename/resize, or delete a cage at your branch. A cage that is
           currently Occupied or Reserved cannot be deleted.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
-
-        <section className={styles.panel} aria-labelledby="add-cage-title">
-          <h2 className={styles.sectionTitle} id="add-cage-title">
-            Add cage
-          </h2>
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleCreate(event)}
-          >
-            <label className={styles.field}>
-              <span className={styles.label}>Cage label</span>
-              <input
-                className={styles.input}
-                value={createForm.cageLabel}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    cageLabel: event.target.value,
-                  }))
-                }
-                placeholder="e.g. Makati-S-03"
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Size</span>
-              <select
-                className={styles.input}
-                value={createForm.size}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    size: event.target.value as CageSize,
-                  }))
-                }
-              >
-                {CAGE_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {CAGE_SIZE_LABELS[size]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className={styles.field}>
-              <span className={styles.label}>Pet types</span>
-              <div className={styles.petTypeCheckboxes}>
-                {petTypeOptions.map((petType) => (
-                  <label
-                    key={petType.id}
-                    className={styles.petTypeCheckboxLabel}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={createForm.petTypes.includes(petType.key)}
-                      onChange={() =>
-                        setCreateForm((prev) => ({
-                          ...prev,
-                          petTypes: togglePetType(prev.petTypes, petType.key),
-                        }))
-                      }
-                    />
-                    {petType.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {formError ? (
-              <p className={styles.errorBanner} role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Adding...' : 'Add cage'}
-            </button>
-          </form>
-        </section>
 
         {isLoading ? (
           <p className={styles.copy}>Loading cages...</p>
@@ -373,127 +693,75 @@ export function AdminCagesPage() {
             {loadError}
           </p>
         ) : (
-          <ul className={styles.list}>
-            {cages.map((cage) => (
-              <li className={styles.listItem} key={cage.id}>
-                <div className={styles.rowMain}>
-                  {editingId === cage.id ? (
-                    <>
-                      <input
-                        className={styles.input}
-                        value={editingLabel}
-                        onChange={(event) =>
-                          setEditingLabel(event.target.value)
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        value={editingSize}
-                        onChange={(event) =>
-                          setEditingSize(event.target.value as CageSize)
-                        }
-                      >
-                        {CAGE_SIZES.map((size) => (
-                          <option key={size} value={size}>
-                            {size}
-                          </option>
-                        ))}
-                      </select>
-                      <div className={styles.petTypeCheckboxes}>
-                        {petTypeOptions.map((petType) => (
-                          <label
-                            key={petType.id}
-                            className={styles.petTypeCheckboxLabel}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={editingPetTypes.includes(petType.key)}
-                              onChange={() =>
-                                setEditingPetTypes((prev) =>
-                                  togglePetType(prev, petType.key)
-                                )
-                              }
-                            />
-                            {petType.name}
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        className={styles.smallButton}
-                        onClick={() => void handleSaveEdit(cage.id)}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className={styles.cageLabel}>
-                        {cage.cage_label}
-                      </span>
-                      <span className={styles.cageSize}>
-                        {CAGE_SIZE_LABELS[cage.size]}
-                      </span>
-                      <span className={styles.petTypesBadge}>
-                        {cage.pet_types.join(', ')}
-                      </span>
-                      <span
-                        className={`${styles.statusBadge} ${
-                          cage.status === 'Available'
-                            ? styles.statusAvailable
-                            : cage.status === 'Under Maintenance'
-                              ? styles.statusMaintenance
-                              : styles.statusOccupied
-                        }`}
-                      >
-                        {cage.status}
-                      </span>
-                      <button
-                        type="button"
-                        className={styles.smallButtonSecondary}
-                        onClick={() => startEditing(cage)}
-                      >
-                        Edit
-                      </button>
-                      {cage.status === 'Available' ||
-                      cage.status === 'Under Maintenance' ? (
-                        <button
-                          type="button"
-                          className={styles.smallButtonSecondary}
-                          onClick={() => void handleToggleMaintenance(cage)}
-                        >
-                          {cage.status === 'Under Maintenance'
-                            ? 'Mark Available'
-                            : 'Mark Under Maintenance'}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={styles.smallButtonDanger}
-                        disabled={
-                          cage.status === 'Occupied' ||
-                          cage.status === 'Reserved'
-                        }
-                        onClick={() => void handleDelete(cage)}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-            {cages.length === 0 ? (
-              <p className={styles.copy}>No cages at this branch yet.</p>
-            ) : null}
-          </ul>
+          <>
+            <FilterSortBar
+              filterFields={filterFields}
+              filterTiles={filterTiles}
+              onAddFilter={handleAddFilter}
+              onChangeFilter={handleChangeFilter}
+              onRemoveFilter={handleRemoveFilter}
+              sortFields={CAGE_SORT_FIELDS}
+              sortTile={sortTile}
+              onChangeSort={setSortTile}
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search cages..."
+            >
+              <div className={styles.viewControls}>
+                <ViewSwitcher
+                  options={VIEW_OPTIONS}
+                  value={view}
+                  onChange={setView}
+                  ariaLabel="Cages view"
+                />
+                {view === 'board' ? (
+                  <label className={styles.field}>
+                    <span className={styles.label}>Group by</span>
+                    <select
+                      className={styles.input}
+                      value={groupAxisId}
+                      onChange={(event) => setGroupAxisId(event.target.value)}
+                      aria-label="Group by"
+                    >
+                      {CAGE_GROUP_BY_AXES.map((axis) => (
+                        <option key={axis.id} value={axis.id}>
+                          {axis.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </FilterSortBar>
+
+            {view === 'table' ? (
+              <DataTable
+                columns={columns}
+                rows={visibleCages}
+                getRowKey={(cage) => cage.id}
+                renderRowActions={renderCageActions}
+                emptyMessage="No cages at this branch yet."
+              />
+            ) : view === 'list' ? (
+              <DataList
+                items={visibleCages}
+                getRowKey={(cage) => cage.id}
+                renderItem={renderCageCard}
+                emptyMessage="No cages at this branch yet."
+              />
+            ) : (
+              <DataBoard
+                groups={groupedCages}
+                getRowKey={(cage) => cage.id}
+                renderCard={(cage) => (
+                  <div className={styles.listItem}>
+                    {renderCageBoardCard(cage)}
+                  </div>
+                )}
+                emptyColumnMessage="No cages."
+              />
+            )}
+          </>
         )}
 
         {rowError ? (
@@ -502,6 +770,86 @@ export function AdminCagesPage() {
           </p>
         ) : null}
       </div>
+
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Add cage"
+        onClose={closeCreateModal}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Cage label</span>
+            <input
+              className={styles.input}
+              value={createForm.cageLabel}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  cageLabel: event.target.value,
+                }))
+              }
+              placeholder="e.g. Makati-S-03"
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Size</span>
+            <select
+              className={styles.input}
+              value={createForm.size}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  size: event.target.value as CageSize,
+                }))
+              }
+            >
+              {CAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {CAGE_SIZE_LABELS[size]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className={styles.field}>
+            <span className={styles.label}>Pet types</span>
+            <div className={styles.petTypeCheckboxes}>
+              {petTypeOptions.map((petType) => (
+                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.petTypes.includes(petType.key)}
+                    onChange={() =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        petTypes: togglePetType(prev.petTypes, petType.key),
+                      }))
+                    }
+                  />
+                  {petType.name}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {formError ? (
+            <p className={styles.errorBanner} role="alert">
+              {formError}
+            </p>
+          ) : null}
+
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Adding...' : 'Add cage'}
+          </button>
+        </form>
+      </Modal>
     </main>
   );
 }

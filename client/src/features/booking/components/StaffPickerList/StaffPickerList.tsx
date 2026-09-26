@@ -1,11 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getStaffPickerOptions } from '../../api/booking.api';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
+import type {
+  SortFieldDescriptor,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
 import type {
   ServiceCategory,
   StaffPickerOption,
   StaffPreferenceInput,
 } from '../../booking.types';
 import styles from './StaffPickerList.module.css';
+
+const SORT_FIELDS: SortFieldDescriptor[] = [
+  {
+    id: 'name',
+    label: 'Name',
+    directions: [
+      { value: 'asc', label: 'A to Z' },
+      { value: 'desc', label: 'Z to A' },
+    ],
+  },
+];
 
 interface StaffPickerListProps {
   accessToken: string;
@@ -40,8 +56,6 @@ interface StaffPickerListProps {
    */
   cartStaffOverlapCounts?: Record<string, number>;
 }
-
-type SortKey = 'default' | 'name-asc' | 'name-desc';
 
 function getInitials(displayName: string) {
   return displayName
@@ -94,7 +108,7 @@ export function StaffPickerList({
   const [error, setError] = useState<string | null>(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('default');
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
 
   // Read via ref inside the fetch effect below so the callback's identity
   // (a fresh arrow function on every parent render, in practice) never
@@ -178,16 +192,16 @@ export function StaffPickerList({
       );
     }
 
-    if (sortKey !== 'default') {
+    if (sortTile) {
       specific = [...specific].sort((a, b) =>
-        sortKey === 'name-asc'
+        sortTile.direction === 'asc'
           ? a.display_name.localeCompare(b.display_name)
           : b.display_name.localeCompare(a.display_name)
       );
     }
 
     return [...noPreference, ...specific];
-  }, [options, search, sortKey]);
+  }, [options, search, sortTile]);
 
   // Multi-booking checkout: a specific staff member is "full" once this cart's
   // overlapping bookings have already picked them max_concurrent_per_staff
@@ -235,24 +249,19 @@ export function StaffPickerList({
     <div className={styles.wrapper}>
       <span className={styles.heading}>Staff</span>
 
-      <div className={styles.toolbar}>
-        <input
-          className={styles.searchInput}
-          type="search"
-          placeholder="Search staff by name..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <select
-          className={styles.sortSelect}
-          value={sortKey}
-          onChange={(event) => setSortKey(event.target.value as SortKey)}
-        >
-          <option value="default">Sort: Default</option>
-          <option value="name-asc">Sort: Name (A-Z)</option>
-          <option value="name-desc">Sort: Name (Z-A)</option>
-        </select>
-      </div>
+      <FilterSortBar
+        filterFields={[]}
+        filterTiles={[]}
+        onAddFilter={() => {}}
+        onChangeFilter={() => {}}
+        onRemoveFilter={() => {}}
+        sortFields={SORT_FIELDS}
+        sortTile={sortTile}
+        onChangeSort={setSortTile}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search staff by name..."
+      />
 
       {filteredAndSorted.length === 0 ? (
         <p className={styles.copy}>No staff match that search.</p>

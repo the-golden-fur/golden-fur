@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveBranch,
   getBranch,
+  hardDeleteBranch,
+  listArchivedBranches,
   listBranchesFull,
+  restoreBranch,
   updateBranch,
 } from './branches.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -23,8 +27,11 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.update = vi.fn(() => builder);
+    builder.delete = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
@@ -40,6 +47,8 @@ const BRANCH = {
   is_vet_branch: true,
   operating_hours: { monday: { open: '08:00', close: '18:00' } },
   timezone: 'Asia/Manila',
+  is_active: true,
+  archived_at: null,
   created_at: '2026-06-25T00:00:00.000Z',
 };
 
@@ -107,6 +116,88 @@ describe('branches.service', () => {
       await expect(
         updateBranch('missing', { address: 'New address' })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('archiveBranch', () => {
+    it('archives an inactive branch', async () => {
+      queueFromResults(
+        { data: { ...BRANCH, is_active: false }, error: null },
+        { data: null, error: null }
+      );
+
+      await expect(archiveBranch('branch-1')).resolves.toBeUndefined();
+    });
+
+    it('refuses to archive a still-active branch', async () => {
+      queueFromResults({ data: BRANCH, error: null });
+
+      await expect(archiveBranch('branch-1')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+  });
+
+  describe('restoreBranch', () => {
+    it('clears archived_at', async () => {
+      queueFromResults({ data: null, error: null });
+
+      await expect(restoreBranch('branch-1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('listArchivedBranches', () => {
+    it('returns every archived branch row', async () => {
+      const archived = { ...BRANCH, archived_at: '2026-09-22T00:00:00.000Z' };
+      queueFromResults({ data: [archived], error: null });
+
+      const result = await listArchivedBranches();
+
+      expect(result).toEqual([archived]);
+    });
+  });
+
+  describe('hardDeleteBranch', () => {
+    it('permanently deletes an archived branch', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...BRANCH,
+            is_active: false,
+            archived_at: '2026-09-22T00:00:00.000Z',
+          },
+          error: null,
+        },
+        { data: null, error: null }
+      );
+
+      await expect(hardDeleteBranch('branch-1')).resolves.toBeUndefined();
+    });
+
+    it('refuses to hard-delete a branch that was never archived', async () => {
+      queueFromResults({ data: BRANCH, error: null });
+
+      await expect(hardDeleteBranch('branch-1')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+
+    it('translates a foreign-key violation into a friendly 409', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...BRANCH,
+            is_active: false,
+            archived_at: '2026-09-22T00:00:00.000Z',
+          },
+          error: null,
+        },
+        { data: null, error: { code: '23503', message: 'fk violation' } }
+      );
+
+      await expect(hardDeleteBranch('branch-1')).rejects.toMatchObject({
+        statusCode: 409,
+      });
     });
   });
 });

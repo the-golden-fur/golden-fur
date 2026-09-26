@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -49,6 +55,16 @@ function pickerOk(
   };
 }
 
+/** Since Notion-style remaster (session 110), FilterSortBar's own Filter/
+ * Sort trigger buttons also carry role="button" - scope down to just the
+ * staff option cards (the [class*="grid"] wrapper) so a count assertion
+ * isn't thrown off by the toolbar. */
+function getCardButtons(container: HTMLElement) {
+  const grid = container.querySelector('[class*="grid"]');
+  if (!grid) return [];
+  return within(grid as HTMLElement).getAllByRole('button');
+}
+
 describe('StaffPickerList', () => {
   it('AC-2: "No preference" appears first', async () => {
     vi.mocked(bookingApi.getStaffPickerOptions).mockResolvedValue({
@@ -56,7 +72,7 @@ describe('StaffPickerList', () => {
       error: null,
     });
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -68,8 +84,8 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(2));
-    expect(screen.getAllByRole('button')[0]).toHaveTextContent('No preference');
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(2));
+    expect(getCardButtons(container)[0]).toHaveTextContent('No preference');
   });
 
   it('auto-selects "No preference" once options load, if nothing is selected yet', async () => {
@@ -103,7 +119,7 @@ describe('StaffPickerList', () => {
     });
     const onSelect = vi.fn();
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -115,7 +131,7 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(2));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(2));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -126,7 +142,7 @@ describe('StaffPickerList', () => {
     });
     const onSelect = vi.fn();
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -138,7 +154,7 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(2));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(2));
     fireEvent.click(screen.getByText('Ana Cruz'));
 
     expect(onSelect).toHaveBeenCalledWith({
@@ -154,7 +170,7 @@ describe('StaffPickerList', () => {
     });
     const onSelect = vi.fn();
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -166,7 +182,7 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(2));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(2));
     fireEvent.click(screen.getByText('No preference'));
 
     expect(onSelect).toHaveBeenCalledWith({ type: 'no_preference' });
@@ -178,7 +194,7 @@ describe('StaffPickerList', () => {
       error: null,
     });
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -190,26 +206,27 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(3));
 
     await userEvent.type(
       screen.getByPlaceholderText('Search staff by name...'),
       'ben'
     );
 
-    const buttons = screen.getAllByRole('button');
+    const buttons = getCardButtons(container);
     expect(buttons).toHaveLength(2);
     expect(buttons[0]).toHaveTextContent('No preference');
     expect(buttons[1]).toHaveTextContent('Ben Reyes');
   });
 
-  it('sort dropdown reorders specific staff by name, still keeping "No preference" first', async () => {
+  it('Notion-style remaster (session 110): a Sort pill reorders specific staff by name, still keeping "No preference" first', async () => {
     vi.mocked(bookingApi.getStaffPickerOptions).mockResolvedValue({
       data: { staff_picker_enabled: true, options: THREE_OPTIONS },
       error: null,
     });
+    const user = userEvent.setup();
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -221,14 +238,12 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(3));
 
-    await userEvent.selectOptions(
-      screen.getByDisplayValue('Sort: Default'),
-      'name-desc'
-    );
+    await user.click(screen.getByRole('button', { name: 'Sort' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Name · Z to A' }));
 
-    const buttons = screen.getAllByRole('button');
+    const buttons = getCardButtons(container);
     expect(buttons[0]).toHaveTextContent('No preference');
     expect(buttons[1]).toHaveTextContent('Ben Reyes');
     expect(buttons[2]).toHaveTextContent('Ana Cruz');
@@ -240,7 +255,7 @@ describe('StaffPickerList', () => {
     );
     const onSelect = vi.fn();
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -254,7 +269,7 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(3));
 
     const anaButton = screen.getByText('Ana Cruz').closest('button');
     expect(anaButton).toBeDisabled();
@@ -271,7 +286,7 @@ describe('StaffPickerList', () => {
       pickerOk({ options: THREE_OPTIONS, max_concurrent_per_staff: 2 })
     );
 
-    render(
+    const { container } = render(
       createElement(StaffPickerList, {
         accessToken: 'token',
         branchId: 'branch-1',
@@ -284,7 +299,7 @@ describe('StaffPickerList', () => {
       })
     );
 
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+    await waitFor(() => expect(getCardButtons(container)).toHaveLength(3));
     expect(screen.getByText('Ana Cruz').closest('button')).not.toBeDisabled();
   });
 

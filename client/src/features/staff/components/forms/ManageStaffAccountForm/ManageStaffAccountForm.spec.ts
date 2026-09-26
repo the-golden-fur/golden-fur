@@ -8,6 +8,7 @@ import type { StaffProfile } from '../../../staff.types';
 
 vi.mock('../../../api/staff.api', () => ({
   manageStaffAccount: vi.fn(),
+  resendAccountEmail: vi.fn(),
 }));
 
 function baseProfile(overrides: Partial<StaffProfile> = {}): StaffProfile {

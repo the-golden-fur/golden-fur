@@ -398,6 +398,9 @@ export async function hardDeletePackage(
 export interface ListPromosFilters {
   branchId?: string;
   includeInactive?: boolean;
+  /** Session 114: the admin Promos tab only - spin-wheel promos are never
+   * returned otherwise (they aren't discounts). */
+  includeSpinWheel?: boolean;
 }
 
 export async function listPromos(
@@ -412,6 +415,10 @@ export async function listPromos(
 
   if (filters.includeInactive) {
     params.set('include_inactive', 'true');
+  }
+
+  if (filters.includeSpinWheel) {
+    params.set('include_spin_wheel', 'true');
   }
 
   const query = params.size > 0 ? `?${params.toString()}` : '';

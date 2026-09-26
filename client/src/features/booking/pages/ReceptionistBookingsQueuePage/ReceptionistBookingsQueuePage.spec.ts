@@ -223,6 +223,20 @@ describe('ReceptionistBookingsQueuePage', () => {
     });
   });
 
+  it('vet-bookings-queue-access: redirects a Veterinarian away (Consultation Queue is their entry point now)', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Veterinarian')],
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.queryByText('Bookings queue')).not.toBeInTheDocument()
+    );
+    expect(bookingApi.listBookings).not.toHaveBeenCalled();
+  });
+
   it("AC-1: loads the queue scoped to the receptionist's own branch by default", async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Receptionist')],

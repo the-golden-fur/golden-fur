@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -176,16 +182,26 @@ describe('AdminServicesPage', () => {
     renderPage();
 
     expect(await screen.findByText('Bath')).toBeInTheDocument();
-    // selector-scoped: 'Grooming' also appears as a filter <option>.
+    // selector-scoped: 'Grooming' also appears in the Filter menu once
+    // opened - not an issue here since the menu starts closed.
     expect(
       screen.getByText('Grooming', { selector: 'span' })
     ).toBeInTheDocument();
     expect(screen.getByText('PHP 300.00')).toBeInTheDocument();
-    expect(screen.getByLabelText('Category')).toBeInTheDocument();
-    expect(screen.getByLabelText('Branch')).toBeInTheDocument();
+    // Category/Branch are now FilterSortBar pill fields, not always-visible
+    // selects - confirm they're offered in the Filter menu.
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Filter' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Category' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Branch' })
+    ).toBeInTheDocument();
   });
 
-  it('AC-1: category filter narrows the list without navigating', async () => {
+  it('AC-1: a Category filter tile narrows the list without navigating', async () => {
     vi.mocked(maintenanceApi.listServices).mockResolvedValue({
       data: [
         buildService(),
@@ -206,7 +222,19 @@ describe('AdminServicesPage', () => {
     expect(await screen.findByText('Bath')).toBeInTheDocument();
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Category'), 'Veterinary');
+    // Category defaults to the first category (Grooming) - open the tile's
+    // popover and pick Veterinary instead.
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Category' }));
+    await user.click(
+      screen.getByRole('button', { name: /Category: Grooming/ })
+    );
+    const popover = screen.getByRole('dialog', {
+      name: 'Edit Category filter',
+    });
+    await user.click(
+      within(popover).getByRole('option', { name: 'Veterinary' })
+    );
 
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
     expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
@@ -393,7 +421,7 @@ describe('AdminServicesPage', () => {
 
     // Two "Category" controls exist once the form is open (the list filter
     // and the form field) - the form's select is the second in DOM order.
-    await user.selectOptions(screen.getAllByLabelText('Category')[1], 'Hotel');
+    await user.selectOptions(screen.getByLabelText('Category'), 'Hotel');
 
     expect(
       screen.queryByRole('switch', {
@@ -409,7 +437,7 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
 
     // No inline per-branch toggles, Edit button, or global Disable switch
     // on the row itself anymore - they're actions behind the kebab menu.
@@ -439,7 +467,7 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Bath' })
     );
@@ -462,7 +490,7 @@ describe('AdminServicesPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    const row = (await screen.findByText('Bath')).closest('li') as HTMLElement;
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Bath' })
     );
@@ -507,10 +535,7 @@ describe('AdminServicesPage', () => {
       await screen.findByRole('button', { name: 'New service' })
     );
     await user.type(screen.getByLabelText('Name'), 'Daycare (per hour)');
-    await user.selectOptions(
-      screen.getAllByLabelText('Category')[1],
-      'Daycare'
-    );
+    await user.selectOptions(screen.getByLabelText('Category'), 'Daycare');
 
     expect(screen.queryByLabelText('Base price (PHP)')).not.toBeInTheDocument();
 
@@ -540,5 +565,83 @@ describe('AdminServicesPage', () => {
     );
 
     expect(await screen.findByText('Service created.')).toBeInTheDocument();
+  });
+
+  it('switches to Table, List, and Board (grouped by Category by default)', async () => {
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [
+        buildService(),
+        buildService({
+          id: 'service-2',
+          name: 'Wellness Exam',
+          category: 'Veterinary',
+          service_pricing_tiers: [],
+          service_branch_availability: [],
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Bath')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Bath')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per category present in SERVICE_CATEGORIES.
+    expect(
+      container.querySelectorAll('section:not([aria-labelledby])')
+    ).toHaveLength(5);
+    expect(screen.getByText('Bath')).toBeInTheDocument();
+    expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
+  });
+
+  it('tap-to-hold: Board view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Bath');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await screen.findByText('Bath');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Bath' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Bath'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+  });
+
+  it('defaults to Active-only via a pre-added Status filter tile', async () => {
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [
+        buildService({ id: '1', name: 'Bath', is_active: true }),
+        buildService({ id: '2', name: 'Old Service', is_active: false }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Bath');
+    expect(screen.queryByText('Old Service')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Status: Active/ })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Status: Active/ }));
+    const popover = screen.getByRole('dialog', { name: 'Edit Status filter' });
+    await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
+
+    expect(screen.getByText('Old Service')).toBeInTheDocument();
   });
 });

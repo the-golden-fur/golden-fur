@@ -96,4 +96,79 @@ describe('CustomerPetManagerPage', () => {
       screen.queryByRole('button', { name: 'Add pet' })
     ).not.toBeInTheDocument();
   });
+
+  it('searching narrows the visible pets', async () => {
+    vi.mocked(listCustomerPets).mockResolvedValue({
+      data: [
+        buildPet({ id: 'pet-1', name: 'Bantay' }),
+        buildPet({ id: 'pet-2', name: 'Whiskers', pet_type: 'Cat' }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Bantay');
+    expect(screen.getByText('Whiskers')).toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText('Search your pets...'),
+      'whisk'
+    );
+
+    expect(screen.queryByText('Bantay')).not.toBeInTheDocument();
+    expect(screen.getByText('Whiskers')).toBeInTheDocument();
+  });
+
+  it('a Pet type filter tile narrows the list', async () => {
+    vi.mocked(listCustomerPets).mockResolvedValue({
+      data: [
+        buildPet({ id: 'pet-1', name: 'Bantay', pet_type: 'Cat' }),
+        buildPet({ id: 'pet-2', name: 'Whiskers', pet_type: 'Dog' }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Bantay');
+    expect(screen.getByText('Whiskers')).toBeInTheDocument();
+
+    // Pet type's default value is the first alphabetical type (Cat).
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Pet type' }));
+
+    expect(screen.getByText('Bantay')).toBeInTheDocument();
+    expect(screen.queryByText('Whiskers')).not.toBeInTheDocument();
+  });
+
+  it('switches to List and Board (grouped by Pet type by default)', async () => {
+    vi.mocked(listCustomerPets).mockResolvedValue({
+      data: [
+        buildPet({ id: 'pet-1', name: 'Bantay', pet_type: 'Dog' }),
+        buildPet({ id: 'pet-2', name: 'Whiskers', pet_type: 'Cat' }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Bantay')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    // One column per pet type (Cat, Dog) - DataBoard's own column sections,
+    // not the page's outer panel section.
+    expect(container.querySelectorAll('section[class*="column"]')).toHaveLength(
+      2
+    );
+    expect(screen.getByRole('link', { name: /bantay/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /whiskers/i })).toBeInTheDocument();
+  });
 });

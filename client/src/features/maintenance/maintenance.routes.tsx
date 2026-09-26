@@ -1,13 +1,12 @@
 import { Fragment } from 'react';
-import { Route } from 'react-router';
+import { Navigate, Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { AdminServicesAndPackagesPage } from './pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
 import { PricingConfigurationPage } from './pages/PricingConfigurationPage/PricingConfigurationPage';
 import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPage/WeightClassConfigurationPage';
-import { AdminPromoConfigPage } from './pages/AdminPromoConfigPage/AdminPromoConfigPage';
-import { AdminBreedsPage } from './pages/AdminBreedsPage/AdminBreedsPage';
-import { AdminPetTypesPage } from './pages/AdminPetTypesPage/AdminPetTypesPage';
-import { SystemConfigurationPage } from './pages/SystemConfigurationPage/SystemConfigurationPage';
+import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
+import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
+import { BranchesPage } from './pages/BranchesPage/BranchesPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -31,20 +30,37 @@ export const maintenanceRoutes = (
         element={<WeightClassConfigurationPage />}
       />
       <Route
-        path="/staff/admin/maintenance/promos"
-        element={<AdminPromoConfigPage />}
+        path="/staff/admin/maintenance/promos-and-rewards"
+        element={<AdminPromosAndRewardsPage />}
       />
+      {/* Promos + Coupon Spin Wheel merge (session 87) - old bookmarked/
+          linked paths still resolve, just onto the merged page. */}
+      <Route
+        path="/staff/admin/maintenance/promos"
+        element={
+          <Navigate to="/staff/admin/maintenance/promos-and-rewards" replace />
+        }
+      />
+      <Route path="/staff/admin/maintenance/pets" element={<AdminPetsPage />} />
+      {/* Pet Types + Breeds merge (session 87) - old bookmarked/linked
+          paths still resolve, just onto the merged page. */}
       <Route
         path="/staff/admin/maintenance/breeds"
-        element={<AdminBreedsPage />}
+        element={<Navigate to="/staff/admin/maintenance/pets" replace />}
       />
       <Route
         path="/staff/admin/maintenance/pet-types"
-        element={<AdminPetTypesPage />}
+        element={<Navigate to="/staff/admin/maintenance/pets" replace />}
       />
       <Route
+        path="/staff/admin/maintenance/branches"
+        element={<BranchesPage />}
+      />
+      {/* System Configuration renamed to Branches, folding in Policies
+          (session 87) - old bookmarked/linked path still resolves. */}
+      <Route
         path="/staff/admin/maintenance/system-configuration"
-        element={<SystemConfigurationPage />}
+        element={<Navigate to="/staff/admin/maintenance/branches" replace />}
       />
     </Route>
   </Fragment>

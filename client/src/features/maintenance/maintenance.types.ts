@@ -277,6 +277,8 @@ export interface Branch {
   is_vet_branch: boolean;
   operating_hours: OperatingHours;
   timezone: string;
+  is_active: boolean;
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -287,6 +289,8 @@ export interface UpdateBranchPayload {
   is_vet_branch?: boolean;
   timezone?: string;
   operating_hours?: OperatingHours;
+  /** Deactivate/reactivate - a plain field update, same as promos. */
+  is_active?: boolean;
 }
 
 export interface CreateBranchPayload {
@@ -381,7 +385,36 @@ export type PromoBranchScope = 'makati' | 'southwoods' | 'both';
 /** Custom change (promo variations, session 86): a second promo "type"
  * alongside the original date-bounded one - "every Monday, 10% off
  * Grooming". Immutable after creation. */
-export type PromoType = 'date_range' | 'weekly_recurring';
+export type PromoType = 'date_range' | 'weekly_recurring' | 'spin_wheel';
+
+/** Session 114: at most one per spin-wheel promo. */
+export type SpinLoginTrigger =
+  | 'daily_login'
+  | 'weekly_login_streak'
+  | 'monthly_login_streak';
+
+/** Session 114: a promo_type = 'spin_wheel' promo's own settings - which
+ * reward pool it spins, its pity threshold, and its trigger conditions. */
+export interface SpinWheelPromoSettings {
+  promo_id: string;
+  reward_pool_id: string;
+  pity_threshold: number | null;
+  booking_milestone_interval: number | null;
+  spend_threshold_amount: number | null;
+  login_trigger: SpinLoginTrigger | null;
+  login_streak_days: number | null;
+  updated_at: string;
+  reward_pools?: { id: string; name: string } | null;
+}
+
+export interface SpinWheelSettingsInput {
+  reward_pool_id: string;
+  pity_threshold?: number | null;
+  booking_milestone_interval?: number | null;
+  spend_threshold_amount?: number | null;
+  login_trigger?: SpinLoginTrigger | null;
+  login_streak_days?: number | null;
+}
 
 export interface PromoScopeItem {
   id: string;
@@ -408,9 +441,11 @@ export interface Promo {
   /** Only set when promo_type = 'weekly_recurring' (0=Sunday..6=Saturday). */
   days_of_week: number[] | null;
   condition_note: string | null;
-  discount_type: DiscountValueType;
-  value: number;
-  scope_type: PromoScopeType;
+  /** null only for promo_type = 'spin_wheel' (session 114) - a spin-wheel
+   * promo has no discount of its own; its reward pool's rewards do. */
+  discount_type: DiscountValueType | null;
+  value: number | null;
+  scope_type: PromoScopeType | null;
   /**
    * Deliberately NOT derived from promo_branch_availability - unlike
    * Discount/Service/Package/ServiceType, is_active also drives automatic
@@ -425,6 +460,8 @@ export interface Promo {
   archived_at: string | null;
   promo_scope?: PromoScopeItem[];
   promo_branch_availability?: PromoBranchAvailability[];
+  /** Only for promo_type = 'spin_wheel'. */
+  spin_wheel_promo_settings?: SpinWheelPromoSettings | null;
 }
 
 /** One promo_scope row as the API accepts it - exactly one of the two ids. */
@@ -441,11 +478,14 @@ export interface CreatePromoPayload {
   end_date?: string;
   days_of_week?: number[];
   condition_note?: string;
-  discount_type: DiscountValueType;
-  value: number;
-  scope_type: PromoScopeType;
+  /** Required for every type except 'spin_wheel', which must omit these
+   * and send spin_wheel instead (session 114). */
+  discount_type?: DiscountValueType;
+  value?: number;
+  scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
-  branch_ids: string[];
+  branch_ids?: string[];
+  spin_wheel?: SpinWheelSettingsInput;
 }
 
 /** branch_ids is deliberately absent - branch changes go through
@@ -462,6 +502,8 @@ export interface UpdatePromoPayload {
   scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
   is_active?: boolean;
+  /** Spin-wheel promos only - merged over the stored settings. */
+  spin_wheel?: Partial<SpinWheelSettingsInput>;
 }
 
 /**
@@ -550,9 +592,11 @@ export interface UpdateBreedPayload {
   name?: string;
 }
 
-/** Custom change: Pet Types admin CRUD (20260912191). `key` is free-text and
- * immutable once created (same shape as ServiceType.key) - pets.pet_type and
- * breeds.pet_type both reference it. */
+/** Custom change: Pet Types admin CRUD (20260912191). `key` is generated
+ * server-side (same treatment as ServiceType.key) - not client-supplied, not
+ * shown in the admin UI, but still returned here since pets.pet_type,
+ * breeds.pet_type, cage_pet_types.pet_type, and pet_type_price_overrides.pet_type
+ * all reference it internally. */
 export interface PetTypeRow {
   id: string;
   key: string;
@@ -563,7 +607,6 @@ export interface PetTypeRow {
 }
 
 export interface CreatePetTypePayload {
-  key: string;
   name: string;
 }
 

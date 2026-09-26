@@ -151,6 +151,23 @@ describe('HotelStayPicker', () => {
     );
   });
 
+  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    setupMocks([stay()]);
+
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
+
+    await screen.findByText('Mochi');
+
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Mochi' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Mochi'));
+    expect(
+      screen.getByRole('menuitem', { name: 'View booking details' })
+    ).toBeInTheDocument();
+  });
+
   it('search filters by pet, owner, or cage', async () => {
     setupMocks([stay()]);
 
