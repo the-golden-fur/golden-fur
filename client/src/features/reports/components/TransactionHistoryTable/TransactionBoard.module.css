@@ -60,6 +60,23 @@
   padding: var(--space-2);
 }
 
+/* Payment-status card tint (tokens.css --color-txn-*) - tinted background
+   plus a left status stripe, matching the table view's rows. */
+.cardDue {
+  background: var(--color-txn-due-bg);
+  border-left: 4px solid var(--color-txn-due-accent);
+}
+
+.cardPartial {
+  background: var(--color-txn-partial-bg);
+  border-left: 4px solid var(--color-txn-partial-accent);
+}
+
+.cardPaid {
+  background: var(--color-txn-paid-bg);
+  border-left: 4px solid var(--color-txn-paid-accent);
+}
+
 .cardBody,
 .cardBodyClickable {
   display: grid;

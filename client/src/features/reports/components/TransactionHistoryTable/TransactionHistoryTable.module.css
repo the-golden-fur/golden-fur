@@ -65,6 +65,95 @@
   text-align: left;
 }
 
+/* "Group by" select beside the view switcher in the FilterSortBar row. */
+.groupByField {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.groupByLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* One header row per group (booking/customer/status). Sits on the page's
+   neutral secondary background with a heavier top rule, so it reads as a
+   divider between groups rather than as another payment-tinted row. */
+.groupRow th {
+  border-top: 2px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  padding-top: var(--space-2);
+  font-weight: var(--weight-normal);
+}
+
+.table tbody:first-of-type .groupRow th {
+  border-top: none;
+}
+
+.groupHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.groupHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-2);
+  min-width: 0;
+}
+
+.groupTitle {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.groupMeta {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.groupSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Payment-status row tint (tokens.css --color-txn-*): the whole row takes
+   the status background, and the first cell carries a 4px status stripe so
+   the status still reads at a glance without relying on hue alone - the
+   Status column text says it outright too. */
+.rowDue td {
+  background: var(--color-txn-due-bg);
+}
+
+.rowPartial td {
+  background: var(--color-txn-partial-bg);
+}
+
+.rowPaid td {
+  background: var(--color-txn-paid-bg);
+}
+
+.rowDue td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-txn-due-accent);
+}
+
+.rowPartial td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-txn-partial-accent);
+}
+
+.rowPaid td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-txn-paid-accent);
+}
+
 /* Custom change (transaction history visibility): a booking-payment row is a
    button that opens the booking-details popup. Misc-sale rows have no booking
    and stay inert. */
