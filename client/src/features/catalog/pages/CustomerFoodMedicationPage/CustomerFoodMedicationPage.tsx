@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
+import {
+  Columns3,
+  List as ListIcon,
+  Plus,
+  Table as TableIcon,
+} from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
   archiveCustomerCatalogItem,
@@ -19,6 +24,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   ViewSwitcher,
@@ -75,6 +81,8 @@ export function CustomerFoodMedicationPage() {
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] =
     useState<CustomerCatalogCategory>('food');
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
@@ -144,9 +152,16 @@ export function CustomerFoodMedicationPage() {
     );
   }
 
+  function openAddModal() {
+    setNewName('');
+    setNewCategory('food');
+    setAddError(null);
+    setIsAddOpen(true);
+  }
+
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
+    setAddError(null);
 
     const result = await createCustomerCatalogItem(
       { name: newName.trim(), category: newCategory },
@@ -154,13 +169,15 @@ export function CustomerFoodMedicationPage() {
     );
 
     if (!result.data) {
-      setError(result.error ?? 'Could not add this type.');
+      // Shown inside the modal, next to the input that caused it.
+      setAddError(result.error ?? 'Could not add this type.');
       return;
     }
 
-    setItems((prev) => [...prev, result.data as ProductCatalogItem]);
-    setNewName('');
-    setMessage('Added.');
+    const created = result.data;
+    setItems((prev) => [...prev, created]);
+    setIsAddOpen(false);
+    setMessage(`Added ${created.name}.`);
   };
 
   const handleRename = async (itemId: string) => {
@@ -281,11 +298,19 @@ export function CustomerFoodMedicationPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>My Food &amp; Medication Types</h1>
-      <p className={styles.copy}>
-        Save your pet&apos;s usual food and medication here so you can pick them
-        quickly on future hotel bookings.
-      </p>
+      <div className={styles.header}>
+        <div className={styles.headerText}>
+          <h1 className={styles.title}>My Food &amp; Medication Types</h1>
+          <p className={styles.copy}>
+            Save your pet&apos;s usual food and medication here so you can pick
+            them quickly on future hotel bookings.
+          </p>
+        </div>
+        <button type="button" className={styles.button} onClick={openAddModal}>
+          <Plus size={16} aria-hidden="true" />
+          Add new type
+        </button>
+      </div>
 
       {message ? <p className={styles.successBanner}>{message}</p> : null}
       {error ? (
@@ -349,34 +374,61 @@ export function CustomerFoodMedicationPage() {
         </section>
       )}
 
-      <section className={styles.panel}>
-        <h2 className={styles.sectionTitle}>Add a new type</h2>
+      <Modal
+        isOpen={isAddOpen}
+        title="Add a new type"
+        onClose={() => setIsAddOpen(false)}
+        closeOnBackdropClick={false}
+      >
         <form
           className={styles.form}
           onSubmit={(event) => void handleCreate(event)}
         >
-          <input
-            className={styles.input}
-            placeholder="e.g. Chicken kibble, Amoxicillin"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            required
-          />
-          <select
-            className={styles.select}
-            value={newCategory}
-            onChange={(event) =>
-              setNewCategory(event.target.value as CustomerCatalogCategory)
-            }
-          >
-            <option value="food">Food</option>
-            <option value="medication">Medication</option>
-          </select>
-          <button className={styles.button} type="submit">
-            Add
-          </button>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Name</span>
+            <input
+              className={styles.input}
+              placeholder="e.g. Chicken kibble, Amoxicillin"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Category</span>
+            <select
+              className={styles.select}
+              value={newCategory}
+              onChange={(event) =>
+                setNewCategory(event.target.value as CustomerCatalogCategory)
+              }
+            >
+              <option value="food">Food</option>
+              <option value="medication">Medication</option>
+            </select>
+          </label>
+
+          {addError ? (
+            <p className={styles.errorBanner} role="alert">
+              {addError}
+            </p>
+          ) : null}
+
+          <div className={styles.modalActions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setIsAddOpen(false)}
+            >
+              Cancel
+            </button>
+            <button className={styles.button} type="submit">
+              Add
+            </button>
+          </div>
         </form>
-      </section>
+      </Modal>
     </main>
   );
 }
