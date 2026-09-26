@@ -95,6 +95,16 @@
   --color-booking-pending-text: #9a6400;
   --color-booking-in-progress-bg: #e3edfa;
   --color-booking-in-progress-text: #2a5ba8;
+  /* Transactions page row/card tints by payment status - a yellow ramp
+     that deepens as money is still owed (Due = pale butter, Partially
+     Paid = warmer honey) and resolves to the paid green once settled.
+     -bg tints the whole row/card, -accent is its left status stripe. */
+  --color-txn-due-bg: #fffaea;
+  --color-txn-due-accent: #e8c15a;
+  --color-txn-partial-bg: #fcebc2;
+  --color-txn-partial-accent: #c98a1b;
+  --color-txn-paid-bg: #f1f8f1;
+  --color-txn-paid-accent: #4f9a5e;
   --color-booking-cancelled-bg: #edeae3;
   --color-booking-cancelled-text: #6b6558;
   --color-booking-noshow-bg: #fde9e6;
@@ -260,6 +270,14 @@
   --color-booking-pending-text: #ffd27a;
   --color-booking-in-progress-bg: #1f3a5c;
   --color-booking-in-progress-text: #a9c8f0;
+  /* Transactions page row/card tints (dark-theme values) - same ramp as
+     light mode, kept low-luminance so primary text stays readable. */
+  --color-txn-due-bg: #2d2412;
+  --color-txn-due-accent: #b8913a;
+  --color-txn-partial-bg: #3e2b0e;
+  --color-txn-partial-accent: #e3a53c;
+  --color-txn-paid-bg: #1a2c1e;
+  --color-txn-paid-accent: #62b074;
   --color-booking-cancelled-bg: #43392a;
   --color-booking-cancelled-text: #cfc3a9;
   --color-booking-noshow-bg: #4b221b;

@@ -24,3 +24,14 @@ export function transactionTypeLabel(
 export function paymentStatusLabel(status: string): string {
   return status === 'Pending' ? 'Due payment' : status;
 }
+
+/** 'due' | 'partial' | 'paid' - which payment-status tint a transaction row
+ * (table) or card (board) gets. Shared so both views colour the same way;
+ * each view maps the tone to its own CSS module class. */
+export type PaymentTone = 'due' | 'partial' | 'paid';
+
+export function paymentTone(status: string): PaymentTone {
+  if (status === 'Fully Paid') return 'paid';
+  if (status === 'Partially Paid') return 'partial';
+  return 'due';
+}

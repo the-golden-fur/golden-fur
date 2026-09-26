@@ -70,6 +70,10 @@ export interface TransactionRecord {
     total_price: number;
     discount_amount: number;
     promo_amount: number;
+    /** Labels a booking group on the staff Transactions page's "Group by:
+     * Booking" view. Optional so older fixtures/callers stay valid. */
+    scheduled_start?: string;
+    pets?: { name: string } | null;
   } | null;
 }
 

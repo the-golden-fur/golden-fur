@@ -51,9 +51,23 @@ import {
 import {
   paymentChoiceLabel,
   paymentStatusLabel,
+  paymentTone,
   transactionTypeLabel,
 } from './transactionDisplay';
+import {
+  GROUP_BY_OPTIONS,
+  groupTransactions,
+  type TransactionGroupBy,
+} from './transactionGrouping';
+import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
+import type { PaymentStatus } from '../../../booking/booking.types';
 import styles from './TransactionHistoryTable.module.css';
+
+const ROW_TONE_CLASS = {
+  due: styles.rowDue,
+  partial: styles.rowPartial,
+  paid: styles.rowPaid,
+} as const;
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
@@ -107,6 +121,9 @@ export function TransactionHistoryTable() {
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('table');
+  // Defaults to Booking so a cashier sees which booking each payment
+  // (down payment, balance, full) belongs to without cross-referencing.
+  const [groupBy, setGroupBy] = useState<TransactionGroupBy>('booking');
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -347,6 +364,11 @@ export function TransactionHistoryTable() {
     return [...list].sort(COMPARATORS[sortKey]);
   }, [transactions, statusFilter, search, sortKey]);
 
+  const groups = useMemo(
+    () => groupTransactions(rows, groupBy),
+    [rows, groupBy]
+  );
+
   const payable = payableBalances(transactions);
 
   function buildMenuItems(
@@ -409,6 +431,24 @@ export function TransactionHistoryTable() {
           value={view}
           onChange={setView}
         />
+        {view === 'table' ? (
+          <label className={styles.groupByField}>
+            <span className={styles.groupByLabel}>Group by</span>
+            <select
+              className={styles.control}
+              value={groupBy}
+              onChange={(event) =>
+                setGroupBy(event.target.value as TransactionGroupBy)
+              }
+            >
+              {GROUP_BY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </FilterSortBar>
 
       {payable.length > 0 ? (
@@ -463,37 +503,77 @@ export function TransactionHistoryTable() {
               <th />
             </tr>
           </thead>
-          <tbody>
-            {rows.map((transaction) => {
-              const menuItems = buildMenuItems(transaction);
-              return (
-                <tr key={transaction.id}>
-                  <td>
-                    {new Date(transaction.created_at).toLocaleDateString()}
-                  </td>
-                  <td>{transaction.customer_name ?? '—'}</td>
-                  <td>{transactionTypeLabel(transaction)}</td>
-                  <td>{transaction.bookings?.service_category ?? '-'}</td>
-                  <td>{paymentChoiceLabel(transaction)}</td>
-                  <td>
-                    {transaction.payment_status === 'Pending'
-                      ? '—'
-                      : transaction.payment_method}
-                  </td>
-                  <td>{paymentStatusLabel(transaction.payment_status)}</td>
-                  <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                  <td>
-                    {menuItems.length > 0 ? (
-                      <MoreOptionsMenu
-                        label={`Options for this transaction`}
-                        items={menuItems}
-                      />
-                    ) : null}
-                  </td>
+          {groups.map((group) => (
+            <tbody key={group.key}>
+              {group.title ? (
+                <tr className={styles.groupRow}>
+                  <th scope="colgroup" colSpan={9}>
+                    <div className={styles.groupHeader}>
+                      <div className={styles.groupHeading}>
+                        <span className={styles.groupTitle}>{group.title}</span>
+                        {group.meta ? (
+                          <span className={styles.groupMeta}>{group.meta}</span>
+                        ) : null}
+                      </div>
+                      <div className={styles.groupSummary}>
+                        <span className={styles.groupMeta}>
+                          {group.items.length}{' '}
+                          {group.items.length === 1
+                            ? 'transaction'
+                            : 'transactions'}
+                        </span>
+                        {group.netTotal !== null ? (
+                          <span className={styles.groupMeta}>
+                            Booking total {formatCurrency(group.netTotal)}
+                          </span>
+                        ) : null}
+                        {group.bookingStatus ? (
+                          <PaymentStatusBadge
+                            status={group.bookingStatus as PaymentStatus}
+                            context="billing"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
+              ) : null}
+              {group.items.map((transaction) => {
+                const menuItems = buildMenuItems(transaction);
+                return (
+                  <tr
+                    key={transaction.id}
+                    className={
+                      ROW_TONE_CLASS[paymentTone(transaction.payment_status)]
+                    }
+                  >
+                    <td>
+                      {new Date(transaction.created_at).toLocaleDateString()}
+                    </td>
+                    <td>{transaction.customer_name ?? '—'}</td>
+                    <td>{transactionTypeLabel(transaction)}</td>
+                    <td>{transaction.bookings?.service_category ?? '-'}</td>
+                    <td>{paymentChoiceLabel(transaction)}</td>
+                    <td>
+                      {transaction.payment_status === 'Pending'
+                        ? '—'
+                        : transaction.payment_method}
+                    </td>
+                    <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                    <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                    <td>
+                      {menuItems.length > 0 ? (
+                        <MoreOptionsMenu
+                          label={`Options for this transaction`}
+                          items={menuItems}
+                        />
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
       )}
 
