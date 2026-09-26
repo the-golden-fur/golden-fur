@@ -1,5 +1,6 @@
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
+import { formatPromoValue, promoWindowText } from '../../utils/promoDisplay';
 import { getPromoTiming } from '../../utils/promoTiming';
 import type { Promo } from '../../maintenance.types';
 import styles from './PromoCard.module.css';
@@ -38,18 +39,12 @@ export function PromoCard({
   onManageBranches,
   onArchive,
 }: PromoCardProps) {
-  const formattedValue =
-    promo.discount_type === 'Percentage'
-      ? `${promo.value}% off`
-      : `PHP ${promo.value.toFixed(2)} off`;
-
-  const windowText = promo.condition_note
-    ? promo.condition_note
-    : promo.start_date && promo.end_date
-      ? `${promo.start_date} to ${promo.end_date}`
-      : 'No window set';
-
+  const formattedValue = formatPromoValue(promo);
+  const windowText = promoWindowText(promo);
   const timing = getPromoTiming(promo);
+  // Session 114: a spin-wheel promo is customer-wide - no branch
+  // availability to manage.
+  const isSpinWheel = promo.promo_type === 'spin_wheel';
 
   return (
     <article className={styles.card}>
@@ -78,13 +73,15 @@ export function PromoCard({
         >
           Edit
         </button>
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={onManageBranches}
-        >
-          Branch Availability
-        </button>
+        {!isSpinWheel ? (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={onManageBranches}
+          >
+            Branch Availability
+          </button>
+        ) : null}
         {!promo.is_active ? (
           <button
             type="button"

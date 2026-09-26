@@ -4,11 +4,10 @@ import {
   COUPON_COMPARATORS,
   COUPON_GROUP_BY_AXES,
   deriveCouponSortKey,
-  findRewardForCoupon,
   matchesCouponQuery,
 } from './couponBrowserFields';
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
-import type { CustomerCoupon, SpinWheelReward } from '../../rewards.types';
+import type { CustomerCoupon } from '../../rewards.types';
 
 function buildCoupon(overrides: Partial<CustomerCoupon> = {}): CustomerCoupon {
   return {
@@ -24,25 +23,6 @@ function buildCoupon(overrides: Partial<CustomerCoupon> = {}): CustomerCoupon {
     redeemed_by_booking_group_id: null,
     expires_at: null,
     created_at: '2026-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function buildReward(
-  overrides: Partial<SpinWheelReward> = {}
-): SpinWheelReward {
-  return {
-    id: 'reward-1',
-    label: 'Ten Percent Off',
-    discount_type: 'Percentage',
-    value: 10,
-    rarity_percent: 50,
-    is_active: true,
-    archived_at: null,
-    created_by: null,
-    updated_by: null,
-    created_at: '',
-    updated_at: '',
     ...overrides,
   };
 }
@@ -91,18 +71,5 @@ describe('COUPON_GROUP_BY_AXES', () => {
     const axis = COUPON_GROUP_BY_AXES[0];
     expect(axis.columns).toEqual(['Available', 'Used']);
     expect(axis.columnFor(buildCoupon({ is_redeemed: true }))).toBe('Used');
-  });
-});
-
-describe('findRewardForCoupon', () => {
-  it('resolves the linked SpinWheelReward by id', () => {
-    const rewards = [buildReward({ id: 'reward-1' })];
-    const coupon = buildCoupon({ spin_wheel_reward_id: 'reward-1' });
-    expect(findRewardForCoupon(coupon, rewards)?.label).toBe('Ten Percent Off');
-  });
-
-  it('returns null when the reward no longer exists', () => {
-    const coupon = buildCoupon({ spin_wheel_reward_id: 'gone' });
-    expect(findRewardForCoupon(coupon, [])).toBeNull();
   });
 });

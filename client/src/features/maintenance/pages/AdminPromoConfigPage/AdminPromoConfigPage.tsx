@@ -52,7 +52,17 @@ import {
 import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
+import { SpinWheelPromoFields } from '../../components/SpinWheelPromoFields/SpinWheelPromoFields';
+import { listRewardPools } from '../../../rewards/api/rewards.api';
+import type { RewardPool } from '../../../rewards/rewards.types';
+import { formatPromoValue, promoWindowText } from '../../utils/promoDisplay';
 import { getPromoTiming } from '../../utils/promoTiming';
+import {
+  emptySpinWheelForm,
+  spinWheelFormFromSettings,
+  spinWheelFormToInput,
+  type SpinWheelFormState,
+} from '../../utils/spinWheelPromo';
 import {
   applyPromoFilters,
   buildPromoFilterFields,
@@ -81,19 +91,11 @@ const TIMING_LABELS = {
   Ended: 'Ended',
 } as const;
 
-function formatPromoValue(promo: Promo): string {
-  return promo.discount_type === 'Percentage'
-    ? `${promo.value}% off`
-    : `PHP ${promo.value.toFixed(2)} off`;
-}
-
-function promoWindowText(promo: Promo): string {
-  return promo.condition_note
-    ? promo.condition_note
-    : promo.start_date && promo.end_date
-      ? `${promo.start_date} to ${promo.end_date}`
-      : 'No window set';
-}
+const PROMO_TYPE_LABELS: Record<PromoType, string> = {
+  date_range: 'Date range promo',
+  weekly_recurring: 'Weekly recurring promo',
+  spin_wheel: 'Coupon spin wheel',
+};
 
 type PromoViewMode = 'gallery' | 'table' | 'list';
 
@@ -221,6 +223,11 @@ export function AdminPromoConfigPage() {
   const [availabilityPromoId, setAvailabilityPromoId] = useState<string | null>(
     null
   );
+  // Session 114: the "Coupon spin wheel" promo type's own fields, and the
+  // reward pools it can draw from.
+  const [spinForm, setSpinForm] =
+    useState<SpinWheelFormState>(emptySpinWheelForm);
+  const [rewardPools, setRewardPools] = useState<RewardPool[]>([]);
 
   const [capBranches, setCapBranches] = useState<BranchSummary[]>([]);
   const [capConfigurations, setCapConfigurations] = useState<
@@ -271,12 +278,16 @@ export function AdminPromoConfigPage() {
     let isMounted = true;
 
     void Promise.all([
-      listPromos(accessToken, { includeInactive: true }),
+      listPromos(accessToken, {
+        includeInactive: true,
+        includeSpinWheel: true,
+      }),
       // Active only - a promo should not offer a deactivated service/package
       // as a new scope target.
       listServices(accessToken),
       listPackages(accessToken),
-    ]).then(([promosResult, servicesResult, packagesResult]) => {
+      listRewardPools(accessToken),
+    ]).then(([promosResult, servicesResult, packagesResult, poolsResult]) => {
       if (!isMounted) {
         return;
       }
@@ -291,6 +302,7 @@ export function AdminPromoConfigPage() {
       setPromos(promosResult.data);
       setServices(servicesResult.data ?? []);
       setPackages(packagesResult.data ?? []);
+      setRewardPools(poolsResult.data ?? []);
     });
 
     return () => {
@@ -507,6 +519,7 @@ export function AdminPromoConfigPage() {
     setFormScopeType('all_services');
     setFormScopeIds([]);
     setFormBranchIds([]);
+    setSpinForm(emptySpinWheelForm());
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -519,13 +532,14 @@ export function AdminPromoConfigPage() {
     setFormPromoType(promo.promo_type);
     setFormDaysOfWeek(promo.days_of_week ?? []);
     setFormName(promo.name);
-    setFormDiscountType(promo.discount_type);
-    setFormValue(String(promo.value));
+    setFormDiscountType(promo.discount_type ?? 'Percentage');
+    setFormValue(promo.value != null ? String(promo.value) : '');
     setFormStartDate(promo.start_date ?? '');
     setFormEndDate(promo.end_date ?? '');
-    setFormScopeType(promo.scope_type);
+    setFormScopeType(promo.scope_type ?? 'all_services');
     setFormScopeIds(scopeToCompositeIds(promo));
     setFormBranchIds(availableBranchIds(promo));
+    setSpinForm(spinWheelFormFromSettings(promo.spin_wheel_promo_settings));
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -664,10 +678,15 @@ export function AdminPromoConfigPage() {
   function buildPromoActionItems(promo: Promo): MoreOptionsMenuItem[] {
     return [
       { label: 'Edit', onSelect: () => openEditForm(promo) },
-      {
-        label: 'Branch Availability',
-        onSelect: () => setAvailabilityPromoId(promo.id),
-      },
+      // A spin-wheel promo is customer-wide - no branch availability.
+      ...(promo.promo_type !== 'spin_wheel'
+        ? [
+            {
+              label: 'Branch Availability',
+              onSelect: () => setAvailabilityPromoId(promo.id),
+            },
+          ]
+        : []),
       ...(!promo.is_active
         ? [
             {
@@ -758,10 +777,84 @@ export function AdminPromoConfigPage() {
     },
   ];
 
+  /**
+   * Session 114: create/edit for the "Coupon spin wheel" type - no discount,
+   * scope, or branches (a spin wheel is customer-wide and its rewards come
+   * from the chosen reward pool); just a name, the spin_wheel settings, and
+   * an optional overall start/end window.
+   */
+  async function submitSpinWheelPromo() {
+    if (!accessToken) return;
+
+    if (formName.trim() === '') {
+      setFormError('A name is required.');
+      return;
+    }
+
+    if (formStartDate && formEndDate && formEndDate < formStartDate) {
+      setFormError('The end date must be on or after the start date.');
+      return;
+    }
+
+    const parsed = spinWheelFormToInput(spinForm);
+    if (parsed.error !== null) {
+      setFormError(parsed.error);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    if (editingPromoId === null) {
+      const result = await createPromo(accessToken, {
+        name: formName.trim(),
+        promo_type: 'spin_wheel',
+        ...(formStartDate ? { start_date: formStartDate } : {}),
+        ...(formEndDate ? { end_date: formEndDate } : {}),
+        spin_wheel: parsed.input,
+      });
+
+      setIsSubmitting(false);
+
+      if (result.error || !result.data) {
+        setFormError(result.error ?? 'Could not create the spin wheel.');
+        return;
+      }
+
+      setPromos((prev) => [...prev, result.data as Promo]);
+      setMessage('Spin wheel promo created.');
+      closeForm();
+      return;
+    }
+
+    const result = await updatePromo(editingPromoId, accessToken, {
+      name: formName.trim(),
+      start_date: formStartDate || null,
+      end_date: formEndDate || null,
+      spin_wheel: parsed.input,
+    });
+
+    setIsSubmitting(false);
+
+    if (result.error || !result.data) {
+      setFormError(result.error ?? 'Could not update the spin wheel.');
+      return;
+    }
+
+    replacePromo(result.data);
+    setMessage('Spin wheel promo updated.');
+    closeForm();
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!accessToken) {
+      return;
+    }
+
+    if (formPromoType === 'spin_wheel') {
+      await submitSpinWheelPromo();
       return;
     }
 
@@ -1000,6 +1093,17 @@ export function AdminPromoConfigPage() {
                   />{' '}
                   Weekly recurring - active on chosen days of the week
                 </label>
+                <br />
+                <label>
+                  <input
+                    type="radio"
+                    name="promo-type"
+                    checked={formPromoType === 'spin_wheel'}
+                    onChange={() => setFormPromoType('spin_wheel')}
+                  />{' '}
+                  Coupon spin wheel - pops up a prize wheel for customers who
+                  meet your trigger conditions
+                </label>
               </fieldset>
 
               <div className={styles.formActions}>
@@ -1023,9 +1127,7 @@ export function AdminPromoConfigPage() {
             <form className={styles.form} onSubmit={handleSubmit}>
               {editingPromoId === null ? (
                 <p className={styles.copy}>
-                  {formPromoType === 'date_range'
-                    ? 'Date range promo'
-                    : 'Weekly recurring promo'}{' '}
+                  {PROMO_TYPE_LABELS[formPromoType]}{' '}
                   <button
                     type="button"
                     className={styles.secondaryButton}
@@ -1047,40 +1149,52 @@ export function AdminPromoConfigPage() {
                 />
               </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Discount type</span>
-                <select
-                  className={styles.input}
-                  value={formDiscountType}
-                  onChange={(event) =>
-                    setFormDiscountType(event.target.value as DiscountValueType)
-                  }
-                >
-                  {DISCOUNT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {formPromoType !== 'spin_wheel' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Discount type</span>
+                    <select
+                      className={styles.input}
+                      value={formDiscountType}
+                      onChange={(event) =>
+                        setFormDiscountType(
+                          event.target.value as DiscountValueType
+                        )
+                      }
+                    >
+                      {DISCOUNT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>
-                  Discount value
-                  {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
-                </span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  min="0"
-                  max={formDiscountType === 'Percentage' ? 100 : undefined}
-                  step="0.01"
-                  inputMode="decimal"
-                  value={formValue}
-                  onChange={(event) => setFormValue(event.target.value)}
-                  required
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Discount value
+                      {formDiscountType === 'Percentage' ? ' (%)' : ' (PHP)'}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      max={formDiscountType === 'Percentage' ? 100 : undefined}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={formValue}
+                      onChange={(event) => setFormValue(event.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <SpinWheelPromoFields
+                  value={spinForm}
+                  onChange={setSpinForm}
+                  pools={rewardPools}
                 />
-              </label>
+              )}
 
               {formPromoType === 'date_range' ? (
                 <>
@@ -1107,11 +1221,13 @@ export function AdminPromoConfigPage() {
                 </>
               ) : (
                 <>
-                  <DayOfWeekPicker
-                    label="Days of the week"
-                    selectedDays={formDaysOfWeek}
-                    onChange={setFormDaysOfWeek}
-                  />
+                  {formPromoType === 'weekly_recurring' ? (
+                    <DayOfWeekPicker
+                      label="Days of the week"
+                      selectedDays={formDaysOfWeek}
+                      onChange={setFormDaysOfWeek}
+                    />
+                  ) : null}
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
                       Start date (optional - limits the overall campaign window)
@@ -1137,36 +1253,42 @@ export function AdminPromoConfigPage() {
                 </>
               )}
 
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Scope</span>
-                <select
-                  className={styles.input}
-                  value={formScopeType}
-                  onChange={(event) => {
-                    setFormScopeType(event.target.value as PromoScopeType);
-                    setFormScopeIds([]);
-                  }}
-                >
-                  <option value="all_services">All services</option>
-                  <option value="specific">Specific services/packages</option>
-                </select>
-              </label>
+              {formPromoType !== 'spin_wheel' ? (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>Scope</span>
+                    <select
+                      className={styles.input}
+                      value={formScopeType}
+                      onChange={(event) => {
+                        setFormScopeType(event.target.value as PromoScopeType);
+                        setFormScopeIds([]);
+                      }}
+                    >
+                      <option value="all_services">All services</option>
+                      <option value="specific">
+                        Specific services/packages
+                      </option>
+                    </select>
+                  </label>
 
-              {formScopeType === 'specific' ? (
-                <ServiceMultiSelect
-                  label="Included services/packages"
-                  options={scopeOptions}
-                  selectedIds={formScopeIds}
-                  onChange={setFormScopeIds}
-                />
+                  {formScopeType === 'specific' ? (
+                    <ServiceMultiSelect
+                      label="Included services/packages"
+                      options={scopeOptions}
+                      selectedIds={formScopeIds}
+                      onChange={setFormScopeIds}
+                    />
+                  ) : null}
+
+                  <BranchMultiSelect
+                    label="Available at"
+                    branches={capBranches}
+                    selectedBranchIds={formBranchIds}
+                    onChange={setFormBranchIds}
+                  />
+                </>
               ) : null}
-
-              <BranchMultiSelect
-                label="Available at"
-                branches={capBranches}
-                selectedBranchIds={formBranchIds}
-                onChange={setFormBranchIds}
-              />
 
               {formError ? (
                 <p className={styles.errorBanner} role="alert">

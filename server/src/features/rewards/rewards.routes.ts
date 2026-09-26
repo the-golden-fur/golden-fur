@@ -3,18 +3,26 @@ import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.t
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import {
+  archiveRewardPoolController,
   archiveSpinWheelRewardController,
+  checkInController,
+  createRewardPoolController,
   createSpinWheelRewardController,
   getMySpinCreditsController,
-  getSpinWheelConfigController,
+  getPromoWheelController,
+  getRewardPoolController,
+  hardDeleteRewardPoolController,
   hardDeleteSpinWheelRewardController,
+  listArchivedRewardPoolsController,
   listArchivedSpinWheelRewardsController,
   listMyCouponsController,
   listMySpinHistoryController,
+  listRewardPoolsController,
   listSpinWheelRewardsController,
+  restoreRewardPoolController,
   restoreSpinWheelRewardController,
   spinController,
-  updateSpinWheelConfigController,
+  updateRewardPoolController,
   updateSpinWheelRewardController,
 } from './rewards.controller.ts';
 import { REWARDS_READ_ROLES, REWARDS_WRITE_ROLES } from './rewards.types.ts';
@@ -33,25 +41,12 @@ const adminWrite = [
   requireRole([...REWARDS_WRITE_ROLES]),
 ];
 
-// Spin wheel config + reward catalog admin (session 86)
-router.get(
-  '/rewards/spin-wheel/config',
-  staffRead,
-  getSpinWheelConfigController
-);
-router.put(
-  '/rewards/spin-wheel/config',
-  adminWrite,
-  updateSpinWheelConfigController
-);
-
-// Reward listing is open to any authenticated principal (jwtMiddleware
-// only) - the customer-facing wheel UI needs to render every active reward
-// as a segment before/while spinning, same reasoning as the
-// spin_wheel_rewards RLS policy in 20260913196.
+// Reward catalog admin (session 86, tier/weight since session 114). Staff
+// read only - customers get a promo's rewards (with computed chances)
+// through GET /rewards/spin-wheel/promos/:promoId/wheel instead.
 router.get(
   '/rewards/spin-wheel/rewards',
-  jwtMiddleware,
+  staffRead,
   listSpinWheelRewardsController
 );
 router.get(
@@ -85,9 +80,46 @@ router.delete(
   hardDeleteSpinWheelRewardController
 );
 
+// Reward pools admin (session 114). /archived is registered before /:id so
+// it isn't swallowed as an id.
+router.get('/rewards/reward-pools', staffRead, listRewardPoolsController);
+router.get(
+  '/rewards/reward-pools/archived',
+  adminWrite,
+  listArchivedRewardPoolsController
+);
+router.get('/rewards/reward-pools/:id', staffRead, getRewardPoolController);
+router.post('/rewards/reward-pools', adminWrite, createRewardPoolController);
+router.patch(
+  '/rewards/reward-pools/:id',
+  adminWrite,
+  updateRewardPoolController
+);
+router.delete(
+  '/rewards/reward-pools/:id',
+  adminWrite,
+  archiveRewardPoolController
+);
+router.post(
+  '/rewards/reward-pools/:id/restore',
+  adminWrite,
+  restoreRewardPoolController
+);
+router.delete(
+  '/rewards/reward-pools/:id/permanent',
+  adminWrite,
+  hardDeleteRewardPoolController
+);
+
 // Customer-or-staff (jwtMiddleware only - ownership resolved in the
 // service layer, same shape as credits.routes.ts's GET /credits/balances -
 // a receptionist triggering a walk-in's earned spin passes customer_id).
+router.post('/rewards/check-in', jwtMiddleware, checkInController);
+router.get(
+  '/rewards/spin-wheel/promos/:promoId/wheel',
+  jwtMiddleware,
+  getPromoWheelController
+);
 router.get(
   '/rewards/my-spin-credits',
   jwtMiddleware,

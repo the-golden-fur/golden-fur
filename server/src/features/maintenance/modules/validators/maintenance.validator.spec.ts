@@ -421,9 +421,143 @@ describe('createPromoValidator', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('still requires discount fields and a branch for a non-spin promo', () => {
+    const result = createPromoValidator.safeParse({
+      name: 'No discount',
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+    });
+
+    expect(result.success).toBe(false);
+    const paths = result.error?.issues.map((issue) => issue.path[0]);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'discount_type',
+        'value',
+        'scope_type',
+        'branch_ids',
+      ])
+    );
+  });
+});
+
+describe('createPromoValidator - spin wheel (session 114)', () => {
+  const POOL_ID = '22222222-2222-4222-a222-222222222222';
+  const spinBase = {
+    name: 'Loyalty Spin',
+    promo_type: 'spin_wheel',
+    spin_wheel: { reward_pool_id: POOL_ID, booking_milestone_interval: 5 },
+  };
+
+  it('accepts a spin wheel promo with a pool and one trigger, no discount or branches', () => {
+    expect(createPromoValidator.safeParse(spinBase).success).toBe(true);
+  });
+
+  it('accepts combining bookings, spend, and one login trigger', () => {
+    const result = createPromoValidator.safeParse({
+      ...spinBase,
+      spin_wheel: {
+        reward_pool_id: POOL_ID,
+        booking_milestone_interval: 5,
+        spend_threshold_amount: 5000,
+        login_trigger: 'monthly_login_streak',
+        login_streak_days: 10,
+        pity_threshold: 3,
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a spin wheel promo with no settings', () => {
+    expect(
+      createPromoValidator.safeParse({
+        name: 'Loyalty Spin',
+        promo_type: 'spin_wheel',
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a spin wheel promo with no trigger at all', () => {
+    const result = createPromoValidator.safeParse({
+      ...spinBase,
+      spin_wheel: { reward_pool_id: POOL_ID, pity_threshold: 5 },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects discount fields or branches on a spin wheel promo', () => {
+    for (const extra of [
+      { discount_type: 'Percentage' },
+      { value: 10 },
+      { scope_type: 'all_services' },
+      { branch_ids: ['11111111-1111-4111-a111-111111111111'] },
+    ]) {
+      expect(
+        createPromoValidator.safeParse({ ...spinBase, ...extra }).success
+      ).toBe(false);
+    }
+  });
+
+  it('bounds weekly streaks to 1-7 days and monthly to 1-31', () => {
+    const withLogin = (login_trigger: string, login_streak_days?: number) =>
+      createPromoValidator.safeParse({
+        ...spinBase,
+        spin_wheel: {
+          reward_pool_id: POOL_ID,
+          login_trigger,
+          ...(login_streak_days !== undefined ? { login_streak_days } : {}),
+        },
+      }).success;
+
+    expect(withLogin('weekly_login_streak', 7)).toBe(true);
+    expect(withLogin('weekly_login_streak', 8)).toBe(false);
+    expect(withLogin('weekly_login_streak')).toBe(false);
+    expect(withLogin('monthly_login_streak', 31)).toBe(true);
+    expect(withLogin('monthly_login_streak', 32)).toBe(false);
+    expect(withLogin('daily_login')).toBe(true);
+    expect(withLogin('daily_login', 3)).toBe(false);
+  });
+
+  it('only accepts one login trigger - the field is a single enum, not a list', () => {
+    const result = createPromoValidator.safeParse({
+      ...spinBase,
+      spin_wheel: {
+        reward_pool_id: POOL_ID,
+        login_trigger: ['daily_login', 'weekly_login_streak'],
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects spin_wheel settings on a non-spin promo', () => {
+    const result = createPromoValidator.safeParse({
+      name: 'Summer Deal',
+      discount_type: 'Percentage',
+      value: 10,
+      scope_type: 'all_services',
+      branch_ids: ['11111111-1111-4111-a111-111111111111'],
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+      spin_wheel: spinBase.spin_wheel,
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updatePromoValidator', () => {
+  it('accepts a partial spin_wheel settings patch (session 114)', () => {
+    expect(
+      updatePromoValidator.safeParse({
+        spin_wheel: { pity_threshold: null, spend_threshold_amount: 2500 },
+      }).success
+    ).toBe(true);
+  });
+
   it('AC-4: accepts a manual deactivation alone', () => {
     expect(updatePromoValidator.safeParse({ is_active: false }).success).toBe(
       true

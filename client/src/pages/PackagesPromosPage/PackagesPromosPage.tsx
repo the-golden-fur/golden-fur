@@ -15,9 +15,12 @@ function formatCurrency(amount: number): string {
 }
 
 function formatPromoValue(promo: PublicPromo): string {
+  // The public catalog only ever lists discount promos (the server filters
+  // out spin-wheel promos, which have no value of their own).
+  const value = Number(promo.value ?? 0);
   return promo.discount_type === 'Percentage'
-    ? `${promo.value}% off`
-    : `${formatCurrency(promo.value)} off`;
+    ? `${value}% off`
+    : `${formatCurrency(value)} off`;
 }
 
 function formatPromoWindow(promo: PublicPromo): string {

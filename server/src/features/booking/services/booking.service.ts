@@ -14,7 +14,10 @@ import {
   getCouponsByIds,
   markCouponsRedeemed,
 } from '../../rewards/services/customerCoupons.service.ts';
-import { isPromoCurrentlyEligible } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
+  isDiscountPromo,
+  isPromoCurrentlyEligible,
+} from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
 import {
   applyPromoCap,
   type PromoCapRow,
@@ -639,6 +642,14 @@ export async function resolveDiscountAndPromos(
 
   for (const promoId of promoIds) {
     const promo = await getPromoById(promoId);
+
+    // Session 114: a spin-wheel promo hands out spins, not a discount.
+    if (!isDiscountPromo(promo)) {
+      throwWithStatus(
+        400,
+        `Promo "${promo.name}" is a spin wheel, not a discount`
+      );
+    }
 
     if (!isPromoCurrentlyEligible(promo)) {
       throwWithStatus(400, `Promo "${promo.name}" is not currently active`);

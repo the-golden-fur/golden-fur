@@ -3,11 +3,10 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
-import type { SpinWheelConfig, SpinWheelReward } from '../rewards.types.ts';
+import type { SpinWheelReward } from '../rewards.types.ts';
 import type {
   CreateSpinWheelRewardInput,
   UpdateSpinWheelRewardInput,
-  UpsertSpinWheelConfigInput,
 } from '../modules/validators/rewards.validator.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -16,46 +15,36 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-/** Singleton row - always exactly one (seeded by migration 196's own
- * `insert ... default values`), same shape as pricing_configuration/
- * promo_cap_configuration's own getters. */
-export async function getSpinWheelConfig(): Promise<SpinWheelConfig> {
-  const { data, error } = await supabase
-    .from('spin_wheel_config')
-    .select('*')
-    .maybeSingle();
+/** Embeds the (non-archived) pools each reward belongs to, so the admin
+ * Rewards tab can show "In N pools" without a second round trip. */
+const REWARD_SELECT =
+  '*, reward_pool_rewards(reward_pools(id, name, archived_at))';
 
-  if (error) throwWithStatus(400, error.message);
-  if (!data) throwWithStatus(500, 'No spin_wheel_config row exists');
-
-  return data as SpinWheelConfig;
+interface RewardRow extends Omit<SpinWheelReward, 'pools'> {
+  reward_pool_rewards?: Array<{
+    reward_pools: {
+      id: string;
+      name: string;
+      archived_at: string | null;
+    } | null;
+  }>;
 }
 
-export async function updateSpinWheelConfig(
-  requesterId: string,
-  updates: UpsertSpinWheelConfigInput
-): Promise<SpinWheelConfig> {
-  const existing = await getSpinWheelConfig();
+function toReward(row: RewardRow): SpinWheelReward {
+  const { reward_pool_rewards: memberships, ...reward } = row;
 
-  const { data, error } = await supabase
-    .from('spin_wheel_config')
-    .update({
-      ...updates,
-      updated_by_staff_id: requesterId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', existing.id)
-    .select('*')
-    .maybeSingle();
-
-  if (error || !data) {
-    throwWithStatus(
-      400,
-      error?.message ?? 'Failed to update spin wheel config'
-    );
-  }
-
-  return data as SpinWheelConfig;
+  return {
+    ...reward,
+    weight: Number(reward.weight),
+    value: Number(reward.value),
+    pools: (memberships ?? [])
+      .map((membership) => membership.reward_pools)
+      .filter(
+        (pool): pool is { id: string; name: string; archived_at: null } =>
+          pool !== null && pool.archived_at === null
+      )
+      .map((pool) => ({ id: pool.id, name: pool.name })),
+  };
 }
 
 export async function listSpinWheelRewards(
@@ -63,20 +52,20 @@ export async function listSpinWheelRewards(
 ): Promise<SpinWheelReward[]> {
   let query = supabase
     .from('spin_wheel_rewards')
-    .select('*')
+    .select(REWARD_SELECT)
     .is('archived_at', null);
 
   if (!includeInactive) {
     query = query.eq('is_active', true);
   }
 
-  const { data, error } = await query.order('rarity_percent', {
-    ascending: true,
-  });
+  const { data, error } = await query
+    .order('rarity_tier', { ascending: true })
+    .order('label', { ascending: true });
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as SpinWheelReward[];
+  return ((data ?? []) as RewardRow[]).map(toReward);
 }
 
 export async function listArchivedSpinWheelRewards(): Promise<
@@ -90,7 +79,7 @@ export async function listArchivedSpinWheelRewards(): Promise<
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as SpinWheelReward[];
+  return ((data ?? []) as RewardRow[]).map(toReward);
 }
 
 export async function getSpinWheelRewardById(
@@ -98,23 +87,20 @@ export async function getSpinWheelRewardById(
 ): Promise<SpinWheelReward> {
   const { data, error } = await supabase
     .from('spin_wheel_rewards')
-    .select('*')
+    .select(REWARD_SELECT)
     .eq('id', rewardId)
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Spin wheel reward not found');
 
-  return data as SpinWheelReward;
+  return toReward(data as RewardRow);
 }
 
 /**
- * The active-rewards-sum-to-100 rule is authoritatively enforced by the
- * deferred DB trigger (check_spin_wheel_rewards_sum) - a create/update/
- * archive that would break it always fails at commit, surfaced here as a
- * plain 400 from the insert/update's own error branch (Postgres exceptions
- * from a plpgsql trigger arrive as a regular query error, same as any other
- * CHECK constraint violation elsewhere in this codebase).
+ * No cross-row rule to enforce any more (session 114): a reward's chance is
+ * computed from its weight relative to its pool, so any single create,
+ * update, or deactivate is valid on its own.
  */
 export async function createSpinWheelReward(
   requesterId: string,
@@ -127,7 +113,7 @@ export async function createSpinWheelReward(
       created_by: requesterId,
       updated_by: requesterId,
     })
-    .select('*')
+    .select(REWARD_SELECT)
     .maybeSingle();
 
   if (error || !data) {
@@ -137,7 +123,7 @@ export async function createSpinWheelReward(
     );
   }
 
-  return data as SpinWheelReward;
+  return toReward(data as RewardRow);
 }
 
 export async function updateSpinWheelReward(
@@ -153,7 +139,7 @@ export async function updateSpinWheelReward(
       updated_at: new Date().toISOString(),
     })
     .eq('id', rewardId)
-    .select('*')
+    .select(REWARD_SELECT)
     .maybeSingle();
 
   if (error || !data) {
@@ -163,7 +149,7 @@ export async function updateSpinWheelReward(
     );
   }
 
-  return data as SpinWheelReward;
+  return toReward(data as RewardRow);
 }
 
 export async function archiveSpinWheelReward(rewardId: string): Promise<void> {
@@ -198,5 +184,14 @@ export async function hardDeleteSpinWheelReward(
     .delete()
     .eq('id', rewardId);
 
-  if (error) throwWithStatus(400, error.message);
+  if (error) {
+    // spin_history references every reward a customer has ever won.
+    if (error.code === '23503') {
+      throwWithStatus(
+        409,
+        'This reward has already been won by a customer and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

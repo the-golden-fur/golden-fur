@@ -1,0 +1,94 @@
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fieldLabel {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.subLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.input {
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d9d9d9);
+  background: transparent;
+  color: inherit;
+}
+
+.smallInput {
+  width: 6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d9d9d9);
+  background: transparent;
+  color: inherit;
+}
+
+.smallInput:disabled {
+  opacity: 0.5;
+}
+
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 8px;
+}
+
+.triggerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.checkLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.loginGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.loginChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding-left: 0.25rem;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted-text-color, #666);
+}
+
+.warning {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--error-color, #b3261e);
+}

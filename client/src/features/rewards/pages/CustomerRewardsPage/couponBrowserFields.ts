@@ -5,7 +5,7 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import type { CustomerCoupon, SpinWheelReward } from '../../rewards.types';
+import type { CustomerCoupon } from '../../rewards.types';
 
 const STATUS_OPTIONS = [
   { value: 'available', label: 'Available' },
@@ -136,12 +136,3 @@ export const COUPON_GROUP_BY_AXES: GroupByAxis<CustomerCoupon>[] = [
     columnFor: (coupon) => (coupon.is_redeemed ? 'Used' : 'Available'),
   },
 ];
-
-export function findRewardForCoupon(
-  coupon: CustomerCoupon,
-  rewards: SpinWheelReward[]
-): SpinWheelReward | null {
-  return (
-    rewards.find((reward) => reward.id === coupon.spin_wheel_reward_id) ?? null
-  );
-}

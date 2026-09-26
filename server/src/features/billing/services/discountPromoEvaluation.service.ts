@@ -193,7 +193,13 @@ export async function evaluatePromos(
     .select(
       '*, promo_scope(*), promo_branch_availability(branch_id, is_available)'
     )
-    .eq('is_active', true);
+    .eq('is_active', true)
+    // Session 114: spin-wheel promos hand out spins, never a discount; and
+    // an archived promo must never auto-apply (a pre-existing gap - archive
+    // requires is_active = false first, but a later reactivation of an
+    // archived row would otherwise slip through).
+    .neq('promo_type', 'spin_wheel')
+    .is('archived_at', null);
 
   if (error) throwWithStatus(400, error.message);
 

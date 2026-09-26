@@ -3,17 +3,47 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
-import { isPromoCurrentlyEligible } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
-import type { Promo, PromoBranchAvailability } from '../maintenance.types.ts';
+import {
+  isDiscountPromo,
+  isPromoCurrentlyEligible,
+} from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
 import type {
-  CreatePromoInput,
-  UpdatePromoInput,
+  Promo,
+  PromoBranchAvailability,
+  SpinWheelPromoSettings,
+} from '../maintenance.types.ts';
+import {
+  spinWheelSettingsProblems,
+  type CreatePromoInput,
+  type SpinWheelSettingsInput,
+  type UpdatePromoInput,
 } from '../modules/validators/maintenance.validator.ts';
 
 // promo_branch_availability(*) mirrors package_branch_availability's own
 // SELECT shape (custom change: promos moved off the old branch_scope enum
 // onto the same many-to-many join, migration 20260820141).
-const PROMO_SELECT = '*, promo_scope(*), promo_branch_availability(*)';
+// spin_wheel_promo_settings (session 114) carries a spin_wheel promo's
+// pool/pity/trigger settings, plus the pool's name for list display.
+const PROMO_SELECT =
+  '*, promo_scope(*), promo_branch_availability(*), spin_wheel_promo_settings(*, reward_pools(id, name))';
+
+/** PostgREST returns a one-to-one embed as an object, but older
+ * relationship detection can hand back a single-element array - normalize
+ * so callers always see an object or null. */
+function normalizePromo(row: Promo): Promo {
+  const settings = row.spin_wheel_promo_settings as
+    | SpinWheelPromoSettings
+    | SpinWheelPromoSettings[]
+    | null
+    | undefined;
+
+  return {
+    ...row,
+    spin_wheel_promo_settings: Array.isArray(settings)
+      ? (settings[0] ?? null)
+      : (settings ?? null),
+  };
+}
 
 /** Postgres foreign_key_violation. */
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -27,6 +57,10 @@ function throwWithStatus(statusCode: number, message: string): never {
 interface ListPromosParams {
   branchId?: string;
   includeInactive?: boolean;
+  /** Session 114: spin-wheel promos are excluded unless asked for - only
+   * the admin Promos tab wants them; the booking catalog and public catalog
+   * list discount promos only. */
+  includeSpinWheel?: boolean;
 }
 
 interface CreatePromoParams {
@@ -66,6 +100,7 @@ interface SetPromoBranchAvailabilityParams {
 export async function listPromos({
   branchId,
   includeInactive,
+  includeSpinWheel,
 }: ListPromosParams): Promise<Promo[]> {
   const { data, error } = await supabase
     .from('promos')
@@ -75,7 +110,11 @@ export async function listPromos({
 
   if (error) throwWithStatus(400, error.message);
 
-  let promos = (data ?? []) as Promo[];
+  let promos = ((data ?? []) as Promo[]).map(normalizePromo);
+
+  if (!includeSpinWheel) {
+    promos = promos.filter((promo) => isDiscountPromo(promo));
+  }
 
   if (!includeInactive) {
     promos = promos.filter((promo) => isPromoCurrentlyEligible(promo));
@@ -85,10 +124,14 @@ export async function listPromos({
     return promos;
   }
 
-  return promos.filter((promo) =>
-    (promo.promo_branch_availability ?? []).some(
-      (row) => row.branch_id === branchId && row.is_available
-    )
+  // Spin-wheel promos have no per-branch availability rows (their triggers
+  // are customer-wide), so they match every branch.
+  return promos.filter(
+    (promo) =>
+      !isDiscountPromo(promo) ||
+      (promo.promo_branch_availability ?? []).some(
+        (row) => row.branch_id === branchId && row.is_available
+      )
   );
 }
 
@@ -102,7 +145,76 @@ export async function getPromoById(promoId: string): Promise<Promo> {
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Promo not found');
 
-  return data as Promo;
+  return normalizePromo(data as Promo);
+}
+
+/**
+ * Session 114: a spin-wheel promo can only be live if its pool exists, isn't
+ * archived, and has at least one active reward - otherwise it would grant
+ * spins nobody can spin. Checked on create (when active) and whenever an
+ * update leaves the promo active.
+ */
+async function assertPoolUsable(
+  poolId: string,
+  { requireLandable }: { requireLandable: boolean }
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('reward_pools')
+    .select(
+      'id, is_active, archived_at, reward_pool_rewards(spin_wheel_rewards(is_active, archived_at))'
+    )
+    .eq('id', poolId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  const pool = data as {
+    is_active: boolean;
+    archived_at: string | null;
+    reward_pool_rewards?: Array<{
+      spin_wheel_rewards: {
+        is_active: boolean;
+        archived_at: string | null;
+      } | null;
+    }>;
+  } | null;
+
+  if (!pool || pool.archived_at) {
+    throwWithStatus(400, 'The selected reward pool does not exist');
+  }
+
+  if (!requireLandable) return;
+
+  if (!pool.is_active) {
+    throwWithStatus(
+      400,
+      'The selected reward pool is deactivated - activate it or pick another pool'
+    );
+  }
+
+  const hasLandable = (pool.reward_pool_rewards ?? []).some(
+    (member) =>
+      member.spin_wheel_rewards?.is_active &&
+      member.spin_wheel_rewards.archived_at === null
+  );
+
+  if (!hasLandable) {
+    throwWithStatus(
+      400,
+      'The selected reward pool has no active rewards - add some before turning this spin wheel on'
+    );
+  }
+}
+
+function settingsRow(settings: Partial<SpinWheelSettingsInput>) {
+  return {
+    reward_pool_id: settings.reward_pool_id,
+    pity_threshold: settings.pity_threshold ?? null,
+    booking_milestone_interval: settings.booking_milestone_interval ?? null,
+    spend_threshold_amount: settings.spend_threshold_amount ?? null,
+    login_trigger: settings.login_trigger ?? null,
+    login_streak_days: settings.login_streak_days ?? null,
+  };
 }
 
 /** branch_ids (custom change) is inserted as its own set of
@@ -112,7 +224,21 @@ export async function createPromo({
   requesterId,
   input,
 }: CreatePromoParams): Promise<Promo> {
-  const { scope, branch_ids: branchIds, ...promoFields } = input;
+  const {
+    scope,
+    branch_ids: branchIds,
+    spin_wheel: spinWheel,
+    ...promoFields
+  } = input;
+
+  if (promoFields.promo_type === 'spin_wheel') {
+    if (!spinWheel) {
+      throwWithStatus(400, 'A spin wheel promo needs a reward pool');
+    }
+    await assertPoolUsable(spinWheel.reward_pool_id, {
+      requireLandable: true,
+    });
+  }
 
   const { data: created, error } = await supabase
     .from('promos')
@@ -132,6 +258,20 @@ export async function createPromo({
     throwWithStatus(400, error?.message ?? 'Failed to create promo');
   }
 
+  if (spinWheel) {
+    const { error: settingsError } = await supabase
+      .from('spin_wheel_promo_settings')
+      .insert({ promo_id: created.id, ...settingsRow(spinWheel) });
+
+    if (settingsError) {
+      // Don't leave a spin_wheel promo with no settings behind.
+      await supabase.from('promos').delete().eq('id', created.id);
+      throwWithStatus(400, settingsError.message);
+    }
+
+    return getPromoById(created.id);
+  }
+
   if (scope?.length) {
     const { error: scopeError } = await supabase.from('promo_scope').insert(
       scope.map((item) => ({
@@ -147,7 +287,7 @@ export async function createPromo({
   const { error: availabilityError } = await supabase
     .from('promo_branch_availability')
     .insert(
-      branchIds.map((branchId) => ({
+      (branchIds ?? []).map((branchId) => ({
         promo_id: created.id,
         branch_id: branchId,
         is_available: true,
@@ -170,12 +310,18 @@ export async function setPromoBranchAvailability({
 }: SetPromoBranchAvailabilityParams): Promise<PromoBranchAvailability> {
   const { data: existing, error: lookupError } = await supabase
     .from('promos')
-    .select('id')
+    .select('id, promo_type')
     .eq('id', promoId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Promo not found');
+  if (existing.promo_type === 'spin_wheel') {
+    throwWithStatus(
+      400,
+      'A spin wheel promo applies to every branch - it has no branch availability'
+    );
+  }
 
   const { data, error } = await supabase
     .from('promo_branch_availability')
@@ -205,9 +351,26 @@ export async function updatePromo({
   promoId,
   updates,
 }: UpdatePromoParams): Promise<Promo> {
-  const { scope, ...promoFields } = updates;
+  const { scope, spin_wheel: spinWheelUpdates, ...promoFields } = updates;
 
   const existing = await getPromoById(promoId);
+
+  if (existing.promo_type === 'spin_wheel') {
+    return updateSpinWheelPromo({
+      requesterId,
+      existing,
+      promoFields,
+      scope,
+      spinWheelUpdates,
+    });
+  }
+
+  if (spinWheelUpdates !== undefined) {
+    throwWithStatus(
+      400,
+      "spin_wheel settings can only be set on a 'spin_wheel' promo"
+    );
+  }
 
   const effective = {
     start_date:
@@ -332,6 +495,116 @@ export async function updatePromo({
   }
 
   return getPromoById(promoId);
+}
+
+/**
+ * Session 114: update path for a promo_type = 'spin_wheel' promo. Discount
+ * and scope fields never apply; the spin_wheel settings patch is merged over
+ * the stored settings row and the merged result re-checked as a whole
+ * (spinWheelSettingsProblems) - the same "validate the merged state" rule
+ * updatePromo already uses for dates/scope.
+ */
+async function updateSpinWheelPromo({
+  requesterId,
+  existing,
+  promoFields,
+  scope,
+  spinWheelUpdates,
+}: {
+  requesterId: string;
+  existing: Promo;
+  promoFields: Omit<UpdatePromoInput, 'scope' | 'spin_wheel'>;
+  scope: UpdatePromoInput['scope'];
+  spinWheelUpdates: UpdatePromoInput['spin_wheel'];
+}): Promise<Promo> {
+  const forbidden = (
+    ['discount_type', 'value', 'scope_type', 'days_of_week'] as const
+  ).filter((field) => promoFields[field] !== undefined);
+
+  if (forbidden.length > 0 || scope !== undefined) {
+    throwWithStatus(
+      400,
+      `A spin wheel promo has no ${[...forbidden, ...(scope !== undefined ? ['scope'] : [])].join(', ')}`
+    );
+  }
+
+  if (promoFields.condition_note) {
+    throwWithStatus(400, 'A spin wheel promo cannot have a condition_note');
+  }
+
+  const startDate =
+    promoFields.start_date !== undefined
+      ? promoFields.start_date
+      : existing.start_date;
+  const endDate =
+    promoFields.end_date !== undefined
+      ? promoFields.end_date
+      : existing.end_date;
+
+  if (startDate && endDate && endDate < startDate) {
+    throwWithStatus(400, 'end_date must be on or after start_date');
+  }
+
+  const stored = existing.spin_wheel_promo_settings;
+  const merged: Partial<SpinWheelSettingsInput> = {
+    reward_pool_id: stored?.reward_pool_id,
+    pity_threshold: stored?.pity_threshold ?? null,
+    booking_milestone_interval: stored?.booking_milestone_interval ?? null,
+    spend_threshold_amount:
+      stored?.spend_threshold_amount != null
+        ? Number(stored.spend_threshold_amount)
+        : null,
+    login_trigger: stored?.login_trigger ?? null,
+    login_streak_days: stored?.login_streak_days ?? null,
+    ...spinWheelUpdates,
+  };
+
+  const problems = spinWheelSettingsProblems(merged);
+  if (problems.length > 0) {
+    throwWithStatus(400, problems.map((problem) => problem.message).join('; '));
+  }
+
+  const willBeActive = promoFields.is_active ?? existing.is_active;
+  const poolChanged = merged.reward_pool_id !== stored?.reward_pool_id;
+
+  // Re-check the pool whenever the promo ends up (or stays) switched on and
+  // either the pool changed or the promo is being turned on now.
+  if (poolChanged || (willBeActive && !existing.is_active)) {
+    await assertPoolUsable(merged.reward_pool_id as string, {
+      requireLandable: willBeActive,
+    });
+  }
+
+  // condition_note can only be null/absent here (rejected above otherwise).
+  if (Object.keys(promoFields).length > 0) {
+    const { error: updateError } = await supabase
+      .from('promos')
+      .update({
+        ...promoFields,
+        updated_by: requesterId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+
+    if (updateError) throwWithStatus(400, updateError.message);
+  }
+
+  if (spinWheelUpdates !== undefined) {
+    const { error: settingsError } = await supabase
+      .from('spin_wheel_promo_settings')
+      .upsert(
+        {
+          promo_id: existing.id,
+          ...settingsRow(merged),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'promo_id' }
+      );
+
+    if (settingsError) throwWithStatus(400, settingsError.message);
+  }
+
+  return getPromoById(existing.id);
 }
 
 /**

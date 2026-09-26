@@ -38,6 +38,14 @@ import {
   restoreStaffAccount,
 } from '../../api/staff.api';
 import { listStaff } from '../../api/staff.api';
+import {
+  hardDeleteRewardPool,
+  hardDeleteSpinWheelReward,
+  listArchivedRewardPools,
+  listArchivedSpinWheelRewards,
+  restoreRewardPool,
+  restoreSpinWheelReward,
+} from '../../../rewards/api/rewards.api';
 import { ArchiveList } from '../../components/ArchiveList/ArchiveList';
 import { DeletedRecordsArchiveList } from '../../components/DeletedRecordsArchiveList/DeletedRecordsArchiveList';
 import styles from './AdminArchivePage.module.css';
@@ -52,6 +60,8 @@ type ArchiveTab =
   | 'promos'
   | 'packages'
   | 'branches'
+  | 'spin-wheel-rewards'
+  | 'reward-pools'
   | 'deleted-records';
 
 const TABS: { key: ArchiveTab; label: string }[] = [
@@ -62,6 +72,8 @@ const TABS: { key: ArchiveTab; label: string }[] = [
   { key: 'promos', label: 'Promos' },
   { key: 'packages', label: 'Packages' },
   { key: 'branches', label: 'Branches' },
+  { key: 'spin-wheel-rewards', label: 'Spin Wheel Rewards' },
+  { key: 'reward-pools', label: 'Reward Pools' },
   { key: 'deleted-records', label: 'Deleted Records' },
 ];
 
@@ -232,6 +244,30 @@ export function AdminArchivePage() {
             fetchArchived={listArchivedBranches}
             restoreItem={restoreBranch}
             hardDeleteItem={hardDeleteBranch}
+            renderLabel={(item) => item.name}
+          />
+        ) : null}
+
+        {/* Session 114: spin wheel rewards and reward pools archive from
+            Settings > Promos & Rewards > Rewards / Reward Pools. */}
+        {activeTab === 'spin-wheel-rewards' ? (
+          <ArchiveList
+            entityLabel="spin wheel rewards"
+            accessToken={accessToken}
+            fetchArchived={listArchivedSpinWheelRewards}
+            restoreItem={restoreSpinWheelReward}
+            hardDeleteItem={hardDeleteSpinWheelReward}
+            renderLabel={(item) => `${item.label} (${item.rarity_tier})`}
+          />
+        ) : null}
+
+        {activeTab === 'reward-pools' ? (
+          <ArchiveList
+            entityLabel="reward pools"
+            accessToken={accessToken}
+            fetchArchived={listArchivedRewardPools}
+            restoreItem={restoreRewardPool}
+            hardDeleteItem={hardDeleteRewardPool}
             renderLabel={(item) => item.name}
           />
         ) : null}

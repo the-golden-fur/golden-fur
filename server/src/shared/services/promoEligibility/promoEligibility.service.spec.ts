@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isDiscountPromo,
   isPromoCurrentlyEligible,
   manilaDateString,
   manilaDayOfWeek,
@@ -25,6 +26,14 @@ describe('promoEligibility.service', () => {
     const lateUtc = new Date('2026-01-01T20:00:00.000Z');
     expect(manilaDateString(lateUtc)).toBe('2026-01-02');
     expect(manilaDayOfWeek(lateUtc)).toBe(5); // Friday
+  });
+
+  it('session 114: a spin_wheel promo is never a discount, so never eligible', () => {
+    const spinPromo = dateRangePromo({ promo_type: 'spin_wheel' });
+
+    expect(isDiscountPromo(spinPromo)).toBe(false);
+    expect(isDiscountPromo(dateRangePromo())).toBe(true);
+    expect(isPromoCurrentlyEligible(spinPromo)).toBe(false);
   });
 
   it('an inactive promo is never eligible regardless of type/window', () => {

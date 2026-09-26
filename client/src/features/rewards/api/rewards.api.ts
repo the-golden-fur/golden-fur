@@ -1,12 +1,16 @@
 import type {
+  CheckInResult,
+  CreateRewardPoolPayload,
   CreateSpinWheelRewardPayload,
   CustomerCoupon,
+  PromoWheel,
+  RewardPool,
+  SpinCreditSummary,
   SpinHistoryEntry,
   SpinResult,
-  SpinWheelConfig,
   SpinWheelReward,
+  UpdateRewardPoolPayload,
   UpdateSpinWheelRewardPayload,
-  UpsertSpinWheelConfigPayload,
 } from '../rewards.types';
 
 interface RewardsApiResult<T> {
@@ -44,35 +48,6 @@ function jsonHeaders(accessToken: string): HeadersInit {
 
 function authHeaders(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
-}
-
-export async function getSpinWheelConfig(
-  accessToken: string
-): Promise<RewardsApiResult<SpinWheelConfig>> {
-  const response = await fetch(`${API_BASE_URL}/rewards/spin-wheel/config`, {
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) return { data: null, error: await parseError(response) };
-
-  const result = await parseBody<{ config: SpinWheelConfig }>(response);
-  return { data: result.data?.config ?? null, error: result.error };
-}
-
-export async function updateSpinWheelConfig(
-  accessToken: string,
-  payload: UpsertSpinWheelConfigPayload
-): Promise<RewardsApiResult<SpinWheelConfig>> {
-  const response = await fetch(`${API_BASE_URL}/rewards/spin-wheel/config`, {
-    method: 'PUT',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) return { data: null, error: await parseError(response) };
-
-  const result = await parseBody<{ config: SpinWheelConfig }>(response);
-  return { data: result.data?.config ?? null, error: result.error };
 }
 
 export async function listSpinWheelRewards(
@@ -180,13 +155,155 @@ export async function hardDeleteSpinWheelReward(
   return { data: null, error: null };
 }
 
+// ---------------------------------------------------------------------------
+// Reward pools (session 114)
+// ---------------------------------------------------------------------------
+
+export async function listRewardPools(
+  accessToken: string
+): Promise<RewardsApiResult<RewardPool[]>> {
+  const response = await fetch(`${API_BASE_URL}/rewards/reward-pools`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ pools: RewardPool[] }>(response);
+  return { data: result.data?.pools ?? null, error: result.error };
+}
+
+export async function listArchivedRewardPools(
+  accessToken: string
+): Promise<RewardsApiResult<RewardPool[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/reward-pools/archived`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ pools: RewardPool[] }>(response);
+  return { data: result.data?.pools ?? null, error: result.error };
+}
+
+export async function createRewardPool(
+  accessToken: string,
+  payload: CreateRewardPoolPayload
+): Promise<RewardsApiResult<RewardPool>> {
+  const response = await fetch(`${API_BASE_URL}/rewards/reward-pools`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ pool: RewardPool }>(response);
+  return { data: result.data?.pool ?? null, error: result.error };
+}
+
+export async function updateRewardPool(
+  poolId: string,
+  accessToken: string,
+  payload: UpdateRewardPoolPayload
+): Promise<RewardsApiResult<RewardPool>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/reward-pools/${poolId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ pool: RewardPool }>(response);
+  return { data: result.data?.pool ?? null, error: result.error };
+}
+
+export async function archiveRewardPool(
+  poolId: string,
+  accessToken: string
+): Promise<RewardsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/reward-pools/${poolId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+  return { data: null, error: null };
+}
+
+export async function restoreRewardPool(
+  poolId: string,
+  accessToken: string
+): Promise<RewardsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/reward-pools/${poolId}/restore`,
+    { method: 'POST', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+  return { data: null, error: null };
+}
+
+export async function hardDeleteRewardPool(
+  poolId: string,
+  accessToken: string
+): Promise<RewardsApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/reward-pools/${poolId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+  return { data: null, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Customer-facing
+// ---------------------------------------------------------------------------
+
+/** Records today's portal visit (daily/streak login triggers) and returns
+ * any newly granted spins plus the current per-promo spin summary. */
+export async function checkIn(
+  accessToken: string
+): Promise<RewardsApiResult<CheckInResult>> {
+  const response = await fetch(`${API_BASE_URL}/rewards/check-in`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ result: CheckInResult }>(response);
+  return { data: result.data?.result ?? null, error: result.error };
+}
+
+/** The wheel (pool rewards + computed chances) for one spin-wheel promo. */
+export async function getPromoWheel(
+  accessToken: string,
+  promoId: string
+): Promise<RewardsApiResult<PromoWheel>> {
+  const response = await fetch(
+    `${API_BASE_URL}/rewards/spin-wheel/promos/${promoId}/wheel`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) return { data: null, error: await parseError(response) };
+
+  const result = await parseBody<{ wheel: PromoWheel }>(response);
+  return { data: result.data?.wheel ?? null, error: result.error };
+}
+
 /** A customer caller omits customerId (resolves to themself); a
  * receptionist triggering a walk-in's earned spin passes it explicitly -
  * same convention as credits.api.ts's own listCreditBalances. */
 export async function getMySpinCredits(
   accessToken: string,
   customerId?: string
-): Promise<RewardsApiResult<number>> {
+): Promise<RewardsApiResult<SpinCreditSummary>> {
   const query = customerId ? `?customer_id=${customerId}` : '';
   const response = await fetch(
     `${API_BASE_URL}/rewards/my-spin-credits${query}`,
@@ -195,18 +312,23 @@ export async function getMySpinCredits(
 
   if (!response.ok) return { data: null, error: await parseError(response) };
 
-  const result = await parseBody<{ available_spins: number }>(response);
-  return { data: result.data?.available_spins ?? null, error: result.error };
+  const result = await parseBody<{ credits: SpinCreditSummary }>(response);
+  return { data: result.data?.credits ?? null, error: result.error };
 }
 
+/** promoId picks which promo's spin to use (and so which reward pool);
+ * omitted = the oldest spin of any promo. */
 export async function spinTheWheel(
   accessToken: string,
-  customerId?: string
+  options: { promoId?: string; customerId?: string } = {}
 ): Promise<RewardsApiResult<SpinResult>> {
   const response = await fetch(`${API_BASE_URL}/rewards/spin`, {
     method: 'POST',
     headers: jsonHeaders(accessToken),
-    body: JSON.stringify(customerId ? { customer_id: customerId } : {}),
+    body: JSON.stringify({
+      ...(options.customerId ? { customer_id: options.customerId } : {}),
+      ...(options.promoId ? { promo_id: options.promoId } : {}),
+    }),
   });
 
   if (!response.ok) return { data: null, error: await parseError(response) };

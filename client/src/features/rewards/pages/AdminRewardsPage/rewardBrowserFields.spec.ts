@@ -17,7 +17,8 @@ function buildReward(
     label: 'Ten Percent Off',
     discount_type: 'Percentage',
     value: 10,
-    rarity_percent: 60,
+    rarity_tier: 'Common',
+    weight: 60,
     is_active: true,
     archived_at: null,
     created_by: null,
@@ -31,7 +32,12 @@ function buildReward(
 describe('applyRewardFilters', () => {
   const rewards = [
     buildReward({ id: '1', is_active: true, discount_type: 'Percentage' }),
-    buildReward({ id: '2', is_active: false, discount_type: 'Flat' }),
+    buildReward({
+      id: '2',
+      is_active: false,
+      discount_type: 'Flat',
+      rarity_tier: 'Epic',
+    }),
   ];
 
   it('narrows by status', () => {
@@ -41,6 +47,11 @@ describe('applyRewardFilters', () => {
 
   it('narrows by discount type', () => {
     const tiles: FilterTile[] = [{ fieldId: 'discountType', value: 'Flat' }];
+    expect(applyRewardFilters(rewards, tiles).map((r) => r.id)).toEqual(['2']);
+  });
+
+  it('narrows by rarity tier', () => {
+    const tiles: FilterTile[] = [{ fieldId: 'tier', value: 'Epic' }];
     expect(applyRewardFilters(rewards, tiles).map((r) => r.id)).toEqual(['2']);
   });
 });
@@ -58,20 +69,35 @@ describe('deriveRewardSortKey + REWARD_COMPARATORS', () => {
     expect(deriveRewardSortKey(null)).toBe('label-asc');
   });
 
-  it('sorts by rarity high to low', () => {
+  it('sorts rarest tier first', () => {
     const rewards = [
-      buildReward({ id: '1', rarity_percent: 10 }),
-      buildReward({ id: '2', rarity_percent: 90 }),
+      buildReward({ id: '1', rarity_tier: 'Common' }),
+      buildReward({ id: '2', rarity_tier: 'Legendary' }),
+      buildReward({ id: '3', rarity_tier: 'Rare' }),
     ];
     expect(
       [...rewards].sort(REWARD_COMPARATORS['rarity-desc']).map((r) => r.id)
+    ).toEqual(['2', '3', '1']);
+  });
+
+  it('sorts by weight high to low', () => {
+    const rewards = [
+      buildReward({ id: '1', weight: 10 }),
+      buildReward({ id: '2', weight: 90 }),
+    ];
+    expect(deriveRewardSortKey({ fieldId: 'weight', direction: 'desc' })).toBe(
+      'weight-desc'
+    );
+    expect(
+      [...rewards].sort(REWARD_COMPARATORS['weight-desc']).map((r) => r.id)
     ).toEqual(['2', '1']);
   });
 });
 
 describe('REWARD_GROUP_BY_AXES', () => {
-  it('offers Status and Discount type axes', () => {
+  it('offers Rarity, Status, and Discount type axes', () => {
     expect(REWARD_GROUP_BY_AXES.map((axis) => axis.id)).toEqual([
+      'tier',
       'status',
       'discountType',
     ]);

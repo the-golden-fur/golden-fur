@@ -38,6 +38,20 @@ vi.mock('../../../../credits/api/credits.api', () => ({
   listCreditBalances: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
+// Session 114: CustomerAuthGuard also mounts SpinCreditsProvider (the
+// spins navbar chip + pop-up), which self-checks-in on mount - same
+// real-relative-fetch reason as notifications/credits above.
+vi.mock('../../../../rewards/api/rewards.api', () => ({
+  checkIn: vi.fn().mockResolvedValue({
+    data: { granted: [], credits: { total: 0, byPromo: [] } },
+    error: null,
+  }),
+  getMySpinCredits: vi.fn().mockResolvedValue({
+    data: { total: 0, byPromo: [] },
+    error: null,
+  }),
+}));
+
 function createAuthValue(
   overrides: Partial<AuthContextValue>
 ): AuthContextValue {

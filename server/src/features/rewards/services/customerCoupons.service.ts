@@ -21,15 +21,24 @@ export async function listMyCoupons(
 ): Promise<CustomerCoupon[]> {
   const targetCustomerId = await resolveTargetCustomerId(params);
 
+  // Session 114: the reward catalog is staff-only now, so the reward's title
+  // travels with each coupon instead of the page looking it up separately.
   const { data, error } = await supabase
     .from('customer_coupons')
-    .select('*')
+    .select('*, spin_wheel_rewards(label)')
     .eq('customer_id', targetCustomerId)
     .order('created_at', { ascending: false });
 
   if (error) throwWithStatus(400, error.message);
 
-  return (data ?? []) as CustomerCoupon[];
+  return (
+    (data ?? []) as unknown as Array<
+      CustomerCoupon & { spin_wheel_rewards?: { label: string } | null }
+    >
+  ).map(({ spin_wheel_rewards: reward, ...coupon }) => ({
+    ...coupon,
+    reward_label: reward?.label ?? null,
+  }));
 }
 
 /**

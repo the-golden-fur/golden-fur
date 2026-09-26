@@ -7,11 +7,14 @@ import { AdminPromosAndRewardsPage } from './AdminPromosAndRewardsPage';
 vi.mock('../AdminPromoConfigPage/AdminPromoConfigPage', () => ({
   AdminPromoConfigPage: () => createElement('div', null, 'Promos content'),
 }));
+vi.mock('../../../rewards/pages/AdminRewardsPage/AdminRewardsPage', () => ({
+  AdminRewardsPage: () => createElement('div', null, 'Rewards content'),
+}));
 vi.mock(
-  '../../../rewards/pages/AdminSpinWheelConfigPage/AdminSpinWheelConfigPage',
+  '../../../rewards/pages/AdminRewardPoolsPage/AdminRewardPoolsPage',
   () => ({
-    AdminSpinWheelConfigPage: () =>
-      createElement('div', null, 'Spin Wheel content'),
+    AdminRewardPoolsPage: () =>
+      createElement('div', null, 'Reward Pools content'),
   })
 );
 
@@ -20,23 +23,39 @@ describe('AdminPromosAndRewardsPage', () => {
     render(createElement(AdminPromosAndRewardsPage));
 
     expect(screen.getByText('Promos content')).toBeInTheDocument();
-    expect(screen.queryByText('Spin Wheel content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Rewards content')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Promos' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
   });
 
-  it('switches to Coupon Spin Wheel without touching Promos content', async () => {
+  it('session 114: has Promos, Rewards, and Reward Pools tabs - no Coupon Spin Wheel tab', () => {
+    render(createElement(AdminPromosAndRewardsPage));
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Promos',
+      'Rewards',
+      'Reward Pools',
+    ]);
+    expect(
+      screen.queryByRole('tab', { name: 'Coupon Spin Wheel' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('switches between Rewards and Reward Pools', async () => {
     render(createElement(AdminPromosAndRewardsPage));
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('tab', { name: 'Coupon Spin Wheel' }));
-
-    expect(screen.getByText('Spin Wheel content')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Rewards' }));
+    expect(screen.getByText('Rewards content')).toBeInTheDocument();
     expect(screen.queryByText('Promos content')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('tab', { name: 'Coupon Spin Wheel' })
-    ).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('tab', { name: 'Reward Pools' }));
+    expect(screen.getByText('Reward Pools content')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Reward Pools' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 });

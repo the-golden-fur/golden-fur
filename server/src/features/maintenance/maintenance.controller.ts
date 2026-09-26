@@ -481,6 +481,9 @@ export async function listPromosController(
     const promos = await listPromos({
       branchId: queryString(req.query.branch_id),
       includeInactive: req.query.include_inactive === 'true',
+      // Session 114: only the admin Promos tab asks for spin-wheel promos;
+      // every other caller wants discount promos only.
+      includeSpinWheel: req.query.include_spin_wheel === 'true',
     });
 
     return res.status(200).json({ promos });

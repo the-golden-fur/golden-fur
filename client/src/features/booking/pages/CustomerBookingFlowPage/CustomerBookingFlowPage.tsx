@@ -1709,8 +1709,8 @@ export function CustomerBookingFlowPage() {
         key: { kind: 'promo' as const, id: promo.id },
         amount:
           promo.discount_type === 'Percentage'
-            ? groupSubtotal * (promo.value / 100)
-            : Math.min(promo.value, groupSubtotal),
+            ? groupSubtotal * (Number(promo.value ?? 0) / 100)
+            : Math.min(Number(promo.value ?? 0), groupSubtotal),
       }));
 
     const couponCandidates = selectedCouponIds
