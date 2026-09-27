@@ -63,18 +63,18 @@ service (it is not auto-applied to the existing one — reconcile by hand).
 
 ### Environment variables (Render → golden-fur-server → Environment)
 
-| Variable                        | Required? | Value / notes                                                                                                                                                                                   |
-| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                      | yes       | `production`                                                                                                                                                                                    |
-| `SUPABASE_URL`                  | yes       | production Supabase URL                                                                                                                                                                         |
-| `SUPABASE_ANON_KEY`             | yes       | production anon key — used by the staff/customer auth controllers                                                                                                                               |
-| `SUPABASE_SERVICE_ROLE_KEY`     | yes       | production service-role key — bypasses RLS, never exposed to the client                                                                                                                         |
-| `SUPABASE_JWT_SECRET`           | set it    | currently not read by server code, but keep it in sync                                                                                                                                          |
-| `CORS_ALLOWED_ORIGINS`          | yes       | `https://golden-fur-client.vercel.app` (plus any custom domains). Comma-separated, **no spaces, no trailing slash.** An unlisted browser origin is rejected.                                    |
-| `STAFF_TEMP_CREDENTIAL_KEY`     | yes       | base64 string that decodes to **exactly 32 bytes** (`openssl rand -base64 32`). Staff account creation/resend throws without it.                                                                |
-| `BREVO_API_KEY`                 | see notes | transactional email (Brevo). Leave unset on any environment where email isn't provisioned yet; email-triggering flows will error, which is expected, not a regression.                          |
-| `BREVO_FROM_EMAIL`              | optional  | verified Brevo sender, `"Display Name <address@domain.com>"`; defaults to `Golden Fur <noreply@goldenfur.com>` if unset                                                                         |
-| `DAYCARE_SESSION_CAPACITY`      | optional  | bare number or JSON branch map; defaults to `15`                                                                                                                                                |
+| Variable                    | Required? | Value / notes                                                                                                                                                          |
+| --------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                  | yes       | `production`                                                                                                                                                           |
+| `SUPABASE_URL`              | yes       | production Supabase URL                                                                                                                                                |
+| `SUPABASE_ANON_KEY`         | yes       | production anon key — used by the staff/customer auth controllers                                                                                                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes       | production service-role key — bypasses RLS, never exposed to the client                                                                                                |
+| `SUPABASE_JWT_SECRET`       | set it    | currently not read by server code, but keep it in sync                                                                                                                 |
+| `CORS_ALLOWED_ORIGINS`      | yes       | `https://golden-fur-client.vercel.app` (plus any custom domains). Comma-separated, **no spaces, no trailing slash.** An unlisted browser origin is rejected.           |
+| `STAFF_TEMP_CREDENTIAL_KEY` | yes       | base64 string that decodes to **exactly 32 bytes** (`openssl rand -base64 32`). Staff account creation/resend throws without it.                                       |
+| `BREVO_API_KEY`             | see notes | transactional email (Brevo). Leave unset on any environment where email isn't provisioned yet; email-triggering flows will error, which is expected, not a regression. |
+| `BREVO_FROM_EMAIL`          | optional  | verified Brevo sender, `"Display Name <address@domain.com>"`; defaults to `Golden Fur <noreply@goldenfur.com>` if unset                                                |
+| `DAYCARE_SESSION_CAPACITY`  | optional  | bare number or JSON branch map; defaults to `15`                                                                                                                       |
 
 Facebook/Google OAuth is configured in the **Supabase** dashboard (Auth →
 Providers), not through server env vars. Facebook login stays dormant until

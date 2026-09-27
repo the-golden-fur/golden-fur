@@ -147,8 +147,7 @@ export function CustomerTransactionHistoryPage() {
     setPaySubmitting(true);
     setPayError(null);
 
-    const partialAmount =
-      paying < payTarget.total_amount ? paying : undefined;
+    const partialAmount = paying < payTarget.total_amount ? paying : undefined;
     const result = await payTransactionWithCredit(
       payTarget.id,
       accessToken,

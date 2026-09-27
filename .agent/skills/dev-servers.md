@@ -35,7 +35,7 @@ having started a second, colliding copy of one that was already up.
   nothing else needed to change).
 - There used to be a `Stop` hook that force-killed anything on 3000/5173
   after every Claude turn, meant as a backstop for a background `npm run
-  dev` an agent forgot to stop. It was removed 2026-09-27: it couldn't
+dev` an agent forgot to stop. It was removed 2026-09-27: it couldn't
   tell that background server apart from the person's own long-running
   one in the same repo, so a person running dev servers themselves while
   also using Claude Code for unrelated work in the same project had both
