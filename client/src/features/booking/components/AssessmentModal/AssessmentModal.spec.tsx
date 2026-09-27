@@ -70,4 +70,21 @@ describe('AssessmentModal', () => {
     await user.selectOptions(screen.getByLabelText('Coat type'), 'SC');
     expect(save).toBeEnabled();
   });
+
+  it('shows weight class and coat type as words while keeping the stored codes as values', () => {
+    render(createElement(Harness, { onConfirm: vi.fn() }));
+
+    expect(
+      screen.getByRole('option', { name: 'Small' }) as HTMLOptionElement
+    ).toHaveValue('S');
+    expect(
+      screen.getByRole('option', { name: 'Extra large' }) as HTMLOptionElement
+    ).toHaveValue('XL');
+    expect(
+      screen.getByRole('option', { name: 'Short coat' }) as HTMLOptionElement
+    ).toHaveValue('SC');
+    expect(
+      screen.getByRole('option', { name: 'Long coat' }) as HTMLOptionElement
+    ).toHaveValue('LC');
+  });
 });

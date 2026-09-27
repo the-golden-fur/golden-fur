@@ -351,6 +351,32 @@ describe('CustomerBookingsPage', () => {
     );
   });
 
+  it('clicking a booking row opens its details modal', async () => {
+    const user = userEvent.setup();
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking()],
+      error: null,
+    });
+    // Only asserting the modal opens for this booking - leave the details
+    // fetch pending rather than rebuilding the full details fixture.
+    vi.mocked(bookingApi.getBookingDetails).mockReturnValue(
+      new Promise(() => {})
+    );
+
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: /Grooming - Pet/ })
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Booking details')).toBeInTheDocument();
+    expect(bookingApi.getBookingDetails).toHaveBeenCalledWith(
+      'booking-1',
+      'token'
+    );
+  });
+
   it("slot-conflict notification: a `?open=<id>` deep link auto-opens that booking's details", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking({ status: 'Pending' })],

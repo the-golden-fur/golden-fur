@@ -29,6 +29,11 @@ import type {
 } from '../../../maintenance/maintenance.types';
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { BookingCountBadge } from '../../components/BookingCountBadge/BookingCountBadge';
+import {
+  BookingSummaryPanel,
+  type BookingSummaryLine,
+  type BookingSummaryRow,
+} from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
@@ -132,6 +137,32 @@ function deriveHotelCageSize(
   if (lower.includes('medium')) return 'M';
   if (lower.includes('small')) return 'S';
   return null;
+}
+
+/** Staff-or-cage wording shared by the 'Your bookings' step's list rows and
+ * the BookingSummaryPanel, so both describe a booking the same way. */
+function describeStaffOrCage(
+  category: ServiceCategory,
+  staffPreference: StaffPreferenceInput | null,
+  cagePreference: CagePreferenceInput | null
+): string {
+  if (category === 'Hotel') {
+    return cagePreference?.type === 'specific'
+      ? 'Specific cage requested'
+      : 'No cage preference';
+  }
+  return staffPreference?.type === 'specific'
+    ? 'Specific staff requested'
+    : staffPreference?.type === 'no_preference'
+      ? 'No staff preference'
+      : 'No staff selection needed';
+}
+
+function formatSlotStart(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 /** Module-level (not inside the component) so calling Date.now()/
@@ -1457,10 +1488,9 @@ export function CustomerBookingFlowPage() {
   );
 
   /** Flattened services + packages for the in-progress booking, name +
-   * price only - feeds the persistent selection summary shown on every
-   * step after 'items' (see SelectedItemsSummary below) so a customer/
-   * receptionist doesn't have to jump back to the Services step just to
-   * recall what they picked. */
+   * price only - feeds the Services row of the "Your booking" summary panel
+   * (BookingSummaryPanel) so a customer/receptionist doesn't have to jump
+   * back to the Services step just to recall what they picked. */
   const selectedItemsSummary = useMemo(
     () => [
       ...selectedServices.map((service) => ({
@@ -1936,18 +1966,6 @@ export function CustomerBookingFlowPage() {
   );
 
   const currentStep = steps[currentStepIndex] ?? steps[0];
-
-  // Persistent selection summary (below): only past the Services step, and
-  // only while there's actually something selected for the booking in
-  // progress - once it's committed to bookingsList, selectedServiceIds/
-  // selectedPackageIds reset for the next booking and this naturally stops
-  // showing (the 'Your bookings' and 'Review' steps already show their own,
-  // fuller breakdown per committed booking).
-  const itemsStepIndex = steps.findIndex((step) => step.key === 'items');
-  const showSelectedItemsSummary =
-    itemsStepIndex >= 0 &&
-    currentStepIndex > itemsStepIndex &&
-    selectedItemsSummary.length > 0;
 
   // Repairs `currentStepKey` when the step it points at just disappeared
   // from `steps` (e.g. the Staff step, once Staff Picker turns out to be
@@ -4051,16 +4069,11 @@ export function CustomerBookingFlowPage() {
                     ...entry.selectedServiceNames,
                     ...entry.selectedPackageNames,
                   ].join(', ') || 'No items selected';
-                const staffOrCage =
-                  entry.category === 'Hotel'
-                    ? entry.cagePreference?.type === 'specific'
-                      ? 'Specific cage requested'
-                      : 'No cage preference'
-                    : entry.staffPreference?.type === 'specific'
-                      ? 'Specific staff requested'
-                      : entry.staffPreference?.type === 'no_preference'
-                        ? 'No staff preference'
-                        : 'No staff selection needed';
+                const staffOrCage = describeStaffOrCage(
+                  entry.category,
+                  entry.staffPreference,
+                  entry.cagePreference
+                );
 
                 return (
                   <div key={entry.id} className={styles.instructionBlock}>
@@ -4079,10 +4092,7 @@ export function CustomerBookingFlowPage() {
                     <p className={styles.bookingListRowMeta}>{itemNames}</p>
                     <p className={styles.bookingListRowMeta}>
                       {entry.selectedSlot
-                        ? new Date(entry.selectedSlot.start).toLocaleString(
-                            undefined,
-                            { dateStyle: 'medium', timeStyle: 'short' }
-                          )
+                        ? formatSlotStart(entry.selectedSlot.start)
                         : 'No date/time selected'}
                       {' · '}
                       {staffOrCage}
@@ -4359,113 +4369,244 @@ export function CustomerBookingFlowPage() {
 
   const isLastStep = currentStepIndex === steps.length - 1;
 
-  return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Book a service</h1>
-
-      {showRestoredBanner ? (
-        <div className={styles.restoredBanner} role="status">
-          <span>We restored your in-progress booking.</span>
-          <div className={styles.restoredBannerActions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleStartOver}
-            >
-              Start over
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setShowRestoredBanner(false)}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <BookingStepper
-        steps={steps.map((step) => step.label)}
-        currentStepIndex={currentStepIndex}
-        furthestCompletedIndex={maxReachedIndex}
-        onStepSelect={handleStepperSelect}
-      />
-      <BookingCountBadge count={bookingsList.length} />
-
-      {showSelectedItemsSummary ? (
-        <SelectedItemsSummary items={selectedItemsSummary} total={itemsTotal} />
-      ) : null}
-
-      <div className={styles.stepContent}>{renderStepContent()}</div>
-
-      {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
-        <div className={styles.navRow}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={currentStepIndex === 0}
-            onClick={goBack}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={!isCurrentStepValid || isLastStep}
-            onClick={goNext}
-          >
-            Next
-          </button>
-        </div>
-      ) : (
-        <div className={styles.navRow}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={currentStepIndex === 0}
-            onClick={goBack}
-          >
-            Back
-          </button>
-        </div>
-      )}
-    </main>
+  // ---- "Your booking" summary panel ----
+  //
+  // One row per stepper step. The per-booking steps (pet through care
+  // instructions) describe the working draft, which is committed into
+  // bookingsList and reset on the way into 'bookingsList' - so from there
+  // on those rows are hidden and the committed entries (shown at the top of
+  // the panel) carry that information instead.
+  const bookingsListStepIndex = steps.findIndex(
+    (step) => step.key === 'bookingsList'
   );
-}
+  const isPastWorkingDraft =
+    bookingsListStepIndex >= 0 && currentStepIndex >= bookingsListStepIndex;
+  const perBookingStepKeys = new Set<StepDef['key']>([
+    'pet',
+    'category',
+    'items',
+    'bookingType',
+    'availability',
+    'hotelDetails',
+  ]);
 
-/**
- * Persistent "what have I picked so far" recap, shown on every step after
- * Services for the booking currently being configured (see
- * showSelectedItemsSummary above) - so a customer/receptionist doesn't have
- * to jump back to the Services step just to recall the services/packages
- * and running total already chosen. Deliberately minimal (a native
- * <details>, collapsed by default) so it never crowds out the current
- * step's own content, and deliberately a separate small component (rather
- * than inlined where it's used) so it stays easy to extend later without
- * touching the wizard's step-switch logic.
- */
-function SelectedItemsSummary({
-  items,
-  total,
-}: {
-  items: { id: string; name: string; price: number }[];
-  total: number;
-}) {
+  function summaryLinesFor(key: StepDef['key']): BookingSummaryLine[] {
+    switch (key) {
+      case 'branch':
+        return selectedBranch ? [{ text: selectedBranch.name }] : [];
+      case 'customer':
+        return walkInCustomer ? [{ text: walkInCustomer.full_name }] : [];
+      case 'pet':
+        return selectedPet ? [{ text: selectedPet.name }] : [];
+      case 'category':
+        return category ? [{ text: category }] : [];
+      case 'items': {
+        const lines: BookingSummaryLine[] = selectedItemsSummary.map(
+          (item) => ({ text: item.name, amount: item.price })
+        );
+        if (category === 'Hotel' && hotelNights > 1 && lines.length > 0) {
+          lines.push({ text: `× ${hotelNights} nights` });
+        }
+        return lines;
+      }
+      case 'bookingType':
+        return [{ text: bookingSource }];
+      case 'availability': {
+        if (!selectedSlot || !category) return [];
+        const lines: BookingSummaryLine[] = [
+          { text: formatSlotStart(selectedSlot.start) },
+        ];
+        if (category === 'Hotel' && finalScheduledEnd) {
+          lines.push({ text: `Until ${formatSlotStart(finalScheduledEnd)}` });
+        }
+        if (category === 'Hotel' || staffPreference) {
+          lines.push({
+            text: describeStaffOrCage(
+              category,
+              staffPreference,
+              cagePreference
+            ),
+          });
+        }
+        return lines;
+      }
+      case 'hotelDetails': {
+        const lines: BookingSummaryLine[] = [];
+        const prefs = hotelPreferencesPayload;
+        if (prefs) {
+          const counts: [number, string][] = [
+            [prefs.feeding.length, 'feeding'],
+            [prefs.walking.length, 'walk'],
+            [prefs.playing.length, 'playtime'],
+            [prefs.medications.length, 'medication'],
+          ];
+          const parts = counts
+            .filter(([count]) => count > 0)
+            .map(([count, label]) => `${count} ${label}`);
+          lines.push({ text: parts.join(', ') });
+        }
+        if (specialInstructions.trim()) {
+          lines.push({ text: 'Special instructions added' });
+        }
+        return lines;
+      }
+      case 'bookingsList':
+        return bookingsList.length > 0
+          ? [
+              {
+                text: `${bookingsList.length} booking${bookingsList.length === 1 ? '' : 's'}`,
+              },
+            ]
+          : [];
+      case 'promos': {
+        const lines: BookingSummaryLine[] = [];
+        const discountName = discounts.find(
+          (discount) => discount.id === selectedDiscountId
+        )?.name;
+        if (discountName) lines.push({ text: discountName });
+        for (const promo of promos) {
+          if (selectedPromoIds.includes(promo.id)) {
+            lines.push({ text: promo.name });
+          }
+        }
+        if (selectedCouponIds.length > 0) {
+          lines.push({
+            text: `${selectedCouponIds.length} reward coupon${selectedCouponIds.length === 1 ? '' : 's'}`,
+          });
+        }
+        return lines;
+      }
+      case 'payment':
+        return [];
+    }
+  }
+
+  const summaryRows: BookingSummaryRow[] = steps.flatMap((step, index) => {
+    if (isPastWorkingDraft && perBookingStepKeys.has(step.key)) return [];
+
+    const status =
+      index === currentStepIndex
+        ? 'current'
+        : index < currentStepIndex
+          ? 'done'
+          : 'upcoming';
+
+    return [
+      {
+        key: step.key,
+        label: step.label,
+        status,
+        lines: summaryLinesFor(step.key),
+        onSelect:
+          index !== currentStepIndex && index <= maxReachedIndex
+            ? () => handleStepperSelect(index)
+            : undefined,
+      },
+    ];
+  });
+
+  const summaryCommittedEntries = bookingsList.map((entry) => ({
+    id: entry.id,
+    title: `${entry.petName} — ${entry.category}`,
+    lines: [
+      [...entry.selectedServiceNames, ...entry.selectedPackageNames].join(
+        ', '
+      ) || 'No items selected',
+      entry.selectedSlot
+        ? formatSlotStart(entry.selectedSlot.start)
+        : 'No date/time selected',
+    ],
+    subtotal: entry.itemsSubtotal,
+  }));
+
+  const summarySubtotal =
+    bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0) +
+    itemsTotal;
+
   return (
-    <details className={styles.selectedItemsSummary}>
-      <summary className={styles.selectedItemsSummaryTitle}>
-        {items.length} service{items.length === 1 ? '' : 's'} selected · PHP{' '}
-        {total.toFixed(2)}
-      </summary>
-      <ul className={styles.selectedItemsSummaryList}>
-        {items.map((item) => (
-          <li key={item.id} className={styles.pricingRow}>
-            <span>{item.name}</span>
-            <span>PHP {item.price.toFixed(2)}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <main className={`${styles.page} ${styles.pageWithSummary}`}>
+      <div className={styles.summaryLayout}>
+        <section
+          className={styles.flowColumn}
+          aria-labelledby="booking-flow-title"
+        >
+          <h1 id="booking-flow-title" className={styles.title}>
+            Book a service
+          </h1>
+
+          {showRestoredBanner ? (
+            <div className={styles.restoredBanner} role="status">
+              <span>We restored your in-progress booking.</span>
+              <div className={styles.restoredBannerActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={handleStartOver}
+                >
+                  Start over
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowRestoredBanner(false)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <BookingStepper
+            steps={steps.map((step) => step.label)}
+            currentStepIndex={currentStepIndex}
+            furthestCompletedIndex={maxReachedIndex}
+            onStepSelect={handleStepperSelect}
+          />
+          <BookingCountBadge count={bookingsList.length} />
+
+          <div className={styles.stepContent}>{renderStepContent()}</div>
+
+          {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
+            <div className={styles.navRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentStepIndex === 0}
+                onClick={goBack}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!isCurrentStepValid || isLastStep}
+                onClick={goNext}
+              >
+                Next
+              </button>
+            </div>
+          ) : (
+            <div className={styles.navRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentStepIndex === 0}
+                onClick={goBack}
+              >
+                Back
+              </button>
+            </div>
+          )}
+        </section>
+
+        <div className={styles.summaryColumn}>
+          <BookingSummaryPanel
+            rows={summaryRows}
+            committedEntries={summaryCommittedEntries}
+            subtotal={summarySubtotal}
+          />
+        </div>
+      </div>
+    </main>
   );
 }

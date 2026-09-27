@@ -334,8 +334,15 @@ export function CustomerBookingsPage() {
                 : []),
             ];
 
+            // The whole row summary is a button that opens the same details
+            // modal as the menu's "View details" - right-click/long-press
+            // still opens the Reschedule/Cancel menu around it.
             const bookingCardContent = (
-              <div className={styles.bookingMain}>
+              <button
+                type="button"
+                className={styles.bookingMain}
+                onClick={() => setDetailsBookingId(booking.id)}
+              >
                 <span className={styles.bookingTitle}>
                   {booking.service_category} -{' '}
                   {petNameById.get(booking.pet_id) ?? 'Pet'}
@@ -345,7 +352,7 @@ export function CustomerBookingsPage() {
                   {formatDateTime(booking.scheduled_start)}
                 </span>
                 <BookingConfirmationBadge booking={booking} />
-              </div>
+              </button>
             );
 
             return (
