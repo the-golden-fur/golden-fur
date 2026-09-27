@@ -1,7 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
-import { initiatePaymongoPayment } from './paymongo.service.ts';
 import type {
   CreateMiscSaleInput,
   UpdateMiscSaleInput,
@@ -22,7 +21,6 @@ export interface MiscSaleResult {
   transaction: Transaction;
   lineItem: TransactionLineItem;
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 interface ResolvedItem {
@@ -110,25 +108,11 @@ export async function createMiscSale({
 
   const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
     paymentMethod: input.payment_method,
-    onlineChannel: input.online_channel,
     amountDue,
     cashTendered: input.cash_tendered,
   });
 
-  let paymentReference = input.payment_reference ?? null;
-  let paymongoCheckoutUrl: string | null = null;
-
-  if (paymentStatus === 'Pending') {
-    const initiated = await initiatePaymongoPayment({
-      paymentMethod: input.payment_method as 'GCash' | 'Maya',
-      amount: amountDue,
-      description: item.description,
-      redirectSuccessUrl: process.env.PAYMONGO_REDIRECT_SUCCESS_URL ?? '',
-      redirectFailedUrl: process.env.PAYMONGO_REDIRECT_FAILED_URL ?? '',
-    });
-    paymentReference = initiated.sourceId;
-    paymongoCheckoutUrl = initiated.checkoutUrl;
-  }
+  const paymentReference = input.payment_reference ?? null;
 
   const { data: transaction, error: transactionError } = await supabase
     .from('transactions')
@@ -147,7 +131,7 @@ export async function createMiscSale({
       total_amount: round2(subtotal - creditAppliedAmount),
       payment_reference: paymentReference,
       misc_sale_description: item.description,
-      processed_by_staff_id: paymentStatus === 'Pending' ? null : requesterId,
+      processed_by_staff_id: requesterId,
     })
     .select('*')
     .maybeSingle();
@@ -184,7 +168,6 @@ export async function createMiscSale({
     transaction: transaction as Transaction,
     lineItem: lineItem as TransactionLineItem,
     changeAmount,
-    paymongoCheckoutUrl,
   };
 }
 
@@ -242,7 +225,6 @@ export async function getMiscSale(
     transaction,
     lineItem: lineItem as TransactionLineItem,
     changeAmount: null,
-    paymongoCheckoutUrl: null,
   };
 }
 
@@ -339,7 +321,6 @@ export async function updateMiscSale({
     transaction: transaction as Transaction,
     lineItem: lineItem as TransactionLineItem,
     changeAmount: null,
-    paymongoCheckoutUrl: null,
   };
 }
 

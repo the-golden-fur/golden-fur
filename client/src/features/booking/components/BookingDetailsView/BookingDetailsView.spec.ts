@@ -90,7 +90,6 @@ function buildDetails(overrides: Partial<BookingDetails> = {}): BookingDetails {
         credit_applied_amount: 0,
         payment_reference: null,
         created_at: '2026-07-16T00:00:00.000Z',
-        webhook_confirmed_at: null,
       },
     ],
     ...overrides,

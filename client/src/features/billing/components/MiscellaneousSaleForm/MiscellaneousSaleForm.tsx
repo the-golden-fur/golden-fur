@@ -10,7 +10,6 @@ import type { CustomerProfile } from '../../../customers/customer.types';
 import { createMiscSale } from '../../api/billing.api';
 import { CreditApplicationPanel } from '../CreditApplicationPanel/CreditApplicationPanel';
 import { PaymentMethodForm } from '../PaymentMethodForm/PaymentMethodForm';
-import { PayMongoServiceFeeNotice } from '../PayMongoServiceFeeNotice/PayMongoServiceFeeNotice';
 import type { MiscSaleResponse, PaymentFields } from '../../billing.types';
 import styles from './MiscellaneousSaleForm.module.css';
 
@@ -101,10 +100,6 @@ export function MiscellaneousSaleForm({
 
     setResult(response.data);
     onCreated?.(response.data);
-
-    if (response.data.paymongoCheckoutUrl) {
-      window.location.href = response.data.paymongoCheckoutUrl;
-    }
   }
 
   return (
@@ -182,11 +177,6 @@ export function MiscellaneousSaleForm({
         value={payment}
         onChange={setPayment}
         amountDue={amountDue}
-      />
-
-      <PayMongoServiceFeeNotice
-        paymentMethod={payment.payment_method}
-        accessToken={accessToken}
       />
 
       <p className={styles.amountDue}>Amount due: PHP {amountDue.toFixed(2)}</p>

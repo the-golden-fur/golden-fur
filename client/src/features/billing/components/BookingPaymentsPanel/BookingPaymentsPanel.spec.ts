@@ -24,7 +24,6 @@ function buildTransaction(overrides: Partial<Transaction> = {}): Transaction {
     total_amount: 250,
     payment_reference: 'src_abc',
     misc_sale_description: null,
-    webhook_confirmed_at: null,
     processed_by_staff_id: null,
     payment_choice: 'downpayment',
     created_at: '2026-08-29T02:00:00.000Z',

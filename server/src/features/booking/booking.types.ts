@@ -210,14 +210,6 @@ export const PAYMENT_METHODS = [
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-/** Collected online, ahead of arrival - drives completeBooking's automatic
- * Completed->Paid fast path (booking-status revision). The rest are
- * pay-at-counter, requiring a manual Mark as Paid action. */
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
-
 export type EnforcementMode = 'Strict' | 'Soft';
 
 /** The one genuinely new enum this epic introduces (#88) - enforcement_mode
@@ -505,11 +497,6 @@ export interface PolicyConfiguration {
    * addendum #10). Default 100 = full conversion; lower it to keep part of
    * the payment as a cancellation charge. Applied in cancellation.service.ts. */
   cancellation_credit_conversion_rate: number;
-  /** Master toggle for the customer-facing PayMongo "Pay" button - when
-   * false, the button still renders (disabled, with an explanatory
-   * tooltip) rather than disappearing. See isOnlinePaymentsEnabled in
-   * staffPicker.service.ts. */
-  online_payments_enabled: boolean;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see resolveDownpaymentPolicy in
    * staffPicker.service.ts and createBooking in booking.service.ts.
@@ -580,7 +567,6 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
-  | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
@@ -707,7 +693,6 @@ export interface BookingDetailsTransaction {
   credit_applied_amount: number;
   payment_reference: string | null;
   created_at: string;
-  webhook_confirmed_at: string | null;
 }
 
 /** Effective pricing for the booking - the group's shared values when the

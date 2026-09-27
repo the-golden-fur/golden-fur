@@ -4,18 +4,28 @@
  *
  * The recurring pain this removes: a previous `tsx watch` / `vite` process
  * didn't shut down (VS Code task killed the terminal but not the child,
- * a crash, a second "start all"), so the next `npm run dev` dies with
- * `EADDRINUSE :::3000` or Vite silently limps onto 5174 and then trips
- * CORS. Wired as `predev` in client/ and server/ so it runs automatically;
- * also runnable directly: `node scripts/free-ports.mjs 3000 5173`.
+ * a crash) so the next `npm run dev` dies with `EADDRINUSE :::3000` or Vite
+ * silently limps onto 5174 and then trips CORS. Wired as `predev` in
+ * client/ and server/ so it runs automatically; also runnable directly:
+ * `node scripts/free-ports.mjs 3000 5173`.
  *
  * Only kills the process that is LISTENING on the given port. TIME_WAIT
  * sockets and unrelated processes are left alone.
+ *
+ * Safety check before killing anything: a port that's LISTENING and still
+ * answering HTTP requests is treated as a real, wanted dev server (not a
+ * leftover) - re-running "npm run dev" / the "Start All" task while one is
+ * already up must never silently force-kill your working session. In that
+ * case this script prints why and exits non-zero, which stops the `predev`
+ * -> `dev` npm chain before Vite/tsx even tries to bind the busy port. Pass
+ * `--force` to skip this check and kill it anyway.
  */
 import { execSync } from 'node:child_process';
 
-const ports = process.argv
-  .slice(2)
+const args = process.argv.slice(2);
+const force = args.includes('--force');
+const ports = args
+  .filter((arg) => arg !== '--force')
   .map((arg) => Number(arg))
   .filter((port) => Number.isInteger(port) && port > 0 && port < 65536);
 
@@ -61,6 +71,22 @@ function listenerPids(port) {
   }
 }
 
+/** Whether something is actually answering HTTP requests on `port` right
+ * now - the signal that a LISTENING socket is a live, wanted dev server
+ * rather than a stale/zombie one. Any response at all counts (a 404 from
+ * Express is just as much "alive" as Vite's index.html) - only a refused
+ * connection or a timeout means treat it as stale. */
+async function isAlive(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, {
+      signal: AbortSignal.timeout(400),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function kill(pid) {
   try {
     execSync(isWindows ? `taskkill /PID ${pid} /T /F` : `kill -9 ${pid}`, {
@@ -73,8 +99,24 @@ function kill(pid) {
 }
 
 let freed = 0;
+let blocked = false;
+
 for (const port of ports) {
-  for (const pid of listenerPids(port)) {
+  const pids = listenerPids(port);
+  if (pids.length === 0) continue;
+
+  if (!force && (await isAlive(port))) {
+    console.error(
+      `free-ports: :${port} is already running and responding (PID ${pids.join(', ')}) - ` +
+        `leaving it alone, not starting a second one. Close the existing dev ` +
+        `server first if you want to restart it, or re-run with --force to ` +
+        `kill it anyway.`
+    );
+    blocked = true;
+    continue;
+  }
+
+  for (const pid of pids) {
     if (kill(pid)) {
       freed += 1;
       console.log(`free-ports: freed :${port} (killed PID ${pid})`);
@@ -86,4 +128,11 @@ for (const port of ports) {
 // the dev server tries to bind it. No-op on the happy path.
 if (freed > 0) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800);
+}
+
+// A port left alive-and-skipped means the upcoming `vite`/`tsx watch` bind
+// would just fail with EADDRINUSE anyway - fail predev now, with a reason,
+// instead of letting that happen with a confusing stock error.
+if (blocked) {
+  process.exit(1);
 }

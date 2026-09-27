@@ -1,6 +1,5 @@
 import {
   BANK_NAMES,
-  ONLINE_PAYMENT_METHODS,
   PAYMENT_METHODS,
   type PaymentFields,
 } from '../../billing.types';
@@ -22,13 +21,11 @@ interface PaymentMethodFormProps {
 
 /**
  * Issue #86: renders the correct minimal form per selected payment method -
- * Cash shows a tendered-amount field and computed change; Card/Bank
- * Transfer/Grabmart/Pickaroo show a reference-number field (Bank Transfer
- * additionally shows a BPI/BDO selector); GCash/Maya show a channel choice
- * ('pay via portal' waits on the PayMongo webhook, 'scan QR' is walk-in and
- * cashier-confirmed like every manual method) - see PaymentMethodForm.md
- * (Issue #83 dev notes) for why these are the same channel with two
- * different confirmation triggers.
+ * Cash shows a tendered-amount field and computed change; every other method
+ * (GCash, Maya, Card, Bank Transfer, Grabmart, Pickaroo) shows a
+ * reference-number field (Bank Transfer additionally shows a BPI/BDO
+ * selector) and is confirmed by the cashier the moment the form is
+ * submitted.
  */
 export function PaymentMethodForm({
   value,
@@ -37,18 +34,12 @@ export function PaymentMethodForm({
   methods = PAYMENT_METHODS,
   hideCashTendered = false,
 }: PaymentMethodFormProps) {
-  const isOnlineMethod = (ONLINE_PAYMENT_METHODS as readonly string[]).includes(
-    value.payment_method
-  );
   const isBankTransfer = value.payment_method === 'Bank Transfer';
   const isCash = value.payment_method === 'Cash';
   // 'Credit' is only ever in `methods` on the Transactions page - it isn't a
   // PaymentMethod, so compare as a string.
   const isCredit = (value.payment_method as string) === 'Credit';
-  const showReference =
-    !isCash &&
-    !isCredit &&
-    (!isOnlineMethod || value.online_channel === 'walk_in_qr');
+  const showReference = !isCash && !isCredit;
 
   const showCashTendered = isCash && !hideCashTendered;
   const change =
@@ -72,7 +63,6 @@ export function PaymentMethodForm({
                 .value as PaymentFields['payment_method'],
               bank_name: undefined,
               cash_tendered: undefined,
-              online_channel: undefined,
             })
           }
         >
@@ -138,32 +128,6 @@ export function PaymentMethodForm({
         <p className={styles.change}>
           Settled from the customer&apos;s account credit for this branch.
         </p>
-      ) : null}
-
-      {isOnlineMethod ? (
-        <fieldset className={styles.radioGroup}>
-          <legend className={styles.label}>Channel</legend>
-          <label className={styles.radioOption}>
-            <input
-              type="radio"
-              name="online_channel"
-              checked={value.online_channel === 'portal'}
-              onChange={() => onChange({ ...value, online_channel: 'portal' })}
-            />
-            Customer portal (waits for payment confirmation)
-          </label>
-          <label className={styles.radioOption}>
-            <input
-              type="radio"
-              name="online_channel"
-              checked={value.online_channel === 'walk_in_qr'}
-              onChange={() =>
-                onChange({ ...value, online_channel: 'walk_in_qr' })
-              }
-            />
-            Scan QR at counter (cashier-confirmed)
-          </label>
-        </fieldset>
       ) : null}
 
       {showReference ? (

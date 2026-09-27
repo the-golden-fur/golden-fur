@@ -9,11 +9,6 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
-
 export const BANK_NAMES = ['BPI', 'BDO'] as const;
 export type BankName = (typeof BANK_NAMES)[number];
 
@@ -54,7 +49,6 @@ export interface Transaction {
   total_amount: number;
   payment_reference: string | null;
   misc_sale_description: string | null;
-  webhook_confirmed_at: string | null;
   processed_by_staff_id: string | null;
   /** Which portion of the booking this payment covers - see PAYMENT_CHOICES.
    * NULL for older rows / misc sales. Drives the "Down payment" / "Balance
@@ -81,7 +75,6 @@ export interface PaymentFields {
   bank_name?: BankName;
   payment_reference?: string;
   cash_tendered?: number;
-  online_channel?: 'portal' | 'walk_in_qr';
   credit_to_apply?: number;
 }
 
@@ -95,7 +88,6 @@ export interface CheckoutResponse {
   transaction: Transaction;
   lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 export interface DraftLineItem {
@@ -135,7 +127,6 @@ export interface MiscSaleResponse {
   transaction: Transaction;
   lineItem: TransactionLineItem;
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 export interface UpdateMiscSaleRequest {

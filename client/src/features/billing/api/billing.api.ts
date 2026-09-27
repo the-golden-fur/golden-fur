@@ -46,21 +46,6 @@ function authHeaders(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-export async function getPaymongoFeeRate(
-  accessToken: string
-): Promise<BillingApiResult<number>> {
-  const response = await fetch(`${API_BASE_URL}/billing/paymongo/fee-rate`, {
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ feePercent: number }>(response);
-  return { data: result.data?.feePercent ?? null, error: result.error };
-}
-
 export async function previewCheckout(
   bookingId: string,
   eligibility: { seniorCitizenEligible: boolean; pwdEligible: boolean },

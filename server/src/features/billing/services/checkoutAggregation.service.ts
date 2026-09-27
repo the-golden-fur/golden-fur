@@ -13,7 +13,6 @@ import {
 } from './discountPromoEvaluation.service.ts';
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
-import { initiatePaymongoPayment } from './paymongo.service.ts';
 import {
   recomputeBookingGroupPaymentStatus,
   recomputeBookingPaymentStatus,
@@ -187,10 +186,6 @@ export interface CheckoutResult {
   transaction: Transaction;
   lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  /** Set only for GCash/Maya's 'portal' channel - the customer completes
-   * payment at this PayMongo-hosted URL; webhookConfirmation.service.ts
-   * flips payment_status to Fully Paid once PayMongo calls back. */
-  paymongoCheckoutUrl: string | null;
 }
 
 /**
@@ -271,30 +266,11 @@ export async function checkoutBooking(
 
   const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
     paymentMethod: input.payment_method,
-    onlineChannel: input.online_channel,
     amountDue,
     cashTendered: input.cash_tendered,
   });
 
-  let paymentReference = input.payment_reference ?? null;
-  let paymongoCheckoutUrl: string | null = null;
-
-  if (paymentStatus === 'Pending') {
-    const initiated = await initiatePaymongoPayment({
-      paymentMethod: input.payment_method as 'GCash' | 'Maya',
-      amount: amountDue,
-      description: `Booking payment - ${booking.id}`,
-      redirectSuccessUrl: process.env.PAYMONGO_REDIRECT_SUCCESS_URL ?? '',
-      redirectFailedUrl: process.env.PAYMONGO_REDIRECT_FAILED_URL ?? '',
-    });
-    // The PayMongo Source id is what the webhook later looks the
-    // transaction back up by (webhookConfirmation.service.ts) - stored in
-    // payment_reference rather than a dedicated column, same "one column,
-    // interpreted differently per method" convention Issue #83 already
-    // established for Card/Bank Transfer/Grabmart/Pickaroo.
-    paymentReference = initiated.sourceId;
-    paymongoCheckoutUrl = initiated.checkoutUrl;
-  }
+  const paymentReference = input.payment_reference ?? null;
 
   const allLines: DraftLineItem[] = [
     ...serviceLines,
@@ -333,7 +309,7 @@ export async function checkoutBooking(
       credit_applied_amount: creditAppliedAmount,
       total_amount: totalAmount,
       payment_reference: paymentReference,
-      processed_by_staff_id: paymentStatus === 'Pending' ? null : requesterId,
+      processed_by_staff_id: requesterId,
     })
     .select('*')
     .maybeSingle();
@@ -370,10 +346,7 @@ export async function checkoutBooking(
   // Issue #99: net-new call site - no stub existed for this event. Per the
   // Guide's Spec Tension, transactions.payment_status = 'Fully Paid' is the
   // trigger condition assumed here (the field Modules-Features actually
-  // names), fired regardless of payment channel. Only fires once, at
-  // checkout time - a Pending PayMongo transaction later confirmed by
-  // webhookConfirmation.service.ts does not currently re-fire this event;
-  // flagged here for the reviewer alongside the Guide's own open question.
+  // names) - every checkout confirms immediately now, so this always fires.
   if ((transaction as Transaction).payment_status === 'Fully Paid') {
     await sendPaymentConfirmedNotification(transaction as Transaction);
   }
@@ -381,8 +354,7 @@ export async function checkoutBooking(
   // Roll the booking's payment_status up from the transaction just written
   // (the rework made bookings.payment_status the source of truth for "is this
   // paid" - startBooking, the slot gate, DSR all read it). Best-effort: a
-  // failure here must not fail an otherwise-complete checkout. A still-Pending
-  // GCash/Maya checkout stays Pending until the webhook confirms.
+  // failure here must not fail an otherwise-complete checkout.
   try {
     await recomputeBookingPaymentStatus(input.booking_id);
   } catch (rollupError) {
@@ -397,7 +369,6 @@ export async function checkoutBooking(
     transaction: transaction as Transaction,
     lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount,
-    paymongoCheckoutUrl,
   };
 }
 
@@ -583,7 +554,6 @@ export interface GroupCheckoutResult {
   transaction: Transaction;
   lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 /**
@@ -657,25 +627,11 @@ export async function checkoutBookingGroup(
 
   const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
     paymentMethod: input.payment_method,
-    onlineChannel: input.online_channel,
     amountDue,
     cashTendered: input.cash_tendered,
   });
 
-  let paymentReference = input.payment_reference ?? null;
-  let paymongoCheckoutUrl: string | null = null;
-
-  if (paymentStatus === 'Pending') {
-    const initiated = await initiatePaymongoPayment({
-      paymentMethod: input.payment_method as 'GCash' | 'Maya',
-      amount: amountDue,
-      description: `Booking group payment - ${bookingGroup.id}`,
-      redirectSuccessUrl: process.env.PAYMONGO_REDIRECT_SUCCESS_URL ?? '',
-      redirectFailedUrl: process.env.PAYMONGO_REDIRECT_FAILED_URL ?? '',
-    });
-    paymentReference = initiated.sourceId;
-    paymongoCheckoutUrl = initiated.checkoutUrl;
-  }
+  const paymentReference = input.payment_reference ?? null;
 
   const allLines: DraftLineItem[] = [
     ...serviceLines,
@@ -715,7 +671,7 @@ export async function checkoutBookingGroup(
       credit_applied_amount: creditAppliedAmount,
       total_amount: totalAmount,
       payment_reference: paymentReference,
-      processed_by_staff_id: paymentStatus === 'Pending' ? null : requesterId,
+      processed_by_staff_id: requesterId,
     })
     .select('*')
     .maybeSingle();
@@ -771,7 +727,6 @@ export async function checkoutBookingGroup(
     transaction: transaction as Transaction,
     lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount,
-    paymongoCheckoutUrl,
   };
 }
 

@@ -1,5 +1,4 @@
 import type { PaymentMethod, PaymentStatus } from '../billing.types.ts';
-import { ONLINE_PAYMENT_METHODS } from '../billing.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -21,7 +20,6 @@ export function computeCashChange(
 
 export interface ResolvePaymentInput {
   paymentMethod: PaymentMethod;
-  onlineChannel?: 'portal' | 'walk_in_qr';
   amountDue: number;
   cashTendered?: number;
 }
@@ -32,28 +30,16 @@ export interface ResolvedPayment {
 }
 
 /**
- * Issue #83: the five manual methods (Cash, Card, Bank Transfer, Grabmart,
- * Pickaroo) and GCash/Maya's walk-in-QR channel all go through one
- * cashier-confirmation path - the transaction is Fully Paid the moment this
- * call succeeds, with Cash additionally returning a computed change amount.
- * GCash/Maya's portal channel is the one exception: it stays Pending here -
- * only the PayMongo webhook (paymongo.service.ts) flips it to Fully Paid,
- * with no cashier action in between (AC-2).
+ * Every payment method - Cash, GCash, Maya, Card, Bank Transfer, Grabmart,
+ * Pickaroo - goes through one cashier-confirmation path: the transaction is
+ * Fully Paid the moment this call succeeds, with Cash additionally returning
+ * a computed change amount. There is no online/webhook-confirmed path.
  */
 export function resolvePaymentConfirmation({
   paymentMethod,
-  onlineChannel,
   amountDue,
   cashTendered,
 }: ResolvePaymentInput): ResolvedPayment {
-  const isOnlineMethod = (
-    ONLINE_PAYMENT_METHODS as readonly PaymentMethod[]
-  ).includes(paymentMethod);
-
-  if (isOnlineMethod && onlineChannel === 'portal') {
-    return { paymentStatus: 'Pending', changeAmount: null };
-  }
-
   const changeAmount =
     paymentMethod === 'Cash'
       ? computeCashChange(amountDue, cashTendered ?? 0)

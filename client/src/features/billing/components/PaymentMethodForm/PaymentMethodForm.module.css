@@ -40,18 +40,3 @@
   color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
 }
-
-.radioGroup {
-  display: grid;
-  gap: var(--space-1);
-  border: 0;
-  padding: 0;
-}
-
-.radioOption {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--color-text-primary);
-  font-size: var(--text-sm);
-}

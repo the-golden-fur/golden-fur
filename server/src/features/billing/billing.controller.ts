@@ -17,7 +17,6 @@ import {
   listBookingGroupTransactions,
   listBookingTransactions,
 } from './services/bookingTransactions.service.ts';
-import { getPaymongoServiceFeeRate } from './services/paymongo.service.ts';
 import {
   addBookingPayment,
   payTransactionWithCredit,
@@ -53,13 +52,6 @@ function sendServiceError(res: Response, error: unknown) {
       : ((error as Error).message ?? 'Request failed');
 
   return res.status(statusCode).json({ error: message });
-}
-
-export async function paymongoFeeRateController(
-  _req: AuthenticatedRequest,
-  res: Response
-) {
-  return res.status(200).json({ feePercent: getPaymongoServiceFeeRate() });
 }
 
 /** Read-only preview backing the cashier checkout screen's line-item list
