@@ -50,23 +50,44 @@ async function parseResponse<T>(response: Response): Promise<MfaApiResult<T>> {
   return { data: body as T, error: null };
 }
 
+/** `fetch` itself throws on a network failure (connection dropped, dev
+ * server mid-restart, offline) rather than resolving - every caller here is
+ * a login/MFA step gating a `setIsSubmitting(false)`, so an uncaught throw
+ * leaves that button disabled forever with no visible error (the reported
+ * "random freeze" on login). Catching here, once, means every MFA call is
+ * safe by construction instead of each caller needing its own try/catch. */
+async function fetchJson<T>(
+  url: string,
+  init?: RequestInit
+): Promise<MfaApiResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    return {
+      data: null,
+      error: 'Could not reach the server. Check your connection and try again.',
+    };
+  }
+
+  return parseResponse<T>(response);
+}
+
 export async function getMfaStatus(
   role: ThemeRole,
   accessToken: string
 ): Promise<MfaApiResult<MfaStatusResponse>> {
-  const response = await fetch(
+  return fetchJson<MfaStatusResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].status}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-
-  return parseResponse<MfaStatusResponse>(response);
 }
 
 export async function enrollMfa(
   role: ThemeRole,
   accessToken: string
 ): Promise<MfaApiResult<TotpEnrollResponse>> {
-  const response = await fetch(
+  return fetchJson<TotpEnrollResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].enroll}`,
     {
       method: 'POST',
@@ -76,8 +97,6 @@ export async function enrollMfa(
       },
     }
   );
-
-  return parseResponse<TotpEnrollResponse>(response);
 }
 
 export async function verifyMfa(
@@ -85,7 +104,7 @@ export async function verifyMfa(
   code: string,
   accessToken: string
 ): Promise<MfaApiResult<MfaSessionResponse>> {
-  const response = await fetch(
+  return fetchJson<MfaSessionResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].verify}`,
     {
       method: 'POST',
@@ -96,21 +115,17 @@ export async function verifyMfa(
       body: JSON.stringify({ code }),
     }
   );
-
-  return parseResponse<MfaSessionResponse>(response);
 }
 
 export async function unenrollMfa(
   role: ThemeRole,
   accessToken: string
 ): Promise<MfaApiResult<MfaUnenrollResponse>> {
-  const response = await fetch(
+  return fetchJson<MfaUnenrollResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].unenroll}`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}` },
     }
   );
-
-  return parseResponse<MfaUnenrollResponse>(response);
 }

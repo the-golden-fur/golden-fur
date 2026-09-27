@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../../../../shared/auth/api/auth.api';
 import {
   getLinkedProviders,
   handleOAuthCallback,
+  login,
   signInWithGoogle,
   unlinkGoogleIdentity,
 } from './customerAuth.api';
@@ -37,6 +38,18 @@ describe('customerAuth.api', () => {
         unlinkIdentity: unlinkIdentityMock,
       },
     } as never);
+  });
+
+  it('regression: resolves with a friendly error instead of throwing when the network request itself fails (the reported "random freeze" on login - a caller awaiting this must always get a settled result, never an uncaught rejection)', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const result = await login({
+      account_email: 'customer@example.com',
+      password: 'secret',
+    });
+
+    expect(result.data).toBeNull();
+    expect(result.error).toMatch(/could not reach the server/i);
   });
 
   it('stores the provider before starting the Google OAuth redirect', async () => {

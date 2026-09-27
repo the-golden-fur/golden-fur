@@ -69,29 +69,44 @@ export function TotpEnrollPanel({
     }
 
     setIsSubmitting(true);
-    const result = await verifyMfa(role, parsed.data.code, accessToken);
-    setIsSubmitting(false);
 
-    if (result.error) {
-      setError(result.error);
-      return;
+    // Load-bearing, not defensive boilerplate - see StaffLoginForm's
+    // identical comment: without it, a thrown exception (a network failure
+    // inside applySession, say) skips setIsSubmitting(false) entirely,
+    // leaving "Confirm MFA" silently stuck disabled forever.
+    try {
+      const result = await verifyMfa(role, parsed.data.code, accessToken);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      if (result.data?.access_token && result.data.refresh_token) {
+        await applySession(result.data.access_token, result.data.refresh_token);
+      }
+
+      onEnrolled();
+    } catch {
+      setError(
+        'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (result.data?.access_token && result.data.refresh_token) {
-      await applySession(result.data.access_token, result.data.refresh_token);
-    }
-
-    onEnrolled();
   };
 
   const handleReset = async () => {
     setIsResetting(true);
-    await unenrollMfa(role, accessToken);
-    setIsResetting(false);
-    setQrCode(null);
-    setSecret(null);
-    setCode('');
-    await startEnroll();
+    try {
+      await unenrollMfa(role, accessToken);
+      setQrCode(null);
+      setSecret(null);
+      setCode('');
+      await startEnroll();
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   return (
