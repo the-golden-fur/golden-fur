@@ -103,6 +103,31 @@ describe('TotpEnrollPanel', () => {
     expect(onEnrolled).toHaveBeenCalledTimes(1);
   });
 
+  it('regression: re-enables Confirm MFA and shows an error instead of freezing when a downstream step throws (e.g. a network blip inside applySession)', async () => {
+    vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
+      data: { totp: { qr_code: null, secret: 'ABCD1234' } },
+      error: null,
+    });
+    vi.mocked(mfaApi.verifyMfa).mockResolvedValue({
+      data: { access_token: 'new-acc', refresh_token: 'new-ref' },
+      error: null,
+    });
+    const applySession = vi.fn().mockRejectedValue(new Error('network blip'));
+
+    renderPanel(vi.fn(), applySession);
+
+    await screen.findByText('ABCD1234');
+    await userEvent.type(screen.getByLabelText('Digit 1 of 6'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: /confirm mfa/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach the server. Check your connection and try again.'
+    );
+    expect(
+      screen.getByRole('button', { name: /confirm mfa/i })
+    ).not.toBeDisabled();
+  });
+
   it('offers a "Start over" action that unenrolls and re-enrolls after an enroll error', async () => {
     vi.mocked(mfaApi.enrollMfa)
       .mockResolvedValueOnce({

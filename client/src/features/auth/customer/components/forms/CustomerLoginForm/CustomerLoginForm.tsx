@@ -35,43 +35,58 @@ export function CustomerLoginForm() {
     }
 
     setIsSubmitting(true);
-    const result = await login(parsed.data);
-    setIsSubmitting(false);
 
-    if (result.error || !result.data) {
-      setError('Invalid email or password.');
-      return;
+    // Load-bearing, not defensive boilerplate: without it, a thrown
+    // exception anywhere in this sequence (a network failure inside
+    // applySession/getMfaStatus, say) would skip setIsSubmitting(false)
+    // entirely, leaving "Sign in" silently stuck disabled forever with no
+    // visible error - the reported "random freeze" on login. login() itself
+    // no longer throws on a network failure either (see customerAuth.api.ts),
+    // but this is the backstop for everything downstream of it.
+    try {
+      const result = await login(parsed.data);
+
+      if (result.error || !result.data) {
+        setError('Invalid email or password.');
+        return;
+      }
+
+      // Customer sessions survive closing the browser, unlike staff's.
+      setSessionPersistence(true);
+      await applySession(result.data.access_token, result.data.refresh_token);
+
+      // Credentials are valid, so login still succeeds even when
+      // deactivated - route to the notice page instead of the portal/MFA
+      // flow, using the session just established so its REACTIVATE button
+      // can call the self-service activate endpoint without a second login.
+      if (result.data.account_status === 'deactivated') {
+        navigate('/account-deactivated', { replace: true });
+        return;
+      }
+
+      // The login response doesn't carry enrollment status - ask the
+      // authoritative status endpoint, same as staff, so a customer who has
+      // already turned MFA on in Settings gets challenged every login.
+      const statusResult = await getMfaStatus(
+        'customer',
+        result.data.access_token
+      );
+
+      if (statusResult.data?.mfa_enrolled) {
+        window.sessionStorage.setItem('customerMfaPending', 'true');
+        navigate('/portal/mfa/verify', { replace: true });
+        return;
+      }
+
+      window.sessionStorage.removeItem('customerMfaPending');
+      navigate('/portal', { replace: true });
+    } catch {
+      setError(
+        'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Customer sessions survive closing the browser, unlike staff's.
-    setSessionPersistence(true);
-    await applySession(result.data.access_token, result.data.refresh_token);
-
-    // Credentials are valid, so login still succeeds even when deactivated
-    // - route to the notice page instead of the portal/MFA flow, using the
-    // session just established so its REACTIVATE button can call the
-    // self-service activate endpoint without a second login.
-    if (result.data.account_status === 'deactivated') {
-      navigate('/account-deactivated', { replace: true });
-      return;
-    }
-
-    // The login response doesn't carry enrollment status - ask the
-    // authoritative status endpoint, same as staff, so a customer who has
-    // already turned MFA on in Settings gets challenged every login.
-    const statusResult = await getMfaStatus(
-      'customer',
-      result.data.access_token
-    );
-
-    if (statusResult.data?.mfa_enrolled) {
-      window.sessionStorage.setItem('customerMfaPending', 'true');
-      navigate('/portal/mfa/verify', { replace: true });
-      return;
-    }
-
-    window.sessionStorage.removeItem('customerMfaPending');
-    navigate('/portal', { replace: true });
   };
 
   const handleGoogleSignIn = async () => {

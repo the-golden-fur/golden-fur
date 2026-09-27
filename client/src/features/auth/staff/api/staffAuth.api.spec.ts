@@ -66,6 +66,15 @@ describe('staffAuth.api', () => {
     );
   });
 
+  it('regression: resolves with a friendly error instead of throwing when the network request itself fails (the reported "random freeze" on login - a caller awaiting this must always get a settled result, never an uncaught rejection)', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const result = await login({ identifier: 'admin', password: 'secret' });
+
+    expect(result.data).toBeNull();
+    expect(result.error).toMatch(/could not reach the server/i);
+  });
+
   it('returns backend errors without throwing', async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: 'Invalid code' }), { status: 401 })

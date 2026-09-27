@@ -41,11 +41,24 @@ async function parseResponse<T>(response: Response): Promise<AuthApiResult<T>> {
 }
 
 async function postJson<T>(path: string, body: unknown) {
-  const response = await fetch(`${API_BASE_URL}${AUTH_PREFIX}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  // `fetch` itself throws on a network failure (connection dropped, dev
+  // server mid-restart, offline) rather than resolving. Every caller here
+  // gates a `setIsSubmitting(false)` (login, signup) - an uncaught throw
+  // skips that and leaves the button disabled forever with no visible error
+  // (the reported "random freeze" on login).
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${AUTH_PREFIX}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return {
+      data: null,
+      error: 'Could not reach the server. Check your connection and try again.',
+    };
+  }
 
   return parseResponse<T>(response);
 }

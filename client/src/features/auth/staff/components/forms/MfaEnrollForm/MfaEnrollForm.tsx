@@ -52,21 +52,33 @@ export function MfaEnrollForm() {
     }
 
     setIsSubmitting(true);
-    const result = await mfaVerify(parsed.data, accessToken);
-    setIsSubmitting(false);
 
-    if (result.error) {
-      setError('Invalid verification code.');
-      return;
+    // Load-bearing, not defensive boilerplate - see StaffLoginForm's
+    // identical comment: without it, a thrown exception (a network failure
+    // inside applySession, say) skips setIsSubmitting(false) entirely,
+    // leaving "Confirm MFA" silently stuck disabled forever.
+    try {
+      const result = await mfaVerify(parsed.data, accessToken);
+
+      if (result.error) {
+        setError('Invalid verification code.');
+        return;
+      }
+
+      if (result.data && 'access_token' in result.data) {
+        setSessionPersistence(false);
+        await applySession(result.data.access_token, result.data.refresh_token);
+      }
+
+      window.sessionStorage.removeItem('staffMfaPending');
+      navigate('/staff', { replace: true });
+    } catch {
+      setError(
+        'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (result.data && 'access_token' in result.data) {
-      setSessionPersistence(false);
-      await applySession(result.data.access_token, result.data.refresh_token);
-    }
-
-    window.sessionStorage.removeItem('staffMfaPending');
-    navigate('/staff', { replace: true });
   };
 
   return (

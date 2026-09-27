@@ -40,22 +40,35 @@ export function TotpChallengeForm({
     }
 
     setIsSubmitting(true);
-    const result = await verifyMfa(role, parsed.data.code, accessToken);
-    setIsSubmitting(false);
 
-    if (result.error) {
-      setError(result.error);
-      return;
+    // Load-bearing, not defensive boilerplate - see StaffLoginForm's
+    // identical comment: without it, a thrown exception (a network failure
+    // inside applySession, say) skips setIsSubmitting(false) entirely,
+    // leaving "Verify code" silently stuck disabled forever.
+    try {
+      const result = await verifyMfa(role, parsed.data.code, accessToken);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      if (result.data?.access_token && result.data.refresh_token) {
+        // Customers' sessions survive a browser restart; staff sessions are
+        // sessionStorage-only and end when the browser closes (see
+        // auth.api.ts).
+        setSessionPersistence(role === 'customer');
+        await applySession(result.data.access_token, result.data.refresh_token);
+      }
+
+      onVerified();
+    } catch {
+      setError(
+        'Could not reach the server. Check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (result.data?.access_token && result.data.refresh_token) {
-      // Customers' sessions survive a browser restart; staff sessions are
-      // sessionStorage-only and end when the browser closes (see auth.api.ts).
-      setSessionPersistence(role === 'customer');
-      await applySession(result.data.access_token, result.data.refresh_token);
-    }
-
-    onVerified();
   };
 
   return (
