@@ -20,6 +20,19 @@ import styles from './AssessmentModal.module.css';
 // precedent (see PetDetailPanel.tsx/PetForm.tsx).
 const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
 const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+
+// Display labels only - the option values (and what's saved) stay the
+// short codes the database stores.
+const WEIGHT_CLASS_LABEL: Record<PetWeightClass, string> = {
+  S: 'Small',
+  M: 'Medium',
+  L: 'Large',
+  XL: 'Extra large',
+};
+const COAT_TYPE_LABEL: Record<PetCoatType, string> = {
+  SC: 'Short coat',
+  LC: 'Long coat',
+};
 const ENTRY_UNITS: WeightUnitPreference[] = ['kg', 'lbs'];
 
 export interface AssessmentModalProps {
@@ -166,7 +179,7 @@ export function AssessmentModal({
             <option value="">Select weight class</option>
             {WEIGHT_CLASS_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {WEIGHT_CLASS_LABEL[option]}
               </option>
             ))}
           </select>
@@ -202,7 +215,7 @@ export function AssessmentModal({
             <option value="">Select coat type</option>
             {COAT_TYPE_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {COAT_TYPE_LABEL[option]}
               </option>
             ))}
           </select>
