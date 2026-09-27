@@ -30,9 +30,20 @@ function throwWithStatus(statusCode: number, message: string): never {
 export async function getCurrentPrescription(
   petId: string
 ): Promise<CurrentPrescription | null> {
+  // `!booking_id!inner` is load-bearing, not stylistic: consultations has
+  // two FKs to bookings (booking_id and follow_up_booking_id, see
+  // followUp.service.ts), so an unqualified `bookings!inner(...)` embed is
+  // ambiguous to PostgREST and 400s with "more than one relationship was
+  // found for 'consultations' and 'bookings'". This call runs mid check-in
+  // (Hotel's buildQuickCheckInPayload omits `medications` to trigger this
+  // auto-fill), after the stay/cage/feeding rows already committed - so the
+  // 400 didn't block the check-in, it just surfaced as a spurious "Check-in
+  // failed" modal on an otherwise-successful check-in.
   const { data, error } = await supabase
     .from('consultations')
-    .select('id, medications, booking:bookings!inner(status, completed_at)')
+    .select(
+      'id, medications, booking:bookings!booking_id!inner(status, completed_at)'
+    )
     .eq('pet_id', petId)
     .in('booking.status', FINISHED_BOOKING_STATUSES);
 
