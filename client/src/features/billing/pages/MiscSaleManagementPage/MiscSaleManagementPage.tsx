@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { Columns3, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -9,8 +9,7 @@ import {
   listMiscSales,
   updateMiscSale,
 } from '../../api/billing.api';
-import type { Transaction } from '../../billing.types';
-import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
+import type { PaymentFields, Transaction } from '../../billing.types';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -34,7 +33,8 @@ import {
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
-import { MiscellaneousSaleForm } from '../../components/MiscellaneousSaleForm/MiscellaneousSaleForm';
+import { MiscSaleWizard } from '../../components/MiscSaleWizard/MiscSaleWizard';
+import { PaymentMethodForm } from '../../components/PaymentMethodForm/PaymentMethodForm';
 import {
   applyMiscSaleFilters,
   buildMiscSaleFilterFields,
@@ -68,6 +68,18 @@ const ALLOWED_VIEWER_ROLES = new Set([
 ]);
 const ADMIN_ROLES = new Set(['Admin', 'Superadmin']);
 
+/** Code-review fix (session 115): mirrors TransactionHistoryTable's own
+ * ALLOWED_VIEWER_ROLES literal - Receptionist can view this page but is NOT
+ * allowed on the Transactions page (server's TRANSACTION_HISTORY_READ_ROLES
+ * excludes it), so "View in Transactions" must not be offered to them; it
+ * would otherwise 403 once clicked. */
+const TRANSACTION_HISTORY_ROLES = new Set([
+  'Superadmin',
+  'Admin',
+  'Supervisor',
+  'Cashier',
+]);
+
 export function MiscSaleManagementPage() {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
@@ -82,11 +94,14 @@ export function MiscSaleManagementPage() {
   const [customers, setCustomers] = useState<
     { id: string; full_name: string }[]
   >([]);
+  const [customersError, setCustomersError] = useState<string | null>(null);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingDescription, setEditingDescription] = useState('');
-  const [editingAmount, setEditingAmount] = useState('');
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [editingPayment, setEditingPayment] = useState<PaymentFields>({
+    payment_method: 'Cash',
+  });
   const [rowError, setRowError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -133,20 +148,31 @@ export function MiscSaleManagementPage() {
     if (!accessToken) return;
 
     void listCustomers(accessToken).then((result) => {
-      if (result.data) {
-        setCustomers(
-          result.data.map((customer) => ({
-            id: customer.id,
-            full_name: customer.full_name,
-          }))
+      if (result.error || !result.data) {
+        // Code-review fix (session 115): surface the failure instead of
+        // silently leaving every row's customer column reading "Unknown
+        // customer" with no indication anything went wrong.
+        setCustomersError(
+          result.error ?? 'Could not load customers for this branch.'
         );
+        return;
       }
+
+      setCustomersError(null);
+      setCustomers(
+        result.data.map((customer) => ({
+          id: customer.id,
+          full_name: customer.full_name,
+        }))
+      );
     });
   }, [accessToken]);
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
   const isAdmin = viewerRole !== null && ADMIN_ROLES.has(viewerRole);
+  const canViewTransactions =
+    viewerRole !== null && TRANSACTION_HISTORY_ROLES.has(viewerRole);
 
   function customerName(customerId: string): string {
     return (
@@ -155,77 +181,50 @@ export function MiscSaleManagementPage() {
     );
   }
 
-  async function handleSaveEdit(saleId: string) {
-    if (!accessToken) {
-      return;
-    }
+  function startEditing(sale: Transaction) {
+    setEditingSaleId(sale.id);
+    setEditingPayment({
+      payment_method: sale.payment_method,
+      bank_name: sale.bank_name ?? undefined,
+      payment_reference: sale.payment_reference ?? undefined,
+    });
+    setRowError(null);
+  }
 
-    const amount = Number(editingAmount);
+  function closeEditModal() {
+    setEditingSaleId(null);
+    setRowError(null);
+  }
 
-    if (!editingDescription.trim() || Number.isNaN(amount) || amount <= 0) {
-      const message = 'Description and a positive amount are required.';
-      setRowError(message);
-      throw new Error(message);
-    }
+  async function handleSaveEdit() {
+    if (!accessToken || !editingSaleId) return;
 
+    setIsSavingEdit(true);
     setRowError(null);
 
     const result = await updateMiscSale(
-      saleId,
-      { description: editingDescription.trim(), amount },
+      editingSaleId,
+      {
+        payment_method: editingPayment.payment_method,
+        bank_name: editingPayment.bank_name,
+        payment_reference: editingPayment.payment_reference,
+      },
       accessToken
     );
 
+    setIsSavingEdit(false);
+
     if (result.error || !result.data) {
-      const message = result.error ?? 'Could not update this sale.';
-      setRowError(message);
-      throw new Error(message);
+      setRowError(result.error ?? 'Could not update this sale.');
+      return;
     }
 
     setSales((prev) =>
-      prev.map((sale) => (sale.id === saleId ? result.data!.transaction : sale))
+      prev.map((sale) =>
+        sale.id === editingSaleId ? result.data!.transaction : sale
+      )
     );
-    setEditingId(null);
-  }
-
-  const editingSale = sales.find((sale) => sale.id === editingId) ?? null;
-
-  const handleDiscardEdit = useCallback(() => {
-    setEditingId(null);
-    setRowError(null);
-  }, []);
-
-  // handleSaveEdit is a plain function (redefined every render), so this
-  // wrapper must list every piece of state it reads as its own deps -
-  // otherwise an unmemoized onSave identity re-triggers useUnsavedChanges'
-  // registration effect on every render, changing the provider's context
-  // value, re-rendering this component, creating another fresh onSave... an
-  // infinite loop with no user action needed to sustain it.
-  const handleUnsavedSave = useCallback(
-    () => (editingId !== null ? handleSaveEdit(editingId) : Promise.resolve()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, accessToken, editingAmount, editingDescription]
-  );
-
-  // Only one row mid-edit at a time (editingId), so this is the
-  // "per-in-progress-edit" shape of the pattern - a stable id with entering
-  // edit mode itself as the dirty signal, same as AdminCagesPage's cage-edit
-  // registration.
-  useUnsavedChanges({
-    id: 'misc-sale-edit',
-    label: editingSale
-      ? `Sale: ${editingSale.misc_sale_description}`
-      : 'Miscellaneous sale',
-    isDirty: editingId !== null,
-    onSave: handleUnsavedSave,
-    onDiscard: handleDiscardEdit,
-  });
-
-  function startEditing(sale: Transaction) {
-    setEditingId(sale.id);
-    setEditingDescription(sale.misc_sale_description ?? '');
-    setEditingAmount(String(sale.total_amount));
-    setRowError(null);
+    setEditingSaleId(null);
   }
 
   async function handleDelete(saleId: string) {
@@ -243,8 +242,12 @@ export function MiscSaleManagementPage() {
   }
 
   function handleCreated(response: { transaction: Transaction }) {
+    // Code-review fix (session 115): don't close the modal here - the
+    // wizard's own Confirmation step shows the success banner (change
+    // amount included) and its own Close button, matching
+    // CashierCheckoutPage's on-page confirmation instead of yanking the
+    // form away the instant a sale is recorded.
     setSales((prev) => [response.transaction, ...prev]);
-    setIsCreateModalOpen(false);
   }
 
   const filterFields = useMemo(
@@ -290,37 +293,14 @@ export function MiscSaleManagementPage() {
   }
 
   function renderRowActions(sale: Transaction) {
-    const menuItems: MoreOptionsMenuItem[] = [
-      {
-        label: 'View in Transactions',
-        onSelect: () => navigate('/staff/reports/transaction-history'),
-      },
-    ];
-
-    if (editingId === sale.id) {
-      return (
-        <>
-          <button
-            type="button"
-            className={styles.smallButton}
-            onClick={() =>
-              void handleSaveEdit(sale.id).catch(() => {
-                // rowError is already set and shown below - nothing else to do.
-              })
-            }
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={handleDiscardEdit}
-          >
-            Cancel
-          </button>
-        </>
-      );
-    }
+    const menuItems: MoreOptionsMenuItem[] = canViewTransactions
+      ? [
+          {
+            label: 'View in Transactions',
+            onSelect: () => navigate('/staff/reports/transaction-history'),
+          },
+        ]
+      : [];
 
     return (
       <>
@@ -342,10 +322,12 @@ export function MiscSaleManagementPage() {
             </button>
           </>
         ) : null}
-        <MoreOptionsMenu
-          label={`Options for ${sale.misc_sale_description ?? 'this sale'}`}
-          items={menuItems}
-        />
+        {menuItems.length > 0 ? (
+          <MoreOptionsMenu
+            label={`Options for ${sale.misc_sale_description ?? 'this sale'}`}
+            items={menuItems}
+          />
+        ) : null}
       </>
     );
   }
@@ -364,16 +346,7 @@ export function MiscSaleManagementPage() {
     {
       id: 'description',
       header: 'Description',
-      render: (sale) =>
-        editingId === sale.id ? (
-          <input
-            className={styles.input}
-            value={editingDescription}
-            onChange={(event) => setEditingDescription(event.target.value)}
-          />
-        ) : (
-          sale.misc_sale_description
-        ),
+      render: (sale) => sale.misc_sale_description,
     },
     {
       id: 'paymentMethod',
@@ -391,52 +364,19 @@ export function MiscSaleManagementPage() {
       id: 'amount',
       header: 'Amount',
       align: 'end',
-      render: (sale) =>
-        editingId === sale.id ? (
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={editingAmount}
-            onChange={(event) => setEditingAmount(event.target.value)}
-          />
-        ) : (
-          formatCurrency(sale.total_amount)
-        ),
+      render: (sale) => formatCurrency(sale.total_amount),
     },
   ];
 
   function renderSaleCard(sale: Transaction) {
     return (
       <div className={styles.rowMain}>
-        <span className={styles.itemName}>
-          {editingId === sale.id ? (
-            <input
-              className={styles.input}
-              value={editingDescription}
-              onChange={(event) => setEditingDescription(event.target.value)}
-            />
-          ) : (
-            sale.misc_sale_description
-          )}
-        </span>
+        <span className={styles.itemName}>{sale.misc_sale_description}</span>
         <span className={styles.copy}>{customerName(sale.customer_id)}</span>
         <span className={styles.copy}>{sale.payment_method}</span>
-        {editingId === sale.id ? (
-          <input
-            className={styles.input}
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={editingAmount}
-            onChange={(event) => setEditingAmount(event.target.value)}
-          />
-        ) : (
-          <span className={styles.itemPrice}>
-            {formatCurrency(sale.total_amount)}
-          </span>
-        )}
+        <span className={styles.itemPrice}>
+          {formatCurrency(sale.total_amount)}
+        </span>
         {renderRowActions(sale)}
       </div>
     );
@@ -463,6 +403,12 @@ export function MiscSaleManagementPage() {
             New Misc Sale
           </button>
         </div>
+
+        {customersError ? (
+          <p className={styles.errorBanner} role="alert">
+            {customersError}
+          </p>
+        ) : null}
 
         {isLoading ? (
           <p className={styles.copy}>Loading...</p>
@@ -531,7 +477,7 @@ export function MiscSaleManagementPage() {
           </>
         )}
 
-        {rowError ? (
+        {rowError && !editingSaleId ? (
           <p className={styles.errorBanner} role="alert">
             {rowError}
           </p>
@@ -544,10 +490,47 @@ export function MiscSaleManagementPage() {
         onClose={() => setIsCreateModalOpen(false)}
         closeOnBackdropClick={false}
       >
-        <MiscellaneousSaleForm
+        <MiscSaleWizard
           accessToken={accessToken}
           onCreated={handleCreated}
+          onClose={() => setIsCreateModalOpen(false)}
         />
+      </Modal>
+
+      <Modal
+        isOpen={editingSaleId !== null}
+        title="Edit payment method"
+        onClose={closeEditModal}
+        closeOnBackdropClick={false}
+      >
+        <PaymentMethodForm
+          value={editingPayment}
+          onChange={setEditingPayment}
+          amountDue={0}
+          hideCashTendered
+        />
+        {rowError ? (
+          <p className={styles.errorBanner} role="alert">
+            {rowError}
+          </p>
+        ) : null}
+        <div className={styles.toolbar}>
+          <button
+            type="button"
+            className={styles.smallButtonSecondary}
+            onClick={closeEditModal}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={styles.smallButton}
+            disabled={isSavingEdit}
+            onClick={() => void handleSaveEdit()}
+          >
+            {isSavingEdit ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </Modal>
     </main>
   );

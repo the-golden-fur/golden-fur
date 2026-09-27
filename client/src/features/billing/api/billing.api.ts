@@ -2,6 +2,8 @@ import type {
   CheckoutPreview,
   CheckoutRequest,
   CheckoutResponse,
+  MiscSalePreview,
+  MiscSalePreviewRequest,
   MiscSaleRequest,
   MiscSaleResponse,
   Transaction,
@@ -87,6 +89,26 @@ export async function checkoutBooking(
   }
 
   return parseBody<CheckoutResponse>(response);
+}
+
+/** Session 115: live-previews the wizard's cart (item lines + auto-evaluated
+ * discount/promo lines) as eligibility checkboxes toggle, without creating
+ * anything - mirrors previewCheckout's own preview/create split. */
+export async function previewMiscSale(
+  payload: MiscSalePreviewRequest,
+  accessToken: string
+): Promise<BillingApiResult<MiscSalePreview>> {
+  const response = await fetch(`${API_BASE_URL}/billing/misc-sale/preview`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<MiscSalePreview>(response);
 }
 
 export async function createMiscSale(

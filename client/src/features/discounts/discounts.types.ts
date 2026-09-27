@@ -7,7 +7,13 @@
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 
-export type DiscountScopeType = 'service' | 'package' | 'category';
+/** 'misc_sale' (session 115): applies to any miscellaneous sale, no further
+ * sub-scoping - mirrors the server's own DiscountScopeType. */
+export type DiscountScopeType =
+  | 'service'
+  | 'package'
+  | 'category'
+  | 'misc_sale';
 
 export type DiscountCategory =
   | 'Grooming'

@@ -11,7 +11,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import type { CustomerProfile } from '../../../customers/customer.types';
 import * as catalogApi from '../../../catalog/api/catalog.api';
 import * as billingApi from '../../../billing/api/billing.api';
-import type { Transaction } from '../../billing.types';
+import type { MiscSalePreview, Transaction } from '../../billing.types';
 import { MiscSaleManagementPage } from './MiscSaleManagementPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({ listStaff: vi.fn() }));
@@ -24,6 +24,7 @@ vi.mock('../../api/billing.api', () => ({
   createMiscSale: vi.fn(),
   updateMiscSale: vi.fn(),
   deleteMiscSale: vi.fn(),
+  previewMiscSale: vi.fn(),
 }));
 
 function buildViewer(role: StaffRole): StaffProfile {
@@ -95,6 +96,30 @@ function buildSale(overrides: Partial<Transaction> = {}): Transaction {
   };
 }
 
+function buildPreview(
+  overrides: Partial<MiscSalePreview> = {}
+): MiscSalePreview {
+  return {
+    itemLines: [
+      {
+        line_item_type: 'misc_sale_item',
+        reference_id: null,
+        description: 'Cat toy',
+        quantity: 1,
+        unit_price: 80,
+        line_total: 80,
+      },
+    ],
+    discountLines: [],
+    promoLines: [],
+    subtotal: 80,
+    discountAmount: 0,
+    promoAmount: 0,
+    preCreditTotal: 80,
+    ...overrides,
+  };
+}
+
 function renderPage() {
   const authValue: AuthContextValue = {
     session: null,
@@ -147,6 +172,10 @@ describe('MiscSaleManagementPage', () => {
     });
     vi.mocked(billingApi.listMiscSales).mockResolvedValue({
       data: [buildSale()],
+      error: null,
+    });
+    vi.mocked(billingApi.previewMiscSale).mockResolvedValue({
+      data: buildPreview(),
       error: null,
     });
   });
@@ -205,7 +234,7 @@ describe('MiscSaleManagementPage', () => {
     );
   });
 
-  it('Admin can edit a sale inline via Save/Cancel', async () => {
+  it("Admin can edit a sale's payment method via the Edit modal", async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Admin')],
@@ -213,18 +242,8 @@ describe('MiscSaleManagementPage', () => {
     });
     vi.mocked(billingApi.updateMiscSale).mockResolvedValue({
       data: {
-        transaction: buildSale({ misc_sale_description: 'Cat leash' }),
-        lineItem: {
-          id: 'line-1',
-          transaction_id: 'txn-1',
-          line_item_type: 'misc_sale_item',
-          reference_id: null,
-          description: 'Cat leash',
-          quantity: 1,
-          unit_price: 250,
-          line_total: 250,
-          created_at: '2026-09-14T00:00:00.000Z',
-        },
+        transaction: buildSale({ payment_method: 'GCash' }),
+        lineItems: [],
         changeAmount: null,
       },
       error: null,
@@ -235,19 +254,26 @@ describe('MiscSaleManagementPage', () => {
     await screen.findByText('Dog leash');
     await user.click(screen.getByRole('button', { name: 'Edit' }));
 
-    const descriptionInput = screen.getByDisplayValue('Dog leash');
-    await user.clear(descriptionInput);
-    await user.type(descriptionInput, 'Cat leash');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit payment method' });
+    await user.selectOptions(within(dialog).getByLabelText('Method'), 'GCash');
+    await user.type(
+      within(dialog).getByLabelText('Reference number'),
+      'GC-123'
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(billingApi.updateMiscSale).toHaveBeenCalledWith(
         'txn-1',
-        { description: 'Cat leash', amount: 250 },
+        {
+          payment_method: 'GCash',
+          bank_name: undefined,
+          payment_reference: 'GC-123',
+        },
         'token'
       )
     );
-    expect(await screen.findByText('Cat leash')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('every viewer role gets a "View in Transactions" link that navigates there', async () => {
@@ -268,7 +294,7 @@ describe('MiscSaleManagementPage', () => {
     expect(await screen.findByText('Transactions page')).toBeInTheDocument();
   });
 
-  it('records a new misc sale via the New Misc Sale modal', async () => {
+  it('records a new misc sale via the New Misc Sale wizard', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
@@ -281,18 +307,20 @@ describe('MiscSaleManagementPage', () => {
           misc_sale_description: 'Cat toy',
           total_amount: 80,
         }),
-        lineItem: {
-          id: 'line-2',
-          transaction_id: 'txn-2',
-          line_item_type: 'misc_sale_item',
-          reference_id: null,
-          description: 'Cat toy',
-          quantity: 1,
-          unit_price: 80,
-          line_total: 80,
-          created_at: '2026-09-14T00:00:00.000Z',
-        },
-        changeAmount: null,
+        lineItems: [
+          {
+            id: 'line-2',
+            transaction_id: 'txn-2',
+            line_item_type: 'misc_sale_item',
+            reference_id: null,
+            description: 'Cat toy',
+            quantity: 1,
+            unit_price: 80,
+            line_total: 80,
+            created_at: '2026-09-14T00:00:00.000Z',
+          },
+        ],
+        changeAmount: 0,
       },
       error: null,
     });
@@ -305,9 +333,14 @@ describe('MiscSaleManagementPage', () => {
     const dialog = screen.getByRole('dialog', {
       name: 'New Miscellaneous Sale',
     });
+
+    // Step 1: Customer.
     await user.click(
-      within(dialog).getByRole('button', { name: /Ada Lovelace/ })
+      await within(dialog).findByRole('button', { name: /Ada Lovelace/ })
     );
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }));
+
+    // Step 2: Products - a single freetext row.
     await user.type(
       within(dialog).getByPlaceholderText(
         'Search products or type a custom item...'
@@ -315,20 +348,47 @@ describe('MiscSaleManagementPage', () => {
       'Cat toy'
     );
     await user.type(within(dialog).getByLabelText('Amount (PHP)'), '80');
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }));
+
+    // Step 3: Discount/Promo - nothing to pick, move on.
+    await within(dialog).findByText('No discounts or promos apply right now.');
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }));
+
+    // Step 4: Payment - Cash is the default, just needs a tendered amount.
+    await user.type(within(dialog).getByLabelText('Cash tendered (PHP)'), '80');
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }));
+
+    // Step 5: Confirmation.
+    await within(dialog).findByText('Amount due');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Record sale' })
+      within(dialog).getByRole('button', { name: 'Confirm & record sale' })
     );
 
     await waitFor(() =>
       expect(billingApi.createMiscSale).toHaveBeenCalledWith(
-        expect.objectContaining({
+        {
           customer_id: 'customer-1',
-          description: 'Cat toy',
-          amount: 80,
-        }),
+          items: [{ description: 'Cat toy', amount: 80 }],
+          senior_citizen_eligible: false,
+          pwd_eligible: false,
+          credit_to_apply: 0,
+          payment_method: 'Cash',
+          cash_tendered: 80,
+        },
         'token'
       )
     );
+
+    expect(
+      await within(dialog).findByText(/Sale recorded/)
+    ).toBeInTheDocument();
+    // Two "Close" buttons exist here: the Modal's own dismiss icon (header)
+    // and the wizard's own nav-row Close button that appears once `result`
+    // is set - the latter is the one rendered last.
+    const closeButtons = within(dialog).getAllByRole('button', {
+      name: 'Close',
+    });
+    await user.click(closeButtons[closeButtons.length - 1]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(await screen.findByText('Cat toy')).toBeInTheDocument();
   });

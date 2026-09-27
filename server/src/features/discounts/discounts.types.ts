@@ -19,7 +19,15 @@ export const DISCOUNT_WRITE_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 
-export type DiscountScopeType = 'service' | 'package' | 'category';
+/** 'misc_sale' (session 115): applies to any miscellaneous sale, no further
+ * sub-scoping - scope_service_id/scope_package_id/scope_category all stay
+ * NULL for it, mirroring how a promo's 'all_services' scope needs no scope
+ * row either. */
+export type DiscountScopeType =
+  | 'service'
+  | 'package'
+  | 'category'
+  | 'misc_sale';
 
 export type DiscountCategory =
   | 'Grooming'
