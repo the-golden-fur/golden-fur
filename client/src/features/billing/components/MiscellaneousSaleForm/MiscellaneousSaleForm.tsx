@@ -22,15 +22,17 @@ interface MiscellaneousSaleFormProps {
 }
 
 /**
- * Issue #87: quick counter-sale form, reachable independently of the
- * booking-checkout flow. Reuses CreditApplicationPanel and PaymentMethodForm
- * as-is from Issue #86 rather than duplicating credit-application or
- * payment-form logic (dev notes). The only new UI surface here is the
- * product picker (all active catalog products - per unification, shows
- * hotel food/medication alongside any future retail item - plus a freetext
- * fallback with a manual amount, since a freetext item has no catalog price
- * to look up) and the customer picker (misc sales require a customer_id -
- * see billing.validator.ts's createMiscSaleValidator).
+ * Issue #87: quick counter-sale form, rendered inside a Modal on
+ * MiscSaleManagementPage's "New Misc Sale" button (session 115) rather than
+ * its own standalone page - has no heading/card chrome of its own so it
+ * doesn't duplicate the Modal's. Reuses CreditApplicationPanel and
+ * PaymentMethodForm as-is from Issue #86 rather than duplicating
+ * credit-application or payment-form logic (dev notes). The only new UI
+ * surface here is the product picker (all active catalog products - per
+ * unification, shows hotel food/medication alongside any future retail item
+ * - plus a freetext fallback with a manual amount, since a freetext item has
+ * no catalog price to look up) and the customer picker (misc sales require a
+ * customer_id - see billing.validator.ts's createMiscSaleValidator).
  */
 export function MiscellaneousSaleForm({
   accessToken,
@@ -103,11 +105,7 @@ export function MiscellaneousSaleForm({
   }
 
   return (
-    <section className={styles.panel} aria-labelledby="misc-sale-title">
-      <h2 className={styles.title} id="misc-sale-title">
-        New Miscellaneous Sale
-      </h2>
-
+    <div className={styles.panel}>
       <div className={styles.field}>
         <span className={styles.label}>Customer</span>
         {customer && !showCustomerPicker ? (
@@ -204,6 +202,6 @@ export function MiscellaneousSaleForm({
           {isSubmitting ? 'Recording...' : 'Record sale'}
         </button>
       )}
-    </section>
+    </div>
   );
 }
