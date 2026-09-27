@@ -126,6 +126,71 @@ export async function evaluateDiscounts(
   return lines;
 }
 
+/**
+ * Session 115: a misc sale has no service_id/package_id/service_category to
+ * scope-match against - this is the misc-sale-only counterpart of
+ * evaluateDiscounts above, matching only the new scope_type = 'misc_sale'
+ * (see migration 20260927217). Deliberately a separate function rather than
+ * widening evaluateDiscounts' own scopeMatches check, so a
+ * category/service/package-scoped discount can never accidentally apply to
+ * a misc sale (or vice versa) through one shared, harder-to-audit branch.
+ * Same Cash-only gate and mandated-name eligibility check as bookings.
+ */
+export async function evaluateMiscSaleDiscounts(params: {
+  branchId: string;
+  paymentMethod: string;
+  eligibility: DiscountEligibility;
+  subtotal: number;
+}): Promise<DraftLineItem[]> {
+  if (params.paymentMethod !== 'Cash') return [];
+
+  const { data, error } = await supabase
+    .from('discounts')
+    .select('*, discount_branch_availability(branch_id, is_available)')
+    .eq('is_active', true)
+    .eq('scope_type', 'misc_sale');
+
+  if (error) throwWithStatus(400, error.message);
+
+  const lines: DraftLineItem[] = [];
+
+  for (const discount of (data ?? []) as DiscountRow[]) {
+    const availableAtBranch = discount.discount_branch_availability.some(
+      (row) => row.branch_id === params.branchId && row.is_available
+    );
+
+    if (!availableAtBranch) continue;
+
+    if (discount.is_mandated) {
+      if (
+        discount.name === 'Senior Citizen Discount' &&
+        !params.eligibility.seniorCitizenEligible
+      ) {
+        continue;
+      }
+      if (discount.name === 'PWD Discount' && !params.eligibility.pwdEligible) {
+        continue;
+      }
+    }
+
+    const amount =
+      discount.discount_type === 'Percentage'
+        ? (params.subtotal * Number(discount.value)) / 100
+        : Number(discount.value);
+
+    lines.push({
+      line_item_type: 'discount',
+      reference_id: discount.id,
+      description: discount.name,
+      quantity: 1,
+      unit_price: -round2(amount),
+      line_total: -round2(amount),
+    });
+  }
+
+  return lines;
+}
+
 interface PromoRow {
   id: string;
   name: string;
@@ -185,7 +250,7 @@ export interface EvaluatedPromo {
  * surprising.
  */
 export async function evaluatePromos(
-  booking: BookingForBilling,
+  booking: Pick<BookingForBilling, 'branch_id' | 'items'>,
   subtotal: number
 ): Promise<EvaluatedPromo[]> {
   const { data: promos, error } = await supabase
@@ -248,6 +313,21 @@ export async function evaluatePromos(
       },
     })
   );
+}
+
+/**
+ * Session 115: a misc sale has no service_id/package_id to scope-match, so
+ * only 'all_services' promos can ever apply to one - evaluatePromos' own
+ * scope check already matches 'all_services' unconditionally and only
+ * consults `items` for the 'specific' branch, so passing an empty `items`
+ * array here is not a hack, it's the correct input for "no items to match
+ * a specific-scoped promo against".
+ */
+export async function evaluateMiscSalePromos(
+  branchId: string,
+  subtotal: number
+): Promise<EvaluatedPromo[]> {
+  return evaluatePromos({ branch_id: branchId, items: [] }, subtotal);
 }
 
 async function getEffectivePromoCap(branchId: string): Promise<PromoCapRow> {

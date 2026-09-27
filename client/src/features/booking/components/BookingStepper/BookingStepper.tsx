@@ -13,6 +13,11 @@ interface BookingStepperProps {
    * clears anything. */
   furthestCompletedIndex: number;
   onStepSelect: (index: number) => void;
+  /** Session 115: reused as-is by the misc-sale wizard (billing feature) -
+   * this component has no booking-specific logic in its own right, only in
+   * its default label. Defaults to "Booking steps" so every existing caller
+   * is unaffected. */
+  ariaLabel?: string;
 }
 
 export function BookingStepper({
@@ -20,9 +25,10 @@ export function BookingStepper({
   currentStepIndex,
   furthestCompletedIndex,
   onStepSelect,
+  ariaLabel = 'Booking steps',
 }: BookingStepperProps) {
   return (
-    <ol className={styles.stepper} aria-label="Booking steps">
+    <ol className={styles.stepper} aria-label={ariaLabel}>
       {steps.map((label, index) => {
         const isCurrent = index === currentStepIndex;
         const isReachable = index <= furthestCompletedIndex;

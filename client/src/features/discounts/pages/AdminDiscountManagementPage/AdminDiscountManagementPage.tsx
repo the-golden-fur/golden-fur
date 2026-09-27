@@ -473,11 +473,13 @@ export function AdminDiscountManagementPage() {
         ? { scope_service_id: formScopeServiceId }
         : formScopeType === 'package'
           ? { scope_package_id: formScopePackageId }
-          : {
-              scope_category: formScopeCategory as NonNullable<
-                Discount['scope_category']
-              >,
-            };
+          : formScopeType === 'category'
+            ? {
+                scope_category: formScopeCategory as NonNullable<
+                  Discount['scope_category']
+                >,
+              }
+            : {};
 
     if (editingDiscountId === null) {
       const result = await createDiscount(accessToken, {
@@ -543,6 +545,10 @@ export function AdminDiscountManagementPage() {
       }`;
     }
 
+    if (discount.scope_type === 'misc_sale') {
+      return 'Any miscellaneous sale';
+    }
+
     return `Category: ${discount.scope_category ?? 'Unknown'}`;
   };
 
@@ -599,7 +605,9 @@ export function AdminDiscountManagementPage() {
       ? 'Service'
       : discount.scope_type === 'package'
         ? 'Package'
-        : 'Category';
+        : discount.scope_type === 'misc_sale'
+          ? 'Misc Sale'
+          : 'Category';
   }
 
   function valueLabel(discount: Discount): string {
@@ -842,6 +850,7 @@ export function AdminDiscountManagementPage() {
                   <option value="service">Service</option>
                   <option value="package">Package</option>
                   <option value="category">Category</option>
+                  <option value="misc_sale">Miscellaneous Sale</option>
                 </select>
               </label>
 

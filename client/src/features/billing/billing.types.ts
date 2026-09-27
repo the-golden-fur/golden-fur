@@ -115,25 +115,51 @@ export interface CheckoutPreview {
   preCreditTotal: number;
 }
 
-export interface MiscSaleRequest extends PaymentFields {
-  customer_id: string;
+/** One cart line - exactly one of (product_catalog_id [+ quantity]) or
+ * (description + amount), matching CatalogComboBox's own hybrid shape. */
+export interface MiscSaleItem {
   product_catalog_id?: string;
   quantity?: number;
   description?: string;
   amount?: number;
+}
+
+export interface MiscSaleRequest extends PaymentFields {
+  customer_id: string;
+  items: MiscSaleItem[];
+  senior_citizen_eligible?: boolean;
+  pwd_eligible?: boolean;
 }
 
 export interface MiscSaleResponse {
   transaction: Transaction;
-  lineItem: TransactionLineItem;
+  lineItems: TransactionLineItem[];
   changeAmount: number | null;
 }
 
+/** Session 115: the wizard's Discount/Promo step live-previews the cart as
+ * eligibility checkboxes toggle - same shape as CheckoutPreview, minus the
+ * booking-specific `booking` field a misc sale has none of. */
+export interface MiscSalePreviewRequest {
+  items: MiscSaleItem[];
+  payment_method: PaymentMethod;
+  senior_citizen_eligible?: boolean;
+  pwd_eligible?: boolean;
+}
+
+export interface MiscSalePreview {
+  itemLines: DraftLineItem[];
+  discountLines: DraftLineItem[];
+  promoLines: DraftLineItem[];
+  subtotal: number;
+  discountAmount: number;
+  promoAmount: number;
+  preCreditTotal: number;
+}
+
+/** Session 115: narrowed to payment-fields-only now that a sale can carry
+ * multiple line items - see the server validator's own doc comment. */
 export interface UpdateMiscSaleRequest {
-  product_catalog_id?: string;
-  quantity?: number;
-  description?: string;
-  amount?: number;
   payment_method?: PaymentMethod;
   bank_name?: BankName;
   payment_reference?: string;

@@ -7,7 +7,6 @@ import {
   Package,
   PawPrint,
   Percent,
-  Receipt,
   Scale,
   ScrollText,
   ShoppingBag,
@@ -21,7 +20,6 @@ import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/Ad
 import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/BranchesPage';
 import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
-import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
 
@@ -107,7 +105,7 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   {
     title: 'Product Catalog',
     description:
-      'Manage hotel-suppliable food/medication and other sellable products, by category.',
+      "Manage hotel-suppliable food/medication and other sellable products, by category - also where a cashier's Miscellaneous Sales item picker draws from.",
     to: '/staff/admin/product-catalog',
     icon: ShoppingBag,
     Component: ProductCatalogPage,
@@ -118,13 +116,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/discounts',
     icon: Percent,
     Component: AdminDiscountManagementPage,
-  },
-  {
-    title: 'Miscellaneous Sales',
-    description: 'Review, edit, or remove recorded miscellaneous sales.',
-    to: '/staff/admin/misc-sales',
-    icon: Receipt,
-    Component: MiscSaleManagementPage,
   },
   {
     title: 'Cages',

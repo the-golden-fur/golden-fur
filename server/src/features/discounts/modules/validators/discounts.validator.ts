@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
-const SCOPE_TYPES = ['service', 'package', 'category'] as const;
+const SCOPE_TYPES = ['service', 'package', 'category', 'misc_sale'] as const;
 const CATEGORIES = [
   'Grooming',
   'Hotel',
@@ -33,19 +33,30 @@ function validateScopeShape(
       (input.scope_package_id ? 1 : 0) +
       (input.scope_category ? 1 : 0);
 
-    const expectedField: Record<(typeof SCOPE_TYPES)[number], boolean> = {
-      service: Boolean(input.scope_service_id),
-      package: Boolean(input.scope_package_id),
-      category: Boolean(input.scope_category),
-    };
+    // misc_sale needs no scope field at all - it applies to any misc sale,
+    // no further sub-scoping (mirrors a promo's scope_type = 'all_services').
+    const expectedFieldsSet =
+      input.scope_type === 'misc_sale'
+        ? 0
+        : {
+            service: Boolean(input.scope_service_id),
+            package: Boolean(input.scope_package_id),
+            category: Boolean(input.scope_category),
+          }[input.scope_type];
 
-    if (scopeFieldsSet !== 1 || !expectedField[input.scope_type]) {
+    const isValid =
+      input.scope_type === 'misc_sale'
+        ? scopeFieldsSet === 0
+        : scopeFieldsSet === 1 && expectedFieldsSet;
+
+    if (!isValid) {
       ctx.addIssue({
         code: 'custom',
         path: ['scope_type'],
         message:
           'Exactly one scope field must be set and it must match scope_type ' +
-          '(service -> scope_service_id, package -> scope_package_id, category -> scope_category)',
+          '(service -> scope_service_id, package -> scope_package_id, category -> scope_category, ' +
+          'misc_sale -> no scope field)',
       });
     }
   }

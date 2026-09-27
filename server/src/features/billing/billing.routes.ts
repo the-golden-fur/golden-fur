@@ -16,6 +16,7 @@ import {
   payTransactionWithCreditController,
   previewCheckoutController,
   previewGroupCheckoutController,
+  previewMiscSaleController,
   recordTransactionPaymentController,
   updateMiscSaleController,
 } from './billing.controller.ts';
@@ -78,6 +79,16 @@ router.post(
   createMiscSaleController
 );
 
+// Session 115: the wizard's Discount/Promo step live-previews the cart -
+// requireBranch so discount/promo branch-availability matches the
+// cashier's own branch, same as the checkout preview above.
+router.post(
+  '/billing/misc-sale/preview',
+  ...staffAccess,
+  requireBranch,
+  previewMiscSaleController
+);
+
 // §6 (down-payment slot gate): per-booking payment history for the
 // Payments Queue's "View payments" drill-down - staff-only, read-only.
 router.get(
@@ -116,7 +127,17 @@ router.post(
   payTransactionWithCreditController
 );
 
-router.get('/billing/misc-sale', ...staffAccess, listMiscSalesController);
+// Code-review fix (session 115): requireBranch populates req.user.branch_id/
+// role so the controller can force a non-Superadmin viewer to their own
+// branch instead of trusting (or falling back with no filter on) a
+// client-supplied branch_id query param - see listMiscSalesController's own
+// doc comment.
+router.get(
+  '/billing/misc-sale',
+  ...staffAccess,
+  requireBranch,
+  listMiscSalesController
+);
 router.get('/billing/misc-sale/:id', ...staffAccess, getMiscSaleController);
 router.patch('/billing/misc-sale/:id', ...adminOnly, updateMiscSaleController);
 router.delete('/billing/misc-sale/:id', ...adminOnly, deleteMiscSaleController);

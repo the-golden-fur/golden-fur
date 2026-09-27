@@ -16,6 +16,7 @@ import {
   Receipt,
   Scale,
   Scissors,
+  ShoppingBag,
   Stethoscope,
   UserCog,
   Users,
@@ -195,6 +196,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
+          },
+          {
+            title: 'Miscellaneous Sales',
+            description:
+              'Record and review counter sales unrelated to a booking.',
+            to: '/staff/admin/misc-sales',
           },
           {
             title: 'Transactions',
@@ -519,6 +526,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
+            title: 'Miscellaneous Sales',
+            description:
+              'Record and review counter sales unrelated to a booking.',
+            to: '/staff/admin/misc-sales',
+          },
+          {
             title: 'Transactions',
             description:
               'Record a payment against any pending charge; add balance payments.',
@@ -618,6 +631,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'My Patients': PawPrint,
   'My Catalog': ListChecks,
   'Checkout & Billing': Wallet,
+  'Miscellaneous Sales': ShoppingBag,
   Transactions: Receipt,
   'Credit Management': Coins,
   'Credit Review Queue': ClipboardCheck,
