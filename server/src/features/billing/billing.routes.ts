@@ -14,7 +14,6 @@ import {
   listBookingTransactionsController,
   listMiscSalesController,
   payTransactionWithCreditController,
-  paymongoFeeRateController,
   previewCheckoutController,
   previewGroupCheckoutController,
   recordTransactionPaymentController,
@@ -35,16 +34,6 @@ const adminOnly = [
   sessionTimeoutMiddleware,
   requireRole([...BILLING_ADMIN_ROLES]),
 ];
-
-// Issue #83: PayMongo fee rate, surfaced to the frontend for the inline
-// service-fee notice (#86) - staff-only, not customer-facing, since the
-// customer sees PayMongo's own notice at their hosted checkout page.
-router.get(
-  '/billing/paymongo/fee-rate',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  paymongoFeeRateController
-);
 
 // Issue #84
 router.get(

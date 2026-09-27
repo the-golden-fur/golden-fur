@@ -51,7 +51,6 @@ interface FormState {
   credit_expiry_fixed_date: string;
   cancellation_credit_conversion_rate: number;
   credit_review_mode: CreditReviewMode;
-  online_payments_enabled: boolean;
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType;
   downpayment_amount: number;
@@ -84,7 +83,6 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     cancellation_credit_conversion_rate:
       policy.cancellation_credit_conversion_rate,
     credit_review_mode: policy.credit_review_mode,
-    online_payments_enabled: policy.online_payments_enabled,
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type ?? 'Flat',
     downpayment_amount: policy.downpayment_amount ?? 0,
@@ -116,7 +114,6 @@ const DOCUMENTED_DEFAULTS: FormState = {
   credit_expiry_fixed_date: '',
   cancellation_credit_conversion_rate: 100,
   credit_review_mode: 'Automatic',
-  online_payments_enabled: true,
   downpayment_enabled: false,
   downpayment_type: 'Flat',
   downpayment_amount: 0,
@@ -309,7 +306,6 @@ export function PolicyConfigurationPage({
       cancellation_credit_conversion_rate:
         form.cancellation_credit_conversion_rate,
       credit_review_mode: form.credit_review_mode,
-      online_payments_enabled: form.online_payments_enabled,
       downpayment_enabled: form.downpayment_enabled,
       downpayment_type: form.downpayment_enabled ? form.downpayment_type : null,
       downpayment_amount: form.downpayment_enabled
@@ -424,9 +420,8 @@ export function PolicyConfigurationPage({
         <h1 className={styles.title}>Policies</h1>
         <p className={styles.copy}>
           Reschedule notice period and fee, new online booking notice period,
-          the fixed lunch break, online payments and downpayment, cancellation
-          credit, and credit expiry - system-wide default, or a per-branch
-          override.
+          the fixed lunch break, downpayment, cancellation credit, and credit
+          expiry - system-wide default, or a per-branch override.
         </p>
 
         <label className={styles.field}>
@@ -716,31 +711,6 @@ export function PolicyConfigurationPage({
                 />
               </label>
             ) : null}
-          </section>
-
-          <section aria-labelledby="online-payments-heading">
-            <h2 className={styles.sectionTitle} id="online-payments-heading">
-              Online payments
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.online_payments_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    online_payments_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Allow customers to pay online via GCash/Maya</span>
-            </label>
-            <p className={styles.copy}>
-              When disabled, the Pay button still shows on the customer's own
-              Bookings page, but is disabled with an explanation - it never
-              disappears entirely.
-            </p>
           </section>
 
           <section aria-labelledby="downpayment-heading">

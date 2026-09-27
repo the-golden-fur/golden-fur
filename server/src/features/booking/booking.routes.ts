@@ -22,10 +22,8 @@ import {
   listBookingsController,
   listPendingCreditReviewsController,
   listPolicyConfigurationsController,
-  onlinePaymentsStatusController,
   overrideBookingStatusController,
   partsOfDayController,
-  payBookingController,
   petBookingConflictsController,
   rescheduleBookingController,
   staffPickerOptionsController,
@@ -149,18 +147,9 @@ router.get(
   cageAssignmentStatusController
 );
 
-// Custom change: whether the customer-facing Pay button should be enabled
-// for a branch - read by both the customer Bookings page and the Admin
-// online-payments toggle's own preview.
-router.get(
-  '/bookings/online-payments-status',
-  jwtMiddleware,
-  onlinePaymentsStatusController
-);
-
-// Custom change: per-transaction downpayment config for a branch - same
-// customer-readable shape as online-payments-status above, read by the
-// customer booking flow to preview the amount before submitting.
+// Custom change: per-transaction downpayment config for a branch - a
+// customer-readable, unauthenticated-shape endpoint read by the customer
+// booking flow to preview the amount before submitting.
 router.get(
   '/bookings/downpayment-status',
   jwtMiddleware,
@@ -229,10 +218,6 @@ router.post('/bookings/:id/cancel', jwtMiddleware, cancelBookingController);
 // booking's stay and reconciles the price onto its remaining-balance
 // transaction (or a new one if already Fully Paid).
 router.post('/bookings/:id/extend-stay', extendStay, extendHotelStayController);
-
-// Customer self-service Pay button (CustomerBookingsPage) - ownership
-// checked in payForBooking, same pattern as reschedule/cancel above.
-router.post('/bookings/:id/pay', jwtMiddleware, payBookingController);
 
 // Customer-chosen partial payment toward a partly-paid booking's balance
 // (CustomerTransactionHistoryPage) - ownership + eligibility in the service.

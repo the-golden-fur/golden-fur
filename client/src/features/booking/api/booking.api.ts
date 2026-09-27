@@ -16,8 +16,6 @@ import type {
   ExtendHotelStayResult,
   ListBookingsFilters,
   OperatingWindow,
-  PayForBookingPayload,
-  PayForBookingResult,
   PetBookingConflict,
   PolicyConfiguration,
   RescheduleBookingPayload,
@@ -520,27 +518,6 @@ export async function cancelBooking(
   return parseBody<CancellationResult>(response);
 }
 
-/** Customer self-service Pay button - initiates a real PayMongo checkout
- * (GCash/Maya) for either the full remaining amount or just the catalog
- * downpayment, returning a checkoutUrl to redirect the customer to. */
-export async function payForBooking(
-  bookingId: string,
-  accessToken: string,
-  payload: PayForBookingPayload
-): Promise<BookingApiResult<PayForBookingResult>> {
-  const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}/pay`, {
-    method: 'POST',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return parseBody<PayForBookingResult>(response);
-}
-
 /** Customer-chosen partial payment toward a partly-paid booking's balance -
  * creates a fresh Pending 'balance' charge (amount re-checked <= remaining
  * server-side) that the customer then settles from the transaction list. */
@@ -602,24 +579,6 @@ export async function listMyConflictedBookings(
 
   const result = await parseBody<{ conflicts: ConflictedBooking[] }>(response);
   return { data: result.data?.conflicts ?? null, error: result.error };
-}
-
-/** Whether the customer-facing Pay button should be enabled for a branch -
- * see isOnlinePaymentsEnabled's own doc comment server-side. */
-export async function getOnlinePaymentsStatus(
-  branchId: string,
-  accessToken: string
-): Promise<BookingApiResult<{ online_payments_enabled: boolean }>> {
-  const response = await fetch(
-    `${API_BASE_URL}/bookings/online-payments-status?branch_id=${branchId}`,
-    { headers: authHeaders(accessToken) }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return parseBody<{ online_payments_enabled: boolean }>(response);
 }
 
 export interface DownpaymentStatus {

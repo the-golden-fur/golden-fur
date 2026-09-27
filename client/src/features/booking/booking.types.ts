@@ -210,13 +210,6 @@ export const PAYMENT_METHODS = [
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-/** Payment methods collected online, ahead of arrival - the rest are
- * pay-at-counter (#58 dev notes). */
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
-
 export type EnforcementMode = 'Strict' | 'Soft';
 
 /** Mirrors the server's credit_review_mode (manual-cancellation-credit-
@@ -572,7 +565,6 @@ export interface BookingDetailsTransaction {
   credit_applied_amount: number;
   payment_reference: string | null;
   created_at: string;
-  webhook_confirmed_at: string | null;
 }
 
 export interface BookingDetailsPricing {
@@ -633,10 +625,6 @@ export interface PolicyConfiguration {
   /** Percent (0-100) of what the customer paid that is returned as account
    * credit on a qualifying cancellation. Default 100 (full). */
   cancellation_credit_conversion_rate: number;
-  /** Master toggle for the customer-facing PayMongo Pay button - when
-   * false, the button still renders (disabled, with an explanatory
-   * tooltip) rather than disappearing. */
-  online_payments_enabled: boolean;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see createBooking server-side.
    * Supersedes the old per-catalog-item Service/Package.
@@ -693,7 +681,6 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
-  | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
@@ -723,7 +710,6 @@ export interface UpdatePolicyPayload {
   credit_expiry_days?: number;
   credit_expiry_fixed_date?: string | null;
   cancellation_credit_conversion_rate?: number;
-  online_payments_enabled?: boolean;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;
@@ -857,16 +843,6 @@ export interface ExtendHotelStayResult {
   /** The charge just added for the extra nights - shown to staff as
    * confirmation before they close the panel. */
   added_amount: number;
-}
-
-/** Customer self-service Pay button (CustomerBookingsPage). */
-export interface PayForBookingPayload {
-  payment_method: 'GCash' | 'Maya';
-  pay_in_full: boolean;
-}
-
-export interface PayForBookingResult {
-  checkoutUrl: string;
 }
 
 /** Custom change: duplicate-booking prevention - a pet's earliest

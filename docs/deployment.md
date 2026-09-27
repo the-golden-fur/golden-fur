@@ -74,11 +74,6 @@ service (it is not auto-applied to the existing one — reconcile by hand).
 | `STAFF_TEMP_CREDENTIAL_KEY`     | yes       | base64 string that decodes to **exactly 32 bytes** (`openssl rand -base64 32`). Staff account creation/resend throws without it.                                                                |
 | `BREVO_API_KEY`                 | see notes | transactional email (Brevo). Leave unset on any environment where email isn't provisioned yet; email-triggering flows will error, which is expected, not a regression.                          |
 | `BREVO_FROM_EMAIL`              | optional  | verified Brevo sender, `"Display Name <address@domain.com>"`; defaults to `Golden Fur <noreply@goldenfur.com>` if unset                                                                         |
-| `PAYMONGO_SECRET_KEY`           | dormant   | the client has not approved a PayMongo account. Leave unset; online-payment paths stay inactive (checkout 500s) until it exists. A future admin setting will toggle online payments explicitly. |
-| `PAYMONGO_WEBHOOK_SECRET`       | dormant   | as above                                                                                                                                                                                        |
-| `PAYMONGO_SERVICE_FEE_PERCENT`  | optional  | defaults to `2.5`                                                                                                                                                                               |
-| `PAYMONGO_REDIRECT_SUCCESS_URL` | dormant   | `https://golden-fur-client.vercel.app/portal/payment/success` when live                                                                                                                         |
-| `PAYMONGO_REDIRECT_FAILED_URL`  | dormant   | `https://golden-fur-client.vercel.app/portal/payment/failed` when live                                                                                                                          |
 | `DAYCARE_SESSION_CAPACITY`      | optional  | bare number or JSON branch map; defaults to `15`                                                                                                                                                |
 
 Facebook/Google OAuth is configured in the **Supabase** dashboard (Auth →

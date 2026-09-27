@@ -1056,8 +1056,8 @@ export async function createBooking({
 
   // A fully-discounted / fully-promo'd booking owes nothing - there is no
   // charge to create and no payment to collect, so it's born Fully Paid
-  // (otherwise it would sit Pending forever: startBooking, add_booking_payment
-  // and payForBooking all refuse a zero-owed booking).
+  // (otherwise it would sit Pending forever: startBooking and
+  // add_booking_payment both refuse a zero-owed booking).
   const nothingOwed = netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
@@ -2001,8 +2001,7 @@ export async function overrideBookingStatus({
  * Recomputes `bookings.payment_status` from the booking's settled
  * `booking_payment` transactions and applies the first-payment side-effects.
  * The `settle_transaction` RPC already does the SQL-side rollup atomically;
- * this is the app-side path for the PayMongo webhook (which flips its own
- * transaction row) and a safety net after a settlement - it also owns the
+ * this is the app-side path called after checkout - it also owns the
  * one-time "the first payment confirms an Online booking" notifications and
  * the down-payment slot-gate capacity re-check.
  */
@@ -2066,10 +2065,10 @@ export async function recomputeBookingPaymentStatus(
  * queue/capacity gating, unaware it's part of a group).
  *
  * A payment module companion (server/src/features/billing/**) calls this
- * from the PayMongo webhook / settlement paths the same way the
- * single-booking path calls recomputeBookingPaymentStatus - this function
- * itself stays inside booking.service.ts (booking-capacity-agent scope),
- * mirroring recomputeBookingPaymentStatus's own placement.
+ * from its settlement paths the same way the single-booking path calls
+ * recomputeBookingPaymentStatus - this function itself stays inside
+ * booking.service.ts (booking-capacity-agent scope), mirroring
+ * recomputeBookingPaymentStatus's own placement.
  *
  * New territory (a "partially-confirmed group"): applyFirstBookingPayment-
  * SideEffects's capacity re-check is inherently PER BOOKING (a down-payment
@@ -2410,16 +2409,17 @@ async function flagSlotConflictsForOthers(winner: Booking): Promise<void> {
 
 /**
  * First-payment side-effects for a booking that just left payment_status
- * 'Pending' (a down payment or a full payment landed). Shared by the PayMongo
- * webhook path (recomputeBookingPaymentStatus) and the counter paths
+ * 'Pending' (a down payment or a full payment landed). Shared by the
+ * checkout rollup path (recomputeBookingPaymentStatus) and the counter paths
  * (recordTransactionPayment / payTransactionWithCredit - the `settle_transaction`
  * RPC does the SQL rollup but none of this).
  *
  * - Re-verifies capacity: a down-payment-required Online booking held no slot
  *   while it sat Unconfirmed. `revertOnCapacityConflict` puts payment_status
- *   back to 'Pending' and throws 409 (webhook path - nothing is settled yet);
- *   the counter path passes false, keeps the payment (the cash is already in
- *   the drawer), and leaves the booking for staff to reschedule.
+ *   back to 'Pending' and throws 409 (checkout rollup path - nothing else has
+ *   settled this booking yet); the counter path passes false, keeps the
+ *   payment (the cash is already in the drawer), and leaves the booking for
+ *   staff to reschedule.
  * - Fires the booking_confirmed / staff_assigned alerts createBooking held
  *   back while the booking was Unconfirmed.
  *

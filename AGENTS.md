@@ -169,8 +169,6 @@ noted):
   if you want a review. The PR skills open a draft PR and stop.
 - `booking-capacity-agent` — cage/session/groomer/staff capacity and
   overbooking-prevention logic (Grooming/Hotel/Daycare/Veterinary).
-- `payment-billing-agent` — PayMongo webhook handling and the Credit
-  Balance ledger, sandbox only.
 - `auth-access-agent` — RBAC, TOTP MFA, OAuth account-merge. Read-mostly
   (`Read`, `Grep`, `Glob`, `Edit` — no `Write`/`Bash`) so it can't touch
   production config.
@@ -179,7 +177,12 @@ noted):
 (Dormant-module agents — `report-generator-agent`, `notification-agent`,
 `discount-compliance-agent`, `qa-iso25010-agent`, plus their backing
 reference skills — were removed 2026-09-06 while those modules aren't in
-active build. Recreate from git history when one goes live.)
+active build. Recreate from git history when one goes live. `payment-billing-agent`
+and its backing `paymongo-webhook-handling` skill were removed when the
+PayMongo integration itself was torn out — GCash/Maya are now plain
+manual payment-method labels, not a webhook-driven integration. Credit
+Balance ledger work is still covered by the `credit-balance-ledger`
+skill directly, with no dedicated agent.)
 
 **Maintenance agents** (keep generated/derived artifacts in step with the
 code as a task closes — see "Auto-run wiring" below):
@@ -194,8 +197,8 @@ code as a task closes — see "Auto-run wiring" below):
 agent above, and applies equally when working the same area without
 spawning a subagent):
 
-- `paymongo-webhook-handling`, `capacity-based-scheduling`,
-  `rbac-totp-setup`, `credit-balance-ledger`, `supabase-seed-maintenance`.
+- `capacity-based-scheduling`, `rbac-totp-setup`, `credit-balance-ledger`,
+  `supabase-seed-maintenance`.
 - `supabase-migration-push` — the closing step of a task that changed
   `supabase/migrations/`: `npm run supabase:push` (the
   `📤 Supabase: Push Migrations` VS Code task — not a hand-typed
@@ -211,14 +214,24 @@ by hand over the branch diff.
 
 ### Auto-run wiring
 
-`.claude/settings.json` (checked in) wires three Claude Code hooks. Hooks
+`.claude/settings.json` (checked in) wires two Claude Code hooks. Hooks
 are Claude-specific — other AI tools replicate the intent via their own
 mechanisms. (The `pr-guard` `PreToolUse` hook was removed — there is no
 CI/review gate to enforce. Earlier removals: three `Stop` hooks
 — `maintenance-reminders.sh`, `gitkeep-cleanup.sh` here and
-`gitkeep-sweep.sh` in the vault — were removed 2026-09-06. The `Stop` hook
-below is a distinct, narrower case — see its own note on why it doesn't
-re-open that decision.)
+`gitkeep-sweep.sh` in the vault — were removed 2026-09-06.
+`free-dev-ports.sh`, a fourth `Stop` hook, was removed 2026-09-27: it
+unconditionally killed whatever was listening on 3000/5173 after every
+turn with no way to tell an agent-started background dev server apart
+from the person's own long-running one in the same repo — real report:
+a person running `client`/`server` dev themselves in separate terminals
+while also using Claude Code for unrelated work in the same project had
+both killed after every single response. `scripts/free-ports.mjs`'s
+`predev` check (see the `dev-servers` skill) now refuses to kill a port
+that's actively answering requests, which safely covers the "stale
+agent-forgotten dev server" case this hook existed for — an agent should
+also just stop its own background dev-server task when done with it,
+rather than leaving cleanup to a hook.)
 
 **`session-router`** (`UserPromptSubmit`) — deterministically routes the
 session by matching the prompt text; injects guidance, never blocks:
@@ -246,21 +259,6 @@ into implementation, not only recorded in the host's own ephemeral
 `~/.claude/plans/*.md` file. Fails open (allows) if the vault repo isn't
 present at the expected sibling path. Host-specific like `session-router`;
 other tools have no equivalent gate.
-
-**free-dev-ports** (`Stop`) — runs `.claude/hooks/free-dev-ports.sh` (a
-plain bash script, no Node dependency — separate from `scripts/free-ports.mjs`,
-which stays as `predev`'s own port-freeing mechanism, see the `dev-servers`
-skill) every time Claude finishes responding, so a background `npm run dev`
-Claude started for its own live verification doesn't linger past the turn
-and collide with the user's own next dev server start (silently bumping
-their Vite to 5174, or crashing their server with `EADDRINUSE`, per
-repeated real reports). Unlike the removed `Stop` hooks above (reminders,
-gitkeep sweeping — general-purpose nagging), this only ever kills a
-listener on ports 3000/5173 — never a broad process sweep — and is a
-no-op when nothing's listening. Carries the same Windows IPv6 fix as
-`free-ports.mjs` (no `-p TCP` filter, since that silently excludes a Vite
-dev server bound to `[::1]:5173` — common whenever `localhost` resolves to
-`::1` first).
 
 ### Why two PR skills instead of one
 

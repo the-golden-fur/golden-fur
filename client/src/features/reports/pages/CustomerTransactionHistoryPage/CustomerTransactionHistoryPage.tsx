@@ -10,10 +10,7 @@ import type {
 import { ViewSwitcher } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { getMyTransactionHistory } from '../../api/reports.api';
 import { payTransactionWithCredit } from '../../../billing/api/billing.api';
-import {
-  addBalancePaymentForBooking,
-  payForBooking,
-} from '../../../booking/api/booking.api';
+import { addBalancePaymentForBooking } from '../../../booking/api/booking.api';
 import { BookingDetailsModal } from '../../../booking/components/BookingDetailsModal/BookingDetailsModal';
 import type { TransactionRecord } from '../../reports.types';
 import {
@@ -40,15 +37,6 @@ import styles from '../../components/TransactionHistoryTable/TransactionHistoryT
 
 type ViewMode = 'table' | 'board';
 
-/** Modes a customer can pay a Pending transaction with. */
-type PayMode = 'credit' | 'GCash' | 'Maya';
-
-const PAY_MODES: Array<{ value: PayMode; label: string }> = [
-  { value: 'credit', label: 'Account credit' },
-  { value: 'GCash', label: 'GCash' },
-  { value: 'Maya', label: 'Maya' },
-];
-
 function isPayable(t: TransactionRecord): boolean {
   return (
     t.payment_status === 'Pending' &&
@@ -61,9 +49,9 @@ function isPayable(t: TransactionRecord): boolean {
  * Custom change (P-1 roadmap item: transaction history visibility) - the
  * customer-facing counterpart to TransactionHistoryTable.tsx, reusing its
  * styles and (post-remaster) its Notion-style FilterSortBar + Board view.
- * "Pay" on a Pending booking_payment row opens a modal to choose account
- * credit / GCash / Maya. Credit settles immediately; GCash/Maya redirect to
- * PayMongo.
+ * "Pay" on a Pending booking_payment row opens a modal to pay from account
+ * credit - the customer's only self-service payment option; anything credit
+ * doesn't cover is left as a balance to settle at the counter.
  */
 export function CustomerTransactionHistoryPage() {
   const { accessToken } = useAuth();
@@ -82,9 +70,7 @@ export function CustomerTransactionHistoryPage() {
   const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
 
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
-  const [payMode, setPayMode] = useState<PayMode>('credit');
-  // "Amount paid" - editable only when paying with account credit (that path
-  // spawns a remaining-balance transaction). GCash/Maya always pay in full.
+  // "Amount paid" - a smaller amount spawns a remaining-balance transaction.
   const [payAmount, setPayAmount] = useState('');
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -141,73 +127,42 @@ export function CustomerTransactionHistoryPage() {
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
-    setPayMode('credit');
     setPayAmount(String(t.total_amount));
     setPayError(null);
-  };
-
-  const selectPayMode = (mode: PayMode) => {
-    setPayMode(mode);
-    // GCash/Maya always pay the whole transaction - snap the field back so a
-    // stale partial amount can't carry over.
-    if (mode !== 'credit' && payTarget) {
-      setPayAmount(String(payTarget.total_amount));
-    }
   };
 
   const confirmPay = async () => {
     if (!accessToken || !payTarget) return;
 
     const paying = Number(payAmount);
-    if (payMode === 'credit') {
-      if (!Number.isFinite(paying) || paying <= 0) {
-        setPayError('Enter an amount greater than zero.');
-        return;
-      }
-      if (paying > payTarget.total_amount + 0.001) {
-        setPayError('Amount paid cannot exceed the transaction total.');
-        return;
-      }
+    if (!Number.isFinite(paying) || paying <= 0) {
+      setPayError('Enter an amount greater than zero.');
+      return;
+    }
+    if (paying > payTarget.total_amount + 0.001) {
+      setPayError('Amount paid cannot exceed the transaction total.');
+      return;
     }
 
     setPaySubmitting(true);
     setPayError(null);
 
-    if (payMode === 'credit') {
-      const partialAmount =
-        paying < payTarget.total_amount ? paying : undefined;
-      const result = await payTransactionWithCredit(
-        payTarget.id,
-        accessToken,
-        partialAmount
-      );
-      setPaySubmitting(false);
-      if (result.error) {
-        setPayError(result.error);
-        return;
-      }
-      setPayTarget(null);
-      setReloadKey((k) => k + 1);
-      // Credit was just spent - refresh the navbar pill.
-      notifyCreditBalanceChanged();
-      return;
-    }
-
-    // GCash / Maya - settle the booking's outstanding charge via PayMongo.
-    const result = await payForBooking(
-      payTarget.booking_id as string,
+    const partialAmount =
+      paying < payTarget.total_amount ? paying : undefined;
+    const result = await payTransactionWithCredit(
+      payTarget.id,
       accessToken,
-      {
-        payment_method: payMode,
-        pay_in_full: payTarget.payment_choice !== 'downpayment',
-      }
+      partialAmount
     );
     setPaySubmitting(false);
-    if (result.error || !result.data) {
-      setPayError(result.error ?? 'Could not start this payment.');
+    if (result.error) {
+      setPayError(result.error);
       return;
     }
-    window.location.href = result.data.checkoutUrl;
+    setPayTarget(null);
+    setReloadKey((k) => k + 1);
+    // Credit was just spent - refresh the navbar pill.
+    notifyCreditBalanceChanged();
   };
 
   useEffect(() => {
@@ -465,21 +420,6 @@ export function CustomerTransactionHistoryPage() {
               Pay PHP {payTarget.total_amount.toFixed(2)}
             </h2>
 
-            <fieldset className={styles.modeGroup}>
-              <legend>How would you like to pay?</legend>
-              {PAY_MODES.map((mode) => (
-                <label key={mode.value} className={styles.modeOption}>
-                  <input
-                    type="radio"
-                    name="pay-mode"
-                    checked={payMode === mode.value}
-                    onChange={() => selectPayMode(mode.value)}
-                  />
-                  {mode.label}
-                </label>
-              ))}
-            </fieldset>
-
             <label className={styles.field}>
               Amount paid (PHP)
               <input
@@ -489,17 +429,11 @@ export function CustomerTransactionHistoryPage() {
                 max={payTarget.total_amount}
                 step="0.01"
                 value={payAmount}
-                disabled={payMode !== 'credit'}
                 onChange={(event) => setPayAmount(event.target.value)}
               />
             </label>
-            {payMode !== 'credit' ? (
-              <p className={styles.copy}>
-                GCash and Maya must pay the full amount. Use account credit to
-                pay part of this transaction.
-              </p>
-            ) : Number(payAmount) > 0 &&
-              Number(payAmount) < payTarget.total_amount ? (
+            {Number(payAmount) > 0 &&
+            Number(payAmount) < payTarget.total_amount ? (
               <p className={styles.copy}>
                 Whatever your available credit does not cover will be left as a
                 balance payment you can settle later.
@@ -526,11 +460,7 @@ export function CustomerTransactionHistoryPage() {
                 disabled={paySubmitting}
                 onClick={() => void confirmPay()}
               >
-                {paySubmitting
-                  ? 'Processing...'
-                  : payMode === 'credit'
-                    ? 'Pay with credit'
-                    : 'Continue to payment'}
+                {paySubmitting ? 'Processing...' : 'Pay with credit'}
               </button>
             </div>
           </section>

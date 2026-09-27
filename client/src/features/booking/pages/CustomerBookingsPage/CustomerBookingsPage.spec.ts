@@ -30,12 +30,7 @@ vi.mock('../../api/booking.api', () => ({
   listBookings: vi.fn(),
   rescheduleBooking: vi.fn(),
   cancelBooking: vi.fn(),
-  payForBooking: vi.fn(),
   getBookingDetails: vi.fn(),
-  getOnlinePaymentsStatus: vi.fn().mockResolvedValue({
-    data: { online_payments_enabled: true },
-    error: null,
-  }),
 }));
 
 // SlotPicker/StaffPickerList have their own dedicated specs; stub them here
@@ -134,10 +129,6 @@ describe('CustomerBookingsPage', () => {
     });
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
       data: [{ id: 'branch-1', name: 'Makati', is_vet_branch: true }],
-      error: null,
-    });
-    vi.mocked(bookingApi.getOnlinePaymentsStatus).mockResolvedValue({
-      data: { online_payments_enabled: true },
       error: null,
     });
   });

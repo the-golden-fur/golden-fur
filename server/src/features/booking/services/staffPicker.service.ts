@@ -35,7 +35,6 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   credit_expiry_days: 30,
   credit_expiry_fixed_date: null,
   cancellation_credit_conversion_rate: 100,
-  online_payments_enabled: true,
   // Mirrors the seeded system-default row (20260902161): downpayment enabled
   // system-wide at 50% of the discounted net total. Only used if that row is
   // deleted out-of-band.
@@ -149,20 +148,6 @@ export async function isStaffPickerEnabled(
   const config = await resolveServiceTypeStaffConfig(serviceCategory);
 
   return config.staff_picker_enabled;
-}
-
-/**
- * Whether the customer-facing "Pay" button (PayMongo checkout) should be
- * usable for this branch. The button itself always renders on the customer
- * side even when this is false - it's shown disabled with an explanatory
- * tooltip rather than hidden, so customers aren't left wondering where
- * payment went.
- */
-export async function isOnlinePaymentsEnabled(
-  branchId: string
-): Promise<boolean> {
-  const policy = await resolveEffectivePolicy(branchId);
-  return policy.online_payments_enabled;
 }
 
 export interface DownpaymentPolicy {
@@ -587,7 +572,6 @@ export async function updatePolicyConfiguration({
     credit_expiry_fixed_date: resolved.credit_expiry_fixed_date,
     cancellation_credit_conversion_rate:
       resolved.cancellation_credit_conversion_rate,
-    online_payments_enabled: resolved.online_payments_enabled,
     downpayment_enabled: resolved.downpayment_enabled,
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,

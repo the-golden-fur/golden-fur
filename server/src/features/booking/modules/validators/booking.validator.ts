@@ -428,14 +428,6 @@ export const decideCreditReviewValidator = z
   })
   .strict();
 
-/** Customer self-service Pay button (CustomerBookingsPage). */
-export const payBookingValidator = z
-  .object({
-    payment_method: z.enum(['GCash', 'Maya']),
-    pay_in_full: z.boolean(),
-  })
-  .strict();
-
 /** Customer-chosen partial payment toward a partly-paid booking's balance. */
 export const addBalancePaymentValidator = z
   .object({
@@ -443,13 +435,8 @@ export const addBalancePaymentValidator = z
   })
   .strict();
 
-export const onlinePaymentsStatusQueryValidator = z.object({
-  branch_id: z.uuid(),
-});
-
 /** Custom change: per-transaction downpayment config, read by the customer
- * booking flow the same way onlinePaymentsStatusQueryValidator's endpoint
- * exposes online_payments_enabled. */
+ * booking flow to preview the amount before submitting. */
 export const downpaymentStatusQueryValidator = z.object({
   branch_id: z.uuid(),
 });
@@ -497,7 +484,6 @@ export const updatePolicyValidator = z
     // Advisor addendum #10: percent of the paid amount returned as credit on
     // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
     cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
-    online_payments_enabled: z.boolean().optional(),
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
     downpayment_amount: z.number().positive().nullable().optional(),
@@ -741,10 +727,6 @@ export type DecideCreditReviewInput = z.infer<
 >;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
-export type PayBookingInput = z.infer<typeof payBookingValidator>;
-export type OnlinePaymentsStatusQueryInput = z.infer<
-  typeof onlinePaymentsStatusQueryValidator
->;
 export type DownpaymentStatusQueryInput = z.infer<
   typeof downpaymentStatusQueryValidator
 >;

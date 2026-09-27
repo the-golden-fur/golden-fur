@@ -1,28 +1,18 @@
 import { z } from 'zod';
-import {
-  BANK_NAMES,
-  ONLINE_PAYMENT_METHODS,
-  PAYMENT_METHODS,
-} from '../../billing.types.ts';
+import { BANK_NAMES, PAYMENT_METHODS } from '../../billing.types.ts';
 
 /**
  * Shared by checkout and misc-sale: bank_name is required (and only valid)
  * when payment_method = 'Bank Transfer'; payment_reference is the free-text
  * field Card/Bank Transfer/Grabmart/Pickaroo record (Issue #83 dev notes -
  * one column, interpreted differently per method in the UI). cash_tendered
- * is required only for Cash, to compute change server-side. online_channel
- * distinguishes GCash/Maya's two confirmation triggers - 'portal' (customer
- * portal, confirmed only by the PayMongo webhook, never by a cashier
- * action) vs 'walk_in_qr' (static QR shown at the counter, still requires
- * cashier confirmation like every manual method) - same channel, different
- * confirmation trigger, per Issue #83 dev notes.
+ * is required only for Cash, to compute change server-side.
  */
 function validatePaymentShape(
   input: {
     payment_method?: (typeof PAYMENT_METHODS)[number];
     bank_name?: (typeof BANK_NAMES)[number];
     cash_tendered?: number;
-    online_channel?: 'portal' | 'walk_in_qr';
   },
   ctx: z.RefinementCtx
 ) {
@@ -51,27 +41,6 @@ function validatePaymentShape(
       message: "cash_tendered is required when payment_method is 'Cash'",
     });
   }
-
-  const isOnlineMethod = ONLINE_PAYMENT_METHODS.includes(
-    input.payment_method as (typeof ONLINE_PAYMENT_METHODS)[number]
-  );
-
-  if (isOnlineMethod && !input.online_channel) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['online_channel'],
-      message:
-        "online_channel ('portal' or 'walk_in_qr') is required for GCash/Maya",
-    });
-  }
-
-  if (!isOnlineMethod && input.online_channel) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['online_channel'],
-      message: 'online_channel is only valid for GCash/Maya',
-    });
-  }
 }
 
 const basePaymentSchema = {
@@ -79,7 +48,6 @@ const basePaymentSchema = {
   bank_name: z.enum(BANK_NAMES).optional(),
   payment_reference: z.string().trim().min(1).optional(),
   cash_tendered: z.number().nonnegative().optional(),
-  online_channel: z.enum(['portal', 'walk_in_qr']).optional(),
   credit_to_apply: z.number().nonnegative().default(0),
 };
 

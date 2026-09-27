@@ -25,8 +25,8 @@ function round2(value: number): number {
 
 /**
  * Money the business has actually confirmed against this booking - the sum
- * of its `booking_payment` transactions a cashier or the PayMongo webhook
- * has settled (`payment_status` off 'Pending').
+ * of its `booking_payment` transactions a cashier has settled (`payment_status`
+ * off 'Pending').
  *
  * This is deliberately NOT the booking's own `payment_status` rollup: that
  * is derived from these same rows, and this stays a direct read so the

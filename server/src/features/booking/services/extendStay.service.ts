@@ -300,7 +300,6 @@ export async function extendHotelStay({
         payment_choice: 'balance',
         subtotal_amount: addedAmount,
         total_amount: addedAmount,
-        initiated_by: 'staff',
         processed_by_staff_id: requesterId,
       })
       .select('*')
