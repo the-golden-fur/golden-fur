@@ -139,7 +139,12 @@ describe('AdminPetTypesPage', () => {
     await screen.findByRole('heading', { name: 'Existing pet types' });
     const section = await findBrowserSection();
 
-    expect(within(section).getByText('Dog')).toBeInTheDocument();
+    // findBrowserSection only waits for the heading, which renders before
+    // the pet-types list itself finishes loading ("Loading pet types..."
+    // shows first) - findByText (not getByText) actually waits for that
+    // fetch to resolve instead of racing it. This was flaky in CI (fast
+    // local runs usually beat the race, a loaded CI runner doesn't always).
+    expect(await within(section).findByText('Dog')).toBeInTheDocument();
     expect(within(section).getByText('Cat')).toBeInTheDocument();
     expect(within(section).getByText('Active')).toBeInTheDocument();
     expect(within(section).getByText('Inactive')).toBeInTheDocument();
