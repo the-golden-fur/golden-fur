@@ -65,11 +65,30 @@
   box-shadow: var(--shadow-md);
 }
 
+/* A full-bleed button: the negative margin cancels the row's padding so the
+ * whole card surface (not just the text) is the click target. */
 .bookingMain {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  box-sizing: border-box;
+  width: calc(100% + 2 * var(--space-2));
+  min-height: var(--booking-queue-row-min-height);
+  margin: calc(-1 * var(--space-2));
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: var(--space-2);
+  text-align: left;
+}
+
+.bookingMain:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: -2px;
 }
 
 .bookingTitle {
