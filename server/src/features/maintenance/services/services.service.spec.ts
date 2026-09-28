@@ -323,6 +323,8 @@ describe('services.service', () => {
         serviceId: 'service-1',
         branchId: 'branch-south',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-south',
       });
 
       expect(result.is_available).toBe(false);
@@ -347,6 +349,8 @@ describe('services.service', () => {
         serviceId: 'service-1',
         branchId: 'branch-south',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-south',
       });
 
       const sync = recordedWrites.find(
@@ -363,8 +367,47 @@ describe('services.service', () => {
           serviceId: 'missing',
           branchId: 'branch-south',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-south',
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setServiceBranchAvailability({
+          serviceId: 'service-1',
+          branchId: 'branch-south',
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-makati',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows an Admin to toggle their own branch', async () => {
+      queueFromResults(
+        { data: { id: 'service-1' }, error: null },
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: true,
+          },
+          error: null,
+        },
+        { data: [{ is_available: true }], error: null }
+      );
+
+      const result = await setServiceBranchAvailability({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        isAvailable: true,
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-south',
+      });
+
+      expect(result.is_available).toBe(true);
     });
   });
 
@@ -531,6 +574,8 @@ describe('services.service', () => {
           serviceId: 'service-1',
           branchId: 'branch-makati',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-makati',
         })
       ).rejects.toMatchObject({ statusCode: 409 });
     });

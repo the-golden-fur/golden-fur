@@ -250,6 +250,8 @@ describe('packages.service', () => {
         packageId: 'package-1',
         branchId: 'branch-southwoods',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-southwoods',
       });
 
       expect(result.is_available).toBe(false);
@@ -274,6 +276,8 @@ describe('packages.service', () => {
         packageId: 'package-1',
         branchId: 'branch-southwoods',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-southwoods',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
@@ -287,8 +291,22 @@ describe('packages.service', () => {
           packageId: 'missing',
           branchId: 'branch-southwoods',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-southwoods',
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setPackageBranchAvailability({
+          packageId: 'package-1',
+          branchId: 'branch-southwoods',
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-makati',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
   });
 });

@@ -246,6 +246,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-southwoods',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(result.is_available).toBe(false);
@@ -269,6 +271,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-makati',
         isAvailable: true,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: true });
@@ -292,6 +296,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-makati',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
@@ -305,8 +311,48 @@ describe('discounts.service', () => {
           discountId: 'missing',
           branchId: 'branch-makati',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-makati',
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setDiscountBranchAvailability({
+          discountId: 'discount-custom',
+          branchId: 'branch-southwoods',
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-makati',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows an Admin to toggle their own branch', async () => {
+      queueFromResults(
+        { data: { id: 'discount-custom' }, error: null },
+        {
+          data: {
+            discount_id: 'discount-custom',
+            branch_id: 'branch-makati',
+            is_available: true,
+          },
+          error: null,
+        },
+        { data: [{ is_available: true }], error: null },
+        { data: null, error: null }
+      );
+
+      const result = await setDiscountBranchAvailability({
+        discountId: 'discount-custom',
+        branchId: 'branch-makati',
+        isAvailable: true,
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-makati',
+      });
+
+      expect(result.is_available).toBe(true);
     });
   });
 

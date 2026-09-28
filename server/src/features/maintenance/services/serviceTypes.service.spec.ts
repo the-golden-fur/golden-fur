@@ -203,6 +203,8 @@ describe('serviceTypes.service', () => {
         serviceTypeId: 'type-1',
         branchId: 'branch-south',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-south',
       });
 
       expect(result.is_available).toBe(false);
@@ -227,6 +229,8 @@ describe('serviceTypes.service', () => {
         serviceTypeId: 'type-1',
         branchId: 'branch-south',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-south',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
@@ -240,8 +244,22 @@ describe('serviceTypes.service', () => {
           serviceTypeId: 'missing-type',
           branchId: 'branch-south',
           isAvailable: false,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-south',
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setServiceTypeBranchAvailability({
+          serviceTypeId: 'type-1',
+          branchId: 'branch-south',
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-makati',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
   });
 
@@ -323,6 +341,8 @@ describe('serviceTypes.service', () => {
           serviceTypeId: 'type-1',
           branchId: 'branch-makati',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-makati',
         })
       ).rejects.toMatchObject({ statusCode: 409 });
     });

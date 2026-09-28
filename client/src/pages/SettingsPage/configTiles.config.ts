@@ -79,14 +79,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: PricingConfigurationPage,
   },
   {
-    title: 'Weight Classes',
-    description:
-      'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
-    to: '/staff/admin/maintenance/weight-classes',
-    icon: Scale,
-    Component: WeightClassConfigurationPage,
-  },
-  {
     title: 'Promos & Rewards',
     description:
       'Configure promotions (including coupon spin wheels and their trigger conditions), spin-wheel rewards, and reward pools.',
@@ -125,6 +117,25 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: AdminCagesPage,
   },
 ];
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx) rather than living in the array itself - same shape as
+ * BRANCHES_TILE below. Weight class cut-offs are global (affect every
+ * branch's Grooming pricing and Hotel/Daycare cage sizing at once), so an
+ * Admin - scoped to their own branch everywhere else in Config - has no
+ * access to this tile at all, not even read-only. WeightClassConfigurationPage
+ * itself also enforces this (ALLOWED_VIEWER_ROLES), so direct navigation to
+ * its route doesn't bypass this.
+ */
+export const WEIGHT_CLASSES_TILE: ConfigTileConfig = {
+  title: 'Weight Classes',
+  description:
+    'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
+  to: '/staff/admin/maintenance/weight-classes',
+  icon: Scale,
+  Component: WeightClassConfigurationPage,
+};
 
 /**
  * Renamed from "System Configuration" (session 87) - now a full Notion-style

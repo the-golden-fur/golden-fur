@@ -46,6 +46,8 @@ interface SetDiscountBranchAvailabilityParams {
   discountId: string;
   branchId: string;
   isAvailable: boolean;
+  requesterRole: string;
+  requesterBranchId: string;
 }
 
 /**
@@ -169,7 +171,17 @@ export async function setDiscountBranchAvailability({
   discountId,
   branchId,
   isAvailable,
+  requesterRole,
+  requesterBranchId,
 }: SetDiscountBranchAvailabilityParams): Promise<DiscountBranchAvailability> {
+  // Admins are scoped to their own branch; Superadmins may toggle any branch.
+  if (requesterRole !== 'Superadmin' && branchId !== requesterBranchId) {
+    throwWithStatus(
+      403,
+      'Admins can only manage branch availability for their own branch'
+    );
+  }
+
   const { data: existing, error: lookupError } = await supabase
     .from('discounts')
     .select('id, archived_at')

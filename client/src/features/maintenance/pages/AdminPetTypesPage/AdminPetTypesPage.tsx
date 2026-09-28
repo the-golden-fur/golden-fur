@@ -91,6 +91,7 @@ export function AdminPetTypesPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [petTypes, setPetTypes] = useState<PetTypeRow[]>([]);
@@ -141,6 +142,7 @@ export function AdminPetTypesPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -150,6 +152,9 @@ export function AdminPetTypesPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin only configures their own branch's pet type price overrides;
+  // Superadmin can touch any branch (and the all-branches default row).
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -643,6 +648,7 @@ export function AdminPetTypesPage() {
         isOpen={priceModalPetType !== null}
         petTypeName={priceModalPetType?.name ?? ''}
         branches={branches}
+        lockedBranchId={lockedBranchId}
         overrides={overrides.filter(
           (row) => row.pet_type === priceModalPetType?.key
         )}

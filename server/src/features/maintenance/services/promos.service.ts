@@ -78,6 +78,8 @@ interface SetPromoBranchAvailabilityParams {
   promoId: string;
   branchId: string;
   isAvailable: boolean;
+  requesterRole: string;
+  requesterBranchId: string;
 }
 
 /**
@@ -307,7 +309,17 @@ export async function setPromoBranchAvailability({
   promoId,
   branchId,
   isAvailable,
+  requesterRole,
+  requesterBranchId,
 }: SetPromoBranchAvailabilityParams): Promise<PromoBranchAvailability> {
+  // Admins are scoped to their own branch; Superadmins may toggle any branch.
+  if (requesterRole !== 'Superadmin' && branchId !== requesterBranchId) {
+    throwWithStatus(
+      403,
+      'Admins can only manage branch availability for their own branch'
+    );
+  }
+
   const { data: existing, error: lookupError } = await supabase
     .from('promos')
     .select('id, promo_type')

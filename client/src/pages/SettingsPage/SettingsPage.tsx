@@ -35,6 +35,7 @@ import {
   BRANCHES_TILE,
   CONFIG_TILES,
   HIDDEN_CONFIG_TILES,
+  WEIGHT_CLASSES_TILE,
 } from './configTiles.config';
 import styles from './SettingsPage.module.css';
 
@@ -298,7 +299,10 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const isSuperadmin = status?.role === 'Superadmin';
 
   const configTiles = useMemo(
-    () => (isSuperadmin ? [...CONFIG_TILES, BRANCHES_TILE] : CONFIG_TILES),
+    () =>
+      isSuperadmin
+        ? [...CONFIG_TILES, WEIGHT_CLASSES_TILE, BRANCHES_TILE]
+        : CONFIG_TILES,
     [isSuperadmin]
   );
 

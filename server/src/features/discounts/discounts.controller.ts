@@ -175,8 +175,10 @@ export async function setDiscountBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -193,6 +195,8 @@ export async function setDiscountBranchAvailabilityController(
       discountId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
