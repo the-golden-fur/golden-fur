@@ -31,11 +31,30 @@ import {
 import {
   paymentChoiceLabel,
   paymentStatusLabel,
+  paymentTone,
   transactionTypeLabel,
 } from '../../components/TransactionHistoryTable/transactionDisplay';
+import {
+  GROUP_BY_OPTIONS,
+  groupTransactions,
+  type TransactionGroupBy,
+} from '../../components/TransactionHistoryTable/transactionGrouping';
+import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
+import type { PaymentStatus } from '../../../booking/booking.types';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
 
 type ViewMode = 'table' | 'board';
+
+const ROW_TONE_CLASS = {
+  due: styles.rowDue,
+  partial: styles.rowPartial,
+  paid: styles.rowPaid,
+} as const;
+
+// Every row is the viewer's own, so grouping by customer is meaningless here.
+const CUSTOMER_GROUP_BY_OPTIONS = GROUP_BY_OPTIONS.filter(
+  (option) => option.value !== 'customer'
+);
 
 function isPayable(t: TransactionRecord): boolean {
   return (
@@ -60,6 +79,9 @@ export function CustomerTransactionHistoryPage() {
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('table');
+  // Same default as the staff Transactions page: each down payment / balance
+  // sits under the booking it pays for.
+  const [groupBy, setGroupBy] = useState<TransactionGroupBy>('booking');
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -242,6 +264,11 @@ export function CustomerTransactionHistoryPage() {
     return [...list].sort(COMPARATORS[sortKey]);
   }, [transactions, statusFilter, search, sortKey]);
 
+  const groups = useMemo(
+    () => groupTransactions(rows, groupBy, { showCustomer: false }),
+    [rows, groupBy]
+  );
+
   const payable = payableBalances(transactions);
 
   if (!accessToken) {
@@ -280,6 +307,24 @@ export function CustomerTransactionHistoryPage() {
           value={view}
           onChange={setView}
         />
+        {view === 'table' ? (
+          <label className={styles.groupByField}>
+            <span className={styles.groupByLabel}>Group by</span>
+            <select
+              className={styles.control}
+              value={groupBy}
+              onChange={(event) =>
+                setGroupBy(event.target.value as TransactionGroupBy)
+              }
+            >
+              {CUSTOMER_GROUP_BY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </FilterSortBar>
 
       {payable.length > 0 ? (
@@ -341,69 +386,109 @@ export function CustomerTransactionHistoryPage() {
               <th />
             </tr>
           </thead>
-          <tbody>
-            {rows.map((transaction) => {
-              const bookingId = transaction.booking_id;
-              const openDetails = () => {
-                if (bookingId) setDetailsBookingId(bookingId);
-              };
-              return (
-                <tr
-                  key={transaction.id}
-                  className={bookingId ? styles.clickableRow : undefined}
-                  role={bookingId ? 'button' : undefined}
-                  tabIndex={bookingId ? 0 : undefined}
-                  aria-label={
-                    bookingId
-                      ? `View booking details for this ${
-                          transaction.bookings?.service_category ?? ''
-                        } transaction`.replace(/\s+/g, ' ')
-                      : undefined
-                  }
-                  onClick={bookingId ? openDetails : undefined}
-                  onKeyDown={
-                    bookingId
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            openDetails();
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  <td>
-                    {new Date(transaction.created_at).toLocaleDateString()}
-                  </td>
-                  <td>{transactionTypeLabel(transaction)}</td>
-                  <td>{transaction.bookings?.service_category ?? '-'}</td>
-                  <td>{paymentChoiceLabel(transaction)}</td>
-                  <td>
-                    {transaction.payment_status === 'Pending'
-                      ? '—'
-                      : transaction.payment_method}
-                  </td>
-                  <td>{paymentStatusLabel(transaction.payment_status)}</td>
-                  <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                  <td>
-                    {isPayable(transaction) ? (
-                      <button
-                        type="button"
-                        className={styles.payButton}
-                        onClick={(event) => {
-                          // Don't also open the details popup underneath.
-                          event.stopPropagation();
-                          openPay(transaction);
-                        }}
-                      >
-                        Pay
-                      </button>
-                    ) : null}
-                  </td>
+          {groups.map((group) => (
+            <tbody key={group.key}>
+              {group.title ? (
+                <tr className={styles.groupRow}>
+                  <th scope="colgroup" colSpan={8}>
+                    <div className={styles.groupHeader}>
+                      <div className={styles.groupHeading}>
+                        <span className={styles.groupTitle}>{group.title}</span>
+                        {group.meta ? (
+                          <span className={styles.groupMeta}>{group.meta}</span>
+                        ) : null}
+                      </div>
+                      <div className={styles.groupSummary}>
+                        <span className={styles.groupMeta}>
+                          {group.items.length}{' '}
+                          {group.items.length === 1
+                            ? 'transaction'
+                            : 'transactions'}
+                        </span>
+                        {group.netTotal !== null ? (
+                          <span className={styles.groupMeta}>
+                            Booking total {formatCurrency(group.netTotal)}
+                          </span>
+                        ) : null}
+                        {group.bookingStatus ? (
+                          <PaymentStatusBadge
+                            status={group.bookingStatus as PaymentStatus}
+                            context="billing"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
+              ) : null}
+              {group.items.map((transaction) => {
+                const bookingId = transaction.booking_id;
+                const openDetails = () => {
+                  if (bookingId) setDetailsBookingId(bookingId);
+                };
+                return (
+                  <tr
+                    key={transaction.id}
+                    className={[
+                      ROW_TONE_CLASS[paymentTone(transaction.payment_status)],
+                      bookingId ? styles.clickableRow : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    role={bookingId ? 'button' : undefined}
+                    tabIndex={bookingId ? 0 : undefined}
+                    aria-label={
+                      bookingId
+                        ? `View booking details for this ${
+                            transaction.bookings?.service_category ?? ''
+                          } transaction`.replace(/\s+/g, ' ')
+                        : undefined
+                    }
+                    onClick={bookingId ? openDetails : undefined}
+                    onKeyDown={
+                      bookingId
+                        ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openDetails();
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    <td>
+                      {new Date(transaction.created_at).toLocaleDateString()}
+                    </td>
+                    <td>{transactionTypeLabel(transaction)}</td>
+                    <td>{transaction.bookings?.service_category ?? '-'}</td>
+                    <td>{paymentChoiceLabel(transaction)}</td>
+                    <td>
+                      {transaction.payment_status === 'Pending'
+                        ? '—'
+                        : transaction.payment_method}
+                    </td>
+                    <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                    <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                    <td>
+                      {isPayable(transaction) ? (
+                        <button
+                          type="button"
+                          className={styles.payButton}
+                          onClick={(event) => {
+                            // Don't also open the details popup underneath.
+                            event.stopPropagation();
+                            openPay(transaction);
+                          }}
+                        >
+                          Pay
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
       )}
 

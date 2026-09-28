@@ -193,6 +193,45 @@ describe('CustomerTransactionHistoryPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('tints rows by payment status and groups them under their booking', async () => {
+    vi.mocked(reportsApi.getMyTransactionHistory).mockResolvedValue({
+      data: [
+        buildRecord({
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Partially Paid',
+            total_price: 1000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Biscuit' },
+          },
+        }),
+        buildRecord({
+          id: 'txn-2',
+          payment_status: 'Fully Paid',
+          payment_method: 'GCash',
+          total_amount: 500,
+        }),
+      ],
+      error: null,
+    });
+    renderPage();
+
+    const header = await screen.findByText('Grooming · Biscuit');
+    const groupRow = header.closest('tr') as HTMLElement;
+    expect(within(groupRow).getByText('2 transactions')).toBeInTheDocument();
+    expect(
+      within(groupRow).queryByText('Ada Lovelace')
+    ).not.toBeInTheDocument();
+
+    const [dueRow, paidRow] = screen
+      .getAllByText('PHP 500.00')
+      .map((cell) => cell.closest('tr') as HTMLElement);
+    expect(dueRow.className).toMatch(/rowDue/);
+    expect(paidRow.className).toMatch(/rowPaid/);
+  });
+
   it('shows no Pay button on a settled transaction', async () => {
     vi.mocked(reportsApi.getMyTransactionHistory).mockResolvedValue({
       data: [
