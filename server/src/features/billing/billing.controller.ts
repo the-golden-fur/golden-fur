@@ -11,6 +11,7 @@ import {
   createMiscSale,
   deleteMiscSale,
   getMiscSale,
+  getMiscSaleCredit,
   listMiscSales,
   updateMiscSale,
 } from './services/miscSale.service.ts';
@@ -28,11 +29,13 @@ import {
   checkoutGroupValidator,
   checkoutValidator,
   createMiscSaleValidator,
+  miscSaleCreditQueryValidator,
   payTransactionWithCreditValidator,
   previewMiscSaleValidator,
   recordTransactionPaymentValidator,
   updateMiscSaleValidator,
 } from './modules/validators/billing.validator.ts';
+import { listMiscSaleOptions } from './services/discountPromoEvaluation.service.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { BILLING_STAFF_ROLES } from './billing.types.ts';
 
@@ -173,10 +176,56 @@ export async function previewMiscSaleController(
       branchId,
       items: parsed.data.items,
       paymentMethod: parsed.data.payment_method,
-      seniorCitizenEligible: parsed.data.senior_citizen_eligible,
-      pwdEligible: parsed.data.pwd_eligible,
+      discountIds: parsed.data.discount_ids,
+      promoIds: parsed.data.promo_ids,
     });
     return res.status(200).json(preview);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Lists the discounts/promos the admin has made available for misc sales
+ * at the cashier's own branch - the wizard's Discount/Promo step options. */
+export async function listMiscSaleOptionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const options = await listMiscSaleOptions(branchId);
+    return res.status(200).json(options);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function getMiscSaleCreditController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = miscSaleCreditQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const credit = await getMiscSaleCredit(parsed.data.customer_id, branchId);
+    return res.status(200).json(credit);
   } catch (error) {
     return sendServiceError(res, error);
   }

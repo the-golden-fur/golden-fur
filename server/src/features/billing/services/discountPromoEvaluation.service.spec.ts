@@ -4,6 +4,7 @@ import {
   evaluateMiscSaleDiscounts,
   evaluateMiscSalePromos,
   evaluatePromos,
+  listMiscSaleOptions,
 } from './discountPromoEvaluation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { BookingForBilling } from './lineItemSources.service.ts';
@@ -232,11 +233,11 @@ describe('evaluateMiscSaleDiscounts', () => {
     vi.clearAllMocks();
   });
 
-  it('session 115: returns [] without querying when the payment method is not Cash', async () => {
+  it('returns [] without querying when nothing was picked', async () => {
     const result = await evaluateMiscSaleDiscounts({
       branchId: 'branch-makati',
-      paymentMethod: 'GCash',
-      eligibility: { seniorCitizenEligible: false, pwdEligible: false },
+      paymentMethod: 'Cash',
+      discountIds: [],
       subtotal: 500,
     });
 
@@ -244,13 +245,31 @@ describe('evaluateMiscSaleDiscounts', () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it('session 115: applies a misc_sale-scoped discount available at the branch, filtering the query to scope_type = misc_sale', async () => {
-    queueFromResults({ data: [buildDiscountRow()], error: null });
+  it('returns [] without querying when the payment method is not Cash, even with picks', async () => {
+    const result = await evaluateMiscSaleDiscounts({
+      branchId: 'branch-makati',
+      paymentMethod: 'GCash',
+      discountIds: ['discount-1'],
+      subtotal: 500,
+    });
+
+    expect(result).toEqual([]);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('applies only the picked misc_sale discount, querying active, non-archived misc_sale rows', async () => {
+    queueFromResults({
+      data: [
+        buildDiscountRow(),
+        buildDiscountRow({ id: 'discount-2', name: 'Not picked' }),
+      ],
+      error: null,
+    });
 
     const result = await evaluateMiscSaleDiscounts({
       branchId: 'branch-makati',
       paymentMethod: 'Cash',
-      eligibility: { seniorCitizenEligible: false, pwdEligible: false },
+      discountIds: ['discount-1'],
       subtotal: 500,
     });
 
@@ -266,9 +285,50 @@ describe('evaluateMiscSaleDiscounts', () => {
     ]);
     expect(builders[0].eq).toHaveBeenCalledWith('is_active', true);
     expect(builders[0].eq).toHaveBeenCalledWith('scope_type', 'misc_sale');
+    expect(builders[0].is).toHaveBeenCalledWith('archived_at', null);
   });
 
-  it('session 115: skips a discount not available at the requested branch', async () => {
+  it('applies a picked mandated discount with no separate eligibility flag (picking it is the ID check)', async () => {
+    queueFromResults({
+      data: [
+        buildDiscountRow({
+          name: 'Senior Citizen Discount',
+          is_mandated: true,
+          mandated_kind: 'senior_citizen',
+          value: 20,
+        }),
+      ],
+      error: null,
+    });
+
+    const result = await evaluateMiscSaleDiscounts({
+      branchId: 'branch-makati',
+      paymentMethod: 'Cash',
+      discountIds: ['discount-1'],
+      subtotal: 500,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].line_total).toBe(-100);
+  });
+
+  it('caps a flat discount at the subtotal', async () => {
+    queueFromResults({
+      data: [buildDiscountRow({ discount_type: 'Flat', value: 900 })],
+      error: null,
+    });
+
+    const result = await evaluateMiscSaleDiscounts({
+      branchId: 'branch-makati',
+      paymentMethod: 'Cash',
+      discountIds: ['discount-1'],
+      subtotal: 500,
+    });
+
+    expect(result[0].line_total).toBe(-500);
+  });
+
+  it('rejects a picked discount that is not available at the branch', async () => {
     queueFromResults({
       data: [
         buildDiscountRow({
@@ -280,70 +340,14 @@ describe('evaluateMiscSaleDiscounts', () => {
       error: null,
     });
 
-    const result = await evaluateMiscSaleDiscounts({
-      branchId: 'branch-makati',
-      paymentMethod: 'Cash',
-      eligibility: { seniorCitizenEligible: false, pwdEligible: false },
-      subtotal: 500,
-    });
-
-    expect(result).toEqual([]);
-  });
-
-  it('session 115: gates a mandated Senior Citizen discount on the eligibility flag', async () => {
-    const row = () =>
-      buildDiscountRow({
-        name: 'Senior Citizen Discount',
-        is_mandated: true,
-        mandated_kind: 'senior_citizen',
-      });
-
-    queueFromResults({ data: [row()], error: null });
-
-    const ineligible = await evaluateMiscSaleDiscounts({
-      branchId: 'branch-makati',
-      paymentMethod: 'Cash',
-      eligibility: { seniorCitizenEligible: false, pwdEligible: false },
-      subtotal: 500,
-    });
-    expect(ineligible).toEqual([]);
-
-    queueFromResults({ data: [row()], error: null });
-
-    const eligible = await evaluateMiscSaleDiscounts({
-      branchId: 'branch-makati',
-      paymentMethod: 'Cash',
-      eligibility: { seniorCitizenEligible: true, pwdEligible: false },
-      subtotal: 500,
-    });
-    expect(eligible).toHaveLength(1);
-  });
-
-  it('a RENAMED mandated discount is still gated on eligibility (the gate keys on mandated_kind, not the name)', async () => {
-    for (const [kind, flags] of [
-      ['senior_citizen', { seniorCitizenEligible: false, pwdEligible: true }],
-      ['pwd', { seniorCitizenEligible: true, pwdEligible: false }],
-    ] as const) {
-      queueFromResults({
-        data: [
-          buildDiscountRow({
-            name: 'Loyal Customers Special',
-            is_mandated: true,
-            mandated_kind: kind,
-          }),
-        ],
-        error: null,
-      });
-
-      const result = await evaluateMiscSaleDiscounts({
+    await expect(
+      evaluateMiscSaleDiscounts({
         branchId: 'branch-makati',
         paymentMethod: 'Cash',
-        eligibility: flags,
+        discountIds: ['discount-1'],
         subtotal: 500,
-      });
-
-      expect(result).toEqual([]);
-    }
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
 
@@ -437,13 +441,34 @@ describe('evaluateMiscSalePromos', () => {
     vi.clearAllMocks();
   });
 
-  it('session 115: applies an all_services promo with no items to match against', async () => {
+  it('returns [] without querying when nothing was picked', async () => {
+    const applied = await evaluateMiscSalePromos({
+      branchId: 'branch-makati',
+      promoIds: [],
+      subtotal: 1000,
+    });
+
+    expect(applied).toEqual([]);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('applies only the picked all_services promo, under the branch cap', async () => {
     queueFromResults(
-      { data: [buildPromoRow({ id: 'promo-a', value: 15 })], error: null },
+      {
+        data: [
+          buildPromoRow({ id: 'promo-a', value: 15 }),
+          buildPromoRow({ id: 'promo-b', value: 5 }),
+        ],
+        error: null,
+      },
       { data: { cap_type: 'count', cap_value: 5 }, error: null }
     );
 
-    const applied = await evaluateMiscSalePromos('branch-makati', 1000);
+    const applied = await evaluateMiscSalePromos({
+      branchId: 'branch-makati',
+      promoIds: ['promo-a'],
+      subtotal: 1000,
+    });
 
     expect(applied).toHaveLength(1);
     expect(applied[0]).toMatchObject({
@@ -452,7 +477,28 @@ describe('evaluateMiscSalePromos', () => {
     });
   });
 
-  it("session 115: never matches a 'specific' scoped promo, since a misc sale has no service/package items", async () => {
+  it('still enforces the promo cap across several picks', async () => {
+    queueFromResults(
+      {
+        data: [
+          buildPromoRow({ id: 'promo-a', value: 15 }),
+          buildPromoRow({ id: 'promo-b', value: 5 }),
+        ],
+        error: null,
+      },
+      { data: { cap_type: 'count', cap_value: 1 }, error: null }
+    );
+
+    const applied = await evaluateMiscSalePromos({
+      branchId: 'branch-makati',
+      promoIds: ['promo-a', 'promo-b'],
+      subtotal: 1000,
+    });
+
+    expect(applied.map((promo) => promo.promoId)).toEqual(['promo-a']);
+  });
+
+  it("rejects a picked 'specific' scoped promo, since a misc sale has no service/package items", async () => {
     queueFromResults({
       data: [
         buildPromoRow({
@@ -464,8 +510,69 @@ describe('evaluateMiscSalePromos', () => {
       error: null,
     });
 
-    const applied = await evaluateMiscSalePromos('branch-makati', 1000);
+    await expect(
+      evaluateMiscSalePromos({
+        branchId: 'branch-makati',
+        promoIds: ['promo-specific'],
+        subtotal: 1000,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
 
-    expect(applied).toEqual([]);
+describe('listMiscSaleOptions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists the branch's misc_sale discounts and all_services promos, dropping ones unavailable at the branch", async () => {
+    queueFromResults(
+      {
+        data: [
+          buildDiscountRow(),
+          buildDiscountRow({
+            id: 'discount-cebu',
+            discount_branch_availability: [
+              { branch_id: 'branch-cebu', is_available: true },
+            ],
+          }),
+        ],
+        error: null,
+      },
+      {
+        data: [
+          buildPromoRow({ id: 'promo-a', name: 'Weekend', value: 15 }),
+          buildPromoRow({
+            id: 'promo-specific',
+            scope_type: 'specific',
+            promo_scope: [{ service_id: 'service-1', package_id: null }],
+          }),
+        ],
+        error: null,
+      }
+    );
+
+    const options = await listMiscSaleOptions('branch-makati');
+
+    expect(options).toEqual({
+      discounts: [
+        {
+          id: 'discount-1',
+          name: 'Misc Sale Discount',
+          discount_type: 'Percentage',
+          value: 10,
+          is_mandated: false,
+        },
+      ],
+      promos: [
+        {
+          id: 'promo-a',
+          name: 'Weekend',
+          discount_type: 'Percentage',
+          value: 15,
+          end_date: null,
+        },
+      ],
+    });
   });
 });

@@ -67,7 +67,7 @@ describe('createMiscSaleValidator', () => {
     expect(result.success).toBe(false);
   });
 
-  it('defaults senior_citizen_eligible/pwd_eligible to false when omitted', () => {
+  it('defaults discount_ids/promo_ids to empty when omitted', () => {
     const result = createMiscSaleValidator.safeParse({
       ...base,
       items: [{ description: 'Cat toy', amount: 80 }],
@@ -75,9 +75,39 @@ describe('createMiscSaleValidator', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.senior_citizen_eligible).toBe(false);
-      expect(result.data.pwd_eligible).toBe(false);
+      expect(result.data.discount_ids).toEqual([]);
+      expect(result.data.promo_ids).toEqual([]);
     }
+  });
+
+  it("accepts payment_method 'Credit' with no cash_tendered", () => {
+    const result = createMiscSaleValidator.safeParse({
+      customer_id: CUSTOMER_ID,
+      payment_method: 'Credit',
+      items: [{ description: 'Cat toy', amount: 80 }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-uuid discount id', () => {
+    const result = createMiscSaleValidator.safeParse({
+      ...base,
+      items: [{ description: 'Cat toy', amount: 80 }],
+      discount_ids: ['not-a-uuid'],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects the retired senior_citizen_eligible flag (strict schema)', () => {
+    const result = createMiscSaleValidator.safeParse({
+      ...base,
+      items: [{ description: 'Cat toy', amount: 80 }],
+      senior_citizen_eligible: true,
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

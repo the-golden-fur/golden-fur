@@ -10,7 +10,7 @@ import { BANK_NAMES, PAYMENT_METHODS } from '../../billing.types.ts';
  */
 function validatePaymentShape(
   input: {
-    payment_method?: (typeof PAYMENT_METHODS)[number];
+    payment_method?: (typeof MISC_SALE_PAYMENT_METHODS)[number];
     bank_name?: (typeof BANK_NAMES)[number];
     cash_tendered?: number;
   },
@@ -42,6 +42,11 @@ function validatePaymentShape(
     });
   }
 }
+
+/** A misc sale can also be paid entirely from the customer's branch credit
+ * ('Credit' is a payment_method enum value - 20260901152). Checkout keeps
+ * PAYMENT_METHODS: its credit only ever tops up another method. */
+const MISC_SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, 'Credit'] as const;
 
 const basePaymentSchema = {
   payment_method: z.enum(PAYMENT_METHODS),
@@ -113,13 +118,20 @@ const miscSaleItemSchema = z
     }
   });
 
+/** The discounts/promos the cashier ticked on the wizard's Discount/Promo
+ * step (listed from GET /billing/misc-sale/options) - re-validated
+ * server-side in evaluateMiscSaleDiscounts/evaluateMiscSalePromos. */
+const miscSaleSelectionSchema = {
+  discount_ids: z.array(z.uuid()).max(20).default([]),
+  promo_ids: z.array(z.uuid()).max(20).default([]),
+};
+
 /**
  * Session 115 (Stage C - Cashier misc-sale wizard): a misc sale is now a
- * real multi-item cart (`items`, at least one line) with the same
- * auto-evaluated discount/promo step checkout already has -
- * senior_citizen_eligible/pwd_eligible gate the government-mandated
- * discounts the same way (see evaluateMiscSaleDiscounts,
- * paymentMethod.service.ts's own Cash-only rule mirrored there).
+ * real multi-item cart (`items`, at least one line). Discounts/promos are
+ * the ones the cashier picked (discount_ids/promo_ids) from what the admin
+ * configured - see evaluateMiscSaleDiscounts (still Cash-only, per
+ * paymentMethod.service.ts's rule).
  */
 export const createMiscSaleValidator = z
   .object({
@@ -130,9 +142,9 @@ export const createMiscSaleValidator = z
     // requires a customer_id to apply against.
     customer_id: z.uuid(),
     items: z.array(miscSaleItemSchema).min(1, 'Add at least one item'),
-    senior_citizen_eligible: z.boolean().default(false),
-    pwd_eligible: z.boolean().default(false),
+    ...miscSaleSelectionSchema,
     ...basePaymentSchema,
+    payment_method: z.enum(MISC_SALE_PAYMENT_METHODS),
   })
   .strict()
   .superRefine(validatePaymentShape);
@@ -142,20 +154,25 @@ export type MiscSaleItemInput = z.infer<typeof miscSaleItemSchema>;
 
 /**
  * Session 115: the wizard's Discount/Promo step live-previews line items as
- * the cashier toggles Senior/PWD eligibility, before anything is created -
- * needs the cart + payment method (discounts are Cash-only) + eligibility,
- * nothing customer/payment-reference-specific.
+ * the cashier ticks discounts/promos, before anything is created - needs
+ * the cart + payment method (discounts are Cash-only) + the picks, nothing
+ * customer/payment-reference-specific.
  */
 export const previewMiscSaleValidator = z
   .object({
     items: z.array(miscSaleItemSchema).min(1, 'Add at least one item'),
-    payment_method: z.enum(PAYMENT_METHODS),
-    senior_citizen_eligible: z.boolean().default(false),
-    pwd_eligible: z.boolean().default(false),
+    payment_method: z.enum(MISC_SALE_PAYMENT_METHODS),
+    ...miscSaleSelectionSchema,
   })
   .strict();
 
 export type PreviewMiscSaleInput = z.infer<typeof previewMiscSaleValidator>;
+
+/** GET /billing/misc-sale/credit - whose balance the wizard's Payment step
+ * checks before offering the Credit method. */
+export const miscSaleCreditQueryValidator = z.object({
+  customer_id: z.uuid(),
+});
 
 /**
  * Payment/transactions rework: the cashier's "record a payment" action on a

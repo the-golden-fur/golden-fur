@@ -2,6 +2,7 @@ import type {
   CheckoutPreview,
   CheckoutRequest,
   CheckoutResponse,
+  MiscSaleOptions,
   MiscSalePreview,
   MiscSalePreviewRequest,
   MiscSaleRequest,
@@ -109,6 +110,43 @@ export async function previewMiscSale(
   }
 
   return parseBody<MiscSalePreview>(response);
+}
+
+export async function getMiscSaleOptions(
+  accessToken: string
+): Promise<BillingApiResult<MiscSaleOptions>> {
+  const response = await fetch(`${API_BASE_URL}/billing/misc-sale/options`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<MiscSaleOptions>(response);
+}
+
+/** The customer's credit at the cashier's branch - gates the misc-sale
+ * wizard's Credit payment option. */
+export async function getMiscSaleCredit(
+  customerId: string,
+  accessToken: string
+): Promise<BillingApiResult<{ available: number }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/misc-sale/credit?customer_id=${encodeURIComponent(customerId)}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ available: number | string }>(response);
+  // numeric(10,2) may arrive as a string - same caveat as credits.api.ts.
+  return {
+    data: result.data ? { available: Number(result.data.available) } : null,
+    error: result.error,
+  };
 }
 
 export async function createMiscSale(

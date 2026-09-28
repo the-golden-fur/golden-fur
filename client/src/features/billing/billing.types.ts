@@ -127,8 +127,8 @@ export interface MiscSaleItem {
 export interface MiscSaleRequest extends PaymentFields {
   customer_id: string;
   items: MiscSaleItem[];
-  senior_citizen_eligible?: boolean;
-  pwd_eligible?: boolean;
+  discount_ids?: string[];
+  promo_ids?: string[];
 }
 
 export interface MiscSaleResponse {
@@ -138,13 +138,37 @@ export interface MiscSaleResponse {
 }
 
 /** Session 115: the wizard's Discount/Promo step live-previews the cart as
- * eligibility checkboxes toggle - same shape as CheckoutPreview, minus the
- * booking-specific `booking` field a misc sale has none of. */
+ * the cashier ticks discounts/promos - same shape as CheckoutPreview, minus
+ * the booking-specific `booking` field a misc sale has none of. */
 export interface MiscSalePreviewRequest {
   items: MiscSaleItem[];
   payment_method: PaymentMethod;
-  senior_citizen_eligible?: boolean;
-  pwd_eligible?: boolean;
+  discount_ids?: string[];
+  promo_ids?: string[];
+}
+
+/** GET /billing/misc-sale/options - what the admin has configured for misc
+ * sales at the cashier's branch (misc-sale-scoped discounts, all-services
+ * promos), listed on the wizard's Discount/Promo step. */
+export interface MiscSaleDiscountOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  is_mandated: boolean;
+}
+
+export interface MiscSalePromoOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  end_date: string | null;
+}
+
+export interface MiscSaleOptions {
+  discounts: MiscSaleDiscountOption[];
+  promos: MiscSalePromoOption[];
 }
 
 export interface MiscSalePreview {

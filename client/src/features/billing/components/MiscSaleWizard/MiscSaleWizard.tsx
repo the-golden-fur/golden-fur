@@ -3,8 +3,14 @@ import { listProducts } from '../../../catalog/api/catalog.api';
 import type { CatalogComboBoxItem } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import type { CustomerProfile } from '../../../customers/customer.types';
 import { BookingStepper } from '../../../booking/components/BookingStepper/BookingStepper';
-import { createMiscSale, previewMiscSale } from '../../api/billing.api';
+import {
+  createMiscSale,
+  getMiscSaleCredit,
+  getMiscSaleOptions,
+  previewMiscSale,
+} from '../../api/billing.api';
 import type {
+  MiscSaleOptions,
   MiscSalePreview,
   MiscSaleResponse,
   PaymentFields,
@@ -19,6 +25,7 @@ import { CustomerStep } from './CustomerStep';
 import { ProductsStep } from './ProductsStep';
 import { DiscountPromoStep } from './DiscountPromoStep';
 import { PaymentStep } from './PaymentStep';
+import { canPayByCredit, isPayingByCredit } from './miscSaleCredit';
 import { ConfirmationStep } from './ConfirmationStep';
 import styles from './MiscSaleWizard.module.css';
 
@@ -41,6 +48,10 @@ interface MiscSaleWizardProps {
   accessToken: string;
   onCreated?: (result: MiscSaleResponse) => void;
   onClose: () => void;
+  /** Label for the button shown after the sale is recorded. */
+  closeLabel?: string;
+  /** When set, a "Record another sale" button also appears after success. */
+  onStartOver?: () => void;
 }
 
 /**
@@ -57,6 +68,8 @@ export function MiscSaleWizard({
   accessToken,
   onCreated,
   onClose,
+  closeLabel = 'Close',
+  onStartOver,
 }: MiscSaleWizardProps) {
   const [currentStepKey, setCurrentStepKey] = useState<StepKey>('customer');
   const [furthestIndex, setFurthestIndex] = useState(0);
@@ -65,13 +78,22 @@ export function MiscSaleWizard({
   const [products, setProducts] = useState<CatalogComboBoxItem[]>([]);
   const [cartRows, setCartRows] = useState<CartRow[]>([emptyCartRow('row-0')]);
 
-  const [seniorCitizenEligible, setSeniorCitizenEligible] = useState(false);
-  const [pwdEligible, setPwdEligible] = useState(false);
+  const [options, setOptions] = useState<MiscSaleOptions | null>(null);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [discountIds, setDiscountIds] = useState<string[]>([]);
+  const [promoIds, setPromoIds] = useState<string[]>([]);
 
   const [payment, setPayment] = useState<PaymentFields>({
     payment_method: 'Cash',
   });
   const [creditToApply, setCreditToApply] = useState(0);
+  // The customer's credit at this branch, keyed by customer so a changed
+  // customer never shows the previous one's balance.
+  const [credit, setCredit] = useState<{
+    customerId: string;
+    available: number | null;
+    error: string | null;
+  } | null>(null);
 
   const [rawPreview, setPreview] = useState<MiscSalePreview | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -86,6 +108,55 @@ export function MiscSaleWizard({
       if (response.data) setProducts(response.data);
     });
   }, [accessToken]);
+
+  // The discounts/promos the admin configured for misc sales at this branch.
+  useEffect(() => {
+    let isMounted = true;
+
+    void getMiscSaleOptions(accessToken).then((response) => {
+      if (!isMounted) return;
+      if (response.error || !response.data) {
+        setOptionsError(
+          response.error ?? 'Could not load discounts and promos.'
+        );
+        return;
+      }
+      setOptionsError(null);
+      setOptions(response.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
+
+  const customerId = customer?.id ?? null;
+  useEffect(() => {
+    if (!customerId) return;
+    let isMounted = true;
+
+    void getMiscSaleCredit(customerId, accessToken).then((response) => {
+      if (!isMounted) return;
+      setCredit({
+        customerId,
+        available: response.data?.available ?? null,
+        error: response.data
+          ? null
+          : (response.error ?? "Could not load the customer's credit."),
+      });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [customerId, accessToken]);
+
+  const currentCredit =
+    credit && credit.customerId === customerId ? credit : null;
+  const availableCredit = currentCredit?.available ?? null;
+
+  const discountKey = discountIds.join(',');
+  const promoKey = promoIds.join(',');
 
   const itemsPayload = useMemo(() => buildMiscSaleItems(cartRows), [cartRows]);
   const itemsKey = useMemo(() => JSON.stringify(itemsPayload), [itemsPayload]);
@@ -112,8 +183,8 @@ export function MiscSaleWizard({
       {
         items: itemsPayload,
         payment_method: payment.payment_method,
-        senior_citizen_eligible: seniorCitizenEligible,
-        pwd_eligible: pwdEligible,
+        discount_ids: discountIds,
+        promo_ids: promoIds,
       },
       accessToken
     ).then((response) => {
@@ -133,18 +204,17 @@ export function MiscSaleWizard({
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    itemsKey,
-    payment.payment_method,
-    seniorCitizenEligible,
-    pwdEligible,
-    accessToken,
-  ]);
+  }, [itemsKey, payment.payment_method, discountKey, promoKey, accessToken]);
 
   // Derived rather than reset via a synchronous setState in the effect above
   // (react-hooks/set-state-in-effect) - an invalid cart hides whatever
   // preview last fetched instead of the effect clearing it out itself.
   const preview = isCartValid(cartRows) ? rawPreview : null;
+  // What Credit would have to cover: discounts are Cash-only, so any
+  // discount in the current preview falls away once Credit is picked.
+  const creditTotal = preview
+    ? preview.preCreditTotal + preview.discountAmount
+    : null;
 
   const currentStepIndex = STEPS.findIndex(
     (step) => step.key === currentStepKey
@@ -154,6 +224,9 @@ export function MiscSaleWizard({
     if (key === 'customer') return customer !== null;
     if (key === 'products') return isCartValid(cartRows);
     if (key === 'payment') {
+      if (isPayingByCredit(payment)) {
+        return canPayByCredit(availableCredit, creditTotal);
+      }
       if (payment.payment_method === 'Bank Transfer' && !payment.bank_name) {
         return false;
       }
@@ -194,8 +267,8 @@ export function MiscSaleWizard({
       {
         customer_id: customer.id,
         items: itemsPayload,
-        senior_citizen_eligible: seniorCitizenEligible,
-        pwd_eligible: pwdEligible,
+        discount_ids: discountIds,
+        promo_ids: promoIds,
         credit_to_apply: creditToApply,
         ...payment,
       },
@@ -238,10 +311,12 @@ export function MiscSaleWizard({
           />
         ) : currentStepKey === 'discount' ? (
           <DiscountPromoStep
-            seniorCitizenEligible={seniorCitizenEligible}
-            pwdEligible={pwdEligible}
-            onSeniorCitizenChange={setSeniorCitizenEligible}
-            onPwdChange={setPwdEligible}
+            options={options}
+            optionsError={optionsError}
+            selectedDiscountIds={discountIds}
+            selectedPromoIds={promoIds}
+            onDiscountIdsChange={setDiscountIds}
+            onPromoIdsChange={setPromoIds}
             preview={preview}
             isPreviewLoading={isPreviewLoading}
             previewError={previewError}
@@ -253,6 +328,9 @@ export function MiscSaleWizard({
             creditToApply={creditToApply}
             onCreditChange={setCreditToApply}
             amountDue={preview?.preCreditTotal ?? 0}
+            availableCredit={availableCredit}
+            creditError={currentCredit?.error ?? null}
+            creditTotal={creditTotal}
           />
         ) : (
           <ConfirmationStep
@@ -276,8 +354,17 @@ export function MiscSaleWizard({
             className={styles.buttonSecondary}
             onClick={onClose}
           >
-            Close
+            {closeLabel}
           </button>
+          {onStartOver ? (
+            <button
+              type="button"
+              className={styles.button}
+              onClick={onStartOver}
+            >
+              Record another sale
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className={styles.navRow}>
