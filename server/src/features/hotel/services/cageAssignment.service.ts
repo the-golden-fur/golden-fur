@@ -43,6 +43,7 @@ export async function suggestCage(
     .from('cages')
     .select('*, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('size', suggestedSize)
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', pet.pet_type as string);
@@ -79,6 +80,7 @@ export async function assignCage(
     .update({ status: 'Occupied', updated_at: new Date().toISOString() })
     .eq('id', cageId)
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('status', 'Available')
     .select('*')
     .maybeSingle();

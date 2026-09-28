@@ -26,6 +26,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listServiceTypes: vi.fn(),
   createServiceType: vi.fn(),
   updateServiceType: vi.fn(),
+  archiveServiceType: vi.fn(),
   setServiceTypeBranchAvailability: vi.fn(),
 }));
 
@@ -243,7 +244,7 @@ describe('AdminServiceTypesPage', () => {
     expect(screen.queryByLabelText('Key')).not.toBeInTheDocument();
   });
 
-  it('Custom change (services/packages/service types actions menu): a row exposes Configure and Branch Availability behind a single "..." menu instead of an always-visible Rename button and toggle row', async () => {
+  it('Custom change (services/packages/service types actions menu): a row exposes Configure, Rename and Archive (no separate Branch Availability) behind a single "..." menu instead of an always-visible Rename button and toggle row', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -269,8 +270,116 @@ describe('AdminServiceTypesPage', () => {
       screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Config-menu consistency: a service type row also exposes Rename and Archive (never Deactivate) behind the "..." menu', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Grooming' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename opens a small pop-up and saves only the new name', async () => {
+    vi.mocked(maintenanceApi.updateServiceType).mockResolvedValue({
+      data: buildServiceType({ name: 'Grooming Plus' }),
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Grooming' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', {
+      name: /new service type name/i,
+    });
+    await user.clear(input);
+    await user.type(input, 'Grooming Plus');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.updateServiceType).toHaveBeenCalledWith(
+        expect.any(String),
+        'token',
+        { name: 'Grooming Plus' }
+      )
+    );
+    expect(await screen.findByText('Grooming Plus')).toBeInTheDocument();
+  });
+
+  it('Archive asks for confirmation, then removes the row from the list', async () => {
+    vi.mocked(maintenanceApi.archiveServiceType).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Grooming' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(maintenanceApi.archiveServiceType).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.archiveServiceType).toHaveBeenCalledWith(
+        expect.any(String),
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Grooming')).not.toBeInTheDocument()
+    );
+  });
+
+  it('Archive shows the server error (e.g. still used by a package) and keeps the row', async () => {
+    vi.mocked(maintenanceApi.archiveServiceType).mockResolvedValue({
+      data: null,
+      error: 'This service type is still used by package "Spa Day".',
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Grooming')).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Grooming' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    expect(
+      await screen.findByText(/still used by package/)
+    ).toBeInTheDocument();
+    expect(screen.getByText('Grooming')).toBeInTheDocument();
   });
 
   it('Configure opens a modal to rename and adjust the staff/cage picker toggles, instead of an inline row that pushes the list down', async () => {
@@ -320,18 +429,7 @@ describe('AdminServiceTypesPage', () => {
     expect(await screen.findByText('Grooming & Spa')).toBeInTheDocument();
   });
 
-  it('Custom change: Branch Availability opens a modal listing every branch, backed by a real per-branch table (not the shared is_active flag)', async () => {
-    vi.mocked(
-      maintenanceApi.setServiceTypeBranchAvailability
-    ).mockResolvedValue({
-      data: {
-        service_type_id: 'type-1',
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      },
-      error: null,
-    });
-
+  it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -341,31 +439,10 @@ describe('AdminServiceTypesPage', () => {
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Grooming' })
     );
-    await user.click(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    const dialog = screen.getByRole('dialog', {
-      name: 'Branch Availability - Grooming',
-    });
-    const toggle = within(dialog).getByRole('switch', { name: 'Southwoods' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(
-        maintenanceApi.setServiceTypeBranchAvailability
-      ).toHaveBeenCalledWith('type-1', 'token', {
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      });
-    });
-
-    // Makati's own row is untouched - the two branches are independent.
-    expect(
-      within(dialog).getByRole('switch', { name: 'Makati' })
-    ).toHaveAttribute('aria-checked', 'true');
+    const dialog = screen.getByRole('dialog', { name: 'Configure Grooming' });
+    expect(within(dialog).getByText('Available at')).toBeInTheDocument();
   });
 
   it('switches to List and Board (grouped by Staff picker by default)', async () => {

@@ -22,7 +22,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'update']) {
+    for (const method of ['select', 'eq', 'is', 'update']) {
       builder[method] = vi.fn(() => builder);
     }
 

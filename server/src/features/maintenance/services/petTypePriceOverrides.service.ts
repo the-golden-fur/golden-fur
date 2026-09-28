@@ -1,5 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { PetTypePriceOverride } from '../maintenance.types.ts';
+import { assertPetTypesNotArchived } from './petTypes.service.ts';
 import type { UpsertPetTypePriceOverrideInput } from '../modules/validators/maintenance.validator.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -79,6 +80,8 @@ export async function getFixedPrice(
 export async function upsertPetTypePriceOverride(
   input: UpsertPetTypePriceOverrideInput
 ): Promise<PetTypePriceOverride> {
+  await assertPetTypesNotArchived([input.pet_type]);
+
   let existingQuery = supabase
     .from('pet_type_price_overrides')
     .select('id')

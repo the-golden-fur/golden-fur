@@ -15,6 +15,24 @@ vi.mock('../../../staff/api/staff.api', () => ({
   listStaff: vi.fn(),
 }));
 
+// The Policies form has its own dedicated spec - stub it here, but record the
+// props so we can see the Configure modal embeds it for the right branch.
+vi.mock(
+  '../../../booking/pages/PolicyConfigurationPage/PolicyConfigurationPage',
+  () => ({
+    PolicyConfigurationPage: (props: {
+      initialBranchId?: string;
+      embedded?: boolean;
+      lockBranchSelector?: boolean;
+    }) =>
+      createElement(
+        'p',
+        { 'data-testid': 'policies' },
+        `policies for ${props.initialBranchId} embedded=${String(props.embedded)} locked=${String(props.lockBranchSelector)}`
+      ),
+  })
+);
+
 vi.mock('../../api/branches.api', () => ({
   listBranchesFull: vi.fn(),
   createBranch: vi.fn(),
@@ -57,9 +75,7 @@ function buildViewer(role: StaffRole): StaffProfile {
   };
 }
 
-function renderPage(
-  props: { onNavigateToConfig?: ReturnType<typeof vi.fn> } = {}
-) {
+function renderPage() {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'admin-1', email: 'admin@example.com' },
@@ -82,11 +98,7 @@ function renderPage(
           null,
           createElement(Route, {
             path: '/staff/admin/maintenance/branches',
-            element: createElement(BranchesPage, props),
-          }),
-          createElement(Route, {
-            path: '/staff/admin/maintenance/policies',
-            element: createElement('div', null, 'Policies page'),
+            element: createElement(BranchesPage),
           }),
           createElement(Route, {
             path: '/staff/settings',
@@ -171,9 +183,35 @@ describe('BranchesPage', () => {
   // the 7-day operating-hours table) - flaky against the 5s default only
   // under parallel test-file load, passes well within it standalone.
 
-  it('Edit pre-fills the modal and saves via updateBranch', async () => {
+  it('a row offers Configure, Rename and Archive - never Details, Deactivate or Reactivate', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Makati');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati' })
+    );
+
+    for (const name of ['Configure', 'Rename', 'Archive']) {
+      expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole('menuitem', { name: 'Details' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Reactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Edit' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename saves only the branch name', async () => {
     vi.mocked(branchesApi.updateBranch).mockResolvedValue({
-      data: buildBranch({ address: '456 Makati Ave' }),
+      data: buildBranch({ name: 'Makati Central' }),
       error: null,
     });
 
@@ -184,60 +222,24 @@ describe('BranchesPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Actions for Makati' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Edit branch' });
-    expect(within(dialog).getByLabelText('Branch name')).toHaveValue('Makati');
-    expect(within(dialog).getByLabelText('Monday opening time')).toHaveValue(
-      '08:00'
-    );
-
-    const addressInput = within(dialog).getByLabelText('Address');
-    await user.clear(addressInput);
-    await user.type(addressInput, '456 Makati Ave');
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Save changes' })
-    );
+    const input = screen.getByRole('textbox', { name: /new branch name/i });
+    await user.clear(input);
+    await user.type(input, 'Makati Central');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(branchesApi.updateBranch).toHaveBeenCalledWith(
         'branch-makati',
         'token',
-        expect.objectContaining({ address: '456 Makati Ave' })
+        { name: 'Makati Central' }
       )
     );
-    expect(await screen.findByText('Branch updated.')).toBeInTheDocument();
+    expect(await screen.findByText('Makati Central')).toBeInTheDocument();
   });
 
-  it('deactivates a branch from the "..." menu', async () => {
-    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
-      data: buildBranch({ is_active: false }),
-      error: null,
-    });
-
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Makati');
-
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for Makati' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
-
-    await waitFor(() =>
-      expect(branchesApi.updateBranch).toHaveBeenCalledWith(
-        'branch-makati',
-        'token',
-        { is_active: false }
-      )
-    );
-  });
-
-  it('hides Archive while a branch is active, shows it once inactive', async () => {
-    vi.mocked(branchesApi.listBranchesFull).mockResolvedValue({
-      data: [buildBranch({ is_active: false })],
-      error: null,
-    });
+  it('archives an active branch from the "..." menu after confirming', async () => {
     vi.mocked(branchesApi.archiveBranch).mockResolvedValue({
       data: null,
       error: null,
@@ -252,33 +254,21 @@ describe('BranchesPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
 
+    expect(branchesApi.archiveBranch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
     await waitFor(() =>
       expect(branchesApi.archiveBranch).toHaveBeenCalledWith(
         'branch-makati',
         'token'
       )
     );
-    expect(screen.queryByText('Makati')).not.toBeInTheDocument();
-  });
-
-  it('Configure calls onNavigateToConfig, pre-scoped to that branch, when embedded in Settings', async () => {
-    const onNavigateToConfig = vi.fn();
-    const user = userEvent.setup();
-    renderPage({ onNavigateToConfig });
-    await screen.findByText('Makati');
-
-    await user.click(
-      screen.getByRole('button', { name: 'Actions for Makati' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
-
-    expect(onNavigateToConfig).toHaveBeenCalledWith(
-      '/staff/admin/maintenance/policies',
-      { initialBranchId: 'branch-makati', lockBranchSelector: true }
+    await waitFor(() =>
+      expect(screen.queryByText('Makati')).not.toBeInTheDocument()
     );
   });
 
-  it('Configure falls back to a plain navigation when reached standalone (no onNavigateToConfig)', async () => {
+  async function openConfigure() {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Makati');
@@ -288,6 +278,74 @@ describe('BranchesPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    expect(await screen.findByText('Policies page')).toBeInTheDocument();
+    return {
+      user,
+      dialog: await screen.findByRole('dialog', { name: 'Configure Makati' }),
+    };
+  }
+
+  it('Configure opens ONE modal (not a page) with the branch details and its policies', async () => {
+    const { dialog } = await openConfigure();
+
+    expect(within(dialog).getByLabelText('Branch name')).toHaveValue('Makati');
+    expect(within(dialog).getByLabelText('Monday opening time')).toHaveValue(
+      '08:00'
+    );
+    // Policies are embedded in the same modal, pre-scoped and locked to it.
+    expect(within(dialog).getByTestId('policies')).toHaveTextContent(
+      'policies for branch-makati embedded=true locked=true'
+    );
+    // Still on the Branches list underneath - nothing navigated away.
+    expect(
+      screen.getByRole('heading', { name: 'Branches' })
+    ).toBeInTheDocument();
+  });
+
+  it('saving the details in the Configure modal calls updateBranch and updates the list behind it', async () => {
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: buildBranch({ address: '456 Makati Ave' }),
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    const address = within(dialog).getByLabelText('Address');
+    await user.clear(address);
+    await user.type(address, '456 Makati Ave');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    await waitFor(() =>
+      expect(branchesApi.updateBranch).toHaveBeenCalledWith(
+        'branch-makati',
+        'token',
+        expect.objectContaining({ address: '456 Makati Ave' })
+      )
+    );
+    expect(
+      await within(dialog).findByText('Branch details saved.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows the server error inside the Configure modal when saving the details fails', async () => {
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: null,
+      error: 'Address is invalid',
+    });
+    const { user, dialog } = await openConfigure();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    expect(await within(dialog).findByText('Address is invalid')).toBeVisible();
+  });
+
+  it('closes the Configure modal with the close button', async () => {
+    const { user } = await openConfigure();
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

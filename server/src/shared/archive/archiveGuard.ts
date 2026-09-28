@@ -24,6 +24,17 @@ export function assertInactiveBeforeArchive(
   }
 }
 
+/**
+ * Row update applied when an admin-config row (services, packages, promos,
+ * branches, rewards, ...) is archived. Archiving is a one-step "hide and
+ * deactivate" - there is no separate Deactivate action any more - so the
+ * inactive flag is set together with archived_at instead of being a
+ * precondition. Staff/Customers/Pets still use assertInactiveBeforeArchive.
+ */
+export function archivePatch(): { archived_at: string; is_active: false } {
+  return { archived_at: new Date().toISOString(), is_active: false };
+}
+
 export function assertArchivedBeforeHardDelete(
   archivedAt: string | null,
   entityLabel: string

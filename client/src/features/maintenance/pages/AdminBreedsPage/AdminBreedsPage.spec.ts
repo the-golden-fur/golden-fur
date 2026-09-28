@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
   createBreedAdmin,
-  deleteBreedAdmin,
+  archiveBreedAdmin,
   listBreedsAdmin,
   listPetTypes,
   updateBreedAdmin,
@@ -25,7 +25,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listBreedsAdmin: vi.fn(),
   createBreedAdmin: vi.fn(),
   updateBreedAdmin: vi.fn(),
-  deleteBreedAdmin: vi.fn(),
+  archiveBreedAdmin: vi.fn(),
   listPetTypes: vi.fn(),
 }));
 
@@ -275,7 +275,7 @@ describe('AdminBreedsPage', () => {
     await screen.findByText('Beagle');
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
-    fireEvent.change(screen.getByDisplayValue('Beagle'), {
+    fireEvent.change(screen.getByRole('textbox', { name: /new breed name/i }), {
       target: { value: 'Beagle Renamed' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
@@ -288,7 +288,7 @@ describe('AdminBreedsPage', () => {
     expect(await screen.findByText('Beagle Renamed')).toBeInTheDocument();
   });
 
-  it('deletes a breed', async () => {
+  it('a row exposes Configure, Rename and Archive behind the "..." menu', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },
       accessToken: 'token',
@@ -301,23 +301,97 @@ describe('AdminBreedsPage', () => {
       data: [BREEDS[0]],
       error: null,
     });
-    vi.mocked(deleteBreedAdmin).mockResolvedValue({ data: null, error: null });
 
     renderPage();
 
     await screen.findByText('Beagle');
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Configure' })).toBeVisible();
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeVisible();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Configure edits the breed name and pet type together', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: [BREEDS[0]],
+      error: null,
+    });
+    vi.mocked(updateBreedAdmin).mockResolvedValue({
+      data: { ...BREEDS[0], name: 'Beagle X', pet_type: 'Cat' },
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Beagle');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure breed' });
+    fireEvent.change(within(dialog).getByRole('combobox'), {
+      target: { value: 'Cat' },
+    });
+    fireEvent.change(within(dialog).getByDisplayValue('Beagle'), {
+      target: { value: 'Beagle X' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
 
     await vi.waitFor(() =>
-      expect(deleteBreedAdmin).toHaveBeenCalledWith('breed-1', 'token')
+      expect(updateBreedAdmin).toHaveBeenCalledWith('breed-1', 'token', {
+        pet_type: 'Cat',
+        name: 'Beagle X',
+      })
+    );
+  });
+
+  it('archives a breed after confirming', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'staff-1' },
+      accessToken: 'token',
+    } as never);
+    vi.mocked(listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' }],
+      error: null,
+    } as never);
+    vi.mocked(listBreedsAdmin).mockResolvedValue({
+      data: [BREEDS[0]],
+      error: null,
+    });
+    vi.mocked(archiveBreedAdmin).mockResolvedValue({ data: null, error: null });
+
+    renderPage();
+
+    await screen.findByText('Beagle');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    // Nothing is archived until the confirm dialog is accepted.
+    expect(archiveBreedAdmin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await vi.waitFor(() =>
+      expect(archiveBreedAdmin).toHaveBeenCalledWith('breed-1', 'token')
     );
     expect(
       await screen.findByText('No breeds match this filter.')
     ).toBeInTheDocument();
   });
 
-  it('surfaces a 409 error when deleting a breed still in use', async () => {
+  it('surfaces an error when archiving fails', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: { id: 'staff-1' },
       accessToken: 'token',
@@ -330,20 +404,20 @@ describe('AdminBreedsPage', () => {
       data: [BREEDS[0]],
       error: null,
     });
-    vi.mocked(deleteBreedAdmin).mockResolvedValue({
+    vi.mocked(archiveBreedAdmin).mockResolvedValue({
       data: null,
-      error:
-        'This breed is still assigned to one or more pets and cannot be deleted',
+      error: 'Breed is already archived',
     });
 
     renderPage();
 
     await screen.findByText('Beagle');
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Beagle' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
 
     expect(
-      await screen.findByText(/still assigned to one or more pets/i)
+      await screen.findByText(/Breed is already archived/i)
     ).toBeInTheDocument();
   });
 });

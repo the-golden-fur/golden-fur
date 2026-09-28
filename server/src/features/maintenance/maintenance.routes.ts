@@ -6,6 +6,8 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import {
   archivePackageController,
   archivePromoController,
+  archiveServiceController,
+  archiveServiceTypeController,
   createBreedController,
   createPackageController,
   createPetTypeController,
@@ -22,10 +24,18 @@ import {
   getPromoController,
   getServiceController,
   handleServiceImageUploadError,
+  hardDeleteBreedController,
   hardDeletePackageController,
+  hardDeletePetTypeController,
   hardDeletePromoController,
+  hardDeleteServiceController,
+  hardDeleteServiceTypeController,
+  listArchivedBreedsController,
   listArchivedPackagesController,
+  listArchivedPetTypesController,
   listArchivedPromosController,
+  listArchivedServiceTypesController,
+  listArchivedServicesController,
   listBreedsController,
   listPackagesController,
   listPetTypePriceOverridesController,
@@ -34,8 +44,12 @@ import {
   listPromosController,
   listServiceTypesController,
   listServicesController,
+  restoreBreedController,
   restorePackageController,
+  restorePetTypeController,
   restorePromoController,
+  restoreServiceController,
+  restoreServiceTypeController,
   setPackageBranchAvailabilityController,
   setPromoBranchAvailabilityController,
   setServiceBranchAvailabilityController,
@@ -98,9 +112,31 @@ router.post(
 
 // Services (#40)
 router.get('/maintenance/services', staffRead, listServicesController);
+router.get(
+  '/maintenance/services/archived',
+  adminWrite,
+  listArchivedServicesController
+);
 router.post('/maintenance/services', adminWrite, createServiceController);
 router.get('/maintenance/services/:id', staffRead, getServiceController);
 router.patch('/maintenance/services/:id', adminWrite, updateServiceController);
+// Config-menu consistency change: services can now be archived (soft,
+// reversible) - there was no delete route before.
+router.delete(
+  '/maintenance/services/:id',
+  adminWrite,
+  archiveServiceController
+);
+router.post(
+  '/maintenance/services/:id/restore',
+  adminWrite,
+  restoreServiceController
+);
+router.delete(
+  '/maintenance/services/:id/permanent',
+  adminWrite,
+  hardDeleteServiceController
+);
 router.patch(
   '/maintenance/services/:id/branch-availability',
   adminWrite,
@@ -217,18 +253,51 @@ router.put(
 
 // Breeds (Epic A follow-up - previously seed-only, no CRUD anywhere)
 router.get('/maintenance/breeds', staffRead, listBreedsController);
+router.get(
+  '/maintenance/breeds/archived',
+  adminWrite,
+  listArchivedBreedsController
+);
 router.post('/maintenance/breeds', adminWrite, createBreedController);
 router.patch('/maintenance/breeds/:id', adminWrite, updateBreedController);
+// DELETE archives (Config-menu consistency change); permanent delete is
+// its own route once archived.
 router.delete('/maintenance/breeds/:id', adminWrite, deleteBreedController);
+router.post(
+  '/maintenance/breeds/:id/restore',
+  adminWrite,
+  restoreBreedController
+);
+router.delete(
+  '/maintenance/breeds/:id/permanent',
+  adminWrite,
+  hardDeleteBreedController
+);
 
 // Pet Types (Architectural-Change-History: admin CRUD + fixed-price override)
 router.get('/maintenance/pet-types', staffRead, listPetTypesController);
+router.get(
+  '/maintenance/pet-types/archived',
+  adminWrite,
+  listArchivedPetTypesController
+);
 router.post('/maintenance/pet-types', adminWrite, createPetTypeController);
 router.patch('/maintenance/pet-types/:id', adminWrite, updatePetTypeController);
+// DELETE archives (Config-menu consistency change).
 router.delete(
   '/maintenance/pet-types/:id',
   adminWrite,
   deletePetTypeController
+);
+router.post(
+  '/maintenance/pet-types/:id/restore',
+  adminWrite,
+  restorePetTypeController
+);
+router.delete(
+  '/maintenance/pet-types/:id/permanent',
+  adminWrite,
+  hardDeletePetTypeController
 );
 
 router.get(
@@ -249,6 +318,11 @@ router.delete(
 
 // Service Types (Custom change)
 router.get('/maintenance/service-types', staffRead, listServiceTypesController);
+router.get(
+  '/maintenance/service-types/archived',
+  adminWrite,
+  listArchivedServiceTypesController
+);
 router.post(
   '/maintenance/service-types',
   adminWrite,
@@ -263,6 +337,23 @@ router.patch(
   '/maintenance/service-types/:id/branch-availability',
   adminWrite,
   setServiceTypeBranchAvailabilityController
+);
+// Config-menu consistency change: service types can now be archived (soft,
+// reversible) - there was no delete route before.
+router.delete(
+  '/maintenance/service-types/:id',
+  adminWrite,
+  archiveServiceTypeController
+);
+router.post(
+  '/maintenance/service-types/:id/restore',
+  adminWrite,
+  restoreServiceTypeController
+);
+router.delete(
+  '/maintenance/service-types/:id/permanent',
+  adminWrite,
+  hardDeleteServiceTypeController
 );
 
 export default router;

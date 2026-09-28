@@ -23,6 +23,10 @@
   box-shadow: var(--shadow-lg);
 }
 
+.wide {
+  width: min(100%, 48rem);
+}
+
 .header {
   display: flex;
   align-items: center;

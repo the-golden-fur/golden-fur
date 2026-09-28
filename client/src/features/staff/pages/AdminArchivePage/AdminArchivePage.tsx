@@ -20,12 +20,29 @@ import {
   restoreDiscount,
 } from '../../../discounts/api/discounts.api';
 import {
+  hardDeleteCage,
+  listArchivedCages,
+  restoreCage,
+} from '../../../hotel/api/hotel.api';
+import {
+  hardDeleteBreedAdmin,
   hardDeletePackage,
+  hardDeletePetType,
   hardDeletePromo,
+  hardDeleteService,
+  hardDeleteServiceType,
+  listArchivedBreedsAdmin,
   listArchivedPackages,
+  listArchivedPetTypes,
   listArchivedPromos,
+  listArchivedServices,
+  listArchivedServiceTypes,
+  restoreBreedAdmin,
   restorePackage,
+  restorePetType,
   restorePromo,
+  restoreService,
+  restoreServiceType,
 } from '../../../maintenance/api/maintenance.api';
 import {
   hardDeleteBranch,
@@ -62,6 +79,11 @@ type ArchiveTab =
   | 'branches'
   | 'spin-wheel-rewards'
   | 'reward-pools'
+  | 'cages'
+  | 'pet-types'
+  | 'breeds'
+  | 'services'
+  | 'service-types'
   | 'deleted-records';
 
 const TABS: { key: ArchiveTab; label: string }[] = [
@@ -74,8 +96,22 @@ const TABS: { key: ArchiveTab; label: string }[] = [
   { key: 'branches', label: 'Branches' },
   { key: 'spin-wheel-rewards', label: 'Spin Wheel Rewards' },
   { key: 'reward-pools', label: 'Reward Pools' },
+  { key: 'cages', label: 'Cages' },
+  { key: 'pet-types', label: 'Pet Types' },
+  { key: 'breeds', label: 'Breeds' },
+  { key: 'services', label: 'Services' },
+  { key: 'service-types', label: 'Service Types' },
   { key: 'deleted-records', label: 'Deleted Records' },
 ];
+
+/** The hotel API answers with the cage / `true` on success; ArchiveList only
+ * cares whether the call failed, so drop the payload. */
+async function withoutData<T>(
+  request: Promise<{ data: T | null; error: string | null }>
+): Promise<{ data: null; error: string | null }> {
+  const result = await request;
+  return { data: null, error: result.error };
+}
 
 /**
  * Final-decision view for the archive workflow: an admin lands here to
@@ -268,6 +304,66 @@ export function AdminArchivePage() {
             fetchArchived={listArchivedRewardPools}
             restoreItem={restoreRewardPool}
             hardDeleteItem={hardDeleteRewardPool}
+            renderLabel={(item) => item.name}
+          />
+        ) : null}
+
+        {/* Config-menu consistency change: every admin Config row's "..." menu
+            now has Archive, so cages, pet types, breeds, services and service
+            types land here too. */}
+        {activeTab === 'cages' ? (
+          <ArchiveList
+            entityLabel="cages"
+            accessToken={accessToken}
+            fetchArchived={listArchivedCages}
+            restoreItem={(id, token) => withoutData(restoreCage(id, token))}
+            hardDeleteItem={(id, token) =>
+              withoutData(hardDeleteCage(id, token))
+            }
+            renderLabel={(item) => `${item.cage_label} (${item.size})`}
+          />
+        ) : null}
+
+        {activeTab === 'pet-types' ? (
+          <ArchiveList
+            entityLabel="pet types"
+            accessToken={accessToken}
+            fetchArchived={listArchivedPetTypes}
+            restoreItem={restorePetType}
+            hardDeleteItem={hardDeletePetType}
+            renderLabel={(item) => item.name}
+          />
+        ) : null}
+
+        {activeTab === 'breeds' ? (
+          <ArchiveList
+            entityLabel="breeds"
+            accessToken={accessToken}
+            fetchArchived={listArchivedBreedsAdmin}
+            restoreItem={restoreBreedAdmin}
+            hardDeleteItem={hardDeleteBreedAdmin}
+            renderLabel={(item) => item.name}
+          />
+        ) : null}
+
+        {activeTab === 'services' ? (
+          <ArchiveList
+            entityLabel="services"
+            accessToken={accessToken}
+            fetchArchived={listArchivedServices}
+            restoreItem={restoreService}
+            hardDeleteItem={hardDeleteService}
+            renderLabel={(item) => `${item.name} (${item.category})`}
+          />
+        ) : null}
+
+        {activeTab === 'service-types' ? (
+          <ArchiveList
+            entityLabel="service types"
+            accessToken={accessToken}
+            fetchArchived={listArchivedServiceTypes}
+            restoreItem={restoreServiceType}
+            hardDeleteItem={hardDeleteServiceType}
             renderLabel={(item) => item.name}
           />
         ) : null}

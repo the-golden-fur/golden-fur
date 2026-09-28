@@ -23,7 +23,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listPetTypes: vi.fn(),
   createPetType: vi.fn(),
   updatePetType: vi.fn(),
-  deletePetType: vi.fn(),
+  archivePetType: vi.fn(),
   listBranches: vi.fn(),
   listPetTypePriceOverrides: vi.fn(),
   upsertPetTypePriceOverride: vi.fn(),
@@ -187,7 +187,7 @@ describe('AdminPetTypesPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a row exposes Rename, Configure, Deactivate and Delete behind a single "..." menu', async () => {
+  it('a row exposes Configure, Rename and Archive (no Deactivate/Delete) behind a single "..." menu', async () => {
     stubDefaults();
 
     renderPage();
@@ -210,11 +210,14 @@ describe('AdminPetTypesPage', () => {
       screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Deactivate' })
+      screen.getByRole('menuitem', { name: 'Archive' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Delete' })
-    ).toBeInTheDocument();
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' })
+    ).not.toBeInTheDocument();
   });
 
   it('renames a pet type from the "..." menu', async () => {
@@ -234,10 +237,12 @@ describe('AdminPetTypesPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
 
-    const nameInput = within(section).getByDisplayValue('Dog');
+    const nameInput = screen.getByRole('textbox', {
+      name: /new pet type name/i,
+    });
     await user.clear(nameInput);
     await user.type(nameInput, 'Doggo');
-    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(maintenanceApi.updatePetType).toHaveBeenCalledWith(
@@ -248,35 +253,9 @@ describe('AdminPetTypesPage', () => {
     );
   });
 
-  it('toggles active/inactive from the "..." menu', async () => {
+  it('archives a pet type from the "..." menu after confirming', async () => {
     stubDefaults();
-    vi.mocked(maintenanceApi.updatePetType).mockResolvedValue({
-      data: { ...DOG, is_active: false } as never,
-      error: null,
-    });
-
-    const user = userEvent.setup();
-    renderPage();
-    const section = await findBrowserSection();
-    await within(section).findByText('Dog');
-
-    await user.click(
-      within(section).getByRole('button', { name: 'Actions for Dog' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
-
-    await waitFor(() =>
-      expect(maintenanceApi.updatePetType).toHaveBeenCalledWith(
-        'pt-dog',
-        'token',
-        { is_active: false }
-      )
-    );
-  });
-
-  it('deletes a pet type from the "..." menu', async () => {
-    stubDefaults();
-    vi.mocked(maintenanceApi.deletePetType).mockResolvedValue({
+    vi.mocked(maintenanceApi.archivePetType).mockResolvedValue({
       data: null,
       error: null,
     });
@@ -289,17 +268,21 @@ describe('AdminPetTypesPage', () => {
     await user.click(
       within(section).getByRole('button', { name: 'Actions for Dog' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    // Nothing is archived until the confirm dialog is accepted.
+    expect(maintenanceApi.archivePetType).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
 
     await waitFor(() =>
-      expect(maintenanceApi.deletePetType).toHaveBeenCalledWith(
+      expect(maintenanceApi.archivePetType).toHaveBeenCalledWith(
         'pt-dog',
         'token'
       )
     );
-    expect(
-      within(await findBrowserSection()).queryByText('Dog')
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(section).queryByText('Dog')).not.toBeInTheDocument()
+    );
   });
 
   it('searching narrows the visible pet types', async () => {

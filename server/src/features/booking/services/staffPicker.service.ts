@@ -78,6 +78,7 @@ export async function resolveServiceTypeStaffConfig(
     .from('service_types')
     .select('staff_picker_enabled, eligible_staff_roles')
     .eq('key', serviceCategory)
+    .is('archived_at', null)
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);

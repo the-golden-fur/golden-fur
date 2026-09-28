@@ -1,4 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { assertArchivedBeforeHardDelete } from '../../../shared/archive/archiveGuard.ts';
+import { assertPetTypesNotArchived } from '../../maintenance/services/petTypes.service.ts';
 import type { Cage, CageSize, CageStatus } from '../hotel.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -32,6 +34,7 @@ export async function getCageGrid(
     .from('cages')
     .select(CAGE_SELECT_WITH_PET_TYPES)
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .order('cage_label', { ascending: true });
 
   if (error) throwWithStatus(400, error.message);
@@ -58,6 +61,7 @@ export async function getAvailableCageCountsBySize(
     .from('cages')
     .select('size')
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('status', 'Available');
 
   if (error) throwWithStatus(400, error.message);
@@ -90,6 +94,7 @@ export async function setCageMaintenanceStatus(
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', cageId)
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('status', requiredCurrentStatus)
     .select(CAGE_SELECT_WITH_PET_TYPES)
     .maybeSingle();
@@ -131,6 +136,8 @@ export async function createCage({
   if (petTypes.length === 0) {
     throwWithStatus(400, 'At least one pet type is required');
   }
+
+  await assertPetTypesNotArchived(petTypes);
 
   const { data, error } = await supabase
     .from('cages')
@@ -181,6 +188,8 @@ export async function updateCage({
     throwWithStatus(400, 'At least one pet type is required');
   }
 
+  if (petTypes !== undefined) await assertPetTypesNotArchived(petTypes);
+
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -192,6 +201,7 @@ export async function updateCage({
     .update(updates)
     .eq('id', cageId)
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .select('*')
     .maybeSingle();
 
@@ -228,39 +238,112 @@ export async function updateCage({
   return { ...(data as Omit<Cage, 'pet_types'>), pet_types: petTypes };
 }
 
-interface DeleteCageParams {
+interface CageIdParams {
   cageId: string;
   branchId: string;
 }
 
-/** Custom change (Cage CRUD): blocks deleting a cage that's currently
- * Occupied/Reserved - a stay's cage_id would otherwise be orphaned
- * mid-stay. Available/Under Maintenance cages may be deleted freely. */
-export async function deleteCage({
+async function loadCageForArchiveAction({
   cageId,
   branchId,
-}: DeleteCageParams): Promise<void> {
+}: CageIdParams): Promise<{ status: CageStatus; archived_at: string | null }> {
   const { data: cage, error: fetchError } = await supabase
     .from('cages')
-    .select('status')
+    .select('status, archived_at')
     .eq('id', cageId)
     .eq('branch_id', branchId)
     .maybeSingle();
 
   if (fetchError) throwWithStatus(400, fetchError.message);
   if (!cage) throwWithStatus(404, 'Cage not found');
+
+  return cage as { status: CageStatus; archived_at: string | null };
+}
+
+/** Config-menu consistency change: replaces the old hard delete on the Cage
+ * "..." menu - archiving hides the cage from the grid, picker, assignment and
+ * capacity counts without losing its stay/booking history. Still blocks a cage
+ * that's currently Occupied/Reserved - a stay's cage_id would otherwise be
+ * orphaned mid-stay. Available/Under Maintenance cages may be archived
+ * freely. */
+export async function archiveCage(params: CageIdParams): Promise<void> {
+  const cage = await loadCageForArchiveAction(params);
+
+  if (cage.archived_at) throwWithStatus(409, 'Cage is already archived');
   if (cage.status === 'Occupied' || cage.status === 'Reserved') {
     throwWithStatus(
       409,
-      `Cannot delete a cage that is currently ${cage.status}`
+      `Cannot archive a cage that is currently ${cage.status}`
     );
   }
 
-  const { error: deleteError } = await supabase
+  const { error } = await supabase
+    .from('cages')
+    .update({
+      archived_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.cageId)
+    .eq('branch_id', params.branchId);
+
+  if (error) throwWithStatus(400, error.message);
+}
+
+/** Restores an archived cage as-is - its status is left unchanged. */
+export async function restoreCage(params: CageIdParams): Promise<Cage> {
+  const cage = await loadCageForArchiveAction(params);
+
+  if (!cage.archived_at) throwWithStatus(409, 'Cage is not archived');
+
+  const { data, error } = await supabase
+    .from('cages')
+    .update({ archived_at: null, updated_at: new Date().toISOString() })
+    .eq('id', params.cageId)
+    .eq('branch_id', params.branchId)
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Cage not found');
+
+  return withFlattenedPetTypes(data);
+}
+
+export async function listArchivedCages(branchId: string): Promise<Cage[]> {
+  const { data, error } = await supabase
+    .from('cages')
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .eq('branch_id', branchId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []).map(withFlattenedPetTypes);
+}
+
+/** "Delete permanently" from Config > Archive - only allowed once a cage has
+ * been archived. A cage with stay or booking history can't be hard-deleted
+ * (stays.cage_id / bookings.preferred_cage_id are FK-restricted); archive is
+ * the right path for those. */
+export async function hardDeleteCage(params: CageIdParams): Promise<void> {
+  const cage = await loadCageForArchiveAction(params);
+
+  assertArchivedBeforeHardDelete(cage.archived_at, 'This cage');
+
+  const { error } = await supabase
     .from('cages')
     .delete()
-    .eq('id', cageId)
-    .eq('branch_id', branchId);
+    .eq('id', params.cageId)
+    .eq('branch_id', params.branchId);
 
-  if (deleteError) throwWithStatus(400, deleteError.message);
+  if (error) {
+    if (error.code === '23503') {
+      throwWithStatus(
+        409,
+        'This cage has stay or booking history and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

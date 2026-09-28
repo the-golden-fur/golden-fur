@@ -124,6 +124,8 @@ export interface Service {
   base_price: number;
   duration_minutes: number | null;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   /** Whether a pet with no recorded weight_class/coat_type (never staff-
    * assessed onsite) may book this service - false only for the seeded
    * "Initial Assessment" service. See ...073_m02_pets_assessment_lock.sql. */
@@ -252,6 +254,8 @@ export interface Breed {
   id: string;
   pet_type: PetType;
   name: string;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -263,6 +267,8 @@ export interface PetTypeRow {
   key: string;
   name: string;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -300,6 +306,8 @@ export interface ServiceType {
   key: string;
   name: string;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   staff_picker_enabled: boolean;
   cage_picker_enabled: boolean;
   /** Which staff roles may be offered by the Staff Picker for this type -

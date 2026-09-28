@@ -145,8 +145,9 @@ export const BRANCHES_TILE: ConfigTileConfig = {
 
 /**
  * No longer a listed Config tile (folded into Branches, session 87) - kept
- * resolvable, not listed, so a Branches row's "Configure" action can still
- * navigate to it and have SettingsPage render it inline. Deliberately NOT
+ * resolvable, not listed, so an old Policies link still lands on it inside
+ * Settings. A Branches row's "Configure" now opens a modal (branch details +
+ * these policies, embedded) instead of navigating here. Deliberately NOT
  * added to CONFIG_TILES (would reappear in the sidebar/ConfigTab grid) -
  * see HIDDEN_CONFIG_TILES and SettingsPage.tsx's activeConfigTile lookup.
  * The standalone /staff/admin/maintenance/policies route (unscoped, for

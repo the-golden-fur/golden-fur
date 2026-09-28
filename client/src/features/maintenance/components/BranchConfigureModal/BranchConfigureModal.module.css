@@ -1,0 +1,25 @@
+.sections {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sections > section + section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-primary);
+  font-size: var(--text-heading-md);
+  font-weight: var(--weight-semibold);
+}
+
+.successBanner {
+  margin: 0 0 var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}

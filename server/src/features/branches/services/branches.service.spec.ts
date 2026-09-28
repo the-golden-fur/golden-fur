@@ -129,12 +129,13 @@ describe('branches.service', () => {
       await expect(archiveBranch('branch-1')).resolves.toBeUndefined();
     });
 
-    it('refuses to archive a still-active branch', async () => {
-      queueFromResults({ data: BRANCH, error: null });
+    it('archives a still-active branch directly (Deactivate is gone)', async () => {
+      queueFromResults(
+        { data: BRANCH, error: null },
+        { data: null, error: null }
+      );
 
-      await expect(archiveBranch('branch-1')).rejects.toMatchObject({
-        statusCode: 403,
-      });
+      await expect(archiveBranch('branch-1')).resolves.toBeUndefined();
     });
   });
 

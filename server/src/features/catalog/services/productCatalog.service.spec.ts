@@ -141,15 +141,16 @@ describe('productCatalog.service (Sprint 5 unification, #82)', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('archiveProduct rejects with 403 when the item is still active', async () => {
-    queueFromResults({
-      data: { id: 'item-1', is_active: true, archived_at: null },
-      error: null,
-    });
+  it('archiveProduct archives a still-active item directly (Deactivate is gone)', async () => {
+    queueFromResults(
+      {
+        data: { id: 'item-1', is_active: true, archived_at: null },
+        error: null,
+      },
+      { data: null, error: null }
+    );
 
-    await expect(archiveProduct('item-1')).rejects.toMatchObject({
-      statusCode: 403,
-    });
+    await expect(archiveProduct('item-1')).resolves.toBeUndefined();
   });
 
   it('archiveProduct sets archived_at once the item is deactivated', async () => {

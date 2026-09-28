@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveService,
   createService,
   getServiceById,
+  hardDeleteService,
   listServices,
+  restoreService,
   setServiceBranchAvailability,
   updateService,
 } from './services.service.ts';
@@ -33,6 +36,9 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
+    builder.in = builder.in ?? vi.fn(() => builder);
     builder.in = vi.fn(() => builder);
     builder.or = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
@@ -359,6 +365,174 @@ describe('services.service', () => {
           isAvailable: true,
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('archive / restore / hard delete (Config-menu consistency change)', () => {
+    it('listServices hides archived services by default', async () => {
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await listServices({});
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as {
+        is: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.is).toHaveBeenCalledWith('archived_at', null);
+    });
+
+    it('listServices({ includeArchived }) does not filter archived rows out', async () => {
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await listServices({ includeArchived: true, includeInactive: true });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as {
+        is: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.is).not.toHaveBeenCalled();
+    });
+
+    it('listServices({ archivedOnly }) returns only archived rows', async () => {
+      queueFromResults(
+        { data: [GROOMING_SERVICE], error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await listServices({ archivedOnly: true });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as {
+        not: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.not).toHaveBeenCalledWith('archived_at', 'is', null);
+    });
+
+    it('archiveService deactivates and archives a service nothing else uses', async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null }, // lookup
+        { data: [], error: null }, // packages using it
+        { data: [], error: null }, // promos using it
+        { data: [], error: null }, // discounts using it
+        { data: null, error: null }, // update
+        { data: GROOMING_SERVICE, error: null }, // getServiceById
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await archiveService('service-1');
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'services' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({ is_active: false });
+      expect(
+        (update?.payload as { archived_at: string | null }).archived_at
+      ).toEqual(expect.any(String));
+    });
+
+    it('archiveService 409s naming the live package/promo/discount that still uses it', async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null },
+        { data: [{ packages: { name: 'Spa Day' } }], error: null },
+        { data: [{ promos: { name: 'Summer Promo' } }], error: null },
+        { data: [{ name: 'PWD Discount' }], error: null }
+      );
+
+      await expect(archiveService('service-1')).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('Spa Day'),
+      });
+    });
+
+    it('archiveService 409s when already archived', async () => {
+      queueFromResults({
+        data: { id: 'service-1', archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(archiveService('service-1')).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('restoreService recomputes is_active from branch availability', async () => {
+      queueFromResults(
+        {
+          data: { id: 'service-1', archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        {
+          data: [{ is_available: false }, { is_available: true }],
+          error: null,
+        }, // availability rows
+        { data: null, error: null }, // update
+        { data: GROOMING_SERVICE, error: null },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      await restoreService('service-1');
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'services' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({
+        archived_at: null,
+        is_active: true,
+      });
+    });
+
+    it('restoreService 409s when the service is not archived', async () => {
+      queueFromResults({
+        data: { id: 'service-1', archived_at: null },
+        error: null,
+      });
+
+      await expect(restoreService('service-1')).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('hardDeleteService 403s until the service is archived', async () => {
+      queueFromResults({
+        data: { id: 'service-1', archived_at: null },
+        error: null,
+      });
+
+      await expect(hardDeleteService('service-1')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+
+    it('hardDeleteService maps a foreign key violation (booking history) to 409', async () => {
+      queueFromResults(
+        {
+          data: { id: 'service-1', archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        { data: null, error: { code: '23503', message: 'fk violation' } }
+      );
+
+      await expect(hardDeleteService('service-1')).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('setServiceBranchAvailability refuses an archived service (would otherwise un-hide it)', async () => {
+      queueFromResults({
+        data: { id: 'service-1', archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        setServiceBranchAvailability({
+          serviceId: 'service-1',
+          branchId: 'branch-makati',
+          isAvailable: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
     });
   });
 });

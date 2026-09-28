@@ -8,10 +8,13 @@ import {
   startCareLogEntry,
 } from './services/careLogCompletion.service.ts';
 import {
+  archiveCage,
   createCage,
-  deleteCage,
   getAvailableCageCountsBySize,
   getCageGrid,
+  hardDeleteCage,
+  listArchivedCages,
+  restoreCage,
   setCageMaintenanceStatus,
   updateCage,
 } from './services/cageStatus.service.ts';
@@ -383,7 +386,9 @@ export async function updateCageController(
   }
 }
 
-export async function deleteCageController(
+/** DELETE /hotel/cage/:id archives the cage (Config-menu consistency change) -
+ * the permanent delete lives at DELETE /hotel/cage/:id/permanent. */
+export async function archiveCageController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -394,7 +399,61 @@ export async function deleteCageController(
   }
 
   try {
-    await deleteCage({ cageId: paramId(req, 'id'), branchId });
+    await archiveCage({ cageId: paramId(req, 'id'), branchId });
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreCageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const cage = await restoreCage({ cageId: paramId(req, 'id'), branchId });
+    return res.status(200).json({ cage });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedCagesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const cages = await listArchivedCages(branchId);
+    return res.status(200).json({ cages });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteCageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await hardDeleteCage({ cageId: paramId(req, 'id'), branchId });
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

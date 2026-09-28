@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -20,24 +14,25 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { RenameModal } from '../../../../shared/components/RenameModal/RenameModal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listPetTypes } from '../../../maintenance/api/maintenance.api';
 import type { PetTypeRow } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archiveCage,
   createCage,
-  deleteCage,
   getCageGrid,
   setCageMaintenanceStatus,
   updateCage,
@@ -86,6 +81,73 @@ function togglePetType(current: string[], key: string): string[] {
     : [...current, key];
 }
 
+/** The cage label / size / pet types fields - shared by the "Add cage" and
+ * "Configure cage" modals so the two can't drift apart. */
+function CageFormFields({
+  form,
+  onChange,
+  petTypeOptions,
+  styles: cls,
+}: {
+  form: CreateFormState;
+  onChange: (next: CreateFormState) => void;
+  petTypeOptions: PetTypeRow[];
+  styles: Record<string, string>;
+}) {
+  return (
+    <>
+      <label className={cls.field}>
+        <span className={cls.label}>Cage label</span>
+        <input
+          className={cls.input}
+          value={form.cageLabel}
+          onChange={(event) =>
+            onChange({ ...form, cageLabel: event.target.value })
+          }
+          placeholder="e.g. Makati-S-03"
+        />
+      </label>
+      <label className={cls.field}>
+        <span className={cls.label}>Size</span>
+        <select
+          className={cls.input}
+          value={form.size}
+          onChange={(event) =>
+            onChange({ ...form, size: event.target.value as CageSize })
+          }
+        >
+          {CAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {CAGE_SIZE_LABELS[size]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className={cls.field}>
+        <span className={cls.label}>Pet types</span>
+        <div className={cls.petTypeCheckboxes}>
+          {petTypeOptions.map((petType) => (
+            <label key={petType.id} className={cls.petTypeCheckboxLabel}>
+              <input
+                type="checkbox"
+                checked={form.petTypes.includes(petType.key)}
+                onChange={() =>
+                  onChange({
+                    ...form,
+                    petTypes: togglePetType(form.petTypes, petType.key),
+                  })
+                }
+              />
+              {petType.name}
+            </label>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function statusBadgeClass(status: CageStatus): string {
   if (status === 'Available') return styles.statusAvailable;
   if (status === 'Under Maintenance') return styles.statusMaintenance;
@@ -125,13 +187,20 @@ export function AdminCagesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingLabel, setEditingLabel] = useState('');
-  const [editingSize, setEditingSize] = useState<CageSize>('S');
-  const [editingPetTypes, setEditingPetTypes] = useState<string[]>([]);
+  // Configure opens a modal (same fields as Add cage) instead of editing the
+  // row inline.
+  const [configuringCage, setConfiguringCage] = useState<Cage | null>(null);
+  const [configForm, setConfigForm] =
+    useState<CreateFormState>(EMPTY_CREATE_FORM);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [isConfiguring, setIsConfiguring] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
+
+  const [renamingCage, setRenamingCage] = useState<Cage | null>(null);
+  const [archivingCage, setArchivingCage] = useState<Cage | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
 
@@ -251,87 +320,60 @@ export function AdminCagesPage() {
     closeCreateModal();
   }
 
-  function startEditing(cage: Cage) {
-    setEditingId(cage.id);
-    setEditingLabel(cage.cage_label);
-    setEditingSize(cage.size);
-    setEditingPetTypes(cage.pet_types);
-    setRowError(null);
+  function openConfigure(cage: Cage) {
+    setConfiguringCage(cage);
+    setConfigForm({
+      cageLabel: cage.cage_label,
+      size: cage.size,
+      petTypes: cage.pet_types,
+    });
+    setConfigError(null);
   }
 
-  async function handleSaveEdit(cageId: string) {
-    if (!accessToken || !editingLabel.trim()) {
-      const message = 'Cage label is required.';
-      setRowError(message);
-      throw new Error(message);
+  function closeConfigure() {
+    setConfiguringCage(null);
+    setConfigError(null);
+  }
+
+  async function handleConfigure(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!accessToken || !configuringCage) return;
+
+    if (!configForm.cageLabel.trim()) {
+      setConfigError('Cage label is required.');
+      return;
     }
 
-    if (editingPetTypes.length === 0) {
-      const message = 'Select at least one pet type.';
-      setRowError(message);
-      throw new Error(message);
+    if (configForm.petTypes.length === 0) {
+      setConfigError('Select at least one pet type.');
+      return;
     }
 
-    setRowError(null);
+    setIsConfiguring(true);
+    setConfigError(null);
 
     const result = await updateCage(
-      cageId,
+      configuringCage.id,
       {
-        cage_label: editingLabel.trim(),
-        size: editingSize,
-        pet_types: editingPetTypes,
+        cage_label: configForm.cageLabel.trim(),
+        size: configForm.size,
+        pet_types: configForm.petTypes,
       },
       accessToken
     );
 
+    setIsConfiguring(false);
+
     if (result.error || !result.data) {
-      const message = result.error ?? 'Could not update cage.';
-      setRowError(message);
-      throw new Error(message);
+      setConfigError(result.error ?? 'Could not update cage.');
+      return;
     }
 
     replaceCage(result.data);
-    setEditingId(null);
     setMessage('Cage updated.');
+    closeConfigure();
   }
-
-  const editingCage = cages.find((cage) => cage.id === editingId) ?? null;
-
-  const handleDiscardEdit = useCallback(() => {
-    setEditingId(null);
-    setRowError(null);
-  }, []);
-
-  // handleSaveEdit itself is a plain function (redefined every render, not
-  // useCallback'd), so this wrapper's own deps must list every piece of
-  // state handleSaveEdit actually reads - otherwise (see the bug this
-  // fixed) a fresh, unmemoized onSave identity on every render re-triggers
-  // useUnsavedChanges' registration effect every render, which changes the
-  // provider's context value, which re-renders this component, which
-  // creates another fresh onSave... an infinite loop with no user action
-  // needed to sustain it. Listing the real dependencies here means this
-  // only recomputes when one of them actually changes, each time capturing
-  // that same render's handleSaveEdit (correctly in sync, since both are
-  // defined fresh together every render).
-  const handleUnsavedSave = useCallback(
-    () => (editingId !== null ? handleSaveEdit(editingId) : Promise.resolve()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, accessToken, editingLabel, editingSize, editingPetTypes]
-  );
-
-  // Cages only ever has one row mid-edit at a time (editingId), so this is
-  // the "per-in-progress-edit" shape of the pattern - a stable id (there's
-  // never more than one concurrent registration for this page) with
-  // entering edit mode itself as the dirty signal, since there's no
-  // deeper per-field diffing for row edits like there is for whole-page
-  // drafts.
-  useUnsavedChanges({
-    id: 'cage-edit',
-    label: editingCage ? `Cage: ${editingCage.cage_label}` : 'Cage',
-    isDirty: editingId !== null,
-    onSave: handleUnsavedSave,
-    onDiscard: handleDiscardEdit,
-  });
 
   async function handleToggleMaintenance(cage: Cage) {
     if (!accessToken) return;
@@ -358,20 +400,44 @@ export function AdminCagesPage() {
     replaceCage(result.data);
   }
 
-  async function handleDelete(cage: Cage) {
-    if (!accessToken) return;
+  async function handleRename(
+    cage: Cage,
+    name: string
+  ): Promise<string | null> {
+    if (!accessToken) return 'You are signed out.';
 
+    const result = await updateCage(cage.id, { cage_label: name }, accessToken);
+
+    if (result.error || !result.data) {
+      return result.error ?? 'Could not rename cage.';
+    }
+
+    replaceCage(result.data);
+    setMessage('Cage renamed.');
+    return null;
+  }
+
+  async function handleConfirmArchive() {
+    if (!accessToken || !archivingCage) return;
+
+    setIsArchiving(true);
     setRowError(null);
 
-    const result = await deleteCage(cage.id, accessToken);
+    const result = await archiveCage(archivingCage.id, accessToken);
+
+    setIsArchiving(false);
 
     if (result.error) {
+      setArchivingCage(null);
       setRowError(result.error);
       return;
     }
 
-    setCages((prev) => prev.filter((existing) => existing.id !== cage.id));
-    setMessage('Cage deleted.');
+    setCages((prev) =>
+      prev.filter((existing) => existing.id !== archivingCage.id)
+    );
+    setArchivingCage(null);
+    setMessage('Cage archived. Restore it from Settings > Config > Archive.');
   }
 
   const filterFields = useMemo(
@@ -417,13 +483,15 @@ export function AdminCagesPage() {
 
   // Custom change: consolidate the row actions behind a single "..." menu
   // (same treatment as Services/Pet Types/etc.) instead of a row of
-  // always-visible buttons. Delete is left out entirely rather than shown
+  // always-visible buttons. Archive is left out entirely rather than shown
   // disabled - MoreOptionsMenu items have no disabled state, and omitting
   // an inapplicable action is the same convention every other "..." menu in
-  // this app already uses.
+  // this app already uses. Configure / Rename / Archive is the consistent
+  // core across every admin Config page.
   function cageActionItems(cage: Cage): MoreOptionsMenuItem[] {
     const items: MoreOptionsMenuItem[] = [
-      { label: 'Edit', onSelect: () => startEditing(cage) },
+      { label: 'Configure', onSelect: () => openConfigure(cage) },
+      { label: 'Rename', onSelect: () => setRenamingCage(cage) },
     ];
 
     if (cage.status === 'Available' || cage.status === 'Under Maintenance') {
@@ -437,7 +505,7 @@ export function AdminCagesPage() {
     }
 
     if (cage.status !== 'Occupied' && cage.status !== 'Reserved') {
-      items.push({ label: 'Delete', onSelect: () => void handleDelete(cage) });
+      items.push({ label: 'Archive', onSelect: () => setArchivingCage(cage) });
     }
 
     return items;
@@ -449,31 +517,6 @@ export function AdminCagesPage() {
   // dense board grid is visual noise there, same precedent as Staff/
   // Customer Management (session 111).
   function renderCageActions(cage: Cage) {
-    if (editingId === cage.id) {
-      return (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.smallButton}
-            onClick={() =>
-              void handleSaveEdit(cage.id).catch(() => {
-                // rowError is already set and shown below - nothing else to do.
-              })
-            }
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={handleDiscardEdit}
-          >
-            Cancel
-          </button>
-        </div>
-      );
-    }
-
     return (
       <div className={styles.actions}>
         <MoreOptionsMenu
@@ -489,67 +532,25 @@ export function AdminCagesPage() {
       {
         id: 'label',
         header: 'Cage',
-        render: (cage) =>
-          editingId === cage.id ? (
-            <input
-              className={styles.input}
-              value={editingLabel}
-              onChange={(event) => setEditingLabel(event.target.value)}
-            />
-          ) : (
-            <span className={styles.cageLabel}>{cage.cage_label}</span>
-          ),
+        render: (cage) => (
+          <span className={styles.cageLabel}>{cage.cage_label}</span>
+        ),
       },
       {
         id: 'size',
         header: 'Size',
-        render: (cage) =>
-          editingId === cage.id ? (
-            <select
-              className={styles.input}
-              value={editingSize}
-              onChange={(event) =>
-                setEditingSize(event.target.value as CageSize)
-              }
-            >
-              {CAGE_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className={styles.cageSize}>
-              {CAGE_SIZE_LABELS[cage.size]}
-            </span>
-          ),
+        render: (cage) => (
+          <span className={styles.cageSize}>{CAGE_SIZE_LABELS[cage.size]}</span>
+        ),
       },
       {
         id: 'petTypes',
         header: 'Pet types',
-        render: (cage) =>
-          editingId === cage.id ? (
-            <div className={styles.petTypeCheckboxes}>
-              {petTypeOptions.map((petType) => (
-                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={editingPetTypes.includes(petType.key)}
-                    onChange={() =>
-                      setEditingPetTypes((prev) =>
-                        togglePetType(prev, petType.key)
-                      )
-                    }
-                  />
-                  {petType.name}
-                </label>
-              ))}
-            </div>
-          ) : (
-            <span className={styles.petTypesBadge}>
-              {cage.pet_types.join(', ')}
-            </span>
-          ),
+        render: (cage) => (
+          <span className={styles.petTypesBadge}>
+            {cage.pet_types.join(', ')}
+          </span>
+        ),
       },
       {
         id: 'status',
@@ -563,7 +564,7 @@ export function AdminCagesPage() {
         ),
       },
     ],
-    [editingId, editingLabel, editingSize, editingPetTypes, petTypeOptions]
+    []
   );
 
   function renderCageCardBody(cage: Cage) {
@@ -584,46 +585,6 @@ export function AdminCagesPage() {
   }
 
   function renderCageCard(cage: Cage) {
-    if (editingId === cage.id) {
-      return (
-        <div className={styles.rowMain}>
-          <input
-            className={styles.input}
-            value={editingLabel}
-            onChange={(event) => setEditingLabel(event.target.value)}
-          />
-          <select
-            className={styles.input}
-            value={editingSize}
-            onChange={(event) => setEditingSize(event.target.value as CageSize)}
-          >
-            {CAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-          <div className={styles.petTypeCheckboxes}>
-            {petTypeOptions.map((petType) => (
-              <label key={petType.id} className={styles.petTypeCheckboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={editingPetTypes.includes(petType.key)}
-                  onChange={() =>
-                    setEditingPetTypes((prev) =>
-                      togglePetType(prev, petType.key)
-                    )
-                  }
-                />
-                {petType.name}
-              </label>
-            ))}
-          </div>
-          {renderCageActions(cage)}
-        </div>
-      );
-    }
-
     return (
       <div className={styles.rowMain}>
         {renderCageCardBody(cage)}
@@ -634,14 +595,8 @@ export function AdminCagesPage() {
 
   // Board: the "..." trigger is hidden entirely in favor of a right-click
   // (desktop) / long-press (mobile) menu via CardContextMenu - same
-  // precedent as Staff/Customer Management (session 111). Editing state is
-  // unaffected - it still shows the same inline edit form regardless of
-  // view, since editing needs its inputs visible either way.
+  // precedent as Staff/Customer Management (session 111).
   function renderCageBoardCard(cage: Cage) {
-    if (editingId === cage.id) {
-      return renderCageCard(cage);
-    }
-
     return (
       <CardContextMenu
         items={cageActionItems(cage)}
@@ -680,8 +635,8 @@ export function AdminCagesPage() {
           </button>
         </div>
         <p className={styles.copy}>
-          Add, rename/resize, or delete a cage at your branch. A cage that is
-          currently Occupied or Reserved cannot be deleted.
+          Add, configure, rename, or archive a cage at your branch. A cage that
+          is currently Occupied or Reserved cannot be archived.
         </p>
 
         {message ? <p className={styles.successBanner}>{message}</p> : null}
@@ -780,60 +735,12 @@ export function AdminCagesPage() {
           className={styles.form}
           onSubmit={(event) => void handleCreate(event)}
         >
-          <label className={styles.field}>
-            <span className={styles.label}>Cage label</span>
-            <input
-              className={styles.input}
-              value={createForm.cageLabel}
-              onChange={(event) =>
-                setCreateForm((prev) => ({
-                  ...prev,
-                  cageLabel: event.target.value,
-                }))
-              }
-              placeholder="e.g. Makati-S-03"
-            />
-          </label>
-          <label className={styles.field}>
-            <span className={styles.label}>Size</span>
-            <select
-              className={styles.input}
-              value={createForm.size}
-              onChange={(event) =>
-                setCreateForm((prev) => ({
-                  ...prev,
-                  size: event.target.value as CageSize,
-                }))
-              }
-            >
-              {CAGE_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {CAGE_SIZE_LABELS[size]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className={styles.field}>
-            <span className={styles.label}>Pet types</span>
-            <div className={styles.petTypeCheckboxes}>
-              {petTypeOptions.map((petType) => (
-                <label key={petType.id} className={styles.petTypeCheckboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={createForm.petTypes.includes(petType.key)}
-                    onChange={() =>
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        petTypes: togglePetType(prev.petTypes, petType.key),
-                      }))
-                    }
-                  />
-                  {petType.name}
-                </label>
-              ))}
-            </div>
-          </div>
+          <CageFormFields
+            form={createForm}
+            onChange={setCreateForm}
+            petTypeOptions={petTypeOptions}
+            styles={styles}
+          />
 
           {formError ? (
             <p className={styles.errorBanner} role="alert">
@@ -850,6 +757,61 @@ export function AdminCagesPage() {
           </button>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={configuringCage !== null}
+        title="Configure cage"
+        onClose={closeConfigure}
+        closeOnBackdropClick={false}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleConfigure(event)}
+        >
+          <CageFormFields
+            form={configForm}
+            onChange={setConfigForm}
+            petTypeOptions={petTypeOptions}
+            styles={styles}
+          />
+
+          {configError ? (
+            <p className={styles.errorBanner} role="alert">
+              {configError}
+            </p>
+          ) : null}
+
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isConfiguring}
+          >
+            {isConfiguring ? 'Saving...' : 'Save changes'}
+          </button>
+        </form>
+      </Modal>
+
+      <RenameModal
+        isOpen={renamingCage !== null}
+        entityLabel="cage"
+        currentName={renamingCage?.cage_label ?? ''}
+        onSubmit={(name) =>
+          renamingCage
+            ? handleRename(renamingCage, name)
+            : Promise.resolve(null)
+        }
+        onClose={() => setRenamingCage(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={archivingCage !== null}
+        title="Archive cage?"
+        body={`"${archivingCage?.cage_label ?? ''}" will be hidden from the cage grid, cage assignment and booking capacity. Its stay history is kept, and you can restore it from Settings > Config > Archive.`}
+        confirmLabel="Archive"
+        isConfirming={isArchiving}
+        onConfirm={() => void handleConfirmArchive()}
+        onCancel={() => setArchivingCage(null)}
+      />
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listBreeds } from '../../../api/customer.api';
 import type { Breed, PetType } from '../../../customer.types';
 import styles from './BreedSelect.module.css';
@@ -23,10 +23,16 @@ export function BreedSelect({ petType, value, onChange }: BreedSelectProps) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 
+  // The breed already on the pet stays in the list even if an admin has since
+  // archived it, so its name keeps showing - archived breeds are otherwise
+  // hidden from the picker. Read once (not a dependency): re-fetching on every
+  // selection would be pointless churn.
+  const initialValueRef = useRef(value);
+
   useEffect(() => {
     let isMounted = true;
 
-    void listBreeds(petType).then((result) => {
+    void listBreeds(petType, initialValueRef.current).then((result) => {
       if (isMounted) {
         setBreeds(result.data ?? []);
       }

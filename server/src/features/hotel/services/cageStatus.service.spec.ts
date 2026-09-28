@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveCage,
   createCage,
-  deleteCage,
   getAvailableCageCountsBySize,
   getCageGrid,
+  hardDeleteCage,
+  listArchivedCages,
+  restoreCage,
   setCageMaintenanceStatus,
   updateCage,
 } from './cageStatus.service.ts';
@@ -28,6 +31,9 @@ function queueFromResults(...results: QueryResult[]) {
     for (const method of [
       'select',
       'eq',
+      'is',
+      'in',
+      'not',
       'order',
       'update',
       'insert',
@@ -121,6 +127,7 @@ describe('cageStatus.service (#78)', () => {
   describe('createCage (Cage CRUD, custom change)', () => {
     it('creates a cage at the given branch with its pet types', async () => {
       queueFromResults(
+        { data: [], error: null }, // archived pet type check
         {
           data: { id: 'c1', cage_label: 'Makati-S-03', size: 'S' },
           error: null,
@@ -140,7 +147,10 @@ describe('cageStatus.service (#78)', () => {
     });
 
     it('surfaces a Supabase error as a 400', async () => {
-      queueFromResults({ data: null, error: { message: 'boom' } });
+      queueFromResults(
+        { data: [], error: null }, // archived pet type check
+        { data: null, error: { message: 'boom' } }
+      );
 
       await expect(
         createCage({
@@ -187,6 +197,7 @@ describe('cageStatus.service (#78)', () => {
 
     it('Custom change (cage pet-type support): replaces pet_types membership wholesale when given', async () => {
       queueFromResults(
+        { data: [], error: null }, // archived pet type check
         { data: { id: 'c1', cage_label: 'Renamed', size: 'M' }, error: null }, // cages update
         { data: null, error: null }, // cage_pet_types delete
         { data: null, error: null } // cage_pet_types insert
@@ -218,15 +229,33 @@ describe('cageStatus.service (#78)', () => {
     });
   });
 
-  describe('deleteCage (Cage CRUD, custom change)', () => {
-    it('deletes an Available cage', async () => {
+  describe('archived pet types', () => {
+    it('rejects creating a cage for an archived pet type', async () => {
+      queueFromResults({
+        data: [{ key: 'Ferret', name: 'Ferret' }],
+        error: null,
+      });
+
+      await expect(
+        createCage({
+          branchId: 'branch-1',
+          cageLabel: 'X',
+          size: 'S',
+          petTypes: ['Ferret'],
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+  });
+
+  describe('archiveCage (Config-menu consistency change)', () => {
+    it('archives an Available cage', async () => {
       queueFromResults(
-        { data: { status: 'Available' }, error: null }, // fetch
-        { data: null, error: null } // delete
+        { data: { status: 'Available', archived_at: null }, error: null }, // fetch
+        { data: null, error: null } // update
       );
 
       await expect(
-        deleteCage({ cageId: 'c1', branchId: 'branch-1' })
+        archiveCage({ cageId: 'c1', branchId: 'branch-1' })
       ).resolves.toBeUndefined();
     });
 
@@ -234,23 +263,137 @@ describe('cageStatus.service (#78)', () => {
       queueFromResults({ data: null, error: null });
 
       await expect(
-        deleteCage({ cageId: 'c1', branchId: 'branch-1' })
+        archiveCage({ cageId: 'c1', branchId: 'branch-1' })
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
-    it('rejects deleting a currently-Occupied cage', async () => {
-      queueFromResults({ data: { status: 'Occupied' }, error: null });
+    it('rejects archiving a currently-Occupied cage', async () => {
+      queueFromResults({
+        data: { status: 'Occupied', archived_at: null },
+        error: null,
+      });
 
       await expect(
-        deleteCage({ cageId: 'c1', branchId: 'branch-1' })
+        archiveCage({ cageId: 'c1', branchId: 'branch-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
-    it('rejects deleting a currently-Reserved cage', async () => {
-      queueFromResults({ data: { status: 'Reserved' }, error: null });
+    it('rejects archiving a currently-Reserved cage', async () => {
+      queueFromResults({
+        data: { status: 'Reserved', archived_at: null },
+        error: null,
+      });
 
       await expect(
-        deleteCage({ cageId: 'c1', branchId: 'branch-1' })
+        archiveCage({ cageId: 'c1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('rejects archiving an already-archived cage', async () => {
+      queueFromResults({
+        data: { status: 'Available', archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        archiveCage({ cageId: 'c1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+  });
+
+  describe('restoreCage', () => {
+    it('restores an archived cage and returns it with flattened pet types', async () => {
+      queueFromResults(
+        {
+          data: { status: 'Available', archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        {
+          data: {
+            id: 'c1',
+            size: 'S',
+            archived_at: null,
+            cage_pet_types: [{ pet_type: 'Dog' }],
+          },
+          error: null,
+        }
+      );
+
+      const cage = await restoreCage({ cageId: 'c1', branchId: 'branch-1' });
+
+      expect(cage.pet_types).toEqual(['Dog']);
+      expect(cage.archived_at).toBeNull();
+    });
+
+    it('rejects restoring a cage that is not archived', async () => {
+      queueFromResults({
+        data: { status: 'Available', archived_at: null },
+        error: null,
+      });
+
+      await expect(
+        restoreCage({ cageId: 'c1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+  });
+
+  describe('listArchivedCages', () => {
+    it('returns archived cages with flattened pet types', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'c1',
+            archived_at: '2026-09-01T00:00:00Z',
+            cage_pet_types: [{ pet_type: 'Cat' }],
+          },
+        ],
+        error: null,
+      });
+
+      const cages = await listArchivedCages('branch-1');
+
+      expect(cages).toHaveLength(1);
+      expect(cages[0].pet_types).toEqual(['Cat']);
+    });
+  });
+
+  describe('hardDeleteCage', () => {
+    it('permanently deletes an archived cage', async () => {
+      queueFromResults(
+        {
+          data: { status: 'Available', archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        { data: null, error: null }
+      );
+
+      await expect(
+        hardDeleteCage({ cageId: 'c1', branchId: 'branch-1' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects deleting a cage that has not been archived first', async () => {
+      queueFromResults({
+        data: { status: 'Available', archived_at: null },
+        error: null,
+      });
+
+      await expect(
+        hardDeleteCage({ cageId: 'c1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('409s when the cage still has stay or booking history (FK violation)', async () => {
+      queueFromResults(
+        {
+          data: { status: 'Available', archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        { data: null, error: { code: '23503', message: 'fk violation' } }
+      );
+
+      await expect(
+        hardDeleteCage({ cageId: 'c1', branchId: 'branch-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
     });
   });

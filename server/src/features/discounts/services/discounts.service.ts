@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import type {
   Discount,
@@ -172,12 +172,17 @@ export async function setDiscountBranchAvailability({
 }: SetDiscountBranchAvailabilityParams): Promise<DiscountBranchAvailability> {
   const { data: existing, error: lookupError } = await supabase
     .from('discounts')
-    .select('id')
+    .select('id, archived_at')
     .eq('id', discountId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Discount not found');
+  // The is_active sync below would otherwise silently un-hide an archived
+  // discount the moment any branch toggle is touched.
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This discount is archived - restore it first');
+  }
 
   const { data, error } = await supabase
     .from('discount_branch_availability')
@@ -216,26 +221,19 @@ export async function setDiscountBranchAvailability({
 }
 
 /**
- * Any discount (mandated or custom) can be toggled via is_active, and a
- * custom discount's value/scope edited (#43 AC-3). A mandated row's name is
- * immutable - renaming it would let 'Senior Citizen Discount' silently
- * become something else (is_mandated itself is already unreachable: the
- * validator's `.strict()` rejects the key on any payload).
+ * Any discount (mandated or custom) can be edited, including renamed (#43
+ * AC-3). A mandated row used to have an immutable name because checkout
+ * recognised Senior Citizen / PWD by it; checkout now reads mandated_kind
+ * (20260928220), so the display name is free to change. is_mandated and
+ * mandated_kind themselves stay unreachable: the validator's `.strict()`
+ * rejects both keys on any payload.
  */
 export async function updateDiscount({
   requesterId,
   discountId,
   updates,
 }: UpdateDiscountParams): Promise<Discount> {
-  const existing = await getDiscountById(discountId);
-
-  if (
-    existing.is_mandated &&
-    updates.name !== undefined &&
-    updates.name !== existing.name
-  ) {
-    throwWithStatus(400, "A mandated discount's name cannot be changed");
-  }
+  await getDiscountById(discountId);
 
   // When the scope shape changes, null out the other scope columns so the
   // discounts_scope_matches_type CHECK holds (exactly one non-null).
@@ -264,28 +262,39 @@ export async function updateDiscount({
 }
 
 /**
- * Deactivate-first CRUD safety (archive workflow), mirroring
- * productCatalog.service.ts's archiveProduct: archiving is soft - the row
- * moves to the archive list via archived_at, it is not deleted. A mandated
- * discount can still be archived once deactivated - is_mandated only
- * protects its name (updateDiscount above), not its lifecycle.
+ * Archiving is soft - the row moves to the archive list via archived_at, it
+ * is not deleted, and (Config-menu consistency change) it deactivates the
+ * discount in the same step, so an active discount can be archived directly.
+ * A mandated discount can be archived too - is_mandated only protects its
+ * name (updateDiscount above), not its lifecycle.
  */
 export async function archiveDiscount(discountId: string): Promise<void> {
-  const discount = await getDiscountById(discountId);
-  assertInactiveBeforeArchive(discount.is_active, 'This discount');
+  await getDiscountById(discountId);
 
   const { error } = await supabase
     .from('discounts')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', discountId);
 
   if (error) throwWithStatus(400, error.message);
 }
 
+/** is_active is derived from branch availability for discounts, so restore
+ * recomputes it rather than blindly setting it true. */
 export async function restoreDiscount(discountId: string): Promise<void> {
+  const { data: rows, error: rowsError } = await supabase
+    .from('discount_branch_availability')
+    .select('is_available')
+    .eq('discount_id', discountId);
+
+  if (rowsError) throwWithStatus(400, rowsError.message);
+
   const { error } = await supabase
     .from('discounts')
-    .update({ archived_at: null })
+    .update({
+      archived_at: null,
+      is_active: (rows ?? []).some((row) => row.is_available),
+    })
     .eq('id', discountId);
 
   if (error) throwWithStatus(400, error.message);

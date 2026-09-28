@@ -13,6 +13,7 @@ function createMockSupabase() {
         id: string;
         name: string;
         is_mandated: boolean;
+        mandated_kind: string;
         value: number;
         scope_category: string;
         is_active: boolean;
@@ -47,6 +48,7 @@ function createMockSupabase() {
           insert: (row: {
             name: string;
             is_mandated: boolean;
+            mandated_kind: string;
             value: number;
             scope_category: string;
             is_active: boolean;
@@ -111,6 +113,9 @@ describe('m12-discounts seed', () => {
 
       for (const discount of supabase.state.discounts.values()) {
         expect(discount.is_mandated).toBe(true);
+        // Stable identity for checkout's eligibility gate - independent of
+        // the (renamable) display name.
+        expect(['senior_citizen', 'pwd']).toContain(discount.mandated_kind);
         // Custom change (unify active/available): is_active mirrors branch
         // availability everywhere now - every row here is seeded available
         // at every branch, so it's seeded active too.

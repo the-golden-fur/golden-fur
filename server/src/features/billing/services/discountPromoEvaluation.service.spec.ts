@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  evaluateDiscounts,
   evaluateMiscSaleDiscounts,
   evaluateMiscSalePromos,
   evaluatePromos,
@@ -212,6 +213,7 @@ function buildDiscountRow(overrides: Record<string, unknown> = {}) {
     id: 'discount-1',
     name: 'Misc Sale Discount',
     is_mandated: false,
+    mandated_kind: null,
     discount_type: 'Percentage',
     value: 10,
     scope_type: 'misc_sale',
@@ -289,15 +291,14 @@ describe('evaluateMiscSaleDiscounts', () => {
   });
 
   it('session 115: gates a mandated Senior Citizen discount on the eligibility flag', async () => {
-    queueFromResults({
-      data: [
-        buildDiscountRow({
-          name: 'Senior Citizen Discount',
-          is_mandated: true,
-        }),
-      ],
-      error: null,
-    });
+    const row = () =>
+      buildDiscountRow({
+        name: 'Senior Citizen Discount',
+        is_mandated: true,
+        mandated_kind: 'senior_citizen',
+      });
+
+    queueFromResults({ data: [row()], error: null });
 
     const ineligible = await evaluateMiscSaleDiscounts({
       branchId: 'branch-makati',
@@ -307,15 +308,7 @@ describe('evaluateMiscSaleDiscounts', () => {
     });
     expect(ineligible).toEqual([]);
 
-    queueFromResults({
-      data: [
-        buildDiscountRow({
-          name: 'Senior Citizen Discount',
-          is_mandated: true,
-        }),
-      ],
-      error: null,
-    });
+    queueFromResults({ data: [row()], error: null });
 
     const eligible = await evaluateMiscSaleDiscounts({
       branchId: 'branch-makati',
@@ -324,6 +317,118 @@ describe('evaluateMiscSaleDiscounts', () => {
       subtotal: 500,
     });
     expect(eligible).toHaveLength(1);
+  });
+
+  it('a RENAMED mandated discount is still gated on eligibility (the gate keys on mandated_kind, not the name)', async () => {
+    for (const [kind, flags] of [
+      ['senior_citizen', { seniorCitizenEligible: false, pwdEligible: true }],
+      ['pwd', { seniorCitizenEligible: true, pwdEligible: false }],
+    ] as const) {
+      queueFromResults({
+        data: [
+          buildDiscountRow({
+            name: 'Loyal Customers Special',
+            is_mandated: true,
+            mandated_kind: kind,
+          }),
+        ],
+        error: null,
+      });
+
+      const result = await evaluateMiscSaleDiscounts({
+        branchId: 'branch-makati',
+        paymentMethod: 'Cash',
+        eligibility: flags,
+        subtotal: 500,
+      });
+
+      expect(result).toEqual([]);
+    }
+  });
+});
+
+describe('evaluateDiscounts (booking path) - mandated discounts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const BOOKING = {
+    branch_id: 'branch-makati',
+    payment_method: 'Cash',
+    service_category: 'Grooming',
+    items: [],
+  } as unknown as BookingForBilling;
+
+  function categoryDiscount(overrides: Record<string, unknown>) {
+    return buildDiscountRow({
+      scope_type: 'category',
+      scope_category: 'Grooming',
+      ...overrides,
+    });
+  }
+
+  it('skips a mandated discount when the customer is not eligible, even after it was renamed', async () => {
+    queueFromResults({
+      data: [
+        categoryDiscount({
+          name: 'Golden Years Discount',
+          is_mandated: true,
+          mandated_kind: 'senior_citizen',
+        }),
+      ],
+      error: null,
+    });
+
+    const lines = await evaluateDiscounts(
+      BOOKING,
+      { seniorCitizenEligible: false, pwdEligible: true },
+      1000
+    );
+
+    expect(lines).toEqual([]);
+  });
+
+  it('applies a renamed mandated discount once the matching eligibility flag is set', async () => {
+    queueFromResults({
+      data: [
+        categoryDiscount({
+          name: 'Golden Years Discount',
+          is_mandated: true,
+          mandated_kind: 'senior_citizen',
+        }),
+      ],
+      error: null,
+    });
+
+    const lines = await evaluateDiscounts(
+      BOOKING,
+      { seniorCitizenEligible: true, pwdEligible: false },
+      1000
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0].description).toBe('Golden Years Discount');
+  });
+
+  it('gates PWD discounts on pwdEligible only', async () => {
+    queueFromResults({
+      data: [
+        categoryDiscount({
+          name: 'PWD Discount',
+          is_mandated: true,
+          mandated_kind: 'pwd',
+        }),
+      ],
+      error: null,
+    });
+
+    const lines = await evaluateDiscounts(
+      BOOKING,
+      { seniorCitizenEligible: true, pwdEligible: false },
+      1000
+    );
+
+    expect(lines).toEqual([]);
   });
 });
 

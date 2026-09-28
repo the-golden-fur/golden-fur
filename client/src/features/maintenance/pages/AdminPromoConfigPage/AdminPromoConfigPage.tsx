@@ -38,19 +38,15 @@ import {
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
-import {
-  SearchSortBar,
-  type SortOption,
-} from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { StatusBadge } from '../../../../shared/components/StatusBadge/StatusBadge';
-import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
-import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
+import { PromoCapBrowser } from '../../components/PromoCapBrowser/PromoCapBrowser';
+import type { CapRow } from '../../components/PromoCapBrowser/promoCapBrowserFields';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
 import { SpinWheelPromoFields } from '../../components/SpinWheelPromoFields/SpinWheelPromoFields';
 import { listRewardPools } from '../../../rewards/api/rewards.api';
@@ -116,32 +112,6 @@ function availableBranchIds(promo: Promo): string[] {
     .map((row) => row.branch_id);
 }
 
-type CapSortKey = 'name-asc' | 'name-desc';
-type CapTypeFilter = 'all' | CapType;
-
-const CAP_SORT_OPTIONS: SortOption<CapSortKey>[] = [
-  { value: 'name-asc', label: 'Branch (A-Z)' },
-  { value: 'name-desc', label: 'Branch (Z-A)' },
-];
-
-const CAP_TYPE_LABELS: Record<CapType, string> = {
-  percentage: 'Percentage',
-  flat: 'Flat',
-  count: 'Number of promos',
-};
-
-const CAP_VALUE_SUFFIX: Record<CapType, string> = {
-  percentage: '%',
-  flat: ' PHP',
-  count: ' promo(s)',
-};
-
-interface CapRow {
-  branchId: string;
-  branchName: string;
-  config?: PromoCapConfiguration;
-}
-
 /**
  * ServiceMultiSelect (#46) takes an opaque id/label list, so a service-vs-
  * package union is modeled with a prefixed composite id rather than forking
@@ -196,7 +166,7 @@ export function AdminPromoConfigPage() {
     { fieldId: 'status', value: 'active' },
   ]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
-  const [view, setView] = useState<PromoViewMode>('gallery');
+  const [view, setView] = useState<PromoViewMode>('table');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
@@ -220,9 +190,6 @@ export function AdminPromoConfigPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [availabilityPromoId, setAvailabilityPromoId] = useState<string | null>(
-    null
-  );
   // Session 114: the "Coupon spin wheel" promo type's own fields, and the
   // reward pools it can draw from.
   const [spinForm, setSpinForm] =
@@ -238,7 +205,6 @@ export function AdminPromoConfigPage() {
     null
   );
   const [capMessage, setCapMessage] = useState<string | null>(null);
-  const [capTypeFilter, setCapTypeFilter] = useState<CapTypeFilter>('all');
   const [configuringCapBranchId, setConfiguringCapBranchId] = useState<
     string | null
   >(null);
@@ -383,39 +349,8 @@ export function AdminPromoConfigPage() {
     config: capConfigurations.find((config) => config.branch_id === branch.id),
   }));
 
-  const capComparators = useMemo(
-    () => ({
-      'name-asc': (a: CapRow, b: CapRow) =>
-        a.branchName.localeCompare(b.branchName),
-      'name-desc': (a: CapRow, b: CapRow) =>
-        b.branchName.localeCompare(a.branchName),
-    }),
-    []
-  );
-
-  const {
-    search: capSearch,
-    setSearch: setCapSearch,
-    sortKey: capSortKey,
-    setSortKey: setCapSortKey,
-    result: sortedCapRows,
-  } = useSearchAndSort<CapRow, CapSortKey>({
-    items: capRows,
-    matchesQuery: (row, query) => row.branchName.toLowerCase().includes(query),
-    comparators: capComparators,
-    initialSortKey: 'name-asc',
-  });
-
-  const filteredCapRows = sortedCapRows.filter(
-    (row) => capTypeFilter === 'all' || row.config?.cap_type === capTypeFilter
-  );
-
   const configuringCapRow = capRows.find(
     (row) => row.branchId === configuringCapBranchId
-  );
-
-  const availabilityPromo = promos.find(
-    (promo) => promo.id === availabilityPromoId
   );
 
   const promoFilterFields = useMemo(
@@ -551,56 +486,6 @@ export function AdminPromoConfigPage() {
     setFormError(null);
   };
 
-  const handleActiveToggle = async (promo: Promo, isActive: boolean) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const result = await updatePromo(promo.id, accessToken, {
-      is_active: isActive,
-    });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the promo.');
-      return;
-    }
-
-    replacePromo(result.data);
-    setMessage(isActive ? 'Promo reactivated.' : 'Promo deactivated.');
-  };
-
-  const handleBranchToggle = async (
-    promo: Promo,
-    branchId: string,
-    isAvailable: boolean
-  ) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const result = await setPromoBranchAvailability(promo.id, accessToken, {
-      branch_id: branchId,
-      is_available: isAvailable,
-    });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update branch availability.');
-      return;
-    }
-
-    const rows = promo.promo_branch_availability ?? [];
-    const hasRow = rows.some((row) => row.branch_id === branchId);
-
-    replacePromo({
-      ...promo,
-      promo_branch_availability: hasRow
-        ? rows.map((row) =>
-            row.branch_id === branchId ? { ...row, ...result.data } : row
-          )
-        : [...rows, result.data],
-    });
-  };
-
   /**
    * Applies the edit form's branch multiselect to a just-updated promo by
    * diffing it against the row's current availability and only calling
@@ -659,53 +544,53 @@ export function AdminPromoConfigPage() {
     return { ...promo, promo_branch_availability: updatedRows };
   }
 
-  const handleArchive = async (promo: Promo) => {
-    if (!accessToken) {
-      return;
+  const { requestRename, requestArchive, dialogs } = useRenameAndArchive<Promo>(
+    {
+      entityLabel: 'promo',
+      getName: (promo) => promo.name,
+      archiveConsequence:
+        'it will be switched off and hidden from customers. Restoring it leaves it off until you re-enable it',
+      onRename: async (promo, name) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await updatePromo(promo.id, accessToken, { name });
+
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename the promo.';
+        }
+
+        replacePromo(result.data);
+        setMessage('Promo renamed.');
+        return null;
+      },
+      onArchive: async (promo) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archivePromo(promo.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setPromos((prev) => prev.filter((item) => item.id !== promo.id));
+        setMessage(
+          'Promo archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
     }
-
-    const result = await archivePromo(promo.id, accessToken);
-
-    if (result.error) {
-      setMessage(result.error);
-      return;
-    }
-
-    setPromos((prev) => prev.filter((item) => item.id !== promo.id));
-    setMessage('Promo archived.');
-  };
+  );
 
   function buildPromoActionItems(promo: Promo): MoreOptionsMenuItem[] {
     return [
-      { label: 'Edit', onSelect: () => openEditForm(promo) },
-      // A spin-wheel promo is customer-wide - no branch availability.
-      ...(promo.promo_type !== 'spin_wheel'
-        ? [
-            {
-              label: 'Branch Availability',
-              onSelect: () => setAvailabilityPromoId(promo.id),
-            },
-          ]
-        : []),
-      ...(!promo.is_active
-        ? [
-            {
-              label: 'Archive',
-              onSelect: () => void handleArchive(promo),
-            },
-          ]
-        : []),
+      { label: 'Configure', onSelect: () => openEditForm(promo) },
+      { label: 'Rename', onSelect: () => requestRename(promo) },
+      { label: 'Archive', onSelect: () => requestArchive(promo) },
     ];
   }
 
   function renderPromoActions(promo: Promo) {
     return (
       <div className={styles.rowActions}>
-        <ToggleSwitch
-          label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
-          checked={promo.is_active}
-          onChange={(isActive) => void handleActiveToggle(promo, isActive)}
-        />
         <MoreOptionsMenu
           label={`Actions for ${promo.name}`}
           items={buildPromoActionItems(promo)}
@@ -714,13 +599,9 @@ export function AdminPromoConfigPage() {
     );
   }
 
-  // List card (no Board view on this page) - tap-to-hold (CardContextMenu)
-  // instead of a persistent "..." button, matching Cages/Staff/Customer
-  // Management. Table view keeps the visible tap-to-open button
-  // (renderPromoActions above) - only the dense card list gets the hold
-  // gesture. The ToggleSwitch is a direct control, not a menu item, so it
-  // stays visible inside the card (a plain tap still reaches it - see
-  // CardContextMenu's own doc comment).
+  // List card: a visible "..." button AND right-click / press-and-hold
+  // (CardContextMenu) open the same menu, like Table's kebab. There is no on/off toggle any more - Archive is the only way to
+  // switch a promo off (and Restore the only way back on).
   function renderPromoCard(promo: Promo) {
     return (
       <CardContextMenu
@@ -738,10 +619,9 @@ export function AdminPromoConfigPage() {
             <span className={styles.copy}>{promoWindowText(promo)}</span>
           </div>
           <div className={styles.rowActions}>
-            <ToggleSwitch
-              label={`${promo.is_active ? 'Disable' : 'Enable'} ${promo.name}`}
-              checked={promo.is_active}
-              onChange={(isActive) => void handleActiveToggle(promo, isActive)}
+            <MoreOptionsMenu
+              label={`Actions for ${promo.name}`}
+              items={buildPromoActionItems(promo)}
             />
           </div>
         </div>
@@ -1337,12 +1217,9 @@ export function AdminPromoConfigPage() {
               <PromoCard
                 key={promo.id}
                 promo={promo}
-                onToggle={(isActive) =>
-                  void handleActiveToggle(promo, isActive)
-                }
-                onEdit={() => openEditForm(promo)}
-                onManageBranches={() => setAvailabilityPromoId(promo.id)}
-                onArchive={() => void handleArchive(promo)}
+                onConfigure={() => openEditForm(promo)}
+                onRename={() => requestRename(promo)}
+                onArchive={() => requestArchive(promo)}
               />
             ))}
           </div>
@@ -1370,76 +1247,10 @@ export function AdminPromoConfigPage() {
               {capLoadError}
             </p>
           ) : (
-            <>
-              <div className={styles.toolbar}>
-                <SearchSortBar
-                  searchValue={capSearch}
-                  onSearchChange={setCapSearch}
-                  searchPlaceholder="Search branches..."
-                  sortValue={capSortKey}
-                  onSortChange={setCapSortKey}
-                  sortOptions={CAP_SORT_OPTIONS}
-                />
-                <label className={styles.filterField}>
-                  <span className={styles.filterLabel}>Cap type</span>
-                  <select
-                    className={styles.filterSelect}
-                    value={capTypeFilter}
-                    onChange={(event) =>
-                      setCapTypeFilter(event.target.value as CapTypeFilter)
-                    }
-                  >
-                    <option value="all">All</option>
-                    {(['percentage', 'flat', 'count'] as CapType[]).map(
-                      (type) => (
-                        <option key={type} value={type}>
-                          {CAP_TYPE_LABELS[type]}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </label>
-              </div>
-
-              {filteredCapRows.length === 0 ? (
-                <p className={styles.copy}>
-                  No branches match the selected filters.
-                </p>
-              ) : (
-                <ul className={styles.capList}>
-                  {filteredCapRows.map((row) => (
-                    <li key={row.branchId} className={styles.capRow}>
-                      <div className={styles.capRowMain}>
-                        <span className={styles.capBranchName}>
-                          {row.branchName}
-                        </span>
-                        {row.config ? (
-                          <span className={styles.categoryBadge}>
-                            {CAP_TYPE_LABELS[row.config.cap_type]} -{' '}
-                            {row.config.cap_value}
-                            {CAP_VALUE_SUFFIX[row.config.cap_type]}
-                          </span>
-                        ) : (
-                          <span className={styles.capRowNote}>
-                            No cap saved yet
-                          </span>
-                        )}
-                      </div>
-                      <MoreOptionsMenu
-                        label={`Actions for ${row.branchName}`}
-                        items={[
-                          {
-                            label: 'Configure',
-                            onSelect: () =>
-                              setConfiguringCapBranchId(row.branchId),
-                          },
-                        ]}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
+            <PromoCapBrowser
+              rows={capRows}
+              onConfigure={setConfiguringCapBranchId}
+            />
           )}
         </section>
       </div>
@@ -1461,24 +1272,7 @@ export function AdminPromoConfigPage() {
         ) : null}
       </Modal>
 
-      <BranchAvailabilityModal
-        isOpen={availabilityPromo !== undefined}
-        itemName={availabilityPromo?.name ?? ''}
-        rows={capBranches.map((branch) => ({
-          branchId: branch.id,
-          branchName: branch.name,
-          isAvailable:
-            (availabilityPromo?.promo_branch_availability ?? []).find(
-              (row) => row.branch_id === branch.id
-            )?.is_available ?? false,
-        }))}
-        onToggle={(branchId, isAvailable) => {
-          if (availabilityPromo) {
-            void handleBranchToggle(availabilityPromo, branchId, isAvailable);
-          }
-        }}
-        onClose={() => setAvailabilityPromoId(null)}
-      />
+      {dialogs}
     </main>
   );
 }

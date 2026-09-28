@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import type {
   Package,
@@ -111,6 +111,7 @@ async function assertServicesExistAndActive(serviceIds: string[]) {
     .from('services')
     .select('id')
     .in('id', serviceIds)
+    .is('archived_at', null)
     .eq('is_active', true);
 
   if (error) throwWithStatus(400, error.message);
@@ -319,12 +320,17 @@ export async function setPackageBranchAvailability({
 }: SetPackageBranchAvailabilityParams): Promise<PackageBranchAvailability> {
   const { data: existing, error: lookupError } = await supabase
     .from('packages')
-    .select('id')
+    .select('id, archived_at')
     .eq('id', packageId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Package not found');
+  // The is_active sync below would otherwise silently un-hide an archived
+  // package the moment any branch toggle is touched.
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This package is archived - restore it first');
+  }
 
   const { data, error } = await supabase
     .from('package_branch_availability')
@@ -357,26 +363,37 @@ export async function setPackageBranchAvailability({
 }
 
 /**
- * Deactivate-first CRUD safety (archive workflow), mirroring
- * productCatalog.service.ts's archiveProduct: archiving is soft - the row
- * moves to the archive list via archived_at, it is not deleted.
+ * Archiving is soft - the row moves to the archive list via archived_at, it
+ * is not deleted, and (Config-menu consistency change) it deactivates the
+ * package in the same step, so an active package can be archived directly.
  */
 export async function archivePackage(packageId: string): Promise<void> {
-  const pkg = await getPackageById(packageId);
-  assertInactiveBeforeArchive(pkg.is_active, 'This package');
+  await getPackageById(packageId);
 
   const { error } = await supabase
     .from('packages')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', packageId);
 
   if (error) throwWithStatus(400, error.message);
 }
 
+/** is_active is derived from branch availability for packages, so restore
+ * recomputes it rather than blindly setting it true. */
 export async function restorePackage(packageId: string): Promise<void> {
+  const { data: rows, error: rowsError } = await supabase
+    .from('package_branch_availability')
+    .select('is_available')
+    .eq('package_id', packageId);
+
+  if (rowsError) throwWithStatus(400, rowsError.message);
+
   const { error } = await supabase
     .from('packages')
-    .update({ archived_at: null })
+    .update({
+      archived_at: null,
+      is_active: (rows ?? []).some((row) => row.is_available),
+    })
     .eq('id', packageId);
 
   if (error) throwWithStatus(400, error.message);

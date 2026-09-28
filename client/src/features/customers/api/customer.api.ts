@@ -483,7 +483,11 @@ export async function listVaccinationRecords(
  * authenticated user, so this reads directly via the Supabase client).
  */
 export async function listBreeds(
-  petType: PetType
+  petType: PetType,
+  /** A breed already on a pet stays resolvable (so its name still shows)
+   * even after an admin archives it - archived breeds are otherwise hidden
+   * from the picker. */
+  includeBreedId?: string | null
 ): Promise<CustomerApiResult<Breed[]>> {
   const supabase = getSupabaseClient();
 
@@ -491,11 +495,16 @@ export async function listBreeds(
     return { data: null, error: 'Supabase client is not configured.' };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('breeds')
     .select('id, pet_type, name, created_at')
-    .eq('pet_type', petType)
-    .order('name');
+    .eq('pet_type', petType);
+
+  query = includeBreedId
+    ? query.or(`archived_at.is.null,id.eq.${includeBreedId}`)
+    : query.is('archived_at', null);
+
+  const { data, error } = await query.order('name');
 
   if (error) {
     return { data: null, error: error.message };
@@ -521,6 +530,7 @@ export async function listPetTypes(): Promise<CustomerApiResult<PetTypeRow[]>> {
     .from('pet_types')
     .select('id, key, name, is_active, created_at, updated_at')
     .eq('is_active', true)
+    .is('archived_at', null)
     .order('name');
 
   if (error) {

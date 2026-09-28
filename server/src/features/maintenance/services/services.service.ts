@@ -1,4 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  archivePatch,
+  assertArchivedBeforeHardDelete,
+} from '../../../shared/archive/archiveGuard.ts';
 import type {
   Service,
   ServiceBranchAvailability,
@@ -22,6 +26,12 @@ interface ListServicesParams {
   category?: string;
   branchId?: string;
   includeInactive?: boolean;
+  /** Archived services are hidden by default (Config-menu consistency
+   * change). Callers that only resolve names for history/bundles (public
+   * catalog package contents) pass includeArchived. */
+  includeArchived?: boolean;
+  /** Config > Archive tab - only archived rows (implies includeInactive). */
+  archivedOnly?: boolean;
 }
 
 interface CreateServiceParams {
@@ -84,11 +94,21 @@ export async function listServices({
   category,
   branchId,
   includeInactive,
+  includeArchived,
+  archivedOnly,
 }: ListServicesParams): Promise<Service[]> {
   let query = supabase.from('services').select(SERVICE_SELECT);
 
-  if (!includeInactive) {
-    query = query.eq('is_active', true);
+  if (archivedOnly) {
+    query = query.not('archived_at', 'is', null);
+  } else {
+    if (!includeArchived) {
+      query = query.is('archived_at', null);
+    }
+
+    if (!includeInactive) {
+      query = query.eq('is_active', true);
+    }
   }
 
   if (category) {
@@ -200,12 +220,15 @@ export async function updateService({
 }: UpdateServiceParams): Promise<Service> {
   const { data: existing, error: lookupError } = await supabase
     .from('services')
-    .select('id, category, first_hour_fee')
+    .select('id, category, first_hour_fee, archived_at')
     .eq('id', serviceId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Service not found');
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This service is archived - restore it to edit it');
+  }
 
   // Custom change (Daycare fee configuration follow-up): keep base_price
   // mirroring first_hour_fee whenever the (possibly just-updated) category
@@ -254,12 +277,17 @@ export async function setServiceBranchAvailability({
 }: SetBranchAvailabilityParams): Promise<ServiceBranchAvailability> {
   const { data: existing, error: lookupError } = await supabase
     .from('services')
-    .select('id')
+    .select('id, archived_at')
     .eq('id', serviceId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Service not found');
+  // The is_active sync below would otherwise silently un-hide an archived
+  // service the moment any branch toggle is touched.
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This service is archived - restore it first');
+  }
 
   const { data, error } = await supabase
     .from('service_branch_availability')
@@ -289,4 +317,139 @@ export async function setServiceBranchAvailability({
   if (syncError) throwWithStatus(400, syncError.message);
 
   return data as ServiceBranchAvailability;
+}
+
+async function loadServiceForArchiveAction(
+  serviceId: string
+): Promise<{ id: string; archived_at: string | null }> {
+  const { data, error } = await supabase
+    .from('services')
+    .select('id, archived_at')
+    .eq('id', serviceId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Service not found');
+
+  return data;
+}
+
+/** Names of every live (non-archived) package, promo, and discount that still
+ * depends on the service - archiving is refused while any exist so a bundle
+ * or promo scope never silently loses (or keeps selling) a hidden service. */
+async function findServiceBlockers(serviceId: string): Promise<string[]> {
+  const [packages, promos, discounts] = await Promise.all([
+    supabase
+      .from('package_services')
+      .select('packages!inner(name, archived_at)')
+      .eq('service_id', serviceId)
+      .is('packages.archived_at', null),
+    supabase
+      .from('promo_scope')
+      .select('promos!inner(name, archived_at)')
+      .eq('service_id', serviceId)
+      .is('promos.archived_at', null),
+    supabase
+      .from('discounts')
+      .select('name')
+      .eq('scope_service_id', serviceId)
+      .is('archived_at', null),
+  ]);
+
+  const firstError = packages.error ?? promos.error ?? discounts.error;
+  if (firstError) throwWithStatus(400, firstError.message);
+
+  const nameOf = (row: unknown, key: string): string | null => {
+    const related = (row as Record<string, unknown>)[key] as
+      | { name?: string }
+      | { name?: string }[]
+      | null;
+    const record = Array.isArray(related) ? related[0] : related;
+    return record?.name ?? null;
+  };
+
+  return [
+    ...(packages.data ?? []).map(
+      (row) => `package "${nameOf(row, 'packages')}"`
+    ),
+    ...(promos.data ?? []).map((row) => `promo "${nameOf(row, 'promos')}"`),
+    ...(discounts.data ?? []).map((row) => `discount "${row.name}"`),
+  ];
+}
+
+/** Config-menu consistency change: archive is the only way to retire a
+ * service (there was no delete route before). Hides it from booking and
+ * catalog reads, and deactivates it. Historic bookings/line items keep
+ * resolving its name through by-id lookups. */
+export async function archiveService(serviceId: string): Promise<Service> {
+  const existing = await loadServiceForArchiveAction(serviceId);
+
+  if (existing.archived_at) throwWithStatus(409, 'Service is already archived');
+
+  const blockers = await findServiceBlockers(serviceId);
+
+  if (blockers.length > 0) {
+    throwWithStatus(
+      409,
+      `This service is still used by ${blockers.join(', ')}. Remove it from them (or archive them) before archiving the service.`
+    );
+  }
+
+  const { error } = await supabase
+    .from('services')
+    .update({ ...archivePatch(), updated_at: new Date().toISOString() })
+    .eq('id', serviceId);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return getServiceById(serviceId);
+}
+
+/** is_active is derived from branch availability for services, so restore
+ * recomputes it rather than blindly setting it true. */
+export async function restoreService(serviceId: string): Promise<Service> {
+  const existing = await loadServiceForArchiveAction(serviceId);
+
+  if (!existing.archived_at) throwWithStatus(409, 'Service is not archived');
+
+  const { data: rows, error: rowsError } = await supabase
+    .from('service_branch_availability')
+    .select('is_available')
+    .eq('service_id', serviceId);
+
+  if (rowsError) throwWithStatus(400, rowsError.message);
+
+  const { error } = await supabase
+    .from('services')
+    .update({
+      archived_at: null,
+      is_active: (rows ?? []).some((row) => row.is_available),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', serviceId);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return getServiceById(serviceId);
+}
+
+export async function hardDeleteService(serviceId: string): Promise<void> {
+  const existing = await loadServiceForArchiveAction(serviceId);
+
+  assertArchivedBeforeHardDelete(existing.archived_at, 'This service');
+
+  const { error } = await supabase
+    .from('services')
+    .delete()
+    .eq('id', serviceId);
+
+  if (error) {
+    if (error.code === '23503') {
+      throwWithStatus(
+        409,
+        'This service has booking history (or is bundled in a package) and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

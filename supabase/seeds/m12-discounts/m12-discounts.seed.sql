@@ -34,18 +34,21 @@
 -- exist). Idempotent - guarded by NOT EXISTS / ON CONFLICT, safe to re-run.
 
 insert into public.discounts
-  (name, is_mandated, discount_type, value, scope_type, scope_category, is_active)
+  (name, is_mandated, mandated_kind, discount_type, value, scope_type, scope_category, is_active)
 select
   d.name,
   true,
+  d.kind,
   'Percentage',
   20.00,
   'category',
   cat.category,
   true
 from (
-  values ('Senior Citizen Discount'), ('PWD Discount')
-) as d(name)
+  values
+    ('Senior Citizen Discount', 'senior_citizen'),
+    ('PWD Discount', 'pwd')
+) as d(name, kind)
 cross join (
   values
     ('Grooming'::public.service_category),
@@ -64,5 +67,5 @@ select disc.id, b.id, true
 from public.discounts as disc
 cross join public.branches as b
 where disc.is_mandated
-  and disc.name in ('Senior Citizen Discount', 'PWD Discount')
+  and disc.mandated_kind in ('senior_citizen', 'pwd')
 on conflict (discount_id, branch_id) do nothing;

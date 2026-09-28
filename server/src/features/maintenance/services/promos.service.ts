@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import {
   isDiscountPromo,
@@ -608,26 +608,41 @@ async function updateSpinWheelPromo({
 }
 
 /**
- * Deactivate-first CRUD safety (archive workflow), mirroring
- * productCatalog.service.ts's archiveProduct: archiving is soft - the row
- * moves to the archive list via archived_at, it is not deleted.
+ * Archiving is soft - the row moves to the archive list via archived_at, it
+ * is not deleted, and (Config-menu consistency change) it deactivates the
+ * promo in the same step, so an active promo can be archived directly.
+ * Archive is now the promo's only "off" switch (the row toggle is gone);
+ * restorePromo below is its only way back on.
  */
 export async function archivePromo(promoId: string): Promise<void> {
-  const promo = await getPromoById(promoId);
-  assertInactiveBeforeArchive(promo.is_active, 'This promo');
+  await getPromoById(promoId);
 
   const { error } = await supabase
     .from('promos')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', promoId);
 
   if (error) throwWithStatus(400, error.message);
 }
 
+/**
+ * Restore is the only way to switch a promo back on now that the row-level
+ * enable/disable toggle is gone (archive is the single "off" switch), so it
+ * re-activates the promo. A spin-wheel promo re-runs the same pool check an
+ * activation does - it must not come back live pointing at a pool that is
+ * gone, archived, or has nothing landable.
+ */
 export async function restorePromo(promoId: string): Promise<void> {
+  const promo = await getPromoById(promoId);
+
+  const poolId = promo.spin_wheel_promo_settings?.reward_pool_id;
+  if (promo.promo_type === 'spin_wheel' && poolId) {
+    await assertPoolUsable(poolId, { requireLandable: true });
+  }
+
   const { error } = await supabase
     .from('promos')
-    .update({ archived_at: null })
+    .update({ archived_at: null, is_active: true })
     .eq('id', promoId);
 
   if (error) throwWithStatus(400, error.message);

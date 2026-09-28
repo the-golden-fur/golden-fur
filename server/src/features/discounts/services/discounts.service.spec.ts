@@ -52,6 +52,7 @@ const MANDATED_DISCOUNT = {
   id: 'discount-sc',
   name: 'Senior Citizen Discount',
   is_mandated: true,
+  mandated_kind: 'senior_citizen',
   discount_type: 'Percentage',
   value: 20,
   scope_type: 'category',
@@ -144,19 +145,21 @@ describe('discounts.service', () => {
   });
 
   describe('updateDiscount', () => {
-    it('AC-3: rejects renaming a mandated discount with 400', async () => {
-      queueFromResults({ data: MANDATED_DISCOUNT, error: null });
+    it('a mandated discount CAN be renamed (checkout gates it by mandated_kind, not by name)', async () => {
+      queueFromResults(
+        { data: MANDATED_DISCOUNT, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: { ...MANDATED_DISCOUNT, name: 'Golden Years' }, error: null } // reload
+      );
 
-      await expect(
-        updateDiscount({
-          requesterId: 'admin-1',
-          discountId: 'discount-sc',
-          updates: { name: 'Totally Not SC Anymore' },
-        })
-      ).rejects.toMatchObject({
-        statusCode: 400,
-        message: expect.stringContaining('mandated'),
+      const result = await updateDiscount({
+        requesterId: 'admin-1',
+        discountId: 'discount-sc',
+        updates: { name: 'Golden Years' },
       });
+
+      expect(result.name).toBe('Golden Years');
+      expect(result.mandated_kind).toBe('senior_citizen');
     });
 
     it("AC-3: edits a custom discount's value and scope", async () => {

@@ -38,6 +38,7 @@ export async function isCagePickerEnabled(
     .from('service_types')
     .select('cage_picker_enabled')
     .eq('key', serviceCategory)
+    .is('archived_at', null)
     .maybeSingle();
 
   if (error) throwWithStatus(400, error.message);
@@ -89,6 +90,7 @@ export async function getCagePickerOptions(
     .from('cages')
     .select('id, cage_label, size, status, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', petType)
     .order('size')
@@ -139,6 +141,7 @@ export async function verifyCagePreference(
     .select('id, cage_pet_types!inner(pet_type)')
     .eq('id', cageId)
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', petType);
 
@@ -184,6 +187,7 @@ export async function getCageAssignmentStatus(
     .from('cages')
     .select('id, cage_label, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('size', weight_class as string)
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', pet_type as string)
