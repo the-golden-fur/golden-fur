@@ -93,9 +93,7 @@ describe('BranchMultiSelect', () => {
     );
 
     expect(screen.getByRole('checkbox', { name: 'Makati' })).toBeEnabled();
-    expect(
-      screen.getByRole('checkbox', { name: 'Southwoods' })
-    ).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Southwoods' })).toBeDisabled();
   });
 
   it('lockedBranchId: a disabled checkbox cannot be toggled', async () => {

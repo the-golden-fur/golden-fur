@@ -85,9 +85,10 @@ function renderPage() {
 describe('WeightClassConfigurationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(maintenanceApi.getPetWeightClassConfiguration).mockResolvedValue(
-      { data: CONFIGURATION, error: null }
-    );
+    vi.mocked(maintenanceApi.getPetWeightClassConfiguration).mockResolvedValue({
+      data: CONFIGURATION,
+      error: null,
+    });
   });
 
   it('is Superadmin-only: redirects an Admin to /staff/settings, since weight classes affect every branch at once', async () => {

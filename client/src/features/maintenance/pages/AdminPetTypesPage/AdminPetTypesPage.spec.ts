@@ -430,7 +430,7 @@ describe('AdminPetTypesPage', () => {
     expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
   });
 
-  it('an Admin scoped to their own branch only sees their branch\'s row - no default row, no other branches', async () => {
+  it("an Admin scoped to their own branch only sees their branch's row - no default row, no other branches", async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [
         { id: 'staff-1', role: 'Admin', branch_id: 'branch-makati' } as never,
