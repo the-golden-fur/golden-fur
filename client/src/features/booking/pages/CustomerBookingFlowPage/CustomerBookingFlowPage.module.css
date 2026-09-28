@@ -152,6 +152,20 @@
   opacity: 0.6;
 }
 
+/* Same size as .secondaryButton, filled gold - for an in-step action that
+   should stand out (e.g. "Add another booking") without competing with the
+   larger .primaryButton nav buttons. */
+.secondaryButtonGold {
+  composes: secondaryButton;
+  border-color: var(--color-accent-gold-primary);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+}
+
+.secondaryButtonGold:hover:not(:disabled) {
+  background: var(--color-accent-gold-highlight);
+}
+
 .itemSearchInput {
   width: 100%;
   max-width: 20rem;

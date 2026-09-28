@@ -30,7 +30,8 @@ function formatDate(iso: string): string {
 
 function bookingGroup(
   key: string,
-  items: TransactionRecord[]
+  items: TransactionRecord[],
+  showCustomer: boolean
 ): Omit<TransactionGroup, 'items'> {
   const first = items[0];
 
@@ -48,7 +49,7 @@ function bookingGroup(
     return {
       key,
       title: 'Multi-booking checkout',
-      meta: first.customer_name,
+      meta: showCustomer ? first.customer_name : null,
       bookingStatus: null,
       netTotal: null,
     };
@@ -63,7 +64,7 @@ function bookingGroup(
     title: petName ? `${service} · ${petName}` : `${service} booking`,
     meta:
       [
-        first.customer_name,
+        showCustomer ? first.customer_name : null,
         booking?.scheduled_start
           ? `Booked for ${formatDate(booking.scheduled_start)}`
           : null,
@@ -101,10 +102,13 @@ function keyFor(transaction: TransactionRecord, groupBy: TransactionGroupBy) {
  * so the active sort still decides which group comes first (e.g. newest
  * first puts the booking with the latest payment on top), and rows keep
  * that sort inside each group. Returns one headerless group for 'none'.
+ * showCustomer: false drops the customer name from booking-group headers
+ * (the customer portal, where every row is the viewer's own).
  */
 export function groupTransactions(
   rows: TransactionRecord[],
-  groupBy: TransactionGroupBy
+  groupBy: TransactionGroupBy,
+  { showCustomer = true }: { showCustomer?: boolean } = {}
 ): TransactionGroup[] {
   const buckets = new Map<string, TransactionRecord[]>();
   for (const row of rows) {
@@ -117,7 +121,7 @@ export function groupTransactions(
   return Array.from(buckets, ([key, items]) => {
     const base: Omit<TransactionGroup, 'items'> =
       groupBy === 'booking'
-        ? bookingGroup(key, items)
+        ? bookingGroup(key, items, showCustomer)
         : groupBy === 'customer'
           ? {
               key,

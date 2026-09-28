@@ -111,8 +111,8 @@ describe('buildMiscSalePreview', () => {
         { description: 'Cat toy', amount: 80 },
       ],
       paymentMethod: 'Cash',
-      seniorCitizenEligible: false,
-      pwdEligible: false,
+      discountIds: [],
+      promoIds: [],
     });
 
     expect(preview.itemLines).toEqual([
@@ -145,8 +145,8 @@ describe('buildMiscSalePreview', () => {
         branchId: 'branch-1',
         items: [{ product_catalog_id: 'catalog-1', quantity: 1 }],
         paymentMethod: 'Cash',
-        seniorCitizenEligible: false,
-        pwdEligible: false,
+        discountIds: [],
+        promoIds: [],
       })
     ).rejects.toMatchObject({ statusCode: 404 });
   });
@@ -182,8 +182,8 @@ describe('buildMiscSalePreview', () => {
       branchId: 'branch-1',
       items: [{ description: 'Cat toy', amount: 100 }],
       paymentMethod: 'Cash',
-      seniorCitizenEligible: true,
-      pwdEligible: false,
+      discountIds: ['discount-1'],
+      promoIds: ['promo-1'],
     });
 
     expect(preview.subtotal).toBe(100);
@@ -193,7 +193,12 @@ describe('buildMiscSalePreview', () => {
     expect(evaluateMiscSaleDiscounts).toHaveBeenCalledWith({
       branchId: 'branch-1',
       paymentMethod: 'Cash',
-      eligibility: { seniorCitizenEligible: true, pwdEligible: false },
+      discountIds: ['discount-1'],
+      subtotal: 100,
+    });
+    expect(evaluateMiscSalePromos).toHaveBeenCalledWith({
+      branchId: 'branch-1',
+      promoIds: ['promo-1'],
       subtotal: 100,
     });
   });
@@ -203,8 +208,8 @@ describe('createMiscSale', () => {
   const BASE_INPUT: CreateMiscSaleInput = {
     customer_id: 'customer-1',
     items: [{ description: 'Cat toy', amount: 100 }],
-    senior_citizen_eligible: false,
-    pwd_eligible: false,
+    discount_ids: [],
+    promo_ids: [],
     payment_method: 'Cash',
     cash_tendered: 100,
     credit_to_apply: 30,
@@ -254,6 +259,62 @@ describe('createMiscSale', () => {
       promo_amount: 0,
       misc_sale_description: 'Cat toy',
     });
+  });
+
+  it("payment_method 'Credit' redeems the whole sale from credit and records it Fully Paid", async () => {
+    vi.mocked(getAvailableCredit).mockResolvedValue(150);
+    vi.mocked(applyCredit).mockResolvedValue({ appliedAmount: 100 });
+
+    const { inserts } = mockSupabase({
+      queues: {
+        transactions: [
+          { data: { id: 'txn-1', payment_status: 'Fully Paid' }, error: null },
+        ],
+        transaction_line_items: [{ data: [], error: null }],
+      },
+    });
+
+    const result = await createMiscSale({
+      requesterId: 'staff-1',
+      branchId: 'branch-1',
+      input: {
+        ...BASE_INPUT,
+        payment_method: 'Credit',
+        cash_tendered: undefined,
+        credit_to_apply: 0,
+      } as CreateMiscSaleInput,
+    });
+
+    // The whole preCreditTotal, regardless of credit_to_apply.
+    expect(applyCredit).toHaveBeenCalledWith('customer-1', 'branch-1', 100);
+    expect(resolvePaymentConfirmation).not.toHaveBeenCalled();
+    expect(result.changeAmount).toBeNull();
+
+    const transactionInsert = inserts.find((c) => c.table === 'transactions');
+    expect(transactionInsert?.arg).toMatchObject({
+      payment_method: 'Credit',
+      payment_status: 'Fully Paid',
+      credit_applied_amount: 100,
+      total_amount: 0,
+    });
+  });
+
+  it("rejects payment_method 'Credit' without redeeming anything when the balance does not cover the sale", async () => {
+    vi.mocked(getAvailableCredit).mockResolvedValue(40);
+    mockSupabase({});
+
+    await expect(
+      createMiscSale({
+        requesterId: 'staff-1',
+        branchId: 'branch-1',
+        input: {
+          ...BASE_INPUT,
+          payment_method: 'Credit',
+          cash_tendered: undefined,
+        } as CreateMiscSaleInput,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(applyCredit).not.toHaveBeenCalled();
   });
 
   it('inserts one transaction_line_items row per item/discount/promo line', async () => {

@@ -38,8 +38,13 @@ export function ConfirmationStep({
   result,
   onConfirm,
 }: ConfirmationStepProps) {
+  // Paying by Credit settles the whole sale from the balance.
+  const creditUsed =
+    (payment.payment_method as string) === 'Credit'
+      ? (preview?.preCreditTotal ?? 0)
+      : creditToApply;
   const total = preview
-    ? Math.max(0, preview.preCreditTotal - creditToApply)
+    ? Math.max(0, preview.preCreditTotal - creditUsed)
     : null;
 
   return (
@@ -76,10 +81,10 @@ export function ConfirmationStep({
               <span>{formatCurrency(line.line_total)}</span>
             </p>
           ))}
-          {creditToApply > 0 ? (
+          {creditUsed > 0 ? (
             <p className={styles.summaryLine}>
               <span>Credit applied</span>
-              <span>-{formatCurrency(creditToApply)}</span>
+              <span>-{formatCurrency(creditUsed)}</span>
             </p>
           ) : null}
           <p className={styles.summaryLine}>

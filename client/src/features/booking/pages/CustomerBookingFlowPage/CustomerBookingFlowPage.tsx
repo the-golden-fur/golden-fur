@@ -4107,7 +4107,7 @@ export function CustomerBookingFlowPage() {
             )}
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={styles.secondaryButtonGold}
               onClick={handleAddAnotherBooking}
             >
               Add another booking

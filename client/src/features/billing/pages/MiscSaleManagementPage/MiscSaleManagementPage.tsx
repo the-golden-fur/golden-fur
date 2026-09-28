@@ -33,7 +33,6 @@ import {
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
-import { MiscSaleWizard } from '../../components/MiscSaleWizard/MiscSaleWizard';
 import { PaymentMethodForm } from '../../components/PaymentMethodForm/PaymentMethodForm';
 import {
   applyMiscSaleFilters,
@@ -44,6 +43,10 @@ import {
   MISC_SALE_COMPARATORS,
   MISC_SALE_SORT_FIELDS,
 } from './miscSaleBrowserFields';
+import {
+  MISC_SALE_VIEWER_ROLES,
+  NEW_MISC_SALE_PATH,
+} from '../../miscSaleAccess';
 import styles from './MiscSaleManagementPage.module.css';
 
 type ViewMode = 'table' | 'board';
@@ -55,17 +58,10 @@ const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
 
 /** Session 115: promoted from an Admin/Superadmin-only page under Settings
  * to the one shared list every money-handling role reaches from their own
- * sidebar (Cashier's "Miscellaneous Sales" tile) - view/create matches the
- * server's BILLING_STAFF_ROLES; Admin/Superadmin additionally get
+ * sidebar (Cashier's "Miscellaneous Sales" tile) - view/create is
+ * MISC_SALE_VIEWER_ROLES; Admin/Superadmin additionally get
  * Edit/Delete (BILLING_ADMIN_ROLES, mirrored by the RLS on transactions/
  * transaction_line_items, migration 20260731068/069). */
-const ALLOWED_VIEWER_ROLES = new Set([
-  'Superadmin',
-  'Admin',
-  'Supervisor',
-  'Receptionist',
-  'Cashier',
-]);
 const ADMIN_ROLES = new Set(['Admin', 'Superadmin']);
 
 /** Code-review fix (session 115): mirrors TransactionHistoryTable's own
@@ -102,8 +98,6 @@ export function MiscSaleManagementPage() {
   });
   const [rowError, setRowError] = useState<string | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -169,7 +163,7 @@ export function MiscSaleManagementPage() {
   }, [accessToken]);
 
   const isAllowedViewer =
-    viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+    viewerRole !== null && MISC_SALE_VIEWER_ROLES.has(viewerRole);
   const isAdmin = viewerRole !== null && ADMIN_ROLES.has(viewerRole);
   const canViewTransactions =
     viewerRole !== null && TRANSACTION_HISTORY_ROLES.has(viewerRole);
@@ -239,15 +233,6 @@ export function MiscSaleManagementPage() {
     }
 
     setSales((prev) => prev.filter((sale) => sale.id !== saleId));
-  }
-
-  function handleCreated(response: { transaction: Transaction }) {
-    // Code-review fix (session 115): don't close the modal here - the
-    // wizard's own Confirmation step shows the success banner (change
-    // amount included) and its own Close button, matching
-    // CashierCheckoutPage's on-page confirmation instead of yanking the
-    // form away the instant a sale is recorded.
-    setSales((prev) => [response.transaction, ...prev]);
   }
 
   const filterFields = useMemo(
@@ -398,7 +383,7 @@ export function MiscSaleManagementPage() {
           <button
             type="button"
             className={styles.button}
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => navigate(NEW_MISC_SALE_PATH)}
           >
             New Misc Sale
           </button>
@@ -483,19 +468,6 @@ export function MiscSaleManagementPage() {
           </p>
         ) : null}
       </div>
-
-      <Modal
-        isOpen={isCreateModalOpen}
-        title="New Miscellaneous Sale"
-        onClose={() => setIsCreateModalOpen(false)}
-        closeOnBackdropClick={false}
-      >
-        <MiscSaleWizard
-          accessToken={accessToken}
-          onCreated={handleCreated}
-          onClose={() => setIsCreateModalOpen(false)}
-        />
-      </Modal>
 
       <Modal
         isOpen={editingSaleId !== null}

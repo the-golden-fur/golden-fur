@@ -17,6 +17,13 @@ interface PaymentMethodFormProps {
    * field, so suppress the Cash-tendered input and the computed-change line
    * (the transaction stores neither). Checkout / misc-sale leave this off. */
   hideCashTendered?: boolean;
+  /** Methods listed but not selectable (e.g. misc-sale Credit when the
+   * customer's balance doesn't cover the sale). */
+  disabledMethods?: readonly string[];
+  /** Display text per method, defaulting to the method itself. */
+  methodLabels?: Partial<Record<string, string>>;
+  /** Links the method select to an explanation elsewhere on the page. */
+  methodDescribedBy?: string;
 }
 
 /**
@@ -33,6 +40,9 @@ export function PaymentMethodForm({
   amountDue,
   methods = PAYMENT_METHODS,
   hideCashTendered = false,
+  disabledMethods = [],
+  methodLabels = {},
+  methodDescribedBy,
 }: PaymentMethodFormProps) {
   const isBankTransfer = value.payment_method === 'Bank Transfer';
   const isCash = value.payment_method === 'Cash';
@@ -56,6 +66,7 @@ export function PaymentMethodForm({
         <select
           className={styles.input}
           value={value.payment_method}
+          aria-describedby={methodDescribedBy}
           onChange={(event) =>
             onChange({
               ...value,
@@ -67,8 +78,12 @@ export function PaymentMethodForm({
           }
         >
           {methods.map((method) => (
-            <option key={method} value={method}>
-              {method}
+            <option
+              key={method}
+              value={method}
+              disabled={disabledMethods.includes(method)}
+            >
+              {methodLabels[method] ?? method}
             </option>
           ))}
         </select>

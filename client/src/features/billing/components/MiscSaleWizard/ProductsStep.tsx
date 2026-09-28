@@ -3,7 +3,12 @@ import {
   type CatalogComboBoxItem,
 } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
-import { cartRowSubtotal, cartSubtotal, type CartRow } from './miscSaleCart';
+import {
+  cartRowSubtotal,
+  cartSubtotal,
+  isCartValid,
+  type CartRow,
+} from './miscSaleCart';
 import styles from './MiscSaleWizard.module.css';
 
 interface ProductsStepProps {
@@ -37,7 +42,12 @@ export function ProductsStep({
     onRowsChange(rows.filter((row) => row.id !== id));
   }
 
+  // A new row only once every existing one is filled in (a product, or a
+  // description + amount) - no stacking up blank rows.
+  const canAddRow = isCartValid(rows);
+
   function addRow() {
+    if (!canAddRow) return;
     onRowsChange([
       ...rows,
       {
@@ -97,7 +107,7 @@ export function ProductsStep({
             )}
             <button
               type="button"
-              className={styles.smallButtonSecondary}
+              className={styles.smallButtonDanger}
               disabled={rows.length === 1}
               onClick={() => removeRow(row.id)}
             >
@@ -111,11 +121,18 @@ export function ProductsStep({
       </div>
       <button
         type="button"
-        className={styles.smallButtonSecondary}
+        className={styles.smallButton}
+        disabled={!canAddRow}
+        aria-describedby={canAddRow ? undefined : 'add-item-hint'}
         onClick={addRow}
       >
         Add another item
       </button>
+      {canAddRow ? null : (
+        <p id="add-item-hint" className={styles.copy}>
+          Fill in the product and amount above to add another item.
+        </p>
+      )}
       <p className={styles.summaryLineTotal}>
         <span>Subtotal</span>
         <span>{formatCurrency(cartSubtotal(rows, products))}</span>

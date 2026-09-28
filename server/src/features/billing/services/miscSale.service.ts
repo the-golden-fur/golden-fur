@@ -126,8 +126,8 @@ interface MiscSalePreviewParams {
   branchId: string;
   items: MiscSaleItemInput[];
   paymentMethod: string;
-  seniorCitizenEligible: boolean;
-  pwdEligible: boolean;
+  discountIds: string[];
+  promoIds: string[];
 }
 
 /**
@@ -150,16 +150,14 @@ export async function buildMiscSalePreview(
   const discountLines = await evaluateMiscSaleDiscounts({
     branchId: params.branchId,
     paymentMethod: params.paymentMethod,
-    eligibility: {
-      seniorCitizenEligible: params.seniorCitizenEligible,
-      pwdEligible: params.pwdEligible,
-    },
+    discountIds: params.discountIds,
     subtotal,
   });
-  const evaluatedPromos = await evaluateMiscSalePromos(
-    params.branchId,
-    subtotal
-  );
+  const evaluatedPromos = await evaluateMiscSalePromos({
+    branchId: params.branchId,
+    promoIds: params.promoIds,
+    subtotal,
+  });
   const promoLines = evaluatedPromos.map((evaluated) => evaluated.line);
 
   const discountAmount = round2(
@@ -211,15 +209,28 @@ export async function createMiscSale({
     branchId,
     items: input.items,
     paymentMethod: input.payment_method,
-    seniorCitizenEligible: input.senior_citizen_eligible,
-    pwdEligible: input.pwd_eligible,
+    discountIds: input.discount_ids,
+    promoIds: input.promo_ids,
   });
 
   const availableCredit = await getAvailableCredit(input.customer_id, branchId);
-  const requestedCredit = Math.max(
-    0,
-    Math.min(input.credit_to_apply, availableCredit, preview.preCreditTotal)
-  );
+  // Paying by 'Credit' settles the whole sale from the branch balance - it
+  // must cover all of it (the wizard disables the option otherwise; this is
+  // the server-side guard). Any other method may still top up with a
+  // partial credit_to_apply.
+  const payWithCredit = input.payment_method === 'Credit';
+  if (payWithCredit && availableCredit < preview.preCreditTotal) {
+    throwWithStatus(
+      400,
+      "The customer's credit at this branch does not cover this sale"
+    );
+  }
+  const requestedCredit = payWithCredit
+    ? preview.preCreditTotal
+    : Math.max(
+        0,
+        Math.min(input.credit_to_apply, availableCredit, preview.preCreditTotal)
+      );
   const creditResult = await applyCredit(
     input.customer_id,
     branchId,
@@ -229,11 +240,24 @@ export async function createMiscSale({
 
   const amountDue = round2(preview.preCreditTotal - creditAppliedAmount);
 
-  const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
-    paymentMethod: input.payment_method,
-    amountDue,
-    cashTendered: input.cash_tendered,
-  });
+  // A Credit sale is Fully Paid by the redeem above. If the balance shrank
+  // between the check and the atomic redeem (redeem_credit clamps to what's
+  // there), record what WAS redeemed as Partially Paid rather than throwing -
+  // the credit is already spent by now, so aborting would lose it.
+  const { paymentStatus, changeAmount } =
+    input.payment_method === 'Credit'
+      ? {
+          paymentStatus:
+            amountDue > 0
+              ? ('Partially Paid' as const)
+              : ('Fully Paid' as const),
+          changeAmount: null,
+        }
+      : resolvePaymentConfirmation({
+          paymentMethod: input.payment_method,
+          amountDue,
+          cashTendered: input.cash_tendered,
+        });
 
   const paymentReference = input.payment_reference ?? null;
   const resolvedItems = await resolveItems(input.items);
@@ -293,6 +317,15 @@ export async function createMiscSale({
     lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount,
   };
+}
+
+/** The customer's redeemable credit at the cashier's branch - backs the
+ * wizard's Credit payment option (enabled only when it covers the sale). */
+export async function getMiscSaleCredit(
+  customerId: string,
+  branchId: string
+): Promise<{ available: number }> {
+  return { available: await getAvailableCredit(customerId, branchId) };
 }
 
 export async function listMiscSales(branchId?: string): Promise<Transaction[]> {

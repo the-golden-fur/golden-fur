@@ -10,8 +10,10 @@ import {
   createMiscSaleController,
   deleteMiscSaleController,
   getMiscSaleController,
+  getMiscSaleCreditController,
   listBookingGroupTransactionsController,
   listBookingTransactionsController,
+  listMiscSaleOptionsController,
   listMiscSalesController,
   payTransactionWithCreditController,
   previewCheckoutController,
@@ -87,6 +89,28 @@ router.post(
   ...staffAccess,
   requireBranch,
   previewMiscSaleController
+);
+
+// The discounts/promos the admin has configured for misc sales at the
+// cashier's branch - listed on the wizard's Discount/Promo step. Registered
+// before '/billing/misc-sale/:id' so "options" isn't read as an id.
+router.get(
+  '/billing/misc-sale/options',
+  ...staffAccess,
+  requireBranch,
+  listMiscSaleOptionsController
+);
+
+// The customer's credit at the cashier's branch, for the wizard's Credit
+// payment option. On the billing router (every BILLING_STAFF_ROLES role)
+// rather than /credits/balances, which is narrower (Cashier/Admin/
+// Superadmin) - anyone who can record a misc sale can already spend credit
+// on one via credit_to_apply.
+router.get(
+  '/billing/misc-sale/credit',
+  ...staffAccess,
+  requireBranch,
+  getMiscSaleCreditController
 );
 
 // §6 (down-payment slot gate): per-booking payment history for the
