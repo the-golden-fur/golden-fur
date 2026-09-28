@@ -34,7 +34,10 @@ const SERVICE_CATEGORIES = [
   'Veterinary',
 ] as const;
 
-const MANDATED_DISCOUNTS = ['Senior Citizen Discount', 'PWD Discount'] as const;
+const MANDATED_DISCOUNTS = [
+  { name: 'Senior Citizen Discount', kind: 'senior_citizen' },
+  { name: 'PWD Discount', kind: 'pwd' },
+] as const;
 
 function getClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -89,7 +92,7 @@ export async function seedMandatedDiscounts(
 
   let created = 0;
 
-  for (const name of MANDATED_DISCOUNTS) {
+  for (const { name, kind } of MANDATED_DISCOUNTS) {
     for (const category of SERVICE_CATEGORIES) {
       const { data: existing } = await supabase
         .from('discounts')
@@ -105,6 +108,7 @@ export async function seedMandatedDiscounts(
         .insert({
           name,
           is_mandated: true,
+          mandated_kind: kind,
           discount_type: 'Percentage',
           value: 20,
           scope_type: 'category',

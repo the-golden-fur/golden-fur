@@ -26,6 +26,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listServices: vi.fn(),
   createService: vi.fn(),
   updateService: vi.fn(),
+  archiveService: vi.fn(),
   setServiceBranchAvailability: vi.fn(),
   getPricingConfiguration: vi.fn(),
 }));
@@ -433,7 +434,7 @@ describe('AdminServicesPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('Custom change (services/packages actions menu): a service row exposes Configure and Branch Availability behind a single "..." menu instead of separate always-visible controls', async () => {
+  it('Custom change (services/packages actions menu): a service row exposes Configure, Rename and Archive (no separate Branch Availability) behind a single "..." menu instead of separate always-visible controls', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -459,8 +460,106 @@ describe('AdminServicesPage', () => {
       screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Config-menu consistency: a service row also exposes Rename and Archive (never Deactivate) behind the "..." menu', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename opens a small pop-up and saves only the new name', async () => {
+    vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+      data: buildService({ name: 'Deluxe Bath' }),
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', { name: /new service name/i });
+    await user.clear(input);
+    await user.type(input, 'Deluxe Bath');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.updateService).toHaveBeenCalledWith(
+        expect.any(String),
+        'token',
+        { name: 'Deluxe Bath' }
+      )
+    );
+    expect(await screen.findByText('Deluxe Bath')).toBeInTheDocument();
+  });
+
+  it('Archive asks for confirmation, then removes the row from the list', async () => {
+    vi.mocked(maintenanceApi.archiveService).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(maintenanceApi.archiveService).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.archiveService).toHaveBeenCalledWith(
+        expect.any(String),
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Bath')).not.toBeInTheDocument()
+    );
+  });
+
+  it('Archive shows the server error (e.g. still used by a package) and keeps the row', async () => {
+    vi.mocked(maintenanceApi.archiveService).mockResolvedValue({
+      data: null,
+      error: 'This service is still used by package "Spa Day".',
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    expect(
+      await screen.findByText(/still used by package/)
+    ).toBeInTheDocument();
+    expect(screen.getByText('Bath')).toBeInTheDocument();
   });
 
   it('Custom change (services/packages actions menu): Configure opens the edit form in a modal instead of pushing the list down', async () => {
@@ -477,16 +576,7 @@ describe('AdminServicesPage', () => {
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Bath');
   });
 
-  it('Custom change (services/packages actions menu): Branch Availability opens a modal listing every branch with its own toggle', async () => {
-    vi.mocked(maintenanceApi.setServiceBranchAvailability).mockResolvedValue({
-      data: {
-        service_id: 'service-1',
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      },
-      error: null,
-    });
-
+  it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -494,25 +584,10 @@ describe('AdminServicesPage', () => {
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Bath' })
     );
-    await user.click(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    const dialog = screen.getByRole('dialog', {
-      name: 'Branch Availability - Bath',
-    });
-    const toggle = within(dialog).getByRole('switch', { name: 'Southwoods' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
-        'service-1',
-        'token',
-        { branch_id: 'branch-southwoods', is_available: false }
-      );
-    });
+    const dialog = screen.getByRole('dialog', { name: 'Edit service' });
+    expect(within(dialog).getByText('Available at')).toBeInTheDocument();
   });
 
   it('Custom change (Daycare fee configuration follow-up): a Daycare service form hides base price and creates without it', async () => {

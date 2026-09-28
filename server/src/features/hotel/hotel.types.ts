@@ -92,6 +92,10 @@ export interface Cage {
    * cage_pet_types junction table, since one physical cage can house either
    * a dog or a cat, unlike size which is fixed per cage. Always non-empty. */
   pet_types: string[];
+  /** Config-menu consistency change (20260928218): set when an admin archives
+   * the cage from Settings > Config. Archived cages are hidden from the cage
+   * grid, cage picker, assignment, and capacity counts. */
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -24,6 +24,7 @@ interface DiscountRow {
   id: string;
   name: string;
   is_mandated: boolean;
+  mandated_kind: 'senior_citizen' | 'pwd' | null;
   discount_type: 'Percentage' | 'Flat';
   value: number;
   scope_type: 'service' | 'package' | 'category';
@@ -46,9 +47,10 @@ export interface DiscountEligibility {
  * (Issue #84 AC-2 - no manual code entry). Mandated discounts (Senior
  * Citizen 20%, PWD - #44 seed) still must match scope like any other
  * discount (an Admin enables them per branch+category); the eligibility
- * flags are an *additional* gate on top of that, not a replacement -
- * matching by exact name is safe here because updateDiscount
- * (discounts.service.ts) already blocks renaming a mandated row.
+ * flags are an *additional* gate on top of that, not a replacement. The
+ * gate keys on mandated_kind (20260928220), not the display name, so an
+ * admin renaming a mandated discount can't silently drop its eligibility
+ * check.
  */
 export async function evaluateDiscounts(
   booking: BookingForBilling,
@@ -98,12 +100,12 @@ export async function evaluateDiscounts(
 
     if (discount.is_mandated) {
       if (
-        discount.name === 'Senior Citizen Discount' &&
+        discount.mandated_kind === 'senior_citizen' &&
         !eligibility.seniorCitizenEligible
       ) {
         continue;
       }
-      if (discount.name === 'PWD Discount' && !eligibility.pwdEligible) {
+      if (discount.mandated_kind === 'pwd' && !eligibility.pwdEligible) {
         continue;
       }
     }
@@ -163,12 +165,12 @@ export async function evaluateMiscSaleDiscounts(params: {
 
     if (discount.is_mandated) {
       if (
-        discount.name === 'Senior Citizen Discount' &&
+        discount.mandated_kind === 'senior_citizen' &&
         !params.eligibility.seniorCitizenEligible
       ) {
         continue;
       }
-      if (discount.name === 'PWD Discount' && !params.eligibility.pwdEligible) {
+      if (discount.mandated_kind === 'pwd' && !params.eligibility.pwdEligible) {
         continue;
       }
     }

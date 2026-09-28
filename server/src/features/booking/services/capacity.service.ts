@@ -90,6 +90,7 @@ export async function getHotelCageCapacity(
     .from('cages')
     .select('id', { count: 'exact', head: true })
     .eq('branch_id', branchId)
+    .is('archived_at', null)
     .eq('size', weightClass);
 
   if (error) throwWithStatus(400, error.message);

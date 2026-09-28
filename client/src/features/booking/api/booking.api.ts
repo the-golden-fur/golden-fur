@@ -359,6 +359,7 @@ export async function listServiceTypes(): Promise<
   const { data, error } = await supabase
     .from('service_types')
     .select('*')
+    .is('archived_at', null)
     .order('created_at');
 
   if (error) {

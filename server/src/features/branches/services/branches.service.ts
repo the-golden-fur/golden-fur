@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import type { Branch } from '../branches.types.ts';
 import type {
@@ -86,17 +86,16 @@ export async function updateBranch(
 }
 
 /**
- * Deactivate-first CRUD safety (archive workflow), mirroring
- * promos.service.ts's archivePromo: archiving is soft - the row moves to
- * the archive list via archived_at, it is not deleted.
+ * Archiving is soft - the row moves to the archive list via archived_at, it
+ * is not deleted, and (Config-menu consistency change) it deactivates the
+ * branch in the same step - Deactivate is no longer a separate action.
  */
 export async function archiveBranch(branchId: string): Promise<void> {
-  const branch = await getBranch(branchId);
-  assertInactiveBeforeArchive(branch.is_active, 'This branch');
+  await getBranch(branchId);
 
   const { error } = await supabase
     .from('branches')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', branchId);
 
   if (error) throwWithStatus(400, error.message);
@@ -105,7 +104,7 @@ export async function archiveBranch(branchId: string): Promise<void> {
 export async function restoreBranch(branchId: string): Promise<void> {
   const { error } = await supabase
     .from('branches')
-    .update({ archived_at: null })
+    .update({ archived_at: null, is_active: true })
     .eq('id', branchId);
 
   if (error) throwWithStatus(400, error.message);

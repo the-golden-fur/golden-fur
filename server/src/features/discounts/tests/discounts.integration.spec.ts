@@ -175,17 +175,31 @@ describe('discounts HTTP surface (Issue #43)', () => {
     expect(res.body.error).toBe('Invalid payload');
   });
 
-  it("AC-3: a PATCH changing a mandated discount's name is rejected", async () => {
+  it("a PATCH changing a mandated discount's name is accepted (identity is mandated_kind)", async () => {
     mockCaller('admin-1');
     queueFromResults(
       { data: { role: 'Admin' }, error: null },
-      { data: MANDATED_DISCOUNT, error: null }
+      { data: MANDATED_DISCOUNT, error: null }, // lookup
+      { data: null, error: null }, // update
+      { data: { ...MANDATED_DISCOUNT, name: 'Renamed' }, error: null } // reload
     );
 
     const res = await request(app)
       .patch('/discounts/discount-sc')
       .set('Authorization', 'Bearer token')
       .send({ name: 'Renamed' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('a PATCH touching mandated_kind is rejected by the strict validator', async () => {
+    mockCaller('admin-1');
+    queueFromResults({ data: { role: 'Admin' }, error: null });
+
+    const res = await request(app)
+      .patch('/discounts/discount-sc')
+      .set('Authorization', 'Bearer token')
+      .send({ mandated_kind: 'pwd' });
 
     expect(res.status).toBe(400);
   });

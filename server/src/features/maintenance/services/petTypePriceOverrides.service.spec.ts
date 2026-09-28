@@ -25,6 +25,9 @@ function queueFromResults(...results: QueryResult[]) {
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
+    builder.in = builder.in ?? vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
     builder.or = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn(() => builder);
@@ -117,6 +120,7 @@ describe('petTypePriceOverrides.service', () => {
   describe('upsertPetTypePriceOverride', () => {
     it('creates a new default-row override when none exists yet', async () => {
       queueFromResults(
+        { data: [], error: null }, // archived pet type check
         { data: null, error: null }, // existing-row lookup: none found
         {
           data: {
@@ -140,6 +144,7 @@ describe('petTypePriceOverrides.service', () => {
 
     it('updates the existing row for that exact scope when one already exists', async () => {
       queueFromResults(
+        { data: [], error: null }, // archived pet type check
         { data: { id: 'override-1' }, error: null }, // existing-row lookup: found
         {
           data: {

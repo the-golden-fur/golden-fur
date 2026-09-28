@@ -196,7 +196,9 @@ export async function updateCage(
   return { data: result.data?.cage ?? null, error: result.error };
 }
 
-export async function deleteCage(
+/** Soft: DELETE archives the cage (Config-menu consistency change) - the
+ * permanent delete is hardDeleteCage, once archived. */
+export async function archiveCage(
   cageId: string,
   accessToken: string
 ): Promise<HotelApiResult<true>> {
@@ -204,6 +206,54 @@ export async function deleteCage(
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: true, error: null };
+}
+
+export async function listArchivedCages(
+  accessToken: string
+): Promise<HotelApiResult<Cage[]>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cages/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cages: Cage[] }>(response);
+  return { data: result.data?.cages ?? null, error: result.error };
+}
+
+export async function restoreCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}/restore`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+export async function hardDeleteCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<true>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

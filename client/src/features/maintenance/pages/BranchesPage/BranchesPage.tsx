@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
@@ -24,20 +24,20 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { BranchConfigureModal } from '../../components/BranchConfigureModal/BranchConfigureModal';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { listStaff } from '../../../staff/api/staff.api';
-import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import {
+  BranchDetailsForm,
+  type BranchDetailsPayload,
+} from '../../components/BranchDetailsForm/BranchDetailsForm';
 import {
   archiveBranch,
   createBranch,
   listBranchesFull,
   updateBranch,
 } from '../../api/branches.api';
-import {
-  WEEKDAYS,
-  type Branch,
-  type OperatingHours,
-  type Weekday,
-} from '../../maintenance.types';
+import type { Branch } from '../../maintenance.types';
 import {
   applyBranchFilters,
   BRANCH_COMPARATORS,
@@ -54,18 +54,6 @@ import styles from './BranchesPage.module.css';
  * server's BRANCH_CONFIG_ROLES. */
 const ALLOWED_VIEWER_ROLES = new Set(['Superadmin']);
 
-const POLICIES_ROUTE = '/staff/admin/maintenance/policies';
-
-const WEEKDAY_LABELS: Record<Weekday, string> = {
-  monday: 'Monday',
-  tuesday: 'Tuesday',
-  wednesday: 'Wednesday',
-  thursday: 'Thursday',
-  friday: 'Friday',
-  saturday: 'Saturday',
-  sunday: 'Sunday',
-};
-
 type ViewMode = 'table' | 'list' | 'board';
 
 const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
@@ -74,58 +62,17 @@ const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
   { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
-interface BranchFormState {
-  name: string;
-  address: string;
-  contact_number: string;
-  is_vet_branch: boolean;
-  timezone: string;
-  operating_hours: OperatingHours;
-}
-
-const EMPTY_FORM: BranchFormState = {
-  name: '',
-  address: '',
-  contact_number: '',
-  is_vet_branch: false,
-  timezone: 'Asia/Manila',
-  operating_hours: {},
-};
-
-function formStateFromBranch(branch: Branch): BranchFormState {
-  return {
-    name: branch.name,
-    address: branch.address,
-    contact_number: branch.contact_number ?? '',
-    is_vet_branch: branch.is_vet_branch,
-    timezone: branch.timezone,
-    operating_hours: branch.operating_hours,
-  };
-}
-
-interface BranchesPageProps {
-  /** Passed by SettingsPage when this page is embedded inline - lets a
-   * "Configure" row action switch Settings to another tile (Policies,
-   * pre-scoped) instead of a plain route navigation. Falls back to
-   * useNavigate below when this page is reached via its own standalone
-   * route instead (no pre-scoping available there - the visitor picks a
-   * branch from Policies' own selector like before). */
-  onNavigateToConfig?: (to: string, props?: Record<string, unknown>) => void;
-}
-
 /**
  * Superadmin Branches (renamed from System Configuration, session 87) -
  * full Notion-style browser (search/filter/sort/group-by/view-switcher,
  * same shared toolbar as AdminCagesPage) over every branch, replacing the
- * old single-branch-at-a-time edit form. Branch identity/operating hours
- * editing itself is unchanged in substance (same fields), now reached via
- * a per-row "Edit" menu item instead of always being on-page. Policies
- * (formerly its own separate Config tile) is now reached via "Configure"
- * on a specific branch row, pre-scoped to that branch.
+ * old single-branch-at-a-time edit form. A row's "Configure" opens one modal
+ * for that branch: its identity/operating hours (the former "Edit"/"Details"
+ * form) and its booking policies (formerly its own Config tile), so there
+ * is a single Configure action instead of two.
  */
-export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
+export function BranchesPage() {
   const { user, accessToken } = useAuth();
-  const navigate = useNavigate();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -137,10 +84,9 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
-  const [form, setForm] = useState<BranchFormState>(EMPTY_FORM);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [configuringBranchId, setConfiguringBranchId] = useState<string | null>(
+    null
+  );
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -193,142 +139,64 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
     );
   }
 
-  function setDayClosed(day: Weekday, closed: boolean) {
-    setForm((prev) => {
-      const next = { ...prev.operating_hours };
-      if (closed) {
-        delete next[day];
-      } else {
-        next[day] = { open: '09:00', close: '18:00' };
-      }
-      return { ...prev, operating_hours: next };
-    });
-  }
+  // "Add branch" only - editing a branch's details now happens on the
+  // combined Configure page (details + policies), see BranchConfigurePage.
+  async function handleCreate(
+    payload: BranchDetailsPayload
+  ): Promise<string | null> {
+    if (!accessToken) return 'You are signed out.';
 
-  function setDayTime(day: Weekday, field: 'open' | 'close', value: string) {
-    setForm((prev) => {
-      const existing = prev.operating_hours[day] ?? {
-        open: '09:00',
-        close: '18:00',
-      };
-      return {
-        ...prev,
-        operating_hours: {
-          ...prev.operating_hours,
-          [day]: { ...existing, [field]: value },
-        },
-      };
-    });
-  }
-
-  function openCreateModal() {
-    setEditingBranchId(null);
-    setForm(EMPTY_FORM);
-    setFormError(null);
-    setIsModalOpen(true);
-  }
-
-  function openEditModal(branch: Branch) {
-    setEditingBranchId(branch.id);
-    setForm(formStateFromBranch(branch));
-    setFormError(null);
-    setIsModalOpen(true);
-  }
-
-  function closeModal() {
-    setIsModalOpen(false);
-    setFormError(null);
-  }
-
-  async function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!accessToken) return;
-
-    if (!form.name.trim() || !form.address.trim() || !form.timezone.trim()) {
-      setFormError('Name, address, and timezone are required.');
-      return;
-    }
-
-    setFormError(null);
-    setIsSubmitting(true);
-
-    const payload = {
-      name: form.name.trim(),
-      address: form.address.trim(),
-      contact_number: form.contact_number.trim()
-        ? form.contact_number.trim()
-        : null,
-      is_vet_branch: form.is_vet_branch,
-      timezone: form.timezone.trim(),
-      operating_hours: form.operating_hours,
-    };
-
-    const result = editingBranchId
-      ? await updateBranch(editingBranchId, accessToken, payload)
-      : await createBranch(accessToken, payload);
-
-    setIsSubmitting(false);
+    const result = await createBranch(accessToken, payload);
 
     if (result.error || !result.data) {
-      setFormError(
-        result.error ??
-          `Could not ${editingBranchId ? 'update' : 'add'} the branch.`
-      );
-      return;
+      return result.error ?? 'Could not add the branch.';
     }
 
-    if (editingBranchId) {
-      replaceBranch(result.data);
-    } else {
-      setBranches((prev) => [...prev, result.data as Branch]);
-    }
-
-    setMessage(editingBranchId ? 'Branch updated.' : 'Branch added.');
+    setBranches((prev) => [...prev, result.data as Branch]);
+    setMessage('Branch added.');
     setIsModalOpen(false);
-    setEditingBranchId(null);
+    return null;
   }
 
-  async function handleToggleActive(branch: Branch) {
-    if (!accessToken) return;
-    setRowError(null);
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<Branch>({
+      entityLabel: 'branch',
+      getName: (branch) => branch.name,
+      archiveConsequence:
+        'it will be switched off and hidden from customers and staff pickers',
+      onRename: async (branch, name) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await updateBranch(branch.id, accessToken, {
-      is_active: !branch.is_active,
+        const result = await updateBranch(branch.id, accessToken, { name });
+
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename the branch.';
+        }
+
+        replaceBranch(result.data);
+        setMessage('Branch renamed.');
+        return null;
+      },
+      onArchive: async (branch) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archiveBranch(branch.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setBranches((prev) => prev.filter((item) => item.id !== branch.id));
+        setMessage(
+          'Branch archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setRowError,
     });
 
-    if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update the branch.');
-      return;
-    }
-
-    replaceBranch(result.data);
-  }
-
-  async function handleArchive(branch: Branch) {
-    if (!accessToken) return;
-    setRowError(null);
-
-    const result = await archiveBranch(branch.id, accessToken);
-
-    if (result.error) {
-      setRowError(result.error);
-      return;
-    }
-
-    setBranches((prev) => prev.filter((item) => item.id !== branch.id));
-    setMessage('Branch archived.');
-  }
-
-  function handleConfigure(branch: Branch) {
-    if (onNavigateToConfig) {
-      onNavigateToConfig(POLICIES_ROUTE, {
-        initialBranchId: branch.id,
-        lockBranchSelector: true,
-      });
-    } else {
-      navigate(POLICIES_ROUTE);
-    }
-  }
+  // Configure opens ONE modal for the branch: its details (name, address,
+  // contact, timezone, hours) and its booking policies together.
+  const configuringBranch =
+    branches.find((branch) => branch.id === configuringBranchId) ?? null;
 
   const visibleBranches = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -367,23 +235,11 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
   }
 
   function branchActionItems(branch: Branch): MoreOptionsMenuItem[] {
-    const items: MoreOptionsMenuItem[] = [
-      { label: 'Edit', onSelect: () => openEditModal(branch) },
-      { label: 'Configure', onSelect: () => handleConfigure(branch) },
-      {
-        label: branch.is_active ? 'Deactivate' : 'Reactivate',
-        onSelect: () => void handleToggleActive(branch),
-      },
+    return [
+      { label: 'Configure', onSelect: () => setConfiguringBranchId(branch.id) },
+      { label: 'Rename', onSelect: () => requestRename(branch) },
+      { label: 'Archive', onSelect: () => requestArchive(branch) },
     ];
-
-    if (!branch.is_active) {
-      items.push({
-        label: 'Archive',
-        onSelect: () => void handleArchive(branch),
-      });
-    }
-
-    return items;
   }
 
   function renderBranchActions(branch: Branch) {
@@ -501,7 +357,7 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
           <button
             type="button"
             className={styles.button}
-            onClick={openCreateModal}
+            onClick={() => setIsModalOpen(true)}
           >
             + Add branch
           </button>
@@ -509,8 +365,8 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
         <p className={styles.copy}>
           Branch identity and operating hours - the same operating_hours Date
           &amp; Time slot generation and staff day-off shift-end resolution read
-          from everywhere else in the app. "Configure" opens Policies pre-scoped
-          to that branch.
+          from everywhere else in the app. "Configure" opens a pop-up with that
+          branch's details and booking policies.
         </p>
 
         {message ? (
@@ -610,144 +466,23 @@ export function BranchesPage({ onNavigateToConfig }: BranchesPageProps) {
 
       <Modal
         isOpen={isModalOpen}
-        title={editingBranchId ? 'Edit branch' : 'Add branch'}
-        onClose={closeModal}
+        title="Add branch"
+        onClose={() => setIsModalOpen(false)}
       >
-        <form className={styles.form} onSubmit={handleFormSubmit}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Branch name</span>
-            <input
-              className={styles.input}
-              type="text"
-              value={form.name}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, name: event.target.value }))
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Address</span>
-            <input
-              className={styles.input}
-              type="text"
-              value={form.address}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, address: event.target.value }))
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Contact number</span>
-            <input
-              className={styles.input}
-              type="text"
-              value={form.contact_number}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  contact_number: event.target.value,
-                }))
-              }
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Timezone</span>
-            <input
-              className={styles.input}
-              type="text"
-              value={form.timezone}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, timezone: event.target.value }))
-              }
-              required
-            />
-          </label>
-
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={form.is_vet_branch}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  is_vet_branch: event.target.checked,
-                }))
-              }
-            />
-            <span>Veterinary services offered at this branch</span>
-          </label>
-
-          <section aria-labelledby="operating-hours-heading">
-            <h2 className={styles.sectionTitle} id="operating-hours-heading">
-              Operating hours
-            </h2>
-            <div className={styles.hoursTable}>
-              {WEEKDAYS.map((day) => {
-                const entry = form.operating_hours[day];
-                const isClosed = !entry;
-
-                return (
-                  <div className={styles.hoursRow} key={day}>
-                    <span className={styles.dayLabel}>
-                      {WEEKDAY_LABELS[day]}
-                    </span>
-                    <label className={styles.closedField}>
-                      <input
-                        type="checkbox"
-                        checked={isClosed}
-                        onChange={(event) =>
-                          setDayClosed(day, event.target.checked)
-                        }
-                      />
-                      <span>Closed</span>
-                    </label>
-                    {!isClosed ? (
-                      <>
-                        <TimeInput
-                          value={entry.open}
-                          onChange={(value) => setDayTime(day, 'open', value)}
-                          aria-label={`${WEEKDAY_LABELS[day]} opening time`}
-                        />
-                        <span className={styles.hoursSeparator}>to</span>
-                        <TimeInput
-                          value={entry.close}
-                          onChange={(value) => setDayTime(day, 'close', value)}
-                          aria-label={`${WEEKDAY_LABELS[day]} closing time`}
-                        />
-                      </>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {formError ? (
-            <p className={styles.errorBanner} role="alert">
-              {formError}
-            </p>
-          ) : null}
-
-          <div className={styles.formActions}>
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={isSubmitting}
-            >
-              {isSubmitting
-                ? 'Saving...'
-                : editingBranchId
-                  ? 'Save changes'
-                  : 'Add branch'}
-            </button>
-          </div>
-        </form>
+        <BranchDetailsForm
+          branch={null}
+          submitLabel="Add branch"
+          onSubmit={handleCreate}
+        />
       </Modal>
+
+      <BranchConfigureModal
+        branch={configuringBranch}
+        onClose={() => setConfiguringBranchId(null)}
+        onSaved={replaceBranch}
+      />
+
+      {dialogs}
     </main>
   );
 }

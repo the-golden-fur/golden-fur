@@ -80,7 +80,10 @@ describe('publicCatalog.service', () => {
 
     expect(listPackages).toHaveBeenCalledWith({});
     expect(listPromos).toHaveBeenCalledWith({});
-    expect(listServices).toHaveBeenCalledWith({ includeInactive: true });
+    expect(listServices).toHaveBeenCalledWith({
+      includeInactive: true,
+      includeArchived: true,
+    });
     expect(result.packages).toEqual([
       {
         id: 'package-1',

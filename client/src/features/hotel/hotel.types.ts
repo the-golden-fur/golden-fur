@@ -47,6 +47,8 @@ export interface Cage {
    * values this cage supports (e.g. ['Dog', 'Cat']) - a cage can support
    * more than one, unlike size. Always non-empty. */
   pet_types: string[];
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }

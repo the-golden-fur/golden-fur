@@ -36,8 +36,15 @@ be relaxed.
 - **Cage size is decoupled from pricing.** It's purely a check-in/capacity
   concern — never reintroduce a price-per-cage-size model. Pricing is a
   flat rate per service.
-- A cage that's Occupied or Reserved can't be deleted from the admin Cages
-  page.
+- A cage that's Occupied or Reserved can't be archived from the admin Cages
+  page. Archiving (`cages.archived_at`, migration `20260928218`) replaced the
+  old hard delete on the "..." menu (Configure / Rename / Archive); an
+  archived cage is excluded everywhere capacity or assignment reads `cages` -
+  the cage grid, the cage picker, `suggestCage`/`assignCage`, the hotel
+  capacity count in `capacity.service.ts`, and `get_cage_occupancy_report` -
+  so it never counts toward S/M/L/XL capacity. Stay/booking history that
+  references it still resolves by id, and a cage with such history can only
+  be archived, not permanently deleted (FK-restricted).
 
 ## Capacity vs. staff availability — two independent gates
 

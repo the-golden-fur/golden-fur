@@ -3,6 +3,7 @@ import {
   createPromo,
   getPromoById,
   listPromos,
+  restorePromo,
   setPromoBranchAvailability,
   updatePromo,
 } from './promos.service.ts';
@@ -550,6 +551,77 @@ describe('promos.service', () => {
           isAvailable: true,
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  describe('restorePromo (row toggle removed - restore is the way back on)', () => {
+    it('re-activates a regular promo as it un-archives it', async () => {
+      queueFromResults(
+        { data: { ...DATE_PROMO, is_active: false }, error: null }, // getPromoById
+        { data: null, error: null } // update
+      );
+
+      await expect(restorePromo('promo-1')).resolves.toBeUndefined();
+
+      expect(builders[1].update).toHaveBeenCalledWith({
+        archived_at: null,
+        is_active: true,
+      });
+    });
+
+    it('refuses to bring a spin-wheel promo back live when its reward pool is archived', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...DATE_PROMO,
+            promo_type: 'spin_wheel',
+            is_active: false,
+            spin_wheel_promo_settings: { reward_pool_id: 'pool-1' },
+          },
+          error: null,
+        }, // getPromoById
+        {
+          data: {
+            id: 'pool-1',
+            is_active: true,
+            archived_at: '2026-09-01T00:00:00Z',
+            reward_pool_rewards: [],
+          },
+          error: null,
+        } // assertPoolUsable
+      );
+
+      await expect(restorePromo('promo-1')).rejects.toMatchObject({
+        statusCode: 400,
+      });
+    });
+
+    it('restores a spin-wheel promo whose pool still has an active reward', async () => {
+      queueFromResults(
+        {
+          data: {
+            ...DATE_PROMO,
+            promo_type: 'spin_wheel',
+            is_active: false,
+            spin_wheel_promo_settings: { reward_pool_id: 'pool-1' },
+          },
+          error: null,
+        },
+        {
+          data: {
+            id: 'pool-1',
+            is_active: true,
+            archived_at: null,
+            reward_pool_rewards: [
+              { spin_wheel_rewards: { is_active: true, archived_at: null } },
+            ],
+          },
+          error: null,
+        },
+        { data: null, error: null } // update
+      );
+
+      await expect(restorePromo('promo-1')).resolves.toBeUndefined();
     });
   });
 });

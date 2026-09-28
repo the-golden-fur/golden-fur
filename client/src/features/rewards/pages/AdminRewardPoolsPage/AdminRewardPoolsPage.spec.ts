@@ -183,10 +183,33 @@ describe('AdminRewardPoolsPage (session 114)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it("shows the server's refusal when deactivating a pool an active promo uses", async () => {
+  it('a row offers Configure, Rename and Archive - never Deactivate/Activate', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Standard');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Standard' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename saves only the pool name', async () => {
     vi.mocked(rewardsApi.updateRewardPool).mockResolvedValue({
-      data: null,
-      error: 'This pool is used by active spin wheel promo(s): Loyalty Spin.',
+      data: buildPool({ name: 'Premium' }),
+      error: null,
     });
 
     const user = userEvent.setup();
@@ -196,12 +219,75 @@ describe('AdminRewardPoolsPage (session 114)', () => {
     await user.click(
       screen.getByRole('button', { name: 'Actions for Standard' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', {
+      name: /new reward pool name/i,
+    });
+    await user.clear(input);
+    await user.type(input, 'Premium');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(rewardsApi.updateRewardPool).toHaveBeenCalledWith(
+        'pool-1',
+        'token',
+        { name: 'Premium' }
+      )
+    );
+    expect(await screen.findByText('Premium')).toBeInTheDocument();
+  });
+
+  it("shows the server's refusal when archiving a pool an active promo uses", async () => {
+    vi.mocked(rewardsApi.archiveRewardPool).mockResolvedValue({
+      data: null,
+      error: 'This pool is used by active spin-wheel promo(s): Loyalty Spin.',
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Standard');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Standard' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
 
     expect(
       await screen.findByText(
-        'This pool is used by active spin wheel promo(s): Loyalty Spin.'
+        'This pool is used by active spin-wheel promo(s): Loyalty Spin.'
       )
     ).toBeInTheDocument();
+    expect(screen.getByText('Standard')).toBeInTheDocument();
+  });
+
+  it('archives a pool after confirming and removes it from the list', async () => {
+    vi.mocked(rewardsApi.archiveRewardPool).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Standard');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Standard' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(rewardsApi.archiveRewardPool).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(rewardsApi.archiveRewardPool).toHaveBeenCalledWith(
+        'pool-1',
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Standard')).not.toBeInTheDocument()
+    );
   });
 });

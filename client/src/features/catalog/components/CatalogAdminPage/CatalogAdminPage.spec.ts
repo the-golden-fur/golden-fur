@@ -89,44 +89,63 @@ describe('CatalogAdminPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('Deactivate calls updateItem with is_active: false', async () => {
-    const updateItem = vi
-      .fn()
-      .mockResolvedValue({ data: { ...ITEM, is_active: false }, error: null });
-    renderWithRouter(buildProps({ updateItem }));
-
-    fireEvent.click(await screen.findByText('Deactivate'));
-
-    expect(updateItem).toHaveBeenCalledWith(
-      'item-1',
-      { is_active: false },
-      'token'
-    );
-    expect(await screen.findByText('Inactive')).toBeInTheDocument();
-  });
-
-  it('Archive is hidden while the item is still active', async () => {
+  it('a row offers Configure, Rename and Archive behind a "..." menu - never Deactivate', async () => {
     renderWithRouter(buildProps());
 
-    await screen.findByText('Dry kibble');
-    expect(screen.queryByText('Archive')).not.toBeInTheDocument();
-  });
-
-  it('Archive removes the item from the list once deactivated', async () => {
-    const archiveItem = vi.fn().mockResolvedValue({ data: null, error: null });
-    renderWithRouter(
-      buildProps({
-        listItems: vi.fn().mockResolvedValue({
-          data: [{ ...ITEM, is_active: false }],
-          error: null,
-        }),
-        archiveItem,
-      })
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Actions for Dry kibble' })
     );
 
-    fireEvent.click(await screen.findByText('Archive'));
+    expect(screen.getByRole('menuitem', { name: 'Configure' })).toBeVisible();
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeVisible();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+  });
 
-    expect(archiveItem).toHaveBeenCalledWith('item-1', 'token');
+  it('Rename calls updateItem with only the new name', async () => {
+    const updateItem = vi.fn().mockResolvedValue({
+      data: { ...ITEM, name: 'Premium kibble' },
+      error: null,
+    });
+    renderWithRouter(buildProps({ updateItem }));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Actions for Dry kibble' })
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /new product name/i }),
+      {
+        target: { value: 'Premium kibble' },
+      }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Premium kibble');
+    expect(updateItem).toHaveBeenCalledWith(
+      'item-1',
+      { name: 'Premium kibble' },
+      'token'
+    );
+  });
+
+  it('Archive works on an active item, after confirming', async () => {
+    const archiveItem = vi.fn().mockResolvedValue({ data: null, error: null });
+    renderWithRouter(buildProps({ archiveItem }));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Actions for Dry kibble' })
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(archiveItem).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await vi.waitFor(() =>
+      expect(archiveItem).toHaveBeenCalledWith('item-1', 'token')
+    );
     expect(
       await screen.findByText('No product items match this filter.')
     ).toBeInTheDocument();

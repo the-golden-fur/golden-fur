@@ -21,6 +21,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   archiveSpinWheelReward,
@@ -251,39 +252,46 @@ export function AdminRewardsPage() {
     setRewardTier(tier);
   }
 
-  const handleToggleActive = async (reward: SpinWheelReward) => {
-    if (!accessToken) return;
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<SpinWheelReward>({
+      entityLabel: 'reward',
+      getName: (reward) => reward.label,
+      archiveConsequence:
+        'it will be switched off and removed from every reward pool',
+      onRename: async (reward, label) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await updateSpinWheelReward(reward.id, accessToken, {
-      is_active: !reward.is_active,
+        const result = await updateSpinWheelReward(reward.id, accessToken, {
+          label,
+        });
+
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename the reward.';
+        }
+
+        setRewards((prev) =>
+          prev.map((item) =>
+            item.id === reward.id ? (result.data as SpinWheelReward) : item
+          )
+        );
+        setMessage('Reward renamed.');
+        return null;
+      },
+      onArchive: async (reward) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archiveSpinWheelReward(reward.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setRewards((prev) => prev.filter((item) => item.id !== reward.id));
+        setMessage(
+          'Reward archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
     });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the reward.');
-      return;
-    }
-
-    setRewards((prev) =>
-      prev.map((item) =>
-        item.id === reward.id ? (result.data as SpinWheelReward) : item
-      )
-    );
-    setMessage(reward.is_active ? 'Reward deactivated.' : 'Reward activated.');
-  };
-
-  const handleArchive = async (reward: SpinWheelReward) => {
-    if (!accessToken) return;
-
-    const result = await archiveSpinWheelReward(reward.id, accessToken);
-
-    if (result.error) {
-      setMessage(result.error);
-      return;
-    }
-
-    setRewards((prev) => prev.filter((item) => item.id !== reward.id));
-    setMessage('Reward archived.');
-  };
 
   const visibleRewards = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -328,18 +336,8 @@ export function AdminRewardsPage() {
           label={`Actions for ${reward.label}`}
           items={[
             { label: 'Configure', onSelect: () => openEditModal(reward) },
-            {
-              label: reward.is_active ? 'Deactivate' : 'Activate',
-              onSelect: () => void handleToggleActive(reward),
-            },
-            ...(!reward.is_active
-              ? [
-                  {
-                    label: 'Archive',
-                    onSelect: () => void handleArchive(reward),
-                  },
-                ]
-              : []),
+            { label: 'Rename', onSelect: () => requestRename(reward) },
+            { label: 'Archive', onSelect: () => requestArchive(reward) },
           ]}
         />
       </span>
@@ -627,6 +625,8 @@ export function AdminRewardsPage() {
           </button>
         </form>
       </Modal>
+
+      {dialogs}
     </main>
   );
 }

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveServiceType,
   createServiceType,
+  hardDeleteServiceType,
   listServiceTypes,
+  restoreServiceType,
   setServiceTypeBranchAvailability,
   updateServiceType,
 } from './serviceTypes.service.ts';
@@ -33,6 +36,10 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
+    builder.delete = vi.fn(() => builder);
+    builder.in = builder.in ?? vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.insert = vi.fn((payload?: unknown) => {
       (builder as { insertPayload?: unknown }).insertPayload = payload;
@@ -148,6 +155,7 @@ describe('serviceTypes.service', () => {
   describe('updateServiceType', () => {
     it('updates a service type', async () => {
       queueFromResults(
+        { data: { archived_at: null }, error: null }, // archived check
         { data: null, error: null }, // update
         {
           data: { id: 'type-1', key: 'Grooming', name: 'Grooming & Spa' },
@@ -234,6 +242,124 @@ describe('serviceTypes.service', () => {
           isAvailable: false,
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('archive / restore / hard delete (Config-menu consistency change)', () => {
+    const CUSTOM_TYPE = {
+      id: 'type-1',
+      key: 'custom-uuid-key',
+      archived_at: null,
+    };
+
+    it('archiveServiceType archives and deactivates in one step', async () => {
+      queueFromResults(
+        { data: CUSTOM_TYPE, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: { ...CUSTOM_TYPE, is_active: false }, error: null } // reload
+      );
+
+      await archiveServiceType('type-1', 'staff-1');
+
+      const builder = vi.mocked(supabase.from).mock.results[1].value as {
+        update: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ is_active: false })
+      );
+    });
+
+    it('archiveServiceType 409s when already archived', async () => {
+      queueFromResults({
+        data: { ...CUSTOM_TYPE, archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        archiveServiceType('type-1', 'staff-1')
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('restoreServiceType recomputes is_active from branch availability', async () => {
+      queueFromResults(
+        {
+          data: { ...CUSTOM_TYPE, archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        { data: [{ is_available: false }], error: null }, // availability
+        { data: null, error: null }, // update
+        { data: CUSTOM_TYPE, error: null } // reload
+      );
+
+      await restoreServiceType('type-1', 'staff-1');
+
+      const builder = vi.mocked(supabase.from).mock.results[2].value as {
+        update: ReturnType<typeof vi.fn>;
+      };
+      expect(builder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ archived_at: null, is_active: false })
+      );
+    });
+
+    it('updateServiceType refuses an archived type', async () => {
+      queueFromResults({
+        data: { archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        updateServiceType('type-1', { name: 'X' }, 'staff-1')
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('setServiceTypeBranchAvailability refuses an archived type (would otherwise un-hide it)', async () => {
+      queueFromResults({
+        data: { id: 'type-1', archived_at: '2026-09-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        setServiceTypeBranchAvailability({
+          serviceTypeId: 'type-1',
+          branchId: 'branch-makati',
+          isAvailable: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('hardDeleteServiceType 403s until the type is archived', async () => {
+      queueFromResults({ data: CUSTOM_TYPE, error: null });
+
+      await expect(hardDeleteServiceType('type-1')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+
+    it('hardDeleteServiceType refuses a built-in type even once archived', async () => {
+      queueFromResults({
+        data: {
+          id: 'type-2',
+          key: 'Grooming',
+          archived_at: '2026-09-01T00:00:00Z',
+        },
+        error: null,
+      });
+
+      await expect(hardDeleteServiceType('type-2')).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('hardDeleteServiceType deletes an archived custom type', async () => {
+      queueFromResults(
+        {
+          data: { ...CUSTOM_TYPE, archived_at: '2026-09-01T00:00:00Z' },
+          error: null,
+        },
+        { data: null, error: null }
+      );
+
+      await expect(hardDeleteServiceType('type-1')).resolves.toBeUndefined();
     });
   });
 });

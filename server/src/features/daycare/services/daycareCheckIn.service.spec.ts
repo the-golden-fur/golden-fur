@@ -46,6 +46,7 @@ function queueFromResults(...results: QueryResult[]) {
     for (const method of [
       'select',
       'eq',
+      'is',
       'update',
       'not',
       'order',

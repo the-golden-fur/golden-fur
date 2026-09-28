@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import type { SpinWheelReward } from '../rewards.types.ts';
 import type {
@@ -153,12 +153,11 @@ export async function updateSpinWheelReward(
 }
 
 export async function archiveSpinWheelReward(rewardId: string): Promise<void> {
-  const reward = await getSpinWheelRewardById(rewardId);
-  assertInactiveBeforeArchive(reward.is_active, 'This reward');
+  await getSpinWheelRewardById(rewardId);
 
   const { error } = await supabase
     .from('spin_wheel_rewards')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', rewardId);
 
   if (error) throwWithStatus(400, error.message);
@@ -167,7 +166,7 @@ export async function archiveSpinWheelReward(rewardId: string): Promise<void> {
 export async function restoreSpinWheelReward(rewardId: string): Promise<void> {
   const { error } = await supabase
     .from('spin_wheel_rewards')
-    .update({ archived_at: null })
+    .update({ archived_at: null, is_active: true })
     .eq('id', rewardId);
 
   if (error) throwWithStatus(400, error.message);

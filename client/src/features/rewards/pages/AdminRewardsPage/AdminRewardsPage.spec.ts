@@ -236,10 +236,38 @@ describe('AdminRewardsPage (session 114)', () => {
     expect(screen.getByText(/Flat 50/)).toBeInTheDocument();
   });
 
-  it('toggles a reward active/inactive from the "..." menu', async () => {
+  it('a row offers Configure, Rename and Archive - never Deactivate/Activate', async () => {
+    stubDefaults();
+
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Ten Percent Off');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Activate' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename saves only the reward title (label)', async () => {
     stubDefaults();
     vi.mocked(rewardsApi.updateSpinWheelReward).mockResolvedValue({
-      data: buildReward({ is_active: false }),
+      data: buildReward({ label: 'Twenty Percent Off' }),
       error: null,
     });
 
@@ -250,19 +278,25 @@ describe('AdminRewardsPage (session 114)', () => {
     await user.click(
       screen.getByRole('button', { name: 'Actions for Ten Percent Off' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', { name: /new reward name/i });
+    await user.clear(input);
+    await user.type(input, 'Twenty Percent Off');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(rewardsApi.updateSpinWheelReward).toHaveBeenCalledWith(
         'reward-1',
         'token',
-        { is_active: false }
+        { label: 'Twenty Percent Off' }
       )
     );
+    expect(await screen.findByText('Twenty Percent Off')).toBeInTheDocument();
   });
 
-  it('archives a reward from the "..." menu once it is inactive', async () => {
-    stubDefaults([buildReward({ is_active: false })]);
+  it('archives an active reward from the "..." menu after confirming', async () => {
+    stubDefaults([buildReward({ is_active: true })]);
     vi.mocked(rewardsApi.archiveSpinWheelReward).mockResolvedValue({
       data: null,
       error: null,
@@ -277,13 +311,18 @@ describe('AdminRewardsPage (session 114)', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
 
+    expect(rewardsApi.archiveSpinWheelReward).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
     await waitFor(() =>
       expect(rewardsApi.archiveSpinWheelReward).toHaveBeenCalledWith(
         'reward-1',
         'token'
       )
     );
-    expect(screen.queryByText('Ten Percent Off')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('Ten Percent Off')).not.toBeInTheDocument()
+    );
   });
 
   it('Configure opens a pre-filled edit modal and saves via updateSpinWheelReward', async () => {

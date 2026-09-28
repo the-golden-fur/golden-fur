@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -153,11 +159,17 @@ interface PolicyConfigurationPageProps {
   /** Disables the branch <select> so a pre-scoped visit can't be
    * accidentally re-pointed at a different branch. */
   lockBranchSelector?: boolean;
+  /** Renders just the policies form - no page shell, title, intro copy or
+   * branch selector - for use inside another surface (Branches' "Configure"
+   * modal, which shows the branch's details and these policies together).
+   * Only meaningful together with initialBranchId. */
+  embedded?: boolean;
 }
 
 export function PolicyConfigurationPage({
   initialBranchId,
   lockBranchSelector,
+  embedded,
 }: PolicyConfigurationPageProps = {}) {
   const { user, accessToken } = useAuth();
   const unsavedChanges = useUnsavedChangesContext();
@@ -366,26 +378,27 @@ export function PolicyConfigurationPage({
     }
   };
 
-  if (!user?.id || !accessToken) {
-    return (
+  // A plain function (not a component) so the form's inputs keep their state
+  // across renders. Embedded = just the content, without the full-page shell.
+  const shell = (children: ReactNode) =>
+    embedded ? (
+      <div>{children}</div>
+    ) : (
       <main className={styles.page}>
-        <div className={styles.content}>
-          <p className={styles.errorBanner} role="alert">
-            Unable to load the policy configuration panel.
-          </p>
-        </div>
+        <div className={styles.content}>{children}</div>
       </main>
+    );
+
+  if (!user?.id || !accessToken) {
+    return shell(
+      <p className={styles.errorBanner} role="alert">
+        Unable to load the policy configuration panel.
+      </p>
     );
   }
 
   if (isRoleLoading) {
-    return (
-      <main className={styles.page}>
-        <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
-        </div>
-      </main>
-    );
+    return shell(<p className={styles.copy}>Loading...</p>);
   }
 
   if (!isAllowedViewer) {
@@ -393,685 +406,661 @@ export function PolicyConfigurationPage({
   }
 
   if (isLoading) {
-    return (
-      <main className={styles.page}>
-        <div className={styles.content}>
-          <p className={styles.copy}>Loading policy configuration...</p>
-        </div>
-      </main>
+    return shell(
+      <p className={styles.copy}>Loading policy configuration...</p>
     );
   }
 
   if (loadError) {
-    return (
-      <main className={styles.page}>
-        <div className={styles.content}>
-          <p className={styles.errorBanner} role="alert">
-            {loadError}
-          </p>
-        </div>
-      </main>
+    return shell(
+      <p className={styles.errorBanner} role="alert">
+        {loadError}
+      </p>
     );
   }
 
-  return (
-    <main className={styles.page}>
-      <div className={styles.content}>
-        <h1 className={styles.title}>Policies</h1>
-        <p className={styles.copy}>
-          Reschedule notice period and fee, new online booking notice period,
-          the fixed lunch break, downpayment, cancellation credit, and credit
-          expiry - system-wide default, or a per-branch override.
-        </p>
+  return shell(
+    <>
+      {embedded ? null : (
+        <>
+          <h1 className={styles.title}>Policies</h1>
+          <p className={styles.copy}>
+            Reschedule notice period and fee, new online booking notice period,
+            the fixed lunch break, downpayment, cancellation credit, and credit
+            expiry - system-wide default, or a per-branch override.
+          </p>
 
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Branch</span>
-          <select
-            className={styles.input}
-            value={selectedBranchId}
-            onChange={(event) => handleBranchSelect(event.target.value)}
-            disabled={lockBranchSelector}
-          >
-            <option value={SYSTEM_DEFAULT_OPTION}>
-              System default (all branches)
-            </option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Branch</span>
+            <select
+              className={styles.input}
+              value={selectedBranchId}
+              onChange={(event) => handleBranchSelect(event.target.value)}
+              disabled={lockBranchSelector}
+            >
+              <option value={SYSTEM_DEFAULT_OPTION}>
+                System default (all branches)
               </option>
-            ))}
-          </select>
-        </label>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
 
-        {message ? (
-          <p className={styles.successBanner} role="status">
-            {message}
+      {message ? (
+        <p className={styles.successBanner} role="status">
+          {message}
+        </p>
+      ) : null}
+
+      <form
+        className={styles.form}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void performSave().catch(() => {
+            // formError is already set and shown below - nothing else to do.
+          });
+        }}
+      >
+        <section aria-labelledby="notice-heading">
+          <h2 className={styles.sectionTitle} id="notice-heading">
+            Reschedule notice period
+          </h2>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.notice_enforcement_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  notice_enforcement_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Enforce a minimum notice period</span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Minimum notice (days)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              value={form.notice_period_days}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  notice_period_days: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Enforcement mode</span>
+            <select
+              className={styles.input}
+              value={form.notice_enforcement_mode}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  notice_enforcement_mode: event.target
+                    .value as EnforcementMode,
+                }))
+              }
+            >
+              <option value="Strict">
+                Strict - block reschedule/cancel outright
+              </option>
+              <option value="Soft">
+                Soft - allow, but flag as a policy violation
+              </option>
+            </select>
+          </label>
+        </section>
+
+        <section aria-labelledby="booking-notice-heading">
+          <h2 className={styles.sectionTitle} id="booking-notice-heading">
+            New online booking notice period
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Minimum days before a new online booking (0 = same-day allowed)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              value={form.booking_notice_period_days}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  booking_notice_period_days: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            Separate from the reschedule notice above. Applies only to brand-new
+            online bookings (customer self-service and receptionist New
+            Booking), never to walk-ins.
+          </p>
+        </section>
+
+        <section aria-labelledby="staff-concurrency-heading">
+          <h2 className={styles.sectionTitle} id="staff-concurrency-heading">
+            Staff concurrency
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Max concurrent bookings per staff member (1 = one pet at a time)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={1}
+              value={form.max_concurrent_bookings_per_staff}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  max_concurrent_bookings_per_staff: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            How many overlapping Grooming or Veterinary bookings one groomer /
+            vet can be assigned in the same time window. Raise it to let one
+            staff member handle several pets at once (e.g. two small dogs); the
+            Staff Picker and the overbooking checks both honour this number.
+          </p>
+        </section>
+
+        <section aria-labelledby="lunch-heading">
+          <h2 className={styles.sectionTitle} id="lunch-heading">
+            Lunch break
+          </h2>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.lunch_break_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  lunch_break_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>No bookings during this window</span>
+          </label>
+
+          <div className={styles.hoursRow}>
+            <TimeInput
+              value={form.lunch_break_start}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, lunch_break_start: value }))
+              }
+              aria-label="Lunch break start"
+            />
+            <span className={styles.hoursSeparator}>to</span>
+            <TimeInput
+              value={form.lunch_break_end}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, lunch_break_end: value }))
+              }
+              aria-label="Lunch break end"
+            />
+          </div>
+        </section>
+
+        <section aria-labelledby="reschedule-fee-heading">
+          <h2 className={styles.sectionTitle} id="reschedule-fee-heading">
+            Reschedule fee
+          </h2>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.reschedule_fee_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  reschedule_fee_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Charge a fee once the free allowance is used up</span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Fee type</span>
+            <select
+              className={styles.input}
+              value={form.reschedule_fee_type}
+              disabled={!form.reschedule_fee_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  reschedule_fee_type: event.target.value as RescheduleFeeType,
+                }))
+              }
+            >
+              <option value="Flat">Flat (pesos)</option>
+              <option value="Percentage">Percentage of booking total</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              {form.reschedule_fee_type === 'Flat'
+                ? 'Fee amount (PHP)'
+                : 'Fee (%)'}
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              max={form.reschedule_fee_type === 'Percentage' ? 100 : undefined}
+              value={form.reschedule_fee_value}
+              disabled={!form.reschedule_fee_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  reschedule_fee_value: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.reschedule_free_allowance_unlimited}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  reschedule_free_allowance_unlimited: event.target.checked,
+                }))
+              }
+            />
+            <span>Unlimited free reschedules</span>
+          </label>
+
+          {!form.reschedule_free_allowance_unlimited ? (
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Free reschedules allowed
+              </span>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                value={form.reschedule_free_allowance}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reschedule_free_allowance: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          ) : null}
+        </section>
+
+        <section aria-labelledby="downpayment-heading">
+          <h2 className={styles.sectionTitle} id="downpayment-heading">
+            Downpayment
+          </h2>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.downpayment_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  downpayment_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Require a downpayment on the whole booking</span>
+          </label>
+          <p className={styles.copy}>
+            Applies once to an online booking's total - across every
+            service/package in it, and after any discount or promo - not per
+            individual service. Walk-in bookings always pay in full.
+          </p>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Downpayment type</span>
+            <select
+              className={styles.input}
+              value={form.downpayment_type}
+              disabled={!form.downpayment_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  downpayment_type: event.target.value as DownpaymentType,
+                }))
+              }
+            >
+              <option value="Flat">Flat (pesos)</option>
+              <option value="Percentage">Percentage of booking total</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              {form.downpayment_type === 'Flat'
+                ? 'Downpayment amount (PHP)'
+                : 'Downpayment (%)'}
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              max={form.downpayment_type === 'Percentage' ? 100 : undefined}
+              value={form.downpayment_amount}
+              disabled={!form.downpayment_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  downpayment_amount: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Reservation hold (hours)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min={1}
+              value={form.downpayment_hold_hours}
+              disabled={!form.downpayment_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  downpayment_hold_hours: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            If no payment is made within this many hours, the booking is
+            automatically cancelled.
+          </p>
+        </section>
+
+        <section aria-labelledby="cancellation-credit-heading">
+          <h2 className={styles.sectionTitle} id="cancellation-credit-heading">
+            Cancellation credit
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Percent of payment returned as credit
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              max={100}
+              value={form.cancellation_credit_conversion_rate}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  cancellation_credit_conversion_rate: Number(
+                    event.target.value
+                  ),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            Share of a paid cancellation returned as credit, if the notice
+            period was met - 100% is a full refund, lower keeps part as a
+            charge. Missed notice forfeits the payment entirely.
+          </p>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Who decides the credit</span>
+            <select
+              className={styles.input}
+              value={form.credit_review_mode}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  credit_review_mode: event.target.value as CreditReviewMode,
+                }))
+              }
+            >
+              <option value="Automatic">
+                Automatic - decided by the notice period, above
+              </option>
+              <option value="Manual">
+                Manual - a staff member reviews each cancellation reason
+              </option>
+            </select>
+          </label>
+          <p className={styles.copy}>
+            Manual ignores the notice period above entirely - every cancellation
+            with a payment goes to the Credit Review Queue for a staff member to
+            approve or deny after reading why the customer cancelled.
+          </p>
+        </section>
+
+        <section aria-labelledby="credit-expiry-heading">
+          <h2 className={styles.sectionTitle} id="credit-expiry-heading">
+            Credit expiry
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>How credit expires</span>
+            <select
+              className={styles.input}
+              value={form.credit_expiry_mode}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  credit_expiry_mode: event.target.value as CreditExpiryMode,
+                }))
+              }
+            >
+              <option value="none">Credit never expires</option>
+              <option value="rolling">
+                Expire a set number of days after each credit is issued
+              </option>
+              <option value="fixed_date">
+                All of this branch&apos;s credit expires on one date
+              </option>
+            </select>
+          </label>
+
+          {form.credit_expiry_mode === 'rolling' ? (
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Expires after (days)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                value={form.credit_expiry_days}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    credit_expiry_days: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          ) : null}
+
+          {form.credit_expiry_mode === 'fixed_date' ? (
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Expiry date</span>
+              <input
+                className={styles.input}
+                type="date"
+                value={form.credit_expiry_fixed_date}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    credit_expiry_fixed_date: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          ) : null}
+
+          <p className={styles.copy}>
+            Saving this re-applies to credit customers already hold at{' '}
+            {selectedBranchId
+              ? 'this branch'
+              : 'every branch that follows the default'}
+            , not just credit issued from now on.
+            {form.credit_expiry_mode === 'fixed_date' &&
+            form.credit_expiry_fixed_date &&
+            form.credit_expiry_fixed_date < todayIso
+              ? ' The date you picked is already past — that credit will be expired on the next sweep.'
+              : ''}
+          </p>
+        </section>
+
+        <section aria-labelledby="email-notifications-heading">
+          <h2 className={styles.sectionTitle} id="email-notifications-heading">
+            Customer email notifications
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Bundled checkout confirmation email
+            </span>
+            <select
+              className={styles.input}
+              value={form.booking_group_email_mode}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  booking_group_email_mode: event.target.value as
+                    | 'combined'
+                    | 'per_booking',
+                }))
+              }
+            >
+              <option value="combined">
+                One combined email for the whole checkout
+              </option>
+              <option value="per_booking">
+                One email per booking in the checkout
+              </option>
+            </select>
+          </label>
+          <p className={styles.copy}>
+            When a customer books several pets/services in one checkout, send a
+            single &quot;your bookings are confirmed&quot; email instead of one
+            per booking. The in-app notification is always one per booking
+            either way.
+          </p>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.care_log_task_email_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  care_log_task_email_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Email the customer as each hotel care task is completed</span>
+          </label>
+          <p className={styles.copy}>
+            Off by default - a busy hotel day logs many tasks per pet. The
+            in-app notification still fires for each; leave this off and the
+            nightly summary below covers the customer instead.
+          </p>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.care_log_daily_report_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  care_log_daily_report_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Send a nightly care summary for each hotel stay</span>
+          </label>
+          <p className={styles.copy}>
+            One email per active hotel stay each evening, listing that
+            day&apos;s completed, missed, and still-scheduled care tasks.
+          </p>
+        </section>
+
+        <section aria-labelledby="customer-deactivation-heading">
+          <h2
+            className={styles.sectionTitle}
+            id="customer-deactivation-heading"
+          >
+            Customer account deletion
+          </h2>
+          <p className={styles.copy}>
+            When a customer deactivates their own account (Settings &gt;
+            Danger), it&apos;s permanently deleted after this many days if they
+            don&apos;t log back in to reactivate it. Customers aren&apos;t
+            branch-scoped, so this only ever applies system-wide - editable here
+            only when configuring the system default, not a branch override.
+          </p>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Delete after (days of inactivity)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={1}
+              disabled={Boolean(selectedBranchId)}
+              value={form.customer_deactivation_auto_delete_days}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  customer_deactivation_auto_delete_days: Number(
+                    event.target.value
+                  ),
+                }))
+              }
+            />
+          </label>
+        </section>
+
+        {formError ? (
+          <p className={styles.errorBanner} role="alert">
+            {formError}
           </p>
         ) : null}
 
-        <form
-          className={styles.form}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void performSave().catch(() => {
-              // formError is already set and shown below - nothing else to do.
-            });
-          }}
-        >
-          <section aria-labelledby="notice-heading">
-            <h2 className={styles.sectionTitle} id="notice-heading">
-              Reschedule notice period
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.notice_enforcement_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    notice_enforcement_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Enforce a minimum notice period</span>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Minimum notice (days)</span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                value={form.notice_period_days}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    notice_period_days: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Enforcement mode</span>
-              <select
-                className={styles.input}
-                value={form.notice_enforcement_mode}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    notice_enforcement_mode: event.target
-                      .value as EnforcementMode,
-                  }))
-                }
-              >
-                <option value="Strict">
-                  Strict - block reschedule/cancel outright
-                </option>
-                <option value="Soft">
-                  Soft - allow, but flag as a policy violation
-                </option>
-              </select>
-            </label>
-          </section>
-
-          <section aria-labelledby="booking-notice-heading">
-            <h2 className={styles.sectionTitle} id="booking-notice-heading">
-              New online booking notice period
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Minimum days before a new online booking (0 = same-day allowed)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                value={form.booking_notice_period_days}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    booking_notice_period_days: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-            <p className={styles.copy}>
-              Separate from the reschedule notice above. Applies only to
-              brand-new online bookings (customer self-service and receptionist
-              New Booking), never to walk-ins.
-            </p>
-          </section>
-
-          <section aria-labelledby="staff-concurrency-heading">
-            <h2 className={styles.sectionTitle} id="staff-concurrency-heading">
-              Staff concurrency
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Max concurrent bookings per staff member (1 = one pet at a time)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={1}
-                value={form.max_concurrent_bookings_per_staff}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    max_concurrent_bookings_per_staff: Number(
-                      event.target.value
-                    ),
-                  }))
-                }
-              />
-            </label>
-            <p className={styles.copy}>
-              How many overlapping Grooming or Veterinary bookings one groomer /
-              vet can be assigned in the same time window. Raise it to let one
-              staff member handle several pets at once (e.g. two small dogs);
-              the Staff Picker and the overbooking checks both honour this
-              number.
-            </p>
-          </section>
-
-          <section aria-labelledby="lunch-heading">
-            <h2 className={styles.sectionTitle} id="lunch-heading">
-              Lunch break
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.lunch_break_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    lunch_break_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>No bookings during this window</span>
-            </label>
-
-            <div className={styles.hoursRow}>
-              <TimeInput
-                value={form.lunch_break_start}
-                onChange={(value) =>
-                  setForm((prev) => ({ ...prev, lunch_break_start: value }))
-                }
-                aria-label="Lunch break start"
-              />
-              <span className={styles.hoursSeparator}>to</span>
-              <TimeInput
-                value={form.lunch_break_end}
-                onChange={(value) =>
-                  setForm((prev) => ({ ...prev, lunch_break_end: value }))
-                }
-                aria-label="Lunch break end"
-              />
-            </div>
-          </section>
-
-          <section aria-labelledby="reschedule-fee-heading">
-            <h2 className={styles.sectionTitle} id="reschedule-fee-heading">
-              Reschedule fee
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.reschedule_fee_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    reschedule_fee_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Charge a fee once the free allowance is used up</span>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Fee type</span>
-              <select
-                className={styles.input}
-                value={form.reschedule_fee_type}
-                disabled={!form.reschedule_fee_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    reschedule_fee_type: event.target
-                      .value as RescheduleFeeType,
-                  }))
-                }
-              >
-                <option value="Flat">Flat (pesos)</option>
-                <option value="Percentage">Percentage of booking total</option>
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                {form.reschedule_fee_type === 'Flat'
-                  ? 'Fee amount (PHP)'
-                  : 'Fee (%)'}
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                max={
-                  form.reschedule_fee_type === 'Percentage' ? 100 : undefined
-                }
-                value={form.reschedule_fee_value}
-                disabled={!form.reschedule_fee_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    reschedule_fee_value: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.reschedule_free_allowance_unlimited}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    reschedule_free_allowance_unlimited: event.target.checked,
-                  }))
-                }
-              />
-              <span>Unlimited free reschedules</span>
-            </label>
-
-            {!form.reschedule_free_allowance_unlimited ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>
-                  Free reschedules allowed
-                </span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  min={0}
-                  value={form.reschedule_free_allowance}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      reschedule_free_allowance: Number(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-            ) : null}
-          </section>
-
-          <section aria-labelledby="downpayment-heading">
-            <h2 className={styles.sectionTitle} id="downpayment-heading">
-              Downpayment
-            </h2>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.downpayment_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    downpayment_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Require a downpayment on the whole booking</span>
-            </label>
-            <p className={styles.copy}>
-              Applies once to an online booking's total - across every
-              service/package in it, and after any discount or promo - not per
-              individual service. Walk-in bookings always pay in full.
-            </p>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Downpayment type</span>
-              <select
-                className={styles.input}
-                value={form.downpayment_type}
-                disabled={!form.downpayment_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    downpayment_type: event.target.value as DownpaymentType,
-                  }))
-                }
-              >
-                <option value="Flat">Flat (pesos)</option>
-                <option value="Percentage">Percentage of booking total</option>
-              </select>
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                {form.downpayment_type === 'Flat'
-                  ? 'Downpayment amount (PHP)'
-                  : 'Downpayment (%)'}
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                max={form.downpayment_type === 'Percentage' ? 100 : undefined}
-                value={form.downpayment_amount}
-                disabled={!form.downpayment_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    downpayment_amount: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Reservation hold (hours)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={1}
-                value={form.downpayment_hold_hours}
-                disabled={!form.downpayment_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    downpayment_hold_hours: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-            <p className={styles.copy}>
-              If no payment is made within this many hours, the booking is
-              automatically cancelled.
-            </p>
-          </section>
-
-          <section aria-labelledby="cancellation-credit-heading">
-            <h2
-              className={styles.sectionTitle}
-              id="cancellation-credit-heading"
-            >
-              Cancellation credit
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Percent of payment returned as credit
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={0}
-                max={100}
-                value={form.cancellation_credit_conversion_rate}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    cancellation_credit_conversion_rate: Number(
-                      event.target.value
-                    ),
-                  }))
-                }
-              />
-            </label>
-            <p className={styles.copy}>
-              Share of a paid cancellation returned as credit, if the notice
-              period was met - 100% is a full refund, lower keeps part as a
-              charge. Missed notice forfeits the payment entirely.
-            </p>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Who decides the credit</span>
-              <select
-                className={styles.input}
-                value={form.credit_review_mode}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    credit_review_mode: event.target.value as CreditReviewMode,
-                  }))
-                }
-              >
-                <option value="Automatic">
-                  Automatic - decided by the notice period, above
-                </option>
-                <option value="Manual">
-                  Manual - a staff member reviews each cancellation reason
-                </option>
-              </select>
-            </label>
-            <p className={styles.copy}>
-              Manual ignores the notice period above entirely - every
-              cancellation with a payment goes to the Credit Review Queue for a
-              staff member to approve or deny after reading why the customer
-              cancelled.
-            </p>
-          </section>
-
-          <section aria-labelledby="credit-expiry-heading">
-            <h2 className={styles.sectionTitle} id="credit-expiry-heading">
-              Credit expiry
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>How credit expires</span>
-              <select
-                className={styles.input}
-                value={form.credit_expiry_mode}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    credit_expiry_mode: event.target.value as CreditExpiryMode,
-                  }))
-                }
-              >
-                <option value="none">Credit never expires</option>
-                <option value="rolling">
-                  Expire a set number of days after each credit is issued
-                </option>
-                <option value="fixed_date">
-                  All of this branch&apos;s credit expires on one date
-                </option>
-              </select>
-            </label>
-
-            {form.credit_expiry_mode === 'rolling' ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Expires after (days)</span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  min={1}
-                  value={form.credit_expiry_days}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      credit_expiry_days: Number(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-            ) : null}
-
-            {form.credit_expiry_mode === 'fixed_date' ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Expiry date</span>
-                <input
-                  className={styles.input}
-                  type="date"
-                  value={form.credit_expiry_fixed_date}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      credit_expiry_fixed_date: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            ) : null}
-
-            <p className={styles.copy}>
-              Saving this re-applies to credit customers already hold at{' '}
-              {selectedBranchId
-                ? 'this branch'
-                : 'every branch that follows the default'}
-              , not just credit issued from now on.
-              {form.credit_expiry_mode === 'fixed_date' &&
-              form.credit_expiry_fixed_date &&
-              form.credit_expiry_fixed_date < todayIso
-                ? ' The date you picked is already past — that credit will be expired on the next sweep.'
-                : ''}
-            </p>
-          </section>
-
-          <section aria-labelledby="email-notifications-heading">
-            <h2
-              className={styles.sectionTitle}
-              id="email-notifications-heading"
-            >
-              Customer email notifications
-            </h2>
-
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Bundled checkout confirmation email
-              </span>
-              <select
-                className={styles.input}
-                value={form.booking_group_email_mode}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    booking_group_email_mode: event.target.value as
-                      | 'combined'
-                      | 'per_booking',
-                  }))
-                }
-              >
-                <option value="combined">
-                  One combined email for the whole checkout
-                </option>
-                <option value="per_booking">
-                  One email per booking in the checkout
-                </option>
-              </select>
-            </label>
-            <p className={styles.copy}>
-              When a customer books several pets/services in one checkout, send
-              a single &quot;your bookings are confirmed&quot; email instead of
-              one per booking. The in-app notification is always one per booking
-              either way.
-            </p>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.care_log_task_email_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    care_log_task_email_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>
-                Email the customer as each hotel care task is completed
-              </span>
-            </label>
-            <p className={styles.copy}>
-              Off by default - a busy hotel day logs many tasks per pet. The
-              in-app notification still fires for each; leave this off and the
-              nightly summary below covers the customer instead.
-            </p>
-
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
-                checked={form.care_log_daily_report_enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    care_log_daily_report_enabled: event.target.checked,
-                  }))
-                }
-              />
-              <span>Send a nightly care summary for each hotel stay</span>
-            </label>
-            <p className={styles.copy}>
-              One email per active hotel stay each evening, listing that
-              day&apos;s completed, missed, and still-scheduled care tasks.
-            </p>
-          </section>
-
-          <section aria-labelledby="customer-deactivation-heading">
-            <h2
-              className={styles.sectionTitle}
-              id="customer-deactivation-heading"
-            >
-              Customer account deletion
-            </h2>
-            <p className={styles.copy}>
-              When a customer deactivates their own account (Settings &gt;
-              Danger), it&apos;s permanently deleted after this many days if
-              they don&apos;t log back in to reactivate it. Customers
-              aren&apos;t branch-scoped, so this only ever applies system-wide -
-              editable here only when configuring the system default, not a
-              branch override.
-            </p>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Delete after (days of inactivity)
-              </span>
-              <input
-                className={styles.input}
-                type="number"
-                min={1}
-                disabled={Boolean(selectedBranchId)}
-                value={form.customer_deactivation_auto_delete_days}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    customer_deactivation_auto_delete_days: Number(
-                      event.target.value
-                    ),
-                  }))
-                }
-              />
-            </label>
-          </section>
-
-          {formError ? (
-            <p className={styles.errorBanner} role="alert">
-              {formError}
-            </p>
-          ) : null}
-
-          <div className={styles.formActions}>
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Saving...' : 'Save policy configuration'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </main>
+        <div className={styles.formActions}>
+          <button
+            type="submit"
+            className={styles.primaryButton}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Saving...' : 'Save policy configuration'}
+          </button>
+        </div>
+      </form>
+    </>
   );
 }

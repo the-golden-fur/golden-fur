@@ -60,7 +60,7 @@ export async function getPublicPackagesPromos(): Promise<PublicPackagesPromos> {
     listPackages({}),
     listPromos({}),
     listBranchesFull(),
-    listServices({ includeInactive: true }),
+    listServices({ includeInactive: true, includeArchived: true }),
   ]);
 
   const branchNameById = new Map(

@@ -49,10 +49,14 @@ export interface Discount {
   name: string;
   /**
    * True only for the seeded Senior Citizen / PWD rows (#44). Informational
-   * - mandated rows share the custom CRUD path - but their name and this
-   * flag are immutable (#43 AC-3).
+   * - mandated rows share the custom CRUD path - and this flag is immutable
+   * (#43 AC-3). The name is now editable: checkout identifies these rows by
+   * mandated_kind, not by name.
    */
   is_mandated: boolean;
+  /** Stable identity of a mandated discount, used by checkout's eligibility
+   * gate (20260928220). null for custom discounts. */
+  mandated_kind: 'senior_citizen' | 'pwd' | null;
   discount_type: DiscountValueType;
   value: number;
   scope_type: DiscountScopeType;

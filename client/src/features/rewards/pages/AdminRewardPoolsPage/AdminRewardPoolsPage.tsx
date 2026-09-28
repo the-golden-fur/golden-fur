@@ -20,6 +20,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   archiveRewardPool,
@@ -177,37 +178,40 @@ export function AdminRewardPoolsPage() {
     closeBuilder();
   }
 
-  async function handleToggleActive(pool: RewardPool) {
-    if (!accessToken) return;
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<RewardPool>({
+      entityLabel: 'reward pool',
+      getName: (pool) => pool.name,
+      archiveConsequence:
+        'it will be switched off and hidden. A pool that a live spin wheel promo still uses cannot be archived',
+      onRename: async (pool, name) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await updateRewardPool(pool.id, accessToken, {
-      is_active: !pool.is_active,
+        const result = await updateRewardPool(pool.id, accessToken, { name });
+
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename the reward pool.';
+        }
+
+        replacePool(result.data);
+        setMessage('Reward pool renamed.');
+        return null;
+      },
+      onArchive: async (pool) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archiveRewardPool(pool.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setPools((prev) => prev.filter((item) => item.id !== pool.id));
+        setMessage(
+          'Reward pool archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
     });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update the reward pool.');
-      return;
-    }
-
-    replacePool(result.data);
-    setMessage(
-      pool.is_active ? 'Reward pool deactivated.' : 'Reward pool activated.'
-    );
-  }
-
-  async function handleArchive(pool: RewardPool) {
-    if (!accessToken) return;
-
-    const result = await archiveRewardPool(pool.id, accessToken);
-
-    if (result.error) {
-      setMessage(result.error);
-      return;
-    }
-
-    setPools((prev) => prev.filter((item) => item.id !== pool.id));
-    setMessage('Reward pool archived.');
-  }
 
   const visiblePools = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -248,13 +252,8 @@ export function AdminRewardPoolsPage() {
         label={`Actions for ${pool.name}`}
         items={[
           { label: 'Configure', onSelect: () => openBuilder(pool) },
-          {
-            label: pool.is_active ? 'Deactivate' : 'Activate',
-            onSelect: () => void handleToggleActive(pool),
-          },
-          ...(!pool.is_active
-            ? [{ label: 'Archive', onSelect: () => void handleArchive(pool) }]
-            : []),
+          { label: 'Rename', onSelect: () => requestRename(pool) },
+          { label: 'Archive', onSelect: () => requestArchive(pool) },
         ]}
       />
     );
@@ -461,6 +460,8 @@ export function AdminRewardPoolsPage() {
           onSave={(values) => void handleSave(values)}
         />
       ) : null}
+
+      {dialogs}
     </main>
   );
 }

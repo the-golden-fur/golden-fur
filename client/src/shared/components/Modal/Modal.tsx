@@ -11,6 +11,9 @@ interface ModalProps {
    * Cancel button inside) still closes it either way. Defaults to true,
    * preserving every existing consumer's behavior. */
   closeOnBackdropClick?: boolean;
+  /** 'wide' for a modal that carries a long, multi-section form (e.g. a
+   * branch's details plus its policies). Defaults to the standard width. */
+  size?: 'default' | 'wide';
 }
 
 /**
@@ -26,6 +29,7 @@ export function Modal({
   onClose,
   children,
   closeOnBackdropClick = true,
+  size = 'default',
 }: ModalProps) {
   const titleId = useId();
 
@@ -40,7 +44,9 @@ export function Modal({
       onClick={closeOnBackdropClick ? onClose : undefined}
     >
       <section
-        className={styles.modal}
+        className={
+          size === 'wide' ? `${styles.modal} ${styles.wide}` : styles.modal
+        }
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

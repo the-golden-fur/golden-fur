@@ -9,7 +9,7 @@ interface ArchiveApiResult<T> {
 
 interface ArchivedRow {
   id: string;
-  archived_at: string | null;
+  archived_at?: string | null;
 }
 
 interface ArchiveListProps<T extends ArchivedRow> {

@@ -4,6 +4,7 @@ import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archiveService,
   createService,
   getPricingConfiguration,
   listBranches,
@@ -30,13 +31,13 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
 import { getServiceIcon } from '../../../../shared/components/IconPicker/serviceIcons';
@@ -177,9 +178,6 @@ export function AdminServicesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [availabilityServiceId, setAvailabilityServiceId] = useState<
-    string | null
-  >(null);
 
   // Same trick as AdminStaffListPage/AdminCustomerListPage: the viewer's
   // app-level role isn't on the Supabase session, so it's read off their own
@@ -292,15 +290,46 @@ export function AdminServicesPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
-  const availabilityService = services.find(
-    (service) => service.id === availabilityServiceId
-  );
-
   const replaceService = (updated: Service) => {
     setServices((prev) =>
       prev.map((service) => (service.id === updated.id ? updated : service))
     );
   };
+
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<Service>({
+      entityLabel: 'service',
+      getName: (service) => service.name,
+      archiveConsequence:
+        'it will be hidden from booking and the service catalog',
+      onRename: async (service, name) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await updateService(service.id, accessToken, { name });
+
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename service.';
+        }
+
+        replaceService(result.data);
+        setMessage('Service renamed.');
+        return null;
+      },
+      onArchive: async (service) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archiveService(service.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setServices((prev) => prev.filter((row) => row.id !== service.id));
+        setMessage(
+          'Service archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
+    });
 
   const openCreateForm = () => {
     setEditingServiceId(null);
@@ -321,38 +350,6 @@ export function AdminServicesPage() {
     setEditingServiceId(null);
     setForm(EMPTY_FORM);
     setFormError(null);
-  };
-
-  const handleBranchToggle = async (
-    service: Service,
-    branchId: string,
-    isAvailable: boolean
-  ) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const result = await setServiceBranchAvailability(service.id, accessToken, {
-      branch_id: branchId,
-      is_available: isAvailable,
-    });
-
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update branch availability.');
-      return;
-    }
-
-    const rows = service.service_branch_availability ?? [];
-    const hasRow = rows.some((row) => row.branch_id === branchId);
-
-    replaceService({
-      ...service,
-      service_branch_availability: hasRow
-        ? rows.map((row) =>
-            row.branch_id === branchId ? { ...row, ...result.data } : row
-          )
-        : [...rows, result.data],
-    });
   };
 
   /**
@@ -595,10 +592,8 @@ export function AdminServicesPage() {
   function buildServiceActionItems(service: Service): MoreOptionsMenuItem[] {
     return [
       { label: 'Configure', onSelect: () => openEditForm(service) },
-      {
-        label: 'Branch Availability',
-        onSelect: () => setAvailabilityServiceId(service.id),
-      },
+      { label: 'Rename', onSelect: () => requestRename(service) },
+      { label: 'Archive', onSelect: () => requestArchive(service) },
     ];
   }
 
@@ -659,10 +654,11 @@ export function AdminServicesPage() {
   // persistent "..." button, matching Cages/Staff/Customer Management.
   // Table view keeps the visible tap-to-open button (renderServiceActions
   // above) - only the dense card grid gets the hold gesture.
-  function renderServiceCard(service: Service) {
+  function renderServiceCard(service: Service, showMenuButton = false) {
     const Icon = getServiceIcon(service.icon);
     return (
-      <CardContextMenu
+      <CardRowWithMenu
+        showMenuButton={showMenuButton}
         label={`Actions for ${service.name}`}
         items={buildServiceActionItems(service)}
       >
@@ -677,7 +673,7 @@ export function AdminServicesPage() {
           ) : null}
           {renderServiceBadges(service)}
         </div>
-      </CardContextMenu>
+      </CardRowWithMenu>
     );
   }
 
@@ -1105,7 +1101,7 @@ export function AdminServicesPage() {
             getRowKey={(service) => service.id}
             renderItem={(service) => (
               <div className={styles.rowContent}>
-                {renderServiceCard(service)}
+                {renderServiceCard(service, true)}
               </div>
             )}
             emptyMessage="No services match the selected filters."
@@ -1124,24 +1120,7 @@ export function AdminServicesPage() {
         )}
       </div>
 
-      <BranchAvailabilityModal
-        isOpen={availabilityService !== undefined}
-        itemName={availabilityService?.name ?? ''}
-        rows={branches.map((branch) => ({
-          branchId: branch.id,
-          branchName: branch.name,
-          isAvailable:
-            (availabilityService?.service_branch_availability ?? []).find(
-              (row) => row.branch_id === branch.id
-            )?.is_available ?? false,
-        }))}
-        onToggle={(branchId, isAvailable) => {
-          if (availabilityService) {
-            void handleBranchToggle(availabilityService, branchId, isAvailable);
-          }
-        }}
-        onClose={() => setAvailabilityServiceId(null)}
-      />
+      {dialogs}
     </main>
   );
 }
