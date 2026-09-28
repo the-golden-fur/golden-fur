@@ -538,6 +538,13 @@ describe('AdminPromoConfigPage', () => {
       data: buildPromo({ id: 'promo-new', name: 'Fall Deal' }),
       error: null,
     });
+    // Superadmin, not the default Admin viewer - a branch-scoped Admin can't
+    // check a branch other than their own (see BranchMultiSelect's
+    // lockedBranchId), which is exactly what this test needs to do.
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
 
     renderPage();
     const user = userEvent.setup();

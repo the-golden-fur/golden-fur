@@ -3,6 +3,7 @@ import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
+import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   archivePackageController,
   archivePromoController,
@@ -75,8 +76,13 @@ import {
 /**
  * Unlike staff routes, maintenance configuration is not branch-scoped for
  * access (an Admin manages both branches' catalog from one panel), so
- * requireBranch is deliberately omitted; branch filtering is a query
- * parameter, and per-branch availability is data, not authorization.
+ * requireBranch is deliberately omitted from most routes; branch filtering
+ * is a query parameter, and per-branch availability is data, not
+ * authorization - EXCEPT the branch-availability toggles and pet type price
+ * overrides below, which need the requester's own branch_id to enforce
+ * "Admins can only touch their own branch", and weight class configuration,
+ * which is Superadmin-only (it has no branch dimension at all - see
+ * updatePetWeightClassConfigurationController).
  */
 const router = Router();
 
@@ -90,6 +96,14 @@ const adminWrite = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...MAINTENANCE_WRITE_ROLES]),
+];
+
+const adminWriteWithBranch = [...adminWrite, requireBranch];
+
+const superadminWrite = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole(['Superadmin']),
 ];
 
 const serviceImageUpload = multer({
@@ -139,7 +153,7 @@ router.delete(
 );
 router.patch(
   '/maintenance/services/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setServiceBranchAvailabilityController
 );
 
@@ -155,7 +169,7 @@ router.get('/maintenance/packages/:id', staffRead, getPackageController);
 router.patch('/maintenance/packages/:id', adminWrite, updatePackageController);
 router.patch(
   '/maintenance/packages/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setPackageBranchAvailabilityController
 );
 // Archive is the "delete" a normal admin performs (soft, reversible, still
@@ -188,7 +202,7 @@ router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
 router.patch(
   '/maintenance/promos/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setPromoBranchAvailabilityController
 );
 router.delete('/maintenance/promos/:id', adminWrite, archivePromoController);
@@ -223,7 +237,7 @@ router.get(
 );
 router.patch(
   '/maintenance/pet-weight-class-configuration',
-  adminWrite,
+  superadminWrite,
   updatePetWeightClassConfigurationController
 );
 
@@ -307,12 +321,12 @@ router.get(
 );
 router.put(
   '/maintenance/pet-type-price-overrides',
-  adminWrite,
+  adminWriteWithBranch,
   upsertPetTypePriceOverrideController
 );
 router.delete(
   '/maintenance/pet-type-price-overrides/:id',
-  adminWrite,
+  adminWriteWithBranch,
   deletePetTypePriceOverrideController
 );
 
@@ -335,7 +349,7 @@ router.patch(
 );
 router.patch(
   '/maintenance/service-types/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setServiceTypeBranchAvailabilityController
 );
 // Config-menu consistency change: service types can now be archived (soft,

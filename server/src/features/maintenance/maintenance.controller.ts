@@ -288,8 +288,10 @@ export async function setServiceBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -306,6 +308,8 @@ export async function setServiceBranchAvailabilityController(
       serviceId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -408,8 +412,10 @@ export async function setPackageBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -426,6 +432,8 @@ export async function setPackageBranchAvailabilityController(
       packageId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -579,8 +587,10 @@ export async function setPromoBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -597,6 +607,8 @@ export async function setPromoBranchAvailabilityController(
       promoId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -990,8 +1002,10 @@ export async function setServiceTypeBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -1008,6 +1022,8 @@ export async function setServiceTypeBranchAvailabilityController(
       serviceTypeId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -1104,6 +1120,13 @@ export async function upsertPetTypePriceOverrideController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const parsed = upsertPetTypePriceOverrideValidator.safeParse(req.body);
 
   if (!parsed.success) {
@@ -1113,7 +1136,11 @@ export async function upsertPetTypePriceOverrideController(
   }
 
   try {
-    const override = await upsertPetTypePriceOverride(parsed.data);
+    const override = await upsertPetTypePriceOverride({
+      input: parsed.data,
+      requesterRole,
+      requesterBranchId,
+    });
     return res.status(200).json({ pet_type_price_override: override });
   } catch (error) {
     return sendServiceError(res, error);
@@ -1124,8 +1151,19 @@ export async function deletePetTypePriceOverrideController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   try {
-    await deletePetTypePriceOverride(paramId(req, 'id'));
+    await deletePetTypePriceOverride({
+      overrideId: paramId(req, 'id'),
+      requesterRole,
+      requesterBranchId,
+    });
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

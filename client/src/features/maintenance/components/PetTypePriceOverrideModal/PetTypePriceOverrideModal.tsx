@@ -38,6 +38,11 @@ interface PetTypePriceOverrideModalProps {
   onClear: (branchId: string | null) => void;
   onClose: () => void;
   error?: string | null;
+  /** An Admin only configures their own branch: other branches' rows and
+   * the "All branches (default)" row (which would affect every branch,
+   * including ones they're not stationed at) aren't shown at all.
+   * Superadmin passes null/omits this entirely. */
+  lockedBranchId?: string | null;
 }
 
 /**
@@ -58,11 +63,22 @@ export function PetTypePriceOverrideModal({
   onClear,
   onClose,
   error,
+  lockedBranchId = null,
 }: PetTypePriceOverrideModalProps) {
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
 
-  const rows = useMemo<PriceOverrideRow[]>(
-    () => [
+  const rows = useMemo<PriceOverrideRow[]>(() => {
+    if (lockedBranchId !== null) {
+      return branches
+        .filter((branch) => branch.id === lockedBranchId)
+        .map((branch) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          hasOverride: overrides.some((row) => row.branch_id === branch.id),
+        }));
+    }
+
+    return [
       {
         branchId: null,
         branchName: 'All branches (default)',
@@ -73,9 +89,8 @@ export function PetTypePriceOverrideModal({
         branchName: branch.name,
         hasOverride: overrides.some((row) => row.branch_id === branch.id),
       })),
-    ],
-    [branches, overrides]
-  );
+    ];
+  }, [branches, overrides, lockedBranchId]);
 
   const comparators = useMemo(
     () => ({

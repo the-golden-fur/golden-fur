@@ -115,6 +115,7 @@ export function AdminPackageBuilderPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [packages, setPackages] = useState<Package[]>([]);
@@ -180,6 +181,7 @@ export function AdminPackageBuilderPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -189,6 +191,9 @@ export function AdminPackageBuilderPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin is scoped to their own branch's availability; Superadmin can
+  // touch any branch.
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -952,6 +957,7 @@ export function AdminPackageBuilderPage() {
                   label="Available at"
                   branches={branches}
                   selectedBranchIds={selectedBranchIds}
+                  lockedBranchId={lockedBranchId}
                   onChange={setSelectedBranchIds}
                 />
               </div>

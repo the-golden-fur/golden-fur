@@ -235,6 +235,8 @@ describe('promos.service', () => {
         promoId: 'promo-1',
         branchId: BRANCH_SOUTHWOODS,
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: BRANCH_SOUTHWOODS,
       });
 
       expect(result.is_available).toBe(false);
@@ -251,8 +253,22 @@ describe('promos.service', () => {
           promoId: 'missing',
           branchId: BRANCH_MAKATI,
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: BRANCH_MAKATI,
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setPromoBranchAvailability({
+          promoId: 'promo-1',
+          branchId: BRANCH_SOUTHWOODS,
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: BRANCH_MAKATI,
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
   });
 
@@ -549,6 +565,8 @@ describe('promos.service', () => {
           promoId: 'spin-1',
           branchId: BRANCH_MAKATI,
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: BRANCH_MAKATI,
         })
       ).rejects.toMatchObject({ statusCode: 400 });
     });

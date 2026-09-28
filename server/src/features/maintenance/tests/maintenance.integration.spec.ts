@@ -184,6 +184,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       mockCaller('admin-1');
       queueFromResults(
         { data: { role: 'Admin' }, error: null },
+        { data: { role: 'Admin', branch_id: BRANCH_ID }, error: null }, // requireBranch
         { data: { id: 'service-1' }, error: null }, // service lookup
         {
           data: {
@@ -299,6 +300,7 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       mockCaller('admin-1');
       queueFromResults(
         { data: { role: 'Admin' }, error: null },
+        { data: { role: 'Admin', branch_id: BRANCH_ID }, error: null }, // requireBranch
         { data: { id: 'package-1' }, error: null }, // existence check
         {
           data: {

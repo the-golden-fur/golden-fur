@@ -140,6 +140,7 @@ describe('discounts HTTP surface (Issue #43)', () => {
     mockCaller('admin-1');
     queueFromResults(
       { data: { role: 'Admin' }, error: null },
+      { data: { role: 'Admin', branch_id: BRANCH_ID }, error: null }, // requireBranch
       { data: { id: 'discount-sc' }, error: null }, // existence lookup
       {
         data: {

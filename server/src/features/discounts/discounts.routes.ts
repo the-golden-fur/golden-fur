@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
+import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   archiveDiscountController,
   createDiscountController,
@@ -20,8 +21,11 @@ import {
 
 /**
  * Same access shape as maintenance.routes.ts: all-staff read, Admin/
- * Superadmin write, no requireBranch (discount configuration spans both
- * branches; branch is a data field/query filter, not an authorization gate).
+ * Superadmin write, no requireBranch on most routes (discount configuration
+ * spans both branches; branch is a data field/query filter, not an
+ * authorization gate) - EXCEPT the branch-availability toggle below, which
+ * needs the requester's own branch_id to enforce "Admins can only touch
+ * their own branch" (see setDiscountBranchAvailability).
  */
 const router = Router();
 
@@ -37,6 +41,8 @@ const adminWrite = [
   requireRole([...DISCOUNT_WRITE_ROLES]),
 ];
 
+const adminWriteWithBranch = [...adminWrite, requireBranch];
+
 router.get('/discounts', staffRead, listDiscountsController);
 router.get('/discounts/archived', adminWrite, listArchivedDiscountsController);
 router.post('/discounts', adminWrite, createDiscountController);
@@ -44,7 +50,7 @@ router.get('/discounts/:id', staffRead, getDiscountController);
 router.patch('/discounts/:id', adminWrite, updateDiscountController);
 router.patch(
   '/discounts/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setDiscountBranchAvailabilityController
 );
 // Archive is the "delete" a normal admin performs (soft, reversible, still

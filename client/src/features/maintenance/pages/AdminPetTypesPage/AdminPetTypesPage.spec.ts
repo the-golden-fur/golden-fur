@@ -429,4 +429,44 @@ describe('AdminPetTypesPage', () => {
     expect(within(dialog).getByText('Makati')).toBeInTheDocument();
     expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
   });
+
+  it('an Admin scoped to their own branch only sees their branch\'s row - no default row, no other branches', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        { id: 'staff-1', role: 'Admin', branch_id: 'branch-makati' } as never,
+      ],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPetTypes).mockResolvedValue({
+      data: [DOG, CAT_INACTIVE] as never,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES as never,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPetTypePriceOverrides).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
+
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Set price override - Dog',
+    });
+    expect(
+      within(dialog).queryByText('All branches (default)')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Makati')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
+  });
 });

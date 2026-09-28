@@ -14,6 +14,10 @@ interface BranchMultiSelectProps {
   selectedBranchIds: string[];
   onChange: (selectedBranchIds: string[]) => void;
   disabled?: boolean;
+  /** An Admin is scoped to their own branch: every OTHER branch's checkbox
+   * is shown (for context) but locked at its current value - only their own
+   * branch stays togglable. Superadmin passes null/omits this entirely. */
+  lockedBranchId?: string | null;
 }
 
 type BranchSortKey = 'name-asc' | 'name-desc';
@@ -37,6 +41,7 @@ export function BranchMultiSelect({
   selectedBranchIds,
   onChange,
   disabled = false,
+  lockedBranchId = null,
 }: BranchMultiSelectProps) {
   const comparators = useMemo(
     () => ({
@@ -106,7 +111,10 @@ export function BranchMultiSelect({
                 <input
                   type="checkbox"
                   checked={selected.has(branch.id)}
-                  disabled={disabled}
+                  disabled={
+                    disabled ||
+                    (lockedBranchId !== null && branch.id !== lockedBranchId)
+                  }
                   onChange={() => handleToggle(branch.id)}
                 />
                 <span>{branch.name}</span>

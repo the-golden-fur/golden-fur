@@ -97,6 +97,8 @@ interface SetPackageBranchAvailabilityParams {
   packageId: string;
   branchId: string;
   isAvailable: boolean;
+  requesterRole: string;
+  requesterBranchId: string;
 }
 
 /**
@@ -317,7 +319,17 @@ export async function setPackageBranchAvailability({
   packageId,
   branchId,
   isAvailable,
+  requesterRole,
+  requesterBranchId,
 }: SetPackageBranchAvailabilityParams): Promise<PackageBranchAvailability> {
+  // Admins are scoped to their own branch; Superadmins may toggle any branch.
+  if (requesterRole !== 'Superadmin' && branchId !== requesterBranchId) {
+    throwWithStatus(
+      403,
+      'Admins can only manage branch availability for their own branch'
+    );
+  }
+
   const { data: existing, error: lookupError } = await supabase
     .from('packages')
     .select('id, archived_at')

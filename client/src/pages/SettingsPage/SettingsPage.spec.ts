@@ -91,6 +91,13 @@ vi.mock('./configTiles.config', () => ({
     icon: Wrench,
     Component: () => createElement('p', null, 'Embedded Branches Page'),
   },
+  WEIGHT_CLASSES_TILE: {
+    title: 'Weight Classes',
+    description: 'Weight class config.',
+    to: '/staff/admin/maintenance/weight-classes',
+    icon: Wrench,
+    Component: () => createElement('p', null, 'Embedded Weight Classes Page'),
+  },
   HIDDEN_CONFIG_TILES: [],
 }));
 
