@@ -1,5 +1,5 @@
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
-import { TotpEnrollPanel } from '../TotpEnrollPanel/TotpEnrollPanel';
+import { MfaMethodEnrollFlow } from '../MfaMethodEnrollFlow/MfaMethodEnrollFlow';
 import styles from './MfaSetupModal.module.css';
 
 interface MfaSetupModalProps {
@@ -35,10 +35,18 @@ export function MfaSetupModal({
         <h2 id="mfa-setup-title" className={styles.title}>
           Set up multi-factor authentication
         </h2>
-        <TotpEnrollPanel
+        {/* Only ever shown for a mandatory-MFA role (see StaffAuthGuard) - their
+            bedrock factor must always be a real authenticator app, since the
+            server never learns that secret (unlike 'email' - see
+            mfa_factor_methods' migration comment on why that's a materially
+            weaker guarantee for the highest-privilege roles). Skips the
+            method choice entirely rather than letting them pick 'email' as
+            their only factor. */}
+        <MfaMethodEnrollFlow
           role={role}
           accessToken={accessToken}
           onEnrolled={onEnrolled}
+          initialMethod="authenticator"
         />
       </section>
     </div>

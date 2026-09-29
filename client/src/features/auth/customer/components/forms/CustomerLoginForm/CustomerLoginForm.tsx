@@ -3,6 +3,7 @@ import { Chrome, Facebook, Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
+import { getStoredDeviceToken } from '../../../../../../shared/auth/api/trustedDevice.api';
 import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import {
   login,
@@ -44,7 +45,11 @@ export function CustomerLoginForm() {
     // no longer throws on a network failure either (see customerAuth.api.ts),
     // but this is the backstop for everything downstream of it.
     try {
-      const result = await login(parsed.data);
+      const deviceToken = getStoredDeviceToken('customer');
+      const result = await login({
+        ...parsed.data,
+        ...(deviceToken ? { device_token: deviceToken } : {}),
+      });
 
       if (result.error || !result.data) {
         setError('Invalid email or password.');
@@ -61,6 +66,14 @@ export function CustomerLoginForm() {
       // can call the self-service activate endpoint without a second login.
       if (result.data.account_status === 'deactivated') {
         navigate('/account-deactivated', { replace: true });
+        return;
+      }
+
+      // A valid trusted-device token was honored server-side - skip the MFA
+      // redirect entirely.
+      if (result.data.mfa_bypassed) {
+        window.sessionStorage.removeItem('customerMfaPending');
+        navigate('/portal', { replace: true });
         return;
       }
 

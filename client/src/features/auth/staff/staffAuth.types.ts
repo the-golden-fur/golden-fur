@@ -1,6 +1,10 @@
 export interface StaffLoginPayload {
   identifier: string;
   password: string;
+  /** A stored "remember this device" token from a prior login - see
+   * trustedDevice.api.ts. Sent unconditionally when one exists; the server
+   * decides whether to actually honor it. */
+  device_token?: string;
 }
 
 export interface StaffLoginResponse {
@@ -10,22 +14,9 @@ export interface StaffLoginResponse {
   requires_mfa?: boolean;
   mfa_enrolled?: boolean;
   role?: string;
-}
-
-export interface TotpEnrollResponse {
-  id?: string;
-  type?: string;
-  totp?: {
-    qr_code?: string;
-    secret?: string;
-    uri?: string;
-  };
-  qr_code?: string;
-  uri?: string;
-}
-
-export interface TotpChallengePayload {
-  code: string;
+  /** True when a valid trusted-device token was presented and honored - the
+   * caller should skip the MFA challenge redirect entirely. */
+  mfa_bypassed?: boolean;
 }
 
 export interface StaffForgotPasswordPayload {

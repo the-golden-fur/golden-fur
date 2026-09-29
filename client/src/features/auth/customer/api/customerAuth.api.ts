@@ -82,6 +82,9 @@ export async function login(payload: CustomerLoginPayload) {
     // deactivated-account notice page instead of the portal. See
     // customerLoginController.
     account_status?: 'deactivated';
+    // True when a valid trusted-device token was presented and honored -
+    // CustomerLoginForm skips the MFA challenge redirect entirely.
+    mfa_bypassed?: boolean;
   }>('/customers/login', payload);
 }
 

@@ -12,9 +12,9 @@ vi.mock('../../../../../shared/api/mfa.api', () => ({
 }));
 
 vi.mock(
-  '../../../../../shared/components/TotpEnrollPanel/TotpEnrollPanel',
+  '../../../../../shared/components/MfaMethodEnrollFlow/MfaMethodEnrollFlow',
   () => ({
-    TotpEnrollPanel: () =>
+    MfaMethodEnrollFlow: () =>
       createElement('div', { 'data-testid': 'totp-enroll-panel' }),
   })
 );
