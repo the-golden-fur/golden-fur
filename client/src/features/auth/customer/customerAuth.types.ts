@@ -7,6 +7,10 @@ export interface CustomerSignupPayload {
 export interface CustomerLoginPayload {
   account_email: string;
   password: string;
+  /** A stored "remember this device" token from a prior login - see
+   * trustedDevice.api.ts. Sent unconditionally when one exists; the server
+   * decides whether to actually honor it. */
+  device_token?: string;
 }
 
 export interface OAuthCallbackResult {

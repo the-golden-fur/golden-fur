@@ -1,6 +1,7 @@
 import type { NextFunction, Response } from 'express';
 import { supabase } from '../../../../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../../../../shared/shared.types.ts';
+import { MANDATORY_MFA_ROLES } from '../../../../../shared/auth/mandatoryMfaRoles.ts';
 
 /** `staff_role` enum values (supabase/migrations/20260625004_m01_create_staff_role_enum.sql). */
 const STAFF_ROLES = new Set([
@@ -13,9 +14,6 @@ const STAFF_ROLES = new Set([
   'Cashier',
   'Pet Assistant',
 ]);
-
-/** Roles that must complete TOTP (aal2) before touching MFA-gated routes. */
-const MANDATORY_MFA_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
 export async function requireMfa(
   req: AuthenticatedRequest,

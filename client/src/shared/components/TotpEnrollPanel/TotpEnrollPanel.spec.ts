@@ -151,9 +151,53 @@ describe('TotpEnrollPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /start over/i }));
 
     await waitFor(() =>
-      expect(mfaApi.unenrollMfa).toHaveBeenCalledWith('staff', 'access')
+      expect(mfaApi.unenrollMfa).toHaveBeenCalledWith(
+        'staff',
+        'access',
+        'authenticator'
+      )
     );
     await waitFor(() => expect(mfaApi.enrollMfa).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('FRESH-KEY')).toBeInTheDocument();
+  });
+
+  it('calls onError alongside the inline banner when verify fails', async () => {
+    vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
+      data: { totp: { qr_code: null, secret: 'ABCD1234' } },
+      error: null,
+    });
+    vi.mocked(mfaApi.verifyMfa).mockResolvedValue({
+      data: null,
+      error: 'Invalid code',
+    });
+    const onError = vi.fn();
+    const authValue: AuthContextValue = {
+      session: null,
+      user: null,
+      accessToken: 'access',
+      isLoading: false,
+      refreshSession: vi.fn(),
+      applySession: vi.fn(),
+      signOut: vi.fn(),
+    };
+
+    render(
+      createElement(
+        AuthContext.Provider,
+        { value: authValue },
+        createElement(TotpEnrollPanel, {
+          role: 'staff',
+          accessToken: 'access',
+          onEnrolled: vi.fn(),
+          onError,
+        })
+      )
+    );
+
+    await screen.findByText('ABCD1234');
+    await userEvent.type(screen.getByLabelText('Digit 1 of 6'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: /confirm mfa/i }));
+
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('Invalid code'));
   });
 });

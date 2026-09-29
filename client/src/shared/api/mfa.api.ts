@@ -1,5 +1,6 @@
 import type { ThemeRole } from '../providers/ThemeProvider/themeContext';
 import type {
+  MfaMethod,
   MfaSessionResponse,
   MfaStatusResponse,
   MfaUnenrollResponse,
@@ -16,19 +17,30 @@ const AUTH_PREFIX = '/auth';
 
 const MFA_PATHS_BY_ROLE: Record<
   ThemeRole,
-  { enroll: string; verify: string; status: string; unenroll: string }
+  {
+    enroll: string;
+    emailRequestCode: string;
+    verify: string;
+    status: string;
+    unenroll: string;
+    preference: string;
+  }
 > = {
   staff: {
     enroll: '/staff/mfa/enroll',
+    emailRequestCode: '/staff/mfa/email/request-code',
     verify: '/staff/mfa/verify',
     status: '/staff/mfa/status',
     unenroll: '/staff/mfa/unenroll',
+    preference: '/staff/mfa/preference',
   },
   customer: {
     enroll: '/customers/mfa/enroll',
+    emailRequestCode: '/customers/mfa/email/request-code',
     verify: '/customers/mfa/verify',
     status: '/customers/mfa/status',
     unenroll: '/customers/mfa/unenroll',
+    preference: '/customers/mfa/preference',
   },
 };
 
@@ -85,7 +97,8 @@ export async function getMfaStatus(
 
 export async function enrollMfa(
   role: ThemeRole,
-  accessToken: string
+  accessToken: string,
+  method: MfaMethod = 'authenticator'
 ): Promise<MfaApiResult<TotpEnrollResponse>> {
   return fetchJson<TotpEnrollResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].enroll}`,
@@ -95,14 +108,39 @@ export async function enrollMfa(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
+      body: JSON.stringify({ method }),
     }
   );
+}
+
+/** Emails a fresh code for the 'email' method - required before the user can
+ * enter one, both when switching to it mid-login ("Other ways to verify")
+ * and for a "Resend code" action. Not needed for 'authenticator' (the code
+ * already lives in the user's own app) or for enrolling 'email' for the
+ * first time (enrollMfa sends the first code itself). */
+export async function requestMfaEmailCode(
+  role: ThemeRole,
+  accessToken: string
+): Promise<MfaApiResult<{ sent: boolean }>> {
+  return fetchJson<{ sent: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].emailRequestCode}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+}
+
+interface VerifyMfaOptions {
+  method?: MfaMethod;
+  rememberDevice?: boolean;
 }
 
 export async function verifyMfa(
   role: ThemeRole,
   code: string,
-  accessToken: string
+  accessToken: string,
+  { method = 'authenticator', rememberDevice = false }: VerifyMfaOptions = {}
 ): Promise<MfaApiResult<MfaSessionResponse>> {
   return fetchJson<MfaSessionResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].verify}`,
@@ -112,20 +150,47 @@ export async function verifyMfa(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({
+        code,
+        method,
+        remember_device: rememberDevice,
+      }),
     }
   );
 }
 
 export async function unenrollMfa(
   role: ThemeRole,
-  accessToken: string
+  accessToken: string,
+  method: MfaMethod
 ): Promise<MfaApiResult<MfaUnenrollResponse>> {
   return fetchJson<MfaUnenrollResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].unenroll}`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ method }),
+    }
+  );
+}
+
+export async function setMfaPreference(
+  role: ThemeRole,
+  accessToken: string,
+  preferredMethod: MfaMethod
+): Promise<MfaApiResult<{ preferred_method: MfaMethod }>> {
+  return fetchJson<{ preferred_method: MfaMethod }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].preference}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ preferred_method: preferredMethod }),
     }
   );
 }

@@ -9,15 +9,39 @@ export const customerSignupValidator = z.object({
 export const customerLoginValidator = z.object({
   account_email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
+  device_token: z.string().min(1).optional(),
 });
+
+const mfaMethodSchema = z.enum(['authenticator', 'email']);
 
 export const customerTotpValidator = z.object({
   code: z
     .string()
     .trim()
     .regex(/^\d{6}$/, 'Code must be exactly 6 digits'),
+  method: mfaMethodSchema.default('authenticator'),
+  remember_device: z.boolean().default(false),
+});
+
+export const customerMfaEnrollValidator = z.object({
+  method: mfaMethodSchema.default('authenticator'),
+});
+
+export const customerMfaUnenrollValidator = z.object({
+  method: mfaMethodSchema,
+});
+
+export const customerMfaPreferenceValidator = z.object({
+  preferred_method: mfaMethodSchema,
 });
 
 export type CustomerSignupInput = z.infer<typeof customerSignupValidator>;
 export type CustomerLoginInput = z.infer<typeof customerLoginValidator>;
 export type CustomerTotpInput = z.infer<typeof customerTotpValidator>;
+export type CustomerMfaEnrollInput = z.infer<typeof customerMfaEnrollValidator>;
+export type CustomerMfaUnenrollInput = z.infer<
+  typeof customerMfaUnenrollValidator
+>;
+export type CustomerMfaPreferenceInput = z.infer<
+  typeof customerMfaPreferenceValidator
+>;

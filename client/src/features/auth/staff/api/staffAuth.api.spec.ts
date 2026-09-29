@@ -4,8 +4,6 @@ import {
   establishRecoverySession,
   forgotPassword,
   login,
-  mfaEnroll,
-  mfaVerify,
   updateStaffPassword,
 } from './staffAuth.api';
 
@@ -46,26 +44,6 @@ describe('staffAuth.api', () => {
     expect(result.error).toBeNull();
   });
 
-  it('sends bearer tokens for MFA endpoints', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(
-        JSON.stringify({ totp: { qr_code: 'data:image/svg+xml' } }),
-        {
-          status: 200,
-        }
-      )
-    );
-
-    await mfaEnroll('token');
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/auth/staff/mfa/enroll',
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer token' }),
-      })
-    );
-  });
-
   it('regression: resolves with a friendly error instead of throwing when the network request itself fails (the reported "random freeze" on login - a caller awaiting this must always get a settled result, never an uncaught rejection)', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -73,17 +51,6 @@ describe('staffAuth.api', () => {
 
     expect(result.data).toBeNull();
     expect(result.error).toMatch(/could not reach the server/i);
-  });
-
-  it('returns backend errors without throwing', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ error: 'Invalid code' }), { status: 401 })
-    );
-
-    const result = await mfaVerify({ code: '000000' }, 'token');
-
-    expect(result.data).toBeNull();
-    expect(result.error).toBe('Invalid code');
   });
 
   it('posts forgot-password requests', async () => {

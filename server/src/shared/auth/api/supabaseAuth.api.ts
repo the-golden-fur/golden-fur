@@ -123,6 +123,16 @@ export async function deleteAuthUser(userId: string) {
   return supabase.auth.admin.deleteUser(userId);
 }
 
+/** Resolves a user's email address purely from Supabase Auth (not
+ * staff_profiles/customer_profiles), so the email MFA method's "send the
+ * code" step works identically for both roles without needing to know which
+ * kind of account is calling it. */
+export async function getAuthUserEmail(userId: string): Promise<string | null> {
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+  if (error || !data.user?.email) return null;
+  return data.user.email;
+}
+
 export async function getCustomerProfileByEmail(email: string) {
   return supabase
     .from('customer_profiles')
@@ -204,22 +214,33 @@ async function unenrollTotpFactorsByStatus(
  * of loading this page. If a conflict persists after the unverified cleanup
  * above, it's returned as-is for the caller to surface as an error.
  */
-export async function enrollTotpFactor(userClient: SupabaseClient) {
+/**
+ * `friendlyName` distinguishes a user's two possible TOTP factors (the
+ * authenticator-app one vs. the email-delivered one, added alongside
+ * mfa_factor_methods) - without an explicit name, Supabase auto-assigns the
+ * same default to both, and a second enroll then conflicts with the first
+ * even though they're deliberately different factors. Omitted, this behaves
+ * exactly as before (a single implicit factor).
+ */
+export async function enrollTotpFactor(
+  userClient: SupabaseClient,
+  friendlyName?: string
+) {
   const isConflict = (message?: string) =>
     Boolean(message?.toLowerCase().includes('already exists'));
 
-  await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-  let result = await userClient.auth.mfa.enroll({
-    factorType: 'totp',
+  const enrollOptions = {
+    factorType: 'totp' as const,
     issuer: 'Golden Fur',
-  });
+    ...(friendlyName ? { friendlyName } : {}),
+  };
+
+  await unenrollTotpFactorsByStatus(userClient, ['unverified']);
+  let result = await userClient.auth.mfa.enroll(enrollOptions);
 
   if (isConflict(result.error?.message)) {
     await unenrollTotpFactorsByStatus(userClient, ['unverified']);
-    result = await userClient.auth.mfa.enroll({
-      factorType: 'totp',
-      issuer: 'Golden Fur',
-    });
+    result = await userClient.auth.mfa.enroll(enrollOptions);
   }
 
   return result;

@@ -7,8 +7,6 @@ import type {
   StaffForgotPasswordPayload,
   StaffLoginPayload,
   StaffLoginResponse,
-  TotpChallengePayload,
-  TotpEnrollResponse,
 } from '../staffAuth.types';
 
 interface StaffApiResult<T> {
@@ -89,21 +87,6 @@ async function postJson<T>(
 
 export function login(payload: StaffLoginPayload) {
   return postJson<StaffLoginResponse>('/staff/login', payload);
-}
-
-export function mfaEnroll(accessToken: string | null) {
-  return postJson<TotpEnrollResponse>('/staff/mfa/enroll', {}, accessToken);
-}
-
-export function mfaVerify(
-  payload: TotpChallengePayload,
-  accessToken: string | null
-) {
-  return postJson<StaffLoginResponse | StaffAuthMessageResponse>(
-    '/staff/mfa/verify',
-    payload,
-    accessToken
-  );
 }
 
 export function forgotPassword(payload: StaffForgotPasswordPayload) {

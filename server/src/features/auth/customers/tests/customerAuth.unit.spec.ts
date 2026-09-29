@@ -3,6 +3,7 @@ import {
   customerSignupController,
   customerLoginController,
   customerMfaEnrollController,
+  customerMfaEmailRequestCodeController,
   customerMfaVerifyController,
   customerMfaStatusController,
   customerMfaUnenrollController,
@@ -11,6 +12,10 @@ import {
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
 import * as accountMergeService from '../services/accountMerge.service.ts';
 import * as mfaLockoutService from '../../../../shared/services/mfaLockout/mfaLockout.service.ts';
+import * as mfaMethodsService from '../../../../shared/services/mfaMethods/mfaMethods.service.ts';
+import * as mfaPreferenceService from '../../../../shared/services/mfaPreference/mfaPreference.service.ts';
+import * as trustedDeviceService from '../../../../shared/services/trustedDevice/trustedDevice.service.ts';
+import * as supabaseAuthApi from '../../../../shared/auth/api/supabaseAuth.api.ts';
 
 vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
@@ -58,6 +63,42 @@ vi.mock('../../../../shared/services/mfaLockout/mfaLockout.service.ts', () => ({
     locked_until: status.lockedUntil,
   })),
 }));
+
+vi.mock('../../../../shared/services/mfaMethods/mfaMethods.service.ts', () => ({
+  getMfaMethodStatus: vi.fn(),
+  enrollMfaMethod: vi.fn(),
+  unenrollMfaMethod: vi.fn(),
+  challengeAndVerifyMfaMethod: vi.fn(),
+  sendMfaEmailMethodCode: vi.fn(),
+}));
+
+vi.mock(
+  '../../../../shared/services/mfaPreference/mfaPreference.service.ts',
+  () => ({
+    getMfaPreference: vi.fn(),
+    setMfaPreference: vi.fn(),
+  })
+);
+
+vi.mock(
+  '../../../../shared/services/trustedDevice/trustedDevice.service.ts',
+  () => ({
+    issueTrustedDeviceToken: vi.fn(),
+    isTrustedDevice: vi.fn(),
+    revokeAllTrustedDevices: vi.fn(),
+  })
+);
+
+vi.mock(
+  '../../../../shared/auth/api/supabaseAuth.api.ts',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../../shared/auth/api/supabaseAuth.api.ts')
+      >();
+    return { ...actual, getAuthUserEmail: vi.fn() };
+  }
+);
 
 describe('customerAuth.controller', () => {
   beforeEach(() => {
@@ -303,60 +344,111 @@ describe('customerAuth.controller', () => {
   });
 
   describe('customerMfaEnrollController', () => {
-    it('enrolls a customer TOTP factor with the authenticated user client', async () => {
-      const req = mockRequest({}, { authorization: 'Bearer customer-token' });
+    it('enrolls the authenticator method by default', async () => {
+      const req = {
+        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        user: { sub: 'customer-1' },
+      };
       const res = mockResponse();
 
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: { all: [] },
-        error: null,
-      });
-      mockUserClient.auth.mfa.enroll.mockResolvedValue({
-        data: { id: 'factor-id', type: 'totp' },
-        error: null,
+      vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+        'customer@example.com'
+      );
+      vi.mocked(mfaMethodsService.enrollMfaMethod).mockResolvedValue({
+        factorId: 'factor-id',
+        totp: { qr_code: 'data:...', secret: 'SECRET' },
       });
 
       await customerMfaEnrollController(req, res);
 
-      expect(mockUserClient.auth.mfa.enroll).toHaveBeenCalledWith({
-        factorType: 'totp',
-        issuer: 'Golden Fur',
-      });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ id: 'factor-id', type: 'totp' });
-    });
-
-    it('unenrolls a prior unverified factor before enrolling a new one', async () => {
-      const req = mockRequest({}, { authorization: 'Bearer customer-token' });
-      const res = mockResponse();
-
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [
-            { id: 'stale-factor', factor_type: 'totp', status: 'unverified' },
-          ],
-        },
-        error: null,
-      });
-      mockUserClient.auth.mfa.unenroll.mockResolvedValue({
-        data: {},
-        error: null,
-      });
-      mockUserClient.auth.mfa.enroll.mockResolvedValue({
-        data: { id: 'fresh-factor', type: 'totp' },
-        error: null,
-      });
-
-      await customerMfaEnrollController(req, res);
-
-      expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
-        factorId: 'stale-factor',
-      });
+      expect(mfaMethodsService.enrollMfaMethod).toHaveBeenCalledWith(
+        mockUserClient,
+        'customer-1',
+        'authenticator',
+        'customer@example.com'
+      );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
-        id: 'fresh-factor',
-        type: 'totp',
+        id: 'factor-id',
+        totp: { qr_code: 'data:...', secret: 'SECRET' },
       });
+    });
+
+    it('enrolls the email method and sends the first code instead of returning a secret', async () => {
+      const req = {
+        ...mockRequest(
+          { method: 'email' },
+          { authorization: 'Bearer customer-token' }
+        ),
+        user: { sub: 'customer-1' },
+      };
+      const res = mockResponse();
+
+      vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+        'customer@example.com'
+      );
+      vi.mocked(mfaMethodsService.enrollMfaMethod).mockResolvedValue({
+        factorId: 'email-factor',
+      });
+
+      await customerMfaEnrollController(req, res);
+
+      expect(mfaMethodsService.enrollMfaMethod).toHaveBeenCalledWith(
+        mockUserClient,
+        'customer-1',
+        'email',
+        'customer@example.com'
+      );
+      expect(res.json).toHaveBeenCalledWith({ id: 'email-factor', sent: true });
+    });
+  });
+
+  describe('customerMfaEmailRequestCodeController', () => {
+    it('sends a code and returns 200', async () => {
+      const req = {
+        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        user: { sub: 'customer-1' },
+      };
+      const res = mockResponse();
+
+      vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+        'customer@example.com'
+      );
+      vi.mocked(mfaMethodsService.sendMfaEmailMethodCode).mockResolvedValue({
+        status: 'sent',
+      });
+
+      await customerMfaEmailRequestCodeController(req, res);
+
+      expect(mfaMethodsService.sendMfaEmailMethodCode).toHaveBeenCalledWith(
+        'customer-1',
+        'customer@example.com'
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ sent: true });
+    });
+
+    it('returns 429 with a retry hint when rate-limited', async () => {
+      const req = {
+        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        user: { sub: 'customer-1' },
+      };
+      const res = mockResponse();
+
+      vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+        'customer@example.com'
+      );
+      vi.mocked(mfaMethodsService.sendMfaEmailMethodCode).mockResolvedValue({
+        status: 'rate_limited',
+        retryAfterSeconds: 15,
+      });
+
+      await customerMfaEmailRequestCodeController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(429);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ retry_after_seconds: 15 })
+      );
     });
   });
 
@@ -370,24 +462,29 @@ describe('customerAuth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(401);
     });
 
-    it('reports mfa_enrolled from the caller listFactors result', async () => {
+    it('reports methods, preferred_method, and a back-compat mfa_enrolled', async () => {
       const req = {
         ...mockRequest({}, { authorization: 'Bearer customer-token' }),
         user: { sub: 'customer-1' },
       };
       const res = mockResponse();
 
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
-        },
-        error: null,
+      vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
+        authenticator: true,
+        email: false,
       });
+      vi.mocked(mfaPreferenceService.getMfaPreference).mockResolvedValue(
+        'authenticator'
+      );
 
       await customerMfaStatusController(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ mfa_enrolled: true });
+      expect(res.json).toHaveBeenCalledWith({
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: false },
+        preferred_method: 'authenticator',
+      });
     });
   });
 
@@ -401,39 +498,37 @@ describe('customerAuth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(401);
     });
 
-    it('removes every totp factor for the caller', async () => {
+    it('removes the given method for the caller, with no mandatory-role guard (customers have none)', async () => {
       const req = {
-        ...mockRequest({}, { authorization: 'Bearer customer-token' }),
+        ...mockRequest(
+          { method: 'authenticator' },
+          { authorization: 'Bearer customer-token' }
+        ),
         user: { sub: 'customer-1' },
       };
       const res = mockResponse();
 
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }],
-        },
-        error: null,
-      });
-      mockUserClient.auth.mfa.unenroll.mockResolvedValue({
-        data: {},
+      vi.mocked(mfaMethodsService.unenrollMfaMethod).mockResolvedValue({
         error: null,
       });
 
       await customerMfaUnenrollController(req, res);
 
-      expect(mockUserClient.auth.mfa.unenroll).toHaveBeenCalledWith({
-        factorId: 'factor-1',
-      });
+      expect(mfaMethodsService.unenrollMfaMethod).toHaveBeenCalledWith(
+        mockUserClient,
+        'customer-1',
+        'authenticator'
+      );
+      expect(trustedDeviceService.revokeAllTrustedDevices).toHaveBeenCalledWith(
+        'customer-1'
+      );
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        removed: ['factor-1'],
-        failed: [],
-      });
+      expect(res.json).toHaveBeenCalledWith({ removed: true });
     });
   });
 
   describe('customerMfaVerifyController', () => {
-    it('verifies a customer TOTP code and returns a refreshed aal2 session', async () => {
+    it('verifies a customer code and returns a refreshed session', async () => {
       const req = mockRequest(
         { code: '123456' },
         { authorization: 'Bearer customer-token' }
@@ -441,17 +536,9 @@ describe('customerAuth.controller', () => {
       req.user = { sub: 'customer-id' };
       const res = mockResponse();
 
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [{ id: 'factor-id', factor_type: 'totp', status: 'unverified' }],
-        },
-        error: null,
-      });
-      mockUserClient.auth.mfa.challenge.mockResolvedValue({
-        data: { id: 'challenge-id' },
-        error: null,
-      });
-      mockUserClient.auth.mfa.verify.mockResolvedValue({ error: null });
+      vi.mocked(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).mockResolvedValue({ verifyError: null });
       mockUserClient.auth.refreshSession.mockResolvedValue({
         data: {
           session: {
@@ -468,14 +555,14 @@ describe('customerAuth.controller', () => {
       expect(mfaLockoutService.checkMfaLockout).toHaveBeenCalledWith(
         'customer-id'
       );
-      expect(mockUserClient.auth.mfa.challenge).toHaveBeenCalledWith({
-        factorId: 'factor-id',
-      });
-      expect(mockUserClient.auth.mfa.verify).toHaveBeenCalledWith({
-        factorId: 'factor-id',
-        challengeId: 'challenge-id',
-        code: '123456',
-      });
+      expect(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).toHaveBeenCalledWith(
+        mockUserClient,
+        'customer-id',
+        'authenticator',
+        '123456'
+      );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         access_token: 'aal2-token',
@@ -494,7 +581,9 @@ describe('customerAuth.controller', () => {
       await customerMfaVerifyController(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
+      expect(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).not.toHaveBeenCalled();
     });
 
     it('returns 423 without verifying when the customer is locked out', async () => {
@@ -520,10 +609,12 @@ describe('customerAuth.controller', () => {
         retry_after_seconds: 900,
         locked_until: '2026-07-04T00:15:00.000Z',
       });
-      expect(mockUserClient.auth.mfa.listFactors).not.toHaveBeenCalled();
+      expect(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).not.toHaveBeenCalled();
     });
 
-    it('increments lockout attempts when the customer TOTP code is invalid', async () => {
+    it('increments lockout attempts when the customer code is invalid', async () => {
       const req = mockRequest(
         { code: '123456' },
         { authorization: 'Bearer customer-token' }
@@ -531,19 +622,9 @@ describe('customerAuth.controller', () => {
       req.user = { sub: 'customer-id' };
       const res = mockResponse();
 
-      mockUserClient.auth.mfa.listFactors.mockResolvedValue({
-        data: {
-          all: [{ id: 'factor-id', factor_type: 'totp', status: 'verified' }],
-        },
-        error: null,
-      });
-      mockUserClient.auth.mfa.challenge.mockResolvedValue({
-        data: { id: 'challenge-id' },
-        error: null,
-      });
-      mockUserClient.auth.mfa.verify.mockResolvedValue({
-        error: new Error('Invalid code'),
-      });
+      vi.mocked(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).mockResolvedValue({ verifyError: { message: 'Invalid code' } });
 
       await customerMfaVerifyController(req, res);
 
@@ -551,6 +632,36 @@ describe('customerAuth.controller', () => {
         'customer-id'
       );
       expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    it('issues a trusted-device token when remember_device is set - always eligible for customers', async () => {
+      const req = mockRequest(
+        { code: '123456', remember_device: true },
+        { authorization: 'Bearer customer-token' }
+      );
+      req.user = { sub: 'customer-id' };
+      const res = mockResponse();
+
+      vi.mocked(
+        mfaMethodsService.challengeAndVerifyMfaMethod
+      ).mockResolvedValue({ verifyError: null });
+      vi.mocked(trustedDeviceService.issueTrustedDeviceToken).mockResolvedValue(
+        'raw-device-token'
+      );
+      mockUserClient.auth.refreshSession.mockResolvedValue({
+        data: { session: null },
+        error: null,
+      });
+
+      await customerMfaVerifyController(req, res);
+
+      expect(trustedDeviceService.issueTrustedDeviceToken).toHaveBeenCalledWith(
+        'customer-id'
+      );
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        device_token: 'raw-device-token',
+      });
     });
   });
 
