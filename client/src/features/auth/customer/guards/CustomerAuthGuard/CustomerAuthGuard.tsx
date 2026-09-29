@@ -5,6 +5,7 @@ import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAu
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { hasProfile } from '../../../../../shared/api/preferences.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
+import { getStoredDeviceToken } from '../../../../../shared/auth/api/trustedDevice.api';
 import { getCustomerProfile } from '../../../../customers/api/customer.api';
 import { CUSTOMER_SIDEBAR_SECTIONS } from '../../../../customers/config/customerPortal.config';
 import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
@@ -151,7 +152,13 @@ export function CustomerAuthGuard() {
     return <Navigate to="/account-deactivated" replace />;
   }
 
-  const needsAal2 = mfaEnrolled === true && aal !== 'aal2';
+  // A trusted-device login never produces a real aal2 session (see
+  // trusted_devices' migration comment) - it only proves the login endpoint
+  // already honored a valid device token for this browser, so treat that the
+  // same as aal2 here rather than immediately re-challenging what login just
+  // bypassed.
+  const isTrustedDevice = Boolean(getStoredDeviceToken('customer'));
+  const needsAal2 = mfaEnrolled === true && aal !== 'aal2' && !isTrustedDevice;
 
   if (needsAal2 && location.pathname !== '/portal/mfa/verify') {
     return <Navigate to="/portal/mfa/verify" replace />;
