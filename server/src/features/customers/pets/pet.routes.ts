@@ -27,6 +27,10 @@ import {
   updateVaccinationRecord,
 } from './services/vaccinationRecord.service.ts';
 import { getPetHealthConditions } from '../../veterinary/services/petHealthConditions.service.ts';
+import {
+  listPetConsultationResultsForRequester,
+  listPetPrescriptionsForRequester,
+} from '../../veterinary/services/consultation.service.ts';
 
 const router = Router();
 const petPhotoUpload = multer({
@@ -377,6 +381,59 @@ router.get(
       });
 
       return res.status(200).json({ health_conditions: healthConditions });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
+
+// #117: read-only, same shape as /pets/:id/health-conditions above - any
+// authenticated staff role or the owning customer may read (service-level
+// ownership check inside listPetPrescriptionsForRequester/
+// listPetConsultationResultsForRequester). Writes only happen via the
+// Consultation form (PATCH /veterinary/consultations/:id, Veterinarian-only).
+router.get(
+  '/pets/:id/prescriptions',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const prescriptions = await listPetPrescriptionsForRequester({
+        requesterId,
+        petId: petId as string,
+      });
+
+      return res.status(200).json({ prescriptions });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
+
+router.get(
+  '/pets/:id/consultation-results',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const results = await listPetConsultationResultsForRequester({
+        requesterId,
+        petId: petId as string,
+      });
+
+      return res.status(200).json({ results });
     } catch (error) {
       return sendServiceError(res, error);
     }

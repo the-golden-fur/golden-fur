@@ -1,9 +1,7 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
-import { formatWeight } from '../../../../shared/utils/petWeight';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
@@ -42,8 +40,8 @@ import {
 } from '../../api/veterinary.api';
 import type {
   Consultation,
+  ConsultationFormResponse,
   MedicationInput,
-  ProcedureInput,
 } from '../../veterinary.types';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
 import {
@@ -85,10 +83,30 @@ function formatScheduledTime(iso: string): string {
   });
 }
 
+/**
+ * Custom change: this page used to be a permanent two-column split (queue +
+ * an always-visible detail panel) - unlike every other staff queue page
+ * (Bookings Queue, Grooming, Hotel, ...), which are a single full-width
+ * list. That split reserved ~60% of the page for the detail panel even
+ * when nothing was selected, which is why the queue list itself looked
+ * narrower than every other queue's. It's also what made a plain row
+ * click quietly "open the fill-in form" - confusing next to every other
+ * page's tap-to-select/hold-or-"..."-for-actions convention.
+ *
+ * Now: the queue list is a normal full-width list (Table/List/Board, same
+ * as everywhere else). A row's *only* actions are "Start Consultation"
+ * (still a direct button on a Pending row - same confirm-modal flow as
+ * before) and "View Details" (the row's "..." button in Table/List, or
+ * hold/right-click in Board) - View Details opens the full
+ * ConsultationDetailPanel (vitals-as-a-form/Prescription/Results/
+ * vaccination/fee, all as sections of that one panel) in a modal, replacing
+ * the three separate, overlapping things this page used to offer (an
+ * inline detail panel, a read-only "View Details" modal, and a separate
+ * read-only "Results" modal).
+ */
 export function VeterinaryConsolePage() {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
-  const { weightUnit } = useContext(ThemeContext);
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
@@ -109,11 +127,20 @@ export function VeterinaryConsolePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The one consultation currently open in the "View Details" modal - not
+  // set by a plain row click, only by the row's "View Details" action.
+  const [openId, setOpenId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
-  const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
+  // Custom change: "only appear once" - which consultations have already
+  // had the "choose a form" prompt resolved (Add/Skip/close) this session,
+  // so reopening "View Details" doesn't show it again. Adding another form
+  // later happens through the Results section's own "Add result from a
+  // form template..." control, not a separate reopen action here.
+  const [seenFormsPromptIds, setSeenFormsPromptIds] = useState<Set<string>>(
+    new Set()
+  );
 
   const dateRange = useMemo(() => deriveDateRange(filterTiles), [filterTiles]);
   const statusFilter: StatusFilter = deriveStatusFilter(filterTiles);
@@ -311,31 +338,15 @@ export function VeterinaryConsolePage() {
     view === 'board' ? STATUS_GROUP_AXIS : null
   );
 
-  const selectedRow = rows.find((row) => row.consultation.id === selectedId);
+  const openRow = rows.find((row) => row.consultation.id === openId);
   const pendingStartRow = rows.find(
     (row) => row.consultation.id === pendingStartId
-  );
-  const viewDetailsRow = rows.find(
-    (row) => row.consultation.id === viewDetailsId
   );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
   // /Supervisor/Superadmin can view the console but any write PATCH/POST
   // gets a 403, so those controls must be disabled here too.
   const canWrite = staffRole === 'Veterinarian';
-
-  function selectConsultation(id: string) {
-    setSelectedId(id);
-    setSaveError(null);
-  }
-
-  // Both the queue row's own quick-start button and the detail panel's
-  // "Start Consultation" button route through here, so there's exactly one
-  // confirmation modal regardless of which one was clicked.
-  function requestStart(consultationId: string) {
-    selectConsultation(consultationId);
-    setPendingStartId(consultationId);
-  }
 
   async function handleStart(consultationId: string) {
     if (!accessToken) return;
@@ -363,13 +374,8 @@ export function VeterinaryConsolePage() {
   }
 
   async function handleComplete(fields: {
-    temperature?: number;
-    weight?: number;
-    heart_rate?: number;
-    respiratory_rate?: number;
-    diagnosis?: string;
     medications: MedicationInput[];
-    procedures: ProcedureInput[];
+    formResponses: ConsultationFormResponse[];
     professionalFee: number;
     vaccination?: {
       vaccine_name: string;
@@ -378,23 +384,18 @@ export function VeterinaryConsolePage() {
       notes?: string;
     };
   }) {
-    if (!accessToken || !selectedRow) return;
+    if (!accessToken || !openRow) return;
 
     setIsSaving(true);
     setSaveError(null);
 
     const result = await updateConsultation(
-      selectedRow.consultation.id,
+      openRow.consultation.id,
       accessToken,
       {
         status: 'Completed',
-        temperature: fields.temperature,
-        weight: fields.weight,
-        heart_rate: fields.heart_rate,
-        respiratory_rate: fields.respiratory_rate,
-        diagnosis: fields.diagnosis,
         medications: fields.medications,
-        procedures: fields.procedures,
+        form_responses: fields.formResponses,
         professional_fee: fields.professionalFee,
         vaccination: fields.vaccination,
       }
@@ -416,23 +417,7 @@ export function VeterinaryConsolePage() {
   }
 
   const columns: DataTableColumn<QueueRow>[] = [
-    {
-      id: 'pet',
-      header: 'Pet',
-      render: (row) => (
-        <button
-          type="button"
-          className={
-            row.consultation.id === selectedId
-              ? styles.petNameButtonActive
-              : styles.petNameButton
-          }
-          onClick={() => selectConsultation(row.consultation.id)}
-        >
-          {row.petName}
-        </button>
-      ),
-    },
+    { id: 'pet', header: 'Pet', render: (row) => row.petName },
     { id: 'owner', header: 'Owner', render: (row) => row.ownerName },
     {
       id: 'time',
@@ -451,6 +436,15 @@ export function VeterinaryConsolePage() {
     },
   ];
 
+  function buildRowMenuItems(row: QueueRow) {
+    return [
+      {
+        label: 'View Details',
+        onSelect: () => setOpenId(row.consultation.id),
+      },
+    ];
+  }
+
   function renderRowActions(row: QueueRow) {
     const rowBookingStatus = row.consultation.booking?.status;
     return (
@@ -460,75 +454,70 @@ export function VeterinaryConsolePage() {
             type="button"
             className={styles.startButton}
             disabled={isSaving}
-            onClick={() => requestStart(row.consultation.id)}
+            onClick={() => setPendingStartId(row.consultation.id)}
           >
             Start Consultation
           </button>
         ) : null}
         <MoreOptionsMenu
           label={`Options for ${row.petName}`}
-          items={[
-            {
-              label: 'View Details',
-              onSelect: () => setViewDetailsId(row.consultation.id),
-            },
-          ]}
+          items={buildRowMenuItems(row)}
         />
       </div>
     );
   }
 
-  // List/Board card - tap still selects the consultation (CardContextMenu
-  // deliberately leaves a plain tap alone so it still reaches this), a
-  // long-press (touch) or right-click (desktop) opens View Details instead
-  // of a persistent "..." button sitting on every card in the grid.
-  function renderQueueCard(row: QueueRow) {
+  function renderCardContent(row: QueueRow) {
     const rowBookingStatus = row.consultation.booking?.status;
 
     return (
-      <CardContextMenu
-        label={`Options for ${row.petName}`}
-        items={[
-          {
-            label: 'View Details',
-            onSelect: () => setViewDetailsId(row.consultation.id),
-          },
-        ]}
-      >
-        <div
-          className={
-            row.consultation.id === selectedId
-              ? styles.rowItemActive
-              : styles.rowItem
-          }
-        >
-          <button
-            type="button"
-            className={styles.rowButton}
-            onClick={() => selectConsultation(row.consultation.id)}
-          >
-            <div className={styles.rowHeader}>
-              <span className={styles.rowPetName}>{row.petName}</span>
-              {rowBookingStatus ? (
-                <BookingStatusBadge status={rowBookingStatus} />
-              ) : null}
-            </div>
-            <span className={styles.rowMeta}>Owner: {row.ownerName}</span>
-            <span className={styles.rowMeta}>
-              {formatScheduledTime(row.scheduledStart)}
-            </span>
-          </button>
-          {canWrite && rowBookingStatus === 'Pending' ? (
-            <button
-              type="button"
-              className={styles.startButton}
-              disabled={isSaving}
-              onClick={() => requestStart(row.consultation.id)}
-            >
-              Start Consultation
-            </button>
+      <div className={styles.rowBody}>
+        <div className={styles.rowHeader}>
+          <span className={styles.rowPetName}>{row.petName}</span>
+          {rowBookingStatus ? (
+            <BookingStatusBadge status={rowBookingStatus} />
           ) : null}
         </div>
+        <span className={styles.rowMeta}>Owner: {row.ownerName}</span>
+        <span className={styles.rowMeta}>
+          {formatScheduledTime(row.scheduledStart)}
+        </span>
+        {canWrite && rowBookingStatus === 'Pending' ? (
+          <button
+            type="button"
+            className={styles.startButton}
+            disabled={isSaving}
+            onClick={() => setPendingStartId(row.consultation.id)}
+          >
+            Start Consultation
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  // List view: a visible "..." button, same as Table's row-actions column -
+  // a crowded card grid (Board) is the only view that needs hold/right-click
+  // instead of a persistent button on every card.
+  function renderListCard(row: QueueRow) {
+    return (
+      <div className={styles.rowItem}>
+        {renderCardContent(row)}
+        <MoreOptionsMenu
+          label={`Options for ${row.petName}`}
+          items={buildRowMenuItems(row)}
+        />
+      </div>
+    );
+  }
+
+  function renderBoardCard(row: QueueRow) {
+    return (
+      <CardContextMenu
+        label={`Options for ${row.petName}`}
+        items={buildRowMenuItems(row)}
+      >
+        <div className={styles.rowItem}>{renderCardContent(row)}</div>
       </CardContextMenu>
     );
   }
@@ -608,53 +597,28 @@ export function VeterinaryConsolePage() {
           <p className={styles.errorBanner} role="alert">
             {loadError}
           </p>
+        ) : view === 'table' ? (
+          <DataTable
+            columns={columns}
+            rows={visibleRows}
+            getRowKey={(row) => row.consultation.id}
+            renderRowActions={renderRowActions}
+            emptyMessage="No consultations match these filters."
+          />
+        ) : view === 'list' ? (
+          <DataList
+            items={visibleRows}
+            getRowKey={(row) => row.consultation.id}
+            renderItem={renderListCard}
+            emptyMessage="No consultations match these filters."
+          />
         ) : (
-          <div className={styles.layout}>
-            <div className={styles.queue}>
-              {view === 'table' ? (
-                <DataTable
-                  columns={columns}
-                  rows={visibleRows}
-                  getRowKey={(row) => row.consultation.id}
-                  renderRowActions={renderRowActions}
-                  emptyMessage="No consultations match these filters."
-                />
-              ) : view === 'list' ? (
-                <DataList
-                  items={visibleRows}
-                  getRowKey={(row) => row.consultation.id}
-                  renderItem={renderQueueCard}
-                  emptyMessage="No consultations match these filters."
-                />
-              ) : (
-                <DataBoard
-                  groups={groupedRows}
-                  getRowKey={(row) => row.consultation.id}
-                  renderCard={renderQueueCard}
-                  emptyColumnMessage="No consultations here."
-                />
-              )}
-            </div>
-
-            <div className={styles.detail}>
-              {selectedRow ? (
-                <ConsultationDetailPanel
-                  key={selectedRow.consultation.id}
-                  consultation={selectedRow.consultation}
-                  petName={selectedRow.petName}
-                  ownerName={selectedRow.ownerName}
-                  accessToken={accessToken}
-                  canWrite={canWrite}
-                  isSaving={isSaving}
-                  saveError={saveError}
-                  onStart={() => requestStart(selectedRow.consultation.id)}
-                  onComplete={(fields) => void handleComplete(fields)}
-                />
-              ) : (
-                <p className={styles.copy}>Select a consultation to begin.</p>
-              )}
-            </div>
-          </div>
+          <DataBoard
+            groups={groupedRows}
+            getRowKey={(row) => row.consultation.id}
+            renderCard={renderBoardCard}
+            emptyColumnMessage="No consultations here."
+          />
         )}
       </div>
 
@@ -691,102 +655,38 @@ export function VeterinaryConsolePage() {
         </div>
       </Modal>
 
+      {/* Custom change: the single "View Details" action - everything that
+          used to be split across an inline panel plus two separate
+          read-only modals (View Details, Results) now lives here as one
+          panel's worth of sections (vitals-as-a-form/Prescription/Results/
+          vaccination/fee), read-only or editable depending on the
+          consultation's own status, exactly as ConsultationDetailPanel
+          already handled inline. */}
       <Modal
-        isOpen={viewDetailsRow !== undefined}
+        isOpen={openRow !== undefined}
         title="Consultation Details"
-        onClose={() => setViewDetailsId(null)}
+        onClose={() => setOpenId(null)}
+        closeOnBackdropClick={false}
+        size="wide"
       >
-        {viewDetailsRow ? (
-          <div className={styles.viewDetailsBody}>
-            <div className={styles.viewDetailsHeader}>
-              <div>
-                <h3 className={styles.viewDetailsName}>
-                  {viewDetailsRow.petName}
-                </h3>
-                <span className={styles.copy}>
-                  Owner: {viewDetailsRow.ownerName}
-                </span>
-              </div>
-              {viewDetailsRow.consultation.booking?.status ? (
-                <BookingStatusBadge
-                  status={viewDetailsRow.consultation.booking.status}
-                />
-              ) : null}
-            </div>
-
-            <p className={styles.copy}>
-              Reason: {viewDetailsRow.consultation.reason_for_visit}
-            </p>
-
-            <div className={styles.viewDetailsGrid}>
-              <div className={styles.detailField}>
-                <span className={styles.detailLabel}>Temperature</span>
-                <span className={styles.detailValue}>
-                  {viewDetailsRow.consultation.temperature ?? '—'}
-                </span>
-              </div>
-              <div className={styles.detailField}>
-                <span className={styles.detailLabel}>Weight</span>
-                <span className={styles.detailValue}>
-                  {viewDetailsRow.consultation.weight != null
-                    ? formatWeight(
-                        viewDetailsRow.consultation.weight,
-                        weightUnit
-                      )
-                    : '—'}
-                </span>
-              </div>
-              <div className={styles.detailField}>
-                <span className={styles.detailLabel}>Heart Rate</span>
-                <span className={styles.detailValue}>
-                  {viewDetailsRow.consultation.heart_rate ?? '—'}
-                </span>
-              </div>
-              <div className={styles.detailField}>
-                <span className={styles.detailLabel}>Respiratory Rate</span>
-                <span className={styles.detailValue}>
-                  {viewDetailsRow.consultation.respiratory_rate ?? '—'}
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.detailField}>
-              <span className={styles.detailLabel}>Diagnosis</span>
-              <span className={styles.detailValue}>
-                {viewDetailsRow.consultation.diagnosis || '—'}
-              </span>
-            </div>
-
-            <div className={styles.detailField}>
-              <span className={styles.detailLabel}>Medications</span>
-              {viewDetailsRow.consultation.medications &&
-              viewDetailsRow.consultation.medications.length > 0 ? (
-                <ul className={styles.medicationList}>
-                  {viewDetailsRow.consultation.medications.map(
-                    (medication, index) => (
-                      <li key={index} className={styles.detailValue}>
-                        {medication.name} — {medication.dose}
-                        {medication.notes ? ` (${medication.notes})` : ''}
-                      </li>
-                    )
-                  )}
-                </ul>
-              ) : (
-                <span className={styles.detailValue}>
-                  No medications recorded.
-                </span>
-              )}
-            </div>
-
-            {viewDetailsRow.consultation.follow_up_booking_id ? (
-              <span className={styles.followUpIndicator}>
-                Follow-up scheduled
-                {viewDetailsRow.consultation.follow_up_date
-                  ? ` for ${viewDetailsRow.consultation.follow_up_date}`
-                  : ''}
-              </span>
-            ) : null}
-          </div>
+        {openRow ? (
+          <ConsultationDetailPanel
+            key={openRow.consultation.id}
+            consultation={openRow.consultation}
+            petName={openRow.petName}
+            ownerName={openRow.ownerName}
+            accessToken={accessToken}
+            canWrite={canWrite}
+            isSaving={isSaving}
+            saveError={saveError}
+            onStart={() => setPendingStartId(openRow.consultation.id)}
+            onComplete={(fields) => void handleComplete(fields)}
+            hasSeenFormsPrompt={seenFormsPromptIds.has(openRow.consultation.id)}
+            onFormsPromptResolved={() => {
+              const id = openRow.consultation.id;
+              setSeenFormsPromptIds((prev) => new Set(prev).add(id));
+            }}
+          />
         ) : null}
       </Modal>
     </main>

@@ -1,14 +1,17 @@
 import type {
   Consultation,
+  ConsultationFormTemplate,
+  CreateConsultationFormTemplatePayload,
   CreateMedicationCatalogItemPayload,
-  CreateProcedureCatalogItemPayload,
+  CreatePrescriptionTemplatePayload,
   PetHealthCondition,
+  UpdateConsultationFormTemplatePayload,
   UpdateConsultationPayload,
   UpdateMedicationCatalogItemPayload,
-  UpdateProcedureCatalogItemPayload,
+  UpdatePrescriptionTemplatePayload,
   VeterinarianPatient,
   VetMedicationCatalogItem,
-  VetProcedureCatalogItem,
+  VetPrescriptionTemplate,
 } from '../veterinary.types';
 
 interface VeterinaryApiResult<T> {
@@ -228,6 +231,32 @@ export async function updateMedicationCatalogItem(
   return { data: result.data?.medication ?? null, error: result.error };
 }
 
+/**
+ * Custom change: uploads an image for My Catalog > Medications, independent
+ * of any particular record - the "Add medication" form has no record id
+ * yet, so this returns a URL to include in the create/update payload.
+ * Mirrors maintenance.api.ts's uploadServiceImage.
+ */
+export async function uploadMedicationImage(
+  accessToken: string,
+  file: File
+): Promise<VeterinaryApiResult<{ image_url: string }>> {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`${API_BASE_URL}/veterinary/medication-images`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ image_url: string }>(response);
+}
+
 export async function deleteMedicationCatalogItem(
   itemId: string,
   accessToken: string
@@ -244,50 +273,59 @@ export async function deleteMedicationCatalogItem(
   return { data: null, error: null };
 }
 
-export async function listProcedureCatalog(
+// #117: listProcedureCatalog/createProcedureCatalogItem/
+// updateProcedureCatalogItem/deleteProcedureCatalogItem removed alongside
+// the rest of the personal procedure catalog - replaced by the
+// consultation-form-template functions below.
+
+export async function listConsultationFormTemplates(
   accessToken: string
-): Promise<VeterinaryApiResult<VetProcedureCatalogItem[]>> {
-  const response = await fetch(`${API_BASE_URL}/veterinary/procedure-catalog`, {
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ procedures: VetProcedureCatalogItem[] }>(
-    response
-  );
-  return { data: result.data?.procedures ?? null, error: result.error };
-}
-
-export async function createProcedureCatalogItem(
-  accessToken: string,
-  payload: CreateProcedureCatalogItemPayload
-): Promise<VeterinaryApiResult<VetProcedureCatalogItem>> {
-  const response = await fetch(`${API_BASE_URL}/veterinary/procedure-catalog`, {
-    method: 'POST',
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ procedure: VetProcedureCatalogItem }>(
-    response
-  );
-  return { data: result.data?.procedure ?? null, error: result.error };
-}
-
-export async function updateProcedureCatalogItem(
-  itemId: string,
-  accessToken: string,
-  payload: UpdateProcedureCatalogItemPayload
-): Promise<VeterinaryApiResult<VetProcedureCatalogItem>> {
+): Promise<VeterinaryApiResult<ConsultationFormTemplate[]>> {
   const response = await fetch(
-    `${API_BASE_URL}/veterinary/procedure-catalog/${itemId}`,
+    `${API_BASE_URL}/veterinary/consultation-form-templates`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ templates: ConsultationFormTemplate[] }>(
+    response
+  );
+  return { data: result.data?.templates ?? null, error: result.error };
+}
+
+export async function createConsultationFormTemplate(
+  accessToken: string,
+  payload: CreateConsultationFormTemplatePayload
+): Promise<VeterinaryApiResult<ConsultationFormTemplate>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/consultation-form-templates`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ template: ConsultationFormTemplate }>(
+    response
+  );
+  return { data: result.data?.template ?? null, error: result.error };
+}
+
+export async function updateConsultationFormTemplate(
+  templateId: string,
+  accessToken: string,
+  payload: UpdateConsultationFormTemplatePayload
+): Promise<VeterinaryApiResult<ConsultationFormTemplate>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/consultation-form-templates/${templateId}`,
     {
       method: 'PATCH',
       headers: jsonHeaders(accessToken),
@@ -299,18 +337,121 @@ export async function updateProcedureCatalogItem(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ procedure: VetProcedureCatalogItem }>(
+  const result = await parseBody<{ template: ConsultationFormTemplate }>(
     response
   );
-  return { data: result.data?.procedure ?? null, error: result.error };
+  return { data: result.data?.template ?? null, error: result.error };
 }
 
-export async function deleteProcedureCatalogItem(
-  itemId: string,
+export async function deleteConsultationFormTemplate(
+  templateId: string,
   accessToken: string
 ): Promise<VeterinaryApiResult<null>> {
   const response = await fetch(
-    `${API_BASE_URL}/veterinary/procedure-catalog/${itemId}`,
+    `${API_BASE_URL}/veterinary/consultation-form-templates/${templateId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+/** #117 staff-facing Prescriptions page: every finished consultation that
+ * prescribed at least one medication, across every patient. */
+export async function listPrescriptions(
+  accessToken: string
+): Promise<VeterinaryApiResult<Consultation[]>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/prescriptions`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ consultations: Consultation[] }>(response);
+  return { data: result.data?.consultations ?? null, error: result.error };
+}
+
+// Custom change: the standalone Consultation Results list page (and its
+// listConsultationResults call) was removed - results are reached from a
+// "Results" row option on the Consultation Queue instead, reading a row's
+// own form_responses directly.
+
+export async function listPrescriptionTemplates(
+  accessToken: string
+): Promise<VeterinaryApiResult<VetPrescriptionTemplate[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/prescription-templates`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ templates: VetPrescriptionTemplate[] }>(
+    response
+  );
+  return { data: result.data?.templates ?? null, error: result.error };
+}
+
+export async function createPrescriptionTemplate(
+  accessToken: string,
+  payload: CreatePrescriptionTemplatePayload
+): Promise<VeterinaryApiResult<VetPrescriptionTemplate>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/prescription-templates`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ template: VetPrescriptionTemplate }>(
+    response
+  );
+  return { data: result.data?.template ?? null, error: result.error };
+}
+
+export async function updatePrescriptionTemplate(
+  templateId: string,
+  accessToken: string,
+  payload: UpdatePrescriptionTemplatePayload
+): Promise<VeterinaryApiResult<VetPrescriptionTemplate>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/prescription-templates/${templateId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ template: VetPrescriptionTemplate }>(
+    response
+  );
+  return { data: result.data?.template ?? null, error: result.error };
+}
+
+export async function deletePrescriptionTemplate(
+  templateId: string,
+  accessToken: string
+): Promise<VeterinaryApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/prescription-templates/${templateId}`,
     { method: 'DELETE', headers: authHeaders(accessToken) }
   );
 

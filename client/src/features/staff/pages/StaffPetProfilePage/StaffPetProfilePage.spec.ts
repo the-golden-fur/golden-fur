@@ -24,6 +24,10 @@ vi.mock('../../../customers/api/customer.api', () => ({
     Promise.resolve({ data: [], error: null })
   ),
   listMedicalNotes: vi.fn(() => Promise.resolve({ data: [], error: null })),
+  listPetPrescriptions: vi.fn(() => Promise.resolve({ data: [], error: null })),
+  listPetConsultationResults: vi.fn(() =>
+    Promise.resolve({ data: [], error: null })
+  ),
   listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),
 }));
 

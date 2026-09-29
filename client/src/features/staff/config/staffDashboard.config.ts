@@ -13,6 +13,7 @@ import {
   ListChecks,
   LogIn,
   PawPrint,
+  Pill,
   Receipt,
   Scale,
   Scissors,
@@ -497,8 +498,14 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           {
             title: 'My Catalog',
             description:
-              'Your saved medications and procedures, picked from a dropdown on the consultation form.',
+              'Your saved medications, reusable prescriptions, and consultation form templates, picked from a dropdown on the consultation form.',
             to: '/staff/veterinary/catalog',
+          },
+          {
+            title: 'Prescriptions',
+            description:
+              'Every prescribed medication across every patient, searchable and groupable by medicine type.',
+            to: '/staff/veterinary/prescriptions',
           },
         ],
       },
@@ -630,6 +637,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Consultation Queue': Stethoscope,
   'My Patients': PawPrint,
   'My Catalog': ListChecks,
+  Prescriptions: Pill,
   'Checkout & Billing': Wallet,
   'Miscellaneous Sales': ShoppingBag,
   Transactions: Receipt,

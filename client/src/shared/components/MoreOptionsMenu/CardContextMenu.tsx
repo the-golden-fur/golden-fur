@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type TouchEvent,
@@ -43,6 +44,15 @@ export function CardContextMenu({
   children,
 }: CardContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // Custom change: a Board/Gallery card sits inside a horizontally-scrolling
+  // column grid (DataBoard's `.board`, `overflow-x: auto`) - per the CSS
+  // overflow spec, that alone still forces overflow-y to compute to 'auto'
+  // too, so the menu's default `position: absolute` (anchored to this
+  // card) gets silently clipped for any card near that ancestor's bottom
+  // edge, which reads as "right-click does nothing". Anchoring with
+  // `position: fixed` at the exact click/touch point escapes that clipping
+  // entirely (fixed positioning isn't affected by an ancestor's overflow).
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
     null
@@ -71,6 +81,14 @@ export function CardContextMenu({
 
   function handleContextMenu(event: ReactMouseEvent) {
     event.preventDefault();
+    // right: 'auto' overrides the CSS class's default `right: 0` - without
+    // it, that rule stays active alongside this inline `left` and fights it.
+    setMenuStyle({
+      position: 'fixed',
+      top: event.clientY,
+      left: event.clientX,
+      right: 'auto',
+    });
     setIsOpen(true);
   }
 
@@ -100,6 +118,12 @@ export function CardContextMenu({
 
     if (heldMs >= LONG_PRESS_MS && movedPx < MOVE_TOLERANCE_PX) {
       event.preventDefault();
+      setMenuStyle({
+        position: 'fixed',
+        top: touch.clientY,
+        left: touch.clientX,
+        right: 'auto',
+      });
       setIsOpen(true);
     }
   }
@@ -118,7 +142,12 @@ export function CardContextMenu({
       {children}
 
       {isOpen ? (
-        <div className={styles.menu} role="menu" aria-label={label}>
+        <div
+          className={styles.menu}
+          style={menuStyle ?? undefined}
+          role="menu"
+          aria-label={label}
+        >
           {items.map((item) => (
             <button
               key={item.label}

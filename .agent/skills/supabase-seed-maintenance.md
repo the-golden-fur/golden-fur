@@ -34,14 +34,14 @@ per-module tasks.
 
 **Seeded (update the listed folder when its columns/enums change):**
 
-| Table(s)                                                                                                                            | Folder               |
-| ----------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `branches`, `staff_profiles` (+ `auth.users`)                                                                                       | `m01-staff-auth`     |
-| `customer_profiles`, `pets` (+ `auth.users`)                                                                                        | `m02-customers-pets` |
-| `cages`, `product_catalog` (food/medication, customer-owned)                                                                        | `m05-hotel`          |
-| `vet_medication_catalog`, `vet_procedure_catalog`                                                                                   | `m07-veterinary`     |
-| `discounts`, `discount_branch_availability` (Senior Citizen / PWD)                                                                  | `m12-discounts`      |
-| `service_branch_availability`, `packages`, `package_services`, `package_branch_availability`, `promos`, `promo_branch_availability` | `m13-maintenance`    |
+| Table(s)                                                                                                                                 | Folder               |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `branches`, `staff_profiles` (+ `auth.users`)                                                                                            | `m01-staff-auth`     |
+| `customer_profiles`, `pets` (+ `auth.users`)                                                                                             | `m02-customers-pets` |
+| `cages`, `product_catalog` (food/medication, customer-owned)                                                                             | `m05-hotel`          |
+| `vet_medication_catalog`, `vet_prescription_templates`, `vet_consultation_form_templates` (replaces the dropped `vet_procedure_catalog`) | `m07-veterinary`     |
+| `discounts`, `discount_branch_availability` (Senior Citizen / PWD)                                                                       | `m12-discounts`      |
+| `service_branch_availability`, `packages`, `package_services`, `package_branch_availability`, `promos`, `promo_branch_availability`      | `m13-maintenance`    |
 
 **Seeded by a migration, not a seed script** (change the migration, not
 `supabase/seeds/`): base `services` + `service_pricing_tiers` + Assessment

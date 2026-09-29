@@ -5,6 +5,8 @@ import {
   getPetHealthConditions,
   listBreeds,
   listMedicalNotes,
+  listPetConsultationResults,
+  listPetPrescriptions,
   listPetTypes,
   listVaccinationRecords,
   updatePet,
@@ -19,6 +21,8 @@ vi.mock('../../../api/customer.api', () => ({
   getPetHealthConditions: vi.fn(),
   listVaccinationRecords: vi.fn(),
   listMedicalNotes: vi.fn(),
+  listPetPrescriptions: vi.fn(),
+  listPetConsultationResults: vi.fn(),
   listBreeds: vi.fn(),
   listPetTypes: vi.fn(),
 }));
@@ -67,6 +71,14 @@ describe('PetDetailPanel', () => {
       error: null,
     });
     vi.mocked(listMedicalNotes).mockResolvedValue({ data: [], error: null });
+    vi.mocked(listPetPrescriptions).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(listPetConsultationResults).mockResolvedValue({
+      data: [],
+      error: null,
+    });
     vi.mocked(listBreeds).mockResolvedValue({ data: BREEDS, error: null });
     vi.mocked(listPetTypes).mockResolvedValue({
       data: [
