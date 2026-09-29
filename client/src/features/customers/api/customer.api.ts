@@ -4,9 +4,11 @@ import type {
   CustomerProfile,
   CustomerProfileUpdatePayload,
   Pet,
+  PetConsultationResultEntry,
   PetCreatePayloadStaff,
   PetHealthCondition,
   PetMedicalNote,
+  PetPrescriptionHistoryEntry,
   PetType,
   PetTypeRow,
   PetUpdatePayloadStaff,
@@ -622,4 +624,46 @@ export async function listMedicalNotes(
 
   const result = await parseBody<{ notes: PetMedicalNote[] }>(response);
   return { data: result.data?.notes ?? null, error: result.error };
+}
+
+/** #117: read-only, same shape as listMedicalNotes above - a customer's own
+ * pet's prescription history (every finished consultation that prescribed
+ * at least one medication). */
+export async function listPetPrescriptions(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<PetPrescriptionHistoryEntry[]>> {
+  const response = await fetch(`${API_BASE_URL}/pets/${petId}/prescriptions`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    prescriptions: PetPrescriptionHistoryEntry[];
+  }>(response);
+  return { data: result.data?.prescriptions ?? null, error: result.error };
+}
+
+/** #117: read-only counterpart to listPetPrescriptions - a customer's own
+ * pet's filled-in consultation-form results history. */
+export async function listPetConsultationResults(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<PetConsultationResultEntry[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/consultation-results`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ results: PetConsultationResultEntry[] }>(
+    response
+  );
+  return { data: result.data?.results ?? null, error: result.error };
 }

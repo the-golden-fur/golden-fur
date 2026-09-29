@@ -1,22 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CONSULTATION_FORM_TEMPLATE_SEEDS,
+  PRESCRIPTION_TEMPLATE_SEEDS,
+  seedConsultationFormTemplates,
+  seedPrescriptionTemplates,
   seedVetMedicationCatalog,
-  seedVetProcedureCatalog,
   VET_MEDICATION_SEEDS,
-  VET_PROCEDURE_SEEDS,
 } from './m07-veterinary.seed.ts';
 
 const VET_ID = 'vet-1';
 
 function createMockSupabase() {
   const state = {
-    vetMedication: [] as Array<{ veterinarian_id: string; name: string }>,
-    vetProcedure: [] as Array<{
+    vetMedication: [] as Array<{
+      id: string;
       veterinarian_id: string;
-      procedure_type: string;
-      description: string;
+      name: string;
+    }>,
+    prescriptionTemplates: [] as Array<{
+      veterinarian_id: string;
+      name: string;
+      items: unknown;
+    }>,
+    consultationFormTemplates: [] as Array<{
+      veterinarian_id: string;
+      name: string;
+      is_default: boolean;
     }>,
   };
+
+  let nextMedicationId = 1;
 
   const supabase = {
     from: vi.fn((table: string) => {
@@ -37,39 +50,67 @@ function createMockSupabase() {
             }),
           }),
           insert: (row: { veterinarian_id: string; name: string }) => {
-            state.vetMedication.push(row);
-            return Promise.resolve({ error: null });
+            const inserted = { id: `med-${nextMedicationId++}`, ...row };
+            state.vetMedication.push(inserted);
+            return {
+              select: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: inserted, error: null }),
+              }),
+            };
           },
         };
       }
 
-      if (table === 'vet_procedure_catalog') {
+      if (table === 'vet_prescription_templates') {
         return {
           select: () => ({
             eq: (_c1: string, vetId: string) => ({
-              eq: (_c2: string, procedureType: string) => ({
-                eq: (_c3: string, description: string) => ({
-                  maybeSingle: () =>
-                    Promise.resolve({
-                      data:
-                        state.vetProcedure.find(
-                          (r) =>
-                            r.veterinarian_id === vetId &&
-                            r.procedure_type === procedureType &&
-                            r.description === description
-                        ) ?? null,
-                      error: null,
-                    }),
-                }),
+              eq: (_c2: string, name: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.prescriptionTemplates.find(
+                        (r) => r.veterinarian_id === vetId && r.name === name
+                      ) ?? null,
+                    error: null,
+                  }),
               }),
             }),
           }),
           insert: (row: {
             veterinarian_id: string;
-            procedure_type: string;
-            description: string;
+            name: string;
+            items: unknown;
           }) => {
-            state.vetProcedure.push(row);
+            state.prescriptionTemplates.push(row);
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+
+      if (table === 'vet_consultation_form_templates') {
+        return {
+          select: () => ({
+            eq: (_c1: string, vetId: string) => ({
+              eq: (_c2: string, name: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.consultationFormTemplates.find(
+                        (r) => r.veterinarian_id === vetId && r.name === name
+                      ) ?? null,
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
+          insert: (row: {
+            veterinarian_id: string;
+            name: string;
+            is_default: boolean;
+          }) => {
+            state.consultationFormTemplates.push(row);
             return Promise.resolve({ error: null });
           },
         };
@@ -90,33 +131,63 @@ describe('m07-veterinary seed', () => {
     supabase = createMockSupabase();
   });
 
-  describe('seedVetMedicationCatalog / seedVetProcedureCatalog', () => {
+  describe('seedVetMedicationCatalog / seedPrescriptionTemplates / seedConsultationFormTemplates', () => {
     it('creates every planned catalog item for the given veterinarian', async () => {
-      await seedVetMedicationCatalog(supabase as never, VET_ID);
-      await seedVetProcedureCatalog(supabase as never, VET_ID);
+      const medicationIdByName = await seedVetMedicationCatalog(
+        supabase as never,
+        VET_ID
+      );
+      await seedPrescriptionTemplates(
+        supabase as never,
+        VET_ID,
+        medicationIdByName
+      );
+      await seedConsultationFormTemplates(supabase as never, VET_ID);
 
       expect(supabase.state.vetMedication.length).toBe(
         VET_MEDICATION_SEEDS.length
       );
-      expect(supabase.state.vetProcedure.length).toBe(
-        VET_PROCEDURE_SEEDS.length
+      expect(supabase.state.prescriptionTemplates.length).toBe(
+        PRESCRIPTION_TEMPLATE_SEEDS.length
+      );
+      expect(supabase.state.consultationFormTemplates.length).toBe(
+        CONSULTATION_FORM_TEMPLATE_SEEDS.length
       );
       for (const row of supabase.state.vetMedication) {
         expect(row.veterinarian_id).toBe(VET_ID);
       }
+      expect(
+        supabase.state.consultationFormTemplates.filter((r) => r.is_default)
+      ).toHaveLength(1);
     });
 
     it('is idempotent: re-running does not duplicate rows', async () => {
+      const medicationIdByName = await seedVetMedicationCatalog(
+        supabase as never,
+        VET_ID
+      );
       await seedVetMedicationCatalog(supabase as never, VET_ID);
-      await seedVetMedicationCatalog(supabase as never, VET_ID);
-      await seedVetProcedureCatalog(supabase as never, VET_ID);
-      await seedVetProcedureCatalog(supabase as never, VET_ID);
+      await seedPrescriptionTemplates(
+        supabase as never,
+        VET_ID,
+        medicationIdByName
+      );
+      await seedPrescriptionTemplates(
+        supabase as never,
+        VET_ID,
+        medicationIdByName
+      );
+      await seedConsultationFormTemplates(supabase as never, VET_ID);
+      await seedConsultationFormTemplates(supabase as never, VET_ID);
 
       expect(supabase.state.vetMedication.length).toBe(
         VET_MEDICATION_SEEDS.length
       );
-      expect(supabase.state.vetProcedure.length).toBe(
-        VET_PROCEDURE_SEEDS.length
+      expect(supabase.state.prescriptionTemplates.length).toBe(
+        PRESCRIPTION_TEMPLATE_SEEDS.length
+      );
+      expect(supabase.state.consultationFormTemplates.length).toBe(
+        CONSULTATION_FORM_TEMPLATE_SEEDS.length
       );
     });
   });

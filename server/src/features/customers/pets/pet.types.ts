@@ -70,3 +70,67 @@ export interface PetMedicalNote {
   staff_id: string;
   created_at: string;
 }
+
+/** #117: a customer's trimmed view of one finished consultation's
+ * prescribed medications - deliberately narrower than the full Consultation
+ * row (no vitals/diagnosis/professional_fee), mirroring how
+ * PetHealthCondition/PetMedicalNote already expose only their own narrow
+ * slice to customers, not the whole underlying record. Built/returned by
+ * server/src/features/veterinary/services/consultation.service.ts's
+ * listPetPrescriptionsForRequester - defined here (not in the veterinary
+ * feature) for the same reason PetHealthCondition is, since it's read
+ * through the pets feature's customer-facing routes. */
+export interface PetPrescriptionHistoryEntry {
+  consultation_id: string;
+  date: string;
+  medications: Array<{
+    name: string;
+    dose: string;
+    notes?: string | null;
+    medicine_type?: string | null;
+    frequency?: string | null;
+    duration?: string | null;
+  }>;
+}
+
+/** #117: a customer's trimmed view of one finished consultation's filled-in
+ * consultation-form results. See PetPrescriptionHistoryEntry above for why
+ * this type lives here and why it's narrower than the full Consultation
+ * row. Custom change: 'prescription' field type added, and `value` widened
+ * to also hold a medication list (same per-item shape as
+ * PetPrescriptionHistoryEntry's `medications` above) - a 'prescription'-type
+ * field's filled-in value. */
+export interface PetConsultationResultEntry {
+  consultation_id: string;
+  date: string;
+  form_responses: Array<{
+    template_id: string | null;
+    template_name: string;
+    filled_at: string;
+    fields: Array<{
+      field_id: string;
+      label: string;
+      type:
+        | 'text'
+        | 'textarea'
+        | 'number'
+        | 'select'
+        | 'checkbox'
+        | 'date'
+        | 'prescription';
+      value:
+        | string
+        | number
+        | boolean
+        | null
+        | Array<{
+            name: string;
+            dose: string;
+            notes?: string | null;
+            medicine_type?: string | null;
+            frequency?: string | null;
+            duration?: string | null;
+          }>;
+    }>;
+  }>;
+}

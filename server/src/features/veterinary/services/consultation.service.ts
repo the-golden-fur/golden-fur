@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
 import {
   FINISHED_BOOKING_STATUSES,
   type BookingStatus,
@@ -9,6 +10,10 @@ import {
 } from '../../booking/services/booking.service.ts';
 import { assertVeterinaryBranchEligibility } from '../../booking/services/veterinaryEligibility.service.ts';
 import { createVaccinationRecord } from '../../customers/pets/services/vaccinationRecord.service.ts';
+import type {
+  PetConsultationResultEntry,
+  PetPrescriptionHistoryEntry,
+} from '../../customers/pets/pet.types.ts';
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
 import type { Consultation, VeterinarianPatient } from '../veterinary.types.ts';
 
@@ -337,6 +342,9 @@ export async function updateConsultation({
     // TODO(Sprint 5, M08): post these as real transaction line items once
     // M08 exists - for now they're only stored and queryable, tagged for
     // future veterinary-revenue attribution in the M14 DSR.
+    // #117: procedure line items removed - the Procedures section of the
+    // consultation form (and its input.procedures field) no longer exist;
+    // see 20260929230_custom_drop_vet_procedure_catalog.sql's header note.
     const lineItems: Record<string, unknown>[] = [
       {
         consultation_id: consultationId,
@@ -349,13 +357,6 @@ export async function updateConsultation({
         item_type: 'medication',
         description: medication.name,
         amount: medication.amount,
-      })),
-      ...(input.procedures ?? []).map((procedure) => ({
-        consultation_id: consultationId,
-        item_type: 'procedure',
-        procedure_type: procedure.procedure_type,
-        description: procedure.description,
-        amount: procedure.amount,
       })),
     ];
 
@@ -391,14 +392,25 @@ export async function updateConsultation({
     update.reason_for_visit = input.reason_for_visit;
   }
   if (input.medications !== undefined) {
-    // consultations.medications stores {name, dose, notes} only (#63
-    // migration comment) - amount is a billing-time-only input, stripped
-    // before persisting to the clinical record.
-    update.medications = input.medications.map(({ name, dose, notes }) => ({
-      name,
-      dose,
-      notes: notes ?? null,
-    }));
+    // consultations.medications stores {name, dose, notes, medicine_type,
+    // frequency, duration} (#63 migration comment, widened #117) - amount is
+    // a billing-time-only input, stripped before persisting to the clinical
+    // record.
+    update.medications = input.medications.map(
+      ({ name, dose, notes, medicine_type, frequency, duration }) => ({
+        name,
+        dose,
+        notes: notes ?? null,
+        medicine_type: medicine_type ?? null,
+        frequency: frequency ?? null,
+        duration: duration ?? null,
+      })
+    );
+  }
+  if (input.form_responses !== undefined) {
+    // #117: no stripping needed - updateConsultationValidator's .strict()
+    // already constrains the shape to exactly what should be persisted.
+    update.form_responses = input.form_responses;
   }
 
   // Applied last so the returned booking join (CONSULTATION_SELECT embeds
@@ -419,4 +431,142 @@ export async function updateConsultation({
   }
 
   return updated as Consultation;
+}
+
+// -----------------------------------------------------------------------
+// #117: staff-facing "every patient" read functions, backing the
+// Prescriptions list page. (The equivalent standalone Consultation Results
+// list page was removed - a consultation's results are reached from a
+// "Results" row option on the Consultation Queue instead, since the row
+// already carries its own form_responses - see VeterinaryConsolePage.tsx.)
+// -----------------------------------------------------------------------
+
+/** `!inner` (unlike CONSULTATION_SELECT above) so `.in('booking.status', …)`
+ * can actually filter on the joined booking's status - same reasoning as
+ * listVeterinarianPatients' own select string. */
+const FINISHED_CONSULTATION_SELECT = '*, booking:bookings!booking_id!inner(*)';
+
+async function listFinishedConsultations(): Promise<Consultation[]> {
+  const { data, error } = await supabase
+    .from('consultations')
+    .select(FINISHED_CONSULTATION_SELECT)
+    .in('booking.status', FINISHED_BOOKING_STATUSES)
+    .order('created_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+  return (data ?? []) as Consultation[];
+}
+
+/**
+ * #117 staff-facing Prescriptions page: every finished consultation that
+ * actually prescribed at least one medication, across every patient - same
+ * "any Veterinarian/Admin/Supervisor/Superadmin/Receptionist may read"
+ * visibility as the rest of this feature (VETERINARY_READ_ROLES).
+ */
+export async function listPrescriptions(): Promise<Consultation[]> {
+  const consultations = await listFinishedConsultations();
+  return consultations.filter(
+    (consultation) =>
+      consultation.medications && consultation.medications.length > 0
+  );
+}
+
+// -----------------------------------------------------------------------
+// #117: customer-facing "my own pet's history" read functions, backing
+// GET /pets/:id/prescriptions and GET /pets/:id/consultation-results
+// (pet.routes.ts). Trimmed to PetPrescriptionHistoryEntry/
+// PetConsultationResultEntry, not the full Consultation row - see those
+// types' own header notes in pet.types.ts.
+// -----------------------------------------------------------------------
+
+async function getPetOwnerId(petId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('pets')
+    .select('customer_id')
+    .eq('id', petId)
+    .maybeSingle();
+
+  return data?.customer_id ?? null;
+}
+
+interface PetClinicalHistoryParams {
+  requesterId: string;
+  petId: string;
+}
+
+/** Mirrors medicalNote.service.ts's assertCanRead / petHealthConditions
+ * .service.ts's getPetHealthConditions: the pet's own owner, or any
+ * authenticated staff role, may read - nobody else. Duplicated locally
+ * rather than extracted into a shared helper, matching how each of those
+ * two files already keeps its own copy. */
+async function assertCanReadPetClinicalHistory(
+  requesterId: string,
+  petId: string
+) {
+  const ownerId = await getPetOwnerId(petId);
+
+  if (!ownerId) {
+    throwWithStatus(404, 'Pet not found');
+  }
+
+  if (ownerId === requesterId) return;
+
+  const role = await getStaffRoleOrNull(requesterId);
+  if (!role) throwWithStatus(403, 'Forbidden');
+}
+
+/**
+ * #117: a customer's own pet's prescription history - every finished
+ * consultation that prescribed at least one medication. Reuses
+ * listPetConsultationHistory rather than a new query, then filters/trims.
+ */
+export async function listPetPrescriptionsForRequester({
+  requesterId,
+  petId,
+}: PetClinicalHistoryParams): Promise<PetPrescriptionHistoryEntry[]> {
+  await assertCanReadPetClinicalHistory(requesterId, petId);
+
+  const consultations = await listPetConsultationHistory(petId);
+
+  return consultations
+    .filter(
+      (consultation) =>
+        consultation.booking &&
+        FINISHED_BOOKING_STATUSES.includes(consultation.booking.status) &&
+        consultation.medications &&
+        consultation.medications.length > 0
+    )
+    .map((consultation) => ({
+      consultation_id: consultation.id,
+      date: consultation.booking?.completed_at ?? consultation.created_at,
+      medications: consultation.medications ?? [],
+    }));
+}
+
+/**
+ * #117: a customer's own pet's consultation-results history - the read-only
+ * counterpart to listPetPrescriptionsForRequester, for filled-in custom-form
+ * results instead of medications.
+ */
+export async function listPetConsultationResultsForRequester({
+  requesterId,
+  petId,
+}: PetClinicalHistoryParams): Promise<PetConsultationResultEntry[]> {
+  await assertCanReadPetClinicalHistory(requesterId, petId);
+
+  const consultations = await listPetConsultationHistory(petId);
+
+  return consultations
+    .filter(
+      (consultation) =>
+        consultation.booking &&
+        FINISHED_BOOKING_STATUSES.includes(consultation.booking.status) &&
+        consultation.form_responses &&
+        consultation.form_responses.length > 0
+    )
+    .map((consultation) => ({
+      consultation_id: consultation.id,
+      date: consultation.booking?.completed_at ?? consultation.created_at,
+      form_responses: consultation.form_responses ?? [],
+    }));
 }

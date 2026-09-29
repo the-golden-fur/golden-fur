@@ -1,24 +1,32 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
+  createConsultationFormTemplateController,
   createMedicationCatalogItemController,
-  createProcedureCatalogItemController,
+  createPrescriptionTemplateController,
+  deleteConsultationFormTemplateController,
   deleteMedicationCatalogItemController,
-  deleteProcedureCatalogItemController,
+  deletePrescriptionTemplateController,
   getConsultationController,
   getCurrentPrescriptionController,
   getPetConsultationHistoryController,
+  handleMedicationImageUploadError,
+  listConsultationFormTemplatesController,
   listConsultationQueueController,
   listMedicationCatalogController,
   linkFollowUpBookingController,
   listMyPatientsController,
-  listProcedureCatalogController,
+  listPrescriptionsController,
+  listPrescriptionTemplatesController,
   updateConsultationController,
+  updateConsultationFormTemplateController,
   updateMedicationCatalogItemController,
-  updateProcedureCatalogItemController,
+  updatePrescriptionTemplateController,
+  uploadMedicationImageController,
   upsertHealthConditionsController,
 } from './veterinary.controller.ts';
 import {
@@ -48,6 +56,11 @@ const vetWrite = [
   requireRole([...VETERINARY_WRITE_ROLES]),
   requireBranch,
 ];
+
+const medicationImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 router.get(
   '/veterinary/consultations/queue',
@@ -121,25 +134,74 @@ router.delete(
   deleteMedicationCatalogItemController
 );
 
-router.get(
-  '/veterinary/procedure-catalog',
+// Custom change: uploads to the 'vet-medication-images' bucket and returns
+// a URL, independent of any particular record - the "Add medication" form
+// uploads the image first, then sends the resulting image_url along with
+// the rest of the create payload (the record may not exist yet at upload
+// time). Mirrors maintenance.routes.ts's own '/maintenance/images'.
+router.post(
+  '/veterinary/medication-images',
   vetWrite,
-  listProcedureCatalogController
+  medicationImageUpload.single('image'),
+  handleMedicationImageUploadError,
+  uploadMedicationImageController
+);
+
+// #117 consultation form builder: same owner-scoped shape as the medication
+// catalog above (vetWrite's Veterinarian-only role check used for reads
+// too), replacing the personal procedure catalog this same change drops.
+router.get(
+  '/veterinary/consultation-form-templates',
+  vetWrite,
+  listConsultationFormTemplatesController
 );
 router.post(
-  '/veterinary/procedure-catalog',
+  '/veterinary/consultation-form-templates',
   vetWrite,
-  createProcedureCatalogItemController
+  createConsultationFormTemplateController
 );
 router.patch(
-  '/veterinary/procedure-catalog/:id',
+  '/veterinary/consultation-form-templates/:id',
   vetWrite,
-  updateProcedureCatalogItemController
+  updateConsultationFormTemplateController
 );
 router.delete(
-  '/veterinary/procedure-catalog/:id',
+  '/veterinary/consultation-form-templates/:id',
   vetWrite,
-  deleteProcedureCatalogItemController
+  deleteConsultationFormTemplateController
+);
+
+// #117: staff-facing "every patient" Prescriptions list page - staffRead,
+// not vetWrite, matching the rest of this feature's "any Veterinarian +
+// Admin/Supervisor/Superadmin/Receptionist may read" visibility (this
+// lists every patient's data, unlike the owner-scoped catalogs above). The
+// equivalent standalone Consultation Results list/route was removed -
+// results are reached from a "Results" row option on the Consultation
+// Queue instead.
+router.get('/veterinary/prescriptions', staffRead, listPrescriptionsController);
+
+// Custom change: a vet's personal prescription templates - same
+// owner-scoped shape as the medication catalog/consultation-form-templates
+// above.
+router.get(
+  '/veterinary/prescription-templates',
+  vetWrite,
+  listPrescriptionTemplatesController
+);
+router.post(
+  '/veterinary/prescription-templates',
+  vetWrite,
+  createPrescriptionTemplateController
+);
+router.patch(
+  '/veterinary/prescription-templates/:id',
+  vetWrite,
+  updatePrescriptionTemplateController
+);
+router.delete(
+  '/veterinary/prescription-templates/:id',
+  vetWrite,
+  deletePrescriptionTemplateController
 );
 
 export default router;

@@ -192,6 +192,78 @@
   padding: var(--space-0-5) var(--space-2);
 }
 
+.templateFieldsList {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.templateFieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.templateFieldRow .input {
+  flex: 1 1 10rem;
+}
+
+/* white-space intentionally left at its normal (wrapping) default - a long
+   label (e.g. "Set as default...") must wrap inside the modal instead of
+   forcing it wider than its own container (the bug this comment replaces). */
+.checkboxLabel {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.checkboxLabel input {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
+
+/* Medications Gallery card - only rendered when a medication has an actual
+   uploaded image (see renderMedicationGalleryCard) - it fills the card as a
+   background, with name/badges sitting in a bottom scrim overlay so they
+   read over any photo. A medication with no image (icon only, or neither)
+   renders the same compact row every other view uses instead of this. */
+.galleryCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+}
+
+.galleryCardOverlay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.7),
+    rgb(0 0 0 / 0.35) 60%,
+    rgb(0 0 0 / 0)
+  );
+}
+
+.galleryCardOverlay .itemName {
+  color: #fff;
+}
+
 .errorBanner,
 .successBanner {
   margin: 0;

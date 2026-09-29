@@ -14,8 +14,9 @@ import type { AuthContextValue } from '../../../../shared/auth/providers/AuthPro
 import * as staffApi from '../../../staff/api/staff.api';
 import * as vetApi from '../../api/veterinary.api';
 import type {
+  ConsultationFormTemplate,
   VetMedicationCatalogItem,
-  VetProcedureCatalogItem,
+  VetPrescriptionTemplate,
 } from '../../veterinary.types';
 import { VetCatalogPage } from './VetCatalogPage';
 
@@ -25,13 +26,17 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../api/veterinary.api', () => ({
   listMedicationCatalog: vi.fn(),
-  listProcedureCatalog: vi.fn(),
+  listPrescriptionTemplates: vi.fn(),
+  listConsultationFormTemplates: vi.fn(),
   createMedicationCatalogItem: vi.fn(),
   updateMedicationCatalogItem: vi.fn(),
   deleteMedicationCatalogItem: vi.fn(),
-  createProcedureCatalogItem: vi.fn(),
-  updateProcedureCatalogItem: vi.fn(),
-  deleteProcedureCatalogItem: vi.fn(),
+  createPrescriptionTemplate: vi.fn(),
+  updatePrescriptionTemplate: vi.fn(),
+  deletePrescriptionTemplate: vi.fn(),
+  createConsultationFormTemplate: vi.fn(),
+  updateConsultationFormTemplate: vi.fn(),
+  deleteConsultationFormTemplate: vi.fn(),
 }));
 
 function buildMedication(
@@ -41,23 +46,45 @@ function buildMedication(
     id: 'med-1',
     veterinarian_id: 'vet-1',
     name: 'Amoxicillin',
-    default_dose: '250mg',
     default_price: 150,
+    default_medicine_type: null,
     created_at: '',
     updated_at: '',
     ...overrides,
   };
 }
 
-function buildProcedure(
-  overrides: Partial<VetProcedureCatalogItem> = {}
-): VetProcedureCatalogItem {
+function buildPrescriptionTemplate(
+  overrides: Partial<VetPrescriptionTemplate> = {}
+): VetPrescriptionTemplate {
   return {
-    id: 'proc-1',
+    id: 'rx-1',
     veterinarian_id: 'vet-1',
-    procedure_type: 'Lab test',
-    description: 'CBC panel',
-    default_price: 500,
+    name: 'Standard Post-Surgery Recovery',
+    items: [
+      {
+        medication_catalog_id: 'med-1',
+        name: 'Amoxicillin',
+        medicine_type: 'Oral',
+        dose: '1 tablet',
+        frequency: 'Twice daily',
+      },
+    ],
+    created_at: '',
+    updated_at: '',
+    ...overrides,
+  };
+}
+
+function buildTemplate(
+  overrides: Partial<ConsultationFormTemplate> = {}
+): ConsultationFormTemplate {
+  return {
+    id: 'tmpl-1',
+    veterinarian_id: 'vet-1',
+    name: 'Dental Check',
+    fields: [{ id: 'f1', label: 'Tartar level', type: 'text' }],
+    is_default: false,
     created_at: '',
     updated_at: '',
     ...overrides,
@@ -90,7 +117,8 @@ function renderPage() {
 
 function stubDefaults(
   medications: VetMedicationCatalogItem[] = [],
-  procedures: VetProcedureCatalogItem[] = []
+  prescriptionTemplates: VetPrescriptionTemplate[] = [],
+  templates: ConsultationFormTemplate[] = []
 ) {
   vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
     data: { id: 'vet-1', role: 'Veterinarian' } as never,
@@ -100,8 +128,12 @@ function stubDefaults(
     data: medications,
     error: null,
   });
-  vi.mocked(vetApi.listProcedureCatalog).mockResolvedValue({
-    data: procedures,
+  vi.mocked(vetApi.listPrescriptionTemplates).mockResolvedValue({
+    data: prescriptionTemplates,
+    error: null,
+  });
+  vi.mocked(vetApi.listConsultationFormTemplates).mockResolvedValue({
+    data: templates,
     error: null,
   });
 }
@@ -116,9 +148,7 @@ describe('VetCatalogPage', () => {
     renderPage();
 
     await waitFor(() =>
-      expect(
-        screen.queryByText('My Medication & Procedure Catalog')
-      ).not.toBeInTheDocument()
+      expect(screen.queryByText('My Catalog')).not.toBeInTheDocument()
     );
   });
 
@@ -130,10 +160,10 @@ describe('VetCatalogPage', () => {
     expect(await screen.findByText('Amoxicillin')).toBeInTheDocument();
   });
 
-  it('Notion-style remaster (session 110): a search box narrows medications by name or dose', async () => {
+  it('a search box narrows medications by name', async () => {
     stubDefaults([
       buildMedication({ id: 'med-1', name: 'Amoxicillin' }),
-      buildMedication({ id: 'med-2', name: 'Meloxicam', default_dose: '5mg' }),
+      buildMedication({ id: 'med-2', name: 'Meloxicam' }),
     ]);
     const user = userEvent.setup();
 
@@ -149,37 +179,34 @@ describe('VetCatalogPage', () => {
     expect(screen.getByText('Meloxicam')).toBeInTheDocument();
   });
 
-  it('switching to the Procedures tab lists procedures, with a Type filter tile narrowing them', async () => {
+  it("switching to the Prescriptions tab lists a vet's own prescription templates", async () => {
+    stubDefaults([], [buildPrescriptionTemplate({ name: 'Recovery Plan' })]);
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'Prescriptions' }));
+
+    expect(await screen.findByText('Recovery Plan')).toBeInTheDocument();
+  });
+
+  it("switching to the Forms tab lists a vet's own templates", async () => {
     stubDefaults(
       [],
+      [],
       [
-        buildProcedure({
-          id: 'proc-1',
-          procedure_type: 'Lab test',
-          description: 'CBC panel',
-        }),
-        buildProcedure({
-          id: 'proc-2',
-          procedure_type: 'Dental',
-          description: 'Scaling',
-        }),
+        buildTemplate({ id: 'tmpl-1', name: 'Dental Check' }),
+        buildTemplate({ id: 'tmpl-2', name: 'Wellness Exam' }),
       ]
     );
     const user = userEvent.setup();
 
     renderPage();
 
-    await user.click(await screen.findByRole('tab', { name: 'Procedures' }));
+    await user.click(await screen.findByRole('tab', { name: 'Forms' }));
 
-    expect(await screen.findByText('CBC panel')).toBeInTheDocument();
-    expect(screen.getByText('Scaling')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Type' }));
-
-    // Type defaults to the first procedure type (Lab test) once added.
-    expect(screen.getByText('CBC panel')).toBeInTheDocument();
-    expect(screen.queryByText('Scaling')).not.toBeInTheDocument();
+    expect(await screen.findByText('Dental Check')).toBeInTheDocument();
+    expect(screen.getByText('Wellness Exam')).toBeInTheDocument();
   });
 
   it('adding a medication calls the create API and shows it in the list', async () => {
@@ -210,12 +237,97 @@ describe('VetCatalogPage', () => {
     expect(await screen.findByText('Cefovecin')).toBeInTheDocument();
   });
 
-  it('deleting a procedure calls the delete API and removes it from the list', async () => {
+  it('adding a prescription pulling one medication calls the create API', async () => {
+    stubDefaults([buildMedication({ id: 'med-1', name: 'Amoxicillin' })]);
+    vi.mocked(vetApi.createPrescriptionTemplate).mockResolvedValue({
+      data: buildPrescriptionTemplate({ id: 'rx-new', name: 'New Recovery' }),
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'Prescriptions' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add prescription' })
+    );
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'New Recovery');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add medication' })
+    );
+    await user.selectOptions(
+      within(dialog).getByDisplayValue('Choose a medication...'),
+      'med-1'
+    );
+    const doseInput = within(dialog).getByPlaceholderText('Dose');
+    await user.type(doseInput, '1 tablet');
+    const frequencyInput = within(dialog).getByPlaceholderText('Frequency');
+    await user.type(frequencyInput, 'Twice daily');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save prescription' })
+    );
+
+    await waitFor(() =>
+      expect(vetApi.createPrescriptionTemplate).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          name: 'New Recovery',
+          items: [
+            expect.objectContaining({
+              medication_catalog_id: 'med-1',
+              name: 'Amoxicillin',
+              dose: '1 tablet',
+              frequency: 'Twice daily',
+            }),
+          ],
+        })
+      )
+    );
+    expect(await screen.findByText('New Recovery')).toBeInTheDocument();
+  });
+
+  it('adding a form template with one field calls the create API and shows it in the list', async () => {
+    stubDefaults([], [], []);
+    vi.mocked(vetApi.createConsultationFormTemplate).mockResolvedValue({
+      data: buildTemplate({ id: 'tmpl-new', name: 'Behavior Notes' }),
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'Forms' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add form template' })
+    );
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'Behavior Notes');
+    await user.click(within(dialog).getByRole('button', { name: 'Add field' }));
+    await user.type(within(dialog).getByPlaceholderText('Field label'), 'Mood');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save form template' })
+    );
+
+    await waitFor(() =>
+      expect(vetApi.createConsultationFormTemplate).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          name: 'Behavior Notes',
+          fields: [expect.objectContaining({ label: 'Mood', type: 'text' })],
+        })
+      )
+    );
+    expect(await screen.findByText('Behavior Notes')).toBeInTheDocument();
+  });
+
+  it('deleting a form template calls the delete API and removes it from the list', async () => {
     stubDefaults(
       [],
-      [buildProcedure({ id: 'proc-1', description: 'CBC panel' })]
+      [],
+      [buildTemplate({ id: 'tmpl-1', name: 'Dental Check' })]
     );
-    vi.mocked(vetApi.deleteProcedureCatalogItem).mockResolvedValue({
+    vi.mocked(vetApi.deleteConsultationFormTemplate).mockResolvedValue({
       data: null,
       error: null,
     });
@@ -223,27 +335,62 @@ describe('VetCatalogPage', () => {
 
     renderPage();
 
-    await user.click(await screen.findByRole('tab', { name: 'Procedures' }));
-    await screen.findByText('CBC panel');
+    await user.click(await screen.findByRole('tab', { name: 'Forms' }));
+    await screen.findByText('Dental Check');
 
-    fireEvent.contextMenu(screen.getByText('CBC panel'));
+    // Forms tab now defaults to List view (a visible "..." button) - only
+    // Board uses right-click/hold, same convention as Medications.
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Dental Check' })
+    );
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
 
     await waitFor(() =>
-      expect(vetApi.deleteProcedureCatalogItem).toHaveBeenCalledWith(
-        'proc-1',
+      expect(vetApi.deleteConsultationFormTemplate).toHaveBeenCalledWith(
+        'tmpl-1',
         'token'
       )
     );
-    expect(screen.queryByText('CBC panel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Dental Check')).not.toBeInTheDocument();
   });
 
-  it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+  it('Table/List/Board views are available on the Medications tab', async () => {
     stubDefaults([buildMedication({ name: 'Amoxicillin' })]);
 
     renderPage();
 
     await screen.findByText('Amoxicillin');
+
+    expect(
+      screen.getByRole('group', { name: 'Medications view' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Board' })).toBeInTheDocument();
+  });
+
+  it('List view: a visible "..." button opens the same menu Board reaches by hold/right-click', async () => {
+    stubDefaults([buildMedication({ name: 'Amoxicillin' })]);
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Amoxicillin');
+
+    const menuButton = screen.getByRole('button', {
+      name: 'Actions for Amoxicillin',
+    });
+    await user.click(menuButton);
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('Board view: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+    stubDefaults([buildMedication({ name: 'Amoxicillin' })]);
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Amoxicillin');
+    await user.click(screen.getByRole('button', { name: 'Board' }));
 
     expect(
       screen.queryByRole('button', { name: 'Actions for Amoxicillin' })

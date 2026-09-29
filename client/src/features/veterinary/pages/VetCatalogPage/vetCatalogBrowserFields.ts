@@ -1,13 +1,13 @@
 import type {
-  FilterField,
-  FilterTile,
   SortFieldDescriptor,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import type { GroupByAxis } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import {
-  PROCEDURE_TYPES,
+  MEDICINE_TYPE_OPTIONS,
+  type ConsultationFormTemplate,
   type VetMedicationCatalogItem,
-  type VetProcedureCatalogItem,
+  type VetPrescriptionTemplate,
 } from '../../veterinary.types';
 
 export const MEDICATION_SORT_FIELDS: SortFieldDescriptor[] = [
@@ -44,25 +44,39 @@ export function matchesMedicationQuery(
 ): boolean {
   return (
     item.name.toLowerCase().includes(query) ||
-    (item.default_dose ?? '').toLowerCase().includes(query)
+    (item.default_medicine_type ?? '').toLowerCase().includes(query)
   );
 }
 
-export const PROCEDURE_FILTER_FIELDS: FilterField[] = [
-  {
-    id: 'type',
-    label: 'Type',
-    type: 'select',
-    defaultValue: PROCEDURE_TYPES[0],
-    options: PROCEDURE_TYPES.map((type) => ({ value: type, label: type })),
-    formatValue: (value) => (typeof value === 'string' ? value : 'Any'),
-  },
-];
+const OTHER_MEDICINE_TYPE = 'Other';
 
-export const PROCEDURE_SORT_FIELDS: SortFieldDescriptor[] = [
+/** Custom change ("add missing group by and view options to my catalog >
+ * medications"): Board view's columns - every suggested medicine type, plus
+ * a catch-all "Other" bucket for a free-typed value outside that list. Same
+ * shape as PrescriptionsPage's own MEDICINE_TYPE_GROUP_AXIS, adapted to
+ * VetMedicationCatalogItem's field name. */
+export const MEDICATION_GROUP_AXIS: GroupByAxis<VetMedicationCatalogItem> = {
+  id: 'medicine-type',
+  label: 'Medicine Type',
+  columns: [...MEDICINE_TYPE_OPTIONS, OTHER_MEDICINE_TYPE],
+  columnFor: (item) =>
+    item.default_medicine_type &&
+    MEDICINE_TYPE_OPTIONS.includes(item.default_medicine_type)
+      ? item.default_medicine_type
+      : OTHER_MEDICINE_TYPE,
+};
+
+// #117: PROCEDURE_FILTER_FIELDS/PROCEDURE_SORT_FIELDS/PROCEDURE_COMPARATORS/
+// deriveProcedureSortKey/matchesProcedureQuery/applyProcedureFilters removed
+// alongside the rest of the personal procedure catalog - replaced by the
+// consultation-form-template exports below (same minimal name-only
+// search+sort shape the Medications tab above already uses - no filter
+// tiles, this is a small owner-scoped list).
+
+export const CONSULTATION_FORM_TEMPLATE_SORT_FIELDS: SortFieldDescriptor[] = [
   {
-    id: 'description',
-    label: 'Description',
+    id: 'name',
+    label: 'Name',
     directions: [
       { value: 'asc', label: 'A to Z' },
       { value: 'desc', label: 'Z to A' },
@@ -70,46 +84,70 @@ export const PROCEDURE_SORT_FIELDS: SortFieldDescriptor[] = [
   },
 ];
 
-export type ProcedureSortKey = 'description-asc' | 'description-desc';
+export type ConsultationFormTemplateSortKey = 'name-asc' | 'name-desc';
 
-export const PROCEDURE_COMPARATORS: Record<
-  ProcedureSortKey,
-  (a: VetProcedureCatalogItem, b: VetProcedureCatalogItem) => number
+export const CONSULTATION_FORM_TEMPLATE_COMPARATORS: Record<
+  ConsultationFormTemplateSortKey,
+  (a: ConsultationFormTemplate, b: ConsultationFormTemplate) => number
 > = {
-  'description-asc': (a, b) => a.description.localeCompare(b.description),
-  'description-desc': (a, b) => b.description.localeCompare(a.description),
+  'name-asc': (a, b) => a.name.localeCompare(b.name),
+  'name-desc': (a, b) => b.name.localeCompare(a.name),
 };
 
-export function deriveProcedureSortKey(
+export function deriveConsultationFormTemplateSortKey(
   sortTile: SortTile | null
-): ProcedureSortKey {
-  if (!sortTile) return 'description-asc';
-  return sortTile.direction === 'desc' ? 'description-desc' : 'description-asc';
+): ConsultationFormTemplateSortKey {
+  if (!sortTile) return 'name-asc';
+  return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
 }
 
-export function matchesProcedureQuery(
-  item: VetProcedureCatalogItem,
+export function matchesConsultationFormTemplateQuery(
+  item: ConsultationFormTemplate,
   query: string
 ): boolean {
   return (
-    item.description.toLowerCase().includes(query) ||
-    item.procedure_type.toLowerCase().includes(query)
+    item.name.toLowerCase().includes(query) ||
+    item.fields.some((field) => field.label.toLowerCase().includes(query))
   );
 }
 
-/** The one filter tile here (Type) is entirely client-side - this personal
- * catalog has no query params today. */
-export function applyProcedureFilters(
-  procedures: VetProcedureCatalogItem[],
-  tiles: FilterTile[]
-): VetProcedureCatalogItem[] {
-  let result = procedures;
+/** Custom change ("break down my catalog > medications: have medications
+ * AND prescriptions"): same minimal name-only search+sort shape as
+ * Medications/Forms above. */
+export const PRESCRIPTION_TEMPLATE_SORT_FIELDS: SortFieldDescriptor[] = [
+  {
+    id: 'name',
+    label: 'Name',
+    directions: [
+      { value: 'asc', label: 'A to Z' },
+      { value: 'desc', label: 'Z to A' },
+    ],
+  },
+];
 
-  for (const tile of tiles) {
-    if (tile.fieldId === 'type' && typeof tile.value === 'string') {
-      result = result.filter((item) => item.procedure_type === tile.value);
-    }
-  }
+export type PrescriptionTemplateSortKey = 'name-asc' | 'name-desc';
 
-  return result;
+export const PRESCRIPTION_TEMPLATE_COMPARATORS: Record<
+  PrescriptionTemplateSortKey,
+  (a: VetPrescriptionTemplate, b: VetPrescriptionTemplate) => number
+> = {
+  'name-asc': (a, b) => a.name.localeCompare(b.name),
+  'name-desc': (a, b) => b.name.localeCompare(a.name),
+};
+
+export function derivePrescriptionTemplateSortKey(
+  sortTile: SortTile | null
+): PrescriptionTemplateSortKey {
+  if (!sortTile) return 'name-asc';
+  return sortTile.direction === 'desc' ? 'name-desc' : 'name-asc';
+}
+
+export function matchesPrescriptionTemplateQuery(
+  item: VetPrescriptionTemplate,
+  query: string
+): boolean {
+  return (
+    item.name.toLowerCase().includes(query) ||
+    item.items.some((line) => line.name.toLowerCase().includes(query))
+  );
 }

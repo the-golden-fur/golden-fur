@@ -136,3 +136,38 @@ export interface PetMedicalNote {
   staff_id: string;
   created_at: string;
 }
+
+/** #117: a customer's trimmed view of one finished consultation's
+ * prescribed medications - no vitals/diagnosis/professional_fee, mirroring
+ * how PetHealthCondition/PetMedicalNote already expose only their own
+ * narrow slice. Server: GET /pets/:id/prescriptions. */
+export interface PetPrescriptionHistoryEntry {
+  consultation_id: string;
+  date: string;
+  medications: Array<{
+    name: string;
+    dose: string;
+    notes?: string | null;
+    medicine_type?: string | null;
+    frequency?: string | null;
+    duration?: string | null;
+  }>;
+}
+
+/** #117: a customer's trimmed view of one finished consultation's filled-in
+ * consultation-form results. Server: GET /pets/:id/consultation-results. */
+export interface PetConsultationResultEntry {
+  consultation_id: string;
+  date: string;
+  form_responses: Array<{
+    template_id: string | null;
+    template_name: string;
+    filled_at: string;
+    fields: Array<{
+      field_id: string;
+      label: string;
+      type: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date';
+      value: string | number | boolean | null;
+    }>;
+  }>;
+}

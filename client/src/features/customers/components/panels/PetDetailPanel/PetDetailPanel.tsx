@@ -12,6 +12,8 @@ import { BreedSelect } from '../../forms/BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import { MedicalNoteList } from '../../lists/MedicalNoteList/MedicalNoteList';
 import { VaccinationRecordList } from '../../lists/VaccinationRecordList/VaccinationRecordList';
+import { PrescriptionList } from '../../lists/PrescriptionList/PrescriptionList';
+import { ConsultationResultList } from '../../lists/ConsultationResultList/ConsultationResultList';
 import type {
   Pet,
   PetCoatType,
@@ -386,6 +388,26 @@ export function PetDetailPanel({
             Medical Notes
           </h2>
           <MedicalNoteList petId={pet.id} accessToken={accessToken} />
+        </section>
+
+        <section
+          className={styles.section}
+          aria-labelledby="prescriptions-title"
+        >
+          <h2 className={styles.sectionTitle} id="prescriptions-title">
+            Prescriptions
+          </h2>
+          <PrescriptionList petId={pet.id} accessToken={accessToken} />
+        </section>
+
+        <section
+          className={styles.section}
+          aria-labelledby="consultation-results-title"
+        >
+          <h2 className={styles.sectionTitle} id="consultation-results-title">
+            Consultation Results
+          </h2>
+          <ConsultationResultList petId={pet.id} accessToken={accessToken} />
         </section>
 
         <section
