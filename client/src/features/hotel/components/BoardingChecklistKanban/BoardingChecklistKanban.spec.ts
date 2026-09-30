@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as hotelApi from '../../api/hotel.api';
@@ -33,9 +39,11 @@ function buildEntry(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function renderBoard() {
+function renderBoard(
+  props: Partial<Parameters<typeof BoardingChecklistKanban>[0]> = {}
+) {
   return render(
-    createElement(BoardingChecklistKanban, { accessToken: 'token' })
+    createElement(BoardingChecklistKanban, { accessToken: 'token', ...props })
   );
 }
 
@@ -342,9 +350,10 @@ describe('BoardingChecklistKanban', () => {
     );
     expect(screen.getByText('Walking task')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Category'), {
-      target: { value: 'Walking' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Category' }));
+    fireEvent.click(screen.getByRole('button', { name: /Category: Any/ }));
+    fireEvent.click(screen.getByRole('option', { name: 'Walking' }));
 
     await waitFor(() =>
       expect(screen.queryByText('Feeding task')).not.toBeInTheDocument()
@@ -423,5 +432,176 @@ describe('BoardingChecklistKanban', () => {
     expect(
       screen.getByRole('heading', { name: /^Medication/ })
     ).toBeInTheDocument();
+  });
+
+  it('requests an explicit date range for "today" and only refetches when the Date tile changes', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(hotelApi.getCareLogEntries).toHaveBeenCalledTimes(1);
+    const [, firstParams] = vi.mocked(hotelApi.getCareLogEntries).mock.calls[0];
+    expect(firstParams?.dateFrom).toBe(firstParams?.dateTo);
+
+    // A client-side tile (Status) must not hit the server again.
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Status' }));
+    expect(hotelApi.getCareLogEntries).toHaveBeenCalledTimes(1);
+
+    // Removing the Date tile = all dates, which the server only honors with
+    // an explicit lower bound (no bounds at all means "today" there).
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Date filter' }));
+    await waitFor(() =>
+      expect(hotelApi.getCareLogEntries).toHaveBeenCalledTimes(2)
+    );
+    expect(vi.mocked(hotelApi.getCareLogEntries).mock.calls[1][1]).toEqual({
+      dateFrom: '2000-01-01',
+    });
+  });
+
+  it('Table and List views show a "..." menu on every row', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry(),
+        buildEntry({ id: 'entry-2', description: 'Evening walk — 15 min' }),
+      ],
+      error: null,
+    });
+
+    renderBoard({ onOpenBooking: vi.fn() });
+
+    await waitFor(() =>
+      expect(screen.getAllByText('Max').length).toBeGreaterThan(0)
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: /^Actions for Max/ })
+    ).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    const triggers = screen.getAllByRole('button', {
+      name: /^Actions for Max/,
+    });
+    expect(triggers).toHaveLength(2);
+
+    fireEvent.click(triggers[0]);
+    const menu = screen.getByRole('menu');
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Start' })
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Show details' })
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Open this booking' })
+    ).toBeInTheDocument();
+  });
+
+  it('Board cards have no "..." button; right-click opens the menu, whose status action matches the checkbox', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ status: 'In Progress' })],
+      error: null,
+    });
+    vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
+      data: buildEntry({ status: 'Completed' }) as never,
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    expect(
+      screen.queryByRole('button', { name: /^Actions for/ })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Max'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark complete' }));
+
+    await waitFor(() =>
+      expect(hotelApi.completeCareLogEntry).toHaveBeenCalledWith(
+        'entry-1',
+        'token'
+      )
+    );
+  });
+
+  it('a read-only (Missed) task offers no status action in its menu', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ status: 'Missed' })],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Gallery' }));
+    fireEvent.contextMenu(screen.getByText('Max'));
+
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Show details' })
+    ).toBeInTheDocument();
+  });
+
+  it('"Open this booking" reports the task\'s stay id', async () => {
+    const onOpenBooking = vi.fn();
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry({ stay_id: 'stay-42' })],
+      error: null,
+    });
+
+    renderBoard({ onOpenBooking });
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByText('Max'));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Open this booking' })
+    );
+
+    expect(onOpenBooking).toHaveBeenCalledWith('stay-42');
+  });
+
+  it("with a stayId: shows only that stay's tasks, across all dates, with no tabs or Date tile", async () => {
+    const onOpenBooking = vi.fn();
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({ id: 'mine', stay_id: 'stay-1', description: 'Mine' }),
+        buildEntry({ id: 'other', stay_id: 'stay-2', description: 'Other' }),
+        buildEntry({
+          id: 'mine-later',
+          stay_id: 'stay-1',
+          description: 'Mine later',
+          scheduled_date: '2026-08-12',
+        }),
+      ],
+      error: null,
+    });
+
+    renderBoard({ stayId: 'stay-1', onOpenBooking });
+
+    await waitFor(() => expect(screen.getByText('Mine')).toBeInTheDocument());
+    expect(screen.getByText('Mine later')).toBeInTheDocument();
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Date:/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Showing only Max's Hotel booking")
+    ).toBeInTheDocument();
+    expect(hotelApi.getCareLogEntries).toHaveBeenCalledWith('token', {
+      dateFrom: '2000-01-01',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all bookings' }));
+    expect(onOpenBooking).toHaveBeenCalledWith(null);
   });
 });

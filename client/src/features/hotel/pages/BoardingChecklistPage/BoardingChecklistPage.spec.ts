@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -22,11 +22,29 @@ vi.mock('../../../daycare/api/daycare.api', () => ({
 vi.mock(
   '../../components/BoardingChecklistKanban/BoardingChecklistKanban',
   () => ({
-    BoardingChecklistKanban: (props: { petId?: string }) =>
+    BoardingChecklistKanban: (props: {
+      petId?: string;
+      stayId?: string;
+      onOpenBooking?: (stayId: string | null) => void;
+    }) =>
       createElement(
         'div',
         { 'data-testid': 'kanban' },
-        props.petId ? `Scoped to ${props.petId}` : 'Unscoped'
+        props.stayId
+          ? `Booking ${props.stayId}`
+          : props.petId
+            ? `Scoped to ${props.petId}`
+            : 'Unscoped',
+        createElement(
+          'button',
+          { type: 'button', onClick: () => props.onOpenBooking?.('stay-9') },
+          'Open stay-9'
+        ),
+        createElement(
+          'button',
+          { type: 'button', onClick: () => props.onOpenBooking?.(null) },
+          'Clear booking'
+        )
       ),
   })
 );
@@ -192,5 +210,33 @@ describe('BoardingChecklistPage (Daycare Queue redesign: petId scoping + checkou
 
     await screen.findByText('Scoped to pet-1');
     expect(screen.queryByText(/Checkout panel for/)).not.toBeInTheDocument();
+  });
+
+  it('"Open this booking" scopes the board via ?stayId=, and clearing it restores the full board', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Unscoped')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open stay-9' }));
+    expect(await screen.findByText('Booking stay-9')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear booking' }));
+    expect(await screen.findByText('Unscoped')).toBeInTheDocument();
+  });
+
+  it('a ?stayId= deep link opens straight into that booking', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+
+    renderPage('/staff/hotel/care-log?stayId=stay-3');
+
+    expect(await screen.findByText('Booking stay-3')).toBeInTheDocument();
   });
 });

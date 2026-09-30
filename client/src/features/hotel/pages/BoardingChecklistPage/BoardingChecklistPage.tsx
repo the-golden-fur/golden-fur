@@ -45,8 +45,21 @@ const ALLOWED_VIEWER_ROLES = new Set([
  */
 export function BoardingChecklistPage() {
   const { user, accessToken } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const petId = searchParams.get('petId') ?? undefined;
+  // "Open this booking" (a task's menu action): scopes the board to one
+  // stay. Kept in the URL so the scoped view is linkable and Back undoes it.
+  const stayId = searchParams.get('stayId') ?? undefined;
+
+  function handleOpenBooking(nextStayId: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (nextStayId) {
+      params.set('stayId', nextStayId);
+    } else {
+      params.delete('stayId');
+    }
+    setSearchParams(params);
+  }
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
@@ -154,7 +167,12 @@ export function BoardingChecklistPage() {
           </section>
         ) : null}
 
-        <BoardingChecklistKanban accessToken={accessToken} petId={petId} />
+        <BoardingChecklistKanban
+          accessToken={accessToken}
+          petId={petId}
+          stayId={stayId}
+          onOpenBooking={handleOpenBooking}
+        />
       </div>
     </main>
   );
