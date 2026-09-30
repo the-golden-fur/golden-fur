@@ -100,6 +100,10 @@ export interface UnavailabilityBlock {
    * any UNAVAILABILITY_MANAGER_ROLES member at the branch still can. */
   requested_reviewer_id: string | null;
   leave_type: UnavailabilityLeaveType;
+  /** True only for a Rest Day row the Auto Build bulk flow created - lets
+   * "Clear Monthly Schedule" delete precisely those rows, never a manually
+   * added Rest Day or a staff member's own requested leave. */
+  created_by_auto_build: boolean;
 }
 
 export interface PendingUnavailabilityBlockStaffSummary {

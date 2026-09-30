@@ -90,6 +90,54 @@ interface ListBranchScheduleParams {
   rangeEnd: string;
 }
 
+interface AutoBuildAuthParams {
+  requesterRole: string;
+  requesterBranchId: string;
+  branchId: string;
+}
+
+export interface AutoBuildAssignment {
+  staff_id: string;
+  /** YYYY-MM-DD, branch-local - proposed (preview) or final (commit) Rest
+   * Day dates for this staff member. */
+  dates: string[];
+}
+
+interface PreviewAutoBuildScheduleParams {
+  requesterRole: string;
+  requesterBranchId: string;
+  branchId: string;
+  year: number;
+  month: number;
+  restDaysPerWeek: number;
+}
+
+export interface AutoBuildPreviewResult {
+  assignments: AutoBuildAssignment[];
+  /** restDaysPerWeek * (number of weeks touching this month) - the client
+   * shows this alongside each staff row's actual assigned count so a
+   * shortfall (fewer conflict-free days than requested) is visible. */
+  targetPerStaff: number;
+}
+
+interface CommitAutoBuildScheduleParams {
+  requesterId: string;
+  requesterRole: string;
+  requesterBranchId: string;
+  branchId: string;
+  year: number;
+  month: number;
+  assignments: AutoBuildAssignment[];
+}
+
+interface ClearAutoBuildScheduleParams {
+  requesterRole: string;
+  requesterBranchId: string;
+  branchId: string;
+  year: number;
+  month: number;
+}
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -250,6 +298,345 @@ function resolveDateWindow(
   }
 
   return { start: toUtc(hours.open), end: toUtc(hours.close) };
+}
+
+/** Auto Build Monthly Schedule helpers - a day the branch has no operating
+ * hours for (resolveDateWindow would throw) is simply excluded from the
+ * candidate pool rather than failing the whole build; a day nobody works
+ * doesn't need a "rest day" carved out of it anyway. */
+function tryResolveDateWindow(
+  timezone: string,
+  operatingHours: OperatingHours,
+  date: string
+): { start: Date; end: Date } | null {
+  try {
+    return resolveDateWindow(timezone, operatingHours, date);
+  } catch {
+    return null;
+  }
+}
+
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function getMonthDateStrings(year: number, month: number): string[] {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const dates: string[] = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    dates.push(`${year}-${pad2(month)}-${pad2(day)}`);
+  }
+
+  return dates;
+}
+
+/** Coarse UTC bounding box for the whole calendar month - deliberately not
+ * tied to operating hours (unlike tryResolveDateWindow above), so it stays
+ * valid even for a month whose first/last day the branch happens to be
+ * closed. Only used to bound the "existing blocks" query; the precise
+ * per-date window from tryResolveDateWindow is what actually decides
+ * conflicts. */
+function getMonthUtcBounds(
+  year: number,
+  month: number
+): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1)),
+    end: new Date(Date.UTC(year, month, 1)),
+  };
+}
+
+/** Groups YYYY-MM-DD strings into Monday-start weeks (no existing weekly
+ * convention elsewhere in this app to match - this is a new one, purely
+ * for spreading Auto Build's rest days one-per-week rather than clustering
+ * them). A partial week at either edge of the month just has fewer
+ * candidate days, which naturally caps how many rest days can land in it. */
+function groupDatesByWeek(dates: string[]): string[][] {
+  const buckets = new Map<string, string[]>();
+
+  for (const date of dates) {
+    const [year, month, day] = date.split('-').map(Number);
+    const asDate = new Date(Date.UTC(year, month - 1, day));
+    const daysSinceMonday = (asDate.getUTCDay() + 6) % 7;
+    const monday = new Date(asDate);
+    monday.setUTCDate(asDate.getUTCDate() - daysSinceMonday);
+    const key = monday.toISOString().slice(0, 10);
+
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(date);
+    buckets.set(key, bucket);
+  }
+
+  return [...buckets.values()];
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const shuffled = [...items];
+
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
+function assertCanAutoBuild({
+  requesterRole,
+  requesterBranchId,
+  branchId,
+}: AutoBuildAuthParams) {
+  if (!UNAVAILABILITY_MANAGER_ROLES.includes(requesterRole)) {
+    throwWithStatus(403, 'Forbidden');
+  }
+
+  if (requesterRole !== 'Superadmin' && requesterBranchId !== branchId) {
+    throwWithStatus(403, 'Can only manage schedules for your own branch');
+  }
+}
+
+async function getBranchTimezoneAndHours(
+  branchId: string
+): Promise<{ timezone: string; operatingHours: OperatingHours }> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('operating_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) throwWithStatus(400, 'Branch not found');
+
+  return {
+    timezone: branch.timezone,
+    operatingHours: branch.operating_hours ?? {},
+  };
+}
+
+interface ExistingBlockWindow {
+  staff_id: string;
+  start: Date;
+  end: Date;
+}
+
+async function fetchExistingBlocksForMonth(
+  staffIds: string[],
+  monthStart: Date,
+  monthEnd: Date
+): Promise<ExistingBlockWindow[]> {
+  if (staffIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .select('staff_id, start_time, end_time')
+    .in('staff_id', staffIds)
+    .lt('start_time', monthEnd.toISOString())
+    .gt('end_time', monthStart.toISOString());
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []).map((row) => ({
+    staff_id: row.staff_id,
+    start: new Date(row.start_time),
+    end: new Date(row.end_time),
+  }));
+}
+
+function hasConflict(
+  existing: ExistingBlockWindow[],
+  staffId: string,
+  window: { start: Date; end: Date }
+): boolean {
+  return existing.some(
+    (block) =>
+      block.staff_id === staffId &&
+      block.start < window.end &&
+      block.end > window.start
+  );
+}
+
+/**
+ * Auto Build Monthly Schedule, step 1 of 2 - read-only, writes nothing.
+ * Proposes `restDaysPerWeek` conflict-free Rest Day dates per staff member
+ * per calendar week touching the given month, for every active staff
+ * member at `branchId` ("for all staff", no role filtering - matches what
+ * the Monthly Schedule page already shows). The client reviews/adjusts
+ * this proposal before commitAutoBuildSchedule ever writes anything.
+ */
+export async function previewAutoBuildSchedule({
+  requesterRole,
+  requesterBranchId,
+  branchId,
+  year,
+  month,
+  restDaysPerWeek,
+}: PreviewAutoBuildScheduleParams): Promise<AutoBuildPreviewResult> {
+  assertCanAutoBuild({ requesterRole, requesterBranchId, branchId });
+
+  const { data: roster, error: rosterError } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('is_active', true)
+    .is('archived_at', null);
+
+  if (rosterError) throwWithStatus(400, rosterError.message);
+
+  const staffIds = (roster ?? []).map((row) => row.id);
+  const { timezone, operatingHours } =
+    await getBranchTimezoneAndHours(branchId);
+
+  const windowsByDate = new Map<string, { start: Date; end: Date }>();
+  for (const date of getMonthDateStrings(year, month)) {
+    const window = tryResolveDateWindow(timezone, operatingHours, date);
+    if (window) windowsByDate.set(date, window);
+  }
+
+  const weekBuckets = groupDatesByWeek([...windowsByDate.keys()]);
+  const { start: monthStart, end: monthEnd } = getMonthUtcBounds(year, month);
+  const existing = await fetchExistingBlocksForMonth(
+    staffIds,
+    monthStart,
+    monthEnd
+  );
+
+  const assignments: AutoBuildAssignment[] = staffIds.map((staffId) => {
+    const dates: string[] = [];
+
+    for (const week of weekBuckets) {
+      const conflictFree = shuffle(
+        week.filter(
+          (date) => !hasConflict(existing, staffId, windowsByDate.get(date)!)
+        )
+      );
+      dates.push(...conflictFree.slice(0, restDaysPerWeek));
+    }
+
+    return { staff_id: staffId, dates: dates.sort() };
+  });
+
+  return {
+    assignments,
+    targetPerStaff: restDaysPerWeek * weekBuckets.length,
+  };
+}
+
+/**
+ * Auto Build Monthly Schedule, step 2 of 2 - the client's (possibly
+ * adjusted) final proposal from previewAutoBuildSchedule. Re-fetches
+ * current existing blocks (something may have changed since the preview -
+ * another manager approving a leave request, say) and silently drops any
+ * date that's now conflicting rather than failing the whole batch, then a
+ * single insert for everything else. created_by !== staff_id for every row
+ * here, so the existing enforce_unavailability_block_status trigger
+ * auto-approves all of them.
+ */
+export async function commitAutoBuildSchedule({
+  requesterId,
+  requesterRole,
+  requesterBranchId,
+  branchId,
+  year,
+  month,
+  assignments,
+}: CommitAutoBuildScheduleParams): Promise<{ inserted: number }> {
+  assertCanAutoBuild({ requesterRole, requesterBranchId, branchId });
+
+  const { timezone, operatingHours } =
+    await getBranchTimezoneAndHours(branchId);
+  const windowsByDate = new Map<string, { start: Date; end: Date }>();
+  for (const date of getMonthDateStrings(year, month)) {
+    const window = tryResolveDateWindow(timezone, operatingHours, date);
+    if (window) windowsByDate.set(date, window);
+  }
+
+  const { start: monthStart, end: monthEnd } = getMonthUtcBounds(year, month);
+  const staffIds = assignments.map((assignment) => assignment.staff_id);
+  const existing = await fetchExistingBlocksForMonth(
+    staffIds,
+    monthStart,
+    monthEnd
+  );
+
+  const rowsToInsert: Array<Record<string, unknown>> = [];
+
+  for (const { staff_id: staffId, dates } of assignments) {
+    for (const date of dates) {
+      const window = windowsByDate.get(date);
+      if (!window) continue;
+      if (hasConflict(existing, staffId, window)) continue;
+
+      rowsToInsert.push({
+        staff_id: staffId,
+        start_time: window.start.toISOString(),
+        end_time: window.end.toISOString(),
+        reason: null,
+        created_by: requesterId,
+        is_quick_action: false,
+        is_full_day: true,
+        requested_reviewer_id: null,
+        leave_type: 'Rest Day',
+        created_by_auto_build: true,
+      });
+    }
+  }
+
+  if (rowsToInsert.length === 0) {
+    return { inserted: 0 };
+  }
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .insert(rowsToInsert)
+    .select('id');
+
+  if (error) throwWithStatus(400, error.message);
+
+  return { inserted: data?.length ?? 0 };
+}
+
+/**
+ * "Clear Monthly Schedule" - deletes only the Rest Day rows Auto Build
+ * itself created (created_by_auto_build) for this branch's roster within
+ * the visible month. Never touches a manually-added Rest Day or any
+ * staff-requested Vacation/Sick/Other leave.
+ */
+export async function clearAutoBuildSchedule({
+  requesterRole,
+  requesterBranchId,
+  branchId,
+  year,
+  month,
+}: ClearAutoBuildScheduleParams): Promise<{ deleted: number }> {
+  assertCanAutoBuild({ requesterRole, requesterBranchId, branchId });
+
+  const { data: roster, error: rosterError } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('branch_id', branchId);
+
+  if (rosterError) throwWithStatus(400, rosterError.message);
+
+  const staffIds = (roster ?? []).map((row) => row.id);
+  if (staffIds.length === 0) {
+    return { deleted: 0 };
+  }
+
+  const { start: monthStart, end: monthEnd } = getMonthUtcBounds(year, month);
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .delete()
+    .in('staff_id', staffIds)
+    .eq('created_by_auto_build', true)
+    .lt('start_time', monthEnd.toISOString())
+    .gt('end_time', monthStart.toISOString())
+    .select('id');
+
+  if (error) throwWithStatus(400, error.message);
+
+  return { deleted: data?.length ?? 0 };
 }
 
 export async function createUnavailabilityBlock({

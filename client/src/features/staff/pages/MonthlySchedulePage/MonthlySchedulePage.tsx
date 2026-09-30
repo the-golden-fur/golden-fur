@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataCalendar } from '../../../../shared/components/DataCalendar/DataCalendar';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import {
@@ -10,23 +11,34 @@ import {
 } from '../../../booking/api/policy.api';
 import {
   cancelUnavailabilityBlock,
+  clearAutoBuildSchedule,
+  commitAutoBuildSchedule,
   createUnavailabilityBlock,
   getStaffProfile,
   listBranchSchedule,
   listStaff,
+  previewAutoBuildSchedule,
 } from '../../api/staff.api';
 import {
   UNAVAILABILITY_LEAVE_TYPES,
+  type AutoBuildAssignment,
+  type AutoBuildPreviewResult,
   type BranchScheduleEntry,
   type StaffProfile,
   type StaffRole,
   type UnavailabilityLeaveType,
 } from '../../staff.types';
+import { AutoBuildPreviewModal } from './AutoBuildPreviewModal';
+import {
+  LEAVE_TYPE_ABBR,
+  LEAVE_TYPE_CLASS,
+  WEEKDAY_HEADERS,
+  dateKey,
+  daysInMonth,
+} from './monthlyScheduleUtils';
 import styles from './MonthlySchedulePage.module.css';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
-
-const WEEKDAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const MONTH_LABELS = [
   'January',
@@ -42,20 +54,6 @@ const MONTH_LABELS = [
   'November',
   'December',
 ];
-
-const LEAVE_TYPE_CLASS: Record<UnavailabilityLeaveType, string> = {
-  'Rest Day': 'restDay',
-  'Vacation Leave': 'vacationLeave',
-  'Sick Leave': 'sickLeave',
-  Other: 'other',
-};
-
-const LEAVE_TYPE_ABBR: Record<UnavailabilityLeaveType, string> = {
-  'Rest Day': 'RD',
-  'Vacation Leave': 'VL',
-  'Sick Leave': 'SL',
-  Other: 'O',
-};
 
 type ViewMode = 'calendar' | 'grid';
 type StaffSort = 'name-asc' | 'name-desc';
@@ -89,20 +87,8 @@ function filterSortStaff(
   return sort === 'name-desc' ? sorted.reverse() : sorted;
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-function dateKey(year: number, month: number, day: number): string {
-  return `${year}-${pad2(month + 1)}-${pad2(day)}`;
-}
-
 function dateKeyFromDate(date: Date): string {
   return dateKey(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
 }
 
 function formatDateTime(iso: string): string {
@@ -177,6 +163,21 @@ export function MonthlySchedulePage() {
     useState<BranchScheduleEntry | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Auto Build Monthly Schedule: confirm-with-input -> loading -> preview/
+  // adjust -> commit. Nothing is written server-side until handleAutoBuildCommit
+  // actually runs - previewResult only ever holds an in-memory proposal.
+  const [isAutoBuildConfirmOpen, setIsAutoBuildConfirmOpen] = useState(false);
+  const [restDaysPerWeekInput, setRestDaysPerWeekInput] = useState(1);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [autoBuildError, setAutoBuildError] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] =
+    useState<AutoBuildPreviewResult | null>(null);
+  const [isCommitting, setIsCommitting] = useState(false);
+
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken || !user?.id) {
@@ -404,6 +405,88 @@ export function MonthlySchedulePage() {
     setEntries((prev) => prev.filter((item) => item.id !== entry.id));
   }
 
+  function openAutoBuildConfirm() {
+    setAutoBuildError(null);
+    setRestDaysPerWeekInput(1);
+    setIsAutoBuildConfirmOpen(true);
+  }
+
+  async function handleAutoBuildConfirm() {
+    if (!accessToken || !selectedBranchId) return;
+
+    setAutoBuildError(null);
+    setIsPreviewLoading(true);
+
+    const result = await previewAutoBuildSchedule(
+      selectedBranchId,
+      { year, month: month + 1, restDaysPerWeek: restDaysPerWeekInput },
+      accessToken
+    );
+
+    setIsPreviewLoading(false);
+
+    if (result.error || !result.data) {
+      setAutoBuildError(result.error ?? 'Could not build a preview.');
+      return;
+    }
+
+    setIsAutoBuildConfirmOpen(false);
+    setPreviewResult(result.data);
+  }
+
+  // Closing the preview (backdrop, ×, or Cancel) just discards it - nothing
+  // was ever written, so there's nothing to roll back.
+  function closeAutoBuildPreview() {
+    setPreviewResult(null);
+  }
+
+  async function handleAutoBuildCommit(
+    assignments: AutoBuildAssignment[]
+  ): Promise<{ error: string | null }> {
+    if (!accessToken || !selectedBranchId) {
+      return { error: 'Unable to save - please try again.' };
+    }
+
+    setIsCommitting(true);
+    const result = await commitAutoBuildSchedule(
+      selectedBranchId,
+      { year, month: month + 1, assignments },
+      accessToken
+    );
+    setIsCommitting(false);
+
+    if (result.error) {
+      return { error: result.error };
+    }
+
+    setPreviewResult(null);
+    loadSchedule();
+    return { error: null };
+  }
+
+  async function handleClearConfirm() {
+    if (!accessToken || !selectedBranchId) return;
+
+    setClearError(null);
+    setIsClearing(true);
+
+    const result = await clearAutoBuildSchedule(
+      selectedBranchId,
+      { year, month: month + 1 },
+      accessToken
+    );
+
+    setIsClearing(false);
+
+    if (result.error) {
+      setClearError(result.error);
+      return;
+    }
+
+    setIsClearConfirmOpen(false);
+    loadSchedule();
+  }
+
   if (!user?.id || !accessToken) {
     return (
       <main className={styles.page}>
@@ -515,6 +598,24 @@ export function MonthlySchedulePage() {
               Grid
             </button>
           </div>
+
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={openAutoBuildConfirm}
+          >
+            Auto Build
+          </button>
+          <button
+            type="button"
+            className={styles.dangerButton}
+            onClick={() => {
+              setClearError(null);
+              setIsClearConfirmOpen(true);
+            }}
+          >
+            Clear Monthly Schedule
+          </button>
         </div>
 
         <div className={styles.staffFilterBar}>
@@ -868,6 +969,80 @@ export function MonthlySchedulePage() {
               </div>
             </section>
           </div>
+        ) : null}
+
+        <ConfirmDialog
+          isOpen={isAutoBuildConfirmOpen}
+          title="Auto Build Monthly Schedule"
+          body={
+            <>
+              <p className={styles.copy}>
+                This proposes Rest Days for every staff member at this branch
+                for {MONTH_LABELS[month]} {year}. Nothing is saved until you
+                review and confirm the next step.
+              </p>
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Rest days per week</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min={0}
+                  max={7}
+                  value={restDaysPerWeekInput}
+                  onChange={(event) =>
+                    setRestDaysPerWeekInput(Number(event.target.value))
+                  }
+                />
+              </label>
+              {autoBuildError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {autoBuildError}
+                </p>
+              ) : null}
+            </>
+          }
+          confirmLabel="Build"
+          isConfirming={isPreviewLoading}
+          onConfirm={() => void handleAutoBuildConfirm()}
+          onCancel={() => setIsAutoBuildConfirmOpen(false)}
+        />
+
+        <ConfirmDialog
+          isOpen={isClearConfirmOpen}
+          title="Clear Monthly Schedule?"
+          tone="danger"
+          body={
+            <>
+              <p className={styles.copy}>
+                This permanently removes every Auto-Build-created Rest Day for{' '}
+                {MONTH_LABELS[month]} {year} at this branch. Manually added
+                entries and staff-requested leave are not affected. This cannot
+                be undone.
+              </p>
+              {clearError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {clearError}
+                </p>
+              ) : null}
+            </>
+          }
+          confirmLabel="Clear"
+          isConfirming={isClearing}
+          onConfirm={() => void handleClearConfirm()}
+          onCancel={() => setIsClearConfirmOpen(false)}
+        />
+
+        {previewResult ? (
+          <AutoBuildPreviewModal
+            year={year}
+            month={month + 1}
+            roster={roster}
+            preview={previewResult}
+            entriesByStaffAndDate={entriesByStaffAndDate}
+            isCommitting={isCommitting}
+            onClose={closeAutoBuildPreview}
+            onConfirm={handleAutoBuildCommit}
+          />
         ) : null}
       </div>
     </main>

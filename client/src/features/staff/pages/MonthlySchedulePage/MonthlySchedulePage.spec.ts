@@ -17,6 +17,9 @@ vi.mock('../../api/staff.api', () => ({
   listStaff: vi.fn(),
   createUnavailabilityBlock: vi.fn(),
   cancelUnavailabilityBlock: vi.fn(),
+  previewAutoBuildSchedule: vi.fn(),
+  commitAutoBuildSchedule: vi.fn(),
+  clearAutoBuildSchedule: vi.fn(),
 }));
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
@@ -88,10 +91,15 @@ function buildEntry(
     denial_reason: null,
     requested_reviewer_id: null,
     leave_type: 'Rest Day',
+    created_by_auto_build: false,
     staff: { id: 'staff-1', display_name: 'Maria Groomer' },
     ...overrides,
   };
 }
+
+const NEXT_MONTH_DAY_SIX = `${now.getFullYear()}-${String(
+  now.getMonth() + 1
+).padStart(2, '0')}-06`;
 
 function renderPage() {
   const authValue: AuthContextValue = {
@@ -223,6 +231,171 @@ describe('MonthlySchedulePage', () => {
 
     await waitFor(() =>
       expect(screen.queryByText('Monthly Schedule')).not.toBeInTheDocument()
+    );
+  });
+
+  it('Auto Build: confirm-with-input -> preview -> adjust -> commit reloads the schedule', async () => {
+    mockCommon([]);
+    const user = userEvent.setup();
+
+    vi.mocked(staffApi.previewAutoBuildSchedule).mockResolvedValue({
+      data: {
+        assignments: [{ staff_id: 'staff-1', dates: [NEXT_MONTH_DAY_SIX] }],
+        targetPerStaff: 1,
+      },
+      error: null,
+    });
+    vi.mocked(staffApi.commitAutoBuildSchedule).mockResolvedValue({
+      data: { inserted: 1 },
+      error: null,
+    });
+
+    renderPage();
+    await waitFor(() =>
+      expect(staffApi.listBranchSchedule).toHaveBeenCalledTimes(1)
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Auto Build' }));
+    expect(
+      await screen.findByText('Auto Build Monthly Schedule')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Build' }));
+
+    expect(
+      await screen.findByText('Review Auto Build proposal')
+    ).toBeInTheDocument();
+    expect(staffApi.previewAutoBuildSchedule).toHaveBeenCalledWith(
+      'branch-makati',
+      {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        restDaysPerWeek: 1,
+      },
+      'token'
+    );
+    // Pre-checked from the proposal.
+    expect(
+      screen.getByLabelText(`Maria Groomer rest day on ${NEXT_MONTH_DAY_SIX}`)
+    ).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() =>
+      expect(staffApi.commitAutoBuildSchedule).toHaveBeenCalledWith(
+        'branch-makati',
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          assignments: [{ staff_id: 'staff-1', dates: [NEXT_MONTH_DAY_SIX] }],
+        },
+        'token'
+      )
+    );
+
+    expect(
+      screen.queryByText('Review Auto Build proposal')
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(staffApi.listBranchSchedule).toHaveBeenCalledTimes(2)
+    );
+  });
+
+  it('Auto Build: unchecking a proposed day before confirming excludes it from the commit', async () => {
+    mockCommon([]);
+    const user = userEvent.setup();
+
+    vi.mocked(staffApi.previewAutoBuildSchedule).mockResolvedValue({
+      data: {
+        assignments: [{ staff_id: 'staff-1', dates: [NEXT_MONTH_DAY_SIX] }],
+        targetPerStaff: 1,
+      },
+      error: null,
+    });
+    vi.mocked(staffApi.commitAutoBuildSchedule).mockResolvedValue({
+      data: { inserted: 0 },
+      error: null,
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Auto Build' }));
+    await user.click(screen.getByRole('button', { name: 'Build' }));
+    await screen.findByText('Review Auto Build proposal');
+
+    await user.click(
+      screen.getByLabelText(`Maria Groomer rest day on ${NEXT_MONTH_DAY_SIX}`)
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() =>
+      expect(staffApi.commitAutoBuildSchedule).toHaveBeenCalledWith(
+        'branch-makati',
+        {
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          assignments: [{ staff_id: 'staff-1', dates: [] }],
+        },
+        'token'
+      )
+    );
+  });
+
+  it('Auto Build: canceling the preview discards the proposal without saving anything', async () => {
+    mockCommon([]);
+    const user = userEvent.setup();
+
+    vi.mocked(staffApi.previewAutoBuildSchedule).mockResolvedValue({
+      data: {
+        assignments: [{ staff_id: 'staff-1', dates: [NEXT_MONTH_DAY_SIX] }],
+        targetPerStaff: 1,
+      },
+      error: null,
+    });
+
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Auto Build' }));
+    await user.click(screen.getByRole('button', { name: 'Build' }));
+    await screen.findByText('Review Auto Build proposal');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      screen.queryByText('Review Auto Build proposal')
+    ).not.toBeInTheDocument();
+    expect(staffApi.commitAutoBuildSchedule).not.toHaveBeenCalled();
+  });
+
+  it('Clear Monthly Schedule: shows a danger warning and deletes only on confirm', async () => {
+    mockCommon([buildEntry()]);
+    const user = userEvent.setup();
+
+    vi.mocked(staffApi.clearAutoBuildSchedule).mockResolvedValue({
+      data: { deleted: 3 },
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Maria Groomer - Rest Day');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Clear Monthly Schedule' })
+    );
+    expect(
+      await screen.findByText('Clear Monthly Schedule?')
+    ).toBeInTheDocument();
+    expect(staffApi.clearAutoBuildSchedule).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() =>
+      expect(staffApi.clearAutoBuildSchedule).toHaveBeenCalledWith(
+        'branch-makati',
+        { year: now.getFullYear(), month: now.getMonth() + 1 },
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(staffApi.listBranchSchedule).toHaveBeenCalledTimes(2)
     );
   });
 });
