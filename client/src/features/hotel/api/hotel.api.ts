@@ -179,7 +179,14 @@ export async function createCage(
 
 export async function updateCage(
   cageId: string,
-  updates: { cage_label?: string; size?: CageSize; pet_types?: string[] },
+  updates: {
+    cage_label?: string;
+    size?: CageSize;
+    pet_types?: string[];
+    /** Superadmin-only - moves the cage to a different branch (rejected by
+     * the server with a 403 for any other role). */
+    branch_id?: string;
+  },
   accessToken: string
 ): Promise<HotelApiResult<Cage>> {
   const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}`, {

@@ -30,6 +30,16 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
     ],
     error: null,
   }),
+  // Custom change (Superadmin cage branch reassignment): only fetched when
+  // the viewer is Superadmin - defaulted here so those tests don't each
+  // need their own setup.
+  listBranches: vi.fn().mockResolvedValue({
+    data: [
+      { id: 'branch-1', name: 'Makati', is_vet_branch: false },
+      { id: 'branch-2', name: 'Southwoods', is_vet_branch: false },
+    ],
+    error: null,
+  }),
 }));
 
 vi.mock('../../api/hotel.api', () => ({
@@ -577,5 +587,82 @@ describe('AdminCagesPage', () => {
       await within(dialog).findByText('Select at least one pet type.')
     ).toBeInTheDocument();
     expect(hotelApi.updateCage).not.toHaveBeenCalled();
+  });
+
+  it('Custom change (Superadmin cage branch reassignment): a non-Superadmin never sees a Branch field in Configure', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    expect(within(dialog).queryByLabelText('Branch')).not.toBeInTheDocument();
+  });
+
+  it('Custom change (Superadmin cage branch reassignment): Superadmin can reassign a cage, which then disappears from the current list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Superadmin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+    vi.mocked(hotelApi.updateCage).mockResolvedValue({
+      data: { ...AVAILABLE_CAGE, branch_id: 'branch-2' } as never,
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    const branchSelect = within(dialog).getByLabelText('Branch');
+    expect(branchSelect).toHaveValue('branch-1');
+
+    await user.selectOptions(branchSelect, 'branch-2');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
+
+    await waitFor(() =>
+      expect(hotelApi.updateCage).toHaveBeenCalledWith(
+        'cage-1',
+        {
+          cage_label: 'Makati-S-01',
+          size: 'S',
+          pet_types: ['Dog', 'Cat'],
+          branch_id: 'branch-2',
+        },
+        'token'
+      )
+    );
+    expect(
+      await screen.findByText('Cage moved to Southwoods.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument();
   });
 });
