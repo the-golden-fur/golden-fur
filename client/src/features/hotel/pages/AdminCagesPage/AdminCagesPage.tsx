@@ -56,6 +56,7 @@ import {
   matchesCageQuery,
 } from './cageBrowserFields';
 import styles from './AdminCagesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Matches HOTEL_ADMIN_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -653,7 +654,7 @@ export function AdminCagesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -684,7 +685,7 @@ export function AdminCagesPage() {
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading cages...</p>
+          <LoadingState label="Loading cages..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

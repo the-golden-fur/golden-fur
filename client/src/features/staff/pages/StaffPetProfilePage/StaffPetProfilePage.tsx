@@ -6,6 +6,7 @@ import { PetDetailPanel } from '../../../customers/components/panels/PetDetailPa
 import type { Pet } from '../../../customers/customer.types';
 import { listStaff } from '../../api/staff.api';
 import styles from './StaffPetProfilePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Same role list as CUSTOMER_MANAGER_ROLES (server) / CustomerManagementPage
@@ -105,7 +106,7 @@ export function StaffPetProfilePage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       </main>
     );
   }
@@ -117,7 +118,7 @@ export function StaffPetProfilePage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading pet...</p>
+        <LoadingState label="Loading pet..." />
       </main>
     );
   }

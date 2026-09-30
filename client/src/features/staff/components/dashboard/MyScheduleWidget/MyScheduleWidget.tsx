@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { listUnavailabilityBlocks } from '../../../api/staff.api';
 import type { UnavailabilityBlock } from '../../../staff.types';
 import styles from './MyScheduleWidget.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface MyScheduleWidgetProps {
   staffId: string;
@@ -115,7 +116,7 @@ export function MyScheduleWidget({
       </div>
 
       {entries === null && !error ? (
-        <p className={styles.copy}>Loading schedule...</p>
+        <LoadingState label="Loading schedule..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

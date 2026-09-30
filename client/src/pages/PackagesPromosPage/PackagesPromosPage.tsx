@@ -9,6 +9,7 @@ import {
 } from '../../features/public/api/publicCatalog.api';
 import { getPromoTiming } from '../../features/maintenance/utils/promoTiming';
 import styles from './PackagesPromosPage.module.css';
+import { LoadingState } from '../../shared/components/LoadingState/LoadingState';
 
 function formatCurrency(amount: number): string {
   return `PHP ${amount.toFixed(2)}`;
@@ -82,7 +83,7 @@ export function PackagesPromosPage() {
         </p>
 
         {status === 'loading' && (
-          <p className={styles.status}>Loading packages and promos…</p>
+          <LoadingState label="Loading packages and promos…" />
         )}
 
         {status === 'error' && <p className={styles.statusError}>{error}</p>}

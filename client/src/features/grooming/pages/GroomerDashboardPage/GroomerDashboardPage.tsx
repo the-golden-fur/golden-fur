@@ -35,6 +35,7 @@ import {
 import { AppointmentCard } from '../../components/AppointmentCard/AppointmentCard';
 import type { GroomingSession } from '../../grooming.types';
 import styles from './GroomerDashboardPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Groomer',
@@ -379,7 +380,7 @@ export function GroomerDashboardPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -422,7 +423,7 @@ export function GroomerDashboardPage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading appointments...</p>
+          <LoadingState label="Loading appointments..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

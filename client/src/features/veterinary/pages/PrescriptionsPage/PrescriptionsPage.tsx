@@ -37,6 +37,7 @@ import {
   type PrescriptionRow,
 } from './prescriptionBrowserFields';
 import styles from './PrescriptionsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** #117: same "every patient" read visibility as the rest of this feature
  * (VETERINARY_READ_ROLES / staffRead) - unlike My Catalog, this isn't
@@ -270,7 +271,7 @@ export function PrescriptionsPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -289,7 +290,7 @@ export function PrescriptionsPage() {
         </p>
 
         {isLoading ? (
-          <p className={styles.copy}>Loading prescriptions...</p>
+          <LoadingState label="Loading prescriptions..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

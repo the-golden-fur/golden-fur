@@ -59,6 +59,7 @@ import {
   deriveBookingConfirmationState,
 } from '../../bookingConfirmation';
 import styles from './AssessmentQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 // Everyone except Cashier - mirrors the viewerRole !== 'Cashier' gate this
 // queue used when it was folded into ReceptionistBookingsQueuePage, just as
@@ -551,7 +552,7 @@ export function AssessmentQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -609,7 +610,7 @@ export function AssessmentQueuePage() {
 
         <ActiveFilterChips chips={filterChips} />
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">

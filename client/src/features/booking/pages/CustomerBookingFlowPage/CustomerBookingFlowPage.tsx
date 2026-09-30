@@ -97,6 +97,7 @@ import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
@@ -2842,7 +2843,7 @@ export function CustomerBookingFlowPage() {
         // restrictToCustomerIds would read as "no restriction" and briefly
         // flash every customer.
         if (isVeterinarianStaff && treatedCustomerIds === null) {
-          return <p className={styles.copy}>Loading your patients...</p>;
+          return <LoadingState label="Loading your patients..." />;
         }
         return (
           <CustomerPicker
@@ -2857,7 +2858,7 @@ export function CustomerBookingFlowPage() {
 
       case 'pet':
         if (isPetsLoading) {
-          return <p className={styles.copy}>Loading pets...</p>;
+          return <LoadingState label="Loading pets..." />;
         }
         return (
           <div className={styles.optionGrid}>
@@ -3027,7 +3028,10 @@ export function CustomerBookingFlowPage() {
                         {allServices.length === 0 ? (
                           // Catalog still loading - don't claim the branch
                           // offers nothing until we actually know.
-                          <p className={styles.infoText}>Loading services…</p>
+                          <LoadingState
+                            label="Loading services…"
+                            size="inline"
+                          />
                         ) : bookableServices.length > 0 ? (
                           // Names only - prices vary by category (Daycare is
                           // hourly, Hotel is per-night, Grooming can use a

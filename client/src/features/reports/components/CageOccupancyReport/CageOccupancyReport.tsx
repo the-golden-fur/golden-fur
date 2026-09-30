@@ -11,6 +11,7 @@ import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useS
 import { getCageOccupancyReport } from '../../api/reports.api';
 import type { CageOccupancyRow } from '../../reports.types';
 import styles from './CageOccupancyReport.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 // Custom change (occupied/vacant cages view for Receptionist): opened to
 // Receptionist too - server-side CAGE_OCCUPANCY_READ_ROLES
@@ -201,7 +202,7 @@ export function CageOccupancyReport() {
   });
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {
@@ -238,7 +239,7 @@ export function CageOccupancyReport() {
       </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading cage occupancy...</p>
+        <LoadingState label="Loading cage occupancy..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}
@@ -316,7 +317,7 @@ export function CageOccupancyReport() {
       </div>
 
       {isCagesLoading ? (
-        <p className={styles.copy}>Loading cages...</p>
+        <LoadingState label="Loading cages..." />
       ) : cagesError ? (
         <p className={styles.errorBanner} role="alert">
           {cagesError}

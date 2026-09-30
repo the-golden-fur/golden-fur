@@ -53,6 +53,7 @@ import {
   SERVICE_TYPE_SORT_FIELDS,
 } from './serviceTypeBrowserFields';
 import styles from './AdminServiceTypesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -580,7 +581,7 @@ export function AdminServiceTypesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -616,7 +617,7 @@ export function AdminServiceTypesPage() {
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading service types...</p>
+          <LoadingState label="Loading service types..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

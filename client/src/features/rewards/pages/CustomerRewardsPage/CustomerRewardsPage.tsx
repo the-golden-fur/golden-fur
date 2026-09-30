@@ -39,6 +39,7 @@ import {
   matchesCouponQuery,
 } from './couponBrowserFields';
 import styles from './CustomerRewardsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -263,7 +264,7 @@ export function CustomerRewardsPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       </main>
     );
   }
@@ -321,7 +322,7 @@ export function CustomerRewardsPage() {
               onAnimationComplete={handleAnimationComplete}
             />
           ) : (
-            <p className={styles.copy}>Loading wheel...</p>
+            <LoadingState label="Loading wheel..." />
           )}
 
           <button

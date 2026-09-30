@@ -12,6 +12,7 @@ import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChi
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import type { PendingUnavailabilityBlock, StaffRole } from '../../staff.types';
 import styles from './UnavailabilityApprovalQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
@@ -200,7 +201,7 @@ export function UnavailabilityApprovalQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -253,7 +254,7 @@ export function UnavailabilityApprovalQueuePage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading pending requests...</p>
+          <LoadingState label="Loading pending requests..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

@@ -38,6 +38,7 @@ import type {
 } from '../../features/messaging/messaging.types';
 import { ThreadDetail } from '../../features/messaging/components/ThreadDetail/ThreadDetail';
 import styles from './NotificationsPage.module.css';
+import { LoadingState } from '../../shared/components/LoadingState/LoadingState';
 
 type FolderKey = 'inbox' | 'starred' | 'sent' | 'drafts' | 'system';
 type FilterKey = 'all' | 'unread' | 'mail' | 'announcement';
@@ -650,7 +651,7 @@ export function NotificationsPage() {
           <div className={styles.body}>
             <div className={styles.listPane}>
               {isLoading ? (
-                <p className={styles.copy}>Loading...</p>
+                <LoadingState />
               ) : folder === 'drafts' ? (
                 drafts.length === 0 ? (
                   <p className={styles.copy}>No drafts.</p>

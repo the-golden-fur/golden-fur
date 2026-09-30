@@ -4,6 +4,7 @@ import { getAnalyticsSummary } from '../../api/reports.api';
 import type { AnalyticsTimeFilter } from '../../reports.types';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import styles from './BranchRevenueComparisonChart.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface BranchRevenueComparisonChartProps {
   branches: BranchSummary[];
@@ -94,7 +95,7 @@ export function BranchRevenueComparisonChart({
       <h2 className={styles.title}>Makati vs Southwoods Revenue</h2>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading comparison...</p>
+        <LoadingState label="Loading comparison..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

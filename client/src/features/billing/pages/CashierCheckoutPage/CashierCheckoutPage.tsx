@@ -10,6 +10,7 @@ import type {
   PaymentFields,
 } from '../../billing.types';
 import styles from './CashierCheckoutPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const DEFAULT_PAYMENT: PaymentFields = { payment_method: 'Cash' };
 
@@ -108,7 +109,7 @@ export function CashierCheckoutPage() {
   }
 
   if (!accessToken) {
-    return <p>Loading...</p>;
+    return <LoadingState size="inline" />;
   }
 
   const allLines = preview
@@ -144,7 +145,7 @@ export function CashierCheckoutPage() {
           </div>
         </label>
 
-        {isLoadingPreview ? <p className={styles.copy}>Loading...</p> : null}
+        {isLoadingPreview ? <LoadingState size="inline" /> : null}
         {previewError ? (
           <p className={styles.errorBanner} role="alert">
             {previewError}

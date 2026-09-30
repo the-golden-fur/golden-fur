@@ -66,6 +66,7 @@ import {
 import { ArchiveList } from '../../components/ArchiveList/ArchiveList';
 import { DeletedRecordsArchiveList } from '../../components/DeletedRecordsArchiveList/DeletedRecordsArchiveList';
 import styles from './AdminArchivePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
@@ -155,7 +156,7 @@ export function AdminArchivePage() {
       : 'products';
 
   if (isRoleLoading) {
-    return <p className={styles.copy}>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {

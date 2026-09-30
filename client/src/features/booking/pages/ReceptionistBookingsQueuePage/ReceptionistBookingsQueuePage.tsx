@@ -58,6 +58,7 @@ import {
   deriveBookingConfirmationState,
 } from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 // Same gap noted on Consultation Queue/Groomer Dashboard: no WebSocket/
 // realtime infra exists anywhere in this codebase yet, so this queue
@@ -810,7 +811,7 @@ export function ReceptionistBookingsQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -958,7 +959,7 @@ export function ReceptionistBookingsQueuePage() {
           </button>
         </div>
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">

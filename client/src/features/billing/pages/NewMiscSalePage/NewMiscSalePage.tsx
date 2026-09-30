@@ -5,6 +5,7 @@ import { listStaff } from '../../../staff/api/staff.api';
 import { MiscSaleWizard } from '../../components/MiscSaleWizard/MiscSaleWizard';
 import { MISC_SALES_PATH, MISC_SALE_VIEWER_ROLES } from '../../miscSaleAccess';
 import styles from './NewMiscSalePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * "New Misc Sale" as its own full page (was a modal on
@@ -41,7 +42,7 @@ export function NewMiscSalePage() {
   }, [accessToken, user?.id]);
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (

@@ -34,6 +34,7 @@ import {
   PET_SORT_FIELDS,
 } from './petBrowserFields';
 import styles from './CustomerPetManagerPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -206,7 +207,7 @@ export function CustomerPetManagerPage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading your pets...</p>
+          <LoadingState label="Loading your pets..." />
         ) : pets.length === 0 ? (
           <p className={styles.copy}>You haven&apos;t added any pets yet.</p>
         ) : (

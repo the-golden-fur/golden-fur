@@ -5,6 +5,7 @@ import { getBookingDetails } from '../../api/booking.api';
 import type { BookingDetails } from '../../booking.types';
 import { BookingDetailsView } from '../BookingDetailsView/BookingDetailsView';
 import styles from './BookingDetailsModal.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface BookingDetailsModalProps {
   /** The booking to show, or null when the modal is closed. */
@@ -57,7 +58,7 @@ export function BookingDetailsModal({
   return (
     <Modal isOpen={isOpen} title="Booking details" onClose={onClose}>
       {isLoading ? (
-        <p className={styles.copy}>Loading booking details...</p>
+        <LoadingState label="Loading booking details..." />
       ) : state.error || !state.details ? (
         <p className={styles.errorBanner} role="alert">
           {state.error ?? 'Could not load this booking.'}

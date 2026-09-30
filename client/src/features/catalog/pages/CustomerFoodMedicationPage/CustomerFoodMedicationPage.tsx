@@ -45,6 +45,7 @@ import {
   matchesCustomerCatalogQuery,
 } from './customerCatalogBrowserFields';
 import styles from './CustomerFoodMedicationPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -320,7 +321,7 @@ export function CustomerFoodMedicationPage() {
       ) : null}
 
       {isLoading ? (
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       ) : (
         <section className={styles.panel}>
           <h2 className={styles.sectionTitle}>Your types</h2>

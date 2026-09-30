@@ -9,6 +9,7 @@ import {
 import type { PetWeightClassConfiguration } from '../../maintenance.types';
 import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './WeightClassConfigurationPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Superadmin-only, unlike other maintenance config (MAINTENANCE_WRITE_ROLES
  * server-side is Admin+Superadmin): weight class cut-offs are global and
@@ -217,7 +218,7 @@ export function WeightClassConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -231,7 +232,7 @@ export function WeightClassConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading weight class configuration...</p>
+          <LoadingState label="Loading weight class configuration..." />
         </div>
       </main>
     );

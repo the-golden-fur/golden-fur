@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { getCareLogEntries } from '../../../../hotel/api/hotel.api';
 import type { CareLogEntry, MealTime } from '../../../../hotel/hotel.types';
 import styles from './BoardingChecklistWidget.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface BoardingChecklistWidgetProps {
   accessToken: string;
@@ -74,7 +75,7 @@ export function BoardingChecklistWidget({
       </div>
 
       {entries === null && !error ? (
-        <p className={styles.copy}>Loading today&apos;s checklist...</p>
+        <LoadingState label="Loading today's checklist..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

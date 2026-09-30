@@ -48,6 +48,7 @@ import {
   NEW_MISC_SALE_PATH,
 } from '../../miscSaleAccess';
 import styles from './MiscSaleManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'board';
 
@@ -368,7 +369,7 @@ export function MiscSaleManagementPage() {
   }
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {
@@ -396,7 +397,7 @@ export function MiscSaleManagementPage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

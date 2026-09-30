@@ -46,6 +46,7 @@ import {
   matchesBreedQuery,
 } from './breedBrowserFields';
 import styles from './AdminBreedsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
@@ -420,7 +421,7 @@ export function AdminBreedsPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -451,7 +452,7 @@ export function AdminBreedsPage() {
             Breeds
           </h2>
           {isLoading ? (
-            <p className={styles.copy}>Loading breeds...</p>
+            <LoadingState label="Loading breeds..." />
           ) : loadError ? (
             <p className={styles.errorBanner} role="alert">
               {loadError}

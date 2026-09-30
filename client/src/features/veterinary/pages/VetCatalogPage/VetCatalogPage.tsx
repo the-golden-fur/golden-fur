@@ -70,6 +70,7 @@ import {
   PRESCRIPTION_TEMPLATE_SORT_FIELDS,
 } from './vetCatalogBrowserFields';
 import styles from './VetCatalogPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Personal catalog - unlike the rest of this feature (any Veterinarian may
  * view/edit any consultation), only the owning Veterinarian can see or edit
@@ -1033,7 +1034,7 @@ export function VetCatalogPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -1095,7 +1096,7 @@ export function VetCatalogPage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading your catalog...</p>
+          <LoadingState label="Loading your catalog..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

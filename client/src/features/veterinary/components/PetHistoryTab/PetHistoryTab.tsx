@@ -1,6 +1,7 @@
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import type { Consultation } from '../../veterinary.types';
 import styles from './PetHistoryTab.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface PetHistoryTabProps {
   consultations: Consultation[];
@@ -28,7 +29,7 @@ export function PetHistoryTab({
   error,
 }: PetHistoryTabProps) {
   if (isLoading) {
-    return <p className={styles.copy}>Loading pet history...</p>;
+    return <LoadingState label="Loading pet history..." />;
   }
 
   if (error) {

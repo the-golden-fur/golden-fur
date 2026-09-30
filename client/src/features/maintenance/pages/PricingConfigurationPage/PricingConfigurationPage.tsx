@@ -14,6 +14,7 @@ import {
 } from '../../maintenance.types';
 import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './PricingConfigurationPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -286,7 +287,7 @@ export function PricingConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -300,7 +301,7 @@ export function PricingConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading pricing configuration...</p>
+          <LoadingState label="Loading pricing configuration..." />
         </div>
       </main>
     );

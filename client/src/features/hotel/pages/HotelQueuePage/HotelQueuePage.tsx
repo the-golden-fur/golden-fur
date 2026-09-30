@@ -10,6 +10,7 @@ import { buildQuickCheckInPayload } from './buildQuickCheckInPayload';
 import { HotelCheckoutPanel } from './HotelCheckoutPanel';
 import { HOTEL_QUEUE_VIEWER_ROLES } from './hotelQueueRoles';
 import styles from './HotelQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = HOTEL_QUEUE_VIEWER_ROLES;
 
@@ -136,7 +137,7 @@ export function HotelQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );

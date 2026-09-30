@@ -5,6 +5,7 @@ import { getBookingDetails } from '../../api/booking.api';
 import type { BookingDetails } from '../../booking.types';
 import { BookingDetailsView } from '../../components/BookingDetailsView/BookingDetailsView';
 import styles from './BookingDetailsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Issue: Bookings Queue's "View details" link, requested after the multi-
@@ -63,7 +64,7 @@ export function BookingDetailsPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading booking...</p>
+          <LoadingState label="Loading booking..." />
         </div>
       </main>
     );

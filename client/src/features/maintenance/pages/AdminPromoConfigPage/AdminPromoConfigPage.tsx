@@ -80,6 +80,7 @@ import type {
   Service,
 } from '../../maintenance.types';
 import styles from './AdminPromoConfigPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const TIMING_LABELS = {
   Upcoming: 'Upcoming',
@@ -864,7 +865,7 @@ export function AdminPromoConfigPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -878,7 +879,7 @@ export function AdminPromoConfigPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading promos...</p>
+          <LoadingState label="Loading promos..." />
         </div>
       </main>
     );

@@ -5,6 +5,7 @@ import type {
   CagePreferenceInput,
 } from '../../booking.types';
 import styles from './CagePickerList.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface CagePickerListProps {
   accessToken: string;
@@ -150,7 +151,7 @@ export function CagePickerList({
   }
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading available cages...</p>;
+    return <LoadingState label="Loading available cages..." />;
   }
 
   if (error) {

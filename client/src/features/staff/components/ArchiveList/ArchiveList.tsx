@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import styles from './ArchiveList.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface ArchiveApiResult<T> {
   data: T | null;
@@ -99,7 +100,7 @@ export function ArchiveList<T extends ArchivedRow>({
   }
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading archived {entityLabel}...</p>;
+    return <LoadingState label={`Loading archived ${entityLabel}...`} />;
   }
 
   if (loadError) {
