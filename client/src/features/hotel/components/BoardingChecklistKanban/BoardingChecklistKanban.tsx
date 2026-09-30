@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Footprints, Pill, PlayCircle, Utensils } from 'lucide-react';
+import {
+  Columns3,
+  Footprints,
+  LayoutGrid,
+  List as ListIcon,
+  Pill,
+  PlayCircle,
+  Table as TableIcon,
+  Utensils,
+} from 'lucide-react';
 import {
   completeCareLogEntry,
   getCareLogEntries,
@@ -7,23 +16,43 @@ import {
   startCareLogEntry,
 } from '../../api/hotel.api';
 import { getPet } from '../../../customers/api/customer.api';
+import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
-  QueueFilterBar,
-  type QueueStatusOption,
-} from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
-import {
-  dateRangePresetLabel,
-  resolveDateRangePreset,
-  type DateRangePreset,
-} from '../../../../shared/components/QueueFilterBar/dateRangePreset';
-import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
-import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
-import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
-  CareLogEntry,
-  CareLogEntryStatus,
-  MealTime,
-} from '../../hotel.types';
+  DateRangeValue,
+  FilterTile,
+  FilterValue,
+  SortTile,
+} from '../../../../shared/components/FilterSortBar/filterField.types';
+import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
+import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import type { CareLogEntry, CareLogEntryStatus } from '../../hotel.types';
+import {
+  ALL_DATES_FROM,
+  applyChecklistFilters,
+  buildChecklistFilterFields,
+  CHECKLIST_COMPARATORS,
+  CHECKLIST_GROUP_BY_AXES,
+  CHECKLIST_SORT_FIELDS,
+  DEFAULT_DATE_TILE,
+  deriveChecklistServerParams,
+  deriveChecklistSortKey,
+  matchesChecklistQuery,
+  type CareType,
+  type Row,
+} from './boardingChecklistBrowserFields';
 import styles from './BoardingChecklistKanban.module.css';
 
 interface BoardingChecklistKanbanProps {
@@ -34,62 +63,27 @@ interface BoardingChecklistKanbanProps {
    * switcher entirely (there's nothing to switch between when every task
    * shown already belongs to this one pet). */
   petId?: string;
+  /** "Open this booking": scopes the board to one stay's tasks (a stay is
+   * exactly one booking - hotel_stays.booking_id is UNIQUE) across every
+   * date, and hides the Hotel/Daycare tabs. */
+  stayId?: string;
+  /** Called with a stay id by a task's "Open this booking" action, or with
+   * null by "Show all bookings". The page owns the ?stayId= URL param, so
+   * omitting this hides both actions. */
+  onOpenBooking?: (stayId: string | null) => void;
 }
 
 type StayTypeTab = 'Hotel' | 'Daycare';
-type CareType = CareLogEntry['care_type'];
-type CareTypeFilter = 'All' | CareType;
-type SortKey = 'soonest' | 'latest' | 'pet-name';
-type GroupBy = 'status' | 'time' | 'category';
+type ViewMode = 'table' | 'list' | 'gallery' | 'board';
 
-interface Row {
-  entry: CareLogEntry;
-  petName: string;
-}
-
-const STATUS_COLUMNS: CareLogEntryStatus[] = [
-  'Backlog',
-  'Pending',
-  'In Progress',
-  'Completed',
-  'Missed',
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'gallery', label: 'Gallery', icon: LayoutGrid },
+  { value: 'board', label: 'Board', icon: Columns3 },
 ];
 
-const TIME_BLOCK_ORDER: MealTime[] = [
-  'Morning',
-  'Noon',
-  'Afternoon',
-  'Evening',
-];
-
-const TIME_COLUMNS: string[] = [...TIME_BLOCK_ORDER, 'Unscheduled'];
-
-const CATEGORY_COLUMNS: CareType[] = [
-  'Feeding',
-  'Walking',
-  'Playing',
-  'Medication',
-];
-
-const CATEGORY_OPTIONS: QueueStatusOption[] = [
-  { value: 'All', label: 'All categories' },
-  { value: 'Feeding', label: 'Feeding' },
-  { value: 'Walking', label: 'Walking' },
-  { value: 'Playing', label: 'Playing' },
-  { value: 'Medication', label: 'Medication' },
-];
-
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'soonest', label: 'Sort: Soonest first' },
-  { value: 'latest', label: 'Sort: Latest first' },
-  { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
-];
-
-const GROUP_BY_OPTIONS: Array<{ value: GroupBy; label: string }> = [
-  { value: 'status', label: 'Status' },
-  { value: 'time', label: 'Time of day' },
-  { value: 'category', label: 'Instructions (category)' },
-];
+const SEARCH_PLACEHOLDER = 'Search by pet name or task...';
 
 const CATEGORY_ICON: Record<CareType, typeof Utensils> = {
   Feeding: Utensils,
@@ -126,20 +120,7 @@ function statusBadgeClass(status: CareLogEntryStatus): string {
   }
 }
 
-function columnsForGroupBy(groupBy: GroupBy): string[] {
-  if (groupBy === 'status') return STATUS_COLUMNS;
-  if (groupBy === 'time') return TIME_COLUMNS;
-  return CATEGORY_COLUMNS;
-}
-
-function rowMatchesColumn(row: Row, groupBy: GroupBy, column: string): boolean {
-  if (groupBy === 'status') return row.entry.status === column;
-  if (groupBy === 'time')
-    return (row.entry.time_block ?? 'Unscheduled') === column;
-  return row.entry.care_type === column;
-}
-
-function columnBorderClass(groupBy: GroupBy, column: string): string {
+function columnBorderClass(groupBy: string, column: string): string {
   if (groupBy === 'status') {
     switch (column as CareLogEntryStatus) {
       case 'Backlog':
@@ -167,12 +148,6 @@ function columnBorderClass(groupBy: GroupBy, column: string): string {
     }
   }
   return styles.columnNeutral;
-}
-
-function timeBlockIndex(timeBlock: MealTime | null): number {
-  return timeBlock
-    ? TIME_BLOCK_ORDER.indexOf(timeBlock)
-    : TIME_BLOCK_ORDER.length;
 }
 
 function formatShortDate(isoDate: string): string {
@@ -232,6 +207,21 @@ function isReadOnlyStatus(status: CareLogEntryStatus): boolean {
   return status === 'Backlog' || status === 'Missed';
 }
 
+/** The checkbox's own next step, as a menu label - null for the read-only
+ * statuses, which the menu then simply omits. */
+function statusActionLabel(status: CareLogEntryStatus): string | null {
+  switch (status) {
+    case 'Pending':
+      return 'Start';
+    case 'In Progress':
+      return 'Mark complete';
+    case 'Completed':
+      return 'Reopen';
+    default:
+      return null;
+  }
+}
+
 /**
  * Boarding Checklist Kanban - interaction redesign. The circular checkbox is
  * now the only control on a card (no separate Start/Back-to-Pending
@@ -257,10 +247,20 @@ function isReadOnlyStatus(status: CareLogEntryStatus): boolean {
  * `stays` field went missing). `replaceEntry` below still merges rather than
  * replaces, as defense in depth against any future response that isn't
  * fully joined.
+ *
+ * Config-menu consistency change: the toolbar is now the same FilterSortBar
+ * + ViewSwitcher as My Bookings / Activity Log (Table, List, Gallery,
+ * Board - Board grouped by Status stays the default, so the page opens
+ * looking the same). Table and List rows carry a visible "..." menu;
+ * Gallery and Board cards open the same menu by right-click /
+ * press-and-hold. The menu repeats the checkbox's own next step, toggles
+ * details, and offers "Open this booking" (see `stayId`).
  */
 export function BoardingChecklistKanban({
   accessToken,
   petId,
+  stayId,
+  onOpenBooking,
 }: BoardingChecklistKanbanProps) {
   const [entries, setEntries] = useState<CareLogEntry[]>([]);
   const [petNames, setPetNames] = useState<Record<string, string>>({});
@@ -270,29 +270,44 @@ export function BoardingChecklistKanban({
   const [stayTypeTab, setStayTypeTab] = useState<StayTypeTab>(
     petId ? 'Daycare' : 'Hotel'
   );
-  const [dateRangePreset, setDateRangePreset] =
-    useState<DateRangePreset>('today');
-  const [customDate, setCustomDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [categoryFilter, setCategoryFilter] = useState<CareTypeFilter>('All');
-  const [groupBy, setGroupBy] = useState<GroupBy>('status');
+  const [filterTiles, setFilterTiles] = useState<FilterTile[]>([
+    DEFAULT_DATE_TILE,
+  ]);
+  const [sortTile, setSortTile] = useState<SortTile | null>(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('board');
+  const [groupAxisId, setGroupAxisId] = useState('status');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
-  const dateRange = useMemo(
-    () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
-    [dateRangePreset, customDate]
+  // A booking's own scope ignores the Date tile entirely - a multi-day Hotel
+  // stay should show every one of its days, not just today's slice.
+  const visibleTiles = useMemo(
+    () =>
+      stayId
+        ? filterTiles.filter((tile) => tile.fieldId !== 'date')
+        : filterTiles,
+    [filterTiles, stayId]
   );
-  const showDateBadge = dateRangePreset !== 'today';
+  const dateTile = visibleTiles.find((tile) => tile.fieldId === 'date');
+  // Keyed on the Date tile alone - every other tile filters client-side, so
+  // adding a Status/Pet/etc. tile must not trigger a refetch.
+  const dateTileKey = JSON.stringify(dateTile?.value ?? null);
+  const serverParams = useMemo(() => {
+    if (stayId) return { dateFrom: ALL_DATES_FROM };
+    const value = JSON.parse(dateTileKey) as FilterValue;
+    return deriveChecklistServerParams(
+      value ? [{ fieldId: 'date', value }] : []
+    );
+  }, [dateTileKey, stayId]);
+
+  const showDateBadge =
+    (dateTile?.value as DateRangeValue | undefined)?.preset !== 'today';
 
   useEffect(() => {
     let isMounted = true;
 
-    void getCareLogEntries(accessToken, {
-      dateFrom: dateRange.from ?? undefined,
-      dateTo: dateRange.to ?? undefined,
-    }).then((result) => {
+    void getCareLogEntries(accessToken, serverParams).then((result) => {
       if (!isMounted) return;
       setIsLoading(false);
 
@@ -329,7 +344,7 @@ export function BoardingChecklistKanban({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, dateRange.from, dateRange.to]);
+  }, [accessToken, serverParams]);
 
   function replaceEntry(updated: CareLogEntry) {
     setEntries((prev) =>
@@ -375,127 +390,291 @@ export function BoardingChecklistKanban({
     });
   }
 
-  const stayAndCategoryFiltered = useMemo(
+  const scopedEntries = useMemo(
     () =>
       entries.filter((entry) => {
+        if (stayId) return entry.stay_id === stayId;
         if (entry.stays?.stay_type !== stayTypeTab) return false;
         if (petId && entry.stays?.pet_id !== petId) return false;
-        if (categoryFilter !== 'All' && entry.care_type !== categoryFilter) {
-          return false;
-        }
         return true;
       }),
-    [entries, stayTypeTab, petId, categoryFilter]
+    [entries, stayTypeTab, petId, stayId]
   );
 
   const rows = useMemo<Row[]>(
     () =>
-      stayAndCategoryFiltered.map((entry) => ({
+      scopedEntries.map((entry) => ({
         entry,
         petName: entry.stays?.pet_id
           ? (petNames[entry.stays.pet_id] ?? 'Pet')
           : 'Pet',
       })),
-    [stayAndCategoryFiltered, petNames]
+    [scopedEntries, petNames]
   );
 
-  const {
-    search,
-    setSearch,
-    sortKey,
-    setSortKey,
-    result: filteredAndSorted,
-  } = useSearchAndSort<Row, SortKey>({
-    items: rows,
-    matchesQuery: (row, query) =>
-      row.petName.toLowerCase().includes(query) ||
-      row.entry.description.toLowerCase().includes(query),
-    comparators: {
-      soonest: (a, b) => {
-        const dateDiff = a.entry.scheduled_date.localeCompare(
-          b.entry.scheduled_date
-        );
-        return dateDiff !== 0
-          ? dateDiff
-          : timeBlockIndex(a.entry.time_block) -
-              timeBlockIndex(b.entry.time_block);
-      },
-      latest: (a, b) => {
-        const dateDiff = b.entry.scheduled_date.localeCompare(
-          a.entry.scheduled_date
-        );
-        return dateDiff !== 0
-          ? dateDiff
-          : timeBlockIndex(b.entry.time_block) -
-              timeBlockIndex(a.entry.time_block);
-      },
-      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
-    },
-    initialSortKey: 'soonest',
-  });
+  const filterFields = useMemo(() => {
+    const fields = buildChecklistFilterFields(rows);
+    return stayId ? fields.filter((field) => field.id !== 'date') : fields;
+  }, [rows, stayId]);
 
-  const filterChips = useMemo(() => {
-    const chips: { id: string; label: string; onClear: () => void }[] = [];
+  const visibleRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const searched = query
+      ? rows.filter((row) => matchesChecklistQuery(row, query))
+      : rows;
+    const filtered = applyChecklistFilters(searched, visibleTiles);
+    return [...filtered].sort(
+      CHECKLIST_COMPARATORS[deriveChecklistSortKey(sortTile)]
+    );
+  }, [rows, search, visibleTiles, sortTile]);
 
-    if (dateRangePreset !== 'today') {
-      chips.push({
-        id: 'date',
-        label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
-        onClear: () => setDateRangePreset('today'),
-      });
-    }
-    if (categoryFilter !== 'All') {
-      chips.push({
-        id: 'category',
-        label: `Category: ${categoryFilter}`,
-        onClear: () => setCategoryFilter('All'),
-      });
-    }
-    if (groupBy !== 'status') {
-      chips.push({
-        id: 'groupBy',
-        label: `Group by: ${
-          GROUP_BY_OPTIONS.find((option) => option.value === groupBy)?.label ??
-          groupBy
-        }`,
-        onClear: () => setGroupBy('status'),
-      });
-    }
-    if (search.trim() !== '') {
-      chips.push({
-        id: 'search',
-        label: `Search: "${search.trim()}"`,
-        onClear: () => setSearch(''),
-      });
-    }
-    if (sortKey !== 'soonest') {
-      chips.push({
-        id: 'sort',
-        label:
-          SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
-          sortKey,
-        onClear: () => setSortKey('soonest'),
-      });
-    }
+  const activeGroupAxis =
+    CHECKLIST_GROUP_BY_AXES.find((axis) => axis.id === groupAxisId) ??
+    CHECKLIST_GROUP_BY_AXES[0];
+  const groups = useGroupBy(visibleRows, activeGroupAxis);
 
-    return chips;
-  }, [
-    dateRangePreset,
-    categoryFilter,
-    groupBy,
-    search,
-    sortKey,
-    setSearch,
-    setSortKey,
-  ]);
+  function handleAddFilter(fieldId: string) {
+    const field = filterFields.find((f) => f.id === fieldId);
+    if (!field) return;
+    setFilterTiles((prev) => [...prev, { fieldId, value: field.defaultValue }]);
+  }
 
-  const columns = columnsForGroupBy(groupBy);
-
-  function rowsForColumn(column: string): Row[] {
-    return filteredAndSorted.filter((row) =>
-      rowMatchesColumn(row, groupBy, column)
+  function handleChangeFilter(fieldId: string, value: FilterValue) {
+    setFilterTiles((prev) =>
+      prev.map((tile) => (tile.fieldId === fieldId ? { ...tile, value } : tile))
     );
   }
+
+  function handleRemoveFilter(fieldId: string) {
+    setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  function taskMenuItems({ entry }: Row): MoreOptionsMenuItem[] {
+    const items: MoreOptionsMenuItem[] = [];
+    const actionLabel = statusActionLabel(entry.status);
+
+    if (actionLabel) {
+      items.push({
+        label: actionLabel,
+        onSelect: () => handleCheckboxClick(entry),
+      });
+    }
+    // The table has no expandable detail panel to toggle.
+    if (view !== 'table') {
+      items.push({
+        label: expandedIds.has(entry.id) ? 'Hide details' : 'Show details',
+        onSelect: () => toggleExpanded(entry.id),
+      });
+    }
+    if (onOpenBooking) {
+      items.push(
+        stayId
+          ? {
+              label: 'Show all bookings',
+              onSelect: () => onOpenBooking(null),
+            }
+          : {
+              label: 'Open this booking',
+              onSelect: () => onOpenBooking(entry.stay_id),
+            }
+      );
+    }
+
+    return items;
+  }
+
+  function menuLabel({ entry, petName }: Row): string {
+    return `Actions for ${petName}: ${entry.description}`;
+  }
+
+  function renderCheckbox(entry: CareLogEntry) {
+    const isCompleted = entry.status === 'Completed';
+
+    return (
+      <button
+        type="button"
+        aria-label={checkboxAriaLabel(entry)}
+        aria-pressed={isCompleted}
+        disabled={
+          pendingActionId === entry.id || isReadOnlyStatus(entry.status)
+        }
+        className={`${styles.checkbox} ${
+          isCompleted ? styles.checkboxChecked : ''
+        } ${entry.status === 'In Progress' ? styles.checkboxInProgress : ''} ${
+          entry.status === 'Missed' ? styles.checkboxMissed : ''
+        } ${entry.status === 'Backlog' ? styles.checkboxBacklog : ''}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleCheckboxClick(entry);
+        }}
+      />
+    );
+  }
+
+  function renderCategoryBadge(entry: CareLogEntry) {
+    const Icon = CATEGORY_ICON[entry.care_type];
+    return (
+      <span
+        className={`${styles.categoryBadge} ${categoryBadgeClass(
+          entry.care_type
+        )}`}
+      >
+        <Icon size={11} aria-hidden="true" />
+        {entry.care_type}
+      </span>
+    );
+  }
+
+  function renderStatusBadge(entry: CareLogEntry) {
+    return (
+      <span
+        className={`${styles.statusBadge} ${statusBadgeClass(entry.status)}`}
+      >
+        {entry.status}
+      </span>
+    );
+  }
+
+  /** Checkbox + expandable body - shared by the Board, Gallery and List
+   * views (only the surrounding card/row chrome differs). */
+  function renderTaskContent({ entry, petName }: Row) {
+    const isMissed = entry.status === 'Missed';
+    const isBacklog = entry.status === 'Backlog';
+    const isExpanded = expandedIds.has(entry.id);
+    const [title, detail] = splitDescription(entry.description);
+    // A status column already says the status - every other layout needs
+    // the badge.
+    const showStatusBadge = view !== 'board' || groupAxisId !== 'status';
+
+    return (
+      <div className={styles.cardHeader}>
+        {renderCheckbox(entry)}
+        <div
+          className={styles.cardBody}
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details: ${entry.description}`}
+          onClick={() => toggleExpanded(entry.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleExpanded(entry.id);
+            }
+          }}
+        >
+          <span className={styles.petName}>{petName}</span>
+          <span className={styles.description}>{title}</span>
+          {detail ? (
+            <span className={styles.descriptionDetail}>{detail}</span>
+          ) : null}
+          <span className={styles.metaRow}>
+            {renderCategoryBadge(entry)}
+            {entry.time_block ? (
+              <span className={styles.timeBadge}>{entry.time_block}</span>
+            ) : null}
+            {showDateBadge ? (
+              <span className={styles.dateBadge}>
+                {formatShortDate(entry.scheduled_date)}
+              </span>
+            ) : null}
+            {showStatusBadge ? renderStatusBadge(entry) : null}
+          </span>
+
+          {isExpanded ? (
+            <div className={styles.expandedDetails}>
+              <span>Scheduled: {formatFullDate(entry.scheduled_date)}</span>
+              {entry.status === 'Completed' ? (
+                <span>
+                  Completed
+                  {entry.completed_by_staff?.display_name
+                    ? ` by ${entry.completed_by_staff.display_name}`
+                    : ''}
+                  {entry.completed_at
+                    ? ` on ${formatDateTime(entry.completed_at)}`
+                    : ''}
+                </span>
+              ) : null}
+              {isMissed ? (
+                <span className={styles.missedNote}>
+                  This task&apos;s date has passed - it can no longer be
+                  updated.
+                </span>
+              ) : null}
+              {isBacklog ? (
+                <span className={styles.backlogNote}>
+                  Not due until {formatFullDate(entry.scheduled_date)} - it will
+                  move to Pending automatically.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // Gallery/Board: right-click / press-and-hold opens the task menu - a
+  // kebab on every card in a dense grid is visual noise (same precedent as
+  // Staff/Customer Management and My Bookings).
+  function renderContextCard(row: Row) {
+    return (
+      <CardContextMenu label={menuLabel(row)} items={taskMenuItems(row)}>
+        <div className={styles.card}>{renderTaskContent(row)}</div>
+      </CardContextMenu>
+    );
+  }
+
+  // Table/List: a persistent "..." trigger.
+  function renderRowMenu(row: Row) {
+    return (
+      <MoreOptionsMenu label={menuLabel(row)} items={taskMenuItems(row)} />
+    );
+  }
+
+  const tableColumns: DataTableColumn<Row>[] = [
+    {
+      id: 'done',
+      header: 'Done',
+      render: (row) => renderCheckbox(row.entry),
+    },
+    { id: 'pet', header: 'Pet', render: (row) => row.petName },
+    {
+      id: 'task',
+      header: 'Task',
+      render: (row) => {
+        const [title, detail] = splitDescription(row.entry.description);
+        return (
+          <span className={styles.tableTask}>
+            <span className={styles.description}>{title}</span>
+            {detail ? (
+              <span className={styles.descriptionDetail}>{detail}</span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      render: (row) => renderCategoryBadge(row.entry),
+    },
+    {
+      id: 'time',
+      header: 'Time',
+      render: (row) => row.entry.time_block ?? '—',
+    },
+    {
+      id: 'date',
+      header: 'Date',
+      render: (row) => formatShortDate(row.entry.scheduled_date),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: (row) => renderStatusBadge(row.entry),
+    },
+  ];
 
   if (isLoading) {
     return <p className={styles.copy}>Loading the Boarding Checklist...</p>;
@@ -509,9 +688,32 @@ export function BoardingChecklistKanban({
     );
   }
 
+  const scopedStay = stayId ? rows[0] : undefined;
+  const emptyMessage = 'No tasks match this filter.';
+
   return (
     <div className={styles.wrapper}>
-      {!petId ? (
+      {stayId ? (
+        <div className={styles.scopeBar}>
+          <span>
+            Showing only{' '}
+            {scopedStay
+              ? `${scopedStay.petName}'s ${
+                  scopedStay.entry.stays?.stay_type ?? ''
+                } booking`
+              : 'one booking'}
+          </span>
+          {onOpenBooking ? (
+            <button
+              type="button"
+              className={styles.scopeClear}
+              onClick={() => onOpenBooking(null)}
+            >
+              Show all bookings
+            </button>
+          ) : null}
+        </div>
+      ) : !petId ? (
         <div className={styles.tabs} role="tablist">
           <button
             type="button"
@@ -536,187 +738,110 @@ export function BoardingChecklistKanban({
         </div>
       ) : null}
 
-      <QueueFilterBar
-        dateRangePreset={dateRangePreset}
-        onDateRangePresetChange={setDateRangePreset}
-        customDate={customDate}
-        onCustomDateChange={setCustomDate}
-        statusValue={categoryFilter}
-        onStatusChange={(value) => setCategoryFilter(value as CareTypeFilter)}
-        statusOptions={CATEGORY_OPTIONS}
-        statusLabel="Category"
+      <FilterSortBar
+        filterFields={filterFields}
+        filterTiles={visibleTiles}
+        onAddFilter={handleAddFilter}
+        onChangeFilter={handleChangeFilter}
+        onRemoveFilter={handleRemoveFilter}
+        sortFields={CHECKLIST_SORT_FIELDS}
+        sortTile={sortTile}
+        onChangeSort={setSortTile}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={SEARCH_PLACEHOLDER}
       >
-        <SearchSortBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search by pet name or task..."
-          sortValue={sortKey}
-          onSortChange={setSortKey}
-          sortOptions={SORT_OPTIONS}
-        />
-        <label className={styles.toggleField}>
-          <span>Group by</span>
-          <select
-            className={styles.groupBySelect}
-            value={groupBy}
-            onChange={(event) => setGroupBy(event.target.value as GroupBy)}
-            aria-label="Group by"
-          >
-            {GROUP_BY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </QueueFilterBar>
-
-      <ActiveFilterChips chips={filterChips} />
+        <div className={styles.viewControls}>
+          <ViewSwitcher
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={setView}
+            ariaLabel="Checklist view"
+          />
+          {view === 'board' ? (
+            <label className={styles.toggleField}>
+              <span>Group by</span>
+              <select
+                className={styles.groupBySelect}
+                value={groupAxisId}
+                onChange={(event) => setGroupAxisId(event.target.value)}
+                aria-label="Group by"
+              >
+                {CHECKLIST_GROUP_BY_AXES.map((axis) => (
+                  <option key={axis.id} value={axis.id}>
+                    {axis.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      </FilterSortBar>
 
       <p className={styles.resultCount}>
-        {filteredAndSorted.length} task
-        {filteredAndSorted.length === 1 ? '' : 's'}
+        {visibleRows.length} task
+        {visibleRows.length === 1 ? '' : 's'}
       </p>
 
-      <div
-        className={styles.board}
-        style={{ '--column-count': columns.length } as CSSProperties}
-      >
-        {columns.map((column) => {
-          const columnRows = rowsForColumn(column);
-
-          return (
+      {view === 'table' ? (
+        <DataTable
+          columns={tableColumns}
+          rows={visibleRows}
+          getRowKey={(row) => row.entry.id}
+          renderRowActions={renderRowMenu}
+          emptyMessage={emptyMessage}
+        />
+      ) : view === 'list' ? (
+        <DataList
+          items={visibleRows}
+          getRowKey={(row) => row.entry.id}
+          renderItem={(row) => (
+            <div className={styles.listRow}>
+              <div className={styles.listMain}>{renderTaskContent(row)}</div>
+              {renderRowMenu(row)}
+            </div>
+          )}
+          emptyMessage={emptyMessage}
+        />
+      ) : view === 'gallery' ? (
+        visibleRows.length === 0 ? (
+          <p className={styles.copy}>{emptyMessage}</p>
+        ) : (
+          <ul className={styles.gallery}>
+            {visibleRows.map((row) => (
+              <li key={row.entry.id}>{renderContextCard(row)}</li>
+            ))}
+          </ul>
+        )
+      ) : (
+        <div
+          className={styles.board}
+          style={{ '--column-count': groups.length } as CSSProperties}
+        >
+          {groups.map(({ column, items }) => (
             <div
               key={column}
-              className={`${styles.column} ${columnBorderClass(groupBy, column)}`}
+              className={`${styles.column} ${columnBorderClass(
+                activeGroupAxis.id,
+                column
+              )}`}
             >
               <h2 className={styles.columnTitle}>
                 {column}
-                <span className={styles.columnCount}>{columnRows.length}</span>
+                <span className={styles.columnCount}>{items.length}</span>
               </h2>
 
-              {columnRows.length === 0 ? (
+              {items.length === 0 ? (
                 <p className={styles.copy}>Nothing here.</p>
               ) : null}
 
-              {columnRows.map(({ entry, petName }) => {
-                const Icon = CATEGORY_ICON[entry.care_type];
-                const isBusy = pendingActionId === entry.id;
-                const isCompleted = entry.status === 'Completed';
-                const isMissed = entry.status === 'Missed';
-                const isBacklog = entry.status === 'Backlog';
-                const isExpanded = expandedIds.has(entry.id);
-                const [title, detail] = splitDescription(entry.description);
-
-                return (
-                  <div key={entry.id} className={styles.card}>
-                    <div className={styles.cardHeader}>
-                      <button
-                        type="button"
-                        aria-label={checkboxAriaLabel(entry)}
-                        aria-pressed={isCompleted}
-                        disabled={isBusy || isReadOnlyStatus(entry.status)}
-                        className={`${styles.checkbox} ${
-                          isCompleted ? styles.checkboxChecked : ''
-                        } ${entry.status === 'In Progress' ? styles.checkboxInProgress : ''} ${
-                          isMissed ? styles.checkboxMissed : ''
-                        } ${isBacklog ? styles.checkboxBacklog : ''}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleCheckboxClick(entry);
-                        }}
-                      />
-                      <div
-                        className={styles.cardBody}
-                        role="button"
-                        tabIndex={0}
-                        aria-expanded={isExpanded}
-                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details: ${entry.description}`}
-                        onClick={() => toggleExpanded(entry.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            toggleExpanded(entry.id);
-                          }
-                        }}
-                      >
-                        <span className={styles.petName}>{petName}</span>
-                        <span className={styles.description}>{title}</span>
-                        {detail ? (
-                          <span className={styles.descriptionDetail}>
-                            {detail}
-                          </span>
-                        ) : null}
-                        <span className={styles.metaRow}>
-                          <span
-                            className={`${styles.categoryBadge} ${categoryBadgeClass(
-                              entry.care_type
-                            )}`}
-                          >
-                            <Icon size={11} aria-hidden="true" />
-                            {entry.care_type}
-                          </span>
-                          {entry.time_block ? (
-                            <span className={styles.timeBadge}>
-                              {entry.time_block}
-                            </span>
-                          ) : null}
-                          {showDateBadge ? (
-                            <span className={styles.dateBadge}>
-                              {formatShortDate(entry.scheduled_date)}
-                            </span>
-                          ) : null}
-                          {groupBy !== 'status' ? (
-                            <span
-                              className={`${styles.statusBadge} ${statusBadgeClass(
-                                entry.status
-                              )}`}
-                            >
-                              {entry.status}
-                            </span>
-                          ) : null}
-                        </span>
-
-                        {isExpanded ? (
-                          <div className={styles.expandedDetails}>
-                            <span>
-                              Scheduled: {formatFullDate(entry.scheduled_date)}
-                            </span>
-                            {entry.status === 'Completed' ? (
-                              <span>
-                                Completed
-                                {entry.completed_by_staff?.display_name
-                                  ? ` by ${entry.completed_by_staff.display_name}`
-                                  : ''}
-                                {entry.completed_at
-                                  ? ` on ${formatDateTime(entry.completed_at)}`
-                                  : ''}
-                              </span>
-                            ) : null}
-                            {isMissed ? (
-                              <span className={styles.missedNote}>
-                                This task&apos;s date has passed - it can no
-                                longer be updated.
-                              </span>
-                            ) : null}
-                            {isBacklog ? (
-                              <span className={styles.backlogNote}>
-                                Not due until{' '}
-                                {formatFullDate(entry.scheduled_date)} - it will
-                                move to Pending automatically.
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {items.map((row) => (
+                <div key={row.entry.id}>{renderContextCard(row)}</div>
+              ))}
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
