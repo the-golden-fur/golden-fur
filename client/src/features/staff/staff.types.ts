@@ -92,6 +92,24 @@ export interface UnavailabilityBlock {
    * any manager at the branch still can. */
   requested_reviewer_id: string | null;
   leave_type: UnavailabilityLeaveType;
+  /** True only for a Rest Day row the Auto Build bulk flow created - see
+   * AutoBuildAssignment/clearAutoBuildSchedule. */
+  created_by_auto_build: boolean;
+}
+
+/** Auto Build Monthly Schedule - one staff member's proposed (preview) or
+ * final (commit) Rest Day dates for the requested month. */
+export interface AutoBuildAssignment {
+  staff_id: string;
+  /** YYYY-MM-DD, branch-local. */
+  dates: string[];
+}
+
+export interface AutoBuildPreviewResult {
+  assignments: AutoBuildAssignment[];
+  /** restDaysPerWeek * weeks-touching-this-month - compare against each
+   * assignment's dates.length to show a shortfall in the preview grid. */
+  targetPerStaff: number;
 }
 
 export interface UnavailabilityBlockPayload {
