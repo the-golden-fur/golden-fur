@@ -371,6 +371,16 @@ export async function updateCageController(
       .json({ error: 'Invalid payload', details: parsed.error.issues });
   }
 
+  // Only Superadmin may reassign a cage to a different branch - everyone
+  // else keeps managing only their own branch's inventory. req.user.role is
+  // freshly resolved by the requireRole([...HOTEL_ADMIN_ROLES]) middleware
+  // already on this route, not a client-supplied claim.
+  if (parsed.data.branch_id !== undefined && req.user?.role !== 'Superadmin') {
+    return res
+      .status(403)
+      .json({ error: 'Only Superadmin can reassign a cage to a different branch.' });
+  }
+
   try {
     const cage = await updateCage({
       cageId: paramId(req, 'id'),
@@ -378,6 +388,7 @@ export async function updateCageController(
       cageLabel: parsed.data.cage_label,
       size: parsed.data.size,
       petTypes: parsed.data.pet_types,
+      newBranchId: parsed.data.branch_id,
     });
 
     return res.status(200).json({ cage });

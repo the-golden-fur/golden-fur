@@ -167,6 +167,12 @@ interface UpdateCageParams {
   cageLabel?: string;
   size?: CageSize;
   petTypes?: string[];
+  /** Superadmin-only (enforced by the controller) - moves this cage to a
+   * different branch. The `branchId` above still locates the row (the
+   * cage's *current* branch), so this can only ever move a cage that's
+   * already visible in the caller's own branch's list, never reach into
+   * another branch's inventory directly. */
+  newBranchId?: string;
 }
 
 /** Custom change (Cage CRUD): edits a cage's label/size - status changes
@@ -183,6 +189,7 @@ export async function updateCage({
   cageLabel,
   size,
   petTypes,
+  newBranchId,
 }: UpdateCageParams): Promise<Cage> {
   if (petTypes !== undefined && petTypes.length === 0) {
     throwWithStatus(400, 'At least one pet type is required');
@@ -195,6 +202,7 @@ export async function updateCage({
   };
   if (cageLabel !== undefined) updates.cage_label = cageLabel;
   if (size !== undefined) updates.size = size;
+  if (newBranchId !== undefined) updates.branch_id = newBranchId;
 
   const { data, error } = await supabase
     .from('cages')

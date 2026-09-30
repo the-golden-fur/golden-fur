@@ -27,8 +27,11 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { listPetTypes } from '../../../maintenance/api/maintenance.api';
-import type { PetTypeRow } from '../../../maintenance/maintenance.types';
+import { listBranches, listPetTypes } from '../../../maintenance/api/maintenance.api';
+import type {
+  BranchSummary,
+  PetTypeRow,
+} from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   archiveCage,
@@ -192,6 +195,10 @@ export function AdminCagesPage() {
   const [configuringCage, setConfiguringCage] = useState<Cage | null>(null);
   const [configForm, setConfigForm] =
     useState<CreateFormState>(EMPTY_CREATE_FORM);
+  // Superadmin-only reassignment target - kept separate from configForm
+  // since "Add cage" never needs a branch picker at all.
+  const [configBranchId, setConfigBranchId] = useState<string | null>(null);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [configError, setConfigError] = useState<string | null>(null);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -242,6 +249,23 @@ export function AdminCagesPage() {
       isMounted = false;
     };
   }, [accessToken]);
+
+  // Only Superadmin can reassign a cage's branch, so only they need the
+  // branch list at all.
+  useEffect(() => {
+    if (viewerRole !== 'Superadmin') return;
+
+    let isMounted = true;
+
+    void listBranches().then((result) => {
+      if (!isMounted || !result.data) return;
+      setBranches(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [viewerRole]);
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
@@ -327,11 +351,13 @@ export function AdminCagesPage() {
       size: cage.size,
       petTypes: cage.pet_types,
     });
+    setConfigBranchId(cage.branch_id);
     setConfigError(null);
   }
 
   function closeConfigure() {
     setConfiguringCage(null);
+    setConfigBranchId(null);
     setConfigError(null);
   }
 
@@ -353,12 +379,16 @@ export function AdminCagesPage() {
     setIsConfiguring(true);
     setConfigError(null);
 
+    const isReassigning =
+      configBranchId !== null && configBranchId !== configuringCage.branch_id;
+
     const result = await updateCage(
       configuringCage.id,
       {
         cage_label: configForm.cageLabel.trim(),
         size: configForm.size,
         pet_types: configForm.petTypes,
+        ...(isReassigning ? { branch_id: configBranchId } : {}),
       },
       accessToken
     );
@@ -370,8 +400,17 @@ export function AdminCagesPage() {
       return;
     }
 
-    replaceCage(result.data);
-    setMessage('Cage updated.');
+    if (isReassigning) {
+      // No longer belongs to the viewer's own-branch list.
+      setCages((prev) => prev.filter((cage) => cage.id !== result.data!.id));
+      const branchName =
+        branches.find((branch) => branch.id === result.data!.branch_id)
+          ?.name ?? 'the selected branch';
+      setMessage(`Cage moved to ${branchName}.`);
+    } else {
+      replaceCage(result.data);
+      setMessage('Cage updated.');
+    }
     closeConfigure();
   }
 
@@ -774,6 +813,23 @@ export function AdminCagesPage() {
             petTypeOptions={petTypeOptions}
             styles={styles}
           />
+
+          {viewerRole === 'Superadmin' ? (
+            <label className={styles.field}>
+              <span className={styles.label}>Branch</span>
+              <select
+                className={styles.input}
+                value={configBranchId ?? ''}
+                onChange={(event) => setConfigBranchId(event.target.value)}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           {configError ? (
             <p className={styles.errorBanner} role="alert">

@@ -195,6 +195,29 @@ describe('cageStatus.service (#78)', () => {
       expect(cage.pet_types).toEqual(['Dog']);
     });
 
+    it('Custom change (Superadmin cage reassignment): includes branch_id in the update payload when newBranchId is given', async () => {
+      queueFromResults(
+        {
+          data: { id: 'c1', cage_label: 'Label', size: 'M', branch_id: 'branch-2' },
+          error: null,
+        }, // cages update
+        { data: [{ pet_type: 'Dog' }], error: null } // cage_pet_types select
+      );
+
+      const cage = await updateCage({
+        cageId: 'c1',
+        branchId: 'branch-1',
+        newBranchId: 'branch-2',
+      });
+
+      expect(cage.branch_id).toBe('branch-2');
+
+      const cagesUpdateBuilder = vi.mocked(supabase.from).mock.results[0].value;
+      expect(cagesUpdateBuilder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ branch_id: 'branch-2' })
+      );
+    });
+
     it('Custom change (cage pet-type support): replaces pet_types membership wholesale when given', async () => {
       queueFromResults(
         { data: [], error: null }, // archived pet type check
