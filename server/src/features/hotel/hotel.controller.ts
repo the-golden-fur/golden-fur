@@ -376,9 +376,9 @@ export async function updateCageController(
   // freshly resolved by the requireRole([...HOTEL_ADMIN_ROLES]) middleware
   // already on this route, not a client-supplied claim.
   if (parsed.data.branch_id !== undefined && req.user?.role !== 'Superadmin') {
-    return res
-      .status(403)
-      .json({ error: 'Only Superadmin can reassign a cage to a different branch.' });
+    return res.status(403).json({
+      error: 'Only Superadmin can reassign a cage to a different branch.',
+    });
   }
 
   try {

@@ -660,7 +660,9 @@ describe('AdminCagesPage', () => {
         'token'
       )
     );
-    expect(await screen.findByText('Cage moved to Southwoods.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Cage moved to Southwoods.')
+    ).toBeInTheDocument();
     expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument();
   });
 });

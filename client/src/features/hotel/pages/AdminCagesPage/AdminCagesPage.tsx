@@ -27,7 +27,10 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { listBranches, listPetTypes } from '../../../maintenance/api/maintenance.api';
+import {
+  listBranches,
+  listPetTypes,
+} from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
   PetTypeRow,
@@ -404,8 +407,8 @@ export function AdminCagesPage() {
       // No longer belongs to the viewer's own-branch list.
       setCages((prev) => prev.filter((cage) => cage.id !== result.data!.id));
       const branchName =
-        branches.find((branch) => branch.id === result.data!.branch_id)
-          ?.name ?? 'the selected branch';
+        branches.find((branch) => branch.id === result.data!.branch_id)?.name ??
+        'the selected branch';
       setMessage(`Cage moved to ${branchName}.`);
     } else {
       replaceCage(result.data);

@@ -198,7 +198,12 @@ describe('cageStatus.service (#78)', () => {
     it('Custom change (Superadmin cage reassignment): includes branch_id in the update payload when newBranchId is given', async () => {
       queueFromResults(
         {
-          data: { id: 'c1', cage_label: 'Label', size: 'M', branch_id: 'branch-2' },
+          data: {
+            id: 'c1',
+            cage_label: 'Label',
+            size: 'M',
+            branch_id: 'branch-2',
+          },
           error: null,
         }, // cages update
         { data: [{ pet_type: 'Dog' }], error: null } // cage_pet_types select
