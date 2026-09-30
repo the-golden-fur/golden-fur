@@ -68,6 +68,7 @@ import {
   type BookingLookups,
 } from './bookingBrowserFields';
 import styles from './CustomerBookingsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -474,7 +475,7 @@ export function CustomerBookingsPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading your bookings...</p>
+        <LoadingState label="Loading your bookings..." />
       </main>
     );
   }

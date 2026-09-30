@@ -37,6 +37,7 @@ import {
   daysInMonth,
 } from './monthlyScheduleUtils';
 import styles from './MonthlySchedulePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
@@ -503,7 +504,7 @@ export function MonthlySchedulePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -668,7 +669,7 @@ export function MonthlySchedulePage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading schedule...</p>
+          <LoadingState label="Loading schedule..." />
         ) : viewMode === 'calendar' ? (
           <DataCalendar
             mode="month"

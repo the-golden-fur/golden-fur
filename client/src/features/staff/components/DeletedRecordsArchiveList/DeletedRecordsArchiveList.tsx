@@ -21,6 +21,7 @@ import {
   deriveArchiveSort,
 } from './archiveBrowserFields';
 import styles from './DeletedRecordsArchiveList.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const PAGE_SIZE = 20;
 
@@ -211,7 +212,7 @@ export function DeletedRecordsArchiveList({
       ) : null}
 
       {isLoading ? (
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       ) : loadError ? (
         <p className={styles.errorBanner} role="alert">
           {loadError}

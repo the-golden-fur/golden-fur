@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getPetHealthConditions } from '../../../customers/api/customer.api';
 import { upsertPetHealthConditions } from '../../api/veterinary.api';
 import styles from './HealthConditionsField.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface HealthConditionsFieldProps {
   petId: string;
@@ -67,7 +68,7 @@ export function HealthConditionsField({
     <div className={styles.field}>
       <span className={styles.label}>Known health conditions</span>
       {isLoading ? (
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState size="inline" />
       ) : (
         <>
           <textarea

@@ -7,6 +7,7 @@ import type {
 } from '../../booking.types';
 import { TimeSlotInput } from '../TimeSlotInput/TimeSlotInput';
 import styles from './SlotPicker.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface SelectedSlot {
   start: string;
@@ -318,7 +319,7 @@ export function SlotPicker({
           error state still surfaces, since "the availability fetch itself
           failed" isn't something the banner's own copy communicates. */}
       {isLoading && !lockToNow ? (
-        <p className={styles.copy}>Loading available times...</p>
+        <LoadingState label="Loading available times..." />
       ) : null}
 
       {error ? (

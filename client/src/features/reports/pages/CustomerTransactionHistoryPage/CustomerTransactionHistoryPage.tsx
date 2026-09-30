@@ -42,6 +42,7 @@ import {
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import type { PaymentStatus } from '../../../booking/booking.types';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'board';
 
@@ -344,7 +345,7 @@ export function CustomerTransactionHistoryPage() {
       ) : null}
 
       {isLoading ? (
-        <p className={styles.copy}>Loading transactions...</p>
+        <LoadingState label="Loading transactions..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

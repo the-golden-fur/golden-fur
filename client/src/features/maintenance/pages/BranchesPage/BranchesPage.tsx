@@ -48,6 +48,7 @@ import {
   matchesBranchQuery,
 } from './branchBrowserFields';
 import styles from './BranchesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Superadmin-only - deliberately narrower than every other maintenance
  * config page in this feature folder (all Admin+Superadmin), matching the
@@ -339,7 +340,7 @@ export function BranchesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -376,7 +377,7 @@ export function BranchesPage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading branches...</p>
+          <LoadingState label="Loading branches..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

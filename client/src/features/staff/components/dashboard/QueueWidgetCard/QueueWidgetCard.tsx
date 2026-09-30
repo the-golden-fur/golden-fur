@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import styles from './QueueWidgetCard.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface QueueWidgetCardProps {
   title: string;
@@ -34,7 +35,7 @@ export function QueueWidgetCard({
       <h2 className={styles.title}>{title}</h2>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

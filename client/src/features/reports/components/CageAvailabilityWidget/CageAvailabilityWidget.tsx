@@ -3,6 +3,7 @@ import { getCageOccupancyReport } from '../../api/reports.api';
 import type { CageOccupancyRow } from '../../reports.types';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import styles from './CageAvailabilityWidget.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface CageAvailabilityWidgetProps {
   branches: BranchSummary[];
@@ -87,7 +88,7 @@ export function CageAvailabilityWidget({
       <h2 className={styles.title}>Cage Availability</h2>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading cage availability...</p>
+        <LoadingState label="Loading cage availability..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

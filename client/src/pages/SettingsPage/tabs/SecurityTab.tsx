@@ -9,6 +9,7 @@ import type {
   MfaStatusResponse,
 } from '../../../shared/auth/mfa.types';
 import styles from '../SettingsPage.module.css';
+import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
 const METHOD_LABEL: Record<MfaMethod, string> = {
   authenticator: 'Authenticator app',
@@ -98,7 +99,7 @@ export function SecurityTab({
         Multi-Factor Authentication
       </h2>
       {status === null ? (
-        <p className={styles.copy}>Loading your MFA status...</p>
+        <LoadingState label="Loading your MFA status..." />
       ) : enrolledCount > 0 ? (
         <p className={styles.statusEnabled}>MFA is enabled on your account.</p>
       ) : isMandatoryRole ? (

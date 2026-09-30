@@ -54,6 +54,7 @@ import {
   type Row,
 } from './boardingChecklistBrowserFields';
 import styles from './BoardingChecklistKanban.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface BoardingChecklistKanbanProps {
   accessToken: string;
@@ -677,7 +678,7 @@ export function BoardingChecklistKanban({
   ];
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading the Boarding Checklist...</p>;
+    return <LoadingState label="Loading the Boarding Checklist..." />;
   }
 
   if (error) {

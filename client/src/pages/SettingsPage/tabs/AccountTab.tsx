@@ -13,6 +13,7 @@ import { passwordChangeSchema } from '../../../shared/auth/password.validator';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from '../SettingsPage.module.css';
+import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
 interface AccountTabProps {
   role: ThemeRole;
@@ -119,7 +120,7 @@ function UsernameForm({
         Used to log in - shown alongside your role in the navbar.
       </p>
       {isLoading ? (
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       ) : (
         <form
           className={styles.form}

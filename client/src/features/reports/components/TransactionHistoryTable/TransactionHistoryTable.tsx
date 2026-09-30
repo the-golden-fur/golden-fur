@@ -62,6 +62,7 @@ import {
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import type { PaymentStatus } from '../../../booking/booking.types';
 import styles from './TransactionHistoryTable.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ROW_TONE_CLASS = {
   due: styles.rowDue,
@@ -398,7 +399,7 @@ export function TransactionHistoryTable() {
   }
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {
@@ -468,7 +469,7 @@ export function TransactionHistoryTable() {
       ) : null}
 
       {isLoading ? (
-        <p className={styles.copy}>Loading transactions...</p>
+        <LoadingState label="Loading transactions..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

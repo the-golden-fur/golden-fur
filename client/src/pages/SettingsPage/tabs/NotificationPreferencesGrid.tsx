@@ -13,6 +13,7 @@ import {
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import type { NotificationEventType } from '../../../features/notifications/notifications.types';
 import styles from '../SettingsPage.module.css';
+import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
 interface NotificationPreferencesGridProps {
   role: ThemeRole;
@@ -162,7 +163,7 @@ export function NotificationPreferencesGrid({
   const events = EVENT_TYPES_BY_ROLE[role];
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading notification preferences...</p>;
+    return <LoadingState label="Loading notification preferences..." />;
   }
 
   return (

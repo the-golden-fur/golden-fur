@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listPetPrescriptions } from '../../../api/customer.api';
 import type { PetPrescriptionHistoryEntry } from '../../../customer.types';
 import styles from './PrescriptionList.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface PrescriptionListProps {
   petId: string;
@@ -54,7 +55,7 @@ export function PrescriptionList({
   }, [petId, accessToken]);
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading prescriptions...</p>;
+    return <LoadingState label="Loading prescriptions..." />;
   }
 
   if (error) {

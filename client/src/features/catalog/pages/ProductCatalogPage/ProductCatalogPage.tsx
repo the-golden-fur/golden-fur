@@ -9,6 +9,7 @@ import {
   updateProduct,
 } from '../../api/catalog.api';
 import { CatalogAdminPage } from '../../components/CatalogAdminPage/CatalogAdminPage';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
@@ -46,7 +47,7 @@ export function ProductCatalogPage() {
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {

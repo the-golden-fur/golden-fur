@@ -52,6 +52,7 @@ import {
   deriveStatusFilter,
 } from './consultationQueueFilterFields';
 import styles from './VeterinaryConsolePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Veterinarian',
@@ -538,7 +539,7 @@ export function VeterinaryConsolePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -592,7 +593,7 @@ export function VeterinaryConsolePage() {
         </div>
 
         {isLoading ? (
-          <p className={styles.copy}>Loading consultations...</p>
+          <LoadingState label="Loading consultations..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

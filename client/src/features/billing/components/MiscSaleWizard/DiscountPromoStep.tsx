@@ -6,6 +6,7 @@ import type {
 } from '../../billing.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import styles from './MiscSaleWizard.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface DiscountPromoStepProps {
   options: MiscSaleOptions | null;
@@ -69,7 +70,7 @@ export function DiscountPromoStep({
           {optionsError}
         </p>
       ) : !options ? (
-        <p className={styles.copy}>Loading discounts and promos...</p>
+        <LoadingState label="Loading discounts and promos..." size="inline" />
       ) : (
         <>
           <fieldset className={styles.optionGroup}>

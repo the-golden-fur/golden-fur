@@ -36,6 +36,7 @@ import {
   PATIENT_SORT_FIELDS,
 } from './myPatientsBrowserFields';
 import styles from './MyPatientsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** "My Patients" is a personal roster, unlike the Consultation Queue (which
  * Admin/Supervisor/Superadmin can also view) - only the Veterinarian who
@@ -293,7 +294,7 @@ export function MyPatientsPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -327,7 +328,7 @@ export function MyPatientsPage() {
         </div>
 
         {isLoading ? (
-          <p className={styles.copy}>Loading patients...</p>
+          <LoadingState label="Loading patients..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

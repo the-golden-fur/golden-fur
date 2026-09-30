@@ -54,6 +54,7 @@ import {
   PET_TYPE_SORT_FIELDS,
 } from './petTypeBrowserFields';
 import styles from './AdminPetTypesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
@@ -465,7 +466,7 @@ export function AdminPetTypesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -499,7 +500,7 @@ export function AdminPetTypesPage() {
             Existing pet types
           </h2>
           {isLoading ? (
-            <p className={styles.copy}>Loading pet types...</p>
+            <LoadingState label="Loading pet types..." />
           ) : loadError ? (
             <p className={styles.errorBanner} role="alert">
               {loadError}

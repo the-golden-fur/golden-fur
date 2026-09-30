@@ -25,6 +25,7 @@ import { listBookings } from '../../../booking/api/booking.api';
 import type { Booking, BookingStatus } from '../../../booking/booking.types';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
@@ -310,7 +311,7 @@ export function DaycareQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -352,7 +353,7 @@ export function DaycareQueuePage() {
 
         <ActiveFilterChips chips={filterChips} />
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">

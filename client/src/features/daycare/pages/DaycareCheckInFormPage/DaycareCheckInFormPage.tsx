@@ -7,6 +7,7 @@ import type { Booking } from '../../../booking/booking.types';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from '../DaycareQueuePage/daycareQueueRoles';
 import { DaycareCheckInPanel } from '../DaycareQueuePage/DaycareCheckInPanel';
 import styles from './DaycareCheckInFormPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Daycare Queue redesign: the "..." view-details destination from a Pending
@@ -92,7 +93,7 @@ export function DaycareCheckInFormPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );

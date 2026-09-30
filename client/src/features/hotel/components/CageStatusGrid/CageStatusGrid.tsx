@@ -3,6 +3,7 @@ import { getCageGrid, setCageMaintenanceStatus } from '../../api/hotel.api';
 import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import type { Cage, CageSize, CageStatus } from '../../hotel.types';
 import styles from './CageStatusGrid.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const SIZE_ORDER: CageSize[] = ['S', 'M', 'L', 'XL'];
 
@@ -77,7 +78,7 @@ export function CageStatusGrid({
   }
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading cage status...</p>;
+    return <LoadingState label="Loading cage status..." />;
   }
 
   if (error || !grid) {

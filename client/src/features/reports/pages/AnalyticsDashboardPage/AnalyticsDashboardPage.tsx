@@ -11,6 +11,7 @@ import type {
 } from '../../reports.types';
 import { BranchRevenueComparisonChart } from '../../components/BranchRevenueComparisonChart/BranchRevenueComparisonChart';
 import styles from './AnalyticsDashboardPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const TIME_FILTERS: { value: AnalyticsTimeFilter; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -92,7 +93,7 @@ export function AnalyticsDashboardPage() {
   }, [accessToken, isSuperadmin, selectedBranchId, timeFilter]);
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isSuperadmin || !accessToken) {
@@ -137,7 +138,7 @@ export function AnalyticsDashboardPage() {
       </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading analytics...</p>
+        <LoadingState label="Loading analytics..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

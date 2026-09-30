@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listPetConsultationResults } from '../../../api/customer.api';
 import type { PetConsultationResultEntry } from '../../../customer.types';
 import styles from './ConsultationResultList.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface ConsultationResultListProps {
   petId: string;
@@ -52,7 +53,7 @@ export function ConsultationResultList({
   }, [petId, accessToken]);
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading consultation results...</p>;
+    return <LoadingState label="Loading consultation results..." />;
   }
 
   if (error) {

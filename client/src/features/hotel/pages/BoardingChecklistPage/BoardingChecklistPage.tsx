@@ -15,6 +15,7 @@ import { DaycareCheckoutPanel } from '../../../daycare/pages/DaycareQueuePage/Da
 import { listDaycareSessions } from '../../../daycare/api/daycare.api';
 import { BoardingChecklistKanban } from '../../components/BoardingChecklistKanban/BoardingChecklistKanban';
 import styles from './BoardingChecklistPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Pet Assistant',
@@ -132,7 +133,7 @@ export function BoardingChecklistPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );

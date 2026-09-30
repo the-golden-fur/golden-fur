@@ -7,6 +7,7 @@ import { PaymentStatusBadge } from '../../../../booking/components/shared/Paymen
 import type { PaymentStatus } from '../../../../booking/booking.types';
 import { formatCurrency } from '../../../../../shared/utils/formatCurrency';
 import styles from './TransactionsWidget.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface TransactionsWidgetProps {
   accessToken: string;
@@ -95,7 +96,7 @@ export function TransactionsWidget({ accessToken }: TransactionsWidgetProps) {
       </div>
 
       {transactions === null && !error ? (
-        <p className={styles.copy}>Loading transactions...</p>
+        <LoadingState label="Loading transactions..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

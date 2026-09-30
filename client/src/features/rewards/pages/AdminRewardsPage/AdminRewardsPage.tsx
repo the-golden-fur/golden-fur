@@ -46,6 +46,7 @@ import {
   REWARD_SORT_FIELDS,
 } from './rewardBrowserFields';
 import styles from './AdminRewardsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as REWARDS_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -399,7 +400,7 @@ export function AdminRewardsPage() {
   if (isRoleLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       </main>
     );
   }
@@ -411,7 +412,7 @@ export function AdminRewardsPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading rewards...</p>
+        <LoadingState label="Loading rewards..." />
       </main>
     );
   }

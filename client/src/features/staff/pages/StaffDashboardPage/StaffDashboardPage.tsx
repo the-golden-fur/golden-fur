@@ -36,6 +36,7 @@ import {
   type StaffDashboardSlug,
 } from '../../config/staffDashboard.config';
 import styles from './StaffDashboardPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 function isDashboardSlug(
   value: string | undefined
@@ -133,7 +134,7 @@ export function StaffDashboardPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading your dashboard...</p>
+          <LoadingState label="Loading your dashboard..." />
         </div>
       </main>
     );

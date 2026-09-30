@@ -5,6 +5,7 @@ import { getPet } from '../../api/customer.api';
 import { PetDetailPanel } from '../../components/panels/PetDetailPanel/PetDetailPanel';
 import type { Pet } from '../../customer.types';
 import styles from './PetProfilePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 export function PetProfilePage() {
   const { petId } = useParams<{ petId: string }>();
@@ -53,7 +54,7 @@ export function PetProfilePage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading pet...</p>
+        <LoadingState label="Loading pet..." />
       </main>
     );
   }

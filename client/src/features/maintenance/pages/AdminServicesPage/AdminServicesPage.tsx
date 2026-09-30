@@ -61,6 +61,7 @@ import {
   SERVICE_SORT_FIELDS,
 } from './serviceBrowserFields';
 import styles from './AdminServicesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -698,7 +699,7 @@ export function AdminServicesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -715,7 +716,7 @@ export function AdminServicesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading services...</p>
+          <LoadingState label="Loading services..." />
         </div>
       </main>
     );

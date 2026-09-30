@@ -35,6 +35,7 @@ import {
   matchesCatalogQuery,
 } from './catalogBrowserFields';
 import styles from './CatalogAdminPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -472,7 +473,7 @@ export function CatalogAdminPage({
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading {itemNoun} catalog...</p>
+          <LoadingState label={`Loading ${itemNoun} catalog...`} />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

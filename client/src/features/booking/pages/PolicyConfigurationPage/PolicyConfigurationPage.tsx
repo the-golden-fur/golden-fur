@@ -27,6 +27,7 @@ import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import styles from './PolicyConfigurationPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Admin+Superadmin - matches BOOKING_POLICY_WRITE_ROLES/policy_configurations
  * RLS server-side, unlike Branches' Superadmin-only gate. */
@@ -398,7 +399,7 @@ export function PolicyConfigurationPage({
   }
 
   if (isRoleLoading) {
-    return shell(<p className={styles.copy}>Loading...</p>);
+    return shell(<LoadingState />);
   }
 
   if (!isAllowedViewer) {
@@ -406,9 +407,7 @@ export function PolicyConfigurationPage({
   }
 
   if (isLoading) {
-    return shell(
-      <p className={styles.copy}>Loading policy configuration...</p>
-    );
+    return shell(<LoadingState label="Loading policy configuration..." />);
   }
 
   if (loadError) {

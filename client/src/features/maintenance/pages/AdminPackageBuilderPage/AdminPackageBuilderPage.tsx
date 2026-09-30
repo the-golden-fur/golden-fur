@@ -77,6 +77,7 @@ import {
   PACKAGE_SORT_FIELDS,
 } from './packageBrowserFields';
 import styles from './AdminPackageBuilderPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -826,7 +827,7 @@ export function AdminPackageBuilderPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -840,7 +841,7 @@ export function AdminPackageBuilderPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading packages...</p>
+          <LoadingState label="Loading packages..." />
         </div>
       </main>
     );

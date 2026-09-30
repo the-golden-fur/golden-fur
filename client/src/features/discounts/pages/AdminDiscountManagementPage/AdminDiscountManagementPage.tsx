@@ -61,6 +61,7 @@ import {
   matchesDiscountQuery,
 } from './discountBrowserFields';
 import styles from './AdminDiscountManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as DISCOUNT_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -547,7 +548,7 @@ export function AdminDiscountManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -561,7 +562,7 @@ export function AdminDiscountManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading discounts...</p>
+          <LoadingState label="Loading discounts..." />
         </div>
       </main>
     );

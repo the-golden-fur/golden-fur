@@ -55,6 +55,7 @@ import {
   STAFF_SORT_FIELDS,
 } from './staffBrowserFields';
 import styles from './StaffManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
@@ -373,7 +374,7 @@ export function StaffManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading staff...</p>
+          <LoadingState label="Loading staff..." />
         </div>
       </main>
     );
