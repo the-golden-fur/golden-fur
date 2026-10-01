@@ -24,20 +24,22 @@ import type { Consultation, VeterinarianPatient } from '../veterinary.types.ts';
 // relationship was found for 'consultations' and 'bookings'").
 const CONSULTATION_SELECT = '*, booking:bookings!booking_id(*)';
 
-/** Walk-in booking flow change: this used to be ['Pending', 'In Progress']
- * (Veterinary never had a payment gate on initial status - #51 dev notes -
- * so both were considered actionable). Now only 'In Progress' is - a
- * 'Pending' online booking doesn't show here until a receptionist checks
- * it in (Bookings Queue's Check In action, POST /bookings/:id/start) and
- * it flips to 'In Progress'. Walk-in bookings (booking_source = 'Walk-in')
- * are created directly at 'In Progress' (see createBooking in
- * booking.service.ts), so they appear immediately - indistinguishable
- * here from a freshly checked-in appointment, which is the point: this is
- * "who's actually here," not "who's booked." This is also the
+/** The bookings a vet can act on: 'In Progress', plus 'Pending' ones that
+ * have been paid for (the paid check is in listConsultationQueue itself).
+ * For a time (walk-in booking flow change) this was 'In Progress' only, so
+ * a paid online booking was invisible on this queue until a receptionist
+ * pressed Check In; now the vet sees what's booked before the customer
+ * arrives, same as the Grooming Queue. An UNPAID Pending booking stays out -
+ * it isn't a secured appointment yet (the line startBooking itself draws).
+ * Walk-in bookings (booking_source = 'Walk-in') are created directly at 'In
+ * Progress' and appear immediately, as before. This is also the
  * auto-vivify-eligible set - a consultations row only ever gets created
  * for a booking while it's still actionable, never retroactively for one
  * that's already Completed. */
-const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = ['In Progress'];
+const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'In Progress',
+];
 
 /** Superset of QUEUE_BOOKING_STATUSES used for what the queue actually
  * returns - Completed bookings are included (read-only, so the console can
@@ -72,12 +74,25 @@ function todayRangeUtc(): { dayStart: string; dayEnd: string } {
  * bounds to a UTC instant range, matching the QueueFilterBar date-range
  * presets on the client (client/src/shared/components/QueueFilterBar) and
  * grooming.service.ts's own resolveDateRangeUtc.
+ *
+ * allDates is the explicit "no date limit at all": the client's "All
+ * dates" preset has no bounds to send, which on its own is
+ * indistinguishable from "nothing was asked for" and so used to fall into
+ * the today default - the filter said All dates and showed one day.
  */
 function resolveDateRangeUtc(
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  allDates = false
 ): { dayStart: string; dayEnd: string } {
-  if (!dateFrom && !dateTo) return todayRangeUtc();
+  if (!dateFrom && !dateTo) {
+    return allDates
+      ? {
+          dayStart: '1970-01-01T00:00:00.000Z',
+          dayEnd: '9999-12-31T00:00:00.000Z',
+        }
+      : todayRangeUtc();
+  }
 
   const dayStart = dateFrom
     ? `${dateFrom}T00:00:00.000Z`
@@ -96,13 +111,16 @@ interface ListConsultationQueueParams {
    * omitted. */
   dateFrom?: string;
   dateTo?: string;
+  /** True for the "All dates" filter - every date, past and upcoming,
+   * instead of the today default. Ignored when a bound is given. */
+  allDates?: boolean;
 }
 
 /**
  * Issue #66: the Makati Veterinary consultation queue for the given date
  * range (today by default). Auto-vivifies a 'Pending' consultations row for
- * any actionable Veterinary booking (bookings.status = 'In Progress' -
- * walk-in booking flow change, see QUEUE_BOOKING_STATUSES above) that
+ * any actionable Veterinary booking (In Progress, or Pending and paid -
+ * see QUEUE_BOOKING_STATUSES above) that
  * doesn't have one yet - mirrors #64's grooming_sessions pattern (no DB
  * trigger exists anywhere in this
  * codebase; see grooming.service.ts's own dev note on why). Any
@@ -115,13 +133,14 @@ interface ListConsultationQueueParams {
 export async function listConsultationQueue({
   dateFrom,
   dateTo,
+  allDates,
 }: ListConsultationQueueParams = {}): Promise<Consultation[]> {
-  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo, allDates);
 
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
     .select(
-      'id, pet_id, branch_id, assigned_staff_id, special_instructions, status'
+      'id, pet_id, branch_id, assigned_staff_id, special_instructions, status, payment_status'
     )
     .eq('service_category', 'Veterinary')
     .in('status', LIST_BOOKING_STATUSES)
@@ -133,14 +152,21 @@ export async function listConsultationQueue({
 
   if (bookingsError) throwWithStatus(400, bookingsError.message);
 
-  const bookingRows = (bookings ?? []) as Array<{
-    id: string;
-    pet_id: string;
-    branch_id: string;
-    assigned_staff_id: string;
-    special_instructions: string | null;
-    status: BookingStatus;
-  }>;
+  const bookingRows = (
+    (bookings ?? []) as Array<{
+      id: string;
+      pet_id: string;
+      branch_id: string;
+      assigned_staff_id: string;
+      special_instructions: string | null;
+      status: BookingStatus;
+      payment_status?: string;
+    }>
+  )
+    // A Pending booking only belongs here once something has been paid.
+    .filter(
+      (row) => !(row.status === 'Pending' && row.payment_status === 'Pending')
+    );
 
   if (bookingRows.length === 0) return [];
 

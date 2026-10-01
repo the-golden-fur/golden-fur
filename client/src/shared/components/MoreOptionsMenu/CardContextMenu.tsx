@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Check } from 'lucide-react';
 import type { MoreOptionsMenuItem } from './MoreOptionsMenu';
+import { placeMenuVertically } from './menuPlacement';
 import styles from './MoreOptionsMenu.module.css';
 
 interface CardContextMenuProps {
@@ -79,16 +80,28 @@ export function CardContextMenu({
     };
   }, [isOpen]);
 
+  /** The menu's fixed position for a click/touch at (x, y): it drops down
+   * from that point, or opens upward from it when the point is too close
+   * to the bottom of the screen for the menu to fit below. */
+  function menuStyleAt(x: number, y: number): CSSProperties {
+    return {
+      position: 'fixed',
+      ...placeMenuVertically({
+        anchorTop: y,
+        anchorBottom: y,
+        itemCount: items.length,
+        viewportHeight: window.innerHeight,
+      }),
+      left: x,
+      right: 'auto',
+    };
+  }
+
   function handleContextMenu(event: ReactMouseEvent) {
     event.preventDefault();
     // right: 'auto' overrides the CSS class's default `right: 0` - without
     // it, that rule stays active alongside this inline `left` and fights it.
-    setMenuStyle({
-      position: 'fixed',
-      top: event.clientY,
-      left: event.clientX,
-      right: 'auto',
-    });
+    setMenuStyle(menuStyleAt(event.clientX, event.clientY));
     setIsOpen(true);
   }
 
@@ -118,12 +131,7 @@ export function CardContextMenu({
 
     if (heldMs >= LONG_PRESS_MS && movedPx < MOVE_TOLERANCE_PX) {
       event.preventDefault();
-      setMenuStyle({
-        position: 'fixed',
-        top: touch.clientY,
-        left: touch.clientX,
-        right: 'auto',
-      });
+      setMenuStyle(menuStyleAt(touch.clientX, touch.clientY));
       setIsOpen(true);
     }
   }

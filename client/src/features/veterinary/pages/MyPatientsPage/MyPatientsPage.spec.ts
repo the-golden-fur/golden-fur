@@ -313,6 +313,43 @@ describe('MyPatientsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('the View history button on a patient loads and shows their consultation history', async () => {
+    stubDefaults(
+      [
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+      ],
+      { 'pet-1': buildPet({ name: 'Buddy' }) },
+      { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
+    );
+    vi.mocked(vetApi.getPetConsultationHistory).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByText('Buddy');
+    expect(screen.queryByText(/Right-click/)).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'View history for Buddy' })
+    );
+
+    await waitFor(() =>
+      expect(vetApi.getPetConsultationHistory).toHaveBeenCalledWith(
+        'pet-1',
+        'token'
+      )
+    );
+    expect(
+      await screen.findByText('Owner: Jane Dela Cruz')
+    ).toBeInTheDocument();
+  });
+
   it('tap-to-hold: no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
     stubDefaults(
       [

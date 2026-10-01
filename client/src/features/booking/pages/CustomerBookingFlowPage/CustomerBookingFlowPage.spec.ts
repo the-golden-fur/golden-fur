@@ -1474,7 +1474,7 @@ describe('CustomerBookingFlowPage', () => {
     ).not.toMatch(/selected/);
   });
 
-  it("Pet Types admin CRUD + fixed-price override: a Cat pet's fixed price (from the catalog response) replaces the service's own base_price on both the option card and the running total", async () => {
+  it("a Cat pet's fixed price does NOT apply to an individual Grooming service - it shows the service's own price, same as a dog sees", async () => {
     vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
       data: [CAT_PET],
       error: null,
@@ -1516,10 +1516,51 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(bookingForm().getByText('Bath'));
 
     // Bath's own base_price is 300 - both the option card and the running
-    // total must show the fixed 800 instead, matching what
-    // booking.service.ts actually charges at confirmation.
-    expect(bookingForm().getAllByText('PHP 800.00')).toHaveLength(2);
-    expect(bookingForm().queryByText('PHP 300.00')).not.toBeInTheDocument();
+    // total show it, not the Cat's fixed 800, matching what
+    // booking.service.ts charges for an individual Grooming service.
+    expect(bookingForm().getAllByText('PHP 300.00')).toHaveLength(2);
+    expect(bookingForm().queryByText('PHP 800.00')).not.toBeInTheDocument();
+  });
+
+  it("a Cat pet's fixed price still replaces the price in other categories (Hotel)", async () => {
+    vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+      data: [CAT_PET],
+      error: null,
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [],
+        fixedPrice: 950,
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Makati')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Makati'));
+    await user.click(bookingForm().getByText('Next'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Luna')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Luna'));
+    await user.click(bookingForm().getByText('Next'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Hotel')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Hotel'));
+    await user.click(bookingForm().getByText('Next'));
+
+    expect(
+      await bookingForm().findByText('PHP 950.00/night')
+    ).toBeInTheDocument();
   });
 
   it('Hotel: the running total scales with the number of nights', async () => {

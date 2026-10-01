@@ -265,11 +265,19 @@ async function resolveBookingItem(
       durationMinutes
     );
 
+    // An individual Grooming service is never flattened to a pet type's
+    // fixed price (e.g. the Cat override): it's charged exactly as it is
+    // for any other pet - its own size/coat matrix cell, or base_price. The
+    // fixed price still applies to packages (resolvePackagePrice below) and
+    // to every other category's services.
+    const serviceFixedPrice =
+      serviceCategory === 'Grooming' ? null : fixedPriceOverride;
+
     return {
       service_id: service.id,
       package_id: null,
       price_at_booking: round2(
-        resolveServicePrice(service, pet, fixedPriceOverride) * quantity
+        resolveServicePrice(service, pet, serviceFixedPrice) * quantity
       ),
       duration_minutes_at_booking: durationMinutes,
     };

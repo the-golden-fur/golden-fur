@@ -155,6 +155,117 @@ describe('consultation.service (#66)', () => {
       ).not.toHaveProperty('status');
     });
 
+    it("includes a paid Pending booking and gives it a consultation row - the vet sees what's booked before the customer arrives", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              pet_id: 'pet-1',
+              branch_id: MAKATI.id,
+              assigned_staff_id: VET_ID,
+              special_instructions: null,
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+          ],
+          error: null,
+        }, // bookings
+        { data: [], error: null }, // existing consultations
+        { data: MAKATI, error: null }, // branch eligibility
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...consultationRow(),
+              booking: { scheduled_start: '2026-07-19T02:00:00.000Z' },
+            },
+          ],
+          error: null,
+        } // consultations select
+      );
+
+      const result = await listConsultationQueue();
+
+      expect(result).toHaveLength(1);
+      expect(
+        recordedWrites.some(
+          (write) =>
+            write.table === 'consultations' && write.method === 'insert'
+        )
+      ).toBe(true);
+    });
+
+    it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: MAKATI.id,
+            assigned_staff_id: VET_ID,
+            special_instructions: null,
+            status: 'Pending',
+            payment_status: 'Pending',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listConsultationQueue();
+
+      expect(result).toEqual([]);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    describe('date range', () => {
+      function captureDateBounds() {
+        const bounds: Record<string, unknown> = {};
+
+        vi.mocked(supabase.from).mockImplementation((() => {
+          const builder: Record<string, unknown> = {};
+
+          for (const method of ['select', 'eq', 'in', 'or']) {
+            builder[method] = vi.fn(() => builder);
+          }
+          builder.gte = vi.fn((_column: string, value: unknown) => {
+            bounds.from = value;
+            return builder;
+          });
+          builder.lt = vi.fn((_column: string, value: unknown) => {
+            bounds.to = value;
+            return builder;
+          });
+          builder.then = (resolve: (_result: QueryResult) => void) =>
+            resolve({ data: [], error: null });
+
+          return builder;
+        }) as never);
+
+        return bounds;
+      }
+
+      it('"All dates" covers every date, upcoming ones included - not just today', async () => {
+        const bounds = captureDateBounds();
+
+        await listConsultationQueue({ allDates: true });
+
+        expect(bounds.from).toBe('1970-01-01T00:00:00.000Z');
+        expect(bounds.to).toBe('9999-12-31T00:00:00.000Z');
+      });
+
+      it('still defaults to today when no range is asked for at all', async () => {
+        const bounds = captureDateBounds();
+
+        await listConsultationQueue();
+
+        expect(
+          new Date(bounds.to as string).getTime() -
+            new Date(bounds.from as string).getTime()
+        ).toBe(24 * 60 * 60 * 1000);
+      });
+    });
+
     it('AC-5: rejects auto-vivifying a consultation against a non-Makati booking', async () => {
       queueFromResults(
         {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router';
+import { History, ListChecks } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import type { BookingStatus } from '../../../booking/booking.types';
@@ -34,6 +35,10 @@ import {
 } from '../../api/grooming.api';
 import { AppointmentCard } from '../../components/AppointmentCard/AppointmentCard';
 import type { GroomingSession } from '../../grooming.types';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import styles from './GroomerDashboardPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -56,6 +61,24 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...GROOMING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
+
+/** Queue: what still needs grooming. History: the Completed services, for
+ * looking back at what was done. Same page, filters and cards - only which
+ * bookings the server returns differs. */
+type QueueView = 'queue' | 'history';
+const VIEW_OPTIONS: ViewSwitcherOption<QueueView>[] = [
+  { value: 'queue', label: 'Queue', icon: ListChecks },
+  { value: 'history', label: 'History', icon: History },
+];
+
+// History only ever holds Completed bookings - nothing to filter by.
+const HISTORY_STATUS_OPTIONS: QueueStatusOption[] = [
+  { value: 'All', label: 'Completed' },
+];
+
+function completedAtMs(session: GroomingSession): number {
+  return new Date(session.booking?.completed_at ?? 0).getTime();
+}
 
 type SortKey = 'queue' | 'pet-name';
 const SORT_OPTIONS: SortOption<SortKey>[] = [
@@ -92,6 +115,7 @@ export function GroomerDashboardPage() {
     'loading'
   );
 
+  const [view, setView] = useState<QueueView>('queue');
   const [sessions, setSessions] = useState<GroomingSession[]>([]);
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
@@ -226,6 +250,10 @@ export function GroomerDashboardPage() {
     const queueDateRange = {
       dateFrom: dateRange.from ?? undefined,
       dateTo: dateRange.to ?? undefined,
+      // "All dates" has no bounds to send, and no bounds alone means
+      // "today" to the server - so it's stated outright.
+      allDates: dateRangePreset === 'all',
+      view,
     };
 
     void listGroomingQueue(token, queueDateRange).then(handleQueueResult);
@@ -238,11 +266,35 @@ export function GroomerDashboardPage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [roleStatus, accessToken, dateRange.from, dateRange.to]);
+  }, [
+    roleStatus,
+    accessToken,
+    dateRange.from,
+    dateRange.to,
+    dateRangePreset,
+    view,
+  ]);
+
+  /** Swaps Queue <-> History. The list is emptied first so the other view's
+   * cards never show under the new heading while its own load is in
+   * flight; the status filter is queue-only, so it resets too. */
+  function changeView(next: QueueView) {
+    if (next === view) return;
+    setSessions([]);
+    setIsLoading(true);
+    setLoadError(null);
+    setActionError(null);
+    setStatusFilter('All');
+    setView(next);
+  }
 
   const enriched = useMemo<EnrichedSession[]>(() => {
     return [...sessions]
-      .sort((a, b) => queueSortPosition(a) - queueSortPosition(b))
+      .sort((a, b) =>
+        view === 'history'
+          ? completedAtMs(b) - completedAtMs(a)
+          : queueSortPosition(a) - queueSortPosition(b)
+      )
       .map((session) => {
         const booking = session.booking;
         const pet = booking ? pets[booking.pet_id] : undefined;
@@ -266,7 +318,7 @@ export function GroomerDashboardPage() {
           specialInstructions: booking?.special_instructions ?? null,
         };
       });
-  }, [sessions, pets, owners, serviceNames]);
+  }, [sessions, pets, owners, serviceNames, view]);
 
   const statusFiltered = useMemo(() => {
     if (statusFilter === 'All') return enriched;
@@ -288,7 +340,9 @@ export function GroomerDashboardPage() {
       item.ownerName.toLowerCase().includes(query),
     comparators: {
       queue: (a, b) =>
-        queueSortPosition(a.session) - queueSortPosition(b.session),
+        view === 'history'
+          ? completedAtMs(b.session) - completedAtMs(a.session)
+          : queueSortPosition(a.session) - queueSortPosition(b.session),
       'pet-name': (a, b) => a.petName.localeCompare(b.petName),
     },
     initialSortKey: 'queue',
@@ -393,7 +447,17 @@ export function GroomerDashboardPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <h1 className={styles.title}>Grooming Queue</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>
+            {view === 'history' ? 'Grooming History' : 'Grooming Queue'}
+          </h1>
+          <ViewSwitcher
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={changeView}
+            ariaLabel="Grooming view"
+          />
+        </div>
 
         <QueueFilterBar
           dateRangePreset={dateRangePreset}
@@ -402,7 +466,9 @@ export function GroomerDashboardPage() {
           onCustomDateChange={setCustomDate}
           statusValue={statusFilter}
           onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
-          statusOptions={STATUS_OPTIONS}
+          statusOptions={
+            view === 'history' ? HISTORY_STATUS_OPTIONS : STATUS_OPTIONS
+          }
         >
           <SearchSortBar
             searchValue={search}
@@ -430,7 +496,9 @@ export function GroomerDashboardPage() {
           </p>
         ) : !hasSessions ? (
           <p className={styles.copy}>
-            No grooming appointments match these filters.
+            {view === 'history'
+              ? 'No completed grooming services match these filters.'
+              : 'No grooming appointments match these filters.'}
           </p>
         ) : (
           <ul className={styles.list}>

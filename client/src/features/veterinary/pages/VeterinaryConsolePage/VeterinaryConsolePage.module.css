@@ -169,6 +169,10 @@
 
 .startButton {
   flex-shrink: 0;
+  /* Only as wide as its label - inside a List/Board card (.rowBody, a
+     grid) it would otherwise stretch across the whole card. */
+  width: fit-content;
+  justify-self: start;
   border: none;
   border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);

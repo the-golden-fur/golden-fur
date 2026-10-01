@@ -250,6 +250,10 @@ export function VeterinaryConsolePage() {
     const queueDateRange = {
       dateFrom: dateRange.from ?? undefined,
       dateTo: dateRange.to ?? undefined,
+      // No bounds means "every date" on this page (the date tile was
+      // removed, or set to All dates) - but no bounds alone means "today"
+      // to the server, so it's stated outright.
+      allDates: dateRange.from === null && dateRange.to === null,
     };
 
     void listConsultationQueue(token, queueDateRange).then(handleQueueResult);
