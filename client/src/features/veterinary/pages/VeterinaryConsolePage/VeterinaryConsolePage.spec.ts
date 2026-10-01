@@ -401,6 +401,90 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
   });
 
+  it('an In Progress row has a Complete button that finishes the consultation with just the professional fee', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'In Progress')] },
+      error: null,
+    });
+    stubPetAndOwner();
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'Completed'),
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^complete$/i })
+    );
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Complete Consultation',
+    });
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+    await userEvent.type(
+      within(dialog).getByLabelText(/professional fee/i),
+      '500'
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^complete$/i })
+    );
+
+    await waitFor(() =>
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+        'consultation-1',
+        'token',
+        { status: 'Completed', professional_fee: 500 }
+      )
+    );
+    // Saved medications/results are left alone - not overwritten with [].
+    const payload = vi.mocked(veterinaryApi.updateConsultation).mock
+      .calls[0][2];
+    expect(payload.medications).toBeUndefined();
+    expect(payload.form_responses).toBeUndefined();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Complete Consultation' })
+      ).not.toBeInTheDocument()
+    );
+    expect(
+      screen.getByText('Completed', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^complete$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no Complete button on Pending rows or to a view-only role', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Admin'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [
+          buildConsultation({ id: 'c-pending' }, 'Pending'),
+          buildConsultation({ id: 'c-ongoing' }, 'In Progress'),
+        ],
+      },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    await screen.findAllByText('Whiskers');
+    expect(
+      screen.queryByRole('button', { name: /^complete$/i })
+    ).not.toBeInTheDocument();
+  });
+
   it('View Details opens the same panel (Prescription + Results as sections, no separate modals) read-only once Completed', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
