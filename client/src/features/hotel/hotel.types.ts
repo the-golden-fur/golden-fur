@@ -200,6 +200,23 @@ export interface CheckInResult {
   careLogEntries: CareLogEntry[];
 }
 
+/** Who is in an occupied cage and when they're expected to leave (GET
+ * /hotel/cages/occupants) - mirrors the server's CageOccupant. */
+export interface CageOccupant {
+  /** The Active stay (Hotel) / session (Daycare) behind this occupant - what
+   * a check-out acts on. */
+  stay_id: string;
+  cage_id: string;
+  pet_name: string | null;
+  owner_name: string | null;
+  service: 'Hotel' | 'Daycare';
+  booking_id: string | null;
+  since: string | null;
+  /** The booking's own scheduled end (Hotel nights / Daycare hours as
+   * booked); null when there is no booking behind the stay. */
+  expected_checkout_at: string | null;
+}
+
 export interface CageSuggestion {
   suggestedSize: CageSize;
   availableCages: Cage[];

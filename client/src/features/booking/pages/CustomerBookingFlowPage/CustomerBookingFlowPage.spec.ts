@@ -214,15 +214,20 @@ vi.mock('../../components/CageAssignmentStatus/CageAssignmentStatus', () => ({
 // GET /bookings/cage-picker call.
 vi.mock('../../components/CagePickerList/CagePickerList', () => ({
   CagePickerList: ({
+    serviceCategory,
     onSelect,
     onUnavailable,
   }: {
+    serviceCategory: string;
     onSelect: (preference: { type: 'no_preference' }) => void;
     onUnavailable?: () => void;
   }) =>
     createElement(
       'div',
-      { 'data-testid': 'cage-picker-list' },
+      {
+        'data-testid': 'cage-picker-list',
+        'data-service-category': serviceCategory,
+      },
       createElement(
         'button',
         { type: 'button', onClick: () => onSelect({ type: 'no_preference' }) },
@@ -368,6 +373,12 @@ function renderPage() {
           createElement(Route, {
             path: '/portal/book',
             element: createElement(CustomerBookingFlowPage),
+          }),
+          // Stand-in for CustomerPetManagerPage, so a navigation away to it
+          // is observable.
+          createElement(Route, {
+            path: '/portal/pets',
+            element: createElement('p', null, 'Pet Manager page'),
           })
         )
       )
@@ -840,6 +851,112 @@ describe('CustomerBookingFlowPage', () => {
     ).toBeInTheDocument();
   }, 15000); // vitest's 5s default. // busy full-suite run (vs. this file in isolation) doesn't flake on // Long, many-step walk through the whole flow - generous timeout so a
 
+  it('Daycare is priced by the hours picked on Date & Time: 4 hours = PHP 100 + 3 x PHP 50, and the booking runs 4 hours', async () => {
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [
+          GROOMING_SERVICE,
+          {
+            id: 'service-daycare-1',
+            category: 'Daycare' as const,
+            name: 'Daycare (per hour)',
+            base_price: 100,
+            duration_minutes: 60,
+            is_active: true,
+            requires_assessed_pet: true,
+            created_by: null,
+            updated_by: null,
+            created_at: '',
+            updated_at: '',
+            first_hour_fee: 100,
+            succeeding_hour_fee: 50,
+            daycare_overnight_fee: 850,
+          },
+        ],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Pending',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await user.click(screen.getByText('Next'));
+
+    // Date & Time: one hour by default, at the first-hour fee.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Number of hours')).toHaveValue(1)
+    );
+    expect(
+      screen.getByText('PHP 100.00', { selector: 'strong' })
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '4 hours' }));
+
+    expect(screen.getByLabelText('Number of hours')).toHaveValue(4);
+    expect(
+      screen.getByText('PHP 250.00', { selector: 'strong' })
+    ).toBeVisible();
+    // ...and it reaches the "Your booking" panel.
+    expect(
+      screen.getByText('4 hours - PHP 100 + 3 × PHP 50')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByText('Select slot'));
+    await user.click(screen.getByText('Next'));
+
+    // Care Instructions (optional) -> Your bookings -> Promos -> Review.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Add feeding time' })
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Select any promos or coupons/)
+      ).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() =>
+      expect(bookingApi.createBooking).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          service_category: 'Daycare',
+          scheduled_start: '2026-08-03T01:00:00.000Z',
+          scheduled_end: '2026-08-03T05:00:00.000Z',
+        })
+      )
+    );
+  });
+
   it('Custom change (Daycare/Hotel parity follow-up): Daycare gets the same Care Instructions step as Hotel', async () => {
     const DAYCARE_SERVICE = {
       id: 'service-daycare-1',
@@ -1141,6 +1258,20 @@ describe('CustomerBookingFlowPage', () => {
    * Branch > Pet > Service Type > Services > Date & Time (+ Staff/Cage) >
    * ... - this helper walks branch/pet and lands on the category step with
    * nothing picked yet. */
+  it('Pet step: "Add a pet" sends a customer to their Pet Manager instead of opening a form here', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: '+ Add a pet' }));
+
+    expect(await screen.findByText('Pet Manager page')).toBeInTheDocument();
+  });
+
   async function goToCategoryStep(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
@@ -2011,6 +2142,82 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Online Booking')).toBeInTheDocument()
       );
     }
+
+    it('a receptionist booking Daycare gets the Cage Picker, same as Hotel', async () => {
+      vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+        data: {
+          services: [
+            GROOMING_SERVICE,
+            {
+              id: 'service-daycare-1',
+              category: 'Daycare' as const,
+              name: 'Daycare (per hour)',
+              base_price: 100,
+              duration_minutes: 60,
+              is_active: true,
+              requires_assessed_pet: true,
+              created_by: null,
+              updated_by: null,
+              created_at: '',
+              updated_at: '',
+              first_hour_fee: 100,
+              succeeding_hour_fee: 50,
+              daycare_overnight_fee: 850,
+            },
+          ],
+          packages: [],
+          promos: [],
+        },
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Makati')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Makati'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      await user.click(screen.getByText('Max'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Daycare')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Daycare'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Daycare (per hour)'));
+      await user.click(screen.getByText('Next'));
+
+      // Booking Type (receptionist-only step) - accept the Online default.
+      await waitFor(() =>
+        expect(screen.getByText('Online Booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Select slot')).toBeInTheDocument()
+      );
+      // Only offered once a slot is chosen, same as Hotel.
+      expect(screen.queryByTestId('cage-picker-list')).not.toBeInTheDocument();
+      await user.click(screen.getByText('Select slot'));
+
+      const picker = await screen.findByTestId('cage-picker-list');
+      expect(picker).toHaveAttribute('data-service-category', 'Daycare');
+    });
 
     it('never appears at all in customer self-service mode - always implicitly Online', async () => {
       const user = userEvent.setup();

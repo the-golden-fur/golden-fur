@@ -256,7 +256,6 @@ export async function rescheduleBooking({
     // silently-degrades-to-null-or-unchanged shape as createBooking's own
     // cage handling (booking.service.ts).
     if (
-      booking.service_category === 'Hotel' &&
       input.cage_preference &&
       (await isCagePickerEnabled(booking.service_category))
     ) {

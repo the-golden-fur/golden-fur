@@ -373,9 +373,14 @@ export async function listServiceTypes(): Promise<
 export async function getCagePickerOptions(
   accessToken: string,
   branchId: string,
-  petId: string
+  petId: string,
+  serviceCategory: 'Hotel' | 'Daycare'
 ): Promise<BookingApiResult<CagePickerOptionsResult>> {
-  const params = new URLSearchParams({ branch_id: branchId, pet_id: petId });
+  const params = new URLSearchParams({
+    branch_id: branchId,
+    pet_id: petId,
+    service_category: serviceCategory,
+  });
 
   const response = await fetch(
     `${API_BASE_URL}/bookings/cage-picker?${params.toString()}`,

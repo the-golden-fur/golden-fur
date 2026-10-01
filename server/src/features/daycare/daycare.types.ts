@@ -33,3 +33,24 @@ export type DaycareStatus = 'Active' | 'Completed';
  * site across the client/server keeps working unchanged.
  */
 export type DaycareSession = HotelStay;
+
+/** How a checked-out session's computed_charge was arrived at - returned
+ * with the checkout response only (never stored), so the checkout screen
+ * can itemize the bill without re-deriving the formula client-side. */
+export interface DaycareChargeBreakdown {
+  first_hour_fee: number;
+  succeeding_hours: number;
+  succeeding_hour_fee: number;
+  hourly_charge: number;
+  /** Closing times the pet was still there for - 0 for a same-day pickup. */
+  nights: number;
+  /** The branch's Hotel nightly rate each night is billed at; null when
+   * nights is 0 (never looked up). */
+  nightly_rate: number | null;
+  overnight_charge: number;
+  total: number;
+}
+
+export type DaycareCheckoutResult = DaycareSession & {
+  charge_breakdown: DaycareChargeBreakdown;
+};

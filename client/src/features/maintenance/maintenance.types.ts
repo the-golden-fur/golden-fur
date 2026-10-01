@@ -182,9 +182,9 @@ export interface Service {
   /** Daycare-only: charge per additional billable hour (rounded up)
    * beyond the first, on this service. NULL falls back to ₱50. */
   succeeding_hour_fee: number | null;
-  /** Daycare-only: charged per night when a pet on this service isn't
-   * picked up before closing, on top of the hourly charge. NULL falls
-   * back to ₱850. */
+  /** Daycare-only fallback: a pet not picked up before closing is charged
+   * the branch's Hotel nightly rate per night; this is used only when the
+   * branch has no active Hotel service. NULL falls back to ₱850. */
   daycare_overnight_fee: number | null;
   /** Custom change (Architectural-Change-History): a curated Lucide icon
    * name (see shared/components/IconPicker/serviceIcons.ts), or null. */

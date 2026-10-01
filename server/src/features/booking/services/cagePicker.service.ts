@@ -14,6 +14,11 @@ interface CageRow {
   status: string;
 }
 
+/** The categories that claim a real cage at check-in (Hotel's own check-in,
+ * and Daycare's via the shared resolveAndClaimCage) - the only ones a
+ * booking-time cage preference means anything for. */
+const CAGE_PICKER_CATEGORIES: readonly ServiceCategory[] = ['Hotel', 'Daycare'];
+
 function throwIfPetNotFound<T>(pet: T | null): T {
   if (!pet) throwWithStatus(404, 'Pet not found');
   return pet;
@@ -22,7 +27,8 @@ function throwIfPetNotFound<T>(pet: T | null): T {
 /**
  * Custom change: Cage Picker addendum, mirroring staffPicker.service.ts's
  * isStaffPickerEnabled - single resolution point for whether the Cage
- * Picker step should render for this branch + service type. Reads the
+ * Picker step should render for this branch + service type (Hotel or
+ * Daycare - see CAGE_PICKER_CATEGORIES). Reads the
  * type-level toggle from service_types (no per-branch override, unlike the
  * Staff Picker's policy_configurations - this is new, simpler config, not a
  * migration of existing behavior).
@@ -30,7 +36,7 @@ function throwIfPetNotFound<T>(pet: T | null): T {
 export async function isCagePickerEnabled(
   serviceCategory: ServiceCategory
 ): Promise<boolean> {
-  if (serviceCategory !== 'Hotel') {
+  if (!CAGE_PICKER_CATEGORIES.includes(serviceCategory)) {
     return false;
   }
 

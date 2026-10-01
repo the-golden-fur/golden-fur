@@ -730,7 +730,6 @@ async function resolveSubBooking({
   } as unknown as Parameters<typeof resolveStaffAssignment>[0]);
 
   const preferredCageId =
-    subInput.service_category === 'Hotel' &&
     subInput.cage_preference?.type === 'specific' &&
     (await isCagePickerEnabled(subInput.service_category))
       ? await verifyCagePreference(

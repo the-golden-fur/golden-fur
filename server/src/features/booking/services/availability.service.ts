@@ -475,18 +475,17 @@ export async function partsOfDayWithinOperatingHours(
 }
 
 /**
- * #22: how many of the branch's daily closing times fall strictly between
- * checkInAt and checkOutAt - i.e. how many nights a daycare pet was still
- * there when the branch closed (0 for a same-day pickup before close,
- * matching today's behavior exactly). Used to add a flat per-night
- * overnight/no-pickup fee on top of the usual hourly daycare charge
- * (daycareBilling.service.ts).
+ * #22: every one of the branch's daily closing times that falls strictly
+ * between checkInAt and checkOutAt, oldest first - i.e. each night a
+ * daycare pet was still there when the branch closed (empty for a same-day
+ * pickup before close). daycareBilling.service.ts stops the hourly charge at
+ * the first one and bills one overnight rate per entry.
  */
-export async function countOvernightNights(
+export async function listClosingTimesBetween(
   checkInAt: Date,
   checkOutAt: Date,
   branchId: string
-): Promise<number> {
+): Promise<Date[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
     .select('operating_hours, timezone')
@@ -501,7 +500,7 @@ export async function countOvernightNights(
   const branchLocalDate = (instant: Date): string =>
     new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(instant);
 
-  let nights = 0;
+  const closings: Date[] = [];
   let cursor = branchLocalDate(checkInAt);
   const lastDate = branchLocalDate(checkOutAt);
 
@@ -521,12 +520,23 @@ export async function countOvernightNights(
         closeInstant.getTime() > checkInAt.getTime() &&
         closeInstant.getTime() < checkOutAt.getTime()
       ) {
-        nights += 1;
+        closings.push(closeInstant);
       }
     }
 
     cursor = nextDateString(cursor);
   }
 
-  return nights;
+  return closings;
+}
+
+/** How many nights a daycare pet was still there when the branch closed -
+ * see listClosingTimesBetween. */
+export async function countOvernightNights(
+  checkInAt: Date,
+  checkOutAt: Date,
+  branchId: string
+): Promise<number> {
+  return (await listClosingTimesBetween(checkInAt, checkOutAt, branchId))
+    .length;
 }

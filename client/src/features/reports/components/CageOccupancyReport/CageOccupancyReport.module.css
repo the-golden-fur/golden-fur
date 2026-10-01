@@ -118,17 +118,38 @@
 
 .cageList {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  align-items: start;
   gap: var(--space-2);
 }
 
+/* The whole card is a button - it opens that cage's details popup. */
 .cageCard {
   display: grid;
   gap: var(--space-0-5);
+  justify-items: start;
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   padding: var(--space-2);
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.cageCard:hover {
+  border-color: var(--color-accent-gold-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.cageCard:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
 }
 
 .cageLabel {
@@ -139,4 +160,152 @@
 .cageSize {
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
+}
+
+/* Who is in an Occupied cage + the checkout countdown, set off from the
+   cage's own label/size/status above it. */
+.occupant {
+  display: grid;
+  gap: var(--space-0-5);
+  width: 100%;
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-0-5);
+  padding-top: var(--space-1);
+}
+
+.occupantName {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* Tabular figures so the digits don't shift the text sideways as they
+   tick. */
+.countdown,
+.countdownOverdue {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+}
+
+.countdownOverdue {
+  color: var(--color-error-text);
+}
+
+.checkoutButton {
+  justify-self: start;
+  margin-top: var(--space-0-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-1);
+  transition: border-color 0.15s ease;
+}
+
+.checkoutButton:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.checkoutButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.successBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+/* ---- Cage details popup ---- */
+
+.details {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.detailsHeading {
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding-top: var(--space-2);
+}
+
+.detailsList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.detailsRow {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.detailsRow dt {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.detailsRow dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* The countdown is the one figure in the popup worth reading from a
+   distance - it gets its own line and a larger size. */
+.detailsCountdown {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  padding: var(--space-2);
+  text-align: center;
+}
+
+.detailsCountdown .countdown,
+.detailsCountdown .countdownOverdue {
+  font-size: var(--text-lg);
+}
+
+.detailsActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detailsActions .checkoutButton {
+  margin-top: 0;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.detailsLink {
+  color: var(--color-accent-gold-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+@media (max-width: 30rem) {
+  .detailsRow {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }

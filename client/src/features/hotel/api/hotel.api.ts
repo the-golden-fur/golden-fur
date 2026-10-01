@@ -2,6 +2,7 @@ import type { BookingStatus } from '../../booking/booking.types';
 import type {
   ActivityLogEntry,
   Cage,
+  CageOccupant,
   CageSize,
   CageStatus,
   CageSuggestion,
@@ -129,6 +130,23 @@ export async function getCageGrid(
 
   const result = await parseBody<{ grid: Record<CageSize, Cage[]> }>(response);
   return { data: result.data?.grid ?? null, error: result.error };
+}
+
+/** Who is in each occupied cage at the viewer's branch, with the expected
+ * checkout time - same branch scoping as getCageGrid above. */
+export async function getCageOccupants(
+  accessToken: string
+): Promise<HotelApiResult<CageOccupant[]>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cages/occupants`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ occupants: CageOccupant[] }>(response);
+  return { data: result.data?.occupants ?? null, error: result.error };
 }
 
 export async function setCageMaintenanceStatus(
