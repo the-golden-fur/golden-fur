@@ -602,14 +602,14 @@ export function MonthlySchedulePage() {
 
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={`${styles.secondaryButton} ${styles.compactButton}`}
             onClick={openAutoBuildConfirm}
           >
             Auto Build
           </button>
           <button
             type="button"
-            className={styles.dangerButton}
+            className={`${styles.dangerButton} ${styles.compactButton}`}
             onClick={() => {
               setClearError(null);
               setIsClearConfirmOpen(true);

@@ -408,6 +408,13 @@
   opacity: 0.6;
 }
 
+/* Toolbar-sized variant of .secondaryButton/.dangerButton (Auto Build, Clear
+   Monthly Schedule) - after both on purpose, so it overrides their size. */
+.compactButton {
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
 .errorBanner {
   margin: 0;
   border-radius: var(--radius-md);

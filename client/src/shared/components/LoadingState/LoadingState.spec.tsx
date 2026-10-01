@@ -38,6 +38,26 @@ describe('LoadingState', () => {
     expect(icon).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('hides the label visually while the loader GIF is showing', () => {
+    stubReducedMotion(false);
+    render(<LoadingState label="Loading pets..." />);
+
+    expect(screen.getByText('Loading pets...').className).toContain(
+      'srOnlyLabel'
+    );
+  });
+
+  it('shows the label as text when the GIF fails to load', () => {
+    stubReducedMotion(false);
+    render(<LoadingState label="Loading pets..." />);
+
+    fireEvent.error(screen.getByTestId('loading-icon'));
+
+    expect(screen.getByText('Loading pets...').className).not.toContain(
+      'srOnlyLabel'
+    );
+  });
+
   it('leaves out the animated icon when reduced motion is requested', () => {
     stubReducedMotion(true);
     render(<LoadingState label="Loading pets..." />);

@@ -9,12 +9,13 @@ import styles from './LoadingState.module.css';
 const LOADER_GIF_SRC = '/loading/loader.gif';
 
 interface LoadingStateProps {
-  /** Shown under the icon and announced to screen readers - say what's
-   * loading ("Loading bookings...") where the page knows. */
+  /** Announced to screen readers, and shown as text only when the icon
+   * isn't - say what's loading ("Loading bookings...") where the page
+   * knows. */
   label?: string;
   /** 'page' (default): large and centered, for a whole page or panel that
-   * has nothing else to show yet. 'inline': small, icon beside the label,
-   * for one section loading inside an otherwise-rendered page. */
+   * has nothing else to show yet. 'inline': small, for one section loading
+   * inside an otherwise-rendered page. */
   size?: 'page' | 'inline';
 }
 
@@ -29,9 +30,9 @@ function prefersReducedMotion(): boolean {
 /**
  * The site-wide "waiting on the database" indicator - replaces the plain
  * `<p>Loading...</p>` every page used to render. Shows the branded loader
- * GIF above the label. A GIF can't be paused, so with reduced motion
- * requested the icon is left out and only the label shows; same if the
- * file fails to load.
+ * GIF on its own, with the label kept for screen readers only. A GIF can't
+ * be paused, so with reduced motion requested the icon is left out and the
+ * label shows as text instead; same if the file fails to load.
  */
 export function LoadingState({
   label = 'Loading...',
@@ -55,7 +56,9 @@ export function LoadingState({
           onError={() => setHasIcon(false)}
         />
       ) : null}
-      <span className={styles.label}>{label}</span>
+      <span className={hasIcon ? styles.srOnlyLabel : styles.label}>
+        {label}
+      </span>
     </div>
   );
 }

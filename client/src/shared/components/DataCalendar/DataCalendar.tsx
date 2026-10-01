@@ -142,7 +142,7 @@ export function DataCalendar<T>({
   return (
     <div className={styles.wrapper}>
       {showNav ? (
-        <div className={styles.nav}>
+        <div className={mode === 'week' ? styles.navWeek : styles.nav}>
           <button
             type="button"
             className={styles.navButton}

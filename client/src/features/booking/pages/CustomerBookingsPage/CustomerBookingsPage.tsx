@@ -582,7 +582,11 @@ export function CustomerBookingsPage() {
   }
 
   return (
-    <main className={styles.page}>
+    <main
+      className={
+        view === 'board' ? `${styles.page} ${styles.pageWide}` : styles.page
+      }
+    >
       <h1 className={styles.title}>My bookings</h1>
 
       {actionMessage ? (
@@ -610,47 +614,12 @@ export function CustomerBookingsPage() {
             onSearchChange={setSearch}
             searchPlaceholder="Search your bookings..."
           >
-            <div className={styles.viewControls}>
-              <ViewSwitcher
-                options={VIEW_OPTIONS}
-                value={view}
-                onChange={setView}
-                ariaLabel="Bookings view"
-              />
-              {view === 'board' ? (
-                <label className={styles.filterField}>
-                  <span className={styles.filterLabel}>Group by</span>
-                  <select
-                    className={styles.filterSelect}
-                    value={groupAxisId}
-                    onChange={(event) => setGroupAxisId(event.target.value)}
-                    aria-label="Group by"
-                  >
-                    {groupByAxes.map((axis) => (
-                      <option key={axis.id} value={axis.id}>
-                        {axis.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              {view === 'calendar' ? (
-                <label className={styles.filterField}>
-                  <span className={styles.filterLabel}>Calendar range</span>
-                  <select
-                    className={styles.filterSelect}
-                    value={calendarMode}
-                    onChange={(event) =>
-                      setCalendarMode(event.target.value as CalendarMode)
-                    }
-                    aria-label="Calendar range"
-                  >
-                    <option value="month">Month</option>
-                    <option value="week">Week</option>
-                  </select>
-                </label>
-              ) : null}
-            </div>
+            <ViewSwitcher
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              ariaLabel="Bookings view"
+            />
           </FilterSortBar>
 
           {view === 'table' ? (
@@ -686,38 +655,72 @@ export function CustomerBookingsPage() {
               </ul>
             )
           ) : view === 'board' ? (
-            <DataBoard
-              groups={groupedBookings}
-              getRowKey={(booking) => booking.id}
-              renderCard={(booking) => (
-                <div className={styles.boardCard}>
-                  {renderContextCard(booking, renderBookingSummary(booking))}
-                </div>
-              )}
-              emptyColumnMessage="No bookings here."
-            />
+            <section className={styles.boardPanel} aria-label="Bookings board">
+              <label className={styles.viewOption}>
+                <span className={styles.filterLabel}>Group by</span>
+                <select
+                  className={styles.filterSelect}
+                  value={groupAxisId}
+                  onChange={(event) => setGroupAxisId(event.target.value)}
+                  aria-label="Group by"
+                >
+                  {groupByAxes.map((axis) => (
+                    <option key={axis.id} value={axis.id}>
+                      {axis.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <DataBoard
+                groups={groupedBookings}
+                getRowKey={(booking) => booking.id}
+                renderCard={(booking) => (
+                  <div className={styles.boardCard}>
+                    {renderContextCard(booking, renderBookingSummary(booking))}
+                  </div>
+                )}
+                emptyColumnMessage="No bookings here."
+                wrapColumns
+              />
+            </section>
           ) : (
-            <DataCalendar
-              mode={calendarMode}
-              anchorDate={calendarAnchor}
-              onAnchorDateChange={setCalendarAnchor}
-              items={visibleBookings}
-              getItemDate={bookingCalendarDateKey}
-              getRowKey={(booking) => booking.id}
-              renderChip={(booking) =>
-                renderContextCard(
-                  booking,
-                  <button
-                    type="button"
-                    className={styles.calendarChip}
-                    onClick={() => setDetailsBookingId(booking.id)}
-                  >
-                    {formatTime(booking.scheduled_start)}{' '}
-                    {bookingTitle(booking)}
-                  </button>
-                )
-              }
-            />
+            <>
+              <label className={styles.viewOption}>
+                <span className={styles.filterLabel}>Calendar range</span>
+                <select
+                  className={styles.filterSelect}
+                  value={calendarMode}
+                  onChange={(event) =>
+                    setCalendarMode(event.target.value as CalendarMode)
+                  }
+                  aria-label="Calendar range"
+                >
+                  <option value="month">Month</option>
+                  <option value="week">Week</option>
+                </select>
+              </label>
+              <DataCalendar
+                mode={calendarMode}
+                anchorDate={calendarAnchor}
+                onAnchorDateChange={setCalendarAnchor}
+                items={visibleBookings}
+                getItemDate={bookingCalendarDateKey}
+                getRowKey={(booking) => booking.id}
+                renderChip={(booking) =>
+                  renderContextCard(
+                    booking,
+                    <button
+                      type="button"
+                      className={styles.calendarChip}
+                      onClick={() => setDetailsBookingId(booking.id)}
+                    >
+                      {formatTime(booking.scheduled_start)}{' '}
+                      {bookingTitle(booking)}
+                    </button>
+                  )
+                }
+              />
+            </>
           )}
         </>
       )}
