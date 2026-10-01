@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -9,6 +9,7 @@ import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as hotelApi from '../../../hotel/api/hotel.api';
+import * as daycareApi from '../../../daycare/api/daycare.api';
 import type { Cage } from '../../../hotel/hotel.types';
 import * as reportsApi from '../../api/reports.api';
 import { CageOccupancyReport } from './CageOccupancyReport';
@@ -23,6 +24,12 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
 
 vi.mock('../../../hotel/api/hotel.api', () => ({
   getCageGrid: vi.fn(),
+  getCageOccupants: vi.fn(),
+  checkOutHotelStay: vi.fn(),
+}));
+
+vi.mock('../../../daycare/api/daycare.api', () => ({
+  checkOutDaycareSession: vi.fn(),
 }));
 
 vi.mock('../../api/reports.api', () => ({
@@ -59,6 +66,7 @@ function buildCage(overrides: Partial<Cage> = {}): Cage {
     cage_label: 'S-01',
     size: 'S',
     status: 'Available',
+    pet_types: ['Dog'],
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -122,6 +130,286 @@ describe('CageOccupancyReport', () => {
         XL: [],
       },
       error: null,
+    });
+    // Nobody in any cage unless a test says otherwise.
+    vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+  });
+
+  describe('checkout countdown on an occupied cage', () => {
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+    });
+
+    function occupant(expectedCheckoutAt: string | null) {
+      return {
+        stay_id: 'stay-1',
+        cage_id: 'cage-2',
+        pet_name: 'Mochi',
+        owner_name: 'Jamie Cruz',
+        service: 'Daycare' as const,
+        booking_id: expectedCheckoutAt ? 'booking-1' : null,
+        since: '2026-08-01T02:00:00.000Z',
+        expected_checkout_at: expectedCheckoutAt,
+      };
+    }
+
+    it('shows who is in the cage and how long until the expected checkout', async () => {
+      const inTwoHours = new Date(
+        Date.now() + 2 * 60 * 60 * 1000 + 30_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [occupant(inTwoHours)],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Mochi')).toBeInTheDocument();
+      expect(screen.getByText('Daycare')).toBeInTheDocument();
+      expect(
+        screen.getByText(/^Checkout in 2h 00m \d\ds$/)
+      ).toBeInTheDocument();
+    });
+
+    it('flags a pet that is past its expected checkout as overdue', async () => {
+      const fortyMinutesAgo = new Date(
+        Date.now() - 40 * 60 * 1000 - 5_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [occupant(fortyMinutesAgo)],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/^Overdue by 40m \d\ds$/)
+      ).toBeInTheDocument();
+    });
+
+    it('says so when a walk-in session has no expected checkout', async () => {
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [occupant(null)],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(
+        await screen.findByText('No expected checkout (walk-in)')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/^Checkout in/)).not.toBeInTheDocument();
+    });
+
+    it('ignores an occupant entry for a cage that is not Occupied', async () => {
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [{ ...occupant('2026-08-01T06:00:00.000Z'), cage_id: 'cage-1' }],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('S-01')).toBeInTheDocument();
+      expect(screen.queryByText('Mochi')).not.toBeInTheDocument();
+    });
+
+    describe('cage details popup', () => {
+      it('clicking an occupied cage opens its details: cage, occupant, expected checkout and a countdown', async () => {
+        const user = userEvent.setup();
+        const inTwoHours = new Date(
+          Date.now() + 2 * 60 * 60 * 1000 + 30_000
+        ).toISOString();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [occupant(inTwoHours)],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByRole('button', { name: /S-02/ }));
+
+        const dialog = screen.getByRole('dialog', { name: 'Cage S-02' });
+        expect(dialog).toHaveTextContent('Occupied');
+        expect(dialog).toHaveTextContent('Small');
+        expect(within(dialog).getByText('Mochi')).toBeInTheDocument();
+        expect(within(dialog).getByText('Jamie Cruz')).toBeInTheDocument();
+        expect(within(dialog).getByText('Daycare')).toBeInTheDocument();
+        expect(within(dialog).getByText('Expected checkout')).toBeVisible();
+        expect(
+          within(dialog).getByText(/^Checkout in 2h 00m \d\ds$/)
+        ).toBeInTheDocument();
+        expect(
+          within(dialog).getByRole('link', { name: 'View booking' })
+        ).toHaveAttribute('href', '/staff/bookings/booking-1');
+      });
+
+      it('an empty cage opens too, saying nobody is in it and offering no Check out', async () => {
+        const user = userEvent.setup();
+
+        renderPage();
+
+        await user.click(await screen.findByRole('button', { name: /S-01/ }));
+
+        const dialog = screen.getByRole('dialog', { name: 'Cage S-01' });
+        expect(dialog).toHaveTextContent('No pet is in this cage.');
+        expect(
+          within(dialog).queryByRole('button', { name: 'Check out' })
+        ).not.toBeInTheDocument();
+      });
+
+      it('closes from its close button', async () => {
+        const user = userEvent.setup();
+
+        renderPage();
+
+        await user.click(await screen.findByRole('button', { name: /S-01/ }));
+        await user.click(screen.getByRole('button', { name: 'Close' }));
+
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Check out', () => {
+      const inTwoHours = () =>
+        new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+      /** Check out lives in the cage's details popup: open the occupied
+       * cage (S-02), press Check out there - the popup hands over to the
+       * confirm dialog, so only one dialog is ever open. */
+      async function openCheckoutFromCage(
+        user: ReturnType<typeof userEvent.setup>
+      ) {
+        await user.click(await screen.findByRole('button', { name: /S-02/ }));
+        await user.click(
+          within(screen.getByRole('dialog', { name: 'Cage S-02' })).getByRole(
+            'button',
+            { name: 'Check out' }
+          )
+        );
+      }
+
+      it('checks a Daycare pet out after confirming, then reloads so the cage reads Available', async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [occupant(inTwoHours())],
+          error: null,
+        });
+        vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+          data: { id: 'stay-1', computed_charge: 150 } as never,
+          error: null,
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+        // Nothing happens until the dialog is confirmed.
+        expect(daycareApi.checkOutDaycareSession).not.toHaveBeenCalled();
+        const dialog = screen.getByRole('dialog');
+        expect(dialog).toHaveTextContent('sets S-02 back to Available');
+
+        const reloadsBefore = vi.mocked(hotelApi.getCageGrid).mock.calls.length;
+        await user.click(
+          within(dialog).getByRole('button', { name: 'Check out' })
+        );
+
+        expect(daycareApi.checkOutDaycareSession).toHaveBeenCalledWith(
+          'stay-1',
+          'token'
+        );
+        expect(
+          await screen.findByText(
+            'Mochi was checked out and S-02 is available again. Daycare charge: PHP 150.00.'
+          )
+        ).toBeInTheDocument();
+        await waitFor(() =>
+          expect(
+            vi.mocked(hotelApi.getCageGrid).mock.calls.length
+          ).toBeGreaterThan(reloadsBefore)
+        );
+        expect(hotelApi.checkOutHotelStay).not.toHaveBeenCalled();
+      });
+
+      it('uses the Hotel check-out for a Hotel stay', async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [{ ...occupant(inTwoHours()), service: 'Hotel' as const }],
+          error: null,
+        });
+        vi.mocked(hotelApi.checkOutHotelStay).mockResolvedValue({
+          data: {
+            stay: { id: 'stay-1' },
+            downpaymentAmount: 0,
+            extensionFee: null,
+            remainingBalance: 850,
+          } as never,
+          error: null,
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+        await user.click(
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Check out',
+          })
+        );
+
+        expect(hotelApi.checkOutHotelStay).toHaveBeenCalledWith(
+          'stay-1',
+          'token'
+        );
+        expect(
+          await screen.findByText(/Remaining balance: PHP 850.00/)
+        ).toBeInTheDocument();
+      });
+
+      it("keeps the dialog open with the server's reason when the check-out is refused", async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [occupant(inTwoHours())],
+          error: null,
+        });
+        vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+          data: null,
+          error: 'Complete the boarding checklist before checking out',
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+        await user.click(
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Check out',
+          })
+        );
+
+        expect(
+          await within(screen.getByRole('dialog')).findByText(
+            'Complete the boarding checklist before checking out'
+          )
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText(/is available again/)
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('still lists the cages when the occupant lookup fails', async () => {
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: null,
+        error: 'boom',
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('S-02')).toBeInTheDocument();
+      expect(screen.queryByText(/^Checkout in/)).not.toBeInTheDocument();
     });
   });
 

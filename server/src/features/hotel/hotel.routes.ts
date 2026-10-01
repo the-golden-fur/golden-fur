@@ -8,6 +8,7 @@ import {
   archiveCageController,
   availableCageCountsController,
   cageGridController,
+  cageOccupantsController,
   careLogEntriesController,
   checkInController,
   checkoutController,
@@ -128,6 +129,16 @@ router.get(
   requireRole(frontDeskAndAssistants),
   requireBranch,
   cageGridController
+);
+
+// Same audience as the cage grid above - it only adds who is in each cage.
+router.get(
+  '/hotel/cages/occupants',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole(frontDeskAndAssistants),
+  requireBranch,
+  cageOccupantsController
 );
 
 router.get(

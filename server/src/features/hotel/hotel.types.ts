@@ -81,6 +81,23 @@ export type CareLogEntryStatus =
 export type StayType = 'Hotel' | 'Daycare';
 export type StayStatus = 'Active' | 'Completed';
 
+/** Who is in an occupied cage and when they're expected to leave - see
+ * cageOccupants.service.ts. */
+export interface CageOccupant {
+  /** The Active stay (Hotel) / session (Daycare) behind this occupant - what
+   * a check-out acts on. */
+  stay_id: string;
+  cage_id: string;
+  pet_name: string | null;
+  owner_name: string | null;
+  service: 'Hotel' | 'Daycare';
+  booking_id: string | null;
+  since: string | null;
+  /** The booking's own scheduled end (Hotel nights / Daycare hours as
+   * booked); null when there is no booking behind the stay. */
+  expected_checkout_at: string | null;
+}
+
 export interface Cage {
   id: string;
   branch_id: string;

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkOutDaycareSession,
   computeDaycareCharge,
+  computeDaycareChargeBreakdown,
 } from './daycareBilling.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
@@ -43,7 +44,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'in']) {
+    for (const method of ['select', 'eq', 'in', 'is']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -139,10 +140,12 @@ describe('daycareBilling.service (#65)', () => {
       ).toBe(275);
     });
 
-    it('#22: a session held past closing accrues the (default ₱850) overnight fee per night crossed, on top of the hourly charge', async () => {
+    describe('not picked up before closing', () => {
       // Branch closes 18:00 Asia/Manila (10:00 UTC) every day; the session
       // spans 2026-07-19 08:00 UTC -> 2026-07-21 09:05 UTC, crossing two
-      // closing boundaries (07-19 and 07-20), so 2 nights.
+      // closing boundaries (07-19 and 07-20), so 2 nights. Check-in is 2h
+      // before the first closing, so the hourly part is 100 + 1 x 50 = 150
+      // no matter how long after that the pet is actually picked up.
       const start = new Date('2026-07-19T08:00:00Z');
       const end = new Date('2026-07-21T09:05:00Z');
       const branchWithHours = {
@@ -157,48 +160,107 @@ describe('daycareBilling.service (#65)', () => {
         error: null,
       };
 
-      queueFromResults(branchWithHours);
+      function hotelServices(...prices: number[]): QueryResult {
+        return {
+          data: prices.map((base_price) => ({ base_price })),
+          error: null,
+        };
+      }
 
-      const elapsedMinutes = (end.getTime() - start.getTime()) / 60000;
-      const succeedingHours = Math.ceil((elapsedMinutes - 60) / 60);
-      const expectedHourly = 100 + succeedingHours * 50;
+      it("bills hourly only up to the first closing time, then the branch's Hotel nightly rate per night", async () => {
+        queueFromResults(branchWithHours, hotelServices(850));
 
-      expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
-        2 * 850 + expectedHourly
-      );
+        expect(
+          await computeDaycareChargeBreakdown(start, end, 'branch-1')
+        ).toEqual({
+          first_hour_fee: 100,
+          succeeding_hours: 1,
+          succeeding_hour_fee: 50,
+          hourly_charge: 150,
+          nights: 2,
+          nightly_rate: 850,
+          overnight_charge: 1700,
+          total: 1850,
+        });
+      });
+
+      it('charges one night for a pet picked up the next morning', async () => {
+        queueFromResults(branchWithHours, hotelServices(850));
+
+        expect(
+          await computeDaycareCharge(
+            start,
+            new Date('2026-07-20T01:00:00Z'),
+            'branch-1'
+          )
+        ).toBe(150 + 850);
+      });
+
+      it("follows the Hotel service's own price, not the Daycare service's overnight fee", async () => {
+        queueFromResults(branchWithHours, hotelServices(1000));
+
+        expect(
+          await computeDaycareCharge(
+            start,
+            end,
+            'branch-1',
+            undefined,
+            undefined,
+            900
+          )
+        ).toBe(150 + 2 * 1000);
+      });
+
+      it('uses the cheapest when a branch has several active Hotel services', async () => {
+        queueFromResults(branchWithHours, hotelServices(1000, 700));
+
+        expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
+          150 + 2 * 700
+        );
+      });
+
+      it("falls back to the Daycare service's own overnight fee when the branch has no Hotel service", async () => {
+        queueFromResults(branchWithHours, hotelServices());
+
+        expect(
+          await computeDaycareCharge(
+            start,
+            end,
+            'branch-1',
+            undefined,
+            undefined,
+            900
+          )
+        ).toBe(150 + 2 * 900);
+      });
+
+      it('falls back to the documented ₱850 default when neither is set', async () => {
+        queueFromResults(branchWithHours, hotelServices());
+
+        expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
+          150 + 2 * 850
+        );
+      });
     });
 
-    it('Custom change (Daycare fee configuration follow-up): a custom per-service overnight fee overrides the ₱850 default', async () => {
+    it('a same-day pickup never looks up the Hotel rate', async () => {
       const start = new Date('2026-07-19T08:00:00Z');
-      const end = new Date('2026-07-21T09:05:00Z');
-      const branchWithHours = {
-        data: {
-          operating_hours: {
-            sunday: { open: '08:00', close: '18:00' },
-            monday: { open: '08:00', close: '18:00' },
-            tuesday: { open: '08:00', close: '18:00' },
-          },
-          timezone: 'Asia/Manila',
-        },
-        error: null,
-      };
+      queueFromResults(BRANCH_NO_HOURS);
 
-      queueFromResults(branchWithHours);
+      const breakdown = await computeDaycareChargeBreakdown(
+        start,
+        minutesLater(start, 70),
+        'branch-1'
+      );
 
-      const elapsedMinutes = (end.getTime() - start.getTime()) / 60000;
-      const succeedingHours = Math.ceil((elapsedMinutes - 60) / 60);
-      const expectedHourly = 100 + succeedingHours * 50;
-
-      expect(
-        await computeDaycareCharge(
-          start,
-          end,
-          'branch-1',
-          undefined,
-          undefined,
-          900
-        )
-      ).toBe(2 * 900 + expectedHourly);
+      expect(breakdown).toMatchObject({
+        nights: 0,
+        nightly_rate: null,
+        overnight_charge: 0,
+        total: 150,
+      });
+      // Only the branch's operating hours - no `services` query.
+      expect(supabase.from).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -233,6 +295,11 @@ describe('daycareBilling.service (#65)', () => {
       expect(result.status).toBe('Completed');
       const update = recordedWrites.find((write) => write.method === 'update');
       expect(update?.payload).toMatchObject({ status: 'Completed' });
+      // The itemized breakdown rides along on the response and always adds
+      // up to the stored charge.
+      expect(result.charge_breakdown.total).toBe(
+        (update?.payload as { computed_charge?: number }).computed_charge
+      );
       expect(
         (update?.payload as { computed_charge?: number }).computed_charge
       ).not.toBeNull();

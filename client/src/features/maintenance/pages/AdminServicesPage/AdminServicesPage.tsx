@@ -587,8 +587,7 @@ export function AdminServicesPage() {
         ) : null}
         {service.category === 'Daycare' ? (
           <span className={styles.categoryBadge}>
-            PHP {(service.daycare_overnight_fee ?? 850).toFixed(2)}/night if not
-            picked up
+            Hotel nightly rate if not picked up
           </span>
         ) : null}
       </>
@@ -995,8 +994,10 @@ export function AdminServicesPage() {
                   </label>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
-                      Overnight fee (PHP/night, charged when not picked up
-                      before closing - optional, defaults to ₱850)
+                      Fallback overnight fee (PHP/night - a pet not picked up
+                      before closing is charged the Hotel nightly rate; this is
+                      only used if the branch has no Hotel service. Optional,
+                      defaults to ₱850)
                     </span>
                     <input
                       className={styles.input}

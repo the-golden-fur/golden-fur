@@ -621,10 +621,15 @@ export const staffPickerQueryValidator = z.object({
  * time-window overlap check - see cagePicker.service.ts.
  *
  * pet_id (Custom change, cage pet-type support): required so the options
- * list can be hard-filtered to the pet's own pet_type. */
+ * list can be hard-filtered to the pet's own pet_type.
+ *
+ * service_category: which service type's cage_picker_enabled toggle to
+ * read. Optional, defaulting to Hotel, so a caller from before Daycare got
+ * the picker keeps working unchanged. */
 export const cagePickerQueryValidator = z.object({
   branch_id: z.uuid(),
   pet_id: z.uuid(),
+  service_category: z.enum(['Hotel', 'Daycare']).default('Hotel'),
 });
 
 /** Custom change (cage pet-type support / customer readonly cage view). */

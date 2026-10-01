@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   availabilityQueryValidator,
+  cagePickerQueryValidator,
   cancelBookingValidator,
   createBookingGroupValidator,
   createBookingValidator,
@@ -588,6 +589,38 @@ describe('overrideBookingStatusValidator', () => {
       overrideBookingStatusValidator.safeParse({
         status: 'Paid',
         paid_at: '2026-01-01T00:00:00Z',
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('cagePickerQueryValidator', () => {
+  const QUERY = {
+    branch_id: '22222222-2222-4222-a222-222222222222',
+    pet_id: '11111111-1111-4111-a111-111111111111',
+  };
+
+  it('defaults service_category to Hotel when omitted', () => {
+    const parsed = cagePickerQueryValidator.safeParse(QUERY);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.service_category).toBe('Hotel');
+  });
+
+  it('accepts Daycare', () => {
+    const parsed = cagePickerQueryValidator.safeParse({
+      ...QUERY,
+      service_category: 'Daycare',
+    });
+
+    expect(parsed.data?.service_category).toBe('Daycare');
+  });
+
+  it('rejects a category that never holds a cage', () => {
+    expect(
+      cagePickerQueryValidator.safeParse({
+        ...QUERY,
+        service_category: 'Grooming',
       }).success
     ).toBe(false);
   });

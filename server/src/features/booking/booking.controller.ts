@@ -398,7 +398,7 @@ export async function cagePickerOptionsController(
   try {
     const result = await getCagePickerOptions(
       parsed.data.branch_id,
-      'Hotel',
+      parsed.data.service_category,
       parsed.data.pet_id
     );
 

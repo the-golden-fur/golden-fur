@@ -15,6 +15,9 @@ interface CagePickerListProps {
    * unlike cage size below, there's no override for a pet-type mismatch,
    * so a wrong-type cage is simply absent from the list, never disabled. */
   petId: string;
+  /** Which service type's cage_picker_enabled toggle decides whether this
+   * renders - the two categories that hold a cage. */
+  serviceCategory: 'Hotel' | 'Daycare';
   selected: CagePreferenceInput | null;
   onSelect: (preference: CagePreferenceInput) => void;
   /** Same contract as StaffPickerList's onUnavailable - called once, the
@@ -53,7 +56,7 @@ function isSelected(
 
 /**
  * Custom change: Cage Picker addendum, mirroring StaffPickerList. Only
- * mounted by the booking flow when the selected Hotel service type has
+ * mounted by the booking flow when the selected Hotel/Daycare service type has
  * cage_picker_enabled set (Admin Settings > Service Types) - the caller
  * decides whether this step exists in the stepper at all. Branch-scoped
  * only (no time window - cage availability is a live status snapshot, not
@@ -71,6 +74,7 @@ export function CagePickerList({
   accessToken,
   branchId,
   petId,
+  serviceCategory,
   selected,
   onSelect,
   onUnavailable,
@@ -107,7 +111,12 @@ export function CagePickerList({
   useEffect(() => {
     let isMounted = true;
 
-    void getCagePickerOptions(accessToken, branchId, petId).then((result) => {
+    void getCagePickerOptions(
+      accessToken,
+      branchId,
+      petId,
+      serviceCategory
+    ).then((result) => {
       if (!isMounted) return;
 
       setIsLoading(false);
@@ -135,7 +144,7 @@ export function CagePickerList({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, branchId, petId]);
+  }, [accessToken, branchId, petId, serviceCategory]);
 
   const query = search.trim().toLowerCase();
   const visibleOptions = query

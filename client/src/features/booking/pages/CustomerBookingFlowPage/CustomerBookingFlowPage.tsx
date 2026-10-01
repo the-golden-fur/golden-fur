@@ -147,7 +147,9 @@ function describeStaffOrCage(
   staffPreference: StaffPreferenceInput | null,
   cagePreference: CagePreferenceInput | null
 ): string {
-  if (category === 'Hotel') {
+  // Daycare only talks about a cage once the receptionist's Cage Picker
+  // actually produced a preference - it's off unless enabled for Daycare.
+  if (category === 'Hotel' || (category === 'Daycare' && cagePreference)) {
     return cagePreference?.type === 'specific'
       ? 'Specific cage requested'
       : 'No cage preference';
@@ -234,6 +236,9 @@ interface SubBookingDraft {
   selectedSlot: { start: string; end: string } | null;
   finalScheduledEnd: string | null;
   hotelNights: number;
+  /** Optional - an entry saved before Daycare had an hours picker has none
+   * and reads as 1 hour. */
+  daycareHours?: number;
   staffPreference: StaffPreferenceInput | null;
   cagePreference: CagePreferenceInput | null;
   specialInstructions: string;
@@ -298,6 +303,33 @@ const PARTS_OF_DAY: HotelBookingPreferenceWalking['time_block'][] = [
 const DURATION_PRESETS_MINUTES = [10, 15, 20, 30];
 
 const NIGHT_COUNT_PRESETS = [3, 5];
+
+const DAYCARE_HOUR_PRESETS = [2, 4];
+const MAX_DAYCARE_HOURS = 12;
+
+/** What a Daycare booking costs for the hours booked: the service's own
+ * first-hour fee, plus its succeeding-hour fee for each further hour.
+ * Mirrors the server (booking.service.ts's resolveBookingItem, via
+ * daycareHourlyCharge), which prices the booking the same way from the
+ * scheduled window - so the panel and the charge agree. A Daycare service
+ * with no hourly fees set keeps its flat base price, same as the server. */
+function daycareBookingPrice(
+  service: {
+    base_price: number;
+    first_hour_fee?: number | null;
+    succeeding_hour_fee?: number | null;
+  },
+  hours: number
+): number {
+  if (service.first_hour_fee == null || service.succeeding_hour_fee == null) {
+    return service.base_price;
+  }
+
+  return (
+    service.first_hour_fee +
+    Math.max(0, hours - 1) * service.succeeding_hour_fee
+  );
+}
 
 interface HotelFeedingRowState {
   meal_time: HotelBookingPreferenceFeeding['meal_time'];
@@ -420,6 +452,8 @@ interface PersistedBookingDraft {
   bookingSource: BookingSource;
   selectedSlot: { start: string; end: string } | null;
   hotelNights: number;
+  /** Optional - a draft saved before Daycare had an hours picker has none. */
+  daycareHours?: number;
   // Multiselect (session 86): replaces the old singular selectedPromoId.
   selectedPromoIds: string[];
   selectedCouponIds: string[];
@@ -745,6 +779,11 @@ export function CustomerBookingFlowPage() {
    * actual submitted scheduled_end is computed from this instead so a stay
    * can span more than one night. */
   const [hotelNights, setHotelNights] = useState(1);
+  /** Daycare's own counterpart to hotelNights: how many hours the pet is
+   * booked in for, set on the Date & Time step. Drives both the booking's
+   * length (scheduled_end) and its price (first hour + each succeeding
+   * hour - see daycareBookingPrice). */
+  const [daycareHours, setDaycareHours] = useState(1);
   const [staffPreference, setStaffPreference] =
     useState<StaffPreferenceInput | null>(null);
   // Resolved from GET /bookings/staff-picker (customer-accessible) once the
@@ -771,14 +810,6 @@ export function CustomerBookingFlowPage() {
   const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
   const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [selectedDiscountId, setSelectedDiscountId] = useState('');
-  // Staff attestation that they physically checked the customer's Senior
-  // Citizen/PWD ID before selecting a mandated discount - mirrors
-  // CashierCheckoutPage's own seniorCitizenEligible/pwdEligible checkboxes,
-  // just collapsed to one confirmation since only one discount can be picked
-  // here. Never sent to the server or persisted (same as the checkout-time
-  // checkboxes) - the act of a qualifying staff role choosing a Cash booking
-  // and checking this box IS the attestation.
-  const [discountIdVerified, setDiscountIdVerified] = useState(false);
   // Payment scheme: only sent when the branch requires a down payment (see
   // showPaymentChoice). Decides the size of the booking's initial charge.
   const [paymentChoice, setPaymentChoice] =
@@ -962,7 +993,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -984,6 +1014,16 @@ export function CustomerBookingFlowPage() {
     setStaffPickerUnavailable(false);
     setCagePreference(null);
     setCagePickerUnavailable(false);
+  }
+
+  /** Changing the hours changes the booking's length, exactly like changing
+   * the item set does for the other categories - so a slot already picked
+   * for the old length is dropped and re-picked against the new one. */
+  function changeDaycareHours(hours: number) {
+    const next = Math.min(MAX_DAYCARE_HOURS, Math.max(1, Math.round(hours)));
+    if (next === daycareHours) return;
+    setDaycareHours(next);
+    resetSlotForItemChange();
   }
 
   // ---- Data loads ----
@@ -1184,6 +1224,7 @@ export function CustomerBookingFlowPage() {
       }
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
+      setDaycareHours(draft.daycareHours ?? 1);
       setSelectedPromoIds(draft.selectedPromoIds ?? []);
       setSelectedCouponIds(draft.selectedCouponIds ?? []);
       setSelectedDiscountId(draft.selectedDiscountId);
@@ -1199,8 +1240,6 @@ export function CustomerBookingFlowPage() {
         setWalkInCustomer(draft.walkInCustomer);
       }
       setBookingsList(draft.bookingsList ?? []);
-      // discountIdVerified is deliberately NOT restored - it's an onsite ID
-      // check attestation, not something that should survive a page reload.
       setShowRestoredBanner(true);
     });
   }, [draftStorageKey, isReceptionistMode, lockedServiceCategory]);
@@ -1234,6 +1273,7 @@ export function CustomerBookingFlowPage() {
         bookingSource,
         selectedSlot,
         hotelNights,
+        daycareHours,
         selectedPromoIds,
         selectedCouponIds,
         selectedDiscountId,
@@ -1263,6 +1303,7 @@ export function CustomerBookingFlowPage() {
     bookingSource,
     selectedSlot,
     hotelNights,
+    daycareHours,
     selectedPromoIds,
     selectedCouponIds,
     selectedDiscountId,
@@ -1299,12 +1340,12 @@ export function CustomerBookingFlowPage() {
     setBookingSource('Online');
     setSelectedSlot(null);
     setHotelNights(1);
+    setDaycareHours(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
     setSelectedDiscountId('');
-    setDiscountIdVerified(false);
     setPaymentChoice('downpayment');
     setSpecialInstructions('');
     resetHotelPreferences();
@@ -1488,6 +1529,18 @@ export function CustomerBookingFlowPage() {
     [packages, selectedPackageIds]
   );
 
+  /** The selected Daycare service, when it has hourly fees to price by -
+   * null otherwise (not Daycare, nothing picked yet, or a Daycare service
+   * left on a flat base price). */
+  const daycareRateService =
+    category === 'Daycare'
+      ? (selectedServices.find(
+          (service) =>
+            service.first_hour_fee != null &&
+            service.succeeding_hour_fee != null
+        ) ?? null)
+      : null;
+
   /** Flattened services + packages for the in-progress booking, name +
    * price only - feeds the Services row of the "Your booking" summary panel
    * (BookingSummaryPanel) so a customer/receptionist doesn't have to jump
@@ -1497,7 +1550,10 @@ export function CustomerBookingFlowPage() {
       ...selectedServices.map((service) => ({
         id: service.id,
         name: service.name,
-        price: catalogFixedPrice ?? service.base_price,
+        price:
+          category === 'Daycare'
+            ? daycareBookingPrice(service, daycareHours)
+            : (catalogFixedPrice ?? service.base_price),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
@@ -1505,7 +1561,13 @@ export function CustomerBookingFlowPage() {
         price: catalogFixedPrice ?? pkg.bundled_price,
       })),
     ],
-    [selectedServices, selectedPackages, catalogFixedPrice]
+    [
+      selectedServices,
+      selectedPackages,
+      catalogFixedPrice,
+      category,
+      daycareHours,
+    ]
   );
 
   const serviceNameById = useMemo(
@@ -1585,6 +1647,12 @@ export function CustomerBookingFlowPage() {
         0
       ) || 60;
 
+  /** How long one "unit" of this booking runs. Daycare's is the hours picked
+   * on the Date & Time step, not the service's own nominal duration - the
+   * pet stays (and the slot has to be free) for all of them. */
+  const bookingMinutes =
+    category === 'Daycare' ? daycareHours * 60 : slotDurationMinutes;
+
   /** The real scheduled_end, computed from the item-derived
    * slotDurationMinutes (Services is picked before the 'availability' step,
    * so this is known there) plus the Hotel nights multiplier. SlotPicker's
@@ -1595,7 +1663,7 @@ export function CustomerBookingFlowPage() {
   const finalScheduledEnd = selectedSlot
     ? new Date(
         new Date(selectedSlot.start).getTime() +
-          (category === 'Hotel' ? hotelNights : 1) * slotDurationMinutes * 60000
+          (category === 'Hotel' ? hotelNights : 1) * bookingMinutes * 60000
       ).toISOString()
     : null;
 
@@ -1651,9 +1719,17 @@ export function CustomerBookingFlowPage() {
   // bundled_price entirely, same as booking.service.ts's resolveServicePrice/
   // resolvePackagePrice at actual booking creation - so this preview shows
   // the real charged price instead of a stale service-list price.
+  //
+  // Daycare is the exception to both: it's priced by the hours booked, from
+  // the service's own hourly fees (daycareBookingPrice), again exactly as
+  // the server does.
   const itemsTotal =
     (selectedServices.reduce(
-      (sum, service) => sum + (catalogFixedPrice ?? service.base_price),
+      (sum, service) =>
+        sum +
+        (category === 'Daycare'
+          ? daycareBookingPrice(service, daycareHours)
+          : (catalogFixedPrice ?? service.base_price)),
       0
     ) +
       selectedPackages.reduce(
@@ -1790,6 +1866,10 @@ export function CustomerBookingFlowPage() {
 
     return discounts.filter((discount) => {
       if (!discount.is_active) return false;
+      // Senior Citizen/PWD (the mandated discounts) aren't offered at
+      // booking time - they need an onsite ID check, which happens at
+      // CashierCheckoutPage's own seniorCitizenEligible/pwdEligible step.
+      if (discount.is_mandated) return false;
 
       if (discount.scope_type === 'service') {
         return groupServiceIds.includes(discount.scope_service_id ?? '');
@@ -1918,8 +1998,11 @@ export function CustomerBookingFlowPage() {
       list.push({ key: 'bookingType', label: 'Booking Type' });
     }
 
+    // Daycare only becomes "Cage & Date" once the receptionist's Cage
+    // Picker has actually loaded (it sets a preference the moment it does) -
+    // it's off unless enabled for Daycare, and customers never get it.
     const availabilityLabel =
-      category === 'Hotel'
+      category === 'Hotel' || (category === 'Daycare' && cagePreference)
         ? 'Cage & Date'
         : staffPickerAppliesToCategory && !staffPickerUnavailable
           ? 'Staff & Date'
@@ -1952,6 +2035,7 @@ export function CustomerBookingFlowPage() {
     isReceptionistMode,
     lockedServiceCategory,
     category,
+    cagePreference,
     staffPickerUnavailable,
     staffPickerAppliesToCategory,
   ]);
@@ -2030,8 +2114,6 @@ export function CustomerBookingFlowPage() {
         // 'hotelDetails' is left), but the guard stays consistent with
         // every other step's own validity check.
         return bookingsList.length > 0;
-      case 'payment':
-        return !selectedDiscount?.is_mandated || discountIdVerified;
       default:
         return true;
     }
@@ -2155,7 +2237,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -2180,7 +2261,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -2534,6 +2614,7 @@ export function CustomerBookingFlowPage() {
       selectedSlot,
       finalScheduledEnd,
       hotelNights,
+      daycareHours,
       staffPreference,
       cagePreference,
       specialInstructions,
@@ -2563,6 +2644,7 @@ export function CustomerBookingFlowPage() {
     setBookingSource(entry.bookingSource);
     setSelectedSlot(entry.selectedSlot);
     setHotelNights(entry.hotelNights);
+    setDaycareHours(entry.daycareHours ?? 1);
     setStaffPreference(entry.staffPreference);
     setCagePreference(entry.cagePreference);
     setSpecialInstructions(entry.specialInstructions);
@@ -2592,6 +2674,7 @@ export function CustomerBookingFlowPage() {
     setBookingSource('Online');
     setSelectedSlot(null);
     setHotelNights(1);
+    setDaycareHours(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     setCagePreference(null);
@@ -2954,7 +3037,16 @@ export function CustomerBookingFlowPage() {
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={() => setShowAddPet(true)}
+                // A customer adds pets in their own Pet Manager (the full
+                // pet profile lives there); the booking draft is saved, so
+                // they can come back and carry on. Staff booking for a
+                // walk-in customer have no such page, so they keep the
+                // inline form.
+                onClick={() =>
+                  isReceptionistMode
+                    ? setShowAddPet(true)
+                    : navigate('/portal/pets')
+                }
               >
                 + Add a pet
               </button>
@@ -3174,6 +3266,46 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
+            {category === 'Daycare' ? (
+              <>
+                <div className={styles.nightsField}>
+                  <label>
+                    <span>Number of hours</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={MAX_DAYCARE_HOURS}
+                      value={daycareHours}
+                      onChange={(event) =>
+                        changeDaycareHours(Number(event.target.value) || 1)
+                      }
+                    />
+                  </label>
+                  {DAYCARE_HOUR_PRESETS.map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => changeDaycareHours(hours)}
+                    >
+                      {hours} hours
+                    </button>
+                  ))}
+                </div>
+                {daycareRateService ? (
+                  <p className={styles.copy}>
+                    PHP {daycareRateService.first_hour_fee!.toFixed(2)} for the
+                    first hour, PHP{' '}
+                    {daycareRateService.succeeding_hour_fee!.toFixed(2)} for
+                    each hour after - {daycareHours} hour
+                    {daycareHours === 1 ? '' : 's'} is{' '}
+                    <strong>PHP {itemsTotal.toFixed(2)}</strong>. The final bill
+                    is based on the actual pickup time.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+
             <SlotPicker
               accessToken={accessToken!}
               branchId={selectedBranchId}
@@ -3187,10 +3319,7 @@ export function CustomerBookingFlowPage() {
               // shorter window than it occupies, but that is not a real
               // grooming/vet scenario - Hotel's length rides the nights
               // multiplier, not this sum.
-              slotDurationMinutes={Math.min(
-                1440,
-                Math.max(15, slotDurationMinutes)
-              )}
+              slotDurationMinutes={Math.min(1440, Math.max(15, bookingMinutes))}
               petWeightClass={
                 category === 'Hotel'
                   ? (selectedPet?.weight_class ?? undefined)
@@ -3231,7 +3360,7 @@ export function CustomerBookingFlowPage() {
                         { hour: 'numeric', minute: '2-digit' }
                       )}
                     </strong>{' '}
-                    · {formatDuration(slotDurationMinutes)}
+                    · {formatDuration(bookingMinutes)}
                   </>
                 )}
               </p>
@@ -3254,7 +3383,8 @@ export function CustomerBookingFlowPage() {
             ) : null}
 
             {/* Custom change: Cage Picker addendum - lets the receptionist
-              name a specific cage preference. Only renders once the Hotel
+              name a specific cage preference, for Hotel and Daycare (both
+              claim a real cage at check-in). Only renders once that
               service type's cage_picker_enabled toggle (Admin Settings >
               Service Types) resolves true; CagePickerList's own
               onUnavailable degrades this to "no preference" otherwise, same
@@ -3273,7 +3403,7 @@ export function CustomerBookingFlowPage() {
               mismatches are already excluded from the option list itself
               (getCagePickerOptions), not merely disabled. */}
             {selectedSlot &&
-            category === 'Hotel' &&
+            (category === 'Hotel' || category === 'Daycare') &&
             isReceptionistMode &&
             !cagePickerUnavailable &&
             selectedPet ? (
@@ -3281,6 +3411,7 @@ export function CustomerBookingFlowPage() {
                 accessToken={accessToken!}
                 branchId={selectedBranchId}
                 petId={selectedPet.id}
+                serviceCategory={category}
                 selected={cagePreference}
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
@@ -3405,9 +3536,8 @@ export function CustomerBookingFlowPage() {
                       </span>
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
-                          PHP{' '}
-                          {(service.daycare_overnight_fee ?? 850).toFixed(2)}
-                          /night if not picked up before closing
+                          Hotel nightly rate applies if not picked up before
+                          closing
                         </span>
                       ) : null}
                       {category !== 'Hotel' ? (
@@ -3478,7 +3608,9 @@ export function CustomerBookingFlowPage() {
                   Running total (before promos/discounts)
                   {category === 'Hotel' && hotelNightsMultiplier > 1
                     ? ` × ${hotelNightsMultiplier} nights`
-                    : ''}
+                    : category === 'Daycare' && daycareHours > 1
+                      ? ` for ${daycareHours} hours`
+                      : ''}
                 </span>
                 <span>PHP {itemsTotal.toFixed(2)}</span>
               </div>
@@ -4273,20 +4405,15 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            {canApplyDiscounts ? (
+            {applicableDiscounts.length > 0 ? (
               <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>
-                  Discount (verify the customer&apos;s ID before applying)
-                </legend>
+                <legend className={styles.fieldLabel}>Discount</legend>
                 <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="discount"
                     checked={selectedDiscountId === ''}
-                    onChange={() => {
-                      setSelectedDiscountId('');
-                      setDiscountIdVerified(false);
-                    }}
+                    onChange={() => setSelectedDiscountId('')}
                   />
                   None
                 </label>
@@ -4296,10 +4423,7 @@ export function CustomerBookingFlowPage() {
                       type="radio"
                       name="discount"
                       checked={selectedDiscountId === discount.id}
-                      onChange={() => {
-                        setSelectedDiscountId(discount.id);
-                        setDiscountIdVerified(false);
-                      }}
+                      onChange={() => setSelectedDiscountId(discount.id)}
                     />
                     {discount.name} (
                     {discount.discount_type === 'Percentage'
@@ -4308,23 +4432,6 @@ export function CustomerBookingFlowPage() {
                     )
                   </label>
                 ))}
-                {applicableDiscounts.length === 0 ? (
-                  <p className={styles.copy}>
-                    No discounts apply to the selected items.
-                  </p>
-                ) : null}
-                {selectedDiscount?.is_mandated ? (
-                  <label className={styles.radioOption}>
-                    <input
-                      type="checkbox"
-                      checked={discountIdVerified}
-                      onChange={(event) =>
-                        setDiscountIdVerified(event.target.checked)
-                      }
-                    />
-                    I have verified the customer&apos;s ID for this discount
-                  </label>
-                ) : null}
               </fieldset>
             ) : null}
 
@@ -4411,6 +4518,11 @@ export function CustomerBookingFlowPage() {
         if (category === 'Hotel' && hotelNights > 1 && lines.length > 0) {
           lines.push({ text: `× ${hotelNights} nights` });
         }
+        if (category === 'Daycare' && daycareRateService && daycareHours > 1) {
+          lines.push({
+            text: `${daycareHours} hours - PHP ${daycareRateService.first_hour_fee} + ${daycareHours - 1} × PHP ${daycareRateService.succeeding_hour_fee}`,
+          });
+        }
         return lines;
       }
       case 'bookingType':
@@ -4423,7 +4535,7 @@ export function CustomerBookingFlowPage() {
         if (category === 'Hotel' && finalScheduledEnd) {
           lines.push({ text: `Until ${formatSlotStart(finalScheduledEnd)}` });
         }
-        if (category === 'Hotel' || staffPreference) {
+        if (category === 'Hotel' || staffPreference || cagePreference) {
           lines.push({
             text: describeStaffOrCage(
               category,
@@ -4464,10 +4576,7 @@ export function CustomerBookingFlowPage() {
           : [];
       case 'promos': {
         const lines: BookingSummaryLine[] = [];
-        const discountName = discounts.find(
-          (discount) => discount.id === selectedDiscountId
-        )?.name;
-        if (discountName) lines.push({ text: discountName });
+        if (selectedDiscount) lines.push({ text: selectedDiscount.name });
         for (const promo of promos) {
           if (selectedPromoIds.includes(promo.id)) {
             lines.push({ text: promo.name });

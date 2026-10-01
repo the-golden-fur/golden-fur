@@ -64,6 +64,7 @@ import {
   isCagePickerEnabled,
   verifyCagePreference,
 } from './cagePicker.service.ts';
+import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
@@ -226,6 +227,37 @@ async function resolveBookingItem(
     }
 
     const durationMinutes = service.duration_minutes ?? 60;
+
+    // Daycare is priced by the hours booked - the service's own first-hour
+    // fee, plus its succeeding-hour fee for each further hour of the
+    // scheduled window (the same rule, and the same helper, Daycare checkout
+    // bills the actual stay with). The pet-type fixed-price override doesn't
+    // apply here, same as at checkout. A Daycare service with no fee columns
+    // set keeps the flat base_price below.
+    if (
+      serviceCategory === 'Daycare' &&
+      service.first_hour_fee != null &&
+      service.succeeding_hour_fee != null
+    ) {
+      const bookedMinutes =
+        (new Date(scheduledEnd).getTime() -
+          new Date(scheduledStart).getTime()) /
+        60000;
+
+      return {
+        service_id: service.id,
+        package_id: null,
+        price_at_booking: round2(
+          daycareHourlyCharge(
+            bookedMinutes,
+            Number(service.first_hour_fee),
+            Number(service.succeeding_hour_fee)
+          ).charge
+        ),
+        duration_minutes_at_booking: durationMinutes,
+      };
+    }
+
     const quantity = resolveQuantity(
       serviceCategory,
       scheduledStart,
@@ -1079,7 +1111,8 @@ export async function createBooking({
   // capacity check.
   const staffResolution = await resolveStaffAssignment(input);
 
-  // Cage preference (Hotel only, custom change) - advisory-only, so an
+  // Cage preference (Hotel/Daycare - isCagePickerEnabled rejects every
+  // other category; custom change) - advisory-only, so an
   // invalid/no-longer-available preference silently degrades to null rather
   // than rejecting the booking; check-in's own suggestCage/assignCage flow
   // re-validates and lets the receptionist re-pick regardless.
@@ -1094,7 +1127,6 @@ export async function createBooking({
   // client-side, enforced here too so a direct API call can't bypass it. A
   // staff-created (receptionist) booking passes no size restriction.
   const preferredCageId =
-    input.service_category === 'Hotel' &&
     input.cage_preference?.type === 'specific' &&
     (await isCagePickerEnabled(input.service_category))
       ? await verifyCagePreference(

@@ -8,6 +8,7 @@ import {
   listPetBookingConflicts,
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
+  resolveBookingItems,
   resolvePackagePrice,
   resolveServicePrice,
   startBooking,
@@ -399,6 +400,80 @@ describe('booking.service (#51)', () => {
       p_scheme: 'full',
       p_net_total: 500,
       p_downpayment_amount: null,
+    });
+  });
+
+  describe('Daycare is priced by the hours booked (first hour + each succeeding hour)', () => {
+    const DAYCARE_WITH_FEES = {
+      id: 'service-daycare',
+      category: 'Daycare',
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      is_active: true,
+      requires_assessed_pet: false,
+      service_pricing_tiers: [],
+    } as never;
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(endIso: string, category = 'Daycare') {
+      return resolveBookingItems(
+        [{ service_id: 'service-daycare' }],
+        PET as never,
+        true,
+        category as never,
+        'branch-makati',
+        START,
+        endIso
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(null);
+    });
+
+    it('1 hour is the first-hour fee', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+
+      expect(await priceFor('2026-08-03T02:00:00.000Z')).toBe(100);
+    });
+
+    it('4 hours is 100 + 3 x 50', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(250);
+    });
+
+    it("follows the service's own fees", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(DAYCARE_WITH_FEES as object),
+        first_hour_fee: 200,
+        succeeding_hour_fee: 75,
+      } as never);
+
+      expect(await priceFor('2026-08-03T04:00:00.000Z')).toBe(350);
+    });
+
+    it('ignores a pet-type fixed-price override, same as Daycare checkout does', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+      vi.mocked(getFixedPrice).mockResolvedValue(800);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(250);
+    });
+
+    it('a Daycare service with no hourly fees set keeps its flat base price', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(100);
+    });
+
+    it('leaves Hotel on its per-night price', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+
+      // Two nights of the 1440-minute Hotel service.
+      expect(await priceFor('2026-08-05T01:00:00.000Z', 'Hotel')).toBe(1600);
     });
   });
 

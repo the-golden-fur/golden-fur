@@ -21,6 +21,7 @@ import {
 import { checkOutHotelStay } from './services/checkout.service.ts';
 import { listHotelStays } from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
+import { listCageOccupants } from './services/cageOccupants.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
 import { listActivityLog } from './services/activityLog.service.ts';
 import {
@@ -266,6 +267,26 @@ export async function cageGridController(
   try {
     const grid = await getCageGrid(branchId);
     return res.status(200).json({ grid });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Who is in each occupied cage at the requester's branch, with the
+ * expected checkout time - for the Cage Occupancy page's countdown. */
+export async function cageOccupantsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const occupants = await listCageOccupants(branchId);
+    return res.status(200).json({ occupants });
   } catch (error) {
     return sendServiceError(res, error);
   }
