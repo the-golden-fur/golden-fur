@@ -359,6 +359,14 @@ export function MyPatientsPage() {
                           Last visit: {formatDate(row.lastVisitAt)}
                         </span>
                       </div>
+                      <button
+                        type="button"
+                        className={styles.historyButton}
+                        aria-label={`View history for ${row.petName}`}
+                        onClick={() => selectPatient(row.petId)}
+                      >
+                        View history
+                      </button>
                     </div>
                   </CardContextMenu>
                 )}
@@ -382,7 +390,7 @@ export function MyPatientsPage() {
                 </div>
               ) : (
                 <p className={styles.copy}>
-                  Right-click (or press and hold) a patient to view their
+                  Choose View history on a patient to see their consultation
                   history.
                 </p>
               )}

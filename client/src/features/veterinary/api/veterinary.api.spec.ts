@@ -32,6 +32,22 @@ describe('veterinary.api', () => {
     });
   });
 
+  it('listConsultationQueue says all_dates=true for "All dates", which has no bounds to send', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ consultations: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listConsultationQueue('token', { allDates: true });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/veterinary\/consultations\/queue\?all_dates=true$/
+      ),
+      expect.anything()
+    );
+  });
+
   it('listConsultationQueue passes date_from/date_to when a date range is given', async () => {
     const fetchMock = vi
       .fn()

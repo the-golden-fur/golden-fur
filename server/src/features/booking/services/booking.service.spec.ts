@@ -403,6 +403,47 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  describe("a pet type's fixed price (e.g. Cat) and individual services", () => {
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(category: string, endIso: string) {
+      return resolveBookingItems(
+        [{ service_id: 'service-1' }],
+        PET as never,
+        true,
+        category as never,
+        'branch-makati',
+        START,
+        endIso
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(800);
+    });
+
+    it('does not apply to an individual Grooming service - it is priced the same as for any other pet', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+
+      const price = await priceFor('Grooming', '2026-08-03T02:00:00.000Z');
+
+      expect(price).toBe(
+        resolveServicePrice(GROOMING_SERVICE as never, PET as never, null)
+      );
+      expect(price).not.toBe(800);
+    });
+
+    it("still applies to another category's service (Hotel, per night)", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(HOTEL_SERVICE as object),
+        base_price: 650,
+      } as never);
+
+      // Two nights at the fixed 800, not the service's own 650.
+      expect(await priceFor('Hotel', '2026-08-05T01:00:00.000Z')).toBe(1600);
+    });
+  });
+
   describe('Daycare is priced by the hours booked (first hour + each succeeding hour)', () => {
     const DAYCARE_WITH_FEES = {
       id: 'service-daycare',

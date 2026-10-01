@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Check, MoreVertical } from 'lucide-react';
+import { placeMenuVertically } from './menuPlacement';
 import styles from './MoreOptionsMenu.module.css';
 
 export interface MoreOptionsMenuItem {
@@ -90,17 +91,29 @@ export function MoreOptionsMenu({
             const next = !prev;
             if (next) {
               const rect = triggerRef.current?.getBoundingClientRect();
+              // Below the trigger normally; above it when a row near the
+              // bottom of the screen would otherwise have its menu cut off
+              // by the viewport edge.
+              const vertical = rect
+                ? placeMenuVertically({
+                    anchorTop: rect.top,
+                    anchorBottom: rect.bottom,
+                    itemCount: items.length,
+                    viewportHeight: window.innerHeight,
+                    gap: 4,
+                  })
+                : null;
               setMenuStyle(
-                rect
+                rect && vertical
                   ? menuAlign === 'left'
                     ? {
                         position: 'fixed',
-                        top: rect.bottom + 4,
+                        ...vertical,
                         left: rect.left,
                       }
                     : {
                         position: 'fixed',
-                        top: rect.bottom + 4,
+                        ...vertical,
                         right: window.innerWidth - rect.right,
                       }
                   : null

@@ -29,12 +29,25 @@ function todayRangeUtc(): { dayStart: string; dayEnd: string } {
  * Otherwise resolves the given inclusive [dateFrom, dateTo] (YYYY-MM-DD)
  * bounds to a UTC instant range, matching the QueueFilterBar date-range
  * presets on the client (client/src/shared/components/QueueFilterBar).
+ *
+ * allDates is the explicit "no date limit at all": the client's "All
+ * dates" preset has no bounds to send, which on its own is
+ * indistinguishable from "nothing was asked for" and so used to fall into
+ * the today default above - the filter said All dates and showed one day.
  */
 function resolveDateRangeUtc(
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  allDates = false
 ): { dayStart: string; dayEnd: string } {
-  if (!dateFrom && !dateTo) return todayRangeUtc();
+  if (!dateFrom && !dateTo) {
+    return allDates
+      ? {
+          dayStart: '1970-01-01T00:00:00.000Z',
+          dayEnd: '9999-12-31T00:00:00.000Z',
+        }
+      : todayRangeUtc();
+  }
 
   const dayStart = dateFrom
     ? `${dateFrom}T00:00:00.000Z`
@@ -56,24 +69,29 @@ interface ListGroomingQueueParams {
    * omitted. */
   dateFrom?: string;
   dateTo?: string;
+  /** True for the "All dates" filter - every date, past and upcoming,
+   * instead of the today default. Ignored when a bound is given. */
+  allDates?: boolean;
+  /** 'queue' (default): what still needs grooming. 'history': the finished
+   * ones - Completed bookings, same role scoping and date range, newest
+   * completion first. */
+  view?: 'queue' | 'history';
 }
 
 /**
- * Grooming bookings in the given date range (today by default) that are
- * actively being worked (bookings.status = 'In Progress' only), scoped by
- * role (own sessions for a Groomer; own branch for Admin/Supervisor; all
- * branches for Superadmin).
+ * Grooming bookings in the given date range (today by default) that still
+ * need grooming - 'In Progress', plus 'Pending' ones that have been paid
+ * for - scoped by role (own sessions for a Groomer; own branch for
+ * Admin/Supervisor; all branches for Superadmin).
  *
- * Walk-in booking flow change: this used to also include 'Pending'
- * bookings, so a receptionist-confirmed appointment appeared here before
- * the customer arrived. That's gone - a 'Pending' online booking now only
- * shows here once a receptionist checks it in (Bookings Queue's Check In
- * action, POST /bookings/:id/start) and it flips to 'In Progress'. Walk-in
- * bookings (booking_source = 'Walk-in') are created directly at 'In
- * Progress' (see createBooking in booking.service.ts) and so appear here
- * immediately, same as a freshly checked-in appointment - the two are
- * indistinguishable once they reach this queue, which is the point: this
- * queue is "who's actually here to be serviced," not "who's booked."
+ * Paid Pending bookings are included so a groomer can see what's booked
+ * with them before the customer arrives: for a time (walk-in booking flow
+ * change) this queue was 'In Progress' only, which meant a paid online
+ * booking for a specific groomer was invisible to that groomer until a
+ * receptionist pressed Check In. An UNPAID Pending booking stays out - it
+ * isn't a secured appointment yet (the same line startBooking draws when it
+ * refuses to start one). Walk-in bookings (booking_source = 'Walk-in') are
+ * created directly at 'In Progress' and appear here immediately, as before.
  *
  * Auto-vivifies a grooming_sessions row for any matching booking that
  * doesn't have one yet - #64's Affected Files list only
@@ -87,21 +105,32 @@ export async function listGroomingQueue({
   requesterBranchId,
   dateFrom,
   dateTo,
+  allDates,
+  view = 'queue',
 }: ListGroomingQueueParams): Promise<GroomingSession[]> {
-  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo);
+  const { dayStart, dayEnd } = resolveDateRangeUtc(dateFrom, dateTo, allDates);
 
   let bookingQuery = supabase
     .from('bookings')
-    .select('id, assigned_staff_id, branch_id')
+    .select('id, assigned_staff_id, branch_id, status, payment_status')
     .eq('service_category', 'Grooming')
-    .eq('status', 'In Progress')
+    .in(
+      'status',
+      view === 'history' ? ['Completed'] : ['Pending', 'In Progress']
+    )
     .gte('scheduled_start', dayStart)
-    .lt('scheduled_start', dayEnd)
+    .lt('scheduled_start', dayEnd);
+
+  if (view === 'queue') {
     // Custom change (P-1 roadmap item: generic downpayment): a booking
     // whose service/package requires a downpayment stays out of the queue
     // (and never gets a grooming_sessions row vivified below) until its
-    // downpayment is paid - see 20260808111's dev notes.
-    .or('downpayment_required.eq.false,payment_status.neq.Pending');
+    // downpayment is paid - see 20260808111's dev notes. History is a
+    // record of what was done, paid for yet or not, so it skips this.
+    bookingQuery = bookingQuery.or(
+      'downpayment_required.eq.false,payment_status.neq.Pending'
+    );
+  }
 
   if (requesterRole === 'Groomer') {
     bookingQuery = bookingQuery.eq('assigned_staff_id', requesterId);
@@ -114,10 +143,18 @@ export async function listGroomingQueue({
 
   if (bookingsError) throwWithStatus(400, bookingsError.message);
 
-  const bookingRows = (bookings ?? []) as Array<{
-    id: string;
-    assigned_staff_id: string;
-  }>;
+  const bookingRows = (
+    (bookings ?? []) as Array<{
+      id: string;
+      assigned_staff_id: string;
+      status: string;
+      payment_status: string;
+    }>
+  )
+    // A Pending booking only belongs here once something has been paid.
+    .filter(
+      (row) => !(row.status === 'Pending' && row.payment_status === 'Pending')
+    );
 
   if (bookingRows.length === 0) return [];
 
@@ -156,6 +193,15 @@ export async function listGroomingQueue({
   if (sessionsError) throwWithStatus(400, sessionsError.message);
 
   const rows = (sessions ?? []) as GroomingSession[];
+
+  if (view === 'history') {
+    // Most recently finished first.
+    return rows.sort(
+      (a, b) =>
+        new Date(b.booking?.completed_at ?? 0).getTime() -
+        new Date(a.booking?.completed_at ?? 0).getTime()
+    );
+  }
 
   // Queue order: queue_position when set, otherwise fall back to the
   // booking's scheduled_start (chronological) - per Modules-Features and the

@@ -48,6 +48,11 @@ export interface GroomingQueueDateRange {
   /** YYYY-MM-DD, inclusive. Omitted (both) defaults to today, server-side. */
   dateFrom?: string;
   dateTo?: string;
+  /** The "All dates" filter: every date, past and upcoming. Has to be said
+   * explicitly - with no bounds and no flag the server shows today only. */
+  allDates?: boolean;
+  /** 'history' asks for Completed services instead of the live queue. */
+  view?: 'queue' | 'history';
 }
 
 export async function listGroomingQueue(
@@ -57,6 +62,8 @@ export async function listGroomingQueue(
   const params = new URLSearchParams();
   if (dateRange.dateFrom) params.set('date_from', dateRange.dateFrom);
   if (dateRange.dateTo) params.set('date_to', dateRange.dateTo);
+  if (dateRange.allDates) params.set('all_dates', 'true');
+  if (dateRange.view === 'history') params.set('view', 'history');
 
   const queryString = params.toString();
   const response = await fetch(

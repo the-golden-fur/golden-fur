@@ -1529,6 +1529,13 @@ export function CustomerBookingFlowPage() {
     [packages, selectedPackageIds]
   );
 
+  /** The pet type's fixed price as it applies to an individual SERVICE: not
+   * at all for Grooming, whose individual services cost a cat (or any pet
+   * type with a fixed price) exactly what they cost any other pet. Packages
+   * and every other category's services still use catalogFixedPrice.
+   * Mirrors resolveBookingItem in booking.service.ts. */
+  const serviceFixedPrice = category === 'Grooming' ? null : catalogFixedPrice;
+
   /** The selected Daycare service, when it has hourly fees to price by -
    * null otherwise (not Daycare, nothing picked yet, or a Daycare service
    * left on a flat base price). */
@@ -1553,7 +1560,7 @@ export function CustomerBookingFlowPage() {
         price:
           category === 'Daycare'
             ? daycareBookingPrice(service, daycareHours)
-            : (catalogFixedPrice ?? service.base_price),
+            : (serviceFixedPrice ?? service.base_price),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
@@ -1565,6 +1572,7 @@ export function CustomerBookingFlowPage() {
       selectedServices,
       selectedPackages,
       catalogFixedPrice,
+      serviceFixedPrice,
       category,
       daycareHours,
     ]
@@ -1729,7 +1737,7 @@ export function CustomerBookingFlowPage() {
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
-          : (catalogFixedPrice ?? service.base_price)),
+          : (serviceFixedPrice ?? service.base_price)),
       0
     ) +
       selectedPackages.reduce(
@@ -3520,7 +3528,7 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}/night`
+                          ? `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
@@ -3532,7 +3540,7 @@ export function CustomerBookingFlowPage() {
                               // price would be misleading about what's
                               // actually billed at pickup.
                               `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}`}
+                            : `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}`}
                       </span>
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>

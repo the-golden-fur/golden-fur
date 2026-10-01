@@ -75,7 +75,11 @@ export async function listConsultationQueueController(
   const dateTo = queryDate(req, 'date_to');
 
   try {
-    const consultations = await listConsultationQueue({ dateFrom, dateTo });
+    const consultations = await listConsultationQueue({
+      dateFrom,
+      dateTo,
+      allDates: req.query.all_dates === 'true',
+    });
     return res.status(200).json({ consultations });
   } catch (error) {
     return sendServiceError(res, error);

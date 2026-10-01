@@ -67,6 +67,9 @@ export interface ConsultationQueueDateRange {
   /** YYYY-MM-DD, inclusive. Omitted (both) defaults to today, server-side. */
   dateFrom?: string;
   dateTo?: string;
+  /** The "All dates" filter: every date, past and upcoming. Has to be said
+   * explicitly - with no bounds and no flag the server shows today only. */
+  allDates?: boolean;
 }
 
 export async function listConsultationQueue(
@@ -76,6 +79,7 @@ export async function listConsultationQueue(
   const params = new URLSearchParams();
   if (dateRange.dateFrom) params.set('date_from', dateRange.dateFrom);
   if (dateRange.dateTo) params.set('date_to', dateRange.dateTo);
+  if (dateRange.allDates) params.set('all_dates', 'true');
 
   const queryString = params.toString();
   const response = await fetch(

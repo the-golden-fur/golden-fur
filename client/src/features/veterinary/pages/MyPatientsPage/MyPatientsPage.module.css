@@ -98,6 +98,32 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/* The visible way to open a patient's history (right-click/long-press on
+   the card still opens the same action). */
+.historyButton {
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+  white-space: nowrap;
+  transition: border-color 0.15s ease;
+}
+
+.historyButton:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.historyButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
 .rowPetName {
   color: var(--color-text-primary);
   font-size: var(--text-base);
