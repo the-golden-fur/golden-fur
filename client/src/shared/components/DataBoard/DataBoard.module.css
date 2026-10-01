@@ -73,3 +73,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* wrapColumns: as many columns per row as fit, the rest wrap below - never
+   wider than the container, so nothing scrolls sideways. After the media
+   query above on purpose: auto-fit already drops to fewer columns on a
+   narrow screen by itself. */
+.boardWrap {
+  composes: board;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(var(--column-min-width, 15rem), 100%), 1fr)
+  );
+  gap: var(--space-2);
+  overflow-x: visible;
+}
+
+.boardWrap .column {
+  min-width: 0;
+  padding: var(--space-1);
+}

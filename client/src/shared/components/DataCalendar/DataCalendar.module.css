@@ -10,6 +10,22 @@
   gap: var(--space-2);
 }
 
+/* Week mode: the label's length changes week to week ("May 3-9, 2026" vs
+   "September 27 - October 3, 2026"), which used to drag the centered
+   arrows left and right. A fixed-width row with the arrows pinned to its
+   two ends keeps them in the same spot whatever the label says. */
+.navWeek {
+  composes: nav;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-self: center;
+  width: min(100%, 26rem);
+}
+
+.navWeek .navLabel {
+  min-width: 0;
+}
+
 .navLabel {
   min-width: 9rem;
   text-align: center;

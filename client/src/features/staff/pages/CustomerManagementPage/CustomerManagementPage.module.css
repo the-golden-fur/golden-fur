@@ -6,7 +6,11 @@
 
 .content {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  /* .page is at least a full viewport tall, and a grid stretches its rows
+     to fill spare height by default - with only a few customers that spread
+     the title, search bar and cards far apart. Pack them at the top. */
+  align-content: start;
   max-width: 72rem;
   width: 100%;
   margin: 0 auto;
@@ -41,9 +45,9 @@
   color: var(--color-text-on-accent);
   cursor: pointer;
   font-family: var(--font-main);
-  font-size: var(--text-button);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   width: fit-content;
   box-shadow: var(--shadow-sm);
 }
