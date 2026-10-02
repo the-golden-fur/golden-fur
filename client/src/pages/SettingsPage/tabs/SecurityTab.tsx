@@ -54,6 +54,16 @@ export function SecurityTab({
   );
   const methods = status?.methods ?? { authenticator: false, email: false };
   const enrolledCount = Number(methods.authenticator) + Number(methods.email);
+  // Admin-tier roles manage 'email' from Settings > Account instead (see
+  // mfa_email_verifications' migration comment) - this tab only ever shows
+  // the authenticator row for them, so the preference dropdown below also
+  // only makes sense when both rows shown here are actually enrolled.
+  const visibleMethods = isMandatoryRole
+    ? (['authenticator'] as const)
+    : (['authenticator', 'email'] as const);
+  const visibleEnrolledCount = visibleMethods.filter(
+    (method) => methods[method]
+  ).length;
 
   function openSetupModal(initialMethod?: MfaMethod) {
     setDisableError(null);
@@ -117,7 +127,7 @@ export function SecurityTab({
       {status && showsOwnSetupUi ? (
         <>
           <ul className={styles.mfaMethodList}>
-            {(['authenticator', 'email'] as const).map((method) => (
+            {visibleMethods.map((method) => (
               <li key={method} className={styles.mfaMethodRow}>
                 <span className={styles.mfaMethodName}>
                   {METHOD_LABEL[method]}
@@ -169,7 +179,7 @@ export function SecurityTab({
             </button>
           ) : null}
 
-          {enrolledCount === 2 && status ? (
+          {visibleEnrolledCount === 2 && status ? (
             <label className={styles.copy}>
               Preferred method at login
               <select

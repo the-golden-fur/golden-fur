@@ -29,6 +29,11 @@ export interface MfaMethodStatus {
   email: boolean;
 }
 
+export interface MfaEmailVerificationStatus {
+  email: string;
+  verified: boolean;
+}
+
 export interface MfaStatusResponse {
   role?: string | null;
   /** True whenever at least one method is enrolled - kept for every caller
@@ -36,6 +41,10 @@ export interface MfaStatusResponse {
   mfa_enrolled: boolean;
   methods: MfaMethodStatus;
   preferred_method: MfaMethod;
+  /** Admin-tier staff only (Admin/Supervisor/Superadmin) - null for every
+   * other role, since only they have the bind/unbind/change-email concept
+   * at all (see mfa_email_verifications' migration comment). */
+  email_verification?: MfaEmailVerificationStatus | null;
 }
 
 export interface MfaSessionResponse {

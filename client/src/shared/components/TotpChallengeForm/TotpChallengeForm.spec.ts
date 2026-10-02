@@ -83,7 +83,7 @@ describe('TotpChallengeForm', () => {
     expect(onVerified).toHaveBeenCalledTimes(1);
   });
 
-  it('offers "Other ways to verify" and sends a fresh code when switching to email', async () => {
+  it('asks up front which method to use when both are enrolled, and sends a fresh code for email', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: {
         mfa_enrolled: true,
@@ -99,7 +99,59 @@ describe('TotpChallengeForm', () => {
 
     renderForm();
 
-    const emailButton = await screen.findByRole('button', {
+    expect(
+      await screen.findByText('How would you like to verify?')
+    ).toBeInTheDocument();
+    // Choosing up front means the code-entry form (and its "Digit 1 of 6"
+    // input) hasn't rendered yet.
+    expect(screen.queryByLabelText('Digit 1 of 6')).not.toBeInTheDocument();
+
+    const emailButton = screen.getByRole('button', {
+      name: /email me a code/i,
+    });
+    await userEvent.click(emailButton);
+
+    expect(mfaApi.requestMfaEmailCode).toHaveBeenCalledWith(
+      'customer',
+      'access'
+    );
+    expect(
+      await screen.findByText('We emailed you a 6-digit code.')
+    ).toBeInTheDocument();
+  });
+
+  it('skips the up-front choice entirely when only one method is enrolled', async () => {
+    renderForm();
+
+    await screen.findByLabelText('Digit 1 of 6');
+    expect(
+      screen.queryByText('How would you like to verify?')
+    ).not.toBeInTheDocument();
+  });
+
+  it('lets the user switch methods after already choosing one, via "Other ways to verify"', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: {
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: true },
+        preferred_method: 'authenticator',
+      },
+      error: null,
+    });
+    vi.mocked(mfaApi.requestMfaEmailCode).mockResolvedValue({
+      data: { sent: true },
+      error: null,
+    });
+
+    renderForm();
+
+    const authenticatorButton = await screen.findByRole('button', {
+      name: /use my authenticator app/i,
+    });
+    await userEvent.click(authenticatorButton);
+    await screen.findByLabelText('Digit 1 of 6');
+
+    const emailButton = screen.getByRole('button', {
       name: /use my email/i,
     });
     await userEvent.click(emailButton);

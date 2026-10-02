@@ -9,8 +9,18 @@ import {
   unlinkGoogleIdentity,
   updateCustomerPassword,
 } from '../../../features/auth/customer/api/customerAuth.api';
+import {
+  enrollMfa,
+  unenrollMfa,
+  startMfaEmailVerification,
+  confirmMfaEmailVerification,
+  unbindMfaEmail,
+} from '../../../shared/api/mfa.api';
+import { OtpInput } from '../../../shared/components/OtpInput/OtpInput';
+import { MANDATORY_MFA_ROLES } from '../../../shared/auth/mandatoryMfaRoles';
 import { passwordChangeSchema } from '../../../shared/auth/password.validator';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
+import type { MfaStatusResponse } from '../../../shared/auth/mfa.types';
 import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from '../SettingsPage.module.css';
 import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
@@ -19,14 +29,31 @@ interface AccountTabProps {
   role: ThemeRole;
   userId: string;
   accessToken: string;
+  status: MfaStatusResponse | null;
+  /** Bumps SettingsPage's refreshKey so the next getMfaStatus re-fetch picks
+   * up a bind/change/unbind - mirrors SecurityTab's identical prop. */
+  onChanged: () => void;
 }
 
 /**
  * Settings > Account: username (staff only - customers log in by email, no
- * username column on customer_profiles) and password self-change (both
- * roles). Distinct from Profile, which holds self-managed contact details.
+ * username column on customer_profiles), password self-change (both roles),
+ * and - Admin-tier staff only - the verified-email binding used by "email"
+ * MFA (moved here from Settings > Security; see mfa_email_verifications'
+ * migration comment for why only mandatory-MFA roles need it). Distinct from
+ * Profile, which holds self-managed contact details.
  */
-export function AccountTab({ role, userId, accessToken }: AccountTabProps) {
+export function AccountTab({
+  role,
+  userId,
+  accessToken,
+  status,
+  onChanged,
+}: AccountTabProps) {
+  const isMandatoryRole = Boolean(
+    role === 'staff' && status?.role && MANDATORY_MFA_ROLES.has(status.role)
+  );
+
   return (
     <>
       {role === 'staff' ? (
@@ -34,6 +61,14 @@ export function AccountTab({ role, userId, accessToken }: AccountTabProps) {
       ) : null}
       <PasswordForm role={role} />
       {role === 'customer' ? <GoogleAccountForm /> : null}
+      {isMandatoryRole ? (
+        <MfaEmailVerificationForm
+          accessToken={accessToken}
+          verification={status?.email_verification ?? null}
+          emailMfaEnabled={status?.methods.email ?? false}
+          onChanged={onChanged}
+        />
+      ) : null}
     </>
   );
 }
@@ -349,6 +384,272 @@ function GoogleAccountForm() {
             {isUnlinking ? 'Unlinking...' : 'Unlink Google'}
           </button>
         </>
+      )}
+    </section>
+  );
+}
+
+interface MfaEmailVerificationFormProps {
+  accessToken: string;
+  verification: { email: string; verified: boolean } | null;
+  /** status.methods.email - whether 'email' is currently an active MFA
+   * factor, separate from `verification.verified` (proving ownership) since
+   * a verified email doesn't turn itself on as a login method. */
+  emailMfaEnabled: boolean;
+  onChanged: () => void;
+}
+
+/**
+ * Admin-tier "bind/unbind/change email" for MFA - replaces the "Email" row
+ * that used to sit in Settings > Security for this role (see
+ * mfa_email_verifications' migration comment on why only mandatory-MFA
+ * roles need ownership proof before "email" can become an active MFA
+ * method). `verification` is null until the automatic first-login send has
+ * gone out (staffAuth.controller.ts's mfaVerifyController), which should be
+ * immediate in practice, but a manual "Send code" is offered as a fallback
+ * in case it hasn't landed yet.
+ */
+function MfaEmailVerificationForm({
+  accessToken,
+  verification,
+  emailMfaEnabled,
+  onChanged,
+}: MfaEmailVerificationFormProps) {
+  const [code, setCode] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isUnbinding, setIsUnbinding] = useState(false);
+  const [isTogglingMethod, setIsTogglingMethod] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const handleEnableEmailMfa = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsTogglingMethod(true);
+
+    const result = await enrollMfa('staff', accessToken, 'email');
+
+    setIsTogglingMethod(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setSuccess('Email is now set up as a login method.');
+    onChanged();
+  };
+
+  const handleDisableEmailMfa = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsTogglingMethod(true);
+
+    const result = await unenrollMfa('staff', accessToken, 'email');
+
+    setIsTogglingMethod(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setSuccess('Email is no longer a login method.');
+    onChanged();
+  };
+
+  const handleSend = async (email?: string) => {
+    setError(null);
+    setSuccess(null);
+    setIsSending(true);
+
+    const result = await startMfaEmailVerification(accessToken, email);
+
+    setIsSending(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setCode('');
+    setIsChangingEmail(false);
+    setNewEmail('');
+    setSuccess(`A verification code was sent to ${result.data?.email}.`);
+    onChanged();
+  };
+
+  const handleConfirm = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsConfirming(true);
+
+    const result = await confirmMfaEmailVerification(accessToken, code);
+
+    setIsConfirming(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setCode('');
+    setSuccess('Email verified.');
+    onChanged();
+  };
+
+  const handleUnbind = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsUnbinding(true);
+
+    const result = await unbindMfaEmail(accessToken);
+
+    setIsUnbinding(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setSuccess(
+      'Email unbound - email is no longer available as a login method.'
+    );
+    onChanged();
+  };
+
+  return (
+    <section className={styles.panel}>
+      <h2 className={styles.sectionTitle}>Email for two-factor login</h2>
+      <p className={styles.copy}>
+        Your role requires proving you own an email before it can be used as a
+        second login-verification method, alongside your authenticator app.
+      </p>
+      {error ? (
+        <p className={styles.errorBanner} role="alert">
+          {error}
+        </p>
+      ) : null}
+      {success ? <p className={styles.successBanner}>{success}</p> : null}
+
+      {verification === null ? (
+        <button
+          className={styles.button}
+          type="button"
+          disabled={isSending}
+          onClick={() => void handleSend()}
+        >
+          {isSending ? 'Sending...' : 'Send verification code'}
+        </button>
+      ) : verification.verified ? (
+        <>
+          <p className={styles.copy}>
+            <strong>{verification.email}</strong> - verified.
+          </p>
+          {emailMfaEnabled ? (
+            <p className={styles.copy}>
+              Email is set up as a login method.{' '}
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                disabled={isTogglingMethod}
+                onClick={() => void handleDisableEmailMfa()}
+              >
+                {isTogglingMethod ? 'Turning off...' : 'Turn off'}
+              </button>
+            </p>
+          ) : (
+            <button
+              className={styles.button}
+              type="button"
+              disabled={isTogglingMethod}
+              onClick={() => void handleEnableEmailMfa()}
+            >
+              {isTogglingMethod
+                ? 'Turning on...'
+                : 'Use this email for two-factor login'}
+            </button>
+          )}
+          {isChangingEmail ? (
+            <div className={styles.form}>
+              <label className={styles.field}>
+                <span className={styles.label}>New email</span>
+                <input
+                  className={styles.input}
+                  type="email"
+                  value={newEmail}
+                  onChange={(event) => setNewEmail(event.target.value)}
+                />
+              </label>
+              <button
+                className={styles.button}
+                type="button"
+                disabled={isSending || !newEmail}
+                onClick={() => void handleSend(newEmail)}
+              >
+                {isSending ? 'Sending...' : 'Send code to this email'}
+              </button>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => {
+                  setIsChangingEmail(false);
+                  setNewEmail('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className={styles.form}>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => setIsChangingEmail(true)}
+              >
+                Change email
+              </button>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                disabled={isUnbinding}
+                onClick={() => void handleUnbind()}
+              >
+                {isUnbinding ? 'Unbinding...' : 'Unbind'}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className={styles.form}>
+          <p className={styles.copy}>
+            We emailed a 6-digit code to <strong>{verification.email}</strong>.
+            Enter it below to confirm you own this address.
+          </p>
+          <div className={styles.field}>
+            <span className={styles.label}>6-digit code</span>
+            <OtpInput value={code} onChange={setCode} label="6-digit code" />
+          </div>
+          <button
+            className={styles.button}
+            type="button"
+            disabled={isConfirming || code.length !== 6}
+            onClick={() => void handleConfirm()}
+          >
+            {isConfirming ? 'Confirming...' : 'Confirm code'}
+          </button>
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            disabled={isSending}
+            onClick={() => void handleSend()}
+          >
+            {isSending ? 'Sending...' : 'Resend code'}
+          </button>
+        </div>
       )}
     </section>
   );

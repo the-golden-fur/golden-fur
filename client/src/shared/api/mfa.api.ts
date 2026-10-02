@@ -177,6 +177,61 @@ export async function unenrollMfa(
   );
 }
 
+// Admin-tier staff only (Admin/Supervisor/Superadmin) - customers and other
+// staff roles have no bind/unbind/change-email concept, so these bypass the
+// role-keyed MFA_PATHS_BY_ROLE map entirely.
+const EMAIL_VERIFICATION_PATHS = {
+  start: '/staff/mfa/email-verification/start',
+  confirm: '/staff/mfa/email-verification/confirm',
+  unbind: '/staff/mfa/email-verification/unbind',
+};
+
+export async function startMfaEmailVerification(
+  accessToken: string,
+  email?: string
+): Promise<MfaApiResult<{ sent: boolean; email: string }>> {
+  return fetchJson<{ sent: boolean; email: string }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.start}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(email ? { email } : {}),
+    }
+  );
+}
+
+export async function confirmMfaEmailVerification(
+  accessToken: string,
+  code: string
+): Promise<MfaApiResult<{ verified: boolean }>> {
+  return fetchJson<{ verified: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.confirm}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ code }),
+    }
+  );
+}
+
+export async function unbindMfaEmail(
+  accessToken: string
+): Promise<MfaApiResult<{ unbound: boolean }>> {
+  return fetchJson<{ unbound: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.unbind}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+}
+
 export async function setMfaPreference(
   role: ThemeRole,
   accessToken: string,
