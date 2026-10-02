@@ -7,6 +7,8 @@ import {
   mfaEnrollValidator,
   mfaUnenrollValidator,
   mfaPreferenceValidator,
+  mfaEmailVerificationStartValidator,
+  mfaEmailVerificationConfirmValidator,
 } from './modules/validators/staffAuth.validator.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import { parseAllowedOrigins } from '../../../shared/config/cors/cors.config.ts';
@@ -38,6 +40,12 @@ import {
   isTrustedDevice,
   revokeAllTrustedDevices,
 } from '../../../shared/services/trustedDevice/trustedDevice.service.ts';
+import {
+  getMfaEmailVerification,
+  startMfaEmailVerification,
+  confirmMfaEmailVerification,
+  unbindMfaEmail,
+} from '../../../shared/services/mfaEmailVerification/mfaEmailVerification.service.ts';
 import { MANDATORY_MFA_ROLES } from '../../../shared/auth/mandatoryMfaRoles.ts';
 import { createNotification } from '../../notifications/services/notification.service.ts';
 
@@ -144,8 +152,28 @@ export async function mfaEnrollController(
 
   try {
     const userClient = getUserClient(req);
-    const email = await getAuthUserEmail(userId);
-    if (parsed.data.method === 'email' && !email) {
+    const accountEmail = await getAuthUserEmail(userId);
+
+    let toEmail = accountEmail;
+    if (parsed.data.method === 'email') {
+      const { data: roleData } = await getStaffRole(userId);
+      if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+        // Admin-tier roles must prove ownership of the email their codes go
+        // to before it can become an active MFA method - see
+        // mfa_email_verifications' migration comment. Everyone else keeps
+        // enrolling 'email' straight from their account email, unchanged.
+        const verification = await getMfaEmailVerification(userId);
+        if (!verification?.verified) {
+          return res.status(403).json({
+            error:
+              'Verify your email in Settings > Account before turning on email as a login method.',
+          });
+        }
+        toEmail = verification.email;
+      }
+    }
+
+    if (parsed.data.method === 'email' && !toEmail) {
       return res.status(400).json({ error: 'Could not resolve account email' });
     }
 
@@ -153,7 +181,7 @@ export async function mfaEnrollController(
       userClient,
       userId,
       parsed.data.method,
-      email ?? ''
+      toEmail ?? ''
     );
 
     return res
@@ -180,12 +208,20 @@ export async function mfaEmailRequestCodeController(
   }
 
   try {
-    const email = await getAuthUserEmail(userId);
-    if (!email) {
+    let toEmail = await getAuthUserEmail(userId);
+    const { data: roleData } = await getStaffRole(userId);
+    if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+      const verification = await getMfaEmailVerification(userId);
+      if (verification?.verified) {
+        toEmail = verification.email;
+      }
+    }
+
+    if (!toEmail) {
       return res.status(400).json({ error: 'Could not resolve account email' });
     }
 
-    const result = await sendMfaEmailMethodCode(userId, email);
+    const result = await sendMfaEmailMethodCode(userId, toEmail);
 
     if (result.status === 'not_configured') {
       return res.status(400).json({ error: 'Email method is not set up' });
@@ -295,6 +331,11 @@ export async function mfaStatusController(
       getMfaPreference(userId),
     ]);
 
+    let emailVerification: { email: string; verified: boolean } | null = null;
+    if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+      emailVerification = await getMfaEmailVerification(userId);
+    }
+
     return res.status(200).json({
       role: roleData?.role ?? null,
       // Kept alongside `methods` for every existing caller that only ever
@@ -303,7 +344,126 @@ export async function mfaStatusController(
       mfa_enrolled: methods.authenticator || methods.email,
       methods,
       preferred_method: preferredMethod,
+      // Admin-tier only - null for every other role, since only they have
+      // the bind/unbind/change-email concept at all (see
+      // mfa_email_verifications' migration comment).
+      email_verification: emailVerification,
     });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationStartController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaEmailVerificationStartValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    let email = parsed.data.email;
+    if (!email) {
+      const existing = await getMfaEmailVerification(userId);
+      email = existing?.email ?? (await getAuthUserEmail(userId)) ?? undefined;
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: 'Could not resolve an email' });
+    }
+
+    const result = await startMfaEmailVerification(userId, email);
+
+    if (result.status === 'rate_limited') {
+      return res.status(429).json({
+        error: 'Please wait before requesting another code.',
+        retry_after_seconds: result.retryAfterSeconds,
+      });
+    }
+
+    return res.status(200).json({ sent: true, email });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationConfirmController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaEmailVerificationConfirmValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    const result = await confirmMfaEmailVerification(userId, parsed.data.code);
+
+    if (result.status === 'no_pending_code') {
+      return res
+        .status(400)
+        .json({ error: 'Request a code before confirming.' });
+    }
+    if (result.status === 'expired') {
+      return res
+        .status(400)
+        .json({ error: 'That code has expired - request a new one.' });
+    }
+    if (result.status === 'invalid_code') {
+      return res.status(401).json({ error: 'Invalid code' });
+    }
+
+    return res.status(200).json({ verified: true });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationUnbindController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    const userClient = getUserClient(req);
+    await unbindMfaEmail(userClient, userId);
+
+    return res.status(200).json({ unbound: true });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -381,6 +541,30 @@ export async function mfaVerifyController(
     }
 
     await resetMfaLockout(userId);
+
+    // Fires exactly once per account: mandatory roles are hard-blocked
+    // behind MfaSetupModal until their first authenticator verify succeeds
+    // (StaffAuthGuard), so "no mfa_email_verifications row yet" is exactly
+    // equivalent to "this is that first successful login + TOTP setup" -
+    // no extra bookkeeping needed to tell enrollment-confirm apart from a
+    // routine later login. Best-effort: a failed send must never fail the
+    // login/verify response itself.
+    if (method === 'authenticator') {
+      try {
+        const { data: roleData } = await getStaffRole(userId);
+        if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+          const existing = await getMfaEmailVerification(userId);
+          if (!existing) {
+            const accountEmail = await getAuthUserEmail(userId);
+            if (accountEmail) {
+              await startMfaEmailVerification(userId, accountEmail);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to start MFA email verification:', error);
+      }
+    }
 
     const { data: refreshData, error: refreshError } =
       await userClient.auth.refreshSession();

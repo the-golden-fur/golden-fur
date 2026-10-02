@@ -152,6 +152,69 @@ export const mfaUnenrollValidator = {
   },
 };
 
+export interface MfaEmailVerificationStartInput {
+  email?: string;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const mfaEmailVerificationStartValidator = {
+  safeParse(
+    input: unknown
+  ):
+    | { success: true; data: MfaEmailVerificationStartInput }
+    | { success: false; error: { issues: Array<{ message: string }> } } {
+    const candidate =
+      typeof input === 'object' && input !== null
+        ? (input as Record<string, unknown>)
+        : {};
+
+    if (candidate.email === undefined) {
+      return { success: true, data: {} };
+    }
+
+    const email =
+      typeof candidate.email === 'string' ? candidate.email.trim() : '';
+
+    if (!EMAIL_PATTERN.test(email)) {
+      return {
+        success: false,
+        error: { issues: [{ message: 'Invalid email address' }] },
+      };
+    }
+
+    return { success: true, data: { email } };
+  },
+};
+
+export interface MfaEmailVerificationConfirmInput {
+  code: string;
+}
+
+export const mfaEmailVerificationConfirmValidator = {
+  safeParse(
+    input: unknown
+  ):
+    | { success: true; data: MfaEmailVerificationConfirmInput }
+    | { success: false; error: { issues: Array<{ message: string }> } } {
+    const candidate =
+      typeof input === 'object' && input !== null
+        ? (input as Record<string, unknown>)
+        : {};
+    const code =
+      typeof candidate.code === 'string' ? candidate.code.trim() : '';
+
+    if (!code || !/^\d{6}$/.test(code)) {
+      return {
+        success: false,
+        error: { issues: [{ message: 'Code must be exactly 6 digits' }] },
+      };
+    }
+
+    return { success: true, data: { code } };
+  },
+};
+
 export interface MfaPreferenceInput {
   preferred_method: MfaMethodInput;
 }

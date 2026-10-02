@@ -713,6 +713,8 @@ export function SettingsPage({ role }: SettingsPageProps) {
               role={role}
               userId={user.id}
               accessToken={accessToken}
+              status={status}
+              onChanged={() => setRefreshKey((key) => key + 1)}
             />
           ) : null}
           {activeTab === 'security' ? (

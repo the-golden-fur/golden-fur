@@ -18,7 +18,7 @@ export function MfaChallengePage() {
     <AuthCard
       titleId="mfa-challenge-title"
       title="Verify MFA"
-      subtitle="Enter the 6-digit code from your authenticator app."
+      subtitle="Verify your identity to continue."
     >
       <TotpChallengeForm
         role="staff"

@@ -51,6 +51,8 @@ export function TotpChallengeForm({
   const [rememberDevice, setRememberDevice] = useState(false);
   const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
   const [emailCodeSent, setEmailCodeSent] = useState(false);
+  // Only meaningful once both methods are enrolled - see needsChoice below.
+  const [hasChosenMethod, setHasChosenMethod] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -75,6 +77,13 @@ export function TotpChallengeForm({
     (candidate) => candidate !== method && methods?.[candidate]
   );
 
+  // Both methods enrolled: ask up front which one to use, instead of
+  // silently defaulting to preferred_method and only offering a secondary
+  // "Other ways to verify" link. Nothing to choose with only one enrolled.
+  const needsChoice = Boolean(
+    methods?.authenticator && methods?.email && !hasChosenMethod
+  );
+
   const switchMethod = async (nextMethod: MfaMethod) => {
     setError(null);
     setCode('');
@@ -92,6 +101,11 @@ export function TotpChallengeForm({
       }
       setEmailCodeSent(true);
     }
+  };
+
+  const chooseMethod = async (chosenMethod: MfaMethod) => {
+    await switchMethod(chosenMethod);
+    setHasChosenMethod(true);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -142,6 +156,35 @@ export function TotpChallengeForm({
       setIsSubmitting(false);
     }
   };
+
+  if (needsChoice) {
+    return (
+      <div className={styles.form}>
+        <p className={styles.copy}>How would you like to verify?</p>
+        <button
+          className={styles.button}
+          type="button"
+          disabled={isSendingEmailCode}
+          onClick={() => void chooseMethod('authenticator')}
+        >
+          Use my authenticator app
+        </button>
+        <button
+          className={styles.secondaryButton}
+          type="button"
+          disabled={isSendingEmailCode}
+          onClick={() => void chooseMethod('email')}
+        >
+          {isSendingEmailCode ? 'Sending...' : 'Email me a code'}
+        </button>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <form

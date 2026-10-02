@@ -6,6 +6,9 @@ import {
   mfaStatusController,
   mfaUnenrollController,
   mfaVerifyController,
+  mfaEmailVerificationStartController,
+  mfaEmailVerificationConfirmController,
+  mfaEmailVerificationUnbindController,
   staffLoginController,
 } from '../staffAuth.controller';
 import { supabase } from '../../../../config/supabase/supabase.config';
@@ -13,6 +16,7 @@ import * as mfaLockoutService from '../../../../shared/services/mfaLockout/mfaLo
 import * as mfaMethodsService from '../../../../shared/services/mfaMethods/mfaMethods.service.ts';
 import * as mfaPreferenceService from '../../../../shared/services/mfaPreference/mfaPreference.service.ts';
 import * as trustedDeviceService from '../../../../shared/services/trustedDevice/trustedDevice.service.ts';
+import * as mfaEmailVerificationService from '../../../../shared/services/mfaEmailVerification/mfaEmailVerification.service.ts';
 import * as supabaseAuthApi from '../../../../shared/auth/api/supabaseAuth.api.ts';
 
 vi.mock('../../../../config/supabase/supabase.config', () => ({
@@ -88,6 +92,16 @@ vi.mock(
     issueTrustedDeviceToken: vi.fn(),
     isTrustedDevice: vi.fn(),
     revokeAllTrustedDevices: vi.fn(),
+  })
+);
+
+vi.mock(
+  '../../../../shared/services/mfaEmailVerification/mfaEmailVerification.service.ts',
+  () => ({
+    getMfaEmailVerification: vi.fn(),
+    startMfaEmailVerification: vi.fn(),
+    confirmMfaEmailVerification: vi.fn(),
+    unbindMfaEmail: vi.fn(),
   })
 );
 
@@ -461,6 +475,99 @@ describe('mfaVerifyController', () => {
     expect(trustedDeviceService.issueTrustedDeviceToken).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ success: true });
   });
+
+  it("starts MFA email verification for a mandatory role's first successful authenticator verify", async () => {
+    const req = {
+      body: { code: '123456', method: 'authenticator' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(mfaMethodsService.challengeAndVerifyMfaMethod).mockResolvedValue({
+      verifyError: null,
+    });
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue(null);
+    vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+      'admin@example.com'
+    );
+    mockUserClient.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).toHaveBeenCalledWith('staff-id', 'admin@example.com');
+  });
+
+  it('does not re-start MFA email verification on a routine later login', async () => {
+    const req = {
+      body: { code: '123456', method: 'authenticator' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(mfaMethodsService.challengeAndVerifyMfaMethod).mockResolvedValue({
+      verifyError: null,
+    });
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue({ email: 'admin@example.com', verified: true });
+    mockUserClient.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).not.toHaveBeenCalled();
+  });
+
+  it('never starts MFA email verification for a non-mandatory role', async () => {
+    const req = {
+      body: { code: '123456', method: 'authenticator' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(mfaMethodsService.challengeAndVerifyMfaMethod).mockResolvedValue({
+      verifyError: null,
+    });
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
+    mockUserClient.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+
+    await mfaVerifyController(req, res);
+
+    expect(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).not.toHaveBeenCalled();
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).not.toHaveBeenCalled();
+  });
 });
 
 describe('mfaEnrollController', () => {
@@ -517,6 +624,10 @@ describe('mfaEnrollController', () => {
     vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
       'staff@example.com'
     );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
     vi.mocked(mfaMethodsService.enrollMfaMethod).mockResolvedValue({
       factorId: 'email-factor',
     });
@@ -530,6 +641,64 @@ describe('mfaEnrollController', () => {
       'staff@example.com'
     );
     expect(res.json).toHaveBeenCalledWith({ id: 'email-factor', sent: true });
+  });
+
+  it('blocks a mandatory-MFA role from enrolling email until it is verified', async () => {
+    const req = {
+      body: { method: 'email' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+      'admin@example.com'
+    );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue({ email: 'admin@example.com', verified: false });
+
+    await mfaEnrollController(req, res);
+
+    expect(mfaMethodsService.enrollMfaMethod).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('lets a mandatory-MFA role enroll email once verified, using the bound email', async () => {
+    const req = {
+      body: { method: 'email' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+      'admin@example.com'
+    );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue({ email: 'bound@example.com', verified: true });
+    vi.mocked(mfaMethodsService.enrollMfaMethod).mockResolvedValue({
+      factorId: 'email-factor',
+    });
+
+    await mfaEnrollController(req, res);
+
+    expect(mfaMethodsService.enrollMfaMethod).toHaveBeenCalledWith(
+      mockUserClient,
+      'staff-id',
+      'email',
+      'bound@example.com'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });
 
@@ -555,6 +724,10 @@ describe('mfaEmailRequestCodeController', () => {
     vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
       'staff@example.com'
     );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
     vi.mocked(mfaMethodsService.sendMfaEmailMethodCode).mockResolvedValue({
       status: 'sent',
     });
@@ -579,6 +752,10 @@ describe('mfaEmailRequestCodeController', () => {
     vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
       'staff@example.com'
     );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
     vi.mocked(mfaMethodsService.sendMfaEmailMethodCode).mockResolvedValue({
       status: 'rate_limited',
       retryAfterSeconds: 12,
@@ -602,6 +779,10 @@ describe('mfaEmailRequestCodeController', () => {
     vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
       'staff@example.com'
     );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
     vi.mocked(mfaMethodsService.sendMfaEmailMethodCode).mockResolvedValue({
       status: 'not_configured',
     });
@@ -805,6 +986,9 @@ describe('mfaStatusController', () => {
       error: null,
     } as any);
     vi.mocked(mfaPreferenceService.getMfaPreference).mockResolvedValue('email');
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue({ email: 'admin@example.com', verified: true });
 
     await mfaStatusController(req, res);
 
@@ -814,6 +998,308 @@ describe('mfaStatusController', () => {
       mfa_enrolled: true,
       methods: { authenticator: false, email: true },
       preferred_method: 'email',
+      email_verification: { email: 'admin@example.com', verified: true },
     });
+  });
+
+  it('omits email_verification for a non-mandatory role', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
+      authenticator: true,
+      email: false,
+    });
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
+    vi.mocked(mfaPreferenceService.getMfaPreference).mockResolvedValue(
+      'authenticator'
+    );
+
+    await mfaStatusController(req, res);
+
+    expect(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ email_verification: null })
+    );
+  });
+});
+
+describe('mfaEmailVerificationStartController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 403 for a non-mandatory role', async () => {
+    const req = {
+      body: {},
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
+
+    await mfaEmailVerificationStartController(req, res);
+
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('starts verification for the account email when no email is given', async () => {
+    const req = {
+      body: {},
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue(null);
+    vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+      'admin@example.com'
+    );
+    vi.mocked(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).mockResolvedValue({ status: 'sent' });
+
+    await mfaEmailVerificationStartController(req, res);
+
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).toHaveBeenCalledWith('staff-id', 'admin@example.com');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      sent: true,
+      email: 'admin@example.com',
+    });
+  });
+
+  it('starts verification for an explicitly given (change-email) address', async () => {
+    const req = {
+      body: { email: 'new@example.com' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).mockResolvedValue({ status: 'sent' });
+
+    await mfaEmailVerificationStartController(req, res);
+
+    expect(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).toHaveBeenCalledWith('staff-id', 'new@example.com');
+    expect(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).not.toHaveBeenCalled();
+  });
+
+  it('returns 429 with a retry hint when rate-limited', async () => {
+    const req = {
+      body: { email: 'new@example.com' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.startMfaEmailVerification
+    ).mockResolvedValue({ status: 'rate_limited', retryAfterSeconds: 30 });
+
+    await mfaEmailVerificationStartController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ retry_after_seconds: 30 })
+    );
+  });
+});
+
+describe('mfaEmailVerificationConfirmController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 403 for a non-mandatory role', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
+
+    await mfaEmailVerificationConfirmController(req, res);
+
+    expect(
+      mfaEmailVerificationService.confirmMfaEmailVerification
+    ).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('returns 200 on a correct code', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.confirmMfaEmailVerification
+    ).mockResolvedValue({ status: 'verified' });
+
+    await mfaEmailVerificationConfirmController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ verified: true });
+  });
+
+  it('returns 401 on an invalid code', async () => {
+    const req = {
+      body: { code: '000000' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.confirmMfaEmailVerification
+    ).mockResolvedValue({ status: 'invalid_code' });
+
+    await mfaEmailVerificationConfirmController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns 400 when the code has expired', async () => {
+    const req = {
+      body: { code: '123456' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.confirmMfaEmailVerification
+    ).mockResolvedValue({ status: 'expired' });
+
+    await mfaEmailVerificationConfirmController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe('mfaEmailVerificationUnbindController', () => {
+  const mockResponse = () => {
+    const res: any = {};
+    res.status = vi.fn().mockReturnValue(res);
+    res.json = vi.fn().mockReturnValue(res);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 403 for a non-mandatory role', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Cashier' },
+      error: null,
+    } as any);
+
+    await mfaEmailVerificationUnbindController(req, res);
+
+    expect(mfaEmailVerificationService.unbindMfaEmail).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('unbinds for a mandatory role', async () => {
+    const req = {
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(mfaEmailVerificationService.unbindMfaEmail).mockResolvedValue(
+      undefined
+    );
+
+    await mfaEmailVerificationUnbindController(req, res);
+
+    expect(mfaEmailVerificationService.unbindMfaEmail).toHaveBeenCalledWith(
+      mockUserClient,
+      'staff-id'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ unbound: true });
   });
 });
