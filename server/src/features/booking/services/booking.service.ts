@@ -419,7 +419,12 @@ export async function resolveBookingItems(
   // Fetched once - the pet and branch are constant across every item in this
   // booking, so there's no reason to re-query per item. Threaded down into
   // resolveServicePrice/resolvePackagePrice via resolveBookingItem below.
-  const fixedPriceOverride = await getFixedPrice(pet.pet_type, branchId);
+  // Veterinary skips the pet type's fixed price entirely (services and
+  // packages alike) - a cat is charged the same as a dog.
+  const fixedPriceOverride =
+    serviceCategory === 'Veterinary'
+      ? null
+      : await getFixedPrice(pet.pet_type, branchId);
 
   // Sequential, not Promise.all: each item may 400/403 with a message naming
   // that specific service/package, which reads clearer than an

@@ -134,6 +134,14 @@ export function VeterinaryConsolePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
+  // The In Progress consultation awaiting the row-level "Complete" confirm -
+  // a quick finish that only needs the professional fee (the one field the
+  // server requires to complete). Prescriptions/results/vaccination still
+  // go through View Details.
+  const [pendingCompleteId, setPendingCompleteId] = useState<string | null>(
+    null
+  );
+  const [quickFee, setQuickFee] = useState('');
   // Custom change: "only appear once" - which consultations have already
   // had the "choose a form" prompt resolved (Add/Skip/close) this session,
   // so reopening "View Details" doesn't show it again. Adding another form
@@ -347,6 +355,9 @@ export function VeterinaryConsolePage() {
   const pendingStartRow = rows.find(
     (row) => row.consultation.id === pendingStartId
   );
+  const pendingCompleteRow = rows.find(
+    (row) => row.consultation.id === pendingCompleteId
+  );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
   // /Supervisor/Superadmin can view the console but any write PATCH/POST
@@ -378,39 +389,43 @@ export function VeterinaryConsolePage() {
     );
   }
 
-  async function handleComplete(fields: {
-    medications: MedicationInput[];
-    formResponses: ConsultationFormResponse[];
-    professionalFee: number;
-    vaccination?: {
-      vaccine_name: string;
-      date_administered: string;
-      next_due_date?: string;
-      notes?: string;
-    };
-  }) {
-    if (!accessToken || !openRow) return;
+  /** Shared by the detail panel's "Complete Consultation" and the row-level
+   * quick "Complete". medications/formResponses are optional so the quick
+   * path leaves them out of the PATCH entirely - sending an empty array
+   * would wipe whatever the consultation already has saved. Returns whether
+   * it succeeded so the quick-complete modal knows to close. */
+  async function handleComplete(
+    consultationId: string,
+    fields: {
+      medications?: MedicationInput[];
+      formResponses?: ConsultationFormResponse[];
+      professionalFee: number;
+      vaccination?: {
+        vaccine_name: string;
+        date_administered: string;
+        next_due_date?: string;
+        notes?: string;
+      };
+    }
+  ): Promise<boolean> {
+    if (!accessToken) return false;
 
     setIsSaving(true);
     setSaveError(null);
 
-    const result = await updateConsultation(
-      openRow.consultation.id,
-      accessToken,
-      {
-        status: 'Completed',
-        medications: fields.medications,
-        form_responses: fields.formResponses,
-        professional_fee: fields.professionalFee,
-        vaccination: fields.vaccination,
-      }
-    );
+    const result = await updateConsultation(consultationId, accessToken, {
+      status: 'Completed',
+      medications: fields.medications,
+      form_responses: fields.formResponses,
+      professional_fee: fields.professionalFee,
+      vaccination: fields.vaccination,
+    });
 
     setIsSaving(false);
 
     if (result.error || !result.data) {
       setSaveError(result.error ?? 'Could not complete this consultation.');
-      return;
+      return false;
     }
 
     const updated = result.data;
@@ -419,6 +434,60 @@ export function VeterinaryConsolePage() {
         consultation.id === updated.id ? updated : consultation
       )
     );
+    return true;
+  }
+
+  function openQuickComplete(consultationId: string) {
+    setSaveError(null);
+    setQuickFee('');
+    setPendingCompleteId(consultationId);
+  }
+
+  async function confirmQuickComplete() {
+    if (!pendingCompleteId) return;
+
+    const succeeded = await handleComplete(pendingCompleteId, {
+      professionalFee: Number(quickFee || 0),
+    });
+
+    if (succeeded) setPendingCompleteId(null);
+  }
+
+  /** The row's direct status action: Start on a Pending row, Complete on
+   * an In Progress one - shared by the Table row actions and List/Board
+   * cards. */
+  function renderStatusAction(row: QueueRow) {
+    if (!canWrite) return null;
+
+    const rowBookingStatus = row.consultation.booking?.status;
+
+    if (rowBookingStatus === 'Pending') {
+      return (
+        <button
+          type="button"
+          className={styles.startButton}
+          disabled={isSaving}
+          onClick={() => setPendingStartId(row.consultation.id)}
+        >
+          Start Consultation
+        </button>
+      );
+    }
+
+    if (rowBookingStatus === 'In Progress') {
+      return (
+        <button
+          type="button"
+          className={styles.startButton}
+          disabled={isSaving}
+          onClick={() => openQuickComplete(row.consultation.id)}
+        >
+          Complete
+        </button>
+      );
+    }
+
+    return null;
   }
 
   const columns: DataTableColumn<QueueRow>[] = [
@@ -451,19 +520,9 @@ export function VeterinaryConsolePage() {
   }
 
   function renderRowActions(row: QueueRow) {
-    const rowBookingStatus = row.consultation.booking?.status;
     return (
       <div className={styles.rowActions}>
-        {canWrite && rowBookingStatus === 'Pending' ? (
-          <button
-            type="button"
-            className={styles.startButton}
-            disabled={isSaving}
-            onClick={() => setPendingStartId(row.consultation.id)}
-          >
-            Start Consultation
-          </button>
-        ) : null}
+        {renderStatusAction(row)}
         <MoreOptionsMenu
           label={`Options for ${row.petName}`}
           items={buildRowMenuItems(row)}
@@ -487,16 +546,7 @@ export function VeterinaryConsolePage() {
         <span className={styles.rowMeta}>
           {formatScheduledTime(row.scheduledStart)}
         </span>
-        {canWrite && rowBookingStatus === 'Pending' ? (
-          <button
-            type="button"
-            className={styles.startButton}
-            disabled={isSaving}
-            onClick={() => setPendingStartId(row.consultation.id)}
-          >
-            Start Consultation
-          </button>
-        ) : null}
+        {renderStatusAction(row)}
       </div>
     );
   }
@@ -660,6 +710,65 @@ export function VeterinaryConsolePage() {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={pendingCompleteId !== null}
+        title="Complete Consultation"
+        onClose={() => setPendingCompleteId(null)}
+      >
+        <p className={styles.copy}>
+          Complete this consultation for{' '}
+          {pendingCompleteRow?.petName ?? 'this pet'}? This marks the booking
+          Completed so it moves on to checkout.
+        </p>
+        <label className={styles.feeField}>
+          <span className={styles.feeLabel}>Professional Fee (₱)</span>
+          <input
+            className={styles.feeInput}
+            type="number"
+            min={0}
+            value={quickFee}
+            onChange={(event) => setQuickFee(event.target.value)}
+          />
+        </label>
+        <p className={styles.copy}>
+          To add prescriptions, results or a vaccination first, use{' '}
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => {
+              const id = pendingCompleteId;
+              setPendingCompleteId(null);
+              setOpenId(id);
+            }}
+          >
+            View Details
+          </button>
+          .
+        </p>
+        {saveError ? (
+          <p className={styles.errorBanner} role="alert">
+            {saveError}
+          </p>
+        ) : null}
+        <div className={styles.modalActions}>
+          <button
+            type="button"
+            className={styles.startButton}
+            disabled={isSaving}
+            onClick={() => void confirmQuickComplete()}
+          >
+            {isSaving ? 'Completing...' : 'Complete'}
+          </button>
+          <button
+            type="button"
+            className={styles.cancelButton}
+            onClick={() => setPendingCompleteId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
+
       {/* Custom change: the single "View Details" action - everything that
           used to be split across an inline panel plus two separate
           read-only modals (View Details, Results) now lives here as one
@@ -685,7 +794,9 @@ export function VeterinaryConsolePage() {
             isSaving={isSaving}
             saveError={saveError}
             onStart={() => setPendingStartId(openRow.consultation.id)}
-            onComplete={(fields) => void handleComplete(fields)}
+            onComplete={(fields) =>
+              void handleComplete(openRow.consultation.id, fields)
+            }
             hasSeenFormsPrompt={seenFormsPromptIds.has(openRow.consultation.id)}
             onFormsPromptResolved={() => {
               const id = openRow.consultation.id;

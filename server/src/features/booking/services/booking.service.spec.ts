@@ -442,6 +442,19 @@ describe('booking.service (#51)', () => {
       // Two nights at the fixed 800, not the service's own 650.
       expect(await priceFor('Hotel', '2026-08-05T01:00:00.000Z')).toBe(1600);
     });
+
+    it('does not apply to a Veterinary service - a cat pays the same as a dog', async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(GROOMING_SERVICE as object),
+        category: 'Veterinary',
+        base_price: 500,
+        use_pricing_matrix: false,
+      } as never);
+
+      expect(await priceFor('Veterinary', '2026-08-03T02:00:00.000Z')).toBe(
+        500
+      );
+    });
   });
 
   describe('Daycare is priced by the hours booked (first hour + each succeeding hour)', () => {

@@ -710,9 +710,14 @@ export function CustomerBookingFlowPage() {
   // (see the catalog-loading effect below). When set, it replaces every
   // selected service/package's own price in the running total, matching
   // what booking.service.ts actually charges at confirmation.
-  const [catalogFixedPrice, setCatalogFixedPrice] = useState<number | null>(
+  const [petTypeFixedPrice, setPetTypeFixedPrice] = useState<number | null>(
     null
   );
+  // Veterinary never uses the pet type's fixed price - a cat pays the same
+  // as a dog for every vet service/package. Mirrors resolveBookingItems in
+  // booking.service.ts.
+  const catalogFixedPrice =
+    category === 'Veterinary' ? null : petTypeFixedPrice;
   const [downpaymentStatus, setDownpaymentStatus] =
     useState<DownpaymentStatus | null>(null);
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
@@ -1112,7 +1117,7 @@ export function CustomerBookingFlowPage() {
       setAllServices(result.data.services);
       setPackages(result.data.packages);
       setPromos(result.data.promos);
-      setCatalogFixedPrice(result.data.fixedPrice);
+      setPetTypeFixedPrice(result.data.fixedPrice);
       if (result.data.promoCap) setPromoCap(result.data.promoCap);
     });
 

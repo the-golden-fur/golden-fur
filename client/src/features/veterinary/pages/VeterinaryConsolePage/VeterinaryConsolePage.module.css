@@ -221,6 +221,41 @@
     border-color 0.15s ease;
 }
 
+/* Quick-complete modal's fee input - same look as ConsultationDetailPanel's
+   own .field/.fieldLabel/.input. */
+.feeField {
+  display: grid;
+  gap: var(--space-0-5);
+  margin-bottom: var(--space-2);
+}
+
+.feeLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.feeInput {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  padding: 0;
+  text-decoration: underline;
+}
+
 .cancelButton:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
