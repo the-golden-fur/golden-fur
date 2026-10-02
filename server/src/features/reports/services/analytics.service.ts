@@ -10,7 +10,7 @@ function throwWithStatus(statusCode: number, message: string): never {
   throw error;
 }
 
-const VALID_TIME_FILTERS: readonly AnalyticsTimeFilter[] = [
+export const VALID_TIME_FILTERS: readonly AnalyticsTimeFilter[] = [
   'today',
   'this_week',
   'this_month',

@@ -113,3 +113,22 @@ export interface AnalyticsSummary {
   cancelled_count: number;
   cancellation_rate: number;
 }
+
+/** Custom change (Branch Comparison page): Superadmin-only, same as
+ * analytics - it exposes every branch's figures at once. */
+export const BRANCH_COMPARISON_READ_ROLES: readonly string[] = ['Superadmin'];
+
+/** One element of get_branch_comparison()'s array - one per non-archived
+ * branch. The *_by_category maps only carry categories with activity in the
+ * period; a missing key means zero. */
+export interface BranchComparisonRow {
+  branch_id: string;
+  branch_name: string;
+  revenue_total: number;
+  revenue_by_category: Record<string, number>;
+  counter_sales: number;
+  paid_transaction_count: number;
+  bookings_availed_total: number;
+  bookings_availed_by_category: Record<string, number>;
+  new_customers: number;
+}

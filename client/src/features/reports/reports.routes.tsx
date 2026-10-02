@@ -4,6 +4,7 @@ import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGua
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
 import { DailySalesReportPage } from './pages/DailySalesReportPage/DailySalesReportPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage/AnalyticsDashboardPage';
+import { BranchComparisonPage } from './pages/BranchComparisonPage/BranchComparisonPage';
 import { CustomerTransactionHistoryPage } from './pages/CustomerTransactionHistoryPage/CustomerTransactionHistoryPage';
 import { CageOccupancyReport } from './components/CageOccupancyReport/CageOccupancyReport';
 import { TransactionHistoryTable } from './components/TransactionHistoryTable/TransactionHistoryTable';
@@ -29,6 +30,10 @@ export const reportsRoutes = (
       <Route
         path="/staff/reports/analytics"
         element={<AnalyticsDashboardPage />}
+      />
+      <Route
+        path="/staff/reports/branch-comparison"
+        element={<BranchComparisonPage />}
       />
       <Route
         path="/staff/reports/cage-occupancy"
