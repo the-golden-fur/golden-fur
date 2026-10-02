@@ -84,6 +84,19 @@ export type AnalyticsTimeFilter =
   | 'this_year'
   | 'all_time';
 
+/** Shared by AnalyticsDashboardPage and BranchComparisonPage - the five
+ * presets get_analytics_summary()/get_branch_comparison() accept. */
+export const ANALYTICS_TIME_FILTERS: {
+  value: AnalyticsTimeFilter;
+  label: string;
+}[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'this_week', label: 'This week' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'this_year', label: 'This year' },
+  { value: 'all_time', label: 'All time' },
+];
+
 export interface AnalyticsSummary {
   branch_id: string | null;
   time_filter: AnalyticsTimeFilter;
@@ -92,3 +105,24 @@ export interface AnalyticsSummary {
   cancelled_count: number;
   cancellation_rate: number;
 }
+
+/** One branch from GET /reports/branch-comparison - one per non-archived
+ * branch. *_by_category maps only carry categories with activity in the
+ * period; a missing key means zero. */
+export interface BranchComparisonRow {
+  branch_id: string;
+  branch_name: string;
+  revenue_total: number;
+  revenue_by_category: Record<string, number>;
+  counter_sales: number;
+  paid_transaction_count: number;
+  bookings_availed_total: number;
+  bookings_availed_by_category: Record<string, number>;
+  new_customers: number;
+}
+
+export type BranchComparisonMetric =
+  | 'revenue'
+  | 'bookings'
+  | 'avg_sale'
+  | 'new_customers';

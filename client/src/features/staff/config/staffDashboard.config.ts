@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Coins,
   DoorOpen,
+  GitCompareArrows,
   Heart,
   History,
   ListChecks,
@@ -57,6 +58,10 @@ export interface DashboardTileConfig {
   description: string;
   /** Omitted for modules not built yet - the tile renders as "Coming soon". */
   to?: string;
+  /** Narrows a tile within a shared config - e.g. Superadmin and Admin share
+   * the admin config, but some tiles are Superadmin-only. Omitted = every
+   * role using this config sees it. */
+  roles?: StaffRole[];
 }
 
 export interface DashboardSectionConfig {
@@ -281,6 +286,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
+          },
+          {
+            title: 'Branch Comparison',
+            description:
+              'Compare revenue and bookings across every branch, side by side.',
+            to: '/staff/reports/branch-comparison',
+            roles: ['Superadmin'],
           },
         ],
       },
@@ -647,6 +659,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Activity Log': History,
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
+  'Branch Comparison': GitCompareArrows,
 };
 
 export interface SidebarReadySection {
@@ -656,18 +669,22 @@ export interface SidebarReadySection {
 }
 
 /** Flattens a StaffDashboardConfig's sections into Sidebar-ready sections:
- * drops the `description` field DashboardTile needs but Sidebar doesn't, and
- * drops tiles with no `to` (a "Coming soon" placeholder isn't a nav target). */
+ * drops the `description` field DashboardTile needs but Sidebar doesn't,
+ * drops tiles with no `to` (a "Coming soon" placeholder isn't a nav target),
+ * and drops tiles whose `roles` doesn't include the viewer's role. */
 export function toSidebarSections(
-  config: StaffDashboardConfig
+  config: StaffDashboardConfig,
+  role?: StaffRole
 ): SidebarReadySection[] {
   return config.sections
     .map((section) => ({
       label: section.label,
       icon: section.label ? ADMIN_SECTION_ICONS[section.label] : undefined,
       items: section.tiles
-        .filter((tile): tile is DashboardTileConfig & { to: string } =>
-          Boolean(tile.to)
+        .filter(
+          (tile): tile is DashboardTileConfig & { to: string } =>
+            Boolean(tile.to) &&
+            (!tile.roles || (role !== undefined && tile.roles.includes(role)))
         )
         .map((tile) => ({
           title: tile.title,

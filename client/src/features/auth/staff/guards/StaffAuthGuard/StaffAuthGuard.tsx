@@ -35,7 +35,7 @@ function buildSidebarSections(role: string | null): SidebarSection[] {
   // every role - Home now lives in the Navbar instead, as a persistent icon
   // button (mirrors the Navbar's own Settings icon), matching the customer
   // portal's own Navbar-level Home affordance.
-  return toSidebarSections(STAFF_DASHBOARD_CONFIG[slug]);
+  return toSidebarSections(STAFF_DASHBOARD_CONFIG[slug], role);
 }
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {

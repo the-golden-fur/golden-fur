@@ -109,6 +109,14 @@
   --color-booking-cancelled-text: #6b6558;
   --color-booking-noshow-bg: #fde9e6;
   --color-booking-noshow-text: #b42318;
+  /* Branch Comparison page: categorical branch series, one hue per branch in
+     fixed order (branch 5+ falls back to text-muted + direct labels). Run
+     through the dataviz validator against --color-surface - CVD, lightness
+     band, and 3:1 contrast all pass. */
+  --color-series-1: #b8660f;
+  --color-series-2: #2a78d6;
+  --color-series-3: #1b9a6c;
+  --color-series-4: #9a4fb0;
   /* Sprint 2 Epic B - Slot Picker 3-color overlay (#56 AC-2): available
      (green, aliases success), partial (amber, aliases warning), full
      ("red-grey" per Modules-Features - a muted brick tone distinct from the
@@ -282,6 +290,12 @@
   --color-booking-cancelled-text: #cfc3a9;
   --color-booking-noshow-bg: #4b221b;
   --color-booking-noshow-text: #ffb3a7;
+  /* Branch Comparison series (dark-theme values) - separately validated
+     against the dark --color-surface, not a flip of the light steps. */
+  --color-series-1: #c47f1c;
+  --color-series-2: #3d82dc;
+  --color-series-3: #1f9b70;
+  --color-series-4: #b064c8;
   /* Sprint 2 Epic B - Slot Picker 3-color overlay (dark-theme values). */
   --color-slot-available-bg: #20462d;
   --color-slot-available-text: #bde7c4;

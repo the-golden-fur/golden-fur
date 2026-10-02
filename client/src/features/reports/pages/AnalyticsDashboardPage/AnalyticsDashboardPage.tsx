@@ -5,21 +5,14 @@ import { listStaff } from '../../../staff/api/staff.api';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { getAnalyticsSummary } from '../../api/reports.api';
-import type {
-  AnalyticsSummary,
-  AnalyticsTimeFilter,
+import {
+  ANALYTICS_TIME_FILTERS,
+  type AnalyticsSummary,
+  type AnalyticsTimeFilter,
 } from '../../reports.types';
 import { BranchRevenueComparisonChart } from '../../components/BranchRevenueComparisonChart/BranchRevenueComparisonChart';
 import styles from './AnalyticsDashboardPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
-
-const TIME_FILTERS: { value: AnalyticsTimeFilter; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'this_week', label: 'This week' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'this_year', label: 'This year' },
-  { value: 'all_time', label: 'All time' },
-];
 
 /**
  * Issue #104: revenue/bookings/cancellation-rate cards + time-filter
@@ -128,7 +121,7 @@ export function AnalyticsDashboardPage() {
               setTimeFilter(event.target.value as AnalyticsTimeFilter)
             }
           >
-            {TIME_FILTERS.map((filter) => (
+            {ANALYTICS_TIME_FILTERS.map((filter) => (
               <option key={filter.value} value={filter.value}>
                 {filter.label}
               </option>

@@ -1,5 +1,6 @@
 import type {
   AnalyticsSummary,
+  BranchComparisonRow,
   CageOccupancyRow,
   DailySalesReport,
   TransactionRecord,
@@ -176,4 +177,23 @@ export async function getAnalyticsSummary(
 
   const result = await parseBody<{ summary: AnalyticsSummary }>(response);
   return { data: result.data?.summary ?? null, error: result.error };
+}
+
+export async function getBranchComparison(
+  timeFilter: string,
+  accessToken: string
+): Promise<ReportsApiResult<BranchComparisonRow[]>> {
+  const params = new URLSearchParams({ time_filter: timeFilter });
+
+  const response = await fetch(
+    `${API_BASE_URL}/reports/branch-comparison?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ branches: BranchComparisonRow[] }>(response);
+  return { data: result.data?.branches ?? null, error: result.error };
 }
