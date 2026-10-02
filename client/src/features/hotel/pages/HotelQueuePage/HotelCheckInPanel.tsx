@@ -28,7 +28,6 @@ import type {
 import styles from './HotelCheckInPanel.module.css';
 
 const MEAL_TIMES: MealTime[] = ['Morning', 'Noon', 'Afternoon', 'Evening'];
-const EMPTY_COMBO: CatalogComboBoxValue = { catalogId: null, text: '' };
 
 /** #22: care_walking_instructions/care_playing_instructions now store a
  * coarse Morning/Afternoon/Evening block, not a literal clock time - this
@@ -310,26 +309,13 @@ export function HotelCheckInPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.id]);
 
-  function addFeeding() {
-    setFeeding((prev) => [
-      ...prev,
-      {
-        mealTime: 'Morning',
-        foodType: EMPTY_COMBO,
-        quantity: '',
-        specialInstructions: '',
-      },
-    ]);
-  }
-
+  // Feeding is read-only at check-in (always the customer's own booking-time
+  // entry) - only its update fn remains, wired to disabled inputs that never
+  // actually fire it; add/remove are gone since staff can't add new rows.
   function updateFeeding(index: number, updates: Partial<FeedingUiState>) {
     setFeeding((prev) =>
       prev.map((state, i) => (i === index ? { ...state, ...updates } : state))
     );
-  }
-
-  function removeFeeding(index: number) {
-    setFeeding((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addWalkBlock() {
@@ -378,18 +364,9 @@ export function HotelCheckInPanel({
     setPlaying((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function addMedication() {
-    setMedications((prev) => [
-      ...prev,
-      {
-        name: EMPTY_COMBO,
-        dose: '',
-        scheduledTimes: [],
-        administrationNotes: '',
-      },
-    ]);
-  }
-
+  // Medications is read-only at check-in, same as Feeding above - only the
+  // update fns remain, wired to disabled inputs that never actually fire
+  // them; add/remove are gone since staff can't add new rows or times.
   function updateMedication(
     index: number,
     updates: Partial<MedicationUiState>
@@ -397,38 +374,6 @@ export function HotelCheckInPanel({
     setMedications((prev) =>
       prev.map((medication, i) =>
         i === index ? { ...medication, ...updates } : medication
-      )
-    );
-  }
-
-  function removeMedication(index: number) {
-    setMedications((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addMedicationTime(index: number) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === index
-          ? {
-              ...medication,
-              scheduledTimes: [...medication.scheduledTimes, '08:00'],
-            }
-          : medication
-      )
-    );
-  }
-
-  function removeMedicationTime(medicationIndex: number, timeIndex: number) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === medicationIndex
-          ? {
-              ...medication,
-              scheduledTimes: medication.scheduledTimes.filter(
-                (_, j) => j !== timeIndex
-              ),
-            }
-          : medication
       )
     );
   }
@@ -620,12 +565,9 @@ export function HotelCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>2. Feeding instructions</h2>
-        {!isEditing ? (
-          <p className={styles.copy}>
-            Read-only - captured from the customer's booking. Click Edit below
-            to correct a mistake.
-          </p>
-        ) : null}
+        <p className={styles.copy}>
+          Set by the customer at booking time - staff can&apos;t edit this.
+        </p>
         {feeding.map((state, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
@@ -633,7 +575,7 @@ export function HotelCheckInPanel({
                 className={styles.input}
                 aria-label="Meal time"
                 value={state.mealTime}
-                disabled={!isEditing}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     mealTime: event.target.value as MealTime,
@@ -651,14 +593,14 @@ export function HotelCheckInPanel({
                 hidePrice
                 value={state.foodType}
                 placeholder="Food type - search or type a custom value..."
-                disabled={!isEditing}
+                disabled
                 onChange={(next) => updateFeeding(index, { foodType: next })}
               />
               <input
                 className={styles.input}
                 placeholder="Quantity"
                 value={state.quantity}
-                disabled={!isEditing}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     quantity: event.target.value,
@@ -669,36 +611,18 @@ export function HotelCheckInPanel({
                 className={styles.input}
                 placeholder="Special instructions (optional)"
                 value={state.specialInstructions}
-                disabled={!isEditing}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     specialInstructions: event.target.value,
                   })
                 }
               />
-              {isEditing ? (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => removeFeeding(index)}
-                >
-                  Remove
-                </button>
-              ) : null}
             </div>
           </div>
         ))}
         {feeding.length === 0 ? (
           <p className={styles.copy}>No feeding times were requested.</p>
-        ) : null}
-        {isEditing ? (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={addFeeding}
-          >
-            Add feeding time
-          </button>
         ) : null}
       </section>
 
@@ -912,6 +836,9 @@ export function HotelCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>5. Medications</h2>
+        <p className={styles.copy}>
+          Set by the customer at booking time - staff can&apos;t edit this.
+        </p>
         {medications.map((medication, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
@@ -920,14 +847,14 @@ export function HotelCheckInPanel({
                 hidePrice
                 value={medication.name}
                 placeholder="Medication name - search or type a custom value..."
-                disabled={!isEditing}
+                disabled
                 onChange={(next) => updateMedication(index, { name: next })}
               />
               <input
                 className={styles.input}
                 placeholder="Dose"
                 value={medication.dose}
-                disabled={!isEditing}
+                disabled
                 onChange={(event) =>
                   updateMedication(index, { dose: event.target.value })
                 }
@@ -936,22 +863,13 @@ export function HotelCheckInPanel({
                 className={styles.input}
                 placeholder="Notes (optional)"
                 value={medication.administrationNotes}
-                disabled={!isEditing}
+                disabled
                 onChange={(event) =>
                   updateMedication(index, {
                     administrationNotes: event.target.value,
                   })
                 }
               />
-              {isEditing ? (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => removeMedication(index)}
-                >
-                  Remove
-                </button>
-              ) : null}
             </div>
 
             <div className={styles.inlineFields}>
@@ -961,45 +879,18 @@ export function HotelCheckInPanel({
                   <TimeInput
                     aria-label={`Medication time ${timeIndex + 1}`}
                     value={time}
-                    disabled={!isEditing}
+                    disabled
                     onChange={(value) =>
                       updateMedicationTime(index, timeIndex, value)
                     }
                   />
-                  {isEditing ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeMedicationTime(index, timeIndex)}
-                    >
-                      &times;
-                    </button>
-                  ) : null}
                 </div>
               ))}
-              {isEditing ? (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => addMedicationTime(index)}
-                >
-                  Add time
-                </button>
-              ) : null}
             </div>
           </div>
         ))}
         {medications.length === 0 ? (
           <p className={styles.copy}>No medications were requested.</p>
-        ) : null}
-        {isEditing ? (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={addMedication}
-          >
-            Add medication
-          </button>
         ) : null}
       </section>
 

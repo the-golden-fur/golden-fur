@@ -65,6 +65,11 @@ export async function sendBookingConfirmedNotification(
 
     const scheduledDate = formatDate(booking.scheduled_start);
     const scheduledTime = formatTime(booking.scheduled_start);
+    // Transparency rule: a customer should know when they didn't book this
+    // themselves - e.g. a receptionist walk-in/phone-in booking made on
+    // their behalf (createBooking/bookingGroup.service.ts set
+    // created_by_staff_id in exactly that case).
+    const bookedByStaff = Boolean(booking.created_by_staff_id);
 
     await createNotification({
       recipientCustomerId: booking.customer_id,
@@ -72,6 +77,9 @@ export async function sendBookingConfirmedNotification(
       title: 'Booking confirmed',
       message:
         `Your ${booking.service_category} booking on ${scheduledDate} at ${scheduledTime} has been confirmed.` +
+        (bookedByStaff
+          ? ' This booking was made by our staff on your behalf.'
+          : '') +
         (staffName ? ` Assigned staff: ${staffName}.` : ''),
       relatedBookingId: booking.id,
       sendEmail:
@@ -84,6 +92,7 @@ export async function sendBookingConfirmedNotification(
                 scheduledDate,
                 scheduledTime,
                 staffName,
+                bookedByStaff,
               })
           : undefined,
     });

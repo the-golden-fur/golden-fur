@@ -323,6 +323,24 @@ export interface HotelBookingPreferences {
   medications: HotelBookingPreferenceMedication[];
 }
 
+/**
+ * Defense in depth behind STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+ * (staff.types.ts): the booking-flow UI already hides Feeding/Medications
+ * for a Receptionist/Groomer caller, but a direct API call could still send
+ * them - strip those two arrays server-side so they can never land on the
+ * booking regardless of what the UI allowed.
+ */
+export function sanitizeHotelPreferencesForStaffRole(
+  preferences: HotelBookingPreferences | null | undefined,
+  staffRole: string | null,
+  restrictedRoles: readonly string[]
+): HotelBookingPreferences | null {
+  if (!preferences) return preferences ?? null;
+  if (!staffRole || !restrictedRoles.includes(staffRole)) return preferences;
+
+  return { ...preferences, feeding: [], medications: [] };
+}
+
 export interface Booking {
   id: string;
   customer_id: string;

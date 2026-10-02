@@ -631,6 +631,16 @@ export function CustomerBookingFlowPage() {
   const [treatedCustomerIds, setTreatedCustomerIds] =
     useState<Set<string> | null>(null);
 
+  // Receptionist/Groomer may only set Walk time and Playtime when booking a
+  // Hotel/Daycare stay on a customer's behalf - Feeding and Medications are
+  // the customer's own call (allergies, dosing), not something front-desk
+  // staff should be guessing at or overwriting. Other staff roles (Admin/
+  // Supervisor/Superadmin/Veterinarian/Cashier/Pet Assistant) keep full
+  // access here.
+  const restrictsToPlayWalkOnly =
+    isReceptionistMode &&
+    (viewerRole === 'Receptionist' || viewerRole === 'Groomer');
+
   useEffect(() => {
     if (!isVeterinarianStaff || !accessToken) return;
 
@@ -3657,9 +3667,9 @@ export function CustomerBookingFlowPage() {
         return (
           <div className={styles.hotelDetailsStep}>
             <p className={styles.copy}>
-              Optional - let us know your pet's usual feeding, walking, and
-              medication routine. Our receptionist will confirm and finalize
-              these details when your pet checks in.
+              {restrictsToPlayWalkOnly
+                ? "Optional - let us know this pet's usual walking and playtime routine. Feeding and medication instructions can only be set by the customer."
+                : "Optional - let us know your pet's usual feeding, walking, and medication routine. Our receptionist will confirm and finalize these details when your pet checks in."}
             </p>
 
             {category === 'Hotel' ? (
@@ -3731,160 +3741,165 @@ export function CustomerBookingFlowPage() {
                 })()
               : null}
 
-            <section className={styles.hotelDetailsSection}>
-              <span className={styles.sectionTitle}>Feeding</span>
-              {hotelFeeding.map((row, index) => {
-                if (
-                  !hotelUniformInstructions &&
-                  row.stay_date !== activeNightDate
-                ) {
-                  return null;
-                }
+            {!restrictsToPlayWalkOnly ? (
+              <section className={styles.hotelDetailsSection}>
+                <span className={styles.sectionTitle}>Feeding</span>
+                {hotelFeeding.map((row, index) => {
+                  if (
+                    !hotelUniformInstructions &&
+                    row.stay_date !== activeNightDate
+                  ) {
+                    return null;
+                  }
 
-                const notOnDayOne =
-                  hotelCheckInTime !== null &&
-                  !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
-                const notOnLastDay =
-                  hotelCheckOutTime !== null &&
-                  !isMealApplicableOnLastDay(row.meal_time, hotelCheckOutTime);
+                  const notOnDayOne =
+                    hotelCheckInTime !== null &&
+                    !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
+                  const notOnLastDay =
+                    hotelCheckOutTime !== null &&
+                    !isMealApplicableOnLastDay(
+                      row.meal_time,
+                      hotelCheckOutTime
+                    );
 
-                return (
-                  <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      <select
-                        className={styles.input}
-                        aria-label="Meal time"
-                        value={row.meal_time}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            meal_time: event.target
-                              .value as HotelBookingPreferenceFeeding['meal_time'],
-                          })
-                        }
-                      >
-                        {MEAL_TIMES.map((mealTime) => (
-                          <option key={mealTime} value={mealTime}>
-                            {mealTime}
-                          </option>
-                        ))}
-                      </select>
-                      <CatalogComboBox
-                        placeholder="Food type"
-                        items={foodCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.food_catalog_id,
-                          text: row.food_type,
-                        }}
-                        onChange={(next) =>
-                          updateHotelFeeding(index, {
-                            food_type: next.text,
-                            food_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Quantity"
-                        value={row.quantity}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Quantity unit"
-                        value={row.quantity_unit}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity_unit: event.target
-                              .value as FoodQuantityUnit,
-                          })
-                        }
-                      >
-                        {FOOD_QUANTITY_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        className={styles.input}
-                        placeholder="Special instructions (optional)"
-                        value={row.special_instructions}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            special_instructions: event.target.value,
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeHotelFeeding(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Food item"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelFeeding(index, { photo_url: null })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelFeedingPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
+                  return (
+                    <div key={index} className={styles.instructionBlock}>
+                      <div className={styles.inlineFields}>
+                        <select
+                          className={styles.input}
+                          aria-label="Meal time"
+                          value={row.meal_time}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              meal_time: event.target
+                                .value as HotelBookingPreferenceFeeding['meal_time'],
+                            })
+                          }
+                        >
+                          {MEAL_TIMES.map((mealTime) => (
+                            <option key={mealTime} value={mealTime}>
+                              {mealTime}
+                            </option>
+                          ))}
+                        </select>
+                        <CatalogComboBox
+                          placeholder="Food type"
+                          items={foodCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.food_catalog_id,
+                            text: row.food_type,
+                          }}
+                          onChange={(next) =>
+                            updateHotelFeeding(index, {
+                              food_type: next.text,
+                              food_catalog_id: next.catalogId,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          placeholder="Quantity"
+                          value={row.quantity}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              quantity: event.target.value,
+                            })
+                          }
+                        />
+                        <select
+                          className={styles.input}
+                          aria-label="Quantity unit"
+                          value={row.quantity_unit}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              quantity_unit: event.target
+                                .value as FoodQuantityUnit,
+                            })
+                          }
+                        >
+                          {FOOD_QUANTITY_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className={styles.input}
+                          placeholder="Special instructions (optional)"
+                          value={row.special_instructions}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              special_instructions: event.target.value,
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => removeHotelFeeding(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className={styles.inlineFields}>
+                        {row.photo_url ? (
+                          <>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Food item"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelFeeding(index, { photo_url: null })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo (optional)'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) uploadHotelFeedingPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
+                      {notOnDayOne || notOnLastDay ? (
+                        <p className={styles.copy}>
+                          {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
+                        </p>
                       ) : null}
                     </div>
-                    {notOnDayOne || notOnLastDay ? (
-                      <p className={styles.copy}>
-                        {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelFeeding}
-              >
-                Add feeding time
-              </button>
-            </section>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelFeeding}
+                >
+                  Add feeding time
+                </button>
+              </section>
+            ) : null}
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Walking</span>
@@ -4066,141 +4081,147 @@ export function CustomerBookingFlowPage() {
               </button>
             </section>
 
-            <section className={styles.hotelDetailsSection}>
-              <span className={styles.sectionTitle}>Medications</span>
-              {hotelMedications.map((row, index) => {
-                if (
-                  !hotelUniformInstructions &&
-                  row.stay_date !== activeNightDate
-                ) {
-                  return null;
-                }
+            {!restrictsToPlayWalkOnly ? (
+              <section className={styles.hotelDetailsSection}>
+                <span className={styles.sectionTitle}>Medications</span>
+                {hotelMedications.map((row, index) => {
+                  if (
+                    !hotelUniformInstructions &&
+                    row.stay_date !== activeNightDate
+                  ) {
+                    return null;
+                  }
 
-                return (
-                  <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      <CatalogComboBox
-                        placeholder="Medication name"
-                        items={medicationCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.medication_catalog_id,
-                          text: row.medication_name,
-                        }}
-                        onChange={(next) =>
-                          updateHotelMedication(index, {
-                            medication_name: next.text,
-                            medication_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Dose"
-                        value={row.dose}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Dose unit"
-                        value={row.dose_unit}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose_unit: event.target.value as MedicationDoseUnit,
-                          })
-                        }
-                      >
-                        {MEDICATION_DOSE_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <TimeInput
-                        aria-label="Medication time"
-                        value={row.scheduled_time}
-                        onChange={(value) =>
-                          updateHotelMedication(index, {
-                            scheduled_time: value,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Notes (optional)"
-                        value={row.administration_notes}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            administration_notes: event.target.value,
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeHotelMedication(index)}
-                      >
-                        Remove
-                      </button>
+                  return (
+                    <div key={index} className={styles.instructionBlock}>
+                      <div className={styles.inlineFields}>
+                        <CatalogComboBox
+                          placeholder="Medication name"
+                          items={medicationCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.medication_catalog_id,
+                            text: row.medication_name,
+                          }}
+                          onChange={(next) =>
+                            updateHotelMedication(index, {
+                              medication_name: next.text,
+                              medication_catalog_id: next.catalogId,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="Dose"
+                          value={row.dose}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose: event.target.value,
+                            })
+                          }
+                        />
+                        <select
+                          className={styles.input}
+                          aria-label="Dose unit"
+                          value={row.dose_unit}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose_unit: event.target
+                                .value as MedicationDoseUnit,
+                            })
+                          }
+                        >
+                          {MEDICATION_DOSE_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                        <TimeInput
+                          aria-label="Medication time"
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelMedication(index, {
+                              scheduled_time: value,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="Notes (optional)"
+                          value={row.administration_notes}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              administration_notes: event.target.value,
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => removeHotelMedication(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className={styles.inlineFields}>
+                        {row.photo_url ? (
+                          <>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Medication"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelMedication(index, {
+                                  photo_url: null,
+                                })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo (optional)'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file)
+                                  uploadHotelMedicationPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
+                      <p className={styles.copy}>
+                        Applies daily - won&apos;t happen before check-in on
+                        arrival day or after checkout on departure day.
+                      </p>
                     </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Medication"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelMedication(index, { photo_url: null })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelMedicationPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
-                      ) : null}
-                    </div>
-                    <p className={styles.copy}>
-                      Applies daily - won&apos;t happen before check-in on
-                      arrival day or after checkout on departure day.
-                    </p>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelMedication}
-              >
-                Add medication
-              </button>
-            </section>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelMedication}
+                >
+                  Add medication
+                </button>
+              </section>
+            ) : null}
           </div>
         );
 

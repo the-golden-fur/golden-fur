@@ -33,6 +33,7 @@ import {
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   OVERRIDABLE_BOOKING_STATUSES,
+  sanitizeHotelPreferencesForStaffRole,
   type Booking,
   type BookingGroup,
   type BookingSource,
@@ -40,6 +41,7 @@ import {
   type PaymentStatus,
   type ServiceCategory,
 } from '../booking.types.ts';
+import { STAFF_BOOKING_RESTRICTED_FIELD_ROLES } from '../../staff/staff.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
 import {
   assertVeterinarianTreatedCustomer,
@@ -1215,7 +1217,11 @@ export async function createBooking({
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
-      hotel_preferences: input.hotel_preferences ?? null,
+      hotel_preferences: sanitizeHotelPreferencesForStaffRole(
+        input.hotel_preferences ?? null,
+        staffRole,
+        STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+      ),
       preferred_cage_id: preferredCageId,
     })
     .select('*')

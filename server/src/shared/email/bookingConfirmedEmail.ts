@@ -7,6 +7,10 @@ export interface BookingConfirmedEmailParams {
   scheduledDate: string;
   scheduledTime: string;
   staffName?: string | null;
+  /** Transparency rule: true when a staff member (not the customer) created
+   * this booking - mirrors the in-app notification's own message branch
+   * (bookingNotifications.service.ts). */
+  bookedByStaff?: boolean;
 }
 
 /**
@@ -22,11 +26,13 @@ export async function sendBookingConfirmedEmail({
   scheduledDate,
   scheduledTime,
   staffName,
+  bookedByStaff,
 }: BookingConfirmedEmailParams): Promise<void> {
   const subject = 'Golden Fur - Booking confirmed';
 
   const html = `
     <p>Your ${serviceCategory} booking at Golden Fur ${branchName} has been confirmed.</p>
+    ${bookedByStaff ? '<p>This booking was made by our staff on your behalf.</p>' : ''}
     <p>
       <strong>Date:</strong> ${scheduledDate}<br />
       <strong>Time:</strong> ${scheduledTime}<br />

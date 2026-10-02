@@ -98,7 +98,22 @@ describe('careInstructions.service (#75)', () => {
   describe('checkInHotelStay', () => {
     it('AC-1: creates hotel_stays, the requested instruction rows, and generated care_log_entries', async () => {
       queueFromResults(
-        { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
+        {
+          data: {
+            ...CONFIRMED_HOTEL_BOOKING,
+            hotel_preferences: {
+              feeding: [],
+              medications: [
+                {
+                  medication_name: 'Amoxicillin',
+                  dose: '250mg',
+                  scheduled_times: ['8:00 AM'],
+                },
+              ],
+            },
+          },
+          error: null,
+        }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
         { data: { id: 'stay-1', status: 'Active' }, error: null },
@@ -145,7 +160,23 @@ describe('careInstructions.service (#75)', () => {
 
     it('#22: a catalog-matched feeding row passes its food_catalog_id straight through, with no billing fields', async () => {
       queueFromResults(
-        { data: CONFIRMED_HOTEL_BOOKING, error: null }, // bookings lookup
+        {
+          data: {
+            ...CONFIRMED_HOTEL_BOOKING,
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  food_type: 'Premium kibble',
+                  quantity: '1 cup',
+                  food_catalog_id: 'food-1',
+                },
+              ],
+              medications: [],
+            },
+          },
+          error: null,
+        }, // bookings lookup
         { data: null, error: null }, // no existing stay
         { data: { id: 'cage-1', status: 'Occupied' }, error: null }, // cage claim
         { data: { id: 'stay-1', status: 'Active' }, error: null },
@@ -202,7 +233,24 @@ describe('careInstructions.service (#75)', () => {
 
     it('Custom change (Boarding Checklist): populates care_log_entries.time_block from each instruction type, bucketing medication by its scheduled clock time', async () => {
       queueFromResults(
-        { data: CONFIRMED_HOTEL_BOOKING, error: null },
+        {
+          data: {
+            ...CONFIRMED_HOTEL_BOOKING,
+            hotel_preferences: {
+              feeding: [
+                { meal_time: 'Noon', food_type: 'Kibble', quantity: '1 cup' },
+              ],
+              medications: [
+                {
+                  medication_name: 'Amoxicillin',
+                  dose: '250mg',
+                  scheduled_times: ['08:00'],
+                },
+              ],
+            },
+          },
+          error: null,
+        },
         { data: null, error: null },
         { data: { id: 'cage-1', status: 'Occupied' }, error: null },
         { data: { id: 'stay-1', status: 'Active' }, error: null },
@@ -278,7 +326,23 @@ describe('careInstructions.service (#75)', () => {
 
     it('#22: a per-night row carries its stay_date straight through to the insert', async () => {
       queueFromResults(
-        { data: CONFIRMED_HOTEL_BOOKING, error: null },
+        {
+          data: {
+            ...CONFIRMED_HOTEL_BOOKING,
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  food_type: "Owner's own custom mix",
+                  quantity: '1 cup',
+                  stay_date: '2026-08-06',
+                },
+              ],
+              medications: [],
+            },
+          },
+          error: null,
+        },
         { data: null, error: null },
         { data: { id: 'cage-1', status: 'Occupied' }, error: null },
         { data: { id: 'stay-1', status: 'Active' }, error: null },
@@ -464,7 +528,20 @@ describe('careInstructions.service (#75)', () => {
     it('accepts an already In Progress (walk-in) Hotel booking and does not re-call startBooking', async () => {
       queueFromResults(
         {
-          data: { ...CONFIRMED_HOTEL_BOOKING, status: 'In Progress' },
+          data: {
+            ...CONFIRMED_HOTEL_BOOKING,
+            status: 'In Progress',
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  food_type: 'Kibble',
+                  quantity: '1 cup',
+                },
+              ],
+              medications: [],
+            },
+          },
           error: null,
         }, // bookings lookup
         { data: null, error: null }, // no existing stay

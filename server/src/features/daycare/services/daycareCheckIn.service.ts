@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import type { HotelBookingPreferences } from '../../booking/booking.types.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
 import type { DaycareSession, DaycareStatus } from '../daycare.types.ts';
 import { startBooking } from '../../booking/services/booking.service.ts';
@@ -160,11 +161,19 @@ export async function checkInDaycareSession({
   // incoming status so the startBooking sync below only runs for the
   // Pending (online, being checked in for the first time) case.
   let bookingStatus: string | null = null;
+  // Feeding/Medications are read-only for staff at check-in when a booking
+  // exists - sourced from the customer's own booking-time preferences, never
+  // from this request's body. A true walk-in (no booking_id at all) has no
+  // customer-authored source to defer to, so it keeps using the request body
+  // for those two fields below.
+  let hotelPreferences: HotelBookingPreferences | null | undefined;
 
   if (input.booking_id) {
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, pet_id, branch_id, service_category, status')
+      .select(
+        'id, pet_id, branch_id, service_category, status, hotel_preferences'
+      )
       .eq('id', input.booking_id)
       .maybeSingle();
 
@@ -188,6 +197,7 @@ export async function checkInDaycareSession({
     branchId = booking.branch_id;
     bookingId = booking.id;
     bookingStatus = booking.status;
+    hotelPreferences = booking.hotel_preferences;
   } else {
     petId = input.pet_id!;
     branchId = input.branch_id!;
@@ -269,13 +279,22 @@ export async function checkInDaycareSession({
     // the Care Log is generated for today only.
     const checkInDate = now.toISOString().slice(0, 10);
 
-    const feeding = await insertFeedingInstructions(inserted.id, input.feeding);
+    const feeding = await insertFeedingInstructions(
+      inserted.id,
+      bookingId ? (hotelPreferences?.feeding ?? []) : input.feeding
+    );
     const walking = await insertWalkingInstructions(inserted.id, input.walking);
     const playing = await insertPlayingInstructions(inserted.id, input.playing);
+    // No `?? []` fallback here when booking-linked (unlike feeding above):
+    // insertMedicationInstructions treats `undefined` as "no customer
+    // preference exists at all" and falls back to the M07 current-
+    // prescription auto-fill (#75 AC-3) - a booking with no hotel_preferences
+    // captured should still get that fallback, not silently end up with zero
+    // medications.
     const medications = await insertMedicationInstructions(
       inserted.id,
       petId,
-      input.medications
+      bookingId ? hotelPreferences?.medications : input.medications
     );
 
     await generateCareLogEntries(
