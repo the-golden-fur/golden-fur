@@ -3,6 +3,7 @@ import { Chrome, Facebook, Lock, Mail, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
+import { LoadingState } from '../../../../../../shared/components/LoadingState/LoadingState';
 import {
   signup,
   signInWithGoogle,
@@ -19,6 +20,8 @@ export function CustomerSignupForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [isFacebookSubmitting, setIsFacebookSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -53,24 +56,32 @@ export function CustomerSignupForm() {
     navigate('/portal', { replace: true });
   };
 
+  // signInWithOAuth takes the browser away to the provider itself (a full
+  // page redirect, not a fetch) - there is nothing for this SPA to navigate
+  // to afterward, and OAuthCallbackPage only has real tokens to read once
+  // the provider redirects back. A stray navigate('/auth/callback') here
+  // used to race that handoff, landing on the callback page with no tokens
+  // yet and surfacing "OAuth session could not be established" - removed;
+  // the loading state below just covers the brief moment before the
+  // redirect actually happens, instead of a second, premature route change.
   const handleGoogleSignIn = async () => {
     setError(null);
+    setIsGoogleSubmitting(true);
     const result = await signInWithGoogle();
     if (result.error) {
       setError('Could not continue with Google.');
-      return;
+      setIsGoogleSubmitting(false);
     }
-    navigate('/auth/callback', { replace: true });
   };
 
   const handleFacebookSignIn = async () => {
     setError(null);
+    setIsFacebookSubmitting(true);
     const result = await signInWithFacebook();
     if (result.error) {
       setError('Could not continue with Facebook.');
-      return;
+      setIsFacebookSubmitting(false);
     }
-    navigate('/auth/callback', { replace: true });
   };
 
   return (
@@ -86,56 +97,70 @@ export function CustomerSignupForm() {
             type="button"
             className={styles.socialButton}
             onClick={() => void handleGoogleSignIn()}
+            disabled={isGoogleSubmitting || isFacebookSubmitting}
             aria-label="Continue with Google"
           >
-            <span
-              aria-hidden="true"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 36,
-                height: 36,
-                borderRadius: 9999,
-                background: '#ffffff',
-                boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
-                marginRight: 10,
-                flexShrink: 0,
-              }}
-            >
-              <Chrome size={18} color="#4285F4" />
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              Continue with Google
-            </span>
+            {isGoogleSubmitting ? (
+              <LoadingState size="inline" label="Redirecting to Google..." />
+            ) : (
+              <>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 9999,
+                    background: '#ffffff',
+                    boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
+                    marginRight: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Chrome size={18} color="#4285F4" />
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  Continue with Google
+                </span>
+              </>
+            )}
           </button>
 
           <button
             type="button"
             className={styles.socialButton}
             onClick={() => void handleFacebookSignIn()}
+            disabled={isGoogleSubmitting || isFacebookSubmitting}
             aria-label="Continue with Facebook"
           >
-            <span
-              aria-hidden="true"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 36,
-                height: 36,
-                borderRadius: 9999,
-                background: '#1877F2',
-                boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
-                marginRight: 10,
-                flexShrink: 0,
-              }}
-            >
-              <Facebook size={18} color="#ffffff" />
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              Continue with Facebook
-            </span>
+            {isFacebookSubmitting ? (
+              <LoadingState size="inline" label="Redirecting to Facebook..." />
+            ) : (
+              <>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 36,
+                    height: 36,
+                    borderRadius: 9999,
+                    background: '#1877F2',
+                    boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
+                    marginRight: 10,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Facebook size={18} color="#ffffff" />
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  Continue with Facebook
+                </span>
+              </>
+            )}
           </button>
         </div>
 
