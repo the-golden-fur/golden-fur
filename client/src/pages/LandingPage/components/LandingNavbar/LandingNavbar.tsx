@@ -6,8 +6,9 @@ import '../../LandingPage.css';
  * Marketing navbar for the public landing page only - distinct from the
  * authenticated shared/components/Navbar used inside /staff and /portal.
  * Ids/classes are unchanged from their previous inline markup: LandingPage's
- * own useEffect still wires up the mobile toggle and stagger-text animation
- * by querying #navToggle/#primaryNavLinks/.brand[data-stagger] directly.
+ * own useEffect still wires up the mobile toggle by querying
+ * #navToggle/#primaryNavLinks directly. The navbar itself is static - no
+ * entrance animation.
  */
 export function LandingNavbar() {
   const location = useLocation();
@@ -26,7 +27,7 @@ export function LandingNavbar() {
           gap: 'clamp(12px, 2.4vw, 20px)',
         }}
       >
-        <Link to="/" className="brand stagger" data-stagger>
+        <Link to="/" className="brand">
           Golden Fur
         </Link>
 

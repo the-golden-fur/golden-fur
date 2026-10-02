@@ -170,14 +170,6 @@ export default function GoldenFurLanding() {
       showStagger(el, true);
     });
 
-    const brandStagger = document.querySelector<HTMLElement>(
-      '.brand[data-stagger]'
-    );
-    if (brandStagger) {
-      prepareStaggerText(brandStagger);
-      showStagger(brandStagger, true);
-    }
-
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -556,10 +548,6 @@ export default function GoldenFurLanding() {
       document
         .querySelectorAll<HTMLElement>('[data-stagger]')
         .forEach((el) => showStagger(el, true));
-
-      if (brandStagger) {
-        showStagger(brandStagger, true);
-      }
 
       document
         .querySelectorAll<HTMLElement>('.fade-up')
