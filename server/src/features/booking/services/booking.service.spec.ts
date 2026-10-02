@@ -2075,6 +2075,104 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  // Receptionist/Groomer may only set Walk time/Playtime for a customer -
+  // Feeding and Medications are the customer's own call. The booking-flow UI
+  // already hides those two for these roles; this is the server-side
+  // backstop for a direct API call that still sends them.
+  describe('staff-restricted hotel_preferences fields (Receptionist/Groomer)', () => {
+    const HOTEL_PREFERENCES_INPUT = {
+      uniform_instructions: true,
+      feeding: [
+        { meal_time: 'Morning' as const, food_type: 'Kibble', quantity: '1' },
+      ],
+      walking: [{ time_block: 'Morning' as const, duration_minutes: 15 }],
+      playing: [{ time_block: 'Evening' as const, duration_minutes: 10 }],
+      medications: [
+        {
+          medication_name: 'Amoxicillin',
+          dose: '250mg',
+          dose_unit: 'mg' as const,
+          scheduled_times: ['08:00'],
+        },
+      ],
+    };
+
+    it('strips feeding/medications but keeps walking/playing for a Receptionist-created booking', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [], error: null }, // Hotel overlap - empty
+        { data: null, error: null, count: 10 } as never, // getHotelCageCapacity count
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: 'recept-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
+          scheduled_end: new Date(BASE_START_MS + 1440 * 60_000).toISOString(),
+          hotel_preferences: HOTEL_PREFERENCES_INPUT,
+        } as never,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        hotel_preferences: {
+          feeding: [],
+          medications: [],
+          walking: HOTEL_PREFERENCES_INPUT.walking,
+          playing: HOTEL_PREFERENCES_INPUT.playing,
+        },
+      });
+    });
+
+    it('keeps feeding/medications intact for an Admin-created booking', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Admin');
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: [], error: null },
+        { data: null, error: null, count: 10 } as never, // getHotelCageCapacity count
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: 'admin-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
+          scheduled_end: new Date(BASE_START_MS + 1440 * 60_000).toISOString(),
+          hotel_preferences: HOTEL_PREFERENCES_INPUT,
+        } as never,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        hotel_preferences: HOTEL_PREFERENCES_INPUT,
+      });
+    });
+  });
+
   // Custom change (P-1 roadmap item): "Add a 'requires downpayment'
   // checkbox (with a specified amount) when creating a service or package -
   // broader than the existing branch-level Hotel downpayment percentage."

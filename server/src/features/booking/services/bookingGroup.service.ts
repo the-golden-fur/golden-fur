@@ -9,6 +9,7 @@ import {
   createNotification,
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
+import { sanitizeHotelPreferencesForStaffRole } from '../booking.types.ts';
 import type {
   Booking,
   BookingGroup,
@@ -17,6 +18,7 @@ import type {
   PaymentScheme,
   ServiceCategory,
 } from '../booking.types.ts';
+import { STAFF_BOOKING_RESTRICTED_FIELD_ROLES } from '../../staff/staff.types.ts';
 import type { CreateBookingGroupInput } from '../modules/validators/booking.validator.ts';
 import {
   assertVeterinarianTreatedCustomer,
@@ -813,7 +815,11 @@ async function resolveSubBooking({
     staffResolution,
     preferredCageId,
     specialInstructions: subInput.special_instructions ?? null,
-    hotelPreferences: subInput.hotel_preferences ?? null,
+    hotelPreferences: sanitizeHotelPreferencesForStaffRole(
+      subInput.hotel_preferences ?? null,
+      staffRole,
+      STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+    ),
     freePackageAward,
   };
 }

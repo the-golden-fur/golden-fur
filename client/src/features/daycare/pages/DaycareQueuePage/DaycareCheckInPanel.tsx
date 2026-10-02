@@ -168,26 +168,13 @@ export function DaycareCheckInPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.id]);
 
-  function addFeeding() {
-    setFeeding((prev) => [
-      ...prev,
-      {
-        mealTime: 'Morning',
-        foodType: '',
-        quantity: '',
-        specialInstructions: '',
-      },
-    ]);
-  }
-
+  // Feeding is read-only at check-in (always the customer's own booking-time
+  // entry) - only its update fn remains, wired to disabled inputs that never
+  // actually fire it; add/remove are gone since staff can't add new rows.
   function updateFeeding(index: number, updates: Partial<FeedingUiState>) {
     setFeeding((prev) =>
       prev.map((state, i) => (i === index ? { ...state, ...updates } : state))
     );
-  }
-
-  function removeFeeding(index: number) {
-    setFeeding((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addCareBlock(setter: typeof setWalking) {
@@ -211,13 +198,9 @@ export function DaycareCheckInPanel({
     setter((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function addMedication() {
-    setMedications((prev) => [
-      ...prev,
-      { name: '', dose: '', scheduledTimes: [], administrationNotes: '' },
-    ]);
-  }
-
+  // Medications is read-only at check-in, same as Feeding above - only the
+  // update fns remain, wired to disabled inputs that never actually fire
+  // them; add/remove are gone since staff can't add new rows or times.
   function updateMedication(
     index: number,
     updates: Partial<MedicationUiState>
@@ -225,38 +208,6 @@ export function DaycareCheckInPanel({
     setMedications((prev) =>
       prev.map((medication, i) =>
         i === index ? { ...medication, ...updates } : medication
-      )
-    );
-  }
-
-  function removeMedication(index: number) {
-    setMedications((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addMedicationTime(index: number) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === index
-          ? {
-              ...medication,
-              scheduledTimes: [...medication.scheduledTimes, '08:00'],
-            }
-          : medication
-      )
-    );
-  }
-
-  function removeMedicationTime(medicationIndex: number, timeIndex: number) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === medicationIndex
-          ? {
-              ...medication,
-              scheduledTimes: medication.scheduledTimes.filter(
-                (_, j) => j !== timeIndex
-              ),
-            }
-          : medication
       )
     );
   }
@@ -409,6 +360,9 @@ export function DaycareCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Feeding instructions</h2>
+        <p className={styles.copy}>
+          Set by the customer at booking time - staff can&apos;t edit this.
+        </p>
         {feeding.map((state, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
@@ -416,6 +370,7 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 aria-label="Meal time"
                 value={state.mealTime}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     mealTime: event.target.value as MealTime,
@@ -432,6 +387,7 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Food type"
                 value={state.foodType}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, { foodType: event.target.value })
                 }
@@ -440,6 +396,7 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Quantity"
                 value={state.quantity}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, { quantity: event.target.value })
                 }
@@ -448,32 +405,19 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Special instructions (optional)"
                 value={state.specialInstructions}
+                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     specialInstructions: event.target.value,
                   })
                 }
               />
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => removeFeeding(index)}
-              >
-                Remove
-              </button>
             </div>
           </div>
         ))}
         {feeding.length === 0 ? (
           <p className={styles.copy}>No feeding times added.</p>
         ) : null}
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={addFeeding}
-        >
-          Add feeding time
-        </button>
       </section>
 
       <section className={styles.section}>
@@ -608,6 +552,9 @@ export function DaycareCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Medications</h2>
+        <p className={styles.copy}>
+          Set by the customer at booking time - staff can&apos;t edit this.
+        </p>
         {medications.map((medication, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
@@ -615,6 +562,7 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Medication name"
                 value={medication.name}
+                disabled
                 onChange={(event) =>
                   updateMedication(index, { name: event.target.value })
                 }
@@ -623,6 +571,7 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Dose"
                 value={medication.dose}
+                disabled
                 onChange={(event) =>
                   updateMedication(index, { dose: event.target.value })
                 }
@@ -631,19 +580,13 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Notes (optional)"
                 value={medication.administrationNotes}
+                disabled
                 onChange={(event) =>
                   updateMedication(index, {
                     administrationNotes: event.target.value,
                   })
                 }
               />
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => removeMedication(index)}
-              >
-                Remove
-              </button>
             </div>
 
             <div className={styles.inlineFields}>
@@ -653,39 +596,19 @@ export function DaycareCheckInPanel({
                   <TimeInput
                     aria-label={`Medication time ${timeIndex + 1}`}
                     value={time}
+                    disabled
                     onChange={(value) =>
                       updateMedicationTime(index, timeIndex, value)
                     }
                   />
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={() => removeMedicationTime(index, timeIndex)}
-                  >
-                    &times;
-                  </button>
                 </div>
               ))}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => addMedicationTime(index)}
-              >
-                Add time
-              </button>
             </div>
           </div>
         ))}
         {medications.length === 0 ? (
           <p className={styles.copy}>No medications added.</p>
         ) : null}
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={addMedication}
-        >
-          Add medication
-        </button>
       </section>
 
       <section className={styles.section}>

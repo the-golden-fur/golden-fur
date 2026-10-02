@@ -37,6 +37,18 @@ export const UNAVAILABILITY_MANAGER_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
+/**
+ * Roles that may only set Walk time/Playtime (not Feeding/Medications) when
+ * creating a Hotel/Daycare booking on a customer's behalf - those two are
+ * the customer's own call (allergies, dosing), not something front-desk
+ * staff should be guessing at or overwriting. See
+ * sanitizeHotelPreferencesForStaffRole in booking.types.ts.
+ */
+export const STAFF_BOOKING_RESTRICTED_FIELD_ROLES: readonly string[] = [
+  'Receptionist',
+  'Groomer',
+];
+
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
 export interface StaffProfile {

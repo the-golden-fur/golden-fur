@@ -7,6 +7,7 @@ import {
   suggestCage,
 } from './cageAssignment.service.ts';
 import { recordActivity } from './activityLog.service.ts';
+import type { HotelBookingPreferences } from '../../booking/booking.types.ts';
 import type { CheckInInput } from '../modules/validators/hotel.validator.ts';
 import type {
   CareFeedingInstruction,
@@ -63,7 +64,7 @@ export async function checkInHotelStay({
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select(
-      'id, pet_id, branch_id, scheduled_end, service_category, status, downpayment_amount'
+      'id, pet_id, branch_id, scheduled_end, service_category, status, downpayment_amount, hotel_preferences'
     )
     .eq('id', input.booking_id)
     .maybeSingle();
@@ -144,13 +145,30 @@ export async function checkInHotelStay({
     const checkInDate = now.toISOString().slice(0, 10);
     const days = enumerateDates(checkInDate, scheduledCheckOutDate);
 
-    const feeding = await insertFeedingInstructions(stay.id, input.feeding);
+    // Feeding/Medications are read-only for staff at check-in - they are
+    // always sourced from the customer's own booking-time preferences, never
+    // from this request's body (which the client UI no longer lets staff
+    // edit for these two, but a direct API call still could without this).
+    // Walking/Playtime stay staff-editable from the request as before.
+    const hotelPreferences = booking.hotel_preferences as
+      | HotelBookingPreferences
+      | null
+      | undefined;
+    const feeding = await insertFeedingInstructions(
+      stay.id,
+      hotelPreferences?.feeding ?? []
+    );
     const walking = await insertWalkingInstructions(stay.id, input.walking);
     const playing = await insertPlayingInstructions(stay.id, input.playing);
+    // No `?? []` fallback here (unlike feeding above): insertMedicationInstructions
+    // treats `undefined` as "no customer preference exists at all" and falls
+    // back to the M07 current-prescription auto-fill (#75 AC-3) - a booking
+    // with no hotel_preferences captured should still get that fallback, not
+    // silently end up with zero medications.
     const medications = await insertMedicationInstructions(
       stay.id,
       booking.pet_id,
-      input.medications
+      hotelPreferences?.medications
     );
 
     const careLogEntries = await generateCareLogEntries(
