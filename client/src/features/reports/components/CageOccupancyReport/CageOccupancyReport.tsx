@@ -492,6 +492,8 @@ export function CageOccupancyReport() {
                         {occupant.expected_checkout_at ? (
                           <CheckoutCountdown
                             expectedCheckoutAt={occupant.expected_checkout_at}
+                            overdueFeePerHour={occupant.overdue_fee_per_hour}
+                            overdueGraceMinutes={occupant.overdue_grace_minutes}
                           />
                         ) : (
                           <span className={styles.cageSize}>
@@ -575,6 +577,10 @@ export function CageOccupancyReport() {
                   <p className={styles.detailsCountdown}>
                     <CheckoutCountdown
                       expectedCheckoutAt={detailsOccupant.expected_checkout_at}
+                      overdueFeePerHour={detailsOccupant.overdue_fee_per_hour}
+                      overdueGraceMinutes={
+                        detailsOccupant.overdue_grace_minutes
+                      }
                     />
                   </p>
                 ) : null}

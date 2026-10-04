@@ -82,6 +82,11 @@ const BRANCH_NO_HOURS = {
   error: null,
 };
 
+/** resolveExpectedCheckoutAt's bookings lookup for a booking-linked session
+ * whose booked end time doesn't matter to the test - no scheduled_end, so no
+ * overdue split. */
+const BOOKING_NO_END: QueryResult = { data: null, error: null };
+
 describe('daycareBilling.service (#65)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -177,6 +182,9 @@ describe('daycareBilling.service (#65)', () => {
           succeeding_hours: 1,
           succeeding_hour_fee: 50,
           hourly_charge: 150,
+          overdue_hours: 0,
+          overdue_hour_fee: 50,
+          overdue_charge: 0,
           nights: 2,
           nightly_rate: 850,
           overnight_charge: 1700,
@@ -240,6 +248,132 @@ describe('daycareBilling.service (#65)', () => {
         expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
           150 + 2 * 850
         );
+      });
+    });
+
+    describe('overdue checkout (past the booked end time)', () => {
+      // Checked in 08:00, booked until 10:00 (2 booked hours = ₱150).
+      const start = new Date('2026-07-19T08:00:00Z');
+      const bookedEnd = minutesLater(start, 120);
+
+      function breakdownAt(minutesAfterCheckIn: number) {
+        queueFromResults(BRANCH_NO_HOURS);
+
+        return computeDaycareChargeBreakdown(
+          start,
+          minutesLater(start, minutesAfterCheckIn),
+          'branch-1',
+          undefined,
+          undefined,
+          undefined,
+          bookedEnd
+        );
+      }
+
+      it('an on-time pickup has no overdue fee', async () => {
+        expect(await breakdownAt(110)).toMatchObject({
+          hourly_charge: 150,
+          overdue_hours: 0,
+          overdue_charge: 0,
+          total: 150,
+        });
+      });
+
+      it('a pickup within the 15-minute grace period is not charged for the extra minutes at all', async () => {
+        expect(await breakdownAt(135)).toMatchObject({
+          succeeding_hours: 1,
+          hourly_charge: 150,
+          overdue_hours: 0,
+          overdue_charge: 0,
+          total: 150,
+        });
+      });
+
+      it('bills each overdue hour at a flat ₱50 on top of the booked hours, not the normal hourly rate as well', async () => {
+        // 1h20m past the booked end -> 2 overdue hours.
+        expect(await breakdownAt(200)).toMatchObject({
+          succeeding_hours: 1,
+          hourly_charge: 150,
+          overdue_hours: 2,
+          overdue_hour_fee: 50,
+          overdue_charge: 100,
+          total: 250,
+        });
+      });
+
+      it("keeps the overdue fee flat even when the service's own succeeding-hour fee differs", async () => {
+        queueFromResults(BRANCH_NO_HOURS);
+
+        expect(
+          await computeDaycareChargeBreakdown(
+            start,
+            minutesLater(start, 180),
+            'branch-1',
+            200,
+            75,
+            undefined,
+            bookedEnd
+          )
+        ).toMatchObject({
+          hourly_charge: 275,
+          overdue_hours: 1,
+          overdue_charge: 50,
+          total: 325,
+        });
+      });
+
+      it('stops counting overdue hours at closing time, where the nightly rate takes over', async () => {
+        // Closes 18:00 Asia/Manila (10:00 UTC). Booked until 09:00 UTC,
+        // picked up the next morning: 1 booked hour (₱100) + 1 overdue hour
+        // up to closing (₱50) + 1 night.
+        queueFromResults(
+          {
+            data: {
+              operating_hours: {
+                sunday: { open: '08:00', close: '18:00' },
+                monday: { open: '08:00', close: '18:00' },
+              },
+              timezone: 'Asia/Manila',
+            },
+            error: null,
+          },
+          { data: [{ base_price: 850 }], error: null }
+        );
+
+        expect(
+          await computeDaycareChargeBreakdown(
+            start,
+            new Date('2026-07-20T01:00:00Z'),
+            'branch-1',
+            undefined,
+            undefined,
+            undefined,
+            minutesLater(start, 60)
+          )
+        ).toMatchObject({
+          hourly_charge: 100,
+          overdue_hours: 1,
+          overdue_charge: 50,
+          nights: 1,
+          overnight_charge: 850,
+          total: 1000,
+        });
+      });
+
+      it('ignores a booked end time that is not after check-in', async () => {
+        queueFromResults(BRANCH_NO_HOURS);
+
+        expect(
+          await computeDaycareChargeBreakdown(
+            start,
+            minutesLater(start, 120),
+            'branch-1',
+            undefined,
+            undefined,
+            undefined,
+            minutesLater(start, -30)
+          )
+        ).toMatchObject({ hourly_charge: 150, overdue_hours: 0, total: 150 });
       });
     });
 
@@ -369,6 +503,7 @@ describe('daycareBilling.service (#65)', () => {
           error: null,
         },
         noOutstandingTasksResult(),
+        BOOKING_NO_END,
         BRANCH_NO_HOURS,
         {
           data: {
@@ -387,6 +522,71 @@ describe('daycareBilling.service (#65)', () => {
       expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
     });
 
+    it('stores the overdue fee on its own for a booked session picked up late', async () => {
+      vi.useFakeTimers();
+      // Checked in 08:00, booked until 10:00, picked up 11:30.
+      vi.setSystemTime(new Date('2026-07-19T11:30:00.000Z'));
+
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        noOutstandingTasksResult(),
+        { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+        BRANCH_NO_HOURS,
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Completed',
+          },
+          error: null,
+        }
+      );
+
+      const result = await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+      // 2 booked hours (₱150) + 2 overdue hours (₱100).
+      expect(update?.payload).toMatchObject({
+        computed_charge: 250,
+        extension_fee: 100,
+      });
+      expect(result.charge_breakdown.overdue_hours).toBe(2);
+
+      vi.useRealTimers();
+    });
+
+    it('leaves the overdue fee NULL for a walk-in, which has no booked end time', async () => {
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: null,
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        noOutstandingTasksResult(),
+        BRANCH_NO_HOURS,
+        { data: { id: 'session-1', status: 'Completed' }, error: null }
+      );
+
+      await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      const update = recordedWrites.find((write) => write.method === 'update');
+      expect(update?.payload).toMatchObject({ extension_fee: null });
+    });
+
     it('does not let a 409 from a stale/cancelled linked booking block checkout', async () => {
       queueFromResults(
         {
@@ -400,6 +600,7 @@ describe('daycareBilling.service (#65)', () => {
           error: null,
         },
         noOutstandingTasksResult(),
+        BOOKING_NO_END,
         BRANCH_NO_HOURS,
         {
           data: {

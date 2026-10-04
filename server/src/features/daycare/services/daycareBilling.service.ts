@@ -5,7 +5,11 @@ import type {
 } from '../daycare.types.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { listClosingTimesBetween } from '../../booking/services/availability.service.ts';
-import { daycareHourlyCharge } from '../modules/daycareCharge.util.ts';
+import {
+  DAYCARE_OVERDUE_FEE_PER_HOUR,
+  daycareHourlyCharge,
+  daycareOverdueCharge,
+} from '../modules/daycareCharge.util.ts';
 import { assertChecklistComplete } from '../../hotel/services/careLogCompletion.service.ts';
 import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 
@@ -76,6 +80,13 @@ async function resolveHotelNightlyRate(
  * `fallbackOvernightFee` is that old per-service fee, now only the fallback
  * for a branch with no Hotel service.
  *
+ * Overdue checkout: when the session has a booked end time
+ * (`expectedCheckoutAt` - the booking's scheduled_end; null for a walk-in),
+ * the normal hourly charge above stops there too, and the time from the
+ * booked end up to pickup (or the first closing time, whichever is first) is
+ * billed by daycareOverdueCharge instead - a flat fee per overdue hour after
+ * a grace period, never both rates for the same hour.
+ *
  * Note for the reviewer: the Guide's AC-4 table claims 2h15m -> PHP 250 ("3
  * billable succeeding hours"), which does not follow from this same formula
  * (2h15m -> 1h15m past the first hour -> ceil(1.25) = 2 succeeding hours ->
@@ -88,7 +99,8 @@ export async function computeDaycareChargeBreakdown(
   branchId: string,
   firstHourFee: number = DEFAULT_FIRST_HOUR_CHARGE,
   succeedingHourFee: number = DEFAULT_SUCCEEDING_HOUR_CHARGE,
-  fallbackOvernightFee: number = DEFAULT_OVERNIGHT_CHARGE
+  fallbackOvernightFee: number = DEFAULT_OVERNIGHT_CHARGE,
+  expectedCheckoutAt: Date | null = null
 ): Promise<DaycareChargeBreakdown> {
   const closings = await listClosingTimesBetween(
     checkInAt,
@@ -98,10 +110,24 @@ export async function computeDaycareChargeBreakdown(
   const nights = closings.length;
   const hourlyEnd = closings[0] ?? checkOutAt;
 
+  // Only a booked end time that falls inside the stay splits it; a pet
+  // checked in after its booked window already ended is billed as before.
+  const bookedEnd =
+    expectedCheckoutAt !== null &&
+    expectedCheckoutAt.getTime() > checkInAt.getTime() &&
+    expectedCheckoutAt.getTime() < hourlyEnd.getTime()
+      ? expectedCheckoutAt
+      : null;
+  const normalEnd = bookedEnd ?? hourlyEnd;
+
   const { succeedingHours, charge: hourlyCharge } = daycareHourlyCharge(
-    (hourlyEnd.getTime() - checkInAt.getTime()) / 60000,
+    (normalEnd.getTime() - checkInAt.getTime()) / 60000,
     firstHourFee,
     succeedingHourFee
+  );
+
+  const { overdueHours, charge: overdueCharge } = daycareOverdueCharge(
+    bookedEnd === null ? 0 : (hourlyEnd.getTime() - bookedEnd.getTime()) / 60000
   );
 
   const nightlyRate =
@@ -115,10 +141,13 @@ export async function computeDaycareChargeBreakdown(
     succeeding_hours: succeedingHours,
     succeeding_hour_fee: succeedingHourFee,
     hourly_charge: hourlyCharge,
+    overdue_hours: overdueHours,
+    overdue_hour_fee: DAYCARE_OVERDUE_FEE_PER_HOUR,
+    overdue_charge: overdueCharge,
     nights,
     nightly_rate: nightlyRate,
     overnight_charge: overnightCharge,
-    total: hourlyCharge + overnightCharge,
+    total: hourlyCharge + overdueCharge + overnightCharge,
   };
 }
 
@@ -181,6 +210,22 @@ async function resolveDaycareFeeSchedule(serviceId: string | null): Promise<{
   };
 }
 
+/** The booking's own scheduled_end - when the pet was booked to be picked
+ * up. A walk-in (no booking) has no agreed pickup time, so no overdue fee. */
+async function resolveExpectedCheckoutAt(
+  bookingId: string | null
+): Promise<Date | null> {
+  if (!bookingId) return null;
+
+  const { data } = await supabase
+    .from('bookings')
+    .select('scheduled_end')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  return data?.scheduled_end ? new Date(data.scheduled_end) : null;
+}
+
 interface CheckOutParams {
   sessionId: string;
   /** Custom change (activity logbook): who performed the checkout - optional
@@ -222,13 +267,17 @@ export async function checkOutDaycareSession({
   const now = new Date();
   const { firstHourFee, succeedingHourFee, dailyOvernightFee } =
     await resolveDaycareFeeSchedule(session.service_id);
+  const expectedCheckoutAt = await resolveExpectedCheckoutAt(
+    session.booking_id
+  );
   const breakdown = await computeDaycareChargeBreakdown(
     new Date(session.check_in_at),
     now,
     session.branch_id,
     firstHourFee,
     succeedingHourFee,
-    dailyOvernightFee
+    dailyOvernightFee,
+    expectedCheckoutAt
   );
   const charge = breakdown.total;
 
@@ -238,6 +287,11 @@ export async function checkOutDaycareSession({
       status: 'Completed',
       actual_check_out_at: now.toISOString(),
       computed_charge: charge,
+      // The overdue part of computed_charge, kept on its own so billing can
+      // itemize it (lineItemSources.service.ts). NULL, never zero, when no
+      // overdue fee applied - same convention as Hotel's own extension_fee.
+      extension_fee:
+        breakdown.overdue_charge > 0 ? breakdown.overdue_charge : null,
       updated_at: now.toISOString(),
     })
     .eq('id', sessionId)
@@ -291,10 +345,17 @@ export async function checkOutDaycareSession({
     stayId: sessionId,
     action: 'check_out',
     actorStaffId: requesterId,
-    description:
-      breakdown.nights > 0
-        ? `Checked out of a Daycare session (₱${charge} charge, ${breakdown.nights} night${breakdown.nights === 1 ? '' : 's'} not picked up)`
-        : `Checked out of a Daycare session (₱${charge} charge)`,
+    description: `Checked out of a Daycare session (${[
+      `₱${charge} charge`,
+      ...(breakdown.overdue_hours > 0
+        ? [`₱${breakdown.overdue_charge} overdue checkout fee`]
+        : []),
+      ...(breakdown.nights > 0
+        ? [
+            `${breakdown.nights} night${breakdown.nights === 1 ? '' : 's'} not picked up`,
+          ]
+        : []),
+    ].join(', ')})`,
   });
 
   return { ...updated, charge_breakdown: breakdown } as DaycareCheckoutResult;

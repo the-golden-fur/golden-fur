@@ -69,6 +69,7 @@ describe('DaycareCheckoutPanel (#69)', () => {
     expect(breakdown?.textContent).toContain('Total');
     expect(breakdown?.textContent).toContain('₱200');
     expect(breakdown?.textContent).not.toContain('Not picked up');
+    expect(breakdown?.textContent).not.toContain('Overdue checkout');
   });
 
   it('itemizes the night(s) at the Hotel rate for a pet not picked up before closing', async () => {
@@ -109,6 +110,47 @@ describe('DaycareCheckoutPanel (#69)', () => {
       'Not picked up before closing - 1 night × ₱850 (Hotel rate)'
     );
     expect(breakdown?.textContent).toContain('₱1000');
+  });
+
+  it('itemizes the overdue checkout fee for a booked pet picked up late', async () => {
+    vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+      data: {
+        id: 'session-1',
+        status: 'Completed',
+        computed_charge: 250,
+        charge_breakdown: {
+          first_hour_fee: 100,
+          succeeding_hours: 1,
+          succeeding_hour_fee: 50,
+          hourly_charge: 150,
+          overdue_hours: 2,
+          overdue_hour_fee: 50,
+          overdue_charge: 100,
+          nights: 0,
+          nightly_rate: null,
+          overnight_charge: 0,
+          total: 250,
+        },
+      } as never,
+      error: null,
+    });
+
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /check out/i })
+    );
+
+    const breakdown = await waitFor(() => {
+      const list = document.querySelector('dl');
+      expect(list).not.toBeNull();
+      return list;
+    });
+    expect(breakdown?.textContent).toContain(
+      'Overdue checkout - 2 hours × ₱50'
+    );
+    expect(breakdown?.textContent).toContain('₱100');
+    expect(breakdown?.textContent).toContain('₱250');
   });
 
   it('surfaces an error for an already-completed session', async () => {

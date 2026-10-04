@@ -23,8 +23,9 @@ interface DaycareCheckoutPanelProps {
  * (the first hour, plus each succeeding hour itemized), not just a single
  * total. The figures come from the server's own charge_breakdown - nothing
  * is recalculated here, so the lines always add up to computed_charge. A
- * pet that wasn't picked up before closing gets an extra line for the
- * night(s) at the Hotel nightly rate.
+ * booked pet picked up past its booked end time gets an extra line for the
+ * overdue hours, and one that wasn't picked up before closing gets an extra
+ * line for the night(s) at the Hotel nightly rate.
  *
  * Daycare Queue redesign: this used to render as a tab panel inside
  * DaycareQueuePage, reachable either via its own session picker or a known
@@ -87,6 +88,16 @@ export function DaycareCheckoutPanel({
                     ₱
                     {breakdown.succeeding_hours * breakdown.succeeding_hour_fee}
                   </dd>
+                </div>
+              ) : null}
+              {breakdown.overdue_hours > 0 ? (
+                <div className={styles.breakdownRow}>
+                  <dt>
+                    Overdue checkout - {breakdown.overdue_hours} hour
+                    {breakdown.overdue_hours > 1 ? 's' : ''} × ₱
+                    {breakdown.overdue_hour_fee}
+                  </dt>
+                  <dd>₱{breakdown.overdue_charge}</dd>
                 </div>
               ) : null}
               {breakdown.nights > 0 && breakdown.nightly_rate !== null ? (

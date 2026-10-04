@@ -62,6 +62,8 @@ describe('cageOccupants.service', () => {
         booking_id: 'booking-1',
         since: '2026-08-01T02:00:00.000Z',
         expected_checkout_at: '2026-08-04T02:00:00.000Z',
+        overdue_fee_per_hour: null,
+        overdue_grace_minutes: null,
       },
     ]);
   });
@@ -89,6 +91,9 @@ describe('cageOccupants.service', () => {
       service: 'Daycare',
       pet_name: 'Max',
       expected_checkout_at: '2026-08-01T06:00:00.000Z',
+      // Daycare is charged hourly once past its booked end.
+      overdue_fee_per_hour: 50,
+      overdue_grace_minutes: 15,
     });
   });
 

@@ -1,5 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { CageOccupant } from '../hotel.types.ts';
+import {
+  DAYCARE_OVERDUE_FEE_PER_HOUR,
+  DAYCARE_OVERDUE_GRACE_MINUTES,
+} from '../../daycare/modules/daycareCharge.util.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -117,6 +121,10 @@ export async function listCageOccupants(
       expected_checkout_at: stay.booking_id
         ? (scheduledEndByBookingId.get(stay.booking_id) ?? null)
         : null,
+      overdue_fee_per_hour:
+        stay.stay_type === 'Daycare' ? DAYCARE_OVERDUE_FEE_PER_HOUR : null,
+      overdue_grace_minutes:
+        stay.stay_type === 'Daycare' ? DAYCARE_OVERDUE_GRACE_MINUTES : null,
     };
   });
 }

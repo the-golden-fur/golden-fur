@@ -193,6 +193,28 @@ describe('CageOccupancyReport', () => {
       ).toBeInTheDocument();
     });
 
+    it('shows the overdue fee a Daycare pet has run up so far', async () => {
+      const fortyMinutesAgo = new Date(
+        Date.now() - 40 * 60 * 1000 - 5_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [
+          {
+            ...occupant(fortyMinutesAgo),
+            overdue_fee_per_hour: 50,
+            overdue_grace_minutes: 15,
+          },
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/^Overdue by 40m \d\ds · ₱50 overdue fee$/)
+      ).toBeInTheDocument();
+    });
+
     it('says so when a walk-in session has no expected checkout', async () => {
       vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
         data: [occupant(null)],

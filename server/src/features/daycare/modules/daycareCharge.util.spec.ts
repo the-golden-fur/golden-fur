@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { daycareHourlyCharge } from './daycareCharge.util.ts';
+import {
+  daycareHourlyCharge,
+  daycareOverdueCharge,
+} from './daycareCharge.util.ts';
 
 describe('daycareHourlyCharge', () => {
   it('is the flat first-hour fee for an hour or less', () => {
@@ -28,5 +31,20 @@ describe('daycareHourlyCharge', () => {
 
   it("uses the service's own fees", () => {
     expect(daycareHourlyCharge(180, 200, 75).charge).toBe(350);
+  });
+});
+
+describe('daycareOverdueCharge', () => {
+  it('charges nothing on time or within the 15-minute grace period', () => {
+    expect(daycareOverdueCharge(0)).toEqual({ overdueHours: 0, charge: 0 });
+    expect(daycareOverdueCharge(-30).charge).toBe(0);
+    expect(daycareOverdueCharge(15).charge).toBe(0);
+  });
+
+  it('charges a flat ₱50 for every started hour once past the grace period', () => {
+    expect(daycareOverdueCharge(16)).toEqual({ overdueHours: 1, charge: 50 });
+    expect(daycareOverdueCharge(60).charge).toBe(50);
+    expect(daycareOverdueCharge(61)).toEqual({ overdueHours: 2, charge: 100 });
+    expect(daycareOverdueCharge(180).charge).toBe(150);
   });
 });
